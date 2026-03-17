@@ -33,6 +33,7 @@ program
   .option('--no-open', 'Do not open browser automatically')
   .option('--hook-timeout <seconds>', 'Hook timeout in seconds', '300')
   .option('--settings-path <path>', 'Override path to .claude/settings.local.json')
+  .option('--hook-url <url>', 'URL written into hook config (overrides host:port, useful for Docker)')
   .option('--global', 'Install hooks in global ~/.claude/settings.json')
   .action(async (options) => {
     const cliFlags: Partial<LaymanConfig> = {
@@ -42,6 +43,7 @@ program
       open: options.open !== false,
       hookTimeout: parseInt(options.hookTimeout, 10),
       settingsPath: options.settingsPath,
+      hookUrl: options.hookUrl,
       global: options.global ?? false,
       analysis: {
         provider: options.analysisEndpoint ? 'openai-compatible' : 'anthropic',
@@ -73,7 +75,7 @@ program
 
     // Uninstall hooks
     const installer = new HookInstaller({
-      serverUrl: `http://${config.host}:${config.port}`,
+      serverUrl: config.hookUrl ?? `http://${config.host}:${config.port}`,
       hookTimeout: config.hookTimeout,
       global: config.global,
       settingsPath: config.settingsPath,
@@ -115,6 +117,7 @@ program
   .option('--no-open', 'Do not open browser automatically')
   .option('--hook-timeout <seconds>', 'Hook timeout in seconds', '300')
   .option('--settings-path <path>', 'Override path to .claude/settings.local.json')
+  .option('--hook-url <url>', 'URL written into hook config (overrides host:port, useful for Docker)')
   .option('--global', 'Install hooks in global ~/.claude/settings.json')
   .action(async (commandArgs: string[], options) => {
     const cliFlags: Partial<LaymanConfig> = {
@@ -124,6 +127,7 @@ program
       open: options.open !== false,
       hookTimeout: parseInt(options.hookTimeout, 10),
       settingsPath: options.settingsPath,
+      hookUrl: options.hookUrl,
       global: options.global ?? false,
       analysis: {
         provider: options.analysisEndpoint ? 'openai-compatible' : 'anthropic',
@@ -226,8 +230,13 @@ async function startServer(
 ): Promise<ReturnType<typeof createServer>> {
   const server = createServer(config);
 
+  // hookUrl separates the bind address from the URL written into hook configs.
+  // When running in Docker with --host 0.0.0.0, pass --hook-url http://localhost:8090
+  // so Claude Code (on the host) can reach the container via the mapped port.
+  const resolvedHookUrl = config.hookUrl ?? `http://${config.host}:${config.port}`;
+
   const installer = new HookInstaller({
-    serverUrl: `http://${config.host}:${config.port}`,
+    serverUrl: resolvedHookUrl,
     hookTimeout: config.hookTimeout,
     global: config.global,
     settingsPath: config.settingsPath,
