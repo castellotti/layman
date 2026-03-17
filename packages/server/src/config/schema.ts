@@ -25,6 +25,7 @@ export const LaymanConfigSchema = z.object({
   theme: z.enum(['dark', 'light', 'system']).default('dark'),
   open: z.boolean().default(true),
   settingsPath: z.string().optional(),
+  hookUrl: z.string().optional(),   // Override URL written into hook config (Docker use case)
   global: z.boolean().default(false),
 });
 
