@@ -1,0 +1,32 @@
+{
+  "name": "@layman/server",
+  "version": "0.1.0",
+  "type": "module",
+  "bin": {
+    "layman": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsup src/index.ts --format esm --dts --clean",
+    "dev": "tsup src/index.ts --format esm --watch",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.39.0",
+    "@fastify/cors": "^9.0.1",
+    "@fastify/static": "^7.0.4",
+    "@fastify/websocket": "^10.0.1",
+    "commander": "^12.1.0",
+    "cosmiconfig": "^9.0.0",
+    "fastify": "^4.28.1",
+    "open": "^10.1.0",
+    "openai": "^4.87.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "tsup": "^8.0.0",
+    "typescript": "^5.4.0",
+    "vitest": "^1.6.0"
+  }
+}
