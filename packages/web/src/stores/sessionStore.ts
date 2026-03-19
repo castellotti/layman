@@ -26,6 +26,10 @@ interface SessionState {
   // Analysis in-flight
   analyzingEventIds: Set<string>;
 
+  // Laymans in-flight
+  laymansEventIds: Set<string>;
+  laymansErrors: Record<string, string>;
+
   // Investigation panel
   investigationOpen: boolean;
   investigationState: InvestigationState;
@@ -52,6 +56,8 @@ interface SessionState {
   removePendingApproval: (id: string) => void;
   setAnalyzing: (eventId: string, analyzing: boolean) => void;
   setAnalysisError: (eventId: string, error: string | null) => void;
+  setLaymans: (eventId: string, loading: boolean) => void;
+  setLaymansError: (eventId: string, error: string | null) => void;
   addInvestigationQuestion: (eventId: string, question: string, answer: string, meta?: { tokens?: { input: number; output: number }; latencyMs?: number; model?: string }) => void;
   setInvestigationOpen: (open: boolean) => void;
   setSettingsOpen: (open: boolean) => void;
@@ -72,6 +78,8 @@ export const useSessionStore = create<SessionState>((set) => ({
 
   pendingApprovals: new Map(),
   analyzingEventIds: new Set(),
+  laymansEventIds: new Set(),
+  laymansErrors: {},
 
   investigationOpen: false,
   investigationState: {},
@@ -149,6 +157,25 @@ export const useSessionStore = create<SessionState>((set) => ({
         },
       };
     }),
+
+  setLaymans: (eventId, loading) =>
+    set((state) => {
+      const newSet = new Set(state.laymansEventIds);
+      if (loading) {
+        newSet.add(eventId);
+      } else {
+        newSet.delete(eventId);
+      }
+      return { laymansEventIds: newSet };
+    }),
+
+  setLaymansError: (eventId, error) =>
+    set((state) => ({
+      laymansErrors: {
+        ...state.laymansErrors,
+        [eventId]: error ?? '',
+      },
+    })),
 
   addInvestigationQuestion: (eventId, question, answer, meta) =>
     set((state) => {

@@ -374,6 +374,76 @@ export function createServer(config: LaymanConfig): LaymanServer {
         })();
         break;
       }
+      case 'laymans:request': {
+        const event = eventStore.get(message.eventId);
+        if (!event) break;
+
+        void (async () => {
+          try {
+            broadcast({ type: 'laymans:start', eventId: message.eventId });
+            const result = await analysisEngine.laymans(
+              {
+                toolName: event.data.toolName ?? 'Unknown',
+                toolInput: event.data.toolInput ?? {},
+                toolOutput: event.data.toolOutput,
+                cwd: process.cwd(),
+                depth: message.depth,
+              },
+              activeConfig.laymansPrompt,
+            );
+            eventStore.attachLaymans(message.eventId, result);
+            broadcast({ type: 'laymans:result', eventId: message.eventId, result });
+          } catch (err) {
+            const errorMsg = err instanceof Error ? err.message : String(err);
+            broadcast({ type: 'laymans:error', eventId: message.eventId, error: errorMsg });
+          }
+        })();
+        break;
+      }
+      case 'both:request': {
+        const event = eventStore.get(message.eventId);
+        if (!event) break;
+
+        // Fire both laymans and analysis in parallel
+        void (async () => {
+          try {
+            broadcast({ type: 'laymans:start', eventId: message.eventId });
+            const result = await analysisEngine.laymans(
+              {
+                toolName: event.data.toolName ?? 'Unknown',
+                toolInput: event.data.toolInput ?? {},
+                toolOutput: event.data.toolOutput,
+                cwd: process.cwd(),
+                depth: message.depth,
+              },
+              activeConfig.laymansPrompt,
+            );
+            eventStore.attachLaymans(message.eventId, result);
+            broadcast({ type: 'laymans:result', eventId: message.eventId, result });
+          } catch (err) {
+            const errorMsg = err instanceof Error ? err.message : String(err);
+            broadcast({ type: 'laymans:error', eventId: message.eventId, error: errorMsg });
+          }
+        })();
+        void (async () => {
+          try {
+            broadcast({ type: 'analysis:start', eventId: message.eventId });
+            const result = await analysisEngine.analyze({
+              toolName: event.data.toolName ?? 'Unknown',
+              toolInput: event.data.toolInput ?? {},
+              toolOutput: event.data.toolOutput,
+              cwd: process.cwd(),
+              depth: message.depth,
+            });
+            eventStore.attachAnalysis(message.eventId, result);
+            broadcast({ type: 'analysis:result', eventId: message.eventId, result });
+          } catch (err) {
+            const errorMsg = err instanceof Error ? err.message : String(err);
+            broadcast({ type: 'analysis:error', eventId: message.eventId, error: errorMsg });
+          }
+        })();
+        break;
+      }
       case 'analysis:ask': {
         const event = eventStore.get(message.eventId);
         if (!event) break;

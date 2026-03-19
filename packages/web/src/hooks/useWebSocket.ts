@@ -20,6 +20,8 @@ export function useWebSocket(): { send: (msg: ClientMessage) => void } {
     removePendingApproval,
     setAnalyzing,
     setAnalysisError,
+    setLaymans,
+    setLaymansError,
     setConfig,
     setSessionStatus,
     setSessions,
@@ -69,6 +71,20 @@ export function useWebSocket(): { send: (msg: ClientMessage) => void } {
           setAnalysisError(message.eventId, message.error);
           break;
 
+        case 'laymans:start':
+          setLaymans(message.eventId, true);
+          break;
+
+        case 'laymans:result':
+          setLaymans(message.eventId, false);
+          updateEvent(message.eventId, { laymans: message.result });
+          break;
+
+        case 'laymans:error':
+          setLaymans(message.eventId, false);
+          setLaymansError(message.eventId, message.error);
+          break;
+
         case 'session:config':
           setConfig(message.config);
           break;
@@ -82,7 +98,7 @@ export function useWebSocket(): { send: (msg: ClientMessage) => void } {
           break;
       }
     },
-    [addEvent, addPendingApproval, removePendingApproval, setAnalyzing, setAnalysisError, setConfig, setServerVersion, setSessionStatus, setSessions, updateEvent]
+    [addEvent, addPendingApproval, removePendingApproval, setAnalyzing, setAnalysisError, setLaymans, setLaymansError, setConfig, setServerVersion, setSessionStatus, setSessions, updateEvent]
   );
 
   const connect = useCallback(() => {

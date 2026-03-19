@@ -4,10 +4,11 @@ import { OpenAICompatProvider } from './providers/openai-compat.js';
 import {
   ANALYSIS_SYSTEM_PROMPT,
   INVESTIGATION_SYSTEM_PROMPT,
+  buildLaymansSystemPrompt,
   formatAnalysisUserMessage,
   formatInvestigationUserMessage,
 } from './prompt.js';
-import type { AnalysisResult, AnalysisRequest, AnalysisConfig, InvestigationContext } from './types.js';
+import type { AnalysisResult, AnalysisRequest, AnalysisConfig, InvestigationContext, LaymansResult } from './types.js';
 
 const DEFAULT_CONFIG: AnalysisConfig = {
   provider: 'anthropic',
@@ -104,6 +105,35 @@ export class AnalysisEngine {
         },
         latencyMs: Date.now() - startTime,
         model: this.config.model,
+      };
+    });
+  }
+
+  async laymans(
+    request: AnalysisRequest,
+    prompt: string
+  ): Promise<LaymansResult> {
+    const effectiveConfig = {
+      ...this.config,
+      maxTokens: request.depth === 'detailed' ? 800 : 300,
+    };
+
+    return this.withConcurrencyLimit(async () => {
+      const startTime = Date.now();
+      const systemPrompt = buildLaymansSystemPrompt(prompt, request.depth);
+      const userMessage = formatAnalysisUserMessage(request);
+
+      const raw = await this.callProvider(systemPrompt, userMessage, effectiveConfig);
+      const latencyMs = Date.now() - startTime;
+
+      const inputTokens = raw.usage.input_tokens ?? raw.usage.prompt_tokens ?? 0;
+      const outputTokens = raw.usage.output_tokens ?? raw.usage.completion_tokens ?? 0;
+
+      return {
+        explanation: raw.text.trim(),
+        model: effectiveConfig.model,
+        latencyMs,
+        tokens: { input: inputTokens, output: outputTokens },
       };
     });
   }

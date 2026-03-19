@@ -1,7 +1,7 @@
 import { EventEmitter } from 'events';
 import { randomUUID } from 'crypto';
 import type { TimelineEvent, EventType, EventData } from './types.js';
-import type { AnalysisResult } from '../analysis/types.js';
+import type { AnalysisResult, LaymansResult } from '../analysis/types.js';
 
 export interface SessionInfo {
   sessionId: string;
@@ -69,6 +69,15 @@ export class EventStore extends EventEmitter {
     const event = this.get(eventId);
     if (event) {
       event.analysis = analysis;
+      this.emit('event:update', event);
+    }
+    return event;
+  }
+
+  attachLaymans(eventId: string, laymans: LaymansResult): TimelineEvent | undefined {
+    const event = this.get(eventId);
+    if (event) {
+      event.laymans = laymans;
       this.emit('event:update', event);
     }
     return event;
