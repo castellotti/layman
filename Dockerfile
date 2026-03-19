@@ -8,6 +8,7 @@ RUN corepack enable && corepack prepare pnpm@latest --activate
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml* ./
 COPY packages/server/package.json packages/server/
 COPY packages/web/package.json packages/web/
+COPY packages/opencode-plugin/package.json packages/opencode-plugin/
 
 # Install dependencies
 RUN pnpm install --frozen-lockfile
@@ -26,6 +27,7 @@ COPY --from=build /app/packages/server/dist ./packages/server/dist
 COPY --from=build /app/web-dist ./web-dist
 COPY --from=build /app/packages/server/node_modules ./packages/server/node_modules
 COPY --from=build /app/packages/server/package.json ./packages/server/
+COPY --from=build /app/packages/opencode-plugin ./packages/opencode-plugin
 
 # Create a simple entry point
 COPY --from=build /app/node_modules ./node_modules

@@ -15,7 +15,15 @@ interface NavigationBarProps {
   onToggleRiskyOnly: () => void;
   onToggleCollapseHistory: () => void;
   onToggleAutoScroll: () => void;
+  availableAgentTypes?: string[];
+  activeAgentTypes?: string[];
+  onToggleAgentType?: (agentType: string) => void;
 }
+
+const AGENT_LABELS: Record<string, string> = {
+  'claude-code': 'Claude Code',
+  'opencode': 'OpenCode',
+};
 
 export function NavigationBar({
   currentIndex,
@@ -32,6 +40,9 @@ export function NavigationBar({
   onToggleRiskyOnly,
   onToggleCollapseHistory,
   onToggleAutoScroll,
+  availableAgentTypes,
+  activeAgentTypes,
+  onToggleAgentType,
 }: NavigationBarProps) {
   return (
     <div className="flex items-center gap-3 px-4 py-2 bg-[#161b22] border-b border-[#30363d] text-xs flex-wrap">
@@ -117,6 +128,28 @@ export function NavigationBar({
           />
           <span className={autoScroll ? 'text-[#3fb950]' : 'text-[#8b949e]'}>Auto-scroll</span>
         </label>
+
+        {availableAgentTypes && availableAgentTypes.length > 1 && onToggleAgentType && (
+          <>
+            <div className="h-4 w-px bg-[#30363d]" />
+            <span className="text-[#484f58]">Agents:</span>
+            {availableAgentTypes.map((at) => {
+              const isActive = !activeAgentTypes || activeAgentTypes.length === 0 || activeAgentTypes.includes(at);
+              const label = AGENT_LABELS[at] ?? at;
+              return (
+                <label key={at} className="flex items-center gap-1.5 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={isActive}
+                    onChange={() => onToggleAgentType(at)}
+                    className="w-3 h-3 accent-[#a371f7]"
+                  />
+                  <span className={isActive ? 'text-[#a371f7]' : 'text-[#8b949e]'}>{label}</span>
+                </label>
+              );
+            })}
+          </>
+        )}
       </div>
     </div>
   );

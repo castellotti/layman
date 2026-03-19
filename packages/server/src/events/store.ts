@@ -7,24 +7,27 @@ export interface SessionInfo {
   sessionId: string;
   cwd: string;
   lastSeen: number;
+  agentType: string;
 }
 
 export class EventStore extends EventEmitter {
   private events: TimelineEvent[] = [];
   private maxEvents = 10000;
-  private sessions: Map<string, { cwd: string; lastSeen: number }> = new Map();
+  private sessions: Map<string, { cwd: string; lastSeen: number; agentType: string }> = new Map();
 
   add(
     type: EventType,
     sessionId: string,
     data: EventData,
-    riskLevel?: 'low' | 'medium' | 'high'
+    riskLevel?: 'low' | 'medium' | 'high',
+    agentType: string = 'claude-code'
   ): TimelineEvent {
     const event: TimelineEvent = {
       id: randomUUID(),
       type,
       timestamp: Date.now(),
       sessionId,
+      agentType,
       data,
       riskLevel,
     };
@@ -92,11 +95,11 @@ export class EventStore extends EventEmitter {
     this.emit('store:cleared');
   }
 
-  trackSession(sessionId: string, cwd: string): void {
+  trackSession(sessionId: string, cwd: string, agentType: string = 'claude-code'): void {
     const existing = this.sessions.get(sessionId);
     const isNew = !existing;
     const cwdChanged = existing && existing.cwd !== cwd;
-    this.sessions.set(sessionId, { cwd, lastSeen: Date.now() });
+    this.sessions.set(sessionId, { cwd, lastSeen: Date.now(), agentType });
     if (isNew || cwdChanged) {
       this.emit('sessions:changed', this.getSessions());
     }
@@ -114,7 +117,7 @@ export class EventStore extends EventEmitter {
         }
       }
       return Array.from(seen.entries())
-        .map(([sessionId, lastSeen]) => ({ sessionId, cwd: '', lastSeen }))
+        .map(([sessionId, lastSeen]) => ({ sessionId, cwd: '', lastSeen, agentType: 'claude-code' }))
         .sort((a, b) => b.lastSeen - a.lastSeen);
     }
     return Array.from(this.sessions.entries())

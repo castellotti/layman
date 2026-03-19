@@ -16,13 +16,33 @@ export function EventStream({ onSend }: EventStreamProps) {
   const [autoScroll, setAutoScroll] = useState(true);
   const [selectedIndex, setSelectedIndex] = useState(-1);
   const [followLatest, setFollowLatest] = useState(true);
+  const [activeAgentTypes, setActiveAgentTypes] = useState<string[]>([]);
 
   const scrollRef = useRef<HTMLDivElement>(null);
-  const { setSelectedEvent } = useSessionStore();
+  const { setSelectedEvent, sessions } = useSessionStore();
+
+  // Show agent badges only when sessions from multiple agent types are active
+  const availableAgentTypes = [...new Set(sessions.map((s) => s.agentType))];
+  const showAgentBadge = availableAgentTypes.length > 1;
+
+  const handleToggleAgentType = (agentType: string) => {
+    setActiveAgentTypes((prev) => {
+      if (prev.length === 0) {
+        // Currently showing all — filter to only the others
+        return availableAgentTypes.filter((at) => at !== agentType);
+      }
+      if (prev.includes(agentType)) {
+        const next = prev.filter((at) => at !== agentType);
+        return next.length === 0 ? [] : next; // If none left, show all
+      }
+      return [...prev, agentType];
+    });
+  };
 
   const { events, totalCount } = useEventStore({
     promptsOnly,
     riskyOnly,
+    agentTypes: activeAgentTypes.length > 0 ? activeAgentTypes : undefined,
   });
 
   // Auto-scroll to bottom when new events arrive and following
@@ -148,6 +168,9 @@ export function EventStream({ onSend }: EventStreamProps) {
         onToggleRiskyOnly={() => setRiskyOnly((v) => !v)}
         onToggleCollapseHistory={() => setCollapseHistory((v) => !v)}
         onToggleAutoScroll={handleToggleAutoScroll}
+        availableAgentTypes={availableAgentTypes}
+        activeAgentTypes={activeAgentTypes}
+        onToggleAgentType={handleToggleAgentType}
       />
 
       <div
@@ -178,6 +201,7 @@ export function EventStream({ onSend }: EventStreamProps) {
                   onClick={() => handleEventClick(index, event.id)}
                   onSend={onSend}
                   collapseHistory={collapseHistory}
+                  showAgentBadge={showAgentBadge}
                 />
               </div>
             ))}
