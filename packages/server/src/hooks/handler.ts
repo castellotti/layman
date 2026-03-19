@@ -37,6 +37,13 @@ export function registerHookHandler(
       const body = request.body;
 
       try {
+        // Track session activity from any hook event
+        const sessionId = (body as { session_id?: string }).session_id;
+        const cwd = (body as { cwd?: string }).cwd;
+        if (sessionId && cwd) {
+          eventStore.trackSession(sessionId, cwd);
+        }
+
         switch (eventName) {
           case 'PreToolUse': {
             const input = body as unknown as PreToolUseInput;
@@ -114,6 +121,7 @@ async function handlePreToolUse(
 
   // Check auto-allow rules
   const shouldAutoAllow =
+    config.autoApprove ||
     (config.autoAllow.readOnly && AUTO_ALLOW_TOOLS.has(input.tool_name)) ||
     isAutoAllowedByPattern(input.tool_name, input.tool_input, config.autoAllow.trustedCommands);
 
@@ -154,7 +162,7 @@ async function handlePreToolUse(
         : 'tool_call_delegated';
 
   eventStore.updateType(timelineEvent.id, finalType);
-  eventStore.updateData(timelineEvent.id, { decision, approvalId: undefined });
+  eventStore.updateData(timelineEvent.id, { decision, approvalId: undefined, completedAt: Date.now() });
 
   const response: PreToolUseResponse = {
     hookSpecificOutput: {
@@ -222,14 +230,16 @@ async function handlePostToolUse(
       e.sessionId === input.session_id
   );
 
+  const completedAt = Date.now();
   if (pendingEvent && pendingEvent.type !== 'tool_call_completed') {
     eventStore.updateType(pendingEvent.id, 'tool_call_completed');
-    eventStore.updateData(pendingEvent.id, { toolOutput: input.tool_output });
+    eventStore.updateData(pendingEvent.id, { toolOutput: input.tool_output, completedAt });
   } else {
     eventStore.add('tool_call_completed', input.session_id, {
       toolName: input.tool_name,
       toolInput: input.tool_input,
       toolOutput: input.tool_output,
+      completedAt,
     });
   }
 }

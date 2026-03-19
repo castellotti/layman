@@ -56,6 +56,7 @@ export interface EventData {
   source?: string;
   approvalId?: string;
   decision?: ApprovalDecision;
+  completedAt?: number;
 }
 
 export interface TimelineEvent {
@@ -108,6 +109,7 @@ export interface LaymanConfig {
   hookTimeout: number;
   theme: 'dark' | 'light' | 'system';
   open: boolean;
+  autoApprove: boolean;
   settingsPath?: string;
   global: boolean;
 }

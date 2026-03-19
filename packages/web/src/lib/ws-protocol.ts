@@ -7,6 +7,12 @@ import type {
   SessionStatus,
 } from './types.js';
 
+export interface SessionInfo {
+  sessionId: string;
+  cwd: string;
+  lastSeen: number;
+}
+
 export type ServerMessage =
   | { type: 'event:new'; event: TimelineEvent }
   | { type: 'event:update'; eventId: string; updates: Partial<TimelineEvent> }
@@ -17,6 +23,7 @@ export type ServerMessage =
   | { type: 'analysis:error'; eventId: string; error: string }
   | { type: 'session:status'; status: SessionStatus }
   | { type: 'session:config'; config: LaymanConfig }
+  | { type: 'sessions:list'; sessions: SessionInfo[] }
   | { type: 'connected'; serverVersion: string; eventCount: number };
 
 export type ClientMessage =

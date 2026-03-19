@@ -80,7 +80,7 @@ export class AnalysisEngine {
   async ask(
     question: string,
     context: InvestigationContext
-  ): Promise<string> {
+  ): Promise<{ text: string; tokens: { input: number; output: number }; latencyMs: number; model: string }> {
     const userMessage = formatInvestigationUserMessage(
       question,
       context.toolName,
@@ -90,12 +90,21 @@ export class AnalysisEngine {
     );
 
     return this.withConcurrencyLimit(async () => {
+      const startTime = Date.now();
       const raw = await this.callProvider(
         INVESTIGATION_SYSTEM_PROMPT,
         userMessage,
         { ...this.config, maxTokens: 400 }
       );
-      return raw.text.trim();
+      return {
+        text: raw.text.trim(),
+        tokens: {
+          input: raw.usage.input_tokens ?? raw.usage.prompt_tokens ?? 0,
+          output: raw.usage.output_tokens ?? raw.usage.completion_tokens ?? 0,
+        },
+        latencyMs: Date.now() - startTime,
+        model: this.config.model,
+      };
     });
   }
 

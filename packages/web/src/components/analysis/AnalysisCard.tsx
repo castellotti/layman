@@ -54,15 +54,14 @@ export function AnalysisCard({ analysis, compact = false }: AnalysisCardProps) {
         </span>
       </div>
 
-      {!compact && (
-        <div className="mt-2 pt-2 border-t border-[#30363d] flex items-center gap-3 text-[10px] text-[#484f58]">
-          <span>Model: {analysis.model}</span>
-          <span>·</span>
-          <span>{analysis.latencyMs}ms</span>
-          <span>·</span>
-          <span>{analysis.tokens.input + analysis.tokens.output} tokens</span>
-        </div>
-      )}
+      <div className={`mt-2 pt-2 border-t border-[#30363d] flex items-center gap-2 text-[10px] text-[#484f58] flex-wrap`}>
+        {!compact && <><span>Model: {analysis.model}</span><span>·</span></>}
+        <span>{analysis.latencyMs}ms</span>
+        <span>·</span>
+        <span className="text-[#3fb950]/70">↑{analysis.tokens.input.toLocaleString()}</span>
+        <span className="text-[#58a6ff]/70">↓{analysis.tokens.output.toLocaleString()}</span>
+        {!compact && <><span>·</span><span>{(analysis.tokens.input + analysis.tokens.output).toLocaleString()} total</span></>}
+      </div>
     </div>
   );
 }

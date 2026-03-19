@@ -45,8 +45,12 @@ export function InvestigationPanel({ onSend }: InvestigationPanelProps) {
         body: JSON.stringify({ question }),
       });
       if (response.ok) {
-        const data = await response.json() as { answer: string };
-        addInvestigationQuestion(selectedEventId, question, data.answer);
+        const data = await response.json() as { answer: string; tokens?: { input: number; output: number }; latencyMs?: number; model?: string };
+        addInvestigationQuestion(selectedEventId, question, data.answer, {
+          tokens: data.tokens,
+          latencyMs: data.latencyMs,
+          model: data.model,
+        });
       }
     } catch {
       addInvestigationQuestion(selectedEventId, question, 'Failed to get answer. Please try again.');
@@ -135,6 +139,14 @@ export function InvestigationPanel({ onSend }: InvestigationPanelProps) {
             <div className="bg-[#161b22] border border-[#30363d] rounded-md p-4 text-center">
               <span className="text-xs text-[#8b949e] animate-pulse">Analyzing with LLM...</span>
             </div>
+          ) : state.analysisError ? (
+            <div className="bg-[#161b22] border border-[#f85149]/40 rounded-md p-3 space-y-1">
+              <span className="text-xs font-semibold text-[#f85149]">Analysis failed</span>
+              <p className="text-[11px] text-[#8b949e] font-mono break-all">{state.analysisError}</p>
+              <p className="text-[10px] text-[#484f58] mt-1">
+                Check Settings → Analysis Model. If using a local model, verify the endpoint is reachable.
+              </p>
+            </div>
           ) : (
             <div className="bg-[#161b22] border border-[#30363d] border-dashed rounded-md p-4 text-center">
               <span className="text-xs text-[#484f58]">No analysis yet. Click Quick or Detailed above.</span>
@@ -158,6 +170,19 @@ export function InvestigationPanel({ onSend }: InvestigationPanelProps) {
                   <span className="text-[#3fb950] text-xs shrink-0">A:</span>
                   <span className="text-xs text-[#e6edf3]">{qa.answer}</span>
                 </div>
+                {(qa.tokens || qa.latencyMs) && (
+                  <div className="ml-4 flex items-center gap-2 text-[10px] text-[#484f58]">
+                    {qa.latencyMs !== undefined && <span>{qa.latencyMs}ms</span>}
+                    {qa.tokens && (
+                      <>
+                        <span>·</span>
+                        <span className="text-[#3fb950]/70">↑{qa.tokens.input.toLocaleString()}</span>
+                        <span className="text-[#58a6ff]/70">↓{qa.tokens.output.toLocaleString()}</span>
+                      </>
+                    )}
+                    {qa.model && <><span>·</span><span>{qa.model}</span></>}
+                  </div>
+                )}
               </div>
             ))}
           </div>

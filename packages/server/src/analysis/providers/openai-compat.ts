@@ -1,22 +1,35 @@
+import { existsSync } from 'fs';
 import OpenAI from 'openai';
 import type { AnalysisConfig, RawLLMResponse } from '../types.js';
+
+/**
+ * When running inside Docker, `localhost` resolves to the container itself.
+ * Rewrite localhost/127.0.0.1 to host.docker.internal so requests reach the host.
+ */
+function resolveEndpoint(url: string): string {
+  if (!existsSync('/.dockerenv')) return url;
+  return url.replace(/^(https?:\/\/)(localhost|127\.0\.0\.1)(?=[:\/]|$)/, '$1host.docker.internal');
+}
+
+export { resolveEndpoint };
 
 export class OpenAICompatProvider {
   private client: OpenAI | null = null;
   private lastConfig: string | undefined;
 
   private getClient(config: AnalysisConfig): OpenAI {
-    const configKey = `${config.endpoint}:${config.apiKey}`;
+    const resolved = resolveEndpoint(config.endpoint ?? '');
+    const configKey = `${resolved}:${config.apiKey}`;
     if (!this.client || configKey !== this.lastConfig) {
       const apiKey =
         config.apiKey ??
         process.env.OPENAI_API_KEY ??
         process.env.LAYMAN_API_KEY ??
-        'not-needed'; // Some local models don't need keys
+        'not-needed'; // Local models often don't require a key
 
       this.client = new OpenAI({
         apiKey,
-        baseURL: config.endpoint,
+        baseURL: resolved,
       });
       this.lastConfig = configKey;
     }

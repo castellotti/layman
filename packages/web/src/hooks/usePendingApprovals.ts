@@ -10,7 +10,10 @@ export function usePendingApprovals(): {
   const pendingApprovals = useSessionStore((state) => state.pendingApprovals);
 
   const approvals = useMemo(
-    () => Array.from(pendingApprovals.values()).sort((a, b) => a.timestamp - b.timestamp),
+    () =>
+      Array.from(pendingApprovals.values())
+        .filter((a) => a.eventName !== 'PermissionRequest')
+        .sort((a, b) => a.timestamp - b.timestamp),
     [pendingApprovals]
   );
 
