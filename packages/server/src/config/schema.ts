@@ -24,7 +24,7 @@ export const LaymanConfigSchema = z.object({
   hookTimeout: z.number().int().min(10).max(3600).default(300),
   theme: z.enum(['dark', 'light', 'system']).default('dark'),
   open: z.boolean().default(true),
-  autoApprove: z.boolean().default(false), // Auto-approve all PreToolUse; only block on PermissionRequest
+  autoApprove: z.boolean().default(true), // Auto-approve all PreToolUse; only block on PermissionRequest
   settingsPath: z.string().optional(),
   hookUrl: z.string().optional(),
   global: z.boolean().default(false),
