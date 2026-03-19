@@ -12,6 +12,8 @@ interface EventStreamProps {
 export function EventStream({ onSend }: EventStreamProps) {
   const [promptsOnly, setPromptsOnly] = useState(false);
   const [riskyOnly, setRiskyOnly] = useState(false);
+  const [collapseHistory, setCollapseHistory] = useState(true);
+  const [autoScroll, setAutoScroll] = useState(true);
   const [selectedIndex, setSelectedIndex] = useState(-1);
   const [followLatest, setFollowLatest] = useState(true);
 
@@ -25,30 +27,54 @@ export function EventStream({ onSend }: EventStreamProps) {
 
   // Auto-scroll to bottom when new events arrive and following
   useEffect(() => {
-    if (followLatest && scrollRef.current) {
+    if (autoScroll && followLatest && scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [events.length, followLatest]);
+  }, [events.length, autoScroll, followLatest]);
 
   // Update selected index to latest when following
   useEffect(() => {
-    if (followLatest && events.length > 0) {
+    if (autoScroll && followLatest && events.length > 0) {
       setSelectedIndex(events.length - 1);
     }
-  }, [events.length, followLatest]);
+  }, [events.length, autoScroll, followLatest]);
 
   const handleScroll = useCallback(() => {
+    if (!autoScroll) return;
     const el = scrollRef.current;
     if (!el) return;
     const isAtBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 50;
     setFollowLatest(isAtBottom);
-  }, []);
+  }, [autoScroll]);
 
   const handleEventClick = (index: number, eventId: string) => {
     setSelectedIndex(index);
     setSelectedEvent(eventId);
-    setFollowLatest(false);
+    // Pause auto-scroll when user explicitly clicks on a non-latest event
+    if (index < events.length - 1) {
+      setFollowLatest(false);
+    }
   };
+
+  const handleToggleAutoScroll = useCallback(() => {
+    setAutoScroll((prev) => {
+      if (!prev) {
+        // Re-enabling: resume following
+        setFollowLatest(true);
+      }
+      return !prev;
+    });
+  }, []);
+
+  const jumpToLatest = useCallback(() => {
+    const idx = events.length - 1;
+    setSelectedIndex(idx);
+    if (events[idx]) setSelectedEvent(events[idx].id);
+    setFollowLatest(true);
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [events, setSelectedEvent]);
 
   const goToIndex = (idx: number) => {
     const clamped = Math.max(0, Math.min(idx, events.length - 1));
@@ -116,8 +142,12 @@ export function EventStream({ onSend }: EventStreamProps) {
         }}
         promptsOnly={promptsOnly}
         riskyOnly={riskyOnly}
+        collapseHistory={collapseHistory}
+        autoScroll={autoScroll}
         onTogglePromptsOnly={() => setPromptsOnly((v) => !v)}
         onToggleRiskyOnly={() => setRiskyOnly((v) => !v)}
+        onToggleCollapseHistory={() => setCollapseHistory((v) => !v)}
+        onToggleAutoScroll={handleToggleAutoScroll}
       />
 
       <div
@@ -147,19 +177,17 @@ export function EventStream({ onSend }: EventStreamProps) {
                   isSelected={selectedIndex === index}
                   onClick={() => handleEventClick(index, event.id)}
                   onSend={onSend}
+                  collapseHistory={collapseHistory}
                 />
               </div>
             ))}
           </>
         )}
 
-        {/* Jump to latest button */}
-        {!followLatest && totalCount > 0 && (
+        {/* Jump to latest button — shown when auto-scroll is on but currently paused */}
+        {autoScroll && !followLatest && totalCount > 0 && (
           <button
-            onClick={() => {
-              goToIndex(events.length - 1);
-              setFollowLatest(true);
-            }}
+            onClick={jumpToLatest}
             className="fixed bottom-12 left-1/2 -translate-x-1/2 text-xs font-medium px-4 py-2 bg-[#1f6feb] hover:bg-[#388bfd] text-white rounded-full shadow-lg transition-colors z-10"
           >
             ↓ Jump to latest

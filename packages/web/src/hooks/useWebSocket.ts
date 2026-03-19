@@ -19,8 +19,10 @@ export function useWebSocket(): { send: (msg: ClientMessage) => void } {
     addPendingApproval,
     removePendingApproval,
     setAnalyzing,
+    setAnalysisError,
     setConfig,
     setSessionStatus,
+    setSessions,
   } = useSessionStore();
 
   const handleMessage = useCallback(
@@ -64,6 +66,7 @@ export function useWebSocket(): { send: (msg: ClientMessage) => void } {
 
         case 'analysis:error':
           setAnalyzing(message.eventId, false);
+          setAnalysisError(message.eventId, message.error);
           break;
 
         case 'session:config':
@@ -73,9 +76,13 @@ export function useWebSocket(): { send: (msg: ClientMessage) => void } {
         case 'session:status':
           setSessionStatus(message.status);
           break;
+
+        case 'sessions:list':
+          setSessions(message.sessions);
+          break;
       }
     },
-    [addEvent, addPendingApproval, removePendingApproval, setAnalyzing, setConfig, setServerVersion, setSessionStatus, updateEvent]
+    [addEvent, addPendingApproval, removePendingApproval, setAnalyzing, setAnalysisError, setConfig, setServerVersion, setSessionStatus, setSessions, updateEvent]
   );
 
   const connect = useCallback(() => {

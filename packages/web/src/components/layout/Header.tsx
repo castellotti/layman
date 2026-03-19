@@ -1,8 +1,13 @@
 import React from 'react';
 import { useSessionStore } from '../../stores/sessionStore.js';
 
+function getSessionName(cwd: string, sessionId: string): string {
+  if (!cwd) return sessionId.slice(0, 8);
+  return cwd.split('/').filter(Boolean).pop() ?? cwd;
+}
+
 export function Header() {
-  const { wsStatus, serverVersion, sessionStatus, setSettingsOpen } = useSessionStore();
+  const { wsStatus, serverVersion, sessionStatus, setSettingsOpen, sessions, activeSessionId, setActiveSession } = useSessionStore();
 
   const statusConfig = {
     connecting: { dot: 'bg-[#d29922]', text: 'Connecting...', textColor: 'text-[#d29922]' },
@@ -30,12 +35,24 @@ export function Header() {
           <span className={`text-xs ${textColor}`}>{text}</span>
         </div>
 
-        {sessionStatus?.sessionId && (
+        {sessions.length > 0 && (
           <>
             <div className="h-4 w-px bg-[#30363d]" />
-            <span className="text-xs text-[#8b949e] font-mono">
-              Session: {sessionStatus.sessionId.slice(0, 8)}
-            </span>
+            <select
+              value={activeSessionId ?? ''}
+              onChange={(e) => setActiveSession(e.target.value || null)}
+              className="text-xs bg-[#21262d] border border-[#30363d] text-[#e6edf3] rounded px-2 py-0.5 focus:outline-none focus:border-[#58a6ff] cursor-pointer"
+              title="Filter by Claude Code session"
+            >
+              {sessions.length > 1 && (
+                <option value="">All sessions</option>
+              )}
+              {sessions.map((s) => (
+                <option key={s.sessionId} value={s.sessionId}>
+                  {getSessionName(s.cwd, s.sessionId)}{s.cwd ? ` · ${s.sessionId.slice(0, 6)}` : ''}
+                </option>
+              ))}
+            </select>
           </>
         )}
       </div>

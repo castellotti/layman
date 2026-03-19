@@ -9,10 +9,18 @@ export interface EventFilters {
 }
 
 export function useEventStore(filters?: EventFilters) {
-  const events = useSessionStore((state) => state.events);
+  const { events, activeSessionId } = useSessionStore((state) => ({
+    events: state.events,
+    activeSessionId: state.activeSessionId,
+  }));
+
+  const sessionEvents = useMemo(() => {
+    if (!activeSessionId) return events;
+    return events.filter((e) => e.sessionId === activeSessionId);
+  }, [events, activeSessionId]);
 
   const filteredEvents = useMemo(() => {
-    let result = events;
+    let result = sessionEvents;
 
     if (filters?.promptsOnly) {
       result = result.filter((e) =>
@@ -29,11 +37,11 @@ export function useEventStore(filters?: EventFilters) {
     }
 
     return result;
-  }, [events, filters?.promptsOnly, filters?.riskyOnly, filters?.types]);
+  }, [sessionEvents, filters?.promptsOnly, filters?.riskyOnly, filters?.types]);
 
   const pendingEvents = useMemo(
-    () => events.filter((e) => e.type === 'tool_call_pending' || e.type === 'permission_request'),
-    [events]
+    () => sessionEvents.filter((e) => e.type === 'tool_call_pending' || e.type === 'permission_request'),
+    [sessionEvents]
   );
 
   const getEvent = (id: string): TimelineEvent | undefined =>
@@ -44,7 +52,7 @@ export function useEventStore(filters?: EventFilters) {
     allEvents: events,
     pendingEvents,
     getEvent,
-    totalCount: events.length,
+    totalCount: sessionEvents.length,
     filteredCount: filteredEvents.length,
   };
 }

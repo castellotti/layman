@@ -5,3 +5,4 @@ web-dist/
 .env
 .DS_Store
 .idea/
+.claude/layman.json

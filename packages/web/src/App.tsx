@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef, useState, useCallback, useEffect } from 'react';
 import { Header } from './components/layout/Header.js';
 import { EventStream } from './components/layout/EventStream.js';
 import { InvestigationPanel } from './components/layout/InvestigationPanel.js';
@@ -38,25 +38,55 @@ function StatusBar() {
 export function App() {
   const { send } = useWebSocket();
   const investigationOpen = useSessionStore((s) => s.investigationOpen);
+  const [leftWidthPct, setLeftWidthPct] = useState(60);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const dragging = useRef(false);
+
+  const onDividerMouseDown = useCallback((e: React.MouseEvent) => {
+    dragging.current = true;
+    e.preventDefault();
+  }, []);
+
+  useEffect(() => {
+    const onMouseMove = (e: MouseEvent) => {
+      if (!dragging.current || !containerRef.current) return;
+      const rect = containerRef.current.getBoundingClientRect();
+      const pct = ((e.clientX - rect.left) / rect.width) * 100;
+      setLeftWidthPct(Math.max(25, Math.min(85, pct)));
+    };
+    const onMouseUp = () => { dragging.current = false; };
+    document.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('mouseup', onMouseUp);
+    return () => {
+      document.removeEventListener('mousemove', onMouseMove);
+      document.removeEventListener('mouseup', onMouseUp);
+    };
+  }, []);
 
   return (
     <div className="flex flex-col h-screen bg-[#0d1117] text-[#e6edf3] overflow-hidden">
       <Header />
 
-      <div className="flex flex-1 overflow-hidden">
+      <div ref={containerRef} className="flex flex-1 overflow-hidden">
         {/* Left panel: Event timeline */}
         <div
-          className={`flex flex-col min-w-0 transition-all ${
-            investigationOpen ? 'flex-1' : 'flex-1'
-          }`}
-          style={{ flexBasis: investigationOpen ? '60%' : '100%', maxWidth: investigationOpen ? '60%' : '100%' }}
+          className="flex flex-col min-w-0 overflow-hidden"
+          style={{ width: investigationOpen ? `${leftWidthPct}%` : '100%' }}
         >
           <EventStream onSend={send} />
         </div>
 
+        {/* Drag handle */}
+        {investigationOpen && (
+          <div
+            className="w-1 shrink-0 bg-[#30363d] hover:bg-[#58a6ff]/50 active:bg-[#58a6ff] cursor-col-resize transition-colors select-none"
+            onMouseDown={onDividerMouseDown}
+          />
+        )}
+
         {/* Right panel: Investigation */}
         {investigationOpen && (
-          <div className="flex flex-col" style={{ flexBasis: '40%', minWidth: '320px', maxWidth: '500px' }}>
+          <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
             <InvestigationPanel onSend={send} />
           </div>
         )}

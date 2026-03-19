@@ -1,9 +1,10 @@
 import { create } from 'zustand';
 import type { TimelineEvent, PendingApprovalDTO, LaymanConfig, SessionStatus } from '../lib/types.js';
+import type { SessionInfo } from '../lib/ws-protocol.js';
 
 interface InvestigationState {
   [eventId: string]: {
-    questions: Array<{ question: string; answer: string }>;
+    questions: Array<{ question: string; answer: string; tokens?: { input: number; output: number }; latencyMs?: number; model?: string }>;
     isAnalyzing: boolean;
     analysisError?: string;
   };
@@ -36,6 +37,10 @@ interface SessionState {
   // Session status
   sessionStatus: SessionStatus | null;
 
+  // Multi-session tracking
+  sessions: SessionInfo[];
+  activeSessionId: string | null;
+
   // Actions
   setConnected: (connected: boolean) => void;
   setWsStatus: (status: SessionState['wsStatus']) => void;
@@ -46,11 +51,14 @@ interface SessionState {
   addPendingApproval: (approval: PendingApprovalDTO) => void;
   removePendingApproval: (id: string) => void;
   setAnalyzing: (eventId: string, analyzing: boolean) => void;
-  addInvestigationQuestion: (eventId: string, question: string, answer: string) => void;
+  setAnalysisError: (eventId: string, error: string | null) => void;
+  addInvestigationQuestion: (eventId: string, question: string, answer: string, meta?: { tokens?: { input: number; output: number }; latencyMs?: number; model?: string }) => void;
   setInvestigationOpen: (open: boolean) => void;
   setSettingsOpen: (open: boolean) => void;
   setConfig: (config: LaymanConfig) => void;
   setSessionStatus: (status: SessionStatus) => void;
+  setSessions: (sessions: SessionInfo[]) => void;
+  setActiveSession: (id: string | null) => void;
   clearEvents: () => void;
 }
 
@@ -71,6 +79,9 @@ export const useSessionStore = create<SessionState>((set) => ({
   settingsOpen: false,
   config: null,
   sessionStatus: null,
+
+  sessions: [],
+  activeSessionId: null,
 
   setConnected: (connected) => set({ connected }),
 
@@ -128,7 +139,18 @@ export const useSessionStore = create<SessionState>((set) => ({
       return { analyzingEventIds: newSet };
     }),
 
-  addInvestigationQuestion: (eventId, question, answer) =>
+  setAnalysisError: (eventId, error) =>
+    set((state) => {
+      const existing = state.investigationState[eventId] ?? { questions: [], isAnalyzing: false };
+      return {
+        investigationState: {
+          ...state.investigationState,
+          [eventId]: { ...existing, analysisError: error ?? undefined },
+        },
+      };
+    }),
+
+  addInvestigationQuestion: (eventId, question, answer, meta) =>
     set((state) => {
       const existing = state.investigationState[eventId] ?? {
         questions: [],
@@ -139,7 +161,7 @@ export const useSessionStore = create<SessionState>((set) => ({
           ...state.investigationState,
           [eventId]: {
             ...existing,
-            questions: [...existing.questions, { question, answer }],
+            questions: [...existing.questions, { question, answer, ...meta }],
           },
         },
       };
@@ -152,6 +174,18 @@ export const useSessionStore = create<SessionState>((set) => ({
   setConfig: (config) => set({ config }),
 
   setSessionStatus: (sessionStatus) => set({ sessionStatus }),
+
+  setSessions: (sessions) =>
+    set((state) => {
+      // Auto-select when transitioning to exactly 1 session and none is currently selected
+      const autoSelect =
+        sessions.length === 1 && state.activeSessionId === null
+          ? sessions[0].sessionId
+          : state.activeSessionId;
+      return { sessions, activeSessionId: autoSelect };
+    }),
+
+  setActiveSession: (activeSessionId) => set({ activeSessionId }),
 
   clearEvents: () => set({ events: [], selectedEventId: null }),
 }));

@@ -3,9 +3,16 @@ import { randomUUID } from 'crypto';
 import type { TimelineEvent, EventType, EventData } from './types.js';
 import type { AnalysisResult } from '../analysis/types.js';
 
+export interface SessionInfo {
+  sessionId: string;
+  cwd: string;
+  lastSeen: number;
+}
+
 export class EventStore extends EventEmitter {
   private events: TimelineEvent[] = [];
   private maxEvents = 10000;
+  private sessions: Map<string, { cwd: string; lastSeen: number }> = new Map();
 
   add(
     type: EventType,
@@ -83,6 +90,36 @@ export class EventStore extends EventEmitter {
   clear(): void {
     this.events = [];
     this.emit('store:cleared');
+  }
+
+  trackSession(sessionId: string, cwd: string): void {
+    const existing = this.sessions.get(sessionId);
+    const isNew = !existing;
+    const cwdChanged = existing && existing.cwd !== cwd;
+    this.sessions.set(sessionId, { cwd, lastSeen: Date.now() });
+    if (isNew || cwdChanged) {
+      this.emit('sessions:changed', this.getSessions());
+    }
+  }
+
+  getSessions(): SessionInfo[] {
+    // If map is empty but events exist, derive sessions from event history
+    // (cwd will be '' until next hook fires and calls trackSession)
+    if (this.sessions.size === 0 && this.events.length > 0) {
+      const seen = new Map<string, number>();
+      for (const event of this.events) {
+        const existing = seen.get(event.sessionId);
+        if (!existing || event.timestamp > existing) {
+          seen.set(event.sessionId, event.timestamp);
+        }
+      }
+      return Array.from(seen.entries())
+        .map(([sessionId, lastSeen]) => ({ sessionId, cwd: '', lastSeen }))
+        .sort((a, b) => b.lastSeen - a.lastSeen);
+    }
+    return Array.from(this.sessions.entries())
+      .map(([sessionId, info]) => ({ sessionId, ...info }))
+      .sort((a, b) => b.lastSeen - a.lastSeen);
   }
 
   get size(): number {

@@ -7,50 +7,33 @@ interface ApprovalBarProps {
   onSend: (msg: ClientMessage) => void;
 }
 
-export function ApprovalBar({ approvalId, toolName: _toolName, onSend }: ApprovalBarProps) {
-  const [showDenyReason, setShowDenyReason] = useState(false);
+export function ApprovalBar({ approvalId, onSend }: ApprovalBarProps) {
+  const [showDeny, setShowDeny] = useState(false);
   const [denyReason, setDenyReason] = useState('');
   const [decided, setDecided] = useState(false);
 
-  const handleApprove = () => {
+  const handleAllow = () => {
     if (decided) return;
     setDecided(true);
-    onSend({
-      type: 'approval:decide',
-      approvalId,
-      decision: { decision: 'allow' },
-    });
+    onSend({ type: 'approval:decide', approvalId, decision: { decision: 'allow' } });
   };
 
   const handleDeny = () => {
     if (decided) return;
-    if (showDenyReason) {
-      setDecided(true);
-      onSend({
-        type: 'approval:decide',
-        approvalId,
-        decision: { decision: 'deny', reason: denyReason || undefined },
-      });
-    } else {
-      setShowDenyReason(true);
-    }
+    if (!showDeny) { setShowDeny(true); return; }
+    setDecided(true);
+    onSend({ type: 'approval:decide', approvalId, decision: { decision: 'deny', reason: denyReason.trim() || undefined } });
   };
 
-  const handleSkip = () => {
+  const handleDefer = () => {
     if (decided) return;
     setDecided(true);
-    onSend({
-      type: 'approval:decide',
-      approvalId,
-      decision: { decision: 'ask' },
-    });
+    onSend({ type: 'approval:decide', approvalId, decision: { decision: 'ask' } });
   };
 
   if (decided) {
     return (
-      <div className="flex items-center gap-2 text-xs text-[#8b949e]">
-        <span>Decision sent...</span>
-      </div>
+      <div className="text-xs text-[#8b949e] italic">Decision sent — waiting for Claude Code to continue...</div>
     );
   }
 
@@ -58,31 +41,29 @@ export function ApprovalBar({ approvalId, toolName: _toolName, onSend }: Approva
     <div className="space-y-2">
       <div className="flex gap-2">
         <button
-          onClick={handleApprove}
+          onClick={handleAllow}
           className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-md bg-[#238636] hover:bg-[#2ea043] text-white transition-colors border border-[#3fb950]/30"
         >
-          <span>✅</span>
-          <span>Approve</span>
+          ✓ Allow
         </button>
 
         <button
           onClick={handleDeny}
           className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-md bg-[#da3633]/20 hover:bg-[#da3633]/30 text-[#f85149] transition-colors border border-[#f85149]/30"
         >
-          <span>❌</span>
-          <span>Deny</span>
+          ✕ Deny
         </button>
 
         <button
-          onClick={handleSkip}
+          onClick={handleDefer}
           className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-md bg-[#21262d] hover:bg-[#30363d] text-[#8b949e] transition-colors border border-[#30363d]"
+          title="Pass the decision to the terminal prompt"
         >
-          <span>⏭</span>
-          <span>Skip</span>
+          ⏭ Defer
         </button>
       </div>
 
-      {showDenyReason && (
+      {showDeny && (
         <div className="flex gap-2">
           <input
             type="text"
@@ -90,7 +71,7 @@ export function ApprovalBar({ approvalId, toolName: _toolName, onSend }: Approva
             onChange={(e) => setDenyReason(e.target.value)}
             placeholder="Reason for denial (optional)..."
             className="flex-1 px-3 py-1.5 text-xs bg-[#0d1117] border border-[#f85149]/30 rounded-md text-[#e6edf3] placeholder-[#484f58] focus:outline-none focus:border-[#f85149]"
-            onKeyDown={(e) => e.key === 'Enter' && handleDeny()}
+            onKeyDown={(e) => { if (e.key === 'Enter') handleDeny(); if (e.key === 'Escape') setShowDeny(false); }}
             autoFocus
           />
           <button
@@ -100,17 +81,13 @@ export function ApprovalBar({ approvalId, toolName: _toolName, onSend }: Approva
             Confirm
           </button>
           <button
-            onClick={() => setShowDenyReason(false)}
-            className="px-3 py-1.5 text-xs text-[#8b949e] hover:text-[#e6edf3] transition-colors"
+            onClick={() => setShowDeny(false)}
+            className="px-2 py-1.5 text-xs text-[#8b949e] hover:text-[#e6edf3] transition-colors"
           >
-            Cancel
+            ✕
           </button>
         </div>
       )}
-
-      <p className="text-[10px] text-[#484f58]">
-        <strong>Approve</strong> = allow · <strong>Deny</strong> = block with optional reason · <strong>Skip</strong> = defer to terminal prompt
-      </p>
     </div>
   );
 }

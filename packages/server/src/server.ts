@@ -10,7 +10,8 @@ import { PendingApprovalManager } from './hooks/pending.js';
 import { EventStore } from './events/store.js';
 import { registerHookHandler } from './hooks/handler.js';
 import { AnalysisEngine } from './analysis/engine.js';
-import { updateConfig } from './config/config.js';
+import { resolveEndpoint } from './analysis/providers/openai-compat.js';
+import { updateConfig, saveConfig } from './config/config.js';
 import type { LaymanConfig } from './config/schema.js';
 import type { ServerMessage, ClientMessage, SessionStatus } from './types/index.js';
 
@@ -37,14 +38,14 @@ export function createServer(config: LaymanConfig): LaymanServer {
   let activeConfig = config;
   const getConfig = (): LaymanConfig => activeConfig;
 
-  // Track connected WebSocket clients
-  const wsClients = new Set<ReturnType<typeof fastify.websocketServer.clients.values> extends IterableIterator<infer T> ? T : never>();
+  // Track connected WebSocket clients (@fastify/websocket v10: handler arg is the socket directly)
+  const wsClients = new Set<{ readyState: number; send: (data: string) => void }>();
 
   function broadcast(message: ServerMessage): void {
     const json = JSON.stringify(message);
     for (const client of wsClients) {
-      if ((client as { readyState: number }).readyState === 1) {
-        (client as { send: (data: string) => void }).send(json);
+      if (client.readyState === 1 /* OPEN */) {
+        client.send(json);
       }
     }
   }
@@ -52,6 +53,10 @@ export function createServer(config: LaymanConfig): LaymanServer {
   // Forward store events to WebSocket
   eventStore.on('event:new', (event) => {
     broadcast({ type: 'event:new', event });
+  });
+
+  eventStore.on('sessions:changed', (sessions) => {
+    broadcast({ type: 'sessions:list', sessions });
   });
 
   eventStore.on('event:update', (event) => {
@@ -182,6 +187,7 @@ export function createServer(config: LaymanConfig): LaymanServer {
       activeConfig = updateConfig(request.body);
       analysisEngine.configure(activeConfig.analysis);
       pendingManager.setHookTimeout(activeConfig.hookTimeout);
+      saveConfig(activeConfig);
       broadcast({ type: 'session:config', config: activeConfig });
       return activeConfig;
     });
@@ -222,17 +228,51 @@ export function createServer(config: LaymanConfig): LaymanServer {
       if (!event) return reply.status(404).send({ error: 'Event not found' });
 
       try {
-        const answer = await analysisEngine.ask(request.body.question, {
+        const result = await analysisEngine.ask(request.body.question, {
           toolName: event.data.toolName ?? 'Unknown',
           toolInput: event.data.toolInput ?? {},
           toolOutput: event.data.toolOutput,
           previousAnalysis: event.analysis,
           cwd: process.cwd(),
         });
-        return { answer };
+        return { answer: result.text, tokens: result.tokens, latencyMs: result.latencyMs, model: result.model };
       } catch (err) {
         const errorMsg = err instanceof Error ? err.message : String(err);
         return reply.status(500).send({ error: errorMsg });
+      }
+    });
+
+    // Model discovery — proxies /v1/models from the configured OpenAI-compatible endpoint.
+    // Accepts an optional ?endpoint= override so the UI can probe before saving.
+    fastify.get<{ Querystring: { endpoint?: string } }>('/api/models', async (request, reply) => {
+      const rawEndpoint = request.query.endpoint ?? activeConfig.analysis.endpoint;
+      if (!rawEndpoint) {
+        return reply.status(400).send({ error: 'No endpoint configured. Set an endpoint URL first.' });
+      }
+
+      const endpoint = resolveEndpoint(rawEndpoint.replace(/\/+$/, ''));
+      const modelsUrl = endpoint.endsWith('/v1') ? `${endpoint}/models` : `${endpoint}/v1/models`;
+
+      try {
+        const res = await fetch(modelsUrl, {
+          headers: { Authorization: `Bearer ${activeConfig.analysis.apiKey ?? 'not-needed'}` },
+          signal: AbortSignal.timeout(5000),
+        });
+        if (!res.ok) {
+          return reply.status(res.status).send({ error: `Models endpoint returned HTTP ${res.status}` });
+        }
+        const data = await res.json() as { data?: { id: string }[] } | { models?: { id?: string; name?: string }[] };
+        // Normalise: OpenAI format { data: [{id}] } or Ollama { models: [{name}] }
+        const ids: string[] =
+          'data' in data && Array.isArray(data.data)
+            ? data.data.map((m) => m.id)
+            : 'models' in data && Array.isArray(data.models)
+              ? data.models.map((m) => m.id ?? m.name ?? '').filter(Boolean)
+              : [];
+        return { models: ids };
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        return reply.status(502).send({ error: `Could not reach ${modelsUrl}: ${msg}` });
       }
     });
 
@@ -245,32 +285,29 @@ export function createServer(config: LaymanConfig): LaymanServer {
       });
     });
 
-    // WebSocket
+    // WebSocket — @fastify/websocket v10: handler receives (socket, request) directly
     fastify.register(async (wsInstance) => {
-      wsInstance.get('/ws', { websocket: true }, (connection) => {
-        const socket = connection.socket as unknown as {
+      wsInstance.get('/ws', { websocket: true }, (socket) => {
+        const ws = socket as unknown as {
           readyState: number;
           send: (data: string) => void;
-          on: (event: string, handler: (data: Buffer) => void) => void;
-          close: () => void;
+          on: (event: string, handler: (...args: unknown[]) => void) => void;
         };
 
-        wsClients.add(socket as Parameters<typeof wsClients.add>[0]);
+        wsClients.add(ws);
 
         // Send initial state
-        const connected: ServerMessage = {
+        ws.send(JSON.stringify({
           type: 'connected',
           serverVersion: '0.1.0',
           eventCount: eventStore.size,
-        };
-        socket.send(JSON.stringify(connected));
+        } satisfies ServerMessage));
 
         // Send current config
-        const configMsg: ServerMessage = {
+        ws.send(JSON.stringify({
           type: 'session:config',
           config: activeConfig,
-        };
-        socket.send(JSON.stringify(configMsg));
+        } satisfies ServerMessage));
 
         // Send recent events (last 100)
         const recentEvents = eventStore.getPage(
@@ -278,27 +315,31 @@ export function createServer(config: LaymanConfig): LaymanServer {
           100
         );
         for (const event of recentEvents) {
-          const msg: ServerMessage = { type: 'event:new', event };
-          socket.send(JSON.stringify(msg));
+          ws.send(JSON.stringify({ type: 'event:new', event } satisfies ServerMessage));
         }
 
         // Send pending approvals
         for (const approval of pendingManager.getPendingDTO()) {
-          const msg: ServerMessage = { type: 'approval:pending', approval };
-          socket.send(JSON.stringify(msg));
+          ws.send(JSON.stringify({ type: 'approval:pending', approval } satisfies ServerMessage));
         }
 
-        socket.on('message', (data: Buffer) => {
+        // Send current sessions list
+        ws.send(JSON.stringify({
+          type: 'sessions:list',
+          sessions: eventStore.getSessions(),
+        } satisfies ServerMessage));
+
+        ws.on('message', (data: unknown) => {
           try {
-            const message = JSON.parse(data.toString()) as ClientMessage;
+            const message = JSON.parse(String(data)) as ClientMessage;
             handleClientMessage(message);
           } catch {
             // Ignore malformed messages
           }
         });
 
-        connection.socket.on('close', () => {
-          wsClients.delete(socket as Parameters<typeof wsClients.delete>[0]);
+        ws.on('close', () => {
+          wsClients.delete(ws);
         });
       });
     });
@@ -339,7 +380,7 @@ export function createServer(config: LaymanConfig): LaymanServer {
 
         void (async () => {
           try {
-            const answer = await analysisEngine.ask(message.question, {
+            const result = await analysisEngine.ask(message.question, {
               toolName: event.data.toolName ?? 'Unknown',
               toolInput: event.data.toolInput ?? {},
               toolOutput: event.data.toolOutput,
@@ -362,7 +403,7 @@ export function createServer(config: LaymanConfig): LaymanServer {
                   tokens: { input: 0, output: 0 },
                 }),
                 // Embed the answer in meaning field for display
-                meaning: answer,
+                meaning: result.text,
               },
             });
           } catch {
@@ -375,6 +416,7 @@ export function createServer(config: LaymanConfig): LaymanServer {
         activeConfig = updateConfig(message.config);
         analysisEngine.configure(activeConfig.analysis);
         pendingManager.setHookTimeout(activeConfig.hookTimeout);
+        saveConfig(activeConfig);
         broadcast({ type: 'session:config', config: activeConfig });
         break;
       }

@@ -1,5 +1,6 @@
 // Re-exports of shared types
 export type { TimelineEvent, EventType, EventData, EventSummary } from '../events/types.js';
+export type { SessionInfo } from '../events/store.js';
 export type { AnalysisResult, AnalysisRequest, AnalysisConfig } from '../analysis/types.js';
 export type {
   HookInputBase,
@@ -25,6 +26,7 @@ import type { AnalysisResult } from '../analysis/types.js';
 import type { PendingApprovalDTO } from '../hooks/pending.js';
 import type { ApprovalDecision } from '../hooks/types.js';
 import type { LaymanConfig } from '../config/schema.js';
+import type { SessionInfo } from '../events/store.js';
 
 export interface SessionStatus {
   connected: boolean;
@@ -46,6 +48,7 @@ export type ServerMessage =
   | { type: 'analysis:error'; eventId: string; error: string }
   | { type: 'session:status'; status: SessionStatus }
   | { type: 'session:config'; config: LaymanConfig }
+  | { type: 'sessions:list'; sessions: SessionInfo[] }
   | { type: 'connected'; serverVersion: string; eventCount: number };
 
 export type ClientMessage =

@@ -9,8 +9,12 @@ interface NavigationBarProps {
   onLatest: () => void;
   promptsOnly: boolean;
   riskyOnly: boolean;
+  collapseHistory: boolean;
+  autoScroll: boolean;
   onTogglePromptsOnly: () => void;
   onToggleRiskyOnly: () => void;
+  onToggleCollapseHistory: () => void;
+  onToggleAutoScroll: () => void;
 }
 
 export function NavigationBar({
@@ -22,11 +26,15 @@ export function NavigationBar({
   onLatest,
   promptsOnly,
   riskyOnly,
+  collapseHistory,
+  autoScroll,
   onTogglePromptsOnly,
   onToggleRiskyOnly,
+  onToggleCollapseHistory,
+  onToggleAutoScroll,
 }: NavigationBarProps) {
   return (
-    <div className="flex items-center gap-3 px-4 py-2 bg-[#161b22] border-b border-[#30363d] text-xs">
+    <div className="flex items-center gap-3 px-4 py-2 bg-[#161b22] border-b border-[#30363d] text-xs flex-wrap">
       <div className="flex items-center gap-1">
         <button
           onClick={onFirst}
@@ -67,7 +75,9 @@ export function NavigationBar({
 
       <div className="h-4 w-px bg-[#30363d]" />
 
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-3 flex-wrap">
+        <span className="text-[#484f58]">Display:</span>
+
         <label className="flex items-center gap-1.5 cursor-pointer">
           <input
             type="checkbox"
@@ -86,6 +96,26 @@ export function NavigationBar({
             className="w-3 h-3 accent-[#d29922]"
           />
           <span className={riskyOnly ? 'text-[#d29922]' : 'text-[#8b949e]'}>Risky only</span>
+        </label>
+
+        <label className="flex items-center gap-1.5 cursor-pointer" title="Collapse all entries unless explicitly opened">
+          <input
+            type="checkbox"
+            checked={collapseHistory}
+            onChange={onToggleCollapseHistory}
+            className="w-3 h-3 accent-[#8b949e]"
+          />
+          <span className={collapseHistory ? 'text-[#e6edf3]' : 'text-[#8b949e]'}>Collapse history</span>
+        </label>
+
+        <label className="flex items-center gap-1.5 cursor-pointer" title="Automatically scroll to newest entries">
+          <input
+            type="checkbox"
+            checked={autoScroll}
+            onChange={onToggleAutoScroll}
+            className="w-3 h-3 accent-[#3fb950]"
+          />
+          <span className={autoScroll ? 'text-[#3fb950]' : 'text-[#8b949e]'}>Auto-scroll</span>
         </label>
       </div>
     </div>

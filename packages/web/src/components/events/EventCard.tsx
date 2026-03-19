@@ -5,6 +5,7 @@ import { RiskBadge } from '../shared/RiskBadge.js';
 import { ApprovalBar } from '../controls/ApprovalBar.js';
 import { AnalysisCard } from '../analysis/AnalysisCard.js';
 import { CodeBlock } from '../shared/CodeBlock.js';
+import { DiffBlock } from '../shared/DiffBlock.js';
 import { usePendingApprovals } from '../../hooks/usePendingApprovals.js';
 
 interface EventCardProps {
@@ -13,6 +14,7 @@ interface EventCardProps {
   isSelected: boolean;
   onClick: () => void;
   onSend: (msg: ClientMessage) => void;
+  collapseHistory: boolean;
 }
 
 const EVENT_ICONS: Record<string, string> = {
@@ -58,6 +60,12 @@ function formatTime(timestamp: number): string {
     minute: '2-digit',
     second: '2-digit',
   });
+}
+
+function formatDuration(ms: number): string {
+  if (ms < 1000) return `${ms}ms`;
+  if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`;
+  return `${Math.floor(ms / 60000)}m${Math.floor((ms % 60000) / 1000)}s`;
 }
 
 function getEventSummary(event: TimelineEvent): string {
@@ -123,11 +131,13 @@ function formatToolInput(toolInput: Record<string, unknown>): string {
   return JSON.stringify(toolInput, null, 2).slice(0, 500);
 }
 
-export function EventCard({ event, index, isSelected, onClick, onSend }: EventCardProps) {
-  const [expanded, setExpanded] = useState(false);
+export function EventCard({ event, index, isSelected, onClick, onSend, collapseHistory }: EventCardProps) {
+  const [expandedLocal, setExpandedLocal] = useState(false);
   const { approvals } = usePendingApprovals();
 
   const isPending = event.type === 'tool_call_pending' || event.type === 'permission_request';
+  // When collapseHistory is on, expansion is driven by selection; otherwise use local toggle
+  const expanded = isPending || (collapseHistory ? isSelected : expandedLocal);
   const borderColor = BORDER_COLORS[event.type] ?? 'border-l-[#30363d]';
   const icon = EVENT_ICONS[event.type] ?? '·';
 
@@ -146,13 +156,23 @@ export function EventCard({ event, index, isSelected, onClick, onSend }: EventCa
 
   const borderWidth = isPending ? 'border-l-2' : 'border-l';
 
-  // Thin divider for agent_stop
+  // agent_stop — Claude is done, waiting for user to type in terminal
   if (event.type === 'agent_stop') {
     return (
-      <div className="flex items-center gap-2 px-4 py-1 opacity-40">
-        <div className="flex-1 h-px bg-[#30363d]" />
-        <span className="text-[10px] text-[#484f58] font-mono">{formatTime(event.timestamp)}</span>
-        <div className="flex-1 h-px bg-[#30363d]" />
+      <div
+        className={`mx-3 mb-1.5 rounded-md border ${isSelected ? 'border-[#58a6ff]/40 bg-[#1c2128]' : 'border-[#30363d]/60 bg-[#161b22]'} cursor-pointer transition-colors`}
+        onClick={onClick}
+      >
+        <div className="flex items-center gap-2 px-3 py-2">
+          <span className="text-[10px] text-[#484f58] font-mono tabular-nums shrink-0 w-6 text-right">{index + 1}</span>
+          <span className="text-[#484f58]">—</span>
+          <span className="text-[11px] text-[#484f58] font-mono">agent stop</span>
+          <div className="flex-1" />
+          <span className="text-[10px] text-[#58a6ff] bg-[#58a6ff]/10 border border-[#58a6ff]/20 px-1.5 py-0.5 rounded font-medium">
+            awaiting your reply in terminal
+          </span>
+          <span className="text-[10px] text-[#484f58] font-mono tabular-nums shrink-0">{formatTime(event.timestamp)}</span>
+        </div>
       </div>
     );
   }
@@ -164,7 +184,7 @@ export function EventCard({ event, index, isSelected, onClick, onSend }: EventCa
       } ${isSelected ? 'ring-1 ring-[#58a6ff]/30' : ''}`}
       onClick={() => {
         onClick();
-        setExpanded(!expanded);
+        if (!collapseHistory) setExpandedLocal((v) => !v);
       }}
     >
       {/* Header row */}
@@ -237,6 +257,13 @@ export function EventCard({ event, index, isSelected, onClick, onSend }: EventCa
           </span>
         )}
 
+        {/* Duration for completed tool calls */}
+        {event.data.completedAt && (
+          <span className="text-[10px] text-[#484f58] font-mono tabular-nums shrink-0">
+            {formatDuration(event.data.completedAt - event.timestamp)}
+          </span>
+        )}
+
         {/* Timestamp */}
         <span className="text-[10px] text-[#484f58] font-mono tabular-nums shrink-0">
           {formatTime(event.timestamp)}
@@ -244,19 +271,45 @@ export function EventCard({ event, index, isSelected, onClick, onSend }: EventCa
       </div>
 
       {/* Expanded content */}
-      {(expanded || isPending) && (
+      {expanded && (
         <div className="px-3 pb-3 space-y-2 border-t border-[#30363d]/50 pt-2">
-          {/* Tool input */}
-          {event.data.toolInput && (
-            <div>
-              <p className="text-[10px] text-[#484f58] mb-1 font-mono uppercase">Input</p>
-              <CodeBlock
-                code={formatToolInput(event.data.toolInput)}
-                language={event.data.toolName === 'Bash' ? 'bash' : 'text'}
-                maxLines={10}
-              />
-            </div>
-          )}
+          {/* Tool input — diff view for Edit/Write, code for everything else */}
+          {event.data.toolInput && (() => {
+            const input = event.data.toolInput;
+            const tool = event.data.toolName;
+
+            if ((tool === 'Edit' || tool === 'MultiEdit') && 'old_string' in input) {
+              return (
+                <DiffBlock
+                  filePath={String(input.file_path ?? '')}
+                  oldText={String(input.old_string ?? '')}
+                  newText={String(input.new_string ?? '')}
+                  maxLines={30}
+                />
+              );
+            }
+
+            if (tool === 'Write' && 'content' in input) {
+              return (
+                <DiffBlock
+                  filePath={String(input.file_path ?? '')}
+                  addedText={String(input.content ?? '')}
+                  maxLines={30}
+                />
+              );
+            }
+
+            return (
+              <div>
+                <p className="text-[10px] text-[#484f58] mb-1 font-mono uppercase">Input</p>
+                <CodeBlock
+                  code={formatToolInput(input)}
+                  language={tool === 'Bash' ? 'bash' : 'text'}
+                  maxLines={10}
+                />
+              </div>
+            );
+          })()}
 
           {/* Prompt text */}
           {event.data.prompt && (
@@ -302,8 +355,8 @@ export function EventCard({ event, index, isSelected, onClick, onSend }: EventCa
             </div>
           )}
 
-          {/* Approval bar for pending events */}
-          {isPending && pendingApproval && !event.data.decision && (
+          {/* Approval bar — only for tool call approvals, not permission prompts */}
+          {event.type === 'tool_call_pending' && pendingApproval && !event.data.decision && (
             <div className="pt-1">
               <ApprovalBar
                 approvalId={pendingApproval.id}
