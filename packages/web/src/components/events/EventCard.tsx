@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import ReactMarkdown from 'react-markdown';
 import type { TimelineEvent } from '../../lib/types.js';
 import type { ClientMessage } from '../../lib/ws-protocol.js';
 import { RiskBadge } from '../shared/RiskBadge.js';
@@ -15,7 +16,13 @@ interface EventCardProps {
   onClick: () => void;
   onSend: (msg: ClientMessage) => void;
   collapseHistory: boolean;
+  showAgentBadge?: boolean;
 }
+
+const AGENT_BADGES: Record<string, { label: string; color: string }> = {
+  'claude-code': { label: 'CC', color: 'text-[#a371f7] bg-[#a371f7]/10 border-[#a371f7]/20' },
+  'opencode':    { label: 'OC', color: 'text-[#f0883e] bg-[#f0883e]/10 border-[#f0883e]/20' },
+};
 
 const EVENT_ICONS: Record<string, string> = {
   tool_call_pending: '⚡',
@@ -26,6 +33,7 @@ const EVENT_ICONS: Record<string, string> = {
   tool_call_failed: '✗',
   permission_request: '🔐',
   user_prompt: '💬',
+  agent_response: '🤖',
   agent_stop: '—',
   session_start: '🟢',
   session_end: '⬜',
@@ -44,6 +52,7 @@ const BORDER_COLORS: Record<string, string> = {
   tool_call_failed: 'border-l-[#f85149]',
   permission_request: 'border-l-[#d29922]',
   user_prompt: 'border-l-[#58a6ff]',
+  agent_response: 'border-l-[#3fb950]/50',
   agent_stop: 'border-l-[#30363d]',
   session_start: 'border-l-[#3fb950]',
   session_end: 'border-l-[#30363d]',
@@ -82,8 +91,10 @@ function getEventSummary(event: TimelineEvent): string {
       return data.toolName ?? 'Unknown tool';
     case 'user_prompt':
       return `"${(data.prompt ?? '').slice(0, 80)}"`;
+    case 'agent_response':
+      return (data.prompt ?? '').slice(0, 80);
     case 'agent_stop':
-      return 'Claude finished responding';
+      return 'agent stop';
     case 'session_start':
       return `Session started (${data.source ?? 'startup'})`;
     case 'session_end':
@@ -131,13 +142,15 @@ function formatToolInput(toolInput: Record<string, unknown>): string {
   return JSON.stringify(toolInput, null, 2).slice(0, 500);
 }
 
-export function EventCard({ event, index, isSelected, onClick, onSend, collapseHistory }: EventCardProps) {
+export function EventCard({ event, index, isSelected, onClick, onSend, collapseHistory, showAgentBadge }: EventCardProps) {
   const [expandedLocal, setExpandedLocal] = useState(false);
   const { approvals } = usePendingApprovals();
 
   const isPending = event.type === 'tool_call_pending' || event.type === 'permission_request';
+  const isAgentResponse = event.type === 'agent_response';
   // When collapseHistory is on, expansion is driven by selection; otherwise use local toggle
-  const expanded = isPending || (collapseHistory ? isSelected : expandedLocal);
+  // agent_response is always expanded so the user sees the full reply without clicking
+  const expanded = isPending || isAgentResponse || (collapseHistory ? isSelected : expandedLocal);
   const borderColor = BORDER_COLORS[event.type] ?? 'border-l-[#30363d]';
   const icon = EVENT_ICONS[event.type] ?? '·';
 
@@ -268,6 +281,16 @@ export function EventCard({ event, index, isSelected, onClick, onSend, collapseH
         <span className="text-[10px] text-[#484f58] font-mono tabular-nums shrink-0">
           {formatTime(event.timestamp)}
         </span>
+
+        {/* Agent badge — only shown when multiple agent types are active */}
+        {showAgentBadge && (() => {
+          const badge = AGENT_BADGES[event.agentType] ?? { label: event.agentType.slice(0, 2).toUpperCase(), color: 'text-[#8b949e] bg-[#8b949e]/10 border-[#8b949e]/20' };
+          return (
+            <span className={`text-[9px] font-semibold px-1 py-0.5 rounded border ${badge.color} shrink-0`}>
+              {badge.label}
+            </span>
+          );
+        })()}
       </div>
 
       {/* Expanded content */}
@@ -311,11 +334,26 @@ export function EventCard({ event, index, isSelected, onClick, onSend, collapseH
             );
           })()}
 
-          {/* Prompt text */}
+          {/* Prompt text — user_prompt: plain blockquote; agent_response: markdown */}
           {event.data.prompt && (
-            <blockquote className="text-xs text-[#e6edf3] border-l-2 border-[#58a6ff] pl-3 italic">
-              {event.data.prompt}
-            </blockquote>
+            isAgentResponse ? (
+              <div className="text-xs text-[#e6edf3] border-l-2 border-[#3fb950]/50 pl-3 prose prose-invert prose-xs max-w-none
+                [&_p]:my-1 [&_p]:leading-relaxed
+                [&_strong]:text-[#e6edf3] [&_strong]:font-semibold
+                [&_em]:text-[#8b949e]
+                [&_code]:text-[#79c0ff] [&_code]:bg-[#0d1117] [&_code]:px-1 [&_code]:rounded [&_code]:text-[11px]
+                [&_pre]:bg-[#0d1117] [&_pre]:rounded [&_pre]:p-2 [&_pre]:overflow-x-auto
+                [&_ul]:list-disc [&_ul]:pl-4 [&_ul]:my-1
+                [&_ol]:list-decimal [&_ol]:pl-4 [&_ol]:my-1
+                [&_li]:my-0.5
+                [&_h1]:text-sm [&_h2]:text-sm [&_h3]:text-xs [&_h1]:font-bold [&_h2]:font-bold [&_h3]:font-semibold">
+                <ReactMarkdown>{event.data.prompt as string}</ReactMarkdown>
+              </div>
+            ) : (
+              <blockquote className="text-xs text-[#e6edf3] border-l-2 border-[#58a6ff] pl-3 italic">
+                {event.data.prompt as string}
+              </blockquote>
+            )
           )}
 
           {/* Error */}

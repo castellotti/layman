@@ -26,7 +26,7 @@ program
   .description('Start the Layman server and install hooks')
   .option('-p, --port <number>', 'Port to listen on', '8090')
   .option('--host <host>', 'Host to bind to', 'localhost')
-  .option('--analysis-model <model>', 'Analysis model (haiku|sonnet|opus or full model name)', 'sonnet')
+  .option('--analysis-model <model>', 'Analysis model (haiku|sonnet|opus or full model name)')
   .option('--analysis-endpoint <url>', 'Custom OpenAI-compatible endpoint URL')
   .option('--analysis-api-key <key>', 'API key for analysis model')
   .option('--auto-analyze <mode>', 'Auto-analyze mode: all|risky|none', 'risky')
@@ -36,6 +36,16 @@ program
   .option('--hook-url <url>', 'URL written into hook config (overrides host:port, useful for Docker)')
   .option('--global', 'Install hooks in global ~/.claude/settings.json')
   .action(async (options) => {
+    // Only include analysis in cliFlags when explicitly passed — otherwise
+    // the defaults would override the user's saved runtime config on every restart.
+    const analysisFlags: Partial<LaymanConfig['analysis']> = {};
+    if (options.analysisEndpoint !== undefined) {
+      analysisFlags.provider = 'openai-compatible';
+      analysisFlags.endpoint = options.analysisEndpoint;
+    }
+    if (options.analysisModel !== undefined) analysisFlags.model = options.analysisModel;
+    if (options.analysisApiKey !== undefined) analysisFlags.apiKey = options.analysisApiKey;
+
     const cliFlags: Partial<LaymanConfig> = {
       port: parseInt(options.port, 10),
       host: options.host,
@@ -45,14 +55,7 @@ program
       settingsPath: options.settingsPath,
       hookUrl: options.hookUrl,
       global: options.global ?? false,
-      analysis: {
-        provider: options.analysisEndpoint ? 'openai-compatible' : 'anthropic',
-        model: options.analysisModel,
-        endpoint: options.analysisEndpoint,
-        apiKey: options.analysisApiKey,
-        maxTokens: 400,
-        temperature: 0.1,
-      },
+      ...(Object.keys(analysisFlags).length > 0 ? { analysis: analysisFlags as LaymanConfig['analysis'] } : {}),
     };
 
     const config = await loadConfig(cliFlags);
@@ -110,7 +113,7 @@ program
   .description('Start Layman server, run command, cleanup on exit')
   .option('-p, --port <number>', 'Port to listen on', '8090')
   .option('--host <host>', 'Host to bind to', 'localhost')
-  .option('--analysis-model <model>', 'Analysis model', 'sonnet')
+  .option('--analysis-model <model>', 'Analysis model')
   .option('--analysis-endpoint <url>', 'Custom OpenAI-compatible endpoint URL')
   .option('--analysis-api-key <key>', 'API key for analysis model')
   .option('--auto-analyze <mode>', 'Auto-analyze mode: all|risky|none', 'risky')
@@ -120,6 +123,14 @@ program
   .option('--hook-url <url>', 'URL written into hook config (overrides host:port, useful for Docker)')
   .option('--global', 'Install hooks in global ~/.claude/settings.json')
   .action(async (commandArgs: string[], options) => {
+    const analysisFlags: Partial<LaymanConfig['analysis']> = {};
+    if (options.analysisEndpoint !== undefined) {
+      analysisFlags.provider = 'openai-compatible';
+      analysisFlags.endpoint = options.analysisEndpoint;
+    }
+    if (options.analysisModel !== undefined) analysisFlags.model = options.analysisModel;
+    if (options.analysisApiKey !== undefined) analysisFlags.apiKey = options.analysisApiKey;
+
     const cliFlags: Partial<LaymanConfig> = {
       port: parseInt(options.port, 10),
       host: options.host,
@@ -129,14 +140,7 @@ program
       settingsPath: options.settingsPath,
       hookUrl: options.hookUrl,
       global: options.global ?? false,
-      analysis: {
-        provider: options.analysisEndpoint ? 'openai-compatible' : 'anthropic',
-        model: options.analysisModel,
-        endpoint: options.analysisEndpoint,
-        apiKey: options.analysisApiKey,
-        maxTokens: 400,
-        temperature: 0.1,
-      },
+      ...(Object.keys(analysisFlags).length > 0 ? { analysis: analysisFlags as LaymanConfig['analysis'] } : {}),
     };
 
     const config = await loadConfig(cliFlags);

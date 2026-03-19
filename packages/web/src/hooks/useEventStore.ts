@@ -6,6 +6,7 @@ export interface EventFilters {
   promptsOnly?: boolean;
   riskyOnly?: boolean;
   types?: EventType[];
+  agentTypes?: string[];
 }
 
 export function useEventStore(filters?: EventFilters) {
@@ -36,8 +37,12 @@ export function useEventStore(filters?: EventFilters) {
       result = result.filter((e) => filters.types!.includes(e.type));
     }
 
+    if (filters?.agentTypes && filters.agentTypes.length > 0) {
+      result = result.filter((e) => filters.agentTypes!.includes(e.agentType));
+    }
+
     return result;
-  }, [sessionEvents, filters?.promptsOnly, filters?.riskyOnly, filters?.types]);
+  }, [sessionEvents, filters?.promptsOnly, filters?.riskyOnly, filters?.types, filters?.agentTypes]);
 
   const pendingEvents = useMemo(
     () => sessionEvents.filter((e) => e.type === 'tool_call_pending' || e.type === 'permission_request'),

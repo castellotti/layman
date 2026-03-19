@@ -1,9 +1,13 @@
 import React from 'react';
 import { useSessionStore } from '../../stores/sessionStore.js';
 
-function getSessionName(cwd: string, sessionId: string): string {
-  if (!cwd) return sessionId.slice(0, 8);
-  return cwd.split('/').filter(Boolean).pop() ?? cwd;
+function getSessionName(cwd: string, sessionId: string, agentType?: string, showAgentPrefix?: boolean): string {
+  const name = cwd ? (cwd.split('/').filter(Boolean).pop() ?? cwd) : sessionId.slice(0, 8);
+  if (showAgentPrefix && agentType) {
+    const prefix = agentType === 'claude-code' ? '[CC]' : agentType === 'opencode' ? '[OC]' : `[${agentType.slice(0, 2).toUpperCase()}]`;
+    return `${prefix} ${name}`;
+  }
+  return name;
 }
 
 export function Header() {
@@ -38,21 +42,27 @@ export function Header() {
         {sessions.length > 0 && (
           <>
             <div className="h-4 w-px bg-[#30363d]" />
-            <select
-              value={activeSessionId ?? ''}
-              onChange={(e) => setActiveSession(e.target.value || null)}
-              className="text-xs bg-[#21262d] border border-[#30363d] text-[#e6edf3] rounded px-2 py-0.5 focus:outline-none focus:border-[#58a6ff] cursor-pointer"
-              title="Filter by Claude Code session"
-            >
-              {sessions.length > 1 && (
-                <option value="">All sessions</option>
-              )}
-              {sessions.map((s) => (
-                <option key={s.sessionId} value={s.sessionId}>
-                  {getSessionName(s.cwd, s.sessionId)}{s.cwd ? ` · ${s.sessionId.slice(0, 6)}` : ''}
-                </option>
-              ))}
-            </select>
+            {(() => {
+              const agentTypes = new Set(sessions.map((s) => s.agentType));
+              const showAgentPrefix = agentTypes.size > 1;
+              return (
+                <select
+                  value={activeSessionId ?? ''}
+                  onChange={(e) => setActiveSession(e.target.value || null)}
+                  className="text-xs bg-[#21262d] border border-[#30363d] text-[#e6edf3] rounded px-2 py-0.5 focus:outline-none focus:border-[#58a6ff] cursor-pointer"
+                  title="Filter by session"
+                >
+                  {sessions.length > 1 && (
+                    <option value="">All sessions</option>
+                  )}
+                  {sessions.map((s) => (
+                    <option key={s.sessionId} value={s.sessionId}>
+                      {getSessionName(s.cwd, s.sessionId, s.agentType, showAgentPrefix)}{s.cwd ? ` · ${s.sessionId.slice(0, 6)}` : ''}
+                    </option>
+                  ))}
+                </select>
+              );
+            })()}
           </>
         )}
       </div>

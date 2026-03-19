@@ -1,0 +1,13 @@
+{
+  "name": "opencode-layman-plugin",
+  "version": "0.1.0",
+  "description": "OpenCode plugin that sends events to the Layman monitoring dashboard",
+  "type": "module",
+  "module": "src/index.ts",
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0"
+  }
+}

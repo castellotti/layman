@@ -11,6 +11,7 @@ export interface SessionInfo {
   sessionId: string;
   cwd: string;
   lastSeen: number;
+  agentType: string;
 }
 
 export type ServerMessage =
