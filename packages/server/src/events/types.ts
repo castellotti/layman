@@ -37,6 +37,7 @@ export interface TimelineEvent {
   type: EventType;
   timestamp: number;
   sessionId: string;
+  agentType: string;
   data: EventData;
   analysis?: AnalysisResult;
   riskLevel?: 'low' | 'medium' | 'high';

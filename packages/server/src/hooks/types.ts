@@ -6,6 +6,7 @@ export interface HookInputBase {
   hook_event_name: string;
   transcript_path: string;
   permission_mode: 'default' | 'plan' | 'acceptEdits' | 'dontAsk' | 'bypassPermissions';
+  agent_type?: 'claude-code' | 'opencode' | string;
 }
 
 export interface PreToolUseInput extends HookInputBase {
@@ -68,6 +69,11 @@ export interface SubagentStopInput extends HookInputBase {
   agent_type: string;
 }
 
+export interface AgentResponseInput extends HookInputBase {
+  hook_event_name: 'AgentResponse';
+  response: string;
+}
+
 export type AnyHookInput =
   | PreToolUseInput
   | PostToolUseInput
@@ -79,7 +85,8 @@ export type AnyHookInput =
   | StopInput
   | UserPromptSubmitInput
   | SubagentStartInput
-  | SubagentStopInput;
+  | SubagentStopInput
+  | AgentResponseInput;
 
 // Response types returned to Claude Code
 export interface PreToolUseResponse {

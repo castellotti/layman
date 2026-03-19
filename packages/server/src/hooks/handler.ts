@@ -15,6 +15,7 @@ import type {
   UserPromptSubmitInput,
   SubagentStartInput,
   SubagentStopInput,
+  AgentResponseInput,
   PreToolUseResponse,
   PermissionResponse,
   ApprovalDecision,
@@ -40,55 +41,64 @@ export function registerHookHandler(
         // Track session activity from any hook event
         const sessionId = (body as { session_id?: string }).session_id;
         const cwd = (body as { cwd?: string }).cwd;
+        // Resolve agent type — only accept known agent values to avoid confusion
+        // with SubagentStart's agent_type field (which is the subagent name, not the source agent)
+        const rawAgentType = (body as { agent_type?: string }).agent_type;
+        const agentType =
+          rawAgentType === 'opencode' ? 'opencode' : 'claude-code';
         if (sessionId && cwd) {
-          eventStore.trackSession(sessionId, cwd);
+          eventStore.trackSession(sessionId, cwd, agentType);
         }
 
         switch (eventName) {
           case 'PreToolUse': {
             const input = body as unknown as PreToolUseInput;
-            const response = await handlePreToolUse(input, pendingManager, eventStore, analysisEngine, getConfig);
+            const response = await handlePreToolUse(input, pendingManager, eventStore, analysisEngine, getConfig, agentType);
             return reply.send(response);
           }
           case 'PostToolUse': {
-            await handlePostToolUse(body as unknown as PostToolUseInput, eventStore);
+            await handlePostToolUse(body as unknown as PostToolUseInput, eventStore, agentType);
             return reply.status(200).send({});
           }
           case 'PostToolUseFailure': {
-            await handlePostToolUseFailure(body as unknown as PostToolUseFailureInput, eventStore);
+            await handlePostToolUseFailure(body as unknown as PostToolUseFailureInput, eventStore, agentType);
             return reply.status(200).send({});
           }
           case 'PermissionRequest': {
             const input = body as unknown as PermissionRequestInput;
-            const response = await handlePermissionRequest(input, pendingManager, eventStore, analysisEngine, getConfig);
+            const response = await handlePermissionRequest(input, pendingManager, eventStore, analysisEngine, getConfig, agentType);
             return reply.send(response);
           }
           case 'Notification': {
-            await handleNotification(body as unknown as NotificationInput, eventStore);
+            await handleNotification(body as unknown as NotificationInput, eventStore, agentType);
             return reply.status(200).send({});
           }
           case 'SessionStart': {
-            await handleSessionStart(body as unknown as SessionStartInput, eventStore);
+            await handleSessionStart(body as unknown as SessionStartInput, eventStore, agentType);
             return reply.status(200).send({});
           }
           case 'SessionEnd': {
-            await handleSessionEnd(body as unknown as SessionEndInput, eventStore);
+            await handleSessionEnd(body as unknown as SessionEndInput, eventStore, agentType);
             return reply.status(200).send({});
           }
           case 'Stop': {
-            await handleStop(body as unknown as StopInput, eventStore);
+            await handleStop(body as unknown as StopInput, eventStore, agentType);
             return reply.status(200).send({});
           }
           case 'UserPromptSubmit': {
-            await handleUserPromptSubmit(body as unknown as UserPromptSubmitInput, eventStore);
+            await handleUserPromptSubmit(body as unknown as UserPromptSubmitInput, eventStore, agentType);
             return reply.status(200).send({});
           }
           case 'SubagentStart': {
-            await handleSubagentStart(body as unknown as SubagentStartInput, eventStore);
+            await handleSubagentStart(body as unknown as SubagentStartInput, eventStore, agentType);
             return reply.status(200).send({});
           }
           case 'SubagentStop': {
-            await handleSubagentStop(body as unknown as SubagentStopInput, eventStore);
+            await handleSubagentStop(body as unknown as SubagentStopInput, eventStore, agentType);
+            return reply.status(200).send({});
+          }
+          case 'AgentResponse': {
+            await handleAgentResponse(body as unknown as AgentResponseInput, eventStore, agentType);
             return reply.status(200).send({});
           }
           default:
@@ -114,7 +124,8 @@ async function handlePreToolUse(
   pendingManager: PendingApprovalManager,
   eventStore: EventStore,
   analysisEngine: AnalysisEngine,
-  getConfig: () => LaymanConfig
+  getConfig: () => LaymanConfig,
+  agentType: string = 'claude-code'
 ): Promise<PreToolUseResponse> {
   const config = getConfig();
   const riskLevel = classifyRisk(input.tool_name, input.tool_input);
@@ -130,7 +141,7 @@ async function handlePreToolUse(
     eventStore.add('tool_call_approved', input.session_id, {
       toolName: input.tool_name,
       toolInput: input.tool_input,
-    }, riskLevel);
+    }, riskLevel, agentType);
 
     return {};
   }
@@ -139,7 +150,7 @@ async function handlePreToolUse(
   const timelineEvent = eventStore.add('tool_call_pending', input.session_id, {
     toolName: input.tool_name,
     toolInput: input.tool_input,
-  }, riskLevel);
+  }, riskLevel, agentType);
 
   // Start analysis concurrently if configured
   const shouldAnalyze =
@@ -219,7 +230,8 @@ async function triggerAnalysis(
 
 async function handlePostToolUse(
   input: PostToolUseInput,
-  eventStore: EventStore
+  eventStore: EventStore,
+  agentType: string = 'claude-code'
 ): Promise<void> {
   // Find the pending event to update it
   const events = eventStore.getAll();
@@ -240,19 +252,20 @@ async function handlePostToolUse(
       toolInput: input.tool_input,
       toolOutput: input.tool_output,
       completedAt,
-    });
+    }, undefined, agentType);
   }
 }
 
 async function handlePostToolUseFailure(
   input: PostToolUseFailureInput,
-  eventStore: EventStore
+  eventStore: EventStore,
+  agentType: string = 'claude-code'
 ): Promise<void> {
   eventStore.add('tool_call_failed', input.session_id, {
     toolName: input.tool_name,
     toolInput: input.tool_input,
     error: input.tool_error,
-  });
+  }, undefined, agentType);
 }
 
 async function handlePermissionRequest(
@@ -260,7 +273,8 @@ async function handlePermissionRequest(
   pendingManager: PendingApprovalManager,
   eventStore: EventStore,
   analysisEngine: AnalysisEngine,
-  getConfig: () => LaymanConfig
+  getConfig: () => LaymanConfig,
+  agentType: string = 'claude-code'
 ): Promise<PermissionResponse> {
   const config = getConfig();
   const riskLevel = classifyRisk(input.tool_name, input.tool_input);
@@ -268,7 +282,7 @@ async function handlePermissionRequest(
   const timelineEvent = eventStore.add('permission_request', input.session_id, {
     toolName: input.tool_name,
     toolInput: input.tool_input,
-  }, riskLevel);
+  }, riskLevel, agentType);
 
   const shouldAnalyze =
     config.autoAnalyze === 'all' ||
@@ -312,61 +326,78 @@ async function triggerAnalysisForPermission(
 
 async function handleNotification(
   input: NotificationInput,
-  eventStore: EventStore
+  eventStore: EventStore,
+  agentType: string = 'claude-code'
 ): Promise<void> {
   eventStore.add('notification', input.session_id, {
     notificationType: input.notification_type,
-  });
+  }, undefined, agentType);
 }
 
 async function handleSessionStart(
   input: SessionStartInput,
-  eventStore: EventStore
+  eventStore: EventStore,
+  agentType: string = 'claude-code'
 ): Promise<void> {
   eventStore.add('session_start', input.session_id, {
     source: input.source,
-  });
+  }, undefined, agentType);
 }
 
 async function handleSessionEnd(
   input: SessionEndInput,
-  eventStore: EventStore
+  eventStore: EventStore,
+  agentType: string = 'claude-code'
 ): Promise<void> {
-  eventStore.add('session_end', input.session_id, {});
+  eventStore.add('session_end', input.session_id, {}, undefined, agentType);
 }
 
 async function handleStop(
   input: StopInput,
-  eventStore: EventStore
+  eventStore: EventStore,
+  agentType: string = 'claude-code'
 ): Promise<void> {
-  eventStore.add('agent_stop', input.session_id, {});
+  eventStore.add('agent_stop', input.session_id, {}, undefined, agentType);
 }
 
 async function handleUserPromptSubmit(
   input: UserPromptSubmitInput,
-  eventStore: EventStore
+  eventStore: EventStore,
+  agentType: string = 'claude-code'
 ): Promise<void> {
   eventStore.add('user_prompt', input.session_id, {
     prompt: input.prompt,
-  });
+  }, undefined, agentType);
 }
 
 async function handleSubagentStart(
   input: SubagentStartInput,
-  eventStore: EventStore
+  eventStore: EventStore,
+  agentType: string = 'claude-code'
 ): Promise<void> {
   eventStore.add('subagent_start', input.session_id, {
     agentType: input.agent_type,
-  });
+  }, undefined, agentType);
 }
 
 async function handleSubagentStop(
   input: SubagentStopInput,
-  eventStore: EventStore
+  eventStore: EventStore,
+  agentType: string = 'claude-code'
 ): Promise<void> {
   eventStore.add('subagent_stop', input.session_id, {
     agentType: input.agent_type,
-  });
+  }, undefined, agentType);
+}
+
+async function handleAgentResponse(
+  input: AgentResponseInput,
+  eventStore: EventStore,
+  agentType: string = 'claude-code'
+): Promise<void> {
+  eventStore.add('agent_response', input.session_id, {
+    prompt: input.response,
+  }, undefined, agentType);
 }
 
 function isAutoAllowedByPattern(
