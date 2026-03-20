@@ -145,9 +145,13 @@ export class AnalysisEngine {
   ) {
     if (config.provider === 'anthropic') {
       return this.anthropicProvider.analyze(systemPrompt, userMessage, config);
-    } else {
-      return this.openaiProvider.analyze(systemPrompt, userMessage, config);
     }
+    // openai, openai-compatible, and litellm all use the OpenAI-compatible provider
+    // For 'openai', the endpoint defaults to OpenAI's API; for others, user-supplied endpoint
+    const effectiveConfig = config.provider === 'openai'
+      ? { ...config, endpoint: config.endpoint || 'https://api.openai.com/v1' }
+      : config;
+    return this.openaiProvider.analyze(systemPrompt, userMessage, effectiveConfig);
   }
 
   private parseAnalysisResponse(

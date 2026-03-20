@@ -6,8 +6,11 @@ export const AutoAllowRulesSchema = z.object({
   trustedCommands: z.array(z.string()).default([]),
 });
 
+export const PROVIDER_OPTIONS = ['anthropic', 'openai', 'openai-compatible', 'litellm'] as const;
+export type AnalysisProvider = typeof PROVIDER_OPTIONS[number];
+
 export const AnalysisConfigSchema = z.object({
-  provider: z.enum(['anthropic', 'openai-compatible']).default('anthropic'),
+  provider: z.enum(PROVIDER_OPTIONS).default('anthropic'),
   model: z.string().default('sonnet'),
   endpoint: z.string().optional(),
   apiKey: z.string().optional(),
