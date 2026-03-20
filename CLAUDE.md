@@ -58,4 +58,4 @@ Layman is a pnpm monorepo with two packages:
 
 - **Type duplication**: `EventData`, `TimelineEvent`, `AnalysisResult`, and the WebSocket protocol types exist in both the server (`packages/server/src/`) and the client (`packages/web/src/lib/types.ts`, `ws-protocol.ts`). They must be kept in sync manually — there is no shared package.
 
-- **Docker**: The container mounts `${LAYMAN_PROJECT_DIR}/.claude` so the `HookInstaller` can write to the project's `settings.local.json`. The `--hook-url http://localhost:8090` flag ensures hook URLs point to the host-mapped port, not the container's bind address.
+- **Docker**: The container mounts `${LAYMAN_PROJECT_DIR}/.claude` so the `HookInstaller` can write to the project's `settings.local.json`. The `--hook-url http://localhost:8880` flag ensures hook URLs point to the host-mapped port, not the container's bind address.

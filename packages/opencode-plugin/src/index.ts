@@ -1,7 +1,7 @@
 import { translateToolBefore, translateToolAfter } from './translator.js';
 import { postToLayman } from './poster.js';
 
-const LAYMAN_URL = process.env.LAYMAN_URL ?? 'http://localhost:8090';
+const LAYMAN_URL = process.env.LAYMAN_URL ?? 'http://localhost:8880';
 
 // OpenCode Plugin — sends events to the Layman monitoring dashboard.
 // Load via opencode.json:

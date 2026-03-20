@@ -22,7 +22,7 @@ docker compose -f ~/layman/docker-compose.yml up -d
 
 **Open the dashboard:**
 
-http://localhost:8090
+http://localhost:8880
 
 On first visit, the dashboard shows a setup banner. Click **Install** to write the global hooks and `/layman` slash command into `~/.claude/`. This only needs to be done once (or after a Layman update).
 
