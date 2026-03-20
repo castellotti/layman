@@ -2,10 +2,12 @@ import React, { useRef, useState, useCallback, useEffect } from 'react';
 import { Header } from './components/layout/Header.js';
 import { EventStream } from './components/layout/EventStream.js';
 import { InvestigationPanel } from './components/layout/InvestigationPanel.js';
+import { SetupBanner } from './components/layout/SetupBanner.js';
 import { SettingsDrawer } from './components/controls/SettingsDrawer.js';
 import { useSessionStore } from './stores/sessionStore.js';
 import { useWebSocket } from './hooks/useWebSocket.js';
 import { usePendingApprovals } from './hooks/usePendingApprovals.js';
+import type { SetupStatus } from './lib/types.js';
 
 function StatusBar() {
   const { events, sessionStatus } = useSessionStore((s) => ({
@@ -38,9 +40,29 @@ function StatusBar() {
 export function App() {
   const { send } = useWebSocket();
   const investigationOpen = useSessionStore((s) => s.investigationOpen);
+  const setSetupStatus = useSessionStore((s) => s.setSetupStatus);
   const [leftWidthPct, setLeftWidthPct] = useState(60);
   const containerRef = useRef<HTMLDivElement>(null);
   const dragging = useRef(false);
+
+  // Fetch setup status on mount
+  useEffect(() => {
+    void (async () => {
+      try {
+        const res = await fetch('/api/setup/status');
+        if (res.ok) {
+          const status = await res.json() as SetupStatus;
+          setSetupStatus(status);
+        }
+      } catch {
+        // Server may not be reachable yet
+      }
+    })();
+  }, [setSetupStatus]);
+
+  const handleSetupInstall = useCallback(() => {
+    send({ type: 'setup:install' });
+  }, [send]);
 
   const onDividerMouseDown = useCallback((e: React.MouseEvent) => {
     dragging.current = true;
@@ -66,6 +88,7 @@ export function App() {
   return (
     <div className="flex flex-col h-screen bg-[#0d1117] text-[#e6edf3] overflow-hidden">
       <Header />
+      <SetupBanner onInstall={handleSetupInstall} />
 
       <div ref={containerRef} className="flex flex-1 overflow-hidden">
         {/* Left panel: Event timeline */}

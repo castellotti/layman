@@ -23,7 +23,7 @@ program
 // ── layman start ──────────────────────────────────────────────────────────────
 program
   .command('start')
-  .description('Start the Layman server and install hooks')
+  .description('Start the Layman server')
   .option('-p, --port <number>', 'Port to listen on', '8090')
   .option('--host <host>', 'Host to bind to', 'localhost')
   .option('--analysis-model <model>', 'Analysis model (haiku|sonnet|opus or full model name)')
@@ -32,9 +32,7 @@ program
   .option('--auto-analyze <mode>', 'Auto-analyze mode: all|risky|none', 'risky')
   .option('--no-open', 'Do not open browser automatically')
   .option('--hook-timeout <seconds>', 'Hook timeout in seconds', '300')
-  .option('--settings-path <path>', 'Override path to .claude/settings.local.json')
   .option('--hook-url <url>', 'URL written into hook config (overrides host:port, useful for Docker)')
-  .option('--global', 'Install hooks in global ~/.claude/settings.json')
   .action(async (options) => {
     // Only include analysis in cliFlags when explicitly passed — otherwise
     // the defaults would override the user's saved runtime config on every restart.
@@ -52,9 +50,7 @@ program
       autoAnalyze: options.autoAnalyze as 'all' | 'risky' | 'none',
       open: options.open !== false,
       hookTimeout: parseInt(options.hookTimeout, 10),
-      settingsPath: options.settingsPath,
       hookUrl: options.hookUrl,
-      global: options.global ?? false,
       ...(Object.keys(analysisFlags).length > 0 ? { analysis: analysisFlags as LaymanConfig['analysis'] } : {}),
     };
 
@@ -67,23 +63,9 @@ program
 // ── layman stop ───────────────────────────────────────────────────────────────
 program
   .command('stop')
-  .description('Stop the Layman server and remove hooks')
-  .option('--settings-path <path>', 'Override path to .claude/settings.local.json')
-  .option('--global', 'Remove from global ~/.claude/settings.json')
-  .action(async (options) => {
-    const config = await loadConfig({
-      settingsPath: options.settingsPath,
-      global: options.global ?? false,
-    });
-
-    // Uninstall hooks
-    const installer = new HookInstaller({
-      serverUrl: config.hookUrl ?? `http://${config.host}:${config.port}`,
-      hookTimeout: config.hookTimeout,
-      global: config.global,
-      settingsPath: config.settingsPath,
-    });
-    installer.uninstall();
+  .description('Stop the Layman server')
+  .action(async () => {
+    const config = await loadConfig({});
 
     // Signal running server to shutdown
     if (existsSync(PID_FILE)) {
@@ -119,9 +101,7 @@ program
   .option('--auto-analyze <mode>', 'Auto-analyze mode: all|risky|none', 'risky')
   .option('--no-open', 'Do not open browser automatically')
   .option('--hook-timeout <seconds>', 'Hook timeout in seconds', '300')
-  .option('--settings-path <path>', 'Override path to .claude/settings.local.json')
   .option('--hook-url <url>', 'URL written into hook config (overrides host:port, useful for Docker)')
-  .option('--global', 'Install hooks in global ~/.claude/settings.json')
   .action(async (commandArgs: string[], options) => {
     const analysisFlags: Partial<LaymanConfig['analysis']> = {};
     if (options.analysisEndpoint !== undefined) {
@@ -137,9 +117,7 @@ program
       autoAnalyze: options.autoAnalyze as 'all' | 'risky' | 'none',
       open: options.open !== false,
       hookTimeout: parseInt(options.hookTimeout, 10),
-      settingsPath: options.settingsPath,
       hookUrl: options.hookUrl,
-      global: options.global ?? false,
       ...(Object.keys(analysisFlags).length > 0 ? { analysis: analysisFlags as LaymanConfig['analysis'] } : {}),
     };
 
@@ -157,13 +135,6 @@ program
     });
 
     const cleanup = async (): Promise<void> => {
-      const installer = new HookInstaller({
-        serverUrl: `http://${config.host}:${server.getPort()}`,
-        hookTimeout: config.hookTimeout,
-        global: config.global,
-        settingsPath: config.settingsPath,
-      });
-      installer.uninstall();
       await server.stop();
     };
 
@@ -207,8 +178,9 @@ program
           serverUrl: url,
           hookTimeout: 300,
         });
-        const installed = installer.isInstalled();
-        console.log(`  Hooks installed: ${installed ? 'yes' : 'no'}`);
+        const setupStatus = installer.getStatus();
+        console.log(`  Hooks installed: ${setupStatus.hooksInstalled ? 'yes' : 'no'}`);
+        console.log(`  Command installed: ${setupStatus.commandInstalled ? 'yes' : 'no'}`);
       } else {
         console.log('Layman server responded with an error.');
       }
@@ -234,18 +206,6 @@ async function startServer(
 ): Promise<ReturnType<typeof createServer>> {
   const server = createServer(config);
 
-  // hookUrl separates the bind address from the URL written into hook configs.
-  // When running in Docker with --host 0.0.0.0, pass --hook-url http://localhost:8090
-  // so Claude Code (on the host) can reach the container via the mapped port.
-  const resolvedHookUrl = config.hookUrl ?? `http://${config.host}:${config.port}`;
-
-  const installer = new HookInstaller({
-    serverUrl: resolvedHookUrl,
-    hookTimeout: config.hookTimeout,
-    global: config.global,
-    settingsPath: config.settingsPath,
-  });
-
   try {
     await server.start();
   } catch (err) {
@@ -254,14 +214,13 @@ async function startServer(
   }
 
   const port = server.getPort();
-  installer.install();
 
   // Write PID file
   writeFileSync(PID_FILE, String(process.pid));
 
   const url = `http://${config.host}:${port}`;
   console.log(`\nLayman v${VERSION} running at ${url}`);
-  console.log(`Hooks installed → all tool calls will flow through Layman\n`);
+  console.log(`Use /layman in Claude Code to activate monitoring for a session\n`);
 
   if (config.open) {
     void openBrowser(url);
@@ -269,7 +228,6 @@ async function startServer(
 
   const shutdown = async (): Promise<void> => {
     console.log('\nShutting down Layman...');
-    installer.uninstall();
     await server.stop();
     if (existsSync(PID_FILE)) {
       try {

@@ -33,7 +33,6 @@ const MOCK_CONFIG: LaymanConfig = {
   open: true,
   autoApprove: true,
   laymansPrompt: 'Explain what the AI is doing here in absolute layman\'s terms to someone who has no understanding of technology',
-  global: false,
 };
 
 describe('PendingApprovalManager', () => {

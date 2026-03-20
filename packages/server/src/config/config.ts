@@ -1,5 +1,6 @@
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs';
 import { join, dirname } from 'path';
+import { homedir } from 'os';
 import { cosmiconfig } from 'cosmiconfig';
 import { LaymanConfigSchema } from './schema.js';
 import type { LaymanConfig } from './schema.js';
@@ -18,22 +19,17 @@ const explorer = cosmiconfig('layman', {
 
 /**
  * Derive the path for the auto-saved runtime config.
- * Co-located with settings.local.json so it lives in the Docker-mounted volume.
- * e.g. /workspace/.claude/layman.json  (Docker)
- *   or .claude/layman.json             (local)
+ * Stored alongside the global settings in ~/.claude/layman.json.
  */
-function getRuntimeConfigPath(settingsPath?: string): string {
-  if (settingsPath) {
-    return join(dirname(settingsPath), 'layman.json');
-  }
-  return join(process.cwd(), '.claude', 'layman.json');
+function getRuntimeConfigPath(): string {
+  return join(homedir(), '.claude', 'layman.json');
 }
 
 /** Fields not worth persisting (they're CLI/startup-only concerns). */
-const EPHEMERAL_KEYS: (keyof LaymanConfig)[] = ['port', 'host', 'open', 'settingsPath', 'hookUrl', 'global'];
+const EPHEMERAL_KEYS: (keyof LaymanConfig)[] = ['port', 'host', 'open', 'hookUrl'];
 
 export function saveConfig(config: LaymanConfig): void {
-  const path = getRuntimeConfigPath(config.settingsPath);
+  const path = getRuntimeConfigPath();
   try {
     const dir = dirname(path);
     if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
@@ -48,8 +44,8 @@ export function saveConfig(config: LaymanConfig): void {
   }
 }
 
-function loadRuntimeConfig(settingsPath?: string): Partial<LaymanConfig> {
-  const path = getRuntimeConfigPath(settingsPath);
+function loadRuntimeConfig(): Partial<LaymanConfig> {
+  const path = getRuntimeConfigPath();
   if (!existsSync(path)) return {};
   try {
     return JSON.parse(readFileSync(path, 'utf-8')) as Partial<LaymanConfig>;
@@ -73,7 +69,7 @@ export async function loadConfig(
   }
 
   // Auto-saved runtime config (.claude/layman.json)
-  const runtimeFile = loadRuntimeConfig(cliFlags.settingsPath);
+  const runtimeFile = loadRuntimeConfig();
 
   // Env vars
   const envConfig: Partial<LaymanConfig> = {};
