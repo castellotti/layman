@@ -42,6 +42,24 @@ RISK levels:
 
 Keep each summary under 25 words. Respond with ONLY the JSON object, no markdown fencing.`;
 
+export function buildLaymansSystemPrompt(userPrompt: string, depth: 'quick' | 'detailed'): string {
+  const lengthGuidance = depth === 'quick'
+    ? 'Keep your response to 2-3 sentences maximum.'
+    : 'You may use up to 2-3 short paragraphs if needed for clarity. Use simple analogies where helpful.';
+
+  return `You explain what an AI coding agent is doing on a user's computer. The user has NO technical background — imagine explaining to someone who has never written code and barely uses a computer beyond email and web browsing.
+
+Your task: ${userPrompt}
+
+${lengthGuidance}
+
+Rules:
+- Use zero jargon. No words like "repository", "API", "compile", "dependencies", "runtime", "server", "endpoint", "configuration", etc. If you must reference a technical concept, explain it with an everyday analogy.
+- Write in a warm, reassuring tone.
+- If something could be concerning (like deleting files), say so plainly but without alarm.
+- Respond with ONLY your explanation as plain text. No JSON, no markdown, no formatting.`;
+}
+
 export const INVESTIGATION_SYSTEM_PROMPT = `You are Layman, helping a developer understand an action taken by an AI coding agent. You previously analyzed this action and produced a structured assessment. Now the user has a follow-up question.
 
 Answer concisely (under 100 words unless the question requires more). Be specific and practical. If the user asks about security or risk, be direct about concerns.

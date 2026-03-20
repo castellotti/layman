@@ -1,6 +1,7 @@
 import type {
   TimelineEvent,
   AnalysisResult,
+  LaymansResult,
   PendingApprovalDTO,
   ApprovalDecision,
   LaymanConfig,
@@ -22,6 +23,9 @@ export type ServerMessage =
   | { type: 'analysis:start'; eventId: string }
   | { type: 'analysis:result'; eventId: string; result: AnalysisResult }
   | { type: 'analysis:error'; eventId: string; error: string }
+  | { type: 'laymans:start'; eventId: string }
+  | { type: 'laymans:result'; eventId: string; result: LaymansResult }
+  | { type: 'laymans:error'; eventId: string; error: string }
   | { type: 'session:status'; status: SessionStatus }
   | { type: 'session:config'; config: LaymanConfig }
   | { type: 'sessions:list'; sessions: SessionInfo[] }
@@ -30,5 +34,7 @@ export type ServerMessage =
 export type ClientMessage =
   | { type: 'approval:decide'; approvalId: string; decision: ApprovalDecision }
   | { type: 'analysis:request'; eventId: string; depth: 'quick' | 'detailed' }
+  | { type: 'laymans:request'; eventId: string; depth: 'quick' | 'detailed' }
+  | { type: 'both:request'; eventId: string; depth: 'quick' | 'detailed' }
   | { type: 'analysis:ask'; eventId: string; question: string }
   | { type: 'config:update'; config: Partial<LaymanConfig> };
