@@ -50,3 +50,10 @@ export interface InvestigationContext {
   previousAnalysis?: AnalysisResult;
   cwd: string;
 }
+
+export interface LaymansResult {
+  explanation: string;
+  model: string;
+  latencyMs: number;
+  tokens: { input: number; output: number };
+}

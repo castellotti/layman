@@ -19,6 +19,8 @@ export function InvestigationPanel({ onSend }: InvestigationPanelProps) {
     investigationState,
     addInvestigationQuestion,
     analyzingEventIds,
+    laymansEventIds,
+    laymansErrors,
   } = useSessionStore();
 
   const { getEvent } = useEventStore();
@@ -31,9 +33,20 @@ export function InvestigationPanel({ onSend }: InvestigationPanelProps) {
 
   const state = investigationState[selectedEventId] ?? { questions: [], isAnalyzing: false };
   const isAnalyzing = analyzingEventIds.has(selectedEventId);
+  const isLaymansLoading = laymansEventIds.has(selectedEventId);
+  const laymansError = laymansErrors[selectedEventId];
+  const isBusy = isAnalyzing || isLaymansLoading;
 
   const handleRequestAnalysis = (depth: 'quick' | 'detailed') => {
     onSend({ type: 'analysis:request', eventId: selectedEventId, depth });
+  };
+
+  const handleRequestLaymans = (depth: 'quick' | 'detailed') => {
+    onSend({ type: 'laymans:request', eventId: selectedEventId, depth });
+  };
+
+  const handleRequestBoth = (depth: 'quick' | 'detailed') => {
+    onSend({ type: 'both:request', eventId: selectedEventId, depth });
   };
 
   const handleAsk = async (question: string) => {
@@ -72,12 +85,30 @@ export function InvestigationPanel({ onSend }: InvestigationPanelProps) {
           <span className="text-xs font-semibold text-[#e6edf3]">Investigation</span>
           {event.riskLevel && <RiskBadge level={event.riskLevel} compact />}
         </div>
-        <button
-          onClick={() => setInvestigationOpen(false)}
-          className="text-[#8b949e] hover:text-[#e6edf3] transition-colors text-lg leading-none"
-        >
-          ×
-        </button>
+        <div className="flex items-center gap-2">
+          {/* Quick combo button */}
+          <button
+            onClick={() => handleRequestBoth('quick')}
+            disabled={isBusy}
+            className="px-2 py-1 text-[10px] font-medium text-[#e6edf3] bg-[#238636] hover:bg-[#2ea043] disabled:opacity-50 disabled:cursor-not-allowed rounded transition-colors"
+          >
+            {isBusy ? '⏳' : '⚡'} Quick
+          </button>
+          {/* Detailed combo button */}
+          <button
+            onClick={() => handleRequestBoth('detailed')}
+            disabled={isBusy}
+            className="px-2 py-1 text-[10px] font-medium text-[#e6edf3] bg-[#1f6feb] hover:bg-[#388bfd] disabled:opacity-50 disabled:cursor-not-allowed rounded transition-colors"
+          >
+            {isBusy ? '⏳' : '🔍'} Detailed
+          </button>
+          <button
+            onClick={() => setInvestigationOpen(false)}
+            className="text-[#8b949e] hover:text-[#e6edf3] transition-colors text-lg leading-none"
+          >
+            ×
+          </button>
+        </div>
       </div>
 
       {/* Content */}
@@ -103,6 +134,62 @@ export function InvestigationPanel({ onSend }: InvestigationPanelProps) {
             <blockquote className="text-xs text-[#e6edf3] border-l-2 border-[#58a6ff] pl-3 italic">
               {event.data.prompt}
             </blockquote>
+          )}
+        </div>
+
+        {/* Layman's Terms section */}
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-[10px] text-[#484f58] font-mono uppercase tracking-wider">
+              Layman&apos;s Terms
+            </span>
+            <div className="flex gap-2">
+              <button
+                onClick={() => handleRequestLaymans('quick')}
+                disabled={isLaymansLoading}
+                className="text-[10px] text-[#3fb950] hover:text-[#56d364] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                {isLaymansLoading ? '⏳ Explaining...' : 'Quick'}
+              </button>
+              <span className="text-[10px] text-[#484f58]">·</span>
+              <button
+                onClick={() => handleRequestLaymans('detailed')}
+                disabled={isLaymansLoading}
+                className="text-[10px] text-[#3fb950] hover:text-[#56d364] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                Detailed
+              </button>
+            </div>
+          </div>
+
+          {event.laymans ? (
+            <div className="bg-[#161b22] border border-[#30363d] rounded-md p-3 space-y-2">
+              <p className="text-xs text-[#e6edf3] leading-relaxed whitespace-pre-wrap">{event.laymans.explanation}</p>
+              <div className="flex items-center gap-2 text-[10px] text-[#484f58] pt-1 border-t border-[#30363d]">
+                {event.laymans.latencyMs !== undefined && <span>{event.laymans.latencyMs}ms</span>}
+                {event.laymans.tokens && (
+                  <>
+                    <span>·</span>
+                    <span className="text-[#3fb950]/70">↑{event.laymans.tokens.input.toLocaleString()}</span>
+                    <span className="text-[#58a6ff]/70">↓{event.laymans.tokens.output.toLocaleString()}</span>
+                  </>
+                )}
+                {event.laymans.model && <><span>·</span><span>{event.laymans.model}</span></>}
+              </div>
+            </div>
+          ) : isLaymansLoading ? (
+            <div className="bg-[#161b22] border border-[#30363d] rounded-md p-4 text-center">
+              <span className="text-xs text-[#8b949e] animate-pulse">Explaining in plain language...</span>
+            </div>
+          ) : laymansError ? (
+            <div className="bg-[#161b22] border border-[#f85149]/40 rounded-md p-3 space-y-1">
+              <span className="text-xs font-semibold text-[#f85149]">Explanation failed</span>
+              <p className="text-[11px] text-[#8b949e] font-mono break-all">{laymansError}</p>
+            </div>
+          ) : (
+            <div className="bg-[#161b22] border border-[#30363d] border-dashed rounded-md p-4 text-center">
+              <span className="text-xs text-[#484f58]">No explanation yet. Click Quick or Detailed above.</span>
+            </div>
           )}
         </div>
 

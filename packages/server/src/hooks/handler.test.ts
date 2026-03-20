@@ -31,6 +31,8 @@ const MOCK_CONFIG: LaymanConfig = {
   hookTimeout: 300,
   theme: 'dark',
   open: true,
+  autoApprove: true,
+  laymansPrompt: 'Explain what the AI is doing here in absolute layman\'s terms to someone who has no understanding of technology',
   global: false,
 };
 

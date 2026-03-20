@@ -1,5 +1,5 @@
 import type { ApprovalDecision } from '../hooks/types.js';
-import type { AnalysisResult } from '../analysis/types.js';
+import type { AnalysisResult, LaymansResult } from '../analysis/types.js';
 
 export type EventType =
   | 'tool_call_pending'
@@ -40,6 +40,7 @@ export interface TimelineEvent {
   agentType: string;
   data: EventData;
   analysis?: AnalysisResult;
+  laymans?: LaymansResult;
   riskLevel?: 'low' | 'medium' | 'high';
 }
 

@@ -233,6 +233,25 @@ export function SettingsDrawer({ onSend }: SettingsDrawerProps) {
 
           <div className="border-t border-[#30363d]" />
 
+          {/* Layman's Terms Prompt */}
+          <section>
+            <h3 className="text-xs font-semibold text-[#8b949e] uppercase tracking-wider mb-1">
+              Layman&apos;s Terms Prompt
+            </h3>
+            <p className="text-[10px] text-[#484f58] mb-3">
+              The instruction given to the LLM when generating plain-language explanations.
+            </p>
+            <textarea
+              value={config.laymansPrompt ?? ''}
+              onChange={(e) => updateConfig({ laymansPrompt: e.target.value })}
+              rows={3}
+              className="w-full px-3 py-2 text-xs bg-[#0d1117] border border-[#30363d] rounded-md text-[#e6edf3] placeholder-[#484f58] focus:outline-none focus:border-[#58a6ff] resize-y"
+              placeholder="Explain what the AI is doing here in absolute layman's terms..."
+            />
+          </section>
+
+          <div className="border-t border-[#30363d]" />
+
           {/* Auto-Approve */}
           <section>
             <h3 className="text-xs font-semibold text-[#8b949e] uppercase tracking-wider mb-1">

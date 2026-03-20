@@ -39,6 +39,13 @@ export interface AnalysisResult {
   tokens: { input: number; output: number };
 }
 
+export interface LaymansResult {
+  explanation: string;
+  model: string;
+  latencyMs: number;
+  tokens: { input: number; output: number };
+}
+
 export interface ApprovalDecision {
   decision: 'allow' | 'deny' | 'ask';
   reason?: string;
@@ -67,6 +74,7 @@ export interface TimelineEvent {
   agentType: string;
   data: EventData;
   analysis?: AnalysisResult;
+  laymans?: LaymansResult;
   riskLevel?: 'low' | 'medium' | 'high';
 }
 
@@ -111,6 +119,7 @@ export interface LaymanConfig {
   theme: 'dark' | 'light' | 'system';
   open: boolean;
   autoApprove: boolean;
+  laymansPrompt: string;
   settingsPath?: string;
   global: boolean;
 }
