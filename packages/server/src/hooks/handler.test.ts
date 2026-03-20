@@ -14,7 +14,7 @@ const BASE_INPUT: Omit<PreToolUseInput, 'tool_name' | 'tool_input'> = {
 };
 
 const MOCK_CONFIG: LaymanConfig = {
-  port: 8090,
+  port: 8880,
   host: 'localhost',
   autoAnalyze: 'none',
   analysis: {

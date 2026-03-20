@@ -24,7 +24,7 @@ program
 program
   .command('start')
   .description('Start the Layman server')
-  .option('-p, --port <number>', 'Port to listen on', '8090')
+  .option('-p, --port <number>', 'Port to listen on', '8880')
   .option('--host <host>', 'Host to bind to', 'localhost')
   .option('--analysis-model <model>', 'Analysis model (haiku|sonnet|opus or full model name)')
   .option('--analysis-endpoint <url>', 'Custom OpenAI-compatible endpoint URL')
@@ -93,7 +93,7 @@ program
 program
   .command('wrap <command...>')
   .description('Start Layman server, run command, cleanup on exit')
-  .option('-p, --port <number>', 'Port to listen on', '8090')
+  .option('-p, --port <number>', 'Port to listen on', '8880')
   .option('--host <host>', 'Host to bind to', 'localhost')
   .option('--analysis-model <model>', 'Analysis model')
   .option('--analysis-endpoint <url>', 'Custom OpenAI-compatible endpoint URL')
@@ -157,7 +157,7 @@ program
 program
   .command('status')
   .description('Show Layman server status')
-  .option('-p, --port <number>', 'Port to check', '8090')
+  .option('-p, --port <number>', 'Port to check', '8880')
   .option('--host <host>', 'Host to check', 'localhost')
   .action(async (options) => {
     const url = `http://${options.host}:${options.port}`;

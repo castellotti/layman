@@ -21,7 +21,7 @@ export const AnalysisConfigSchema = z.object({
 export const DEFAULT_LAYMANS_PROMPT = 'Explain what the AI is doing here in absolute layman\'s terms to someone who has no understanding of technology';
 
 export const LaymanConfigSchema = z.object({
-  port: z.number().int().min(1).max(65535).default(8090),
+  port: z.number().int().min(1).max(65535).default(8880),
   host: z.string().default('localhost'),
   autoAnalyze: z.enum(['all', 'risky', 'none']).default('none'),
   analysis: AnalysisConfigSchema.default({}),

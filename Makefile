@@ -31,7 +31,7 @@ docker-run: docker-build
 	LAYMAN_PROJECT_DIR=$(or $(LAYMAN_PROJECT_DIR),$(CURDIR)) \
 	docker compose up -d
 	@echo ""
-	@echo "Layman running at http://localhost:8090"
+	@echo "Layman running at http://localhost:8880"
 	@echo "Hooks installed in $${LAYMAN_PROJECT_DIR:-.}/.claude/settings.local.json"
 	@echo "Run 'make docker-logs' to follow logs, 'make docker-stop' to stop."
 

@@ -33,6 +33,6 @@ COPY --from=build /app/packages/opencode-plugin ./packages/opencode-plugin
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/package.json ./
 
-EXPOSE 8090
+EXPOSE 8880
 
 CMD ["node", "packages/server/dist/index.js", "start", "--host", "0.0.0.0", "--no-open"]
