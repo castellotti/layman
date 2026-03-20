@@ -9,10 +9,10 @@ export default defineConfig({
   },
   server: {
     proxy: {
-      '/api': 'http://localhost:8090',
-      '/hooks': 'http://localhost:8090',
+      '/api': 'http://localhost:8880',
+      '/hooks': 'http://localhost:8880',
       '/ws': {
-        target: 'ws://localhost:8090',
+        target: 'ws://localhost:8880',
         ws: true,
       },
     },
