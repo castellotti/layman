@@ -13,6 +13,10 @@ function resolveEndpoint(url: string): string {
 
 export { resolveEndpoint };
 
+/**
+ * Basic OpenAI-compatible provider for local models (llama.cpp, Ollama, etc.).
+ * No streaming, no special headers — just a straightforward chat completion.
+ */
 export class OpenAICompatProvider {
   private client: OpenAI | null = null;
   private lastConfig: string | undefined;

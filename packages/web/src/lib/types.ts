@@ -99,12 +99,21 @@ export interface SessionStatus {
   uptime: number;
 }
 
+export type AnalysisProvider = 'anthropic' | 'openai' | 'openai-compatible' | 'litellm';
+
+export const PROVIDER_LABELS: Record<AnalysisProvider, string> = {
+  anthropic: 'Anthropic',
+  openai: 'OpenAI',
+  'openai-compatible': 'OpenAI Compatible',
+  litellm: 'LiteLLM',
+};
+
 export interface LaymanConfig {
   port: number;
   host: string;
   autoAnalyze: 'all' | 'risky' | 'none';
   analysis: {
-    provider: 'anthropic' | 'openai-compatible';
+    provider: AnalysisProvider;
     model: string;
     endpoint?: string;
     apiKey?: string;
