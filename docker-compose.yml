@@ -6,9 +6,8 @@ services:
     ports:
       - "8090:8090"
     volumes:
-      # Mount the host project's .claude dir so the installer can write hook config
-      - ${LAYMAN_PROJECT_DIR:-.}/.claude:/workspace/.claude
-      - ${LAYMAN_PROJECT_DIR:-.}/.opencode:/workspace/.opencode
+      # Mount the host user's ~/.claude so the installer can write global hooks and commands
+      - ${HOME}/.claude:/root/.claude
     environment:
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
@@ -18,7 +17,6 @@ services:
       node packages/server/dist/index.js start
       --host 0.0.0.0
       --no-open
-      --settings-path /workspace/.claude/settings.local.json
       --hook-url http://localhost:8090
     restart: unless-stopped
     healthcheck:

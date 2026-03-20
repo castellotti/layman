@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { TimelineEvent, PendingApprovalDTO, LaymanConfig, SessionStatus } from '../lib/types.js';
+import type { TimelineEvent, PendingApprovalDTO, LaymanConfig, SessionStatus, SetupStatus } from '../lib/types.js';
 import type { SessionInfo } from '../lib/ws-protocol.js';
 
 interface InvestigationState {
@@ -45,6 +45,10 @@ interface SessionState {
   sessions: SessionInfo[];
   activeSessionId: string | null;
 
+  // Setup status
+  setupStatus: SetupStatus | null;
+  setupBannerDismissed: boolean;
+
   // Actions
   setConnected: (connected: boolean) => void;
   setWsStatus: (status: SessionState['wsStatus']) => void;
@@ -65,6 +69,10 @@ interface SessionState {
   setSessionStatus: (status: SessionStatus) => void;
   setSessions: (sessions: SessionInfo[]) => void;
   setActiveSession: (id: string | null) => void;
+  setSetupStatus: (status: SetupStatus) => void;
+  dismissSetupBanner: () => void;
+  markSessionActive: (sessionId: string) => void;
+  markSessionInactive: (sessionId: string) => void;
   clearEvents: () => void;
 }
 
@@ -90,6 +98,9 @@ export const useSessionStore = create<SessionState>((set) => ({
 
   sessions: [],
   activeSessionId: null,
+
+  setupStatus: null,
+  setupBannerDismissed: false,
 
   setConnected: (connected) => set({ connected }),
 
@@ -213,6 +224,24 @@ export const useSessionStore = create<SessionState>((set) => ({
     }),
 
   setActiveSession: (activeSessionId) => set({ activeSessionId }),
+
+  setSetupStatus: (setupStatus) => set({ setupStatus }),
+
+  dismissSetupBanner: () => set({ setupBannerDismissed: true }),
+
+  markSessionActive: (sessionId) =>
+    set((state) => ({
+      sessions: state.sessions.map((s) =>
+        s.sessionId === sessionId ? { ...s, active: true } : s
+      ),
+    })),
+
+  markSessionInactive: (sessionId) =>
+    set((state) => ({
+      sessions: state.sessions.map((s) =>
+        s.sessionId === sessionId ? { ...s, active: false } : s
+      ),
+    })),
 
   clearEvents: () => set({ events: [], selectedEventId: null }),
 }));

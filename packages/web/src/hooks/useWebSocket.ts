@@ -25,6 +25,8 @@ export function useWebSocket(): { send: (msg: ClientMessage) => void } {
     setConfig,
     setSessionStatus,
     setSessions,
+    markSessionActive,
+    markSessionInactive,
   } = useSessionStore();
 
   const handleMessage = useCallback(
@@ -96,9 +98,17 @@ export function useWebSocket(): { send: (msg: ClientMessage) => void } {
         case 'sessions:list':
           setSessions(message.sessions);
           break;
+
+        case 'session:activated':
+          markSessionActive(message.sessionId);
+          break;
+
+        case 'session:deactivated':
+          markSessionInactive(message.sessionId);
+          break;
       }
     },
-    [addEvent, addPendingApproval, removePendingApproval, setAnalyzing, setAnalysisError, setLaymans, setLaymansError, setConfig, setServerVersion, setSessionStatus, setSessions, updateEvent]
+    [addEvent, addPendingApproval, removePendingApproval, setAnalyzing, setAnalysisError, setLaymans, setLaymansError, setConfig, setServerVersion, setSessionStatus, setSessions, markSessionActive, markSessionInactive, updateEvent]
   );
 
   const connect = useCallback(() => {

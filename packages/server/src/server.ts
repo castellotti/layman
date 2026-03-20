@@ -8,6 +8,8 @@ import { fileURLToPath } from 'url';
 
 import { PendingApprovalManager } from './hooks/pending.js';
 import { EventStore } from './events/store.js';
+import { SessionGate } from './hooks/gate.js';
+import { HookInstaller } from './hooks/installer.js';
 import { registerHookHandler } from './hooks/handler.js';
 import { AnalysisEngine } from './analysis/engine.js';
 import { resolveEndpoint } from './analysis/providers/openai-compat.js';
@@ -33,6 +35,7 @@ export function createServer(config: LaymanConfig): LaymanServer {
   const eventStore = new EventStore();
   const pendingManager = new PendingApprovalManager(config.hookTimeout);
   const analysisEngine = new AnalysisEngine(config.analysis);
+  const gate = new SessionGate();
   const startTime = Date.now();
 
   let activeConfig = config;
@@ -95,6 +98,15 @@ export function createServer(config: LaymanConfig): LaymanServer {
 
   pendingManager.on('pending:resolved', (approvalId, decision) => {
     broadcast({ type: 'approval:resolved', approvalId, decision });
+  });
+
+  // Forward gate events to WebSocket
+  gate.on('session:activated', (sessionId: string) => {
+    broadcast({ type: 'session:activated', sessionId });
+  });
+
+  gate.on('session:deactivated', (sessionId: string) => {
+    broadcast({ type: 'session:deactivated', sessionId });
   });
 
   async function registerPlugins(): Promise<void> {
@@ -283,6 +295,65 @@ export function createServer(config: LaymanConfig): LaymanServer {
         void fastify.close();
         process.exit(0);
       });
+    });
+
+    // Setup status — check if hooks and slash command are installed
+    fastify.get('/api/setup/status', async () => {
+      const resolvedHookUrl = activeConfig.hookUrl ?? `http://${activeConfig.host}:${activeConfig.port}`;
+      const installer = new HookInstaller({
+        serverUrl: resolvedHookUrl,
+        hookTimeout: activeConfig.hookTimeout,
+      });
+      return installer.getStatus();
+    });
+
+    // Setup install — write hooks + slash command with user consent
+    fastify.post('/api/setup/install', async () => {
+      const resolvedHookUrl = activeConfig.hookUrl ?? `http://${activeConfig.host}:${activeConfig.port}`;
+      const installer = new HookInstaller({
+        serverUrl: resolvedHookUrl,
+        hookTimeout: activeConfig.hookTimeout,
+      });
+      installer.install();
+      installer.installCommand();
+      return installer.getStatus();
+    });
+
+    // Activate a session for monitoring
+    fastify.post('/api/activate', async (request) => {
+      // The session_id may come from the hook body (PreToolUse detection)
+      // or from a direct curl call (no session_id in body).
+      // For direct curl, we extract session_id from the most recent hook event.
+      const body = request.body as { session_id?: string } | null;
+      let sessionId = body?.session_id;
+
+      if (!sessionId) {
+        // Find the most recently seen session that isn't already activated
+        const sessions = eventStore.getSessions();
+        const recent = sessions.find((s) => !gate.isActive(s.sessionId));
+        sessionId = recent?.sessionId;
+      }
+
+      if (!sessionId) {
+        // Activate the most recent session we've seen from hooks
+        // (the curl command itself triggers a PreToolUse hook with the session_id,
+        // and the handler detects the activation pattern before this route is hit)
+        return { ok: true, message: 'Session will be activated on next hook event' };
+      }
+
+      gate.activate(sessionId);
+      return { ok: true, sessionId };
+    });
+
+    // Deactivate a session
+    fastify.post<{ Body: { session_id?: string } | null }>('/api/deactivate', async (request) => {
+      const body = request.body;
+      const sessionId = body?.session_id;
+      if (sessionId) {
+        gate.deactivate(sessionId);
+        return { ok: true, sessionId };
+      }
+      return { ok: false, error: 'session_id required' };
     });
 
     // WebSocket — @fastify/websocket v10: handler receives (socket, request) directly
@@ -490,11 +561,21 @@ export function createServer(config: LaymanConfig): LaymanServer {
         broadcast({ type: 'session:config', config: activeConfig });
         break;
       }
+      case 'setup:install': {
+        const resolvedHookUrl = activeConfig.hookUrl ?? `http://${activeConfig.host}:${activeConfig.port}`;
+        const installer = new HookInstaller({
+          serverUrl: resolvedHookUrl,
+          hookTimeout: activeConfig.hookTimeout,
+        });
+        installer.install();
+        installer.installCommand();
+        break;
+      }
     }
   }
 
   // Register hook handler routes
-  registerHookHandler(fastify, pendingManager, eventStore, analysisEngine, getConfig);
+  registerHookHandler(fastify, pendingManager, eventStore, analysisEngine, getConfig, gate);
 
   let resolvedPort = config.port;
 
