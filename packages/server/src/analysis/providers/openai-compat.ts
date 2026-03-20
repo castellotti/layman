@@ -13,6 +13,10 @@ function resolveEndpoint(url: string): string {
 
 export { resolveEndpoint };
 
+/**
+ * Basic OpenAI-compatible provider for local models (llama.cpp, Ollama, etc.).
+ * No streaming, no special headers — just a straightforward chat completion.
+ */
 export class OpenAICompatProvider {
   private client: OpenAI | null = null;
   private lastConfig: string | undefined;
@@ -43,40 +47,25 @@ export class OpenAICompatProvider {
   ): Promise<RawLLMResponse> {
     const client = this.getClient(config);
 
-    try {
-      const response = await client.chat.completions.create({
-        model: config.model,
-        max_tokens: config.maxTokens,
-        temperature: config.temperature,
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userMessage },
-        ],
-      });
+    const response = await client.chat.completions.create({
+      model: config.model,
+      max_tokens: config.maxTokens,
+      temperature: config.temperature,
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userMessage },
+      ],
+    });
 
-      const text = response.choices[0]?.message?.content ?? '';
-      const usage = response.usage;
+    const text = response.choices[0]?.message?.content ?? '';
+    const usage = response.usage;
 
-      return {
-        text,
-        usage: {
-          prompt_tokens: usage?.prompt_tokens,
-          completion_tokens: usage?.completion_tokens,
-        },
-      };
-    } catch (err: unknown) {
-      // Extract meaningful details from OpenAI SDK errors (APIError, etc.)
-      const apiErr = err as { status?: number; error?: { message?: string; error?: string }; message?: string };
-      const status = apiErr.status;
-      const detail =
-        apiErr.error?.message ??
-        apiErr.error?.error ??
-        apiErr.message ??
-        String(err);
-      const endpoint = config.endpoint ?? '(no endpoint)';
-      throw new Error(
-        `${config.provider} API error${status ? ` (HTTP ${status})` : ''}: ${detail} [model=${config.model}, endpoint=${endpoint}]`
-      );
-    }
+    return {
+      text,
+      usage: {
+        prompt_tokens: usage?.prompt_tokens,
+        completion_tokens: usage?.completion_tokens,
+      },
+    };
   }
 }

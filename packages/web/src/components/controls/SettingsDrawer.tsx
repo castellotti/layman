@@ -6,31 +6,43 @@ import { PROVIDER_LABELS } from '../../lib/types.js';
 
 const PROVIDER_OPTIONS: AnalysisProvider[] = ['anthropic', 'openai', 'openai-compatible', 'litellm'];
 
-const ANTHROPIC_SHORTCUTS = ['haiku', 'sonnet', 'opus'] as const;
-
-/** Providers that need a user-supplied endpoint URL */
-function needsEndpoint(provider: AnalysisProvider): boolean {
-  return provider === 'openai-compatible' || provider === 'litellm';
-}
-
-/** Provider-specific placeholder for the endpoint field */
-function endpointPlaceholder(provider: AnalysisProvider): string {
-  switch (provider) {
-    case 'litellm': return 'http://localhost:4000/v1';
-    case 'openai-compatible': return 'http://localhost:8080/v1';
-    default: return '';
-  }
-}
-
-/** Provider-specific placeholder for the API key field */
-function apiKeyPlaceholder(provider: AnalysisProvider): string {
-  switch (provider) {
-    case 'anthropic': return 'Uses ANTHROPIC_API_KEY env var if not set';
-    case 'openai': return 'Uses OPENAI_API_KEY env var if not set';
-    case 'openai-compatible': return 'Leave blank if not required';
-    case 'litellm': return 'API key from your LiteLLM proxy';
-  }
-}
+/** Per-provider configuration for what fields to show and their defaults. */
+const PROVIDER_CONFIG: Record<AnalysisProvider, {
+  needsEndpoint: boolean;
+  endpointPlaceholder: string;
+  apiKeyPlaceholder: string;
+  apiKeyOptional: boolean;
+  autoFetchModels: boolean;
+}> = {
+  anthropic: {
+    needsEndpoint: false,
+    endpointPlaceholder: '',
+    apiKeyPlaceholder: 'Uses ANTHROPIC_API_KEY env var if not set',
+    apiKeyOptional: false,
+    autoFetchModels: true,
+  },
+  openai: {
+    needsEndpoint: false,
+    endpointPlaceholder: '',
+    apiKeyPlaceholder: 'Uses OPENAI_API_KEY env var if not set',
+    apiKeyOptional: false,
+    autoFetchModels: true,
+  },
+  'openai-compatible': {
+    needsEndpoint: true,
+    endpointPlaceholder: 'http://localhost:8080/v1',
+    apiKeyPlaceholder: 'Leave blank if not required',
+    apiKeyOptional: true,
+    autoFetchModels: false,
+  },
+  litellm: {
+    needsEndpoint: true,
+    endpointPlaceholder: 'http://localhost:4000/v1',
+    apiKeyPlaceholder: 'API key from your LiteLLM proxy',
+    apiKeyOptional: false,
+    autoFetchModels: false,
+  },
+};
 
 interface SettingsDrawerProps {
   onSend: (msg: ClientMessage) => void;
@@ -44,22 +56,19 @@ export function SettingsDrawer({ onSend }: SettingsDrawerProps) {
   const [fetchError, setFetchError] = useState<string | null>(null);
 
   const provider = config?.analysis.provider ?? 'anthropic';
+  const providerCfg = PROVIDER_CONFIG[provider];
 
-  // Build the fetch URL with provider + optional endpoint
   const fetchModels = useCallback(async () => {
     if (!config) return;
     const p = config.analysis.provider;
-
-    // For endpoint-based providers, need an endpoint to fetch from
-    if (needsEndpoint(p) && !config.analysis.endpoint) return;
+    const cfg = PROVIDER_CONFIG[p];
+    if (cfg.needsEndpoint && !config.analysis.endpoint) return;
 
     setFetchingModels(true);
     setFetchError(null);
     try {
       const params = new URLSearchParams({ provider: p });
-      if (config.analysis.endpoint) {
-        params.set('endpoint', config.analysis.endpoint);
-      }
+      if (config.analysis.endpoint) params.set('endpoint', config.analysis.endpoint);
       const res = await fetch(`/api/models?${params}`);
       const data = await res.json() as { models?: string[]; error?: string };
       if (!res.ok || data.error) {
@@ -68,7 +77,6 @@ export function SettingsDrawer({ onSend }: SettingsDrawerProps) {
       } else {
         const models = data.models ?? [];
         setAvailableModels(models);
-        // If the current model isn't in the list, auto-select the first one
         if (models.length && config && !models.includes(config.analysis.model)) {
           onSend({ type: 'config:update', config: { analysis: { ...config.analysis, model: models[0] } } });
         }
@@ -81,14 +89,10 @@ export function SettingsDrawer({ onSend }: SettingsDrawerProps) {
     }
   }, [config?.analysis.provider, config?.analysis.endpoint, config?.analysis.model, onSend]);
 
-  // Auto-fetch models when provider or endpoint changes (with debounce)
+  // Auto-fetch models for providers with known endpoints
   useEffect(() => {
     if (!config) return;
-    const p = config.analysis.provider;
-    // Don't auto-fetch for providers that need a user-entered endpoint
-    if (needsEndpoint(p) && !config.analysis.endpoint) return;
-    // Auto-fetch for anthropic (instant, hardcoded) and openai (has known endpoint)
-    if (p === 'anthropic' || p === 'openai') {
+    if (PROVIDER_CONFIG[config.analysis.provider].autoFetchModels) {
       void fetchModels();
     }
   }, [config?.analysis.provider]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -107,9 +111,7 @@ export function SettingsDrawer({ onSend }: SettingsDrawerProps) {
     updateConfig({ autoAllow: { ...config.autoAllow, ...updates } });
   };
 
-  const showEndpoint = needsEndpoint(provider);
-  const showApiKey = true; // all providers support API key
-  const canFetch = provider === 'anthropic' || provider === 'openai' || !!config.analysis.endpoint;
+  const canFetch = !providerCfg.needsEndpoint || !!config.analysis.endpoint;
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end">
@@ -135,14 +137,13 @@ export function SettingsDrawer({ onSend }: SettingsDrawerProps) {
               Analysis Model
             </h3>
             <div className="space-y-3">
-              {/* Provider dropdown */}
+              {/* Provider */}
               <div>
                 <label className="text-xs text-[#8b949e] block mb-1">Provider</label>
                 <select
                   value={provider}
                   onChange={(e) => {
-                    const newProvider = e.target.value as AnalysisProvider;
-                    updateAnalysis({ provider: newProvider });
+                    updateAnalysis({ provider: e.target.value as AnalysisProvider });
                     setAvailableModels([]);
                     setFetchError(null);
                   }}
@@ -154,8 +155,8 @@ export function SettingsDrawer({ onSend }: SettingsDrawerProps) {
                 </select>
               </div>
 
-              {/* Endpoint URL (for providers that need it) */}
-              {showEndpoint && (
+              {/* Endpoint URL */}
+              {providerCfg.needsEndpoint && (
                 <div>
                   <label className="text-xs text-[#8b949e] block mb-1">Endpoint URL</label>
                   <input
@@ -166,17 +167,17 @@ export function SettingsDrawer({ onSend }: SettingsDrawerProps) {
                       setAvailableModels([]);
                       setFetchError(null);
                     }}
-                    placeholder={endpointPlaceholder(provider)}
+                    placeholder={providerCfg.endpointPlaceholder}
                     className="w-full px-3 py-1.5 text-xs bg-[#0d1117] border border-[#30363d] rounded-md text-[#e6edf3] placeholder-[#484f58] focus:outline-none focus:border-[#58a6ff]"
                   />
                 </div>
               )}
 
-              {/* API Key — before model selection since key may be required to fetch models */}
+              {/* API Key */}
               <div>
                 <label className="text-xs text-[#8b949e] block mb-1">
                   API Key
-                  {(provider === 'openai-compatible') && (
+                  {providerCfg.apiKeyOptional && (
                     <span className="text-[#484f58]"> (optional for local models)</span>
                   )}
                 </label>
@@ -184,12 +185,12 @@ export function SettingsDrawer({ onSend }: SettingsDrawerProps) {
                   type="password"
                   value={config.analysis.apiKey ?? ''}
                   onChange={(e) => updateAnalysis({ apiKey: e.target.value || undefined })}
-                  placeholder={apiKeyPlaceholder(provider)}
+                  placeholder={providerCfg.apiKeyPlaceholder}
                   className="w-full px-3 py-1.5 text-xs bg-[#0d1117] border border-[#30363d] rounded-md text-[#e6edf3] placeholder-[#484f58] focus:outline-none focus:border-[#58a6ff]"
                 />
               </div>
 
-              {/* Model selection */}
+              {/* Model */}
               <div>
                 <div className="flex items-center justify-between mb-1">
                   <label className="text-xs text-[#8b949e]">Model</label>
@@ -202,33 +203,12 @@ export function SettingsDrawer({ onSend }: SettingsDrawerProps) {
                   </button>
                 </div>
 
-                {/* Anthropic quick-select buttons */}
-                {provider === 'anthropic' && (
-                  <div className="flex gap-2 mb-2">
-                    {ANTHROPIC_SHORTCUTS.map((m) => (
-                      <button
-                        key={m}
-                        onClick={() => updateAnalysis({ model: m })}
-                        className={`flex-1 px-2 py-1.5 text-xs rounded-md border capitalize transition-colors ${
-                          config.analysis.model === m
-                            ? 'bg-[#1f6feb] border-[#388bfd] text-white'
-                            : 'bg-[#21262d] border-[#30363d] text-[#8b949e] hover:text-[#e6edf3]'
-                        }`}
-                      >
-                        {m}
-                      </button>
-                    ))}
-                  </div>
-                )}
-
-                {/* Model dropdown (if models have been fetched) or text input */}
                 {availableModels.length > 0 ? (
                   <select
                     value={config.analysis.model}
                     onChange={(e) => updateAnalysis({ model: e.target.value })}
                     className="w-full px-3 py-1.5 text-xs bg-[#0d1117] border border-[#30363d] rounded-md text-[#e6edf3] focus:outline-none focus:border-[#58a6ff]"
                   >
-                    {/* Include current model even if not in list */}
                     {!availableModels.includes(config.analysis.model) && config.analysis.model && (
                       <option value={config.analysis.model}>{config.analysis.model}</option>
                     )}

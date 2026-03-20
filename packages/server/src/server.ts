@@ -499,20 +499,19 @@ export function createServer(config: LaymanConfig): LaymanServer {
         const event = eventStore.get(message.eventId);
         if (!event) break;
 
-        // Fire both laymans and analysis in parallel
+        const req = {
+          toolName: event.data.toolName ?? 'Unknown',
+          toolInput: event.data.toolInput ?? {},
+          toolOutput: event.data.toolOutput,
+          cwd: process.cwd(),
+          depth: message.depth,
+        };
+
+        // Run both in parallel — the engine's concurrency limit + pacer handle rate limiting
         void (async () => {
           try {
             broadcast({ type: 'laymans:start', eventId: message.eventId });
-            const result = await analysisEngine.laymans(
-              {
-                toolName: event.data.toolName ?? 'Unknown',
-                toolInput: event.data.toolInput ?? {},
-                toolOutput: event.data.toolOutput,
-                cwd: process.cwd(),
-                depth: message.depth,
-              },
-              activeConfig.laymansPrompt,
-            );
+            const result = await analysisEngine.laymans(req, activeConfig.laymansPrompt);
             eventStore.attachLaymans(message.eventId, result);
             broadcast({ type: 'laymans:result', eventId: message.eventId, result });
           } catch (err) {
@@ -520,16 +519,11 @@ export function createServer(config: LaymanConfig): LaymanServer {
             broadcast({ type: 'laymans:error', eventId: message.eventId, error: errorMsg });
           }
         })();
+
         void (async () => {
           try {
             broadcast({ type: 'analysis:start', eventId: message.eventId });
-            const result = await analysisEngine.analyze({
-              toolName: event.data.toolName ?? 'Unknown',
-              toolInput: event.data.toolInput ?? {},
-              toolOutput: event.data.toolOutput,
-              cwd: process.cwd(),
-              depth: message.depth,
-            });
+            const result = await analysisEngine.analyze(req);
             eventStore.attachAnalysis(message.eventId, result);
             broadcast({ type: 'analysis:result', eventId: message.eventId, result });
           } catch (err) {
