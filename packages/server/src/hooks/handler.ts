@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { PendingApprovalManager } from './pending.js';
+import { SessionGate } from './gate.js';
 import { EventStore } from '../events/store.js';
 import { classifyRisk } from '../events/classifier.js';
 import { AnalysisEngine } from '../analysis/engine.js';
@@ -24,12 +25,16 @@ import type { LaymanConfig } from '../config/schema.js';
 
 const AUTO_ALLOW_TOOLS = new Set(['Read', 'Glob', 'Grep', 'WebSearch']);
 
+/** Detect activation curl in a Bash command */
+const ACTIVATION_PATTERN = /curl\b.*\/api\/activate/;
+
 export function registerHookHandler(
   fastify: FastifyInstance,
   pendingManager: PendingApprovalManager,
   eventStore: EventStore,
   analysisEngine: AnalysisEngine,
-  getConfig: () => LaymanConfig
+  getConfig: () => LaymanConfig,
+  gate: SessionGate
 ): void {
   fastify.post<{ Params: { eventName: string }; Body: Record<string, unknown> }>(
     '/hooks/:eventName',
@@ -46,6 +51,31 @@ export function registerHookHandler(
         const rawAgentType = (body as { agent_type?: string }).agent_type;
         const agentType =
           rawAgentType === 'opencode' ? 'opencode' : 'claude-code';
+
+        // Gate check: detect activation curl before gating so we can activate
+        if (sessionId && eventName === 'PreToolUse') {
+          const toolName = (body as { tool_name?: string }).tool_name;
+          const toolInput = (body as { tool_input?: Record<string, unknown> }).tool_input;
+          if (toolName === 'Bash' && toolInput) {
+            const command = (toolInput as { command?: string }).command ?? '';
+            if (ACTIVATION_PATTERN.test(command)) {
+              gate.activate(sessionId);
+              if (cwd) eventStore.trackSession(sessionId, cwd, agentType);
+              return reply.send({});
+            }
+          }
+        }
+
+        // Gate check: non-activated sessions get instant pass-through
+        if (sessionId && !gate.isActive(sessionId)) {
+          // Blocking hooks must return {} to not stall Claude Code
+          if (eventName === 'PreToolUse' || eventName === 'PermissionRequest') {
+            return reply.send({});
+          }
+          // Async hooks are dropped silently
+          return reply.status(200).send({});
+        }
+
         if (sessionId && cwd) {
           eventStore.trackSession(sessionId, cwd, agentType);
         }
@@ -78,7 +108,7 @@ export function registerHookHandler(
             return reply.status(200).send({});
           }
           case 'SessionEnd': {
-            await handleSessionEnd(body as unknown as SessionEndInput, eventStore, agentType);
+            await handleSessionEnd(body as unknown as SessionEndInput, eventStore, gate, agentType);
             return reply.status(200).send({});
           }
           case 'Stop': {
@@ -347,9 +377,11 @@ async function handleSessionStart(
 async function handleSessionEnd(
   input: SessionEndInput,
   eventStore: EventStore,
+  gate: SessionGate,
   agentType: string = 'claude-code'
 ): Promise<void> {
   eventStore.add('session_end', input.session_id, {}, undefined, agentType);
+  gate.deactivate(input.session_id);
 }
 
 async function handleStop(

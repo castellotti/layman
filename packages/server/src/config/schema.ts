@@ -28,9 +28,7 @@ export const LaymanConfigSchema = z.object({
   open: z.boolean().default(true),
   autoApprove: z.boolean().default(true), // Auto-approve all PreToolUse; only block on PermissionRequest
   laymansPrompt: z.string().default(DEFAULT_LAYMANS_PROMPT),
-  settingsPath: z.string().optional(),
   hookUrl: z.string().optional(),
-  global: z.boolean().default(false),
 });
 
 export type LaymanConfig = z.infer<typeof LaymanConfigSchema>;

@@ -16,6 +16,7 @@ export type EventType =
   | 'notification'
   | 'subagent_start'
   | 'subagent_stop'
+  | 'agent_response'
   | 'analysis_result';
 
 export interface EventData {

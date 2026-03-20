@@ -39,6 +39,13 @@ export interface SessionStatus {
   uptime: number;
 }
 
+export interface SetupStatus {
+  hooksInstalled: boolean;
+  hooksUpToDate: boolean;
+  commandInstalled: boolean;
+  commandUpToDate: boolean;
+}
+
 export type ServerMessage =
   | { type: 'event:new'; event: TimelineEvent }
   | { type: 'event:update'; eventId: string; updates: Partial<TimelineEvent> }
@@ -53,6 +60,8 @@ export type ServerMessage =
   | { type: 'session:status'; status: SessionStatus }
   | { type: 'session:config'; config: LaymanConfig }
   | { type: 'sessions:list'; sessions: SessionInfo[] }
+  | { type: 'session:activated'; sessionId: string }
+  | { type: 'session:deactivated'; sessionId: string }
   | { type: 'connected'; serverVersion: string; eventCount: number };
 
 export type ClientMessage =
@@ -61,4 +70,5 @@ export type ClientMessage =
   | { type: 'laymans:request'; eventId: string; depth: 'quick' | 'detailed' }
   | { type: 'both:request'; eventId: string; depth: 'quick' | 'detailed' }
   | { type: 'analysis:ask'; eventId: string; question: string }
-  | { type: 'config:update'; config: Partial<LaymanConfig> };
+  | { type: 'config:update'; config: Partial<LaymanConfig> }
+  | { type: 'setup:install' };

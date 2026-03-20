@@ -15,6 +15,7 @@ export type EventType =
   | 'notification'
   | 'subagent_start'
   | 'subagent_stop'
+  | 'agent_response'
   | 'analysis_result';
 
 export interface AnalysisResult {
@@ -120,6 +121,11 @@ export interface LaymanConfig {
   open: boolean;
   autoApprove: boolean;
   laymansPrompt: string;
-  settingsPath?: string;
-  global: boolean;
+}
+
+export interface SetupStatus {
+  hooksInstalled: boolean;
+  hooksUpToDate: boolean;
+  commandInstalled: boolean;
+  commandUpToDate: boolean;
 }
