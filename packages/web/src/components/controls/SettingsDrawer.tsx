@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import { useSessionStore } from '../../stores/sessionStore.js';
 import type { ClientMessage } from '../../lib/ws-protocol.js';
-import type { LaymanConfig, AnalysisProvider } from '../../lib/types.js';
+import type { LaymanConfig, AnalysisProvider, SetupStatus, OptionalClientStatus } from '../../lib/types.js';
 import { PROVIDER_LABELS } from '../../lib/types.js';
 
 const PROVIDER_OPTIONS: AnalysisProvider[] = ['anthropic', 'openai', 'openai-compatible', 'litellm'];
@@ -43,6 +43,79 @@ const PROVIDER_CONFIG: Record<AnalysisProvider, {
     autoFetchModels: false,
   },
 };
+
+function StatusPip({ ok, label }: { ok: boolean; label: string }) {
+  return (
+    <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${ok ? 'bg-[#1a3a22] text-[#3fb950]' : 'bg-[#3a1a1a] text-[#f85149]'}`}>
+      {label}
+    </span>
+  );
+}
+
+function ClientSetupSection() {
+  const { setupStatus, setSetupStatus } = useSessionStore((s) => ({
+    setupStatus: s.setupStatus,
+    setSetupStatus: s.setSetupStatus,
+  }));
+  const [installState, setInstallState] = useState<'idle' | 'installing' | 'done' | 'error'>('idle');
+
+  const handleInstall = useCallback(async () => {
+    setInstallState('installing');
+    try {
+      const res = await fetch('/api/setup/install', { method: 'POST' });
+      if (res.ok) {
+        const status = await res.json() as SetupStatus;
+        setSetupStatus(status);
+        setInstallState('done');
+      } else {
+        setInstallState('error');
+      }
+    } catch {
+      setInstallState('error');
+    }
+  }, [setSetupStatus]);
+
+  const claudeOk = !!(setupStatus?.hooksInstalled && setupStatus.commandInstalled);
+  const optionalClients: OptionalClientStatus[] = setupStatus?.optionalClients ?? [];
+
+  return (
+    <div className="space-y-3">
+      {/* Claude Code row — always shown, it's the primary client */}
+      <div className="flex items-center justify-between">
+        <span className="text-xs text-[#e6edf3]">Claude Code</span>
+        <div className="flex items-center gap-1.5">
+          <StatusPip ok={!!(setupStatus?.hooksInstalled)} label="hooks" />
+          <StatusPip ok={!!(setupStatus?.commandInstalled)} label="/layman" />
+        </div>
+      </div>
+
+      {/* Optional clients — shown with detected/not-detected state */}
+      {optionalClients.map((client) => (
+        <div key={client.name} className="flex items-center justify-between">
+          <span className={`text-xs ${client.detected ? 'text-[#e6edf3]' : 'text-[#484f58]'}`}>
+            {client.name}
+            {!client.detected && <span className="ml-1 text-[10px]">(not detected)</span>}
+          </span>
+          {client.detected && (
+            <StatusPip ok={client.commandInstalled && client.commandUpToDate} label="/layman" />
+          )}
+        </div>
+      ))}
+
+      <div className="flex items-center gap-3 pt-1">
+        <button
+          onClick={() => void handleInstall()}
+          disabled={installState === 'installing'}
+          className="px-3 py-1.5 text-xs font-medium rounded bg-[#21262d] border border-[#30363d] text-[#e6edf3] hover:bg-[#30363d] disabled:opacity-50 transition-colors"
+        >
+          {installState === 'installing' ? 'Installing...' : claudeOk ? 'Reinstall' : 'Install'}
+        </button>
+        {installState === 'done' && <span className="text-[10px] text-[#3fb950]">Done</span>}
+        {installState === 'error' && <span className="text-[10px] text-[#f85149]">Failed</span>}
+      </div>
+    </div>
+  );
+}
 
 interface SettingsDrawerProps {
   onSend: (msg: ClientMessage) => void;
@@ -359,6 +432,21 @@ export function SettingsDrawer({ onSend }: SettingsDrawerProps) {
                 />
               </div>
             </div>
+          </section>
+
+          <div className="border-t border-[#30363d]" />
+
+          {/* Client Setup */}
+          <section>
+            <h3 className="text-xs font-semibold text-[#8b949e] uppercase tracking-wider mb-1">
+              Client Setup
+            </h3>
+            <p className="text-[10px] text-[#484f58] mb-3">
+              Installs hooks and the <code className="text-[#8b949e]">/layman</code> slash command
+              for each AI client detected on this machine. After installing a new client, click
+              Reinstall so Layman picks it up.
+            </p>
+            <ClientSetupSection />
           </section>
 
           <div className="border-t border-[#30363d]" />

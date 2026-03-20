@@ -132,9 +132,17 @@ export interface LaymanConfig {
   laymansPrompt: string;
 }
 
+export interface OptionalClientStatus {
+  name: string;
+  detected: boolean;
+  commandInstalled: boolean;
+  commandUpToDate: boolean;
+}
+
 export interface SetupStatus {
   hooksInstalled: boolean;
   hooksUpToDate: boolean;
   commandInstalled: boolean;
   commandUpToDate: boolean;
+  optionalClients: OptionalClientStatus[];
 }

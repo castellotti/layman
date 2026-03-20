@@ -32,15 +32,40 @@ export interface HookInstallerOptions {
   hookTimeout: number;
 }
 
+export interface OptionalClientStatus {
+  name: string;
+  detected: boolean;
+  commandInstalled: boolean;
+  commandUpToDate: boolean;
+}
+
 export interface SetupStatus {
   hooksInstalled: boolean;
   hooksUpToDate: boolean;
   commandInstalled: boolean;
   commandUpToDate: boolean;
+  optionalClients: OptionalClientStatus[];
 }
 
 const GLOBAL_SETTINGS_PATH = join(homedir(), '.claude', 'settings.json');
 const COMMANDS_DIR = join(homedir(), '.claude', 'commands');
+
+/**
+ * Optional AI clients that support slash commands via a commands directory.
+ * Each entry defines how to detect whether the client is installed and where
+ * to write the command file. Add new clients here — no other code changes needed.
+ *
+ * Detection: we check for the client's config directory rather than a binary,
+ * since the binary may not be on PATH (e.g. installed as an app bundle). A config
+ * dir existing is a reliable signal the user has set up the client at least once.
+ */
+const OPTIONAL_CLIENTS: Array<{ name: string; configDir: string; commandsDir: string }> = [
+  {
+    name: 'OpenCode',
+    configDir: join(homedir(), '.config', 'opencode'),
+    commandsDir: join(homedir(), '.config', 'opencode', 'commands'),
+  },
+];
 
 function readSettings(filePath: string): Settings {
   if (!existsSync(filePath)) return {};
@@ -261,6 +286,37 @@ export class HookInstaller {
     }
   }
 
+  /** Install the slash command for every optional client whose config dir already exists. */
+  installOptionalClientCommands(): void {
+    const content = getCommandContent();
+    const hash = commandHash(content);
+    const tagged = `${content.trimEnd()}\n<!-- layman:${hash} -->\n`;
+
+    for (const client of OPTIONAL_CLIENTS) {
+      if (!existsSync(client.configDir)) continue; // client not installed — skip
+      if (!existsSync(client.commandsDir)) {
+        mkdirSync(client.commandsDir, { recursive: true });
+      }
+      writeFileSync(join(client.commandsDir, 'layman.md'), tagged, 'utf-8');
+      console.log(`Layman command installed for ${client.name} at ${join(client.commandsDir, 'layman.md')}`);
+    }
+  }
+
+  /** Remove the slash command for all optional clients where it is present. */
+  uninstallOptionalClientCommands(): void {
+    for (const client of OPTIONAL_CLIENTS) {
+      const cmdPath = join(client.commandsDir, 'layman.md');
+      if (existsSync(cmdPath)) {
+        try {
+          unlinkSync(cmdPath);
+          console.log(`Layman command removed from ${cmdPath}`);
+        } catch {
+          // Ignore
+        }
+      }
+    }
+  }
+
   isInstalled(): boolean {
     if (!existsSync(GLOBAL_SETTINGS_PATH)) return false;
     const settings = readSettings(GLOBAL_SETTINGS_PATH);
@@ -298,7 +354,20 @@ export class HookInstaller {
       commandUpToDate = installed.includes(`layman:${expectedHash}`);
     }
 
-    return { hooksInstalled, hooksUpToDate, commandInstalled, commandUpToDate };
+    // Optional client status
+    const expectedContent = getCommandContent();
+    const expectedHash = commandHash(expectedContent);
+    const optionalClients: OptionalClientStatus[] = OPTIONAL_CLIENTS.map((client) => {
+      const detected = existsSync(client.configDir);
+      const clientCmdPath = join(client.commandsDir, 'layman.md');
+      const commandInstalled = existsSync(clientCmdPath);
+      const commandUpToDate = commandInstalled
+        ? readFileSync(clientCmdPath, 'utf-8').includes(`layman:${expectedHash}`)
+        : false;
+      return { name: client.name, detected, commandInstalled, commandUpToDate };
+    });
+
+    return { hooksInstalled, hooksUpToDate, commandInstalled, commandUpToDate, optionalClients };
   }
 
   getSettingsPath(): string {

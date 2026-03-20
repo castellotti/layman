@@ -340,6 +340,7 @@ export function createServer(config: LaymanConfig): LaymanServer {
       });
       installer.install();
       installer.installCommand();
+      installer.installOptionalClientCommands();
       return installer.getStatus();
     });
 
@@ -587,6 +588,7 @@ export function createServer(config: LaymanConfig): LaymanServer {
         });
         installer.install();
         installer.installCommand();
+        installer.installOptionalClientCommands();
         break;
       }
     }
