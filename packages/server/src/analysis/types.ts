@@ -30,7 +30,7 @@ export interface AnalysisRequest {
 }
 
 export interface AnalysisConfig {
-  provider: 'anthropic' | 'openai-compatible';
+  provider: 'anthropic' | 'openai' | 'openai-compatible' | 'litellm';
   model: string;
   endpoint?: string;
   apiKey?: string;

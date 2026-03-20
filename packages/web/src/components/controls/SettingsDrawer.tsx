@@ -1,7 +1,48 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { useSessionStore } from '../../stores/sessionStore.js';
 import type { ClientMessage } from '../../lib/ws-protocol.js';
-import type { LaymanConfig } from '../../lib/types.js';
+import type { LaymanConfig, AnalysisProvider } from '../../lib/types.js';
+import { PROVIDER_LABELS } from '../../lib/types.js';
+
+const PROVIDER_OPTIONS: AnalysisProvider[] = ['anthropic', 'openai', 'openai-compatible', 'litellm'];
+
+/** Per-provider configuration for what fields to show and their defaults. */
+const PROVIDER_CONFIG: Record<AnalysisProvider, {
+  needsEndpoint: boolean;
+  endpointPlaceholder: string;
+  apiKeyPlaceholder: string;
+  apiKeyOptional: boolean;
+  autoFetchModels: boolean;
+}> = {
+  anthropic: {
+    needsEndpoint: false,
+    endpointPlaceholder: '',
+    apiKeyPlaceholder: 'Uses ANTHROPIC_API_KEY env var if not set',
+    apiKeyOptional: false,
+    autoFetchModels: true,
+  },
+  openai: {
+    needsEndpoint: false,
+    endpointPlaceholder: '',
+    apiKeyPlaceholder: 'Uses OPENAI_API_KEY env var if not set',
+    apiKeyOptional: false,
+    autoFetchModels: true,
+  },
+  'openai-compatible': {
+    needsEndpoint: true,
+    endpointPlaceholder: 'http://localhost:8080/v1',
+    apiKeyPlaceholder: 'Leave blank if not required',
+    apiKeyOptional: true,
+    autoFetchModels: false,
+  },
+  litellm: {
+    needsEndpoint: true,
+    endpointPlaceholder: 'http://localhost:4000/v1',
+    apiKeyPlaceholder: 'API key from your LiteLLM proxy',
+    apiKeyOptional: false,
+    autoFetchModels: false,
+  },
+};
 
 interface SettingsDrawerProps {
   onSend: (msg: ClientMessage) => void;
@@ -10,26 +51,34 @@ interface SettingsDrawerProps {
 export function SettingsDrawer({ onSend }: SettingsDrawerProps) {
   const { settingsOpen, setSettingsOpen, config } = useSessionStore();
 
-  // ALL hooks must be declared before any conditional return (Rules of Hooks)
   const [availableModels, setAvailableModels] = useState<string[]>([]);
   const [fetchingModels, setFetchingModels] = useState(false);
   const [fetchError, setFetchError] = useState<string | null>(null);
 
+  const provider = config?.analysis.provider ?? 'anthropic';
+  const providerCfg = PROVIDER_CONFIG[provider];
+
   const fetchModels = useCallback(async () => {
-    const endpoint = config?.analysis.endpoint;
-    if (!endpoint) return;
+    if (!config) return;
+    const p = config.analysis.provider;
+    const cfg = PROVIDER_CONFIG[p];
+    if (cfg.needsEndpoint && !config.analysis.endpoint) return;
+
     setFetchingModels(true);
     setFetchError(null);
     try {
-      const res = await fetch(`/api/models?endpoint=${encodeURIComponent(endpoint)}`);
+      const params = new URLSearchParams({ provider: p });
+      if (config.analysis.endpoint) params.set('endpoint', config.analysis.endpoint);
+      const res = await fetch(`/api/models?${params}`);
       const data = await res.json() as { models?: string[]; error?: string };
       if (!res.ok || data.error) {
         setFetchError(data.error ?? `HTTP ${res.status}`);
         setAvailableModels([]);
       } else {
-        setAvailableModels(data.models ?? []);
-        if (data.models?.length && config && !data.models.includes(config.analysis.model)) {
-          onSend({ type: 'config:update', config: { analysis: { ...config.analysis, model: data.models[0] } } });
+        const models = data.models ?? [];
+        setAvailableModels(models);
+        if (models.length && config && !models.includes(config.analysis.model)) {
+          onSend({ type: 'config:update', config: { analysis: { ...config.analysis, model: models[0] } } });
         }
       }
     } catch (err) {
@@ -38,7 +87,15 @@ export function SettingsDrawer({ onSend }: SettingsDrawerProps) {
     } finally {
       setFetchingModels(false);
     }
-  }, [config?.analysis.endpoint, config?.analysis.model]);
+  }, [config?.analysis.provider, config?.analysis.endpoint, config?.analysis.model, onSend]);
+
+  // Auto-fetch models for providers with known endpoints
+  useEffect(() => {
+    if (!config) return;
+    if (PROVIDER_CONFIG[config.analysis.provider].autoFetchModels) {
+      void fetchModels();
+    }
+  }, [config?.analysis.provider]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!settingsOpen || !config) return null;
 
@@ -54,7 +111,7 @@ export function SettingsDrawer({ onSend }: SettingsDrawerProps) {
     updateConfig({ autoAllow: { ...config.autoAllow, ...updates } });
   };
 
-  const isOpenAI = config.analysis.provider === 'openai-compatible';
+  const canFetch = !providerCfg.needsEndpoint || !!config.analysis.endpoint;
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end">
@@ -80,121 +137,98 @@ export function SettingsDrawer({ onSend }: SettingsDrawerProps) {
               Analysis Model
             </h3>
             <div className="space-y-3">
-              {/* Provider toggle */}
+              {/* Provider */}
               <div>
                 <label className="text-xs text-[#8b949e] block mb-1">Provider</label>
-                <div className="flex gap-2">
-                  {(['anthropic', 'openai-compatible'] as const).map((p) => (
-                    <button
-                      key={p}
-                      onClick={() => {
-                        updateAnalysis({ provider: p });
-                        setAvailableModels([]);
-                        setFetchError(null);
-                      }}
-                      className={`flex-1 px-2 py-1.5 text-xs rounded-md border transition-colors ${
-                        config.analysis.provider === p
-                          ? 'bg-[#1f6feb] border-[#388bfd] text-white'
-                          : 'bg-[#21262d] border-[#30363d] text-[#8b949e] hover:text-[#e6edf3]'
-                      }`}
-                    >
-                      {p === 'anthropic' ? 'Anthropic' : 'OpenAI-compatible'}
-                    </button>
+                <select
+                  value={provider}
+                  onChange={(e) => {
+                    updateAnalysis({ provider: e.target.value as AnalysisProvider });
+                    setAvailableModels([]);
+                    setFetchError(null);
+                  }}
+                  className="w-full px-3 py-1.5 text-xs bg-[#0d1117] border border-[#30363d] rounded-md text-[#e6edf3] focus:outline-none focus:border-[#58a6ff]"
+                >
+                  {PROVIDER_OPTIONS.map((p) => (
+                    <option key={p} value={p}>{PROVIDER_LABELS[p]}</option>
                   ))}
-                </div>
+                </select>
               </div>
 
-              {/* OpenAI-compatible: endpoint first, then model discovery */}
-              {isOpenAI && (
-                <>
-                  <div>
-                    <label className="text-xs text-[#8b949e] block mb-1">Endpoint URL</label>
-                    <input
-                      type="text"
-                      value={config.analysis.endpoint ?? ''}
-                      onChange={(e) => {
-                        updateAnalysis({ endpoint: e.target.value });
-                        setAvailableModels([]);
-                        setFetchError(null);
-                      }}
-                      placeholder="http://localhost:8080/v1"
-                      className="w-full px-3 py-1.5 text-xs bg-[#0d1117] border border-[#30363d] rounded-md text-[#e6edf3] placeholder-[#484f58] focus:outline-none focus:border-[#58a6ff]"
-                    />
-                  </div>
-
-                  <div>
-                    <div className="flex items-center justify-between mb-1">
-                      <label className="text-xs text-[#8b949e]">Model</label>
-                      <button
-                        onClick={fetchModels}
-                        disabled={!config.analysis.endpoint || fetchingModels}
-                        className="text-[10px] text-[#58a6ff] hover:text-[#79c0ff] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                      >
-                        {fetchingModels ? 'Fetching...' : '↻ Fetch models'}
-                      </button>
-                    </div>
-
-                    {availableModels.length > 0 ? (
-                      <select
-                        value={config.analysis.model}
-                        onChange={(e) => updateAnalysis({ model: e.target.value })}
-                        className="w-full px-3 py-1.5 text-xs bg-[#0d1117] border border-[#30363d] rounded-md text-[#e6edf3] focus:outline-none focus:border-[#58a6ff]"
-                      >
-                        {availableModels.map((m) => (
-                          <option key={m} value={m}>{m}</option>
-                        ))}
-                      </select>
-                    ) : (
-                      <input
-                        type="text"
-                        value={config.analysis.model}
-                        onChange={(e) => updateAnalysis({ model: e.target.value })}
-                        placeholder="Enter model name or click ↻ Fetch models"
-                        className="w-full px-3 py-1.5 text-xs bg-[#0d1117] border border-[#30363d] rounded-md text-[#e6edf3] placeholder-[#484f58] focus:outline-none focus:border-[#58a6ff]"
-                      />
-                    )}
-
-                    {fetchError && (
-                      <p className="text-[10px] text-[#f85149] mt-1">{fetchError}</p>
-                    )}
-                  </div>
-                </>
-              )}
-
-              {/* Anthropic: model buttons */}
-              {!isOpenAI && (
+              {/* Endpoint URL */}
+              {providerCfg.needsEndpoint && (
                 <div>
-                  <label className="text-xs text-[#8b949e] block mb-1">Model</label>
-                  <div className="flex gap-2">
-                    {(['haiku', 'sonnet', 'opus'] as const).map((m) => (
-                      <button
-                        key={m}
-                        onClick={() => updateAnalysis({ model: m })}
-                        className={`flex-1 px-2 py-1.5 text-xs rounded-md border capitalize transition-colors ${
-                          config.analysis.model === m
-                            ? 'bg-[#1f6feb] border-[#388bfd] text-white'
-                            : 'bg-[#21262d] border-[#30363d] text-[#8b949e] hover:text-[#e6edf3]'
-                        }`}
-                      >
-                        {m}
-                      </button>
-                    ))}
-                  </div>
+                  <label className="text-xs text-[#8b949e] block mb-1">Endpoint URL</label>
+                  <input
+                    type="text"
+                    value={config.analysis.endpoint ?? ''}
+                    onChange={(e) => {
+                      updateAnalysis({ endpoint: e.target.value });
+                      setAvailableModels([]);
+                      setFetchError(null);
+                    }}
+                    placeholder={providerCfg.endpointPlaceholder}
+                    className="w-full px-3 py-1.5 text-xs bg-[#0d1117] border border-[#30363d] rounded-md text-[#e6edf3] placeholder-[#484f58] focus:outline-none focus:border-[#58a6ff]"
+                  />
                 </div>
               )}
 
               {/* API Key */}
               <div>
                 <label className="text-xs text-[#8b949e] block mb-1">
-                  API Key{isOpenAI && <span className="text-[#484f58]"> (optional for local models)</span>}
+                  API Key
+                  {providerCfg.apiKeyOptional && (
+                    <span className="text-[#484f58]"> (optional for local models)</span>
+                  )}
                 </label>
                 <input
                   type="password"
                   value={config.analysis.apiKey ?? ''}
                   onChange={(e) => updateAnalysis({ apiKey: e.target.value || undefined })}
-                  placeholder={isOpenAI ? 'Leave blank if not required' : 'Uses ANTHROPIC_API_KEY env var if not set'}
+                  placeholder={providerCfg.apiKeyPlaceholder}
                   className="w-full px-3 py-1.5 text-xs bg-[#0d1117] border border-[#30363d] rounded-md text-[#e6edf3] placeholder-[#484f58] focus:outline-none focus:border-[#58a6ff]"
                 />
+              </div>
+
+              {/* Model */}
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-xs text-[#8b949e]">Model</label>
+                  <button
+                    onClick={fetchModels}
+                    disabled={!canFetch || fetchingModels}
+                    className="text-[10px] text-[#58a6ff] hover:text-[#79c0ff] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  >
+                    {fetchingModels ? 'Fetching...' : '\u21bb Fetch models'}
+                  </button>
+                </div>
+
+                {availableModels.length > 0 ? (
+                  <select
+                    value={config.analysis.model}
+                    onChange={(e) => updateAnalysis({ model: e.target.value })}
+                    className="w-full px-3 py-1.5 text-xs bg-[#0d1117] border border-[#30363d] rounded-md text-[#e6edf3] focus:outline-none focus:border-[#58a6ff]"
+                  >
+                    {!availableModels.includes(config.analysis.model) && config.analysis.model && (
+                      <option value={config.analysis.model}>{config.analysis.model}</option>
+                    )}
+                    {availableModels.map((m) => (
+                      <option key={m} value={m}>{m}</option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    type="text"
+                    value={config.analysis.model}
+                    onChange={(e) => updateAnalysis({ model: e.target.value })}
+                    placeholder="Enter model name or click \u21bb Fetch models"
+                    className="w-full px-3 py-1.5 text-xs bg-[#0d1117] border border-[#30363d] rounded-md text-[#e6edf3] placeholder-[#484f58] focus:outline-none focus:border-[#58a6ff]"
+                  />
+                )}
+
+                {fetchError && (
+                  <p className="text-[10px] text-[#f85149] mt-1">{fetchError}</p>
+                )}
               </div>
             </div>
           </section>

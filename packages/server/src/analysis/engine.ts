@@ -1,5 +1,6 @@
 import { AnalysisCache } from './cache.js';
 import { AnthropicProvider } from './providers/anthropic.js';
+import { LiteLLMProvider } from './providers/litellm.js';
 import { OpenAICompatProvider } from './providers/openai-compat.js';
 import {
   ANALYSIS_SYSTEM_PROMPT,
@@ -17,16 +18,21 @@ const DEFAULT_CONFIG: AnalysisConfig = {
   temperature: 0.1,
 };
 
-// Max concurrent analysis requests
-const MAX_CONCURRENT = 3;
+// Allow 2 concurrent requests (Layman's Terms + Analysis in parallel)
+const MAX_CONCURRENT = 2;
+
+// Minimum gap between proxy requests (ms) to stagger concurrent requests slightly
+const MIN_REQUEST_GAP_MS = 1000;
 
 export class AnalysisEngine {
   private config: AnalysisConfig;
   private cache = new AnalysisCache();
   private anthropicProvider = new AnthropicProvider();
+  private litellmProvider = new LiteLLMProvider();
   private openaiProvider = new OpenAICompatProvider();
   private activeRequests = 0;
   private queue: Array<() => void> = [];
+  private lastRequestTime = 0;
 
   constructor(config?: Partial<AnalysisConfig>) {
     this.config = { ...DEFAULT_CONFIG, ...config };
@@ -45,6 +51,12 @@ export class AnalysisEngine {
 
     this.activeRequests++;
     try {
+      // Enforce minimum gap between requests to avoid overwhelming rate-limited proxies
+      const elapsed = Date.now() - this.lastRequestTime;
+      if (elapsed < MIN_REQUEST_GAP_MS) {
+        await new Promise((r) => setTimeout(r, MIN_REQUEST_GAP_MS - elapsed));
+      }
+      this.lastRequestTime = Date.now();
       return await fn();
     } finally {
       this.activeRequests--;
@@ -145,9 +157,15 @@ export class AnalysisEngine {
   ) {
     if (config.provider === 'anthropic') {
       return this.anthropicProvider.analyze(systemPrompt, userMessage, config);
-    } else {
-      return this.openaiProvider.analyze(systemPrompt, userMessage, config);
     }
+    if (config.provider === 'litellm') {
+      return this.litellmProvider.analyze(systemPrompt, userMessage, config);
+    }
+    // openai and openai-compatible use the basic OpenAI-compatible provider
+    const effectiveConfig = config.provider === 'openai'
+      ? { ...config, endpoint: config.endpoint || 'https://api.openai.com/v1' }
+      : config;
+    return this.openaiProvider.analyze(systemPrompt, userMessage, effectiveConfig);
   }
 
   private parseAnalysisResponse(

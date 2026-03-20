@@ -6,8 +6,11 @@ export const AutoAllowRulesSchema = z.object({
   trustedCommands: z.array(z.string()).default([]),
 });
 
+export const PROVIDER_OPTIONS = ['anthropic', 'openai', 'openai-compatible', 'litellm'] as const;
+export type AnalysisProvider = typeof PROVIDER_OPTIONS[number];
+
 export const AnalysisConfigSchema = z.object({
-  provider: z.enum(['anthropic', 'openai-compatible']).default('anthropic'),
+  provider: z.enum(PROVIDER_OPTIONS).default('anthropic'),
   model: z.string().default('sonnet'),
   endpoint: z.string().optional(),
   apiKey: z.string().optional(),
@@ -20,7 +23,7 @@ export const DEFAULT_LAYMANS_PROMPT = 'Explain what the AI is doing here in abso
 export const LaymanConfigSchema = z.object({
   port: z.number().int().min(1).max(65535).default(8090),
   host: z.string().default('localhost'),
-  autoAnalyze: z.enum(['all', 'risky', 'none']).default('risky'),
+  autoAnalyze: z.enum(['all', 'risky', 'none']).default('none'),
   analysis: AnalysisConfigSchema.default({}),
   autoAllow: AutoAllowRulesSchema.default({}),
   hookTimeout: z.number().int().min(10).max(3600).default(300),

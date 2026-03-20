@@ -254,10 +254,28 @@ export function createServer(config: LaymanConfig): LaymanServer {
       }
     });
 
-    // Model discovery — proxies /v1/models from the configured OpenAI-compatible endpoint.
-    // Accepts an optional ?endpoint= override so the UI can probe before saving.
-    fastify.get<{ Querystring: { endpoint?: string } }>('/api/models', async (request, reply) => {
-      const rawEndpoint = request.query.endpoint ?? activeConfig.analysis.endpoint;
+    // Model discovery — lists available models for the configured or specified provider.
+    // Accepts optional ?provider= and ?endpoint= overrides.
+    fastify.get<{ Querystring: { endpoint?: string; provider?: string } }>('/api/models', async (request, reply) => {
+      const provider = request.query.provider ?? activeConfig.analysis.provider;
+
+      // Anthropic: return hardcoded model list (no public model list API)
+      if (provider === 'anthropic') {
+        return {
+          models: [
+            'haiku',
+            'sonnet',
+            'opus',
+            'claude-haiku-4-5-20251001',
+            'claude-sonnet-4-6',
+            'claude-opus-4-6',
+          ],
+        };
+      }
+
+      // OpenAI provider uses the official OpenAI API
+      const defaultEndpoint = provider === 'openai' ? 'https://api.openai.com/v1' : undefined;
+      const rawEndpoint = request.query.endpoint ?? activeConfig.analysis.endpoint ?? defaultEndpoint;
       if (!rawEndpoint) {
         return reply.status(400).send({ error: 'No endpoint configured. Set an endpoint URL first.' });
       }
@@ -265,9 +283,15 @@ export function createServer(config: LaymanConfig): LaymanServer {
       const endpoint = resolveEndpoint(rawEndpoint.replace(/\/+$/, ''));
       const modelsUrl = endpoint.endsWith('/v1') ? `${endpoint}/models` : `${endpoint}/v1/models`;
 
+      // Determine API key: use configured key, or fall back to provider-specific env vars
+      const apiKey = activeConfig.analysis.apiKey
+        ?? (provider === 'openai' ? process.env.OPENAI_API_KEY : undefined)
+        ?? process.env.LAYMAN_API_KEY
+        ?? 'not-needed';
+
       try {
         const res = await fetch(modelsUrl, {
-          headers: { Authorization: `Bearer ${activeConfig.analysis.apiKey ?? 'not-needed'}` },
+          headers: { Authorization: `Bearer ${apiKey}` },
           signal: AbortSignal.timeout(5000),
         });
         if (!res.ok) {
@@ -475,20 +499,19 @@ export function createServer(config: LaymanConfig): LaymanServer {
         const event = eventStore.get(message.eventId);
         if (!event) break;
 
-        // Fire both laymans and analysis in parallel
+        const req = {
+          toolName: event.data.toolName ?? 'Unknown',
+          toolInput: event.data.toolInput ?? {},
+          toolOutput: event.data.toolOutput,
+          cwd: process.cwd(),
+          depth: message.depth,
+        };
+
+        // Run both in parallel — the engine's concurrency limit + pacer handle rate limiting
         void (async () => {
           try {
             broadcast({ type: 'laymans:start', eventId: message.eventId });
-            const result = await analysisEngine.laymans(
-              {
-                toolName: event.data.toolName ?? 'Unknown',
-                toolInput: event.data.toolInput ?? {},
-                toolOutput: event.data.toolOutput,
-                cwd: process.cwd(),
-                depth: message.depth,
-              },
-              activeConfig.laymansPrompt,
-            );
+            const result = await analysisEngine.laymans(req, activeConfig.laymansPrompt);
             eventStore.attachLaymans(message.eventId, result);
             broadcast({ type: 'laymans:result', eventId: message.eventId, result });
           } catch (err) {
@@ -496,16 +519,11 @@ export function createServer(config: LaymanConfig): LaymanServer {
             broadcast({ type: 'laymans:error', eventId: message.eventId, error: errorMsg });
           }
         })();
+
         void (async () => {
           try {
             broadcast({ type: 'analysis:start', eventId: message.eventId });
-            const result = await analysisEngine.analyze({
-              toolName: event.data.toolName ?? 'Unknown',
-              toolInput: event.data.toolInput ?? {},
-              toolOutput: event.data.toolOutput,
-              cwd: process.cwd(),
-              depth: message.depth,
-            });
+            const result = await analysisEngine.analyze(req);
             eventStore.attachAnalysis(message.eventId, result);
             broadcast({ type: 'analysis:result', eventId: message.eventId, result });
           } catch (err) {
