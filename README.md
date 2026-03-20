@@ -8,13 +8,7 @@ Layman is a dashboard that shows you exactly what your AI assistant is doing, in
 
 ## Setup
 
-**Clone Layman once** to a permanent location on your machine:
-
-```bash
-git clone https://github.com/castellotti/layman.git ~/layman
-```
-
-**Start the Layman server** (one instance for all your projects):
+**Start the Layman server** (one instance handles all your projects):
 
 ```bash
 docker compose -f ~/layman/docker-compose.yml up -d
@@ -24,7 +18,7 @@ docker compose -f ~/layman/docker-compose.yml up -d
 
 http://localhost:8880
 
-On first visit, the dashboard shows a setup banner. Click **Install** to write the global hooks and `/layman` slash command into `~/.claude/`. This only needs to be done once (or after a Layman update).
+On first visit, a banner prompts you to click **Install**. This writes the global hooks and `/layman` slash command into `~/.claude/` so Claude Code can report to the dashboard. It also installs the `/layman` command for any other supported clients it detects (e.g. OpenCode). You only need to do this once — or again after a Layman update.
 
 ---
 
@@ -57,7 +51,22 @@ You can activate multiple sessions across different projects — they all appear
    }
    ```
 
-2. Start OpenCode and type `/layman` to activate monitoring.
+2. Open the Layman dashboard, go to **Settings → Client Setup**, and click **Reinstall** so Layman detects OpenCode and installs the `/layman` command for it.
+
+3. Start OpenCode and type `/layman` to activate monitoring.
+
+---
+
+## Adding a new AI client
+
+If you install a new supported AI client after Layman is already running:
+
+1. Install the client as normal.
+2. Open the Layman dashboard at http://localhost:8880.
+3. Go to **Settings** (gear icon) → **Client Setup**.
+4. Click **Reinstall** — Layman will detect the new client and install the `/layman` command for it.
+
+No container restart required.
 
 ---
 
