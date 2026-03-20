@@ -39,15 +39,28 @@ export function SetupBanner({ onInstall }: { onInstall: () => void }) {
   const needsUpdate = (!setupStatus.hooksUpToDate && setupStatus.hooksInstalled) ||
     (!setupStatus.commandUpToDate && setupStatus.commandInstalled);
 
-  if (!needsInstall && !needsUpdate) return null;
+  const detectedClientsNeedingInstall = setupStatus.optionalClients?.filter(
+    (c) => c.detected && !c.commandInstalled
+  ) ?? [];
+  const detectedClientsNeedingUpdate = setupStatus.optionalClients?.filter(
+    (c) => c.detected && c.commandInstalled && !c.commandUpToDate
+  ) ?? [];
 
-  const message = needsInstall
-    ? 'Layman needs to install hooks and a slash command in ~/.claude to work.'
-    : 'Layman has an update available for its hooks or slash command.';
+  if (!needsInstall && !needsUpdate && !detectedClientsNeedingInstall.length && !detectedClientsNeedingUpdate.length) return null;
+
+  let message: string;
+  if (needsInstall) {
+    message = 'Layman needs to install hooks and a slash command in ~/.claude to work.';
+  } else if (detectedClientsNeedingInstall.length) {
+    const names = detectedClientsNeedingInstall.map((c) => c.name).join(', ');
+    message = `${names} detected — click Install to add the /layman command.`;
+  } else {
+    message = 'Layman has an update available for its hooks or slash command.';
+  }
 
   const buttonLabel = installing
     ? 'Installing...'
-    : needsInstall
+    : (needsInstall || detectedClientsNeedingInstall.length)
       ? 'Install'
       : 'Update';
 

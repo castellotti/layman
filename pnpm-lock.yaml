@@ -10,6 +10,9 @@ importers:
 
   packages/opencode-plugin:
     devDependencies:
+      '@types/node':
+        specifier: ^20.19.37
+        version: 20.19.37
       typescript:
         specifier: ^5.4.0
         version: 5.9.3

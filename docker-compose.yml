@@ -8,6 +8,10 @@ services:
     volumes:
       # Mount the host user's ~/.claude so the installer can write global hooks and commands
       - ${HOME}/.claude:/root/.claude
+      # Mount ~/.config so the installer can detect and write commands for optional clients
+      # (e.g. OpenCode at ~/.config/opencode/commands/). New XDG-based clients are covered
+      # automatically — no docker-compose changes needed when support for a new client is added.
+      - ${HOME}/.config:/root/.config
     environment:
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
