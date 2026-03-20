@@ -172,6 +172,23 @@ export function SettingsDrawer({ onSend }: SettingsDrawerProps) {
                 </div>
               )}
 
+              {/* API Key — before model selection since key may be required to fetch models */}
+              <div>
+                <label className="text-xs text-[#8b949e] block mb-1">
+                  API Key
+                  {(provider === 'openai-compatible') && (
+                    <span className="text-[#484f58]"> (optional for local models)</span>
+                  )}
+                </label>
+                <input
+                  type="password"
+                  value={config.analysis.apiKey ?? ''}
+                  onChange={(e) => updateAnalysis({ apiKey: e.target.value || undefined })}
+                  placeholder={apiKeyPlaceholder(provider)}
+                  className="w-full px-3 py-1.5 text-xs bg-[#0d1117] border border-[#30363d] rounded-md text-[#e6edf3] placeholder-[#484f58] focus:outline-none focus:border-[#58a6ff]"
+                />
+              </div>
+
               {/* Model selection */}
               <div>
                 <div className="flex items-center justify-between mb-1">
@@ -233,25 +250,6 @@ export function SettingsDrawer({ onSend }: SettingsDrawerProps) {
                   <p className="text-[10px] text-[#f85149] mt-1">{fetchError}</p>
                 )}
               </div>
-
-              {/* API Key */}
-              {showApiKey && (
-                <div>
-                  <label className="text-xs text-[#8b949e] block mb-1">
-                    API Key
-                    {(provider === 'openai-compatible') && (
-                      <span className="text-[#484f58]"> (optional for local models)</span>
-                    )}
-                  </label>
-                  <input
-                    type="password"
-                    value={config.analysis.apiKey ?? ''}
-                    onChange={(e) => updateAnalysis({ apiKey: e.target.value || undefined })}
-                    placeholder={apiKeyPlaceholder(provider)}
-                    className="w-full px-3 py-1.5 text-xs bg-[#0d1117] border border-[#30363d] rounded-md text-[#e6edf3] placeholder-[#484f58] focus:outline-none focus:border-[#58a6ff]"
-                  />
-                </div>
-              )}
             </div>
           </section>
 
