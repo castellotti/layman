@@ -3,6 +3,7 @@ import { useEventStore } from '../../hooks/useEventStore.js';
 import { useSessionStore } from '../../stores/sessionStore.js';
 import { EventCard } from '../events/EventCard.js';
 import { NavigationBar } from '../controls/NavigationBar.js';
+import { PromptInput } from '../controls/PromptInput.js';
 import type { ClientMessage } from '../../lib/ws-protocol.js';
 
 interface EventStreamProps {
@@ -19,7 +20,7 @@ export function EventStream({ onSend }: EventStreamProps) {
   const [activeAgentTypes, setActiveAgentTypes] = useState<string[]>([]);
 
   const scrollRef = useRef<HTMLDivElement>(null);
-  const { setSelectedEvent, sessions } = useSessionStore();
+  const { setSelectedEvent, sessions, activeSessionId } = useSessionStore();
 
   // Show agent badges only when sessions from multiple agent types are active
   const availableAgentTypes = [...new Set(sessions.map((s) => s.agentType))];
@@ -148,6 +149,14 @@ export function EventStream({ onSend }: EventStreamProps) {
     return () => window.removeEventListener('keydown', handleKey);
   }, [selectedIndex, events.length]);
 
+  // Determine the active OpenCode session (if any) for prompt submission
+  const activeOpenCodeSession =
+    activeSessionId !== null
+      ? sessions.find((s) => s.sessionId === activeSessionId && s.agentType === 'opencode')
+      : sessions.length === 1 && sessions[0].agentType === 'opencode'
+        ? sessions[0]
+        : null;
+
   return (
     <div className="flex flex-col h-full">
       <NavigationBar
@@ -218,6 +227,10 @@ export function EventStream({ onSend }: EventStreamProps) {
           </button>
         )}
       </div>
+
+      {activeOpenCodeSession && (
+        <PromptInput sessionId={activeOpenCodeSession.sessionId} />
+      )}
     </div>
   );
 }

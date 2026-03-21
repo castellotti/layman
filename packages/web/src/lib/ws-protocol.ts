@@ -14,6 +14,7 @@ export interface SessionInfo {
   lastSeen: number;
   agentType: string;
   active?: boolean;
+  opencodeUrl?: string;
 }
 
 export type ServerMessage =
