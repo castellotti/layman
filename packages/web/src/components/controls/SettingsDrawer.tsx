@@ -359,6 +359,35 @@ export function SettingsDrawer({ onSend }: SettingsDrawerProps) {
 
           <div className="border-t border-[#30363d]" />
 
+          {/* Session Recording */}
+          <section>
+            <h3 className="text-xs font-semibold text-[#8b949e] uppercase tracking-wider mb-1">
+              Session Recording
+            </h3>
+            <p className="text-[10px] text-[#484f58] mb-3">
+              Record all Claude Code sessions to{' '}
+              <code className="text-[#8b949e]">~/.claude/layman.db</code>. Disabled by default.
+              Bookmarked sessions survive container restarts.
+            </p>
+            <label className="flex items-center justify-between cursor-pointer">
+              <span className="text-xs text-[#e6edf3]">Enable session recording</span>
+              <div
+                onClick={() => updateConfig({ sessionRecording: !config.sessionRecording })}
+                className={`relative w-8 h-4 rounded-full transition-colors cursor-pointer ${
+                  config.sessionRecording ? 'bg-[#238636]' : 'bg-[#30363d]'
+                }`}
+              >
+                <div
+                  className={`absolute top-0.5 w-3 h-3 bg-white rounded-full transition-transform ${
+                    config.sessionRecording ? 'translate-x-4' : 'translate-x-0.5'
+                  }`}
+                />
+              </div>
+            </label>
+          </section>
+
+          <div className="border-t border-[#30363d]" />
+
           {/* Auto-Approve */}
           <section>
             <h3 className="text-xs font-semibold text-[#8b949e] uppercase tracking-wider mb-1">
