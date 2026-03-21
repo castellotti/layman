@@ -27,6 +27,11 @@ export function useWebSocket(): { send: (msg: ClientMessage) => void } {
     setSessions,
     markSessionActive,
     markSessionInactive,
+    setBookmarks,
+    upsertFolder,
+    removeFolder,
+    upsertBookmark,
+    removeBookmark,
   } = useSessionStore();
 
   const handleMessage = useCallback(
@@ -106,9 +111,31 @@ export function useWebSocket(): { send: (msg: ClientMessage) => void } {
         case 'session:deactivated':
           markSessionInactive(message.sessionId);
           break;
+
+        case 'bookmarks:state':
+          setBookmarks(message.folders, message.bookmarks);
+          break;
+
+        case 'bookmarks:folder:created':
+        case 'bookmarks:folder:updated':
+          upsertFolder(message.folder);
+          break;
+
+        case 'bookmarks:folder:deleted':
+          removeFolder(message.folderId);
+          break;
+
+        case 'bookmarks:created':
+        case 'bookmarks:updated':
+          upsertBookmark(message.bookmark);
+          break;
+
+        case 'bookmarks:deleted':
+          removeBookmark(message.bookmarkId);
+          break;
       }
     },
-    [addEvent, addPendingApproval, removePendingApproval, setAnalyzing, setAnalysisError, setLaymans, setLaymansError, setConfig, setServerVersion, setSessionStatus, setSessions, markSessionActive, markSessionInactive, updateEvent]
+    [addEvent, addPendingApproval, removePendingApproval, setAnalyzing, setAnalysisError, setLaymans, setLaymansError, setConfig, setServerVersion, setSessionStatus, setSessions, markSessionActive, markSessionInactive, updateEvent, setBookmarks, upsertFolder, removeFolder, upsertBookmark, removeBookmark]
   );
 
   const connect = useCallback(() => {

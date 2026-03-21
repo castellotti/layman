@@ -130,6 +130,44 @@ export interface LaymanConfig {
   open: boolean;
   autoApprove: boolean;
   laymansPrompt: string;
+  sessionRecording: boolean;
+}
+
+export interface BookmarkFolder {
+  id: string;
+  name: string;
+  sortOrder: number;
+  createdAt: number;
+}
+
+export interface Bookmark {
+  id: string;
+  folderId: string | null;
+  sessionId: string;
+  name: string;
+  sortOrder: number;
+  createdAt: number;
+}
+
+export interface RecordedSession {
+  sessionId: string;
+  cwd: string;
+  agentType: string;
+  startedAt: number;
+  lastSeen: number;
+}
+
+export interface QAEntry {
+  id: number;
+  eventId: string;
+  sessionId: string;
+  question: string;
+  answer: string;
+  model: string | null;
+  tokensIn: number | null;
+  tokensOut: number | null;
+  latencyMs: number | null;
+  createdAt: number;
 }
 
 export interface OptionalClientStatus {

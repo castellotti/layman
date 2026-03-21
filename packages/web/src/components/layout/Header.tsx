@@ -11,7 +11,7 @@ function getSessionName(cwd: string, sessionId: string, agentType?: string, show
 }
 
 export function Header() {
-  const { wsStatus, serverVersion, sessionStatus, setSettingsOpen, sessions, activeSessionId, setActiveSession } = useSessionStore();
+  const { wsStatus, serverVersion, sessionStatus, setSettingsOpen, setBookmarksOpen, sessions, activeSessionId, setActiveSession } = useSessionStore();
 
   const statusConfig = {
     connecting: { dot: 'bg-[#d29922]', text: 'Connecting...', textColor: 'text-[#d29922]' },
@@ -73,6 +73,13 @@ export function Header() {
             Auto-reconnecting...
           </span>
         )}
+        <button
+          onClick={() => setBookmarksOpen(true)}
+          className="p-1.5 rounded-md text-[#8b949e] hover:text-[#e6edf3] hover:bg-[#30363d] transition-colors"
+          title="Bookmarks"
+        >
+          🔖
+        </button>
         <button
           onClick={() => setSettingsOpen(true)}
           className="p-1.5 rounded-md text-[#8b949e] hover:text-[#e6edf3] hover:bg-[#30363d] transition-colors"

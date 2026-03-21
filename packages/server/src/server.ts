@@ -14,6 +14,9 @@ import { registerHookHandler } from './hooks/handler.js';
 import { AnalysisEngine } from './analysis/engine.js';
 import { resolveEndpoint } from './analysis/providers/openai-compat.js';
 import { updateConfig, saveConfig } from './config/config.js';
+import { openDatabase } from './db/database.js';
+import { SessionRecorder } from './db/recorder.js';
+import { BookmarkStore } from './db/bookmarks.js';
 import type { LaymanConfig } from './config/schema.js';
 import type { ServerMessage, ClientMessage, SessionStatus } from './types/index.js';
 
@@ -40,6 +43,12 @@ export function createServer(config: LaymanConfig): LaymanServer {
 
   let activeConfig = config;
   const getConfig = (): LaymanConfig => activeConfig;
+
+  // Persistent storage
+  const db = openDatabase();
+  const bookmarkStore = new BookmarkStore(db);
+  const recorder = new SessionRecorder(db, () => getConfig().sessionRecording);
+  recorder.attach(eventStore);
 
   // Track connected WebSocket clients (@fastify/websocket v10: handler arg is the socket directly)
   const wsClients = new Set<{ readyState: number; send: (data: string) => void }>();
@@ -247,6 +256,14 @@ export function createServer(config: LaymanConfig): LaymanServer {
           previousAnalysis: event.analysis,
           cwd: process.cwd(),
         });
+        recorder.recordQA(event.id, event.sessionId, {
+          question: request.body.question,
+          answer: result.text,
+          model: result.model,
+          tokensIn: result.tokens.input,
+          tokensOut: result.tokens.output,
+          latencyMs: result.latencyMs,
+        });
         return { answer: result.text, tokens: result.tokens, latencyMs: result.latencyMs, model: result.model };
       } catch (err) {
         const errorMsg = err instanceof Error ? err.message : String(err);
@@ -381,6 +398,192 @@ export function createServer(config: LaymanConfig): LaymanServer {
       return { ok: false, error: 'session_id required' };
     });
 
+    // Bookmark folders
+    fastify.get('/api/bookmarks/folders', async () => {
+      return { folders: bookmarkStore.listFolders() };
+    });
+
+    fastify.post<{ Body: { name: string } }>('/api/bookmarks/folders', async (request) => {
+      const folder = bookmarkStore.createFolder(request.body.name);
+      broadcast({ type: 'bookmarks:folder:created', folder });
+      return { folder };
+    });
+
+    fastify.patch<{ Params: { id: string }; Body: { name?: string } }>('/api/bookmarks/folders/:id', async (request, reply) => {
+      const { id } = request.params;
+      const { name } = request.body;
+      if (name !== undefined) {
+        const folder = bookmarkStore.renameFolder(id, name);
+        if (!folder) return reply.status(404).send({ error: 'Folder not found' });
+        broadcast({ type: 'bookmarks:folder:updated', folder });
+        return { folder };
+      }
+      return reply.status(400).send({ error: 'No valid fields to update' });
+    });
+
+    fastify.delete<{ Params: { id: string } }>('/api/bookmarks/folders/:id', async (request) => {
+      bookmarkStore.deleteFolder(request.params.id);
+      broadcast({ type: 'bookmarks:folder:deleted', folderId: request.params.id });
+      return { ok: true };
+    });
+
+    fastify.post<{ Body: { ids: string[] } }>('/api/bookmarks/folders/reorder', async (request) => {
+      bookmarkStore.reorderFolders(request.body.ids);
+      const folders = bookmarkStore.listFolders();
+      for (const folder of folders) {
+        broadcast({ type: 'bookmarks:folder:updated', folder });
+      }
+      return { ok: true };
+    });
+
+    // Bookmarks
+    fastify.get('/api/bookmarks', async () => {
+      return { bookmarks: bookmarkStore.listAllBookmarks() };
+    });
+
+    fastify.post<{ Body: { sessionId: string; name: string; folderId?: string | null } }>('/api/bookmarks', async (request) => {
+      const { sessionId, name, folderId } = request.body;
+      const bookmark = bookmarkStore.createBookmark(sessionId, name, folderId);
+      broadcast({ type: 'bookmarks:created', bookmark });
+      return { bookmark };
+    });
+
+    fastify.patch<{
+      Params: { id: string };
+      Body: { name?: string; folderId?: string | null; sortOrder?: number };
+    }>('/api/bookmarks/:id', async (request, reply) => {
+      const { id } = request.params;
+      const { name, folderId, sortOrder } = request.body;
+      let bookmark = null;
+      if (name !== undefined) {
+        bookmark = bookmarkStore.renameBookmark(id, name);
+      }
+      if (folderId !== undefined || sortOrder !== undefined) {
+        bookmark = bookmarkStore.moveBookmark(id, folderId ?? null, sortOrder);
+      }
+      if (!bookmark) return reply.status(404).send({ error: 'Bookmark not found' });
+      broadcast({ type: 'bookmarks:updated', bookmark });
+      return { bookmark };
+    });
+
+    fastify.delete<{ Params: { id: string } }>('/api/bookmarks/:id', async (request) => {
+      bookmarkStore.deleteBookmark(request.params.id);
+      broadcast({ type: 'bookmarks:deleted', bookmarkId: request.params.id });
+      return { ok: true };
+    });
+
+    fastify.post<{ Body: { folderId: string | null; ids: string[] } }>('/api/bookmarks/reorder', async (request) => {
+      bookmarkStore.reorderBookmarks(request.body.folderId, request.body.ids);
+      const bookmarks = bookmarkStore.listAllBookmarks();
+      for (const bookmark of bookmarks) {
+        broadcast({ type: 'bookmarks:updated', bookmark });
+      }
+      return { ok: true };
+    });
+
+    // Recorded sessions
+    fastify.get('/api/bookmarks/sessions', async () => {
+      return { sessions: bookmarkStore.listRecordedSessions() };
+    });
+
+    fastify.get<{ Params: { sessionId: string } }>('/api/bookmarks/sessions/:sessionId/events', async (request, reply) => {
+      const { sessionId } = request.params;
+      const session = bookmarkStore.getRecordedSession(sessionId);
+      if (!session) return reply.status(404).send({ error: 'Session not found' });
+      return { events: bookmarkStore.getEventsForSession(sessionId) };
+    });
+
+    fastify.get<{ Params: { sessionId: string } }>('/api/bookmarks/sessions/:sessionId/qa', async (request) => {
+      return { qa: bookmarkStore.getQAForSession(request.params.sessionId) };
+    });
+
+    // Import events from a saved JSON file (e.g. from /api/events export)
+    fastify.post<{ Body: { events: unknown[] } }>('/api/bookmarks/sessions/import', async (request, reply) => {
+      const { events } = request.body;
+      if (!Array.isArray(events) || events.length === 0) {
+        return reply.status(400).send({ error: 'events must be a non-empty array' });
+      }
+
+      // Validate and cast — accept anything that looks like a TimelineEvent
+      const typed = events.filter(
+        (e): e is import('./events/types.js').TimelineEvent =>
+          typeof e === 'object' && e !== null &&
+          typeof (e as Record<string, unknown>).id === 'string' &&
+          typeof (e as Record<string, unknown>).sessionId === 'string' &&
+          typeof (e as Record<string, unknown>).type === 'string' &&
+          typeof (e as Record<string, unknown>).timestamp === 'number'
+      );
+
+      if (typed.length === 0) {
+        return reply.status(400).send({ error: 'No valid events found in payload' });
+      }
+
+      recorder.saveEventsFromMemory(typed);
+
+      // Group by sessionId to create one bookmark per session
+      const bySession = new Map<string, { events: typeof typed; agentType: string }>();
+      for (const ev of typed) {
+        const existing = bySession.get(ev.sessionId);
+        if (existing) {
+          existing.events.push(ev);
+        } else {
+          bySession.set(ev.sessionId, { events: [ev], agentType: ev.agentType });
+        }
+      }
+
+      const dateStr = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      const createdBookmarks = [];
+      let idx = 1;
+      for (const [sessionId, { events: sessEvents, agentType }] of bySession) {
+        // Skip if already bookmarked
+        const allBookmarks = bookmarkStore.listAllBookmarks();
+        if (allBookmarks.some((b) => b.sessionId === sessionId)) continue;
+
+        const name = `${dateStr} import ${idx} (${agentType === 'opencode' ? 'OC' : 'CC'} · ${sessionId.slice(0, 6)})`;
+        const bookmark = bookmarkStore.createBookmark(sessionId, name);
+        broadcast({ type: 'bookmarks:created', bookmark });
+        createdBookmarks.push(bookmark);
+
+        // Update last_seen on the recorded session row
+        const latest = Math.max(...sessEvents.map((e) => e.timestamp));
+        db.prepare('UPDATE recorded_sessions SET last_seen = MAX(last_seen, ?) WHERE session_id = ?').run(latest, sessionId);
+        idx++;
+      }
+
+      // Broadcast updated bookmark list so all open tabs refresh
+      broadcast({
+        type: 'bookmarks:state',
+        folders: bookmarkStore.listFolders(),
+        bookmarks: bookmarkStore.listAllBookmarks(),
+      });
+
+      return {
+        ok: true,
+        importedEventCount: typed.length,
+        sessionCount: bySession.size,
+        bookmarksCreated: createdBookmarks.length,
+      };
+    });
+
+    // Snapshot in-memory events to SQLite (must be called before container rebuild)
+    fastify.post<{ Body?: { sessionId?: string } }>('/api/bookmarks/sessions/save-current', async (request) => {
+      const { sessionId } = request.body ?? {};
+      const allEvents = eventStore.getAll();
+      const toSave = sessionId ? allEvents.filter((e) => e.sessionId === sessionId) : allEvents;
+      recorder.saveEventsFromMemory(toSave);
+      // Patch cwd + agentType from the live sessions map
+      const updateSession = db.prepare(
+        'UPDATE recorded_sessions SET cwd = ?, agent_type = ?, last_seen = ? WHERE session_id = ?'
+      );
+      for (const s of eventStore.getSessions()) {
+        if (!sessionId || s.sessionId === sessionId) {
+          updateSession.run(s.cwd, s.agentType, s.lastSeen, s.sessionId);
+        }
+      }
+      const savedSessionIds = [...new Set(toSave.map((e) => e.sessionId))];
+      return { ok: true, eventCount: toSave.length, sessionIds: savedSessionIds };
+    });
+
     // WebSocket — @fastify/websocket v10: handler receives (socket, request) directly
     fastify.register(async (wsInstance) => {
       wsInstance.get('/ws', { websocket: true }, (socket) => {
@@ -423,6 +626,13 @@ export function createServer(config: LaymanConfig): LaymanServer {
         ws.send(JSON.stringify({
           type: 'sessions:list',
           sessions: eventStore.getSessions(),
+        } satisfies ServerMessage));
+
+        // Send bookmarks state
+        ws.send(JSON.stringify({
+          type: 'bookmarks:state',
+          folders: bookmarkStore.listFolders(),
+          bookmarks: bookmarkStore.listAllBookmarks(),
         } satisfies ServerMessage));
 
         ws.on('message', (data: unknown) => {
@@ -589,6 +799,14 @@ export function createServer(config: LaymanConfig): LaymanServer {
         installer.install();
         installer.installCommand();
         installer.installOptionalClientCommands();
+        break;
+      }
+      case 'bookmarks:get': {
+        broadcast({
+          type: 'bookmarks:state',
+          folders: bookmarkStore.listFolders(),
+          bookmarks: bookmarkStore.listAllBookmarks(),
+        });
         break;
       }
     }

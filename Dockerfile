@@ -1,7 +1,8 @@
 FROM node:20-slim AS build
 WORKDIR /app
 
-# Install pnpm
+# Install pnpm and native build tools (required for better-sqlite3)
+RUN apt-get update && apt-get install -y python3 make g++ && rm -rf /var/lib/apt/lists/*
 RUN corepack enable && corepack prepare pnpm@latest --activate
 
 # Copy workspace manifests
@@ -10,8 +11,9 @@ COPY packages/server/package.json packages/server/
 COPY packages/web/package.json packages/web/
 COPY packages/opencode-plugin/package.json packages/opencode-plugin/
 
-# Install dependencies
+# Install dependencies and compile native modules (better-sqlite3 requires node-gyp)
 RUN pnpm install --frozen-lockfile
+RUN pnpm rebuild better-sqlite3
 
 # Copy source
 COPY . .

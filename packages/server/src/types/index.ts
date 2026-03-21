@@ -19,6 +19,7 @@ export type {
 } from '../hooks/types.js';
 export type { PendingApproval, PendingApprovalDTO } from '../hooks/pending.js';
 export type { LaymanConfig } from '../config/schema.js';
+export type { BookmarkFolder, Bookmark, RecordedSession, QAEntry } from '../db/types.js';
 
 // WebSocket protocol types
 import type { TimelineEvent } from '../events/types.js';
@@ -28,6 +29,7 @@ import type { ApprovalDecision } from '../hooks/types.js';
 import type { LaymanConfig } from '../config/schema.js';
 import type { LaymansResult } from '../analysis/types.js';
 import type { SessionInfo } from '../events/store.js';
+import type { BookmarkFolder, Bookmark } from '../db/types.js';
 
 export interface SessionStatus {
   connected: boolean;
@@ -62,7 +64,14 @@ export type ServerMessage =
   | { type: 'sessions:list'; sessions: SessionInfo[] }
   | { type: 'session:activated'; sessionId: string }
   | { type: 'session:deactivated'; sessionId: string }
-  | { type: 'connected'; serverVersion: string; eventCount: number };
+  | { type: 'connected'; serverVersion: string; eventCount: number }
+  | { type: 'bookmarks:state'; folders: BookmarkFolder[]; bookmarks: Bookmark[] }
+  | { type: 'bookmarks:folder:created'; folder: BookmarkFolder }
+  | { type: 'bookmarks:folder:updated'; folder: BookmarkFolder }
+  | { type: 'bookmarks:folder:deleted'; folderId: string }
+  | { type: 'bookmarks:created'; bookmark: Bookmark }
+  | { type: 'bookmarks:updated'; bookmark: Bookmark }
+  | { type: 'bookmarks:deleted'; bookmarkId: string };
 
 export type ClientMessage =
   | { type: 'approval:decide'; approvalId: string; decision: ApprovalDecision }
@@ -71,4 +80,5 @@ export type ClientMessage =
   | { type: 'both:request'; eventId: string; depth: 'quick' | 'detailed' }
   | { type: 'analysis:ask'; eventId: string; question: string }
   | { type: 'config:update'; config: Partial<LaymanConfig> }
-  | { type: 'setup:install' };
+  | { type: 'setup:install' }
+  | { type: 'bookmarks:get' };

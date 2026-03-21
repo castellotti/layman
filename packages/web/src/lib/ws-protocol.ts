@@ -6,6 +6,8 @@ import type {
   ApprovalDecision,
   LaymanConfig,
   SessionStatus,
+  BookmarkFolder,
+  Bookmark,
 } from './types.js';
 
 export interface SessionInfo {
@@ -32,7 +34,14 @@ export type ServerMessage =
   | { type: 'sessions:list'; sessions: SessionInfo[] }
   | { type: 'session:activated'; sessionId: string }
   | { type: 'session:deactivated'; sessionId: string }
-  | { type: 'connected'; serverVersion: string; eventCount: number };
+  | { type: 'connected'; serverVersion: string; eventCount: number }
+  | { type: 'bookmarks:state'; folders: BookmarkFolder[]; bookmarks: Bookmark[] }
+  | { type: 'bookmarks:folder:created'; folder: BookmarkFolder }
+  | { type: 'bookmarks:folder:updated'; folder: BookmarkFolder }
+  | { type: 'bookmarks:folder:deleted'; folderId: string }
+  | { type: 'bookmarks:created'; bookmark: Bookmark }
+  | { type: 'bookmarks:updated'; bookmark: Bookmark }
+  | { type: 'bookmarks:deleted'; bookmarkId: string };
 
 export type ClientMessage =
   | { type: 'approval:decide'; approvalId: string; decision: ApprovalDecision }
@@ -41,4 +50,5 @@ export type ClientMessage =
   | { type: 'both:request'; eventId: string; depth: 'quick' | 'detailed' }
   | { type: 'analysis:ask'; eventId: string; question: string }
   | { type: 'config:update'; config: Partial<LaymanConfig> }
-  | { type: 'setup:install' };
+  | { type: 'setup:install' }
+  | { type: 'bookmarks:get' };

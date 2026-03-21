@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { TimelineEvent, PendingApprovalDTO, LaymanConfig, SessionStatus, SetupStatus } from '../lib/types.js';
+import type { TimelineEvent, PendingApprovalDTO, LaymanConfig, SessionStatus, SetupStatus, BookmarkFolder, Bookmark } from '../lib/types.js';
 import type { SessionInfo } from '../lib/ws-protocol.js';
 
 interface InvestigationState {
@@ -49,6 +49,13 @@ interface SessionState {
   setupStatus: SetupStatus | null;
   setupBannerDismissed: boolean;
 
+  // Bookmarks
+  bookmarksOpen: boolean;
+  bookmarkFolders: BookmarkFolder[];
+  bookmarks: Bookmark[];
+  viewingSessionId: string | null;
+  historicalEvents: TimelineEvent[];
+
   // Actions
   setConnected: (connected: boolean) => void;
   setWsStatus: (status: SessionState['wsStatus']) => void;
@@ -74,6 +81,14 @@ interface SessionState {
   markSessionActive: (sessionId: string) => void;
   markSessionInactive: (sessionId: string) => void;
   clearEvents: () => void;
+  setBookmarksOpen: (open: boolean) => void;
+  setBookmarks: (folders: BookmarkFolder[], bookmarks: Bookmark[]) => void;
+  upsertFolder: (folder: BookmarkFolder) => void;
+  removeFolder: (folderId: string) => void;
+  upsertBookmark: (bookmark: Bookmark) => void;
+  removeBookmark: (bookmarkId: string) => void;
+  setViewingSession: (sessionId: string | null) => void;
+  setHistoricalEvents: (events: TimelineEvent[]) => void;
 }
 
 export const useSessionStore = create<SessionState>((set) => ({
@@ -101,6 +116,12 @@ export const useSessionStore = create<SessionState>((set) => ({
 
   setupStatus: null,
   setupBannerDismissed: false,
+
+  bookmarksOpen: false,
+  bookmarkFolders: [],
+  bookmarks: [],
+  viewingSessionId: null,
+  historicalEvents: [],
 
   setConnected: (connected) => set({ connected }),
 
@@ -244,4 +265,49 @@ export const useSessionStore = create<SessionState>((set) => ({
     })),
 
   clearEvents: () => set({ events: [], selectedEventId: null }),
+
+  setBookmarksOpen: (open) => set({ bookmarksOpen: open }),
+
+  setBookmarks: (bookmarkFolders, bookmarks) => set({ bookmarkFolders, bookmarks }),
+
+  upsertFolder: (folder) =>
+    set((state) => {
+      const idx = state.bookmarkFolders.findIndex((f) => f.id === folder.id);
+      if (idx >= 0) {
+        const updated = [...state.bookmarkFolders];
+        updated[idx] = folder;
+        return { bookmarkFolders: updated };
+      }
+      return { bookmarkFolders: [...state.bookmarkFolders, folder] };
+    }),
+
+  removeFolder: (folderId) =>
+    set((state) => ({
+      bookmarkFolders: state.bookmarkFolders.filter((f) => f.id !== folderId),
+      // Orphaned bookmarks become unfiled (their folderId will be null server-side via ON DELETE SET NULL)
+    })),
+
+  upsertBookmark: (bookmark) =>
+    set((state) => {
+      const idx = state.bookmarks.findIndex((b) => b.id === bookmark.id);
+      if (idx >= 0) {
+        const updated = [...state.bookmarks];
+        updated[idx] = bookmark;
+        return { bookmarks: updated };
+      }
+      return { bookmarks: [...state.bookmarks, bookmark] };
+    }),
+
+  removeBookmark: (bookmarkId) =>
+    set((state) => ({
+      bookmarks: state.bookmarks.filter((b) => b.id !== bookmarkId),
+    })),
+
+  setViewingSession: (viewingSessionId) =>
+    set((state) => ({
+      viewingSessionId,
+      historicalEvents: viewingSessionId === null ? [] : state.historicalEvents,
+    })),
+
+  setHistoricalEvents: (historicalEvents) => set({ historicalEvents }),
 }));
