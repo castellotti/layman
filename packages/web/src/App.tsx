@@ -4,6 +4,7 @@ import { EventStream } from './components/layout/EventStream.js';
 import { InvestigationPanel } from './components/layout/InvestigationPanel.js';
 import { SetupBanner } from './components/layout/SetupBanner.js';
 import { SettingsDrawer } from './components/controls/SettingsDrawer.js';
+import { BookmarksPanel } from './components/bookmarks/BookmarksPanel.js';
 import { useSessionStore } from './stores/sessionStore.js';
 import { useWebSocket } from './hooks/useWebSocket.js';
 import { usePendingApprovals } from './hooks/usePendingApprovals.js';
@@ -119,6 +120,9 @@ export function App() {
 
       {/* Settings drawer */}
       <SettingsDrawer onSend={send} />
+
+      {/* Bookmarks panel */}
+      <BookmarksPanel onSend={send} />
     </div>
   );
 }
