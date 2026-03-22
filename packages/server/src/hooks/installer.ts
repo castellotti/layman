@@ -153,8 +153,11 @@ function buildLaymanHooks(serverUrl: string, hookTimeout: number): SettingsHooks
   };
 }
 
-function isLaymanHook(hook: HookEntry): boolean {
-  return hook._layman === true;
+function isLaymanHook(hook: HookEntry, serverUrl?: string): boolean {
+  if (hook._layman === true) return true;
+  // Legacy: detect hooks installed before the _layman tag was added, matched by URL
+  if (serverUrl && typeof hook.url === 'string' && hook.url.startsWith(`${serverUrl}/hooks/`)) return true;
+  return false;
 }
 
 /** Hash of the expected command file content, used to detect staleness */
@@ -211,9 +214,9 @@ export class HookInstaller {
         settings.hooks[eventName] = [];
       }
 
-      // Remove existing Layman hooks for this event
+      // Remove existing Layman hooks for this event (by tag or by URL, to handle legacy installs)
       settings.hooks[eventName] = settings.hooks[eventName].filter(
-        (m) => !m.hooks.some((h) => isLaymanHook(h as HookEntry))
+        (m) => !m.hooks.some((h) => isLaymanHook(h as HookEntry, this.options.serverUrl))
       );
 
       // Add new Layman hooks
@@ -230,10 +233,10 @@ export class HookInstaller {
     const settings = readSettings(GLOBAL_SETTINGS_PATH);
     if (!settings.hooks) return;
 
-    // Remove all Layman hooks
+    // Remove all Layman hooks (by tag or by URL, to handle legacy installs)
     for (const eventName of Object.keys(settings.hooks)) {
       settings.hooks[eventName] = settings.hooks[eventName].filter(
-        (m) => !m.hooks.some((h) => isLaymanHook(h as HookEntry))
+        (m) => !m.hooks.some((h) => isLaymanHook(h as HookEntry, this.options.serverUrl))
       );
 
       // Remove empty event arrays
@@ -325,7 +328,7 @@ export class HookInstaller {
     const preToolUse = settings.hooks['PreToolUse'];
     if (!preToolUse) return false;
 
-    return preToolUse.some((m) => m.hooks.some((h) => isLaymanHook(h as HookEntry)));
+    return preToolUse.some((m) => m.hooks.some((h) => isLaymanHook(h as HookEntry, this.options.serverUrl)));
   }
 
   getStatus(): SetupStatus {
@@ -345,7 +348,7 @@ export class HookInstaller {
             installedMatchers.some((installedMatcher) =>
               installedMatcher.hooks.some((h) => {
                 const hook = h as HookEntry;
-                return hook._layman === true && hook.url === expectedHook.url;
+                return isLaymanHook(hook, this.options.serverUrl) && hook.url === expectedHook.url;
               })
             )
           )
