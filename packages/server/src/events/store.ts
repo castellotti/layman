@@ -8,12 +8,13 @@ export interface SessionInfo {
   cwd: string;
   lastSeen: number;
   agentType: string;
+  opencodeUrl?: string;
 }
 
 export class EventStore extends EventEmitter {
   private events: TimelineEvent[] = [];
   private maxEvents = 10000;
-  private sessions: Map<string, { cwd: string; lastSeen: number; agentType: string }> = new Map();
+  private sessions: Map<string, { cwd: string; lastSeen: number; agentType: string; opencodeUrl?: string }> = new Map();
 
   add(
     type: EventType,
@@ -104,12 +105,14 @@ export class EventStore extends EventEmitter {
     this.emit('store:cleared');
   }
 
-  trackSession(sessionId: string, cwd: string, agentType: string = 'claude-code'): void {
+  trackSession(sessionId: string, cwd: string, agentType: string = 'claude-code', opencodeUrl?: string): void {
     const existing = this.sessions.get(sessionId);
     const isNew = !existing;
     const cwdChanged = existing && existing.cwd !== cwd;
-    this.sessions.set(sessionId, { cwd, lastSeen: Date.now(), agentType });
-    if (isNew || cwdChanged) {
+    // Preserve existing opencodeUrl if none is provided (it may have been set from a previous event)
+    const resolvedUrl = opencodeUrl ?? existing?.opencodeUrl;
+    this.sessions.set(sessionId, { cwd, lastSeen: Date.now(), agentType, opencodeUrl: resolvedUrl });
+    if (isNew || cwdChanged || (opencodeUrl && opencodeUrl !== existing?.opencodeUrl)) {
       this.emit('sessions:changed', this.getSessions());
     }
   }
