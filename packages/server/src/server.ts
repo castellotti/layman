@@ -41,6 +41,10 @@ export function createServer(config: LaymanConfig): LaymanServer {
   const gate = new SessionGate();
   const startTime = Date.now();
 
+  // In-memory queue of prompts to be relayed to OpenCode by the plugin.
+  interface PendingPrompt { id: string; sessionId: string; prompt: string; queuedAt: number }
+  const promptQueue: PendingPrompt[] = [];
+
   let activeConfig = config;
   const getConfig = (): LaymanConfig => activeConfig;
 
@@ -360,6 +364,79 @@ export function createServer(config: LaymanConfig): LaymanServer {
       installer.installOptionalClientCommands();
       return installer.getStatus();
     });
+
+    // Send a prompt to an OpenCode session.
+    // Strategy: try the OpenCode HTTP API directly (available when started with --port),
+    // then fall back to queuing it for the plugin to relay via `opencode run`.
+    fastify.post<{
+      Params: { sessionId: string };
+      Body: { prompt: string };
+    }>('/api/sessions/:sessionId/prompt', async (request, reply) => {
+      const { sessionId } = request.params;
+      const { prompt } = request.body;
+
+      if (!prompt?.trim()) {
+        return reply.status(400).send({ error: 'prompt is required' });
+      }
+
+      const session = eventStore.getSessions().find((s) => s.sessionId === sessionId);
+      if (!session) {
+        return reply.status(404).send({ error: 'Session not found' });
+      }
+      if (session.agentType !== 'opencode') {
+        return reply.status(400).send({ error: 'Prompt submission is only supported for OpenCode sessions' });
+      }
+
+      // Try OpenCode HTTP API first (only works when started with --port).
+      if (session.opencodeUrl) {
+        try {
+          const res = await fetch(
+            `${session.opencodeUrl}/session/${sessionId}/prompt_async?directory=${encodeURIComponent(session.cwd)}`,
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ parts: [{ type: 'text', text: prompt.trim() }] }),
+              signal: AbortSignal.timeout(5000),
+            }
+          );
+          if (res.ok) return { ok: true, method: 'http' };
+        } catch {
+          // fall through to queue
+        }
+      }
+
+      // Queue for plugin relay — the plugin polls this endpoint and submits via opencode run.
+      const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      promptQueue.push({ id, sessionId, prompt: prompt.trim(), queuedAt: Date.now() });
+      return { ok: true, method: 'queued' };
+    });
+
+    // Plugin polling endpoint — returns the oldest pending prompt for any of the given sessions.
+    fastify.get<{ Querystring: { sessionIds?: string } }>(
+      '/api/opencode/pending-prompt',
+      async (request) => {
+        const ids = (request.query.sessionIds ?? '').split(',').filter(Boolean);
+        if (ids.length === 0) return null;
+        // Evict stale prompts (older than 10 minutes)
+        const cutoff = Date.now() - 10 * 60 * 1000;
+        while (promptQueue.length > 0 && promptQueue[0].queuedAt < cutoff) {
+          promptQueue.shift();
+        }
+        const idx = promptQueue.findIndex((p) => ids.includes(p.sessionId));
+        if (idx < 0) return null;
+        return promptQueue[idx];
+      }
+    );
+
+    // Plugin dequeue endpoint — acknowledge and remove a pending prompt.
+    fastify.delete<{ Params: { id: string } }>(
+      '/api/opencode/pending-prompt/:id',
+      async (request) => {
+        const idx = promptQueue.findIndex((p) => p.id === request.params.id);
+        if (idx >= 0) promptQueue.splice(idx, 1);
+        return { ok: true };
+      }
+    );
 
     // Activate a session for monitoring
     fastify.post('/api/activate', async (request) => {

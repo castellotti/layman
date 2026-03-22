@@ -1,7 +1,42 @@
 import { translateToolBefore, translateToolAfter } from './translator.js';
 import { postToLayman } from './poster.js';
+import { spawn } from 'child_process';
 
 const LAYMAN_URL = process.env.LAYMAN_URL ?? 'http://localhost:8880';
+const POLL_INTERVAL_MS = 2000;
+
+// Probe candidate ports to find a running OpenCode HTTP server URL.
+// Only relevant when OpenCode was started with an explicit --port flag.
+async function detectOpenCodeUrl(): Promise<string | null> {
+  const candidates = ['http://localhost:4096', 'http://127.0.0.1:4096'];
+  for (const url of candidates) {
+    try {
+      const res = await fetch(`${url}/session`, {
+        signal: AbortSignal.timeout(800),
+      });
+      if (res.ok) return url;
+    } catch {
+      // not reachable
+    }
+  }
+  return null;
+}
+
+// Submit a prompt to an existing session via `opencode run --session <id>`.
+// This works even when the TUI is running without an external HTTP server.
+// Uses async spawn so the plugin worker isn't blocked waiting for the AI response.
+function submitViaRun(sessionId: string, cwd: string, prompt: string): void {
+  try {
+    const child = spawn(
+      'opencode',
+      ['run', '--session', sessionId, '--dir', cwd, prompt],
+      { stdio: 'ignore', detached: true }
+    );
+    child.unref();
+  } catch {
+    // ignore spawn errors
+  }
+}
 
 // OpenCode Plugin — sends events to the Layman monitoring dashboard.
 // Load via opencode.json:
@@ -9,8 +44,75 @@ const LAYMAN_URL = process.env.LAYMAN_URL ?? 'http://localhost:8880';
 export default async function LaymanPlugin(ctx: { directory: string }) {
   const { directory } = ctx;
 
-  // Track the latest text for each assistant message (keyed by messageID)
+  // Detect the OpenCode server URL once at startup (only set when started with --port).
+  const openCodeUrl = await detectOpenCodeUrl();
+
+  // Track session IDs and their cwds seen so far (for prompt relay).
+  const knownSessions = new Map<string, string>(); // sessionId → cwd
+  // Track sessions currently being processed (to avoid concurrent runs for same session).
+  const inProgress = new Set<string>();
+
+  // Track the latest text for each assistant message (keyed by messageID).
   const messageText = new Map<string, { sessionID: string; text: string }>();
+
+  // Start polling Layman for pending prompts.
+  // The plugin runs inside the OpenCode Bun Worker, so `setInterval` works here.
+  setInterval(() => {
+    if (knownSessions.size === 0) return;
+    const sessionIds = [...knownSessions.keys()].join(',');
+
+    void (async () => {
+      try {
+        const res = await fetch(
+          `${LAYMAN_URL}/api/opencode/pending-prompt?sessionIds=${encodeURIComponent(sessionIds)}`,
+          { signal: AbortSignal.timeout(3000) }
+        );
+        if (!res.ok) return;
+        const data = await res.json() as { id?: string; sessionId?: string; prompt?: string } | null;
+        if (!data?.id || !data.sessionId || !data.prompt) return;
+
+        const { id, sessionId, prompt } = data;
+        const cwd = knownSessions.get(sessionId);
+        if (!cwd) return;
+
+        // Acknowledge dequeue immediately so we don't process it twice.
+        await fetch(`${LAYMAN_URL}/api/opencode/pending-prompt/${id}`, {
+          method: 'DELETE',
+          signal: AbortSignal.timeout(3000),
+        }).catch(() => {});
+
+        if (inProgress.has(sessionId)) return;
+        inProgress.add(sessionId);
+
+        try {
+          let ok = false;
+
+          // If OpenCode has an HTTP server, use it directly (faster, no subprocess).
+          if (openCodeUrl) {
+            const httpRes = await fetch(
+              `${openCodeUrl}/session/${sessionId}/prompt_async?directory=${encodeURIComponent(cwd)}`,
+              {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ parts: [{ type: 'text', text: prompt }] }),
+                signal: AbortSignal.timeout(5000),
+              }
+            ).catch(() => null);
+            ok = httpRes?.ok ?? false;
+          }
+
+          // Fallback: spawn `opencode run --session <id>` as a subprocess.
+          if (!ok) {
+            submitViaRun(sessionId, cwd, prompt);
+          }
+        } finally {
+          inProgress.delete(sessionId);
+        }
+      } catch {
+        // Network errors are expected if Layman isn't running
+      }
+    })();
+  }, POLL_INTERVAL_MS);
 
   return {
     'chat.message': async (
@@ -22,6 +124,9 @@ export default async function LaymanPlugin(ctx: { directory: string }) {
         .map((p) => p.text)
         .join('');
       if (!text) return;
+
+      knownSessions.set(input.sessionID, directory);
+
       void postToLayman(LAYMAN_URL, 'UserPromptSubmit', {
         session_id: input.sessionID,
         cwd: directory,
@@ -30,6 +135,7 @@ export default async function LaymanPlugin(ctx: { directory: string }) {
         permission_mode: 'default',
         agent_type: 'opencode',
         prompt: text,
+        opencode_url: openCodeUrl ?? undefined,
       });
     },
 
@@ -37,6 +143,7 @@ export default async function LaymanPlugin(ctx: { directory: string }) {
       input: { tool: string; sessionID: string; callID: string },
       output: { args: unknown }
     ) => {
+      knownSessions.set(input.sessionID, directory);
       const payload = translateToolBefore(input, output, directory);
       void postToLayman(LAYMAN_URL, 'PreToolUse', payload);
     },
@@ -45,6 +152,7 @@ export default async function LaymanPlugin(ctx: { directory: string }) {
       input: { tool: string; sessionID: string; callID: string; args: unknown },
       output: { title: string; output: string; metadata: unknown }
     ) => {
+      knownSessions.set(input.sessionID, directory);
       const payload = translateToolAfter(input, output, directory);
       void postToLayman(LAYMAN_URL, 'PostToolUse', payload);
     },
@@ -61,6 +169,8 @@ export default async function LaymanPlugin(ctx: { directory: string }) {
           reason?: string;
         } | undefined;
         if (!part?.sessionID || !part?.messageID) return;
+
+        if (part.sessionID) knownSessions.set(part.sessionID, directory);
 
         if (part.type === 'text' && part.text) {
           messageText.set(part.messageID, { sessionID: part.sessionID, text: part.text });
@@ -88,6 +198,7 @@ export default async function LaymanPlugin(ctx: { directory: string }) {
         const info = properties.info as { id?: string } | undefined;
         const sessionId = info?.id;
         if (!sessionId) return;
+        knownSessions.set(sessionId, directory);
         void postToLayman(LAYMAN_URL, 'SessionStart', {
           session_id: sessionId,
           cwd: directory,
@@ -96,6 +207,7 @@ export default async function LaymanPlugin(ctx: { directory: string }) {
           permission_mode: 'default',
           agent_type: 'opencode',
           source: 'startup',
+          opencode_url: openCodeUrl ?? undefined,
         });
       }
 
@@ -103,6 +215,7 @@ export default async function LaymanPlugin(ctx: { directory: string }) {
         const info = properties.info as { id?: string } | undefined;
         const sessionId = info?.id;
         if (!sessionId) return;
+        knownSessions.delete(sessionId);
         void postToLayman(LAYMAN_URL, 'SessionEnd', {
           session_id: sessionId,
           cwd: directory,

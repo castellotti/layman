@@ -51,6 +51,7 @@ export function registerHookHandler(
         const rawAgentType = (body as { agent_type?: string }).agent_type;
         const agentType =
           rawAgentType === 'opencode' ? 'opencode' : 'claude-code';
+        const opencodeUrl = (body as { opencode_url?: string }).opencode_url;
 
         // Gate check: detect activation curl before gating so we can activate
         if (sessionId && eventName === 'PreToolUse') {
@@ -60,7 +61,7 @@ export function registerHookHandler(
             const command = (toolInput as { command?: string }).command ?? '';
             if (ACTIVATION_PATTERN.test(command)) {
               gate.activate(sessionId);
-              if (cwd) eventStore.trackSession(sessionId, cwd, agentType);
+              if (cwd) eventStore.trackSession(sessionId, cwd, agentType, opencodeUrl);
               return reply.send({});
             }
           }
@@ -77,7 +78,7 @@ export function registerHookHandler(
         }
 
         if (sessionId && cwd) {
-          eventStore.trackSession(sessionId, cwd, agentType);
+          eventStore.trackSession(sessionId, cwd, agentType, opencodeUrl);
         }
 
         switch (eventName) {
