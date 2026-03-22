@@ -1,6 +1,6 @@
 import { translateToolBefore, translateToolAfter } from './translator.js';
 import { postToLayman } from './poster.js';
-import { spawnSync } from 'child_process';
+import { spawn } from 'child_process';
 
 const LAYMAN_URL = process.env.LAYMAN_URL ?? 'http://localhost:8880';
 const POLL_INTERVAL_MS = 2000;
@@ -24,16 +24,17 @@ async function detectOpenCodeUrl(): Promise<string | null> {
 
 // Submit a prompt to an existing session via `opencode run --session <id>`.
 // This works even when the TUI is running without an external HTTP server.
-function submitViaRun(sessionId: string, cwd: string, prompt: string): boolean {
+// Uses async spawn so the plugin worker isn't blocked waiting for the AI response.
+function submitViaRun(sessionId: string, cwd: string, prompt: string): void {
   try {
-    const result = spawnSync(
+    const child = spawn(
       'opencode',
       ['run', '--session', sessionId, '--dir', cwd, prompt],
-      { timeout: 300_000, stdio: 'ignore' }
+      { stdio: 'ignore', detached: true }
     );
-    return result.status === 0;
+    child.unref();
   } catch {
-    return false;
+    // ignore spawn errors
   }
 }
 
@@ -56,7 +57,7 @@ export default async function LaymanPlugin(ctx: { directory: string }) {
 
   // Start polling Layman for pending prompts.
   // The plugin runs inside the OpenCode Bun Worker, so `setInterval` works here.
-  const pollTimer = setInterval(() => {
+  setInterval(() => {
     if (knownSessions.size === 0) return;
     const sessionIds = [...knownSessions.keys()].join(',');
 
@@ -112,9 +113,6 @@ export default async function LaymanPlugin(ctx: { directory: string }) {
       }
     })();
   }, POLL_INTERVAL_MS);
-
-  // Don't hold the Node.js event loop open just for polling.
-  if (pollTimer.unref) pollTimer.unref();
 
   return {
     'chat.message': async (

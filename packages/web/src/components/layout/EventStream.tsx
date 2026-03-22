@@ -149,13 +149,14 @@ export function EventStream({ onSend }: EventStreamProps) {
     return () => window.removeEventListener('keydown', handleKey);
   }, [selectedIndex, events.length]);
 
-  // Determine the active OpenCode session (if any) for prompt submission
+  // Determine the active OpenCode session (if any) for prompt submission.
+  // Prefer the explicitly-selected session if it's OpenCode; otherwise fall back to
+  // the first OpenCode session in the list so the input is always reachable even when
+  // a Claude session is currently selected or "All sessions" is shown.
   const activeOpenCodeSession =
-    activeSessionId !== null
+    (activeSessionId !== null
       ? sessions.find((s) => s.sessionId === activeSessionId && s.agentType === 'opencode')
-      : sessions.length === 1 && sessions[0].agentType === 'opencode'
-        ? sessions[0]
-        : null;
+      : null) ?? sessions.find((s) => s.agentType === 'opencode') ?? null;
 
   return (
     <div className="flex flex-col h-full">
