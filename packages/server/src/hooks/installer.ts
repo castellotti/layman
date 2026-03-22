@@ -333,14 +333,24 @@ export class HookInstaller {
     const hooksInstalled = this.isInstalled();
     let hooksUpToDate = false;
     if (hooksInstalled) {
-      // Check if the URL in the installed hooks matches our serverUrl
+      // Check that every expected hook event type is present with the correct URL.
+      // This catches both URL changes (e.g. server moved to a different port) and
+      // structural changes (e.g. new hook event types added in a Layman update).
       const settings = readSettings(GLOBAL_SETTINGS_PATH);
-      const preToolUse = settings.hooks?.['PreToolUse'] ?? [];
-      const laymanMatcher = preToolUse.find((m) => m.hooks.some((h) => isLaymanHook(h as HookEntry)));
-      if (laymanMatcher) {
-        const hook = laymanMatcher.hooks.find((h) => isLaymanHook(h as HookEntry));
-        hooksUpToDate = hook?.url === `${this.options.serverUrl}/hooks/PreToolUse`;
-      }
+      const expectedHooks = buildLaymanHooks(this.options.serverUrl, this.options.hookTimeout);
+      hooksUpToDate = Object.entries(expectedHooks).every(([eventName, expectedMatchers]) => {
+        const installedMatchers = settings.hooks?.[eventName] ?? [];
+        return expectedMatchers.every((expectedMatcher) =>
+          expectedMatcher.hooks.every((expectedHook) =>
+            installedMatchers.some((installedMatcher) =>
+              installedMatcher.hooks.some((h) => {
+                const hook = h as HookEntry;
+                return hook._layman === true && hook.url === expectedHook.url;
+              })
+            )
+          )
+        );
+      });
     }
 
     // Command status
