@@ -58,10 +58,12 @@ export function BookmarksPanel({ onSend }: BookmarksPanelProps) {
       .catch(() => {});
   }, []);
 
-  // Load recorded sessions when panel opens
+  // Load recorded sessions when panel opens, and poll while open
   useEffect(() => {
     if (!bookmarksOpen) return;
     refreshRecordedSessions();
+    const interval = setInterval(refreshRecordedSessions, 10_000);
+    return () => clearInterval(interval);
   }, [bookmarksOpen, refreshRecordedSessions]);
 
   // Snapshot current in-memory session to SQLite
@@ -352,51 +354,102 @@ export function BookmarksPanel({ onSend }: BookmarksPanelProps) {
           )}
 
           {/* Bookmark tree or empty state */}
-          <div className="flex-1 overflow-y-auto py-2">
-            {!hasContent && !recordingEnabled ? (
-              <BookmarkEmptyState recordingEnabled={false} onSend={onSend} />
-            ) : !hasContent && recordingEnabled ? (
-              <BookmarkEmptyState recordingEnabled={true} onSend={onSend} />
-            ) : (
-              <>
-                {sortedFolders.map((folder) => (
-                  <FolderItem
-                    key={folder.id}
-                    folder={folder}
-                    bookmarks={folderBookmarks(folder.id)}
-                    allFolders={sortedFolders}
-                    selectedSessionId={viewingSessionId}
-                    onSelectSession={(sid) => void handleSelectSession(sid)}
-                    onRenameFolder={(id, name) => void handleRenameFolder(id, name)}
-                    onDeleteFolder={(id) => void handleDeleteFolder(id)}
-                    onRenameBookmark={(id, name) => void handleRenameBookmark(id, name)}
-                    onMoveBookmark={(id, fid) => void handleMoveBookmark(id, fid)}
-                    onDeleteBookmark={(id) => void handleDeleteBookmark(id)}
-                  />
-                ))}
+          <div className="flex-1 overflow-y-auto py-2 flex flex-col">
+            <div className="flex-1">
+              {!hasContent && !recordingEnabled ? (
+                <BookmarkEmptyState recordingEnabled={false} onSend={onSend} />
+              ) : !hasContent && recordingEnabled ? (
+                <BookmarkEmptyState recordingEnabled={true} onSend={onSend} />
+              ) : (
+                <>
+                  {sortedFolders.map((folder) => (
+                    <FolderItem
+                      key={folder.id}
+                      folder={folder}
+                      bookmarks={folderBookmarks(folder.id)}
+                      allFolders={sortedFolders}
+                      selectedSessionId={viewingSessionId}
+                      onSelectSession={(sid) => void handleSelectSession(sid)}
+                      onRenameFolder={(id, name) => void handleRenameFolder(id, name)}
+                      onDeleteFolder={(id) => void handleDeleteFolder(id)}
+                      onRenameBookmark={(id, name) => void handleRenameBookmark(id, name)}
+                      onMoveBookmark={(id, fid) => void handleMoveBookmark(id, fid)}
+                      onDeleteBookmark={(id) => void handleDeleteBookmark(id)}
+                    />
+                  ))}
 
-                {unfiledBookmarks.length > 0 && (
-                  <div className="mt-1">
-                    {sortedFolders.length > 0 && (
-                      <div className="px-3 py-1">
-                        <span className="text-[10px] text-[#484f58] uppercase tracking-wider font-medium">Unfiled</span>
-                      </div>
-                    )}
-                    {unfiledBookmarks.map((b) => (
-                      <BookmarkItem
-                        key={b.id}
-                        bookmark={b}
-                        folders={sortedFolders}
-                        isSelected={viewingSessionId === b.sessionId}
-                        onSelect={(sid) => void handleSelectSession(sid)}
-                        onRename={(id, name) => void handleRenameBookmark(id, name)}
-                        onMove={(id, fid) => void handleMoveBookmark(id, fid)}
-                        onDelete={(id) => void handleDeleteBookmark(id)}
-                      />
-                    ))}
-                  </div>
+                  {unfiledBookmarks.length > 0 && (
+                    <div className="mt-1">
+                      {sortedFolders.length > 0 && (
+                        <div className="px-3 py-1">
+                          <span className="text-[10px] text-[#484f58] uppercase tracking-wider font-medium">Unfiled</span>
+                        </div>
+                      )}
+                      {unfiledBookmarks.map((b) => (
+                        <BookmarkItem
+                          key={b.id}
+                          bookmark={b}
+                          folders={sortedFolders}
+                          isSelected={viewingSessionId === b.sessionId}
+                          onSelect={(sid) => void handleSelectSession(sid)}
+                          onRename={(id, name) => void handleRenameBookmark(id, name)}
+                          onMove={(id, fid) => void handleMoveBookmark(id, fid)}
+                          onDelete={(id) => void handleDeleteBookmark(id)}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+
+            {/* History section — all recorded sessions, newest first */}
+            {(recordingEnabled || recordedSessions.length > 0) && (
+              <div className="border-t border-[#30363d] mt-2 pt-1">
+                <div className="px-3 py-1.5 flex items-center gap-2">
+                  <span className="text-[10px] text-[#8b949e] font-medium uppercase tracking-wider">History</span>
+                  {recordingEnabled && (
+                    <span
+                      className="inline-block w-1.5 h-1.5 rounded-full bg-[#3fb950] animate-pulse"
+                      title="Session recording active"
+                    />
+                  )}
+                </div>
+                {recordedSessions.length === 0 ? (
+                  <p className="px-3 py-2 text-[11px] text-[#484f58] italic">No sessions recorded yet</p>
+                ) : (
+                  recordedSessions.map((s) => {
+                    const isBookmarked = bookmarkedSessionIds.has(s.sessionId);
+                    const isSelected = viewingSessionId === s.sessionId;
+                    const isLive = sessions.some((ls) => ls.sessionId === s.sessionId);
+                    return (
+                      <button
+                        key={s.sessionId}
+                        onClick={() => void handleSelectSession(s.sessionId)}
+                        className={`w-full text-left px-3 py-1.5 flex items-center gap-2 hover:bg-[#21262d] transition-colors ${isSelected ? 'bg-[#21262d]' : ''}`}
+                        title={s.cwd || s.sessionId}
+                      >
+                        <div className="flex flex-col min-w-0 flex-1 overflow-hidden">
+                          <span className="text-xs text-[#e6edf3] truncate">{getSessionLabel(s.cwd, s.sessionId)}</span>
+                          <span className="text-[10px] text-[#484f58]">
+                            {new Date(s.lastSeen).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+                            {' '}
+                            {new Date(s.lastSeen).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                        </div>
+                        <div className="shrink-0 flex items-center gap-1">
+                          {isLive && (
+                            <span className="inline-block w-1.5 h-1.5 rounded-full bg-[#3fb950] animate-pulse" title="Active" />
+                          )}
+                          {isBookmarked && (
+                            <span className="text-[10px] text-[#d29922]" title="Bookmarked">🔖</span>
+                          )}
+                        </div>
+                      </button>
+                    );
+                  })
                 )}
-              </>
+              </div>
             )}
           </div>
         </div>
@@ -433,7 +486,7 @@ export function BookmarksPanel({ onSend }: BookmarksPanelProps) {
           ) : (
             <div className="flex flex-col items-center justify-center h-full gap-2 text-center p-8">
               <span className="text-4xl opacity-20">🔖</span>
-              <p className="text-sm text-[#484f58]">Select a bookmark to view its session history</p>
+              <p className="text-sm text-[#484f58]">Select a bookmark or history entry to view its session</p>
             </div>
           )}
         </div>
