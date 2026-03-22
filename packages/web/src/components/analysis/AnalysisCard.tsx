@@ -28,7 +28,7 @@ export function AnalysisCard({ analysis, compact = false }: AnalysisCardProps) {
   return (
     <div className="text-xs space-y-1.5 font-mono">
       <div className="flex gap-2">
-        <span className="text-[#8b949e] shrink-0 w-20">Meaning:</span>
+        <span className="text-[#8b949e] shrink-0 w-20">Intent:</span>
         <span className="text-[#e6edf3]">{analysis.meaning}</span>
       </div>
       <div className="flex gap-2">

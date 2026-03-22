@@ -29,7 +29,7 @@ program
   .option('--analysis-model <model>', 'Analysis model (haiku|sonnet|opus or full model name)')
   .option('--analysis-endpoint <url>', 'Custom OpenAI-compatible endpoint URL')
   .option('--analysis-api-key <key>', 'API key for analysis model')
-  .option('--auto-analyze <mode>', 'Auto-analyze mode: all|risky|none', 'none')
+  .option('--auto-analyze <mode>', 'Auto-analyze mode: all|risky|none')
   .option('--no-open', 'Do not open browser automatically')
   .option('--hook-timeout <seconds>', 'Hook timeout in seconds', '300')
   .option('--hook-url <url>', 'URL written into hook config (overrides host:port, useful for Docker)')
@@ -47,7 +47,7 @@ program
     const cliFlags: Partial<LaymanConfig> = {
       port: parseInt(options.port, 10),
       host: options.host,
-      autoAnalyze: options.autoAnalyze as 'all' | 'risky' | 'none',
+      ...(options.autoAnalyze !== undefined ? { autoAnalyze: options.autoAnalyze as 'all' | 'risky' | 'none' } : {}),
       open: options.open !== false,
       hookTimeout: parseInt(options.hookTimeout, 10),
       hookUrl: options.hookUrl,
@@ -98,7 +98,7 @@ program
   .option('--analysis-model <model>', 'Analysis model')
   .option('--analysis-endpoint <url>', 'Custom OpenAI-compatible endpoint URL')
   .option('--analysis-api-key <key>', 'API key for analysis model')
-  .option('--auto-analyze <mode>', 'Auto-analyze mode: all|risky|none', 'none')
+  .option('--auto-analyze <mode>', 'Auto-analyze mode: all|risky|none')
   .option('--no-open', 'Do not open browser automatically')
   .option('--hook-timeout <seconds>', 'Hook timeout in seconds', '300')
   .option('--hook-url <url>', 'URL written into hook config (overrides host:port, useful for Docker)')
@@ -114,7 +114,7 @@ program
     const cliFlags: Partial<LaymanConfig> = {
       port: parseInt(options.port, 10),
       host: options.host,
-      autoAnalyze: options.autoAnalyze as 'all' | 'risky' | 'none',
+      ...(options.autoAnalyze !== undefined ? { autoAnalyze: options.autoAnalyze as 'all' | 'risky' | 'none' } : {}),
       open: options.open !== false,
       hookTimeout: parseInt(options.hookTimeout, 10),
       hookUrl: options.hookUrl,

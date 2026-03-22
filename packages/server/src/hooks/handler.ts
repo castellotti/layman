@@ -190,6 +190,7 @@ async function handlePreToolUse(
 
   if (shouldAnalyze) {
     void triggerAnalysis(input, timelineEvent.id, eventStore, analysisEngine, pendingManager, config);
+    void triggerLaymans(input, timelineEvent.id, eventStore, analysisEngine, config);
   }
 
   // Block until user decides
@@ -256,6 +257,29 @@ async function triggerAnalysis(
     void config; // used for config check above
   } catch {
     // Analysis failure doesn't block approval
+  }
+}
+
+async function triggerLaymans(
+  input: PreToolUseInput,
+  eventId: string,
+  eventStore: EventStore,
+  analysisEngine: AnalysisEngine,
+  config: LaymanConfig
+): Promise<void> {
+  try {
+    const result = await analysisEngine.laymans(
+      {
+        toolName: input.tool_name,
+        toolInput: input.tool_input,
+        cwd: input.cwd,
+        depth: 'quick',
+      },
+      config.laymansPrompt
+    );
+    eventStore.attachLaymans(eventId, result);
+  } catch {
+    // Layman's failure doesn't block approval
   }
 }
 

@@ -8,6 +8,7 @@ import { AnalysisCard } from '../analysis/AnalysisCard.js';
 import { CodeBlock } from '../shared/CodeBlock.js';
 import { DiffBlock } from '../shared/DiffBlock.js';
 import { usePendingApprovals } from '../../hooks/usePendingApprovals.js';
+import { useSessionStore } from '../../stores/sessionStore.js';
 
 interface EventCardProps {
   event: TimelineEvent;
@@ -142,9 +143,21 @@ function formatToolInput(toolInput: Record<string, unknown>): string {
   return JSON.stringify(toolInput, null, 2).slice(0, 500);
 }
 
+function getCommandPreview(toolName: string | undefined, toolInput: Record<string, unknown> | undefined): string | null {
+  if (!toolInput || !toolName) return null;
+  if ('command' in toolInput) return String(toolInput.command);
+  if ('file_path' in toolInput) return String(toolInput.file_path);
+  if ('pattern' in toolInput) return String(toolInput.pattern);
+  if ('query' in toolInput) return String(toolInput.query);
+  if ('url' in toolInput) return String(toolInput.url);
+  if ('prompt' in toolInput) return String(toolInput.prompt).slice(0, 120);
+  return null;
+}
+
 export function EventCard({ event, index, isSelected, onClick, onSend, collapseHistory, showAgentBadge }: EventCardProps) {
   const [expandedLocal, setExpandedLocal] = useState(false);
   const { approvals } = usePendingApprovals();
+  const showFullCommand = useSessionStore((s) => s.config?.showFullCommand ?? false);
 
   const isPending = event.type === 'tool_call_pending' || event.type === 'permission_request';
   const isAgentResponse = event.type === 'agent_response';
@@ -219,9 +232,17 @@ export function EventCard({ event, index, isSelected, onClick, onSend, collapseH
         {event.data.toolName && (
           <>
             <span className="text-[11px] text-[#484f58]">·</span>
-            <span className="text-[11px] font-semibold text-[#e6edf3] truncate">
+            <span className="text-[11px] font-semibold text-[#e6edf3] shrink-0">
               {event.data.toolName}
             </span>
+            {showFullCommand && (() => {
+              const preview = getCommandPreview(event.data.toolName, event.data.toolInput);
+              return preview ? (
+                <span className="text-[11px] text-[#484f58] font-mono truncate min-w-0">
+                  {preview}
+                </span>
+              ) : null;
+            })()}
           </>
         )}
 
@@ -329,6 +350,7 @@ export function EventCard({ event, index, isSelected, onClick, onSend, collapseH
                   code={formatToolInput(input)}
                   language={tool === 'Bash' ? 'bash' : 'text'}
                   maxLines={10}
+                  showWrapToggle
                 />
               </div>
             );
