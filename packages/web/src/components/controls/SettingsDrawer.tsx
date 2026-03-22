@@ -204,6 +204,35 @@ export function SettingsDrawer({ onSend }: SettingsDrawerProps) {
         </div>
 
         <div className="p-4 space-y-6">
+          {/* Session Recording */}
+          <section>
+            <h3 className="text-xs font-semibold text-[#8b949e] uppercase tracking-wider mb-1">
+              Session Recording
+            </h3>
+            <p className="text-[10px] text-[#484f58] mb-3">
+              Record all Claude Code sessions to{' '}
+              <code className="text-[#8b949e]">~/.claude/layman.db</code>. Disabled by default.
+              Bookmarked sessions survive container restarts.
+            </p>
+            <label className="flex items-center justify-between cursor-pointer">
+              <span className="text-xs text-[#e6edf3]">Enable session recording</span>
+              <div
+                onClick={() => updateConfig({ sessionRecording: !config.sessionRecording })}
+                className={`relative w-8 h-4 rounded-full transition-colors cursor-pointer ${
+                  config.sessionRecording ? 'bg-[#238636]' : 'bg-[#30363d]'
+                }`}
+              >
+                <div
+                  className={`absolute top-0.5 w-3 h-3 bg-white rounded-full transition-transform ${
+                    config.sessionRecording ? 'translate-x-4' : 'translate-x-0.5'
+                  }`}
+                />
+              </div>
+            </label>
+          </section>
+
+          <div className="border-t border-[#30363d]" />
+
           {/* Analysis Model */}
           <section>
             <h3 className="text-xs font-semibold text-[#8b949e] uppercase tracking-wider mb-3">
@@ -340,54 +369,6 @@ export function SettingsDrawer({ onSend }: SettingsDrawerProps) {
 
           <div className="border-t border-[#30363d]" />
 
-          {/* Layman's Terms Prompt */}
-          <section>
-            <h3 className="text-xs font-semibold text-[#8b949e] uppercase tracking-wider mb-1">
-              Layman&apos;s Terms Prompt
-            </h3>
-            <p className="text-[10px] text-[#484f58] mb-3">
-              The instruction given to the LLM when generating plain-language explanations.
-            </p>
-            <textarea
-              value={config.laymansPrompt ?? ''}
-              onChange={(e) => updateConfig({ laymansPrompt: e.target.value })}
-              rows={3}
-              className="w-full px-3 py-2 text-xs bg-[#0d1117] border border-[#30363d] rounded-md text-[#e6edf3] placeholder-[#484f58] focus:outline-none focus:border-[#58a6ff] resize-y"
-              placeholder="Explain what the AI is doing here in absolute layman's terms..."
-            />
-          </section>
-
-          <div className="border-t border-[#30363d]" />
-
-          {/* Session Recording */}
-          <section>
-            <h3 className="text-xs font-semibold text-[#8b949e] uppercase tracking-wider mb-1">
-              Session Recording
-            </h3>
-            <p className="text-[10px] text-[#484f58] mb-3">
-              Record all Claude Code sessions to{' '}
-              <code className="text-[#8b949e]">~/.claude/layman.db</code>. Disabled by default.
-              Bookmarked sessions survive container restarts.
-            </p>
-            <label className="flex items-center justify-between cursor-pointer">
-              <span className="text-xs text-[#e6edf3]">Enable session recording</span>
-              <div
-                onClick={() => updateConfig({ sessionRecording: !config.sessionRecording })}
-                className={`relative w-8 h-4 rounded-full transition-colors cursor-pointer ${
-                  config.sessionRecording ? 'bg-[#238636]' : 'bg-[#30363d]'
-                }`}
-              >
-                <div
-                  className={`absolute top-0.5 w-3 h-3 bg-white rounded-full transition-transform ${
-                    config.sessionRecording ? 'translate-x-4' : 'translate-x-0.5'
-                  }`}
-                />
-              </div>
-            </label>
-          </section>
-
-          <div className="border-t border-[#30363d]" />
-
           {/* Auto-Approve */}
           <section>
             <h3 className="text-xs font-semibold text-[#8b949e] uppercase tracking-wider mb-1">
@@ -461,6 +442,76 @@ export function SettingsDrawer({ onSend }: SettingsDrawerProps) {
                 />
               </div>
             </div>
+          </section>
+
+          <div className="border-t border-[#30363d]" />
+
+          {/* User Interface */}
+          <section>
+            <h3 className="text-xs font-semibold text-[#8b949e] uppercase tracking-wider mb-3">
+              User Interface
+            </h3>
+            <div className="space-y-3">
+              <label className="flex items-center justify-between cursor-pointer">
+                <div>
+                  <span className="text-xs text-[#e6edf3]">Show full command</span>
+                  <p className="text-[10px] text-[#484f58] mt-0.5">
+                    Display the actual command or path inline after each tool name
+                  </p>
+                </div>
+                <div
+                  onClick={() => updateConfig({ showFullCommand: !config.showFullCommand })}
+                  className={`relative w-8 h-4 rounded-full transition-colors cursor-pointer shrink-0 ml-3 ${
+                    config.showFullCommand ? 'bg-[#238636]' : 'bg-[#30363d]'
+                  }`}
+                >
+                  <div
+                    className={`absolute top-0.5 w-3 h-3 bg-white rounded-full transition-transform ${
+                      config.showFullCommand ? 'translate-x-4' : 'translate-x-0.5'
+                    }`}
+                  />
+                </div>
+              </label>
+              <label className="flex items-center justify-between cursor-pointer">
+                <div>
+                  <span className="text-xs text-[#e6edf3]">Switch to newest session</span>
+                  <p className="text-[10px] text-[#484f58] mt-0.5">
+                    Automatically select a newly connected session in the session selector
+                  </p>
+                </div>
+                <div
+                  onClick={() => updateConfig({ switchToNewestSession: !config.switchToNewestSession })}
+                  className={`relative w-8 h-4 rounded-full transition-colors cursor-pointer shrink-0 ml-3 ${
+                    config.switchToNewestSession ? 'bg-[#238636]' : 'bg-[#30363d]'
+                  }`}
+                >
+                  <div
+                    className={`absolute top-0.5 w-3 h-3 bg-white rounded-full transition-transform ${
+                      config.switchToNewestSession ? 'translate-x-4' : 'translate-x-0.5'
+                    }`}
+                  />
+                </div>
+              </label>
+            </div>
+          </section>
+
+          <div className="border-t border-[#30363d]" />
+
+          {/* Layman's Terms Prompt */}
+          <section>
+            <h3 className="text-xs font-semibold text-[#8b949e] uppercase tracking-wider mb-1">
+              Layman&apos;s Terms Prompt
+            </h3>
+            <p className="text-[10px] text-[#484f58] mb-3">
+              The instruction given to the LLM when generating plain-language explanations.
+            </p>
+            <textarea
+              value={config.laymansPrompt ?? ''}
+              onChange={(e) => updateConfig({ laymansPrompt: e.target.value })}
+              rows={3}
+              className="w-full px-3 py-2 text-xs bg-[#0d1117] border border-[#30363d] rounded-md text-[#e6edf3] placeholder-[#484f58] focus:outline-none focus:border-[#58a6ff] resize-y"
+              placeholder="Explain what the AI is doing here in absolute layman's terms..."
+            />
           </section>
 
           <div className="border-t border-[#30363d]" />

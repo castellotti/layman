@@ -34,6 +34,8 @@ const MOCK_CONFIG: LaymanConfig = {
   autoApprove: true,
   laymansPrompt: 'Explain what the AI is doing here in absolute layman\'s terms to someone who has no understanding of technology',
   sessionRecording: false,
+  showFullCommand: false,
+  switchToNewestSession: false,
 };
 
 describe('PendingApprovalManager', () => {

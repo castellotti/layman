@@ -26,9 +26,19 @@ export function Header() {
     <header className="flex items-center justify-between px-4 py-2.5 bg-[#161b22] border-b border-[#30363d] shrink-0">
       <div className="flex items-center gap-3">
         <div className="flex items-center gap-2">
-          <span className="text-sm font-bold text-[#e6edf3] tracking-tight">LAYMAN</span>
+          <span
+            className="text-sm font-bold text-[#e6edf3] tracking-tight cursor-pointer hover:text-white transition-colors"
+            onClick={() => { window.location.href = window.location.origin + '/?t=' + Date.now(); }}
+            title="Reload"
+          >LAYMAN</span>
           {serverVersion && (
-            <span className="text-[10px] text-[#484f58] font-mono">v{serverVersion}</span>
+            <a
+              href="https://github.com/castellotti/layman"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-[10px] text-[#484f58] font-mono hover:text-[#8b949e] transition-colors"
+              title="View on GitHub"
+            >v{serverVersion}</a>
           )}
         </div>
 

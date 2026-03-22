@@ -33,6 +33,8 @@ export const LaymanConfigSchema = z.object({
   laymansPrompt: z.string().default(DEFAULT_LAYMANS_PROMPT),
   hookUrl: z.string().optional(),
   sessionRecording: z.boolean().default(false),
+  showFullCommand: z.boolean().default(false),
+  switchToNewestSession: z.boolean().default(false),
 });
 
 export type LaymanConfig = z.infer<typeof LaymanConfigSchema>;

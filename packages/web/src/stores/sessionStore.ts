@@ -237,11 +237,19 @@ export const useSessionStore = create<SessionState>((set) => ({
   setSessions: (sessions) =>
     set((state) => {
       // Auto-select when transitioning to exactly 1 session and none is currently selected
-      const autoSelect =
-        sessions.length === 1 && state.activeSessionId === null
-          ? sessions[0].sessionId
-          : state.activeSessionId;
-      return { sessions, activeSessionId: autoSelect };
+      if (sessions.length === 1 && state.activeSessionId === null) {
+        return { sessions, activeSessionId: sessions[0].sessionId };
+      }
+      // Switch to the newest session when the setting is enabled and a new session appears
+      if (state.config?.switchToNewestSession && sessions.length > state.sessions.length) {
+        const existingIds = new Set(state.sessions.map((s) => s.sessionId));
+        const newSessions = sessions.filter((s) => !existingIds.has(s.sessionId));
+        if (newSessions.length > 0) {
+          const newest = newSessions.reduce((a, b) => (b.lastSeen > a.lastSeen ? b : a));
+          return { sessions, activeSessionId: newest.sessionId };
+        }
+      }
+      return { sessions, activeSessionId: state.activeSessionId };
     }),
 
   setActiveSession: (activeSessionId) => set({ activeSessionId }),

@@ -131,6 +131,8 @@ export interface LaymanConfig {
   autoApprove: boolean;
   laymansPrompt: string;
   sessionRecording: boolean;
+  showFullCommand: boolean;
+  switchToNewestSession: boolean;
 }
 
 export interface BookmarkFolder {

@@ -5,10 +5,12 @@ interface CodeBlockProps {
   language?: string;
   maxLines?: number;
   className?: string;
+  showWrapToggle?: boolean;
 }
 
-export function CodeBlock({ code, language = 'text', maxLines, className = '' }: CodeBlockProps) {
+export function CodeBlock({ code, language = 'text', maxLines, className = '', showWrapToggle = false }: CodeBlockProps) {
   const [expanded, setExpanded] = useState(false);
+  const [wrapped, setWrapped] = useState(false);
 
   const lines = code.split('\n');
   const isLong = maxLines !== undefined && lines.length > maxLines;
@@ -16,18 +18,31 @@ export function CodeBlock({ code, language = 'text', maxLines, className = '' }:
 
   return (
     <div className={`relative rounded-md bg-[#0d1117] border border-[#30363d] overflow-hidden ${className}`}>
-      {language !== 'text' && (
+      {(language !== 'text' || showWrapToggle) && (
         <div className="flex items-center justify-between px-3 py-1 bg-[#161b22] border-b border-[#30363d]">
-          <span className="text-xs text-[#8b949e] font-mono">{language}</span>
-          <button
-            onClick={() => navigator.clipboard.writeText(code).catch(() => {})}
-            className="text-xs text-[#8b949e] hover:text-[#e6edf3] transition-colors"
-          >
-            Copy
-          </button>
+          <span className="text-xs text-[#8b949e] font-mono">{language !== 'text' ? language : ''}</span>
+          <div className="flex items-center gap-2">
+            {showWrapToggle && (
+              <button
+                onClick={(e) => { e.stopPropagation(); setWrapped((v) => !v); }}
+                className={`text-xs transition-colors ${wrapped ? 'text-[#58a6ff]' : 'text-[#8b949e] hover:text-[#e6edf3]'}`}
+                title={wrapped ? 'Disable line wrap' : 'Enable line wrap'}
+              >
+                ↵
+              </button>
+            )}
+            {language !== 'text' && (
+              <button
+                onClick={() => navigator.clipboard.writeText(code).catch(() => {})}
+                className="text-xs text-[#8b949e] hover:text-[#e6edf3] transition-colors"
+              >
+                Copy
+              </button>
+            )}
+          </div>
         </div>
       )}
-      <pre className="p-3 overflow-x-auto text-xs font-mono text-[#e6edf3] leading-relaxed">
+      <pre className={`p-3 text-xs font-mono text-[#e6edf3] leading-relaxed ${wrapped ? 'whitespace-pre-wrap break-all' : 'overflow-x-auto'}`}>
         <code>{displayCode}</code>
       </pre>
       {isLong && (
