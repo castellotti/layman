@@ -219,6 +219,17 @@ async function startServer(
   writeFileSync(PID_FILE, String(process.pid));
 
   const url = `http://${config.host}:${port}`;
+
+  // If hooks are already installed, re-run install to deduplicate and tag with _layman
+  const hookUrl = config.hookUrl ?? url;
+  const installer = new HookInstaller({ serverUrl: hookUrl, hookTimeout: config.hookTimeout });
+  if (installer.isInstalled()) {
+    installer.install();
+    installer.installCommand();
+    installer.installOptionalClientCommands();
+    console.log('Hooks deduplicated and updated.');
+  }
+
   console.log(`\nLayman v${VERSION} running at ${url}`);
   console.log(`Use /layman in Claude Code to activate monitoring for a session\n`);
 
