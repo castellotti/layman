@@ -1,3 +1,4 @@
+import { readFile } from 'node:fs/promises';
 import type { FastifyInstance } from 'fastify';
 import { PendingApprovalManager } from './pending.js';
 import { SessionGate } from './gate.js';
@@ -440,6 +441,56 @@ async function handleStop(
   agentType: string = 'claude-code'
 ): Promise<void> {
   eventStore.add('agent_stop', input.session_id, {}, undefined, agentType);
+
+  const response = await readLastAssistantMessage(input.transcript_path);
+  if (response) {
+    eventStore.add('agent_response', input.session_id, { prompt: response }, undefined, agentType);
+  }
+}
+
+/** Remap host ~/.claude path to container-mounted /root/.claude path */
+function remapTranscriptPath(hostPath: string): string {
+  const match = hostPath.match(/\.claude\/(.+)$/);
+  if (!match) return hostPath;
+  return `/root/.claude/${match[1]}`;
+}
+
+/** Read the last assistant text response from a JSONL transcript file */
+async function readLastAssistantMessage(transcriptPath: string): Promise<string | null> {
+  try {
+    // Try remapped Docker path first, fall back to original for local dev (make dev)
+    let content: string;
+    const containerPath = remapTranscriptPath(transcriptPath);
+    try {
+      content = await readFile(containerPath, 'utf-8');
+    } catch {
+      content = await readFile(transcriptPath, 'utf-8');
+    }
+    const lines = content.trim().split('\n').filter(Boolean);
+
+    for (let i = lines.length - 1; i >= 0; i--) {
+      try {
+        const obj = JSON.parse(lines[i]) as Record<string, unknown>;
+        if (obj.type !== 'assistant') continue;
+
+        const msg = obj.message as Record<string, unknown> | undefined;
+        const blocks = msg?.content;
+        if (!Array.isArray(blocks)) continue;
+
+        const texts = (blocks as Record<string, unknown>[])
+          .filter((b) => b.type === 'text' && typeof b.text === 'string')
+          .map((b) => (b.text as string).trim())
+          .filter(Boolean);
+
+        if (texts.length > 0) return texts.join('\n\n');
+      } catch {
+        // skip malformed lines
+      }
+    }
+  } catch {
+    // transcript unreadable — non-blocking
+  }
+  return null;
 }
 
 async function handleUserPromptSubmit(
