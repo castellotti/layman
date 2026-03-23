@@ -6,6 +6,14 @@ Layman is a dashboard that shows you exactly what your AI assistant is doing, in
 
 ---
 
+## Screenshots
+
+<img width="1280" height="939" alt="Screenshot 2026-03-21 at 22-50-36 Layman" src="https://github.com/user-attachments/assets/c286b021-1ecc-4ab3-9043-d47a28d11c93" />
+
+<img width="1280" height="939" alt="Screenshot 2026-03-22 at 05-05-05 Layman" src="https://github.com/user-attachments/assets/48800a9c-d790-4265-a615-5947744f014f" />
+
+---
+
 ## Setup
 
 **Start the Layman server** (one instance handles all your projects):
