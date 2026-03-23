@@ -150,7 +150,6 @@ function buildLaymanHooks(serverUrl: string, hookTimeout: number): SettingsHooks
     UserPromptSubmit: [asyncHook('UserPromptSubmit')],
     SubagentStart: [asyncHook('SubagentStart')],
     SubagentStop: [asyncHook('SubagentStop')],
-    AgentResponse: [asyncHook('AgentResponse')],
     StopFailure: [asyncHook('StopFailure')],
     PreCompact: [asyncHook('PreCompact')],
     PostCompact: [asyncHook('PostCompact')],
