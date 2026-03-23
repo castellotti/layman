@@ -181,9 +181,10 @@ export function EventCard({ event, index, isSelected, onClick, onSend, collapseH
 
   const isPending = event.type === 'tool_call_pending' || event.type === 'permission_request';
   const isAgentResponse = event.type === 'agent_response';
+  const isFailed = event.type === 'tool_call_failed';
   // When collapseHistory is on, expansion is driven by selection; otherwise use local toggle
-  // agent_response is always expanded so the user sees the full reply without clicking
-  const expanded = isPending || isAgentResponse || (collapseHistory ? isSelected : expandedLocal);
+  // agent_response and tool_call_failed are always expanded so the content is visible without clicking
+  const expanded = isPending || isAgentResponse || isFailed || (collapseHistory ? isSelected : expandedLocal);
   const borderColor = BORDER_COLORS[event.type] ?? 'border-l-[#30363d]';
   const icon = EVENT_ICONS[event.type] ?? '·';
 
@@ -400,8 +401,9 @@ export function EventCard({ event, index, isSelected, onClick, onSend, collapseH
 
           {/* Error */}
           {event.data.error && (
-            <div className="text-xs text-[#f85149] bg-[#f85149]/10 border border-[#f85149]/20 rounded px-3 py-2 font-mono">
-              {event.data.error}
+            <div>
+              <p className="text-[10px] text-[#f85149] mb-1 font-mono uppercase">Error</p>
+              <CodeBlock code={event.data.error} maxLines={15} className="border-[#f85149]/30" />
             </div>
           )}
 

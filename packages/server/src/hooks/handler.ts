@@ -31,6 +31,11 @@ import type { LaymanConfig } from '../config/schema.js';
 
 const AUTO_ALLOW_TOOLS = new Set(['Read', 'Glob', 'Grep', 'WebSearch']);
 
+// Track the last-emitted assistant message UUID per transcript path.
+// null = transcript seen but no messages emitted yet (emit from start).
+// Keyed by transcript_path since each session/subagent has a unique path.
+const transcriptWatermarks = new Map<string, string | null>();
+
 /** Detect activation curl in a Bash command */
 const ACTIVATION_PATTERN = /curl\b.*\/api\/activate/;
 
@@ -186,6 +191,9 @@ async function handlePreToolUse(
 ): Promise<PreToolUseResponse> {
   const config = getConfig();
   const riskLevel = classifyRisk(input.tool_name, input.tool_input);
+
+  // Emit any assistant "thinking" text that preceded this tool call
+  await emitNewAssistantMessages(input.transcript_path, input.session_id, eventStore, agentType);
 
   // Check auto-allow rules
   const shouldAutoAllow =
@@ -423,6 +431,8 @@ async function handleSessionStart(
   eventStore.add('session_start', input.session_id, {
     source: input.source,
   }, undefined, agentType);
+  // Snapshot the current last assistant UUID so resumed sessions don't re-emit history
+  await initTranscriptWatermark(input.transcript_path);
 }
 
 async function handleSessionEnd(
@@ -433,6 +443,7 @@ async function handleSessionEnd(
 ): Promise<void> {
   eventStore.add('session_end', input.session_id, {}, undefined, agentType);
   gate.deactivate(input.session_id);
+  transcriptWatermarks.delete(input.transcript_path);
 }
 
 async function handleStop(
@@ -441,11 +452,8 @@ async function handleStop(
   agentType: string = 'claude-code'
 ): Promise<void> {
   eventStore.add('agent_stop', input.session_id, {}, undefined, agentType);
-
-  const response = await readLastAssistantMessage(input.transcript_path);
-  if (response) {
-    eventStore.add('agent_response', input.session_id, { prompt: response }, undefined, agentType);
-  }
+  // Emit the final assistant response (and any intermediate messages not yet emitted)
+  await emitNewAssistantMessages(input.transcript_path, input.session_id, eventStore, agentType);
 }
 
 /** Remap host ~/.claude path to container-mounted /root/.claude path */
@@ -455,42 +463,95 @@ function remapTranscriptPath(hostPath: string): string {
   return `/root/.claude/${match[1]}`;
 }
 
-/** Read the last assistant text response from a JSONL transcript file */
-async function readLastAssistantMessage(transcriptPath: string): Promise<string | null> {
+/** Read transcript content, trying Docker-remapped path first then original */
+async function readTranscriptContent(transcriptPath: string): Promise<string | null> {
+  const containerPath = remapTranscriptPath(transcriptPath);
   try {
-    // Try remapped Docker path first, fall back to original for local dev (make dev)
-    let content: string;
-    const containerPath = remapTranscriptPath(transcriptPath);
-    try {
-      content = await readFile(containerPath, 'utf-8');
-    } catch {
-      content = await readFile(transcriptPath, 'utf-8');
-    }
-    const lines = content.trim().split('\n').filter(Boolean);
-
-    for (let i = lines.length - 1; i >= 0; i--) {
-      try {
-        const obj = JSON.parse(lines[i]) as Record<string, unknown>;
-        if (obj.type !== 'assistant') continue;
-
-        const msg = obj.message as Record<string, unknown> | undefined;
-        const blocks = msg?.content;
-        if (!Array.isArray(blocks)) continue;
-
-        const texts = (blocks as Record<string, unknown>[])
-          .filter((b) => b.type === 'text' && typeof b.text === 'string')
-          .map((b) => (b.text as string).trim())
-          .filter(Boolean);
-
-        if (texts.length > 0) return texts.join('\n\n');
-      } catch {
-        // skip malformed lines
-      }
-    }
+    return await readFile(containerPath, 'utf-8');
   } catch {
-    // transcript unreadable — non-blocking
+    try {
+      return await readFile(transcriptPath, 'utf-8');
+    } catch {
+      return null;
+    }
   }
-  return null;
+}
+
+/** Snapshot the current last assistant UUID so future calls only emit new messages */
+async function initTranscriptWatermark(transcriptPath: string): Promise<void> {
+  if (transcriptWatermarks.has(transcriptPath)) return;
+  const content = await readTranscriptContent(transcriptPath);
+  if (!content) {
+    transcriptWatermarks.set(transcriptPath, null);
+    return;
+  }
+  const lines = content.trim().split('\n').filter(Boolean);
+  for (let i = lines.length - 1; i >= 0; i--) {
+    try {
+      const obj = JSON.parse(lines[i]) as Record<string, unknown>;
+      if (obj.type === 'assistant' && typeof obj.uuid === 'string') {
+        transcriptWatermarks.set(transcriptPath, obj.uuid);
+        return;
+      }
+    } catch { /* skip */ }
+  }
+  transcriptWatermarks.set(transcriptPath, null);
+}
+
+/** Emit all assistant text messages in the transcript that haven't been emitted yet */
+async function emitNewAssistantMessages(
+  transcriptPath: string,
+  sessionId: string,
+  eventStore: EventStore,
+  agentType: string
+): Promise<void> {
+  // If we haven't seen this transcript before, init watermark first (avoids emitting history)
+  if (!transcriptWatermarks.has(transcriptPath)) {
+    await initTranscriptWatermark(transcriptPath);
+    return; // nothing new to emit on first sight
+  }
+
+  const content = await readTranscriptContent(transcriptPath);
+  if (!content) return;
+
+  const watermark = transcriptWatermarks.get(transcriptPath);
+  const lines = content.trim().split('\n').filter(Boolean);
+
+  let pastWatermark = watermark === null; // null = emit from beginning
+  let newWatermark: string | null = null;
+
+  for (const line of lines) {
+    try {
+      const obj = JSON.parse(line) as Record<string, unknown>;
+      if (obj.type !== 'assistant') continue;
+
+      const uuid = typeof obj.uuid === 'string' ? obj.uuid : null;
+
+      if (!pastWatermark) {
+        if (uuid === watermark) pastWatermark = true;
+        continue;
+      }
+
+      const msg = obj.message as Record<string, unknown> | undefined;
+      const blocks = msg?.content;
+      if (!Array.isArray(blocks)) continue;
+
+      const texts = (blocks as Record<string, unknown>[])
+        .filter((b) => b.type === 'text' && typeof b.text === 'string')
+        .map((b) => (b.text as string).trim())
+        .filter(Boolean);
+
+      if (texts.length > 0) {
+        eventStore.add('agent_response', sessionId, { prompt: texts.join('\n\n') }, undefined, agentType);
+      }
+
+      if (uuid) newWatermark = uuid;
+    } catch { /* skip malformed lines */ }
+  }
+
+  if (newWatermark) {
+    transcriptWatermarks.set(transcriptPath, newWatermark);
+  }
 }
 
 async function handleUserPromptSubmit(
