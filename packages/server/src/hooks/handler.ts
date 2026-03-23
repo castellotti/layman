@@ -17,6 +17,11 @@ import type {
   SubagentStartInput,
   SubagentStopInput,
   AgentResponseInput,
+  StopFailureInput,
+  PreCompactInput,
+  PostCompactInput,
+  ElicitationInput,
+  ElicitationResultInput,
   PreToolUseResponse,
   PermissionResponse,
   ApprovalDecision,
@@ -130,6 +135,26 @@ export function registerHookHandler(
           }
           case 'AgentResponse': {
             await handleAgentResponse(body as unknown as AgentResponseInput, eventStore, agentType);
+            return reply.status(200).send({});
+          }
+          case 'StopFailure': {
+            await handleStopFailure(body as unknown as StopFailureInput, eventStore, agentType);
+            return reply.status(200).send({});
+          }
+          case 'PreCompact': {
+            await handlePreCompact(body as unknown as PreCompactInput, eventStore, agentType);
+            return reply.status(200).send({});
+          }
+          case 'PostCompact': {
+            await handlePostCompact(body as unknown as PostCompactInput, eventStore, agentType);
+            return reply.status(200).send({});
+          }
+          case 'Elicitation': {
+            await handleElicitation(body as unknown as ElicitationInput, eventStore, agentType);
+            return reply.status(200).send({});
+          }
+          case 'ElicitationResult': {
+            await handleElicitationResult(body as unknown as ElicitationResultInput, eventStore, agentType);
             return reply.status(200).send({});
           }
           default:
@@ -454,6 +479,52 @@ async function handleAgentResponse(
 ): Promise<void> {
   eventStore.add('agent_response', input.session_id, {
     prompt: input.response,
+  }, undefined, agentType);
+}
+
+async function handleStopFailure(
+  input: StopFailureInput,
+  eventStore: EventStore,
+  agentType: string = 'claude-code'
+): Promise<void> {
+  eventStore.add('stop_failure', input.session_id, {
+    error: input.error,
+  }, undefined, agentType);
+}
+
+async function handlePreCompact(
+  input: PreCompactInput,
+  eventStore: EventStore,
+  agentType: string = 'claude-code'
+): Promise<void> {
+  eventStore.add('pre_compact', input.session_id, {}, undefined, agentType);
+}
+
+async function handlePostCompact(
+  input: PostCompactInput,
+  eventStore: EventStore,
+  agentType: string = 'claude-code'
+): Promise<void> {
+  eventStore.add('post_compact', input.session_id, {}, undefined, agentType);
+}
+
+async function handleElicitation(
+  input: ElicitationInput,
+  eventStore: EventStore,
+  agentType: string = 'claude-code'
+): Promise<void> {
+  eventStore.add('elicitation', input.session_id, {
+    prompt: input.message,
+  }, undefined, agentType);
+}
+
+async function handleElicitationResult(
+  input: ElicitationResultInput,
+  eventStore: EventStore,
+  agentType: string = 'claude-code'
+): Promise<void> {
+  eventStore.add('elicitation_result', input.session_id, {
+    prompt: input.canceled ? '(canceled)' : JSON.stringify(input.result),
   }, undefined, agentType);
 }
 

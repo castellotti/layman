@@ -41,6 +41,11 @@ const EVENT_ICONS: Record<string, string> = {
   notification: '🔔',
   subagent_start: '🔀',
   subagent_stop: '🔀',
+  stop_failure: '⚠',
+  pre_compact: '📦',
+  post_compact: '📦',
+  elicitation: '📋',
+  elicitation_result: '📋',
   analysis_result: '🔍',
 };
 
@@ -60,6 +65,11 @@ const BORDER_COLORS: Record<string, string> = {
   notification: 'border-l-[#58a6ff]',
   subagent_start: 'border-l-[#58a6ff]',
   subagent_stop: 'border-l-[#8b949e]',
+  stop_failure: 'border-l-[#f85149]',
+  pre_compact: 'border-l-[#8b949e]',
+  post_compact: 'border-l-[#8b949e]',
+  elicitation: 'border-l-[#58a6ff]',
+  elicitation_result: 'border-l-[#58a6ff]',
   analysis_result: 'border-l-[#8b949e]',
 };
 
@@ -106,6 +116,16 @@ function getEventSummary(event: TimelineEvent): string {
       return `Subagent started: ${data.agentType ?? 'unknown'}`;
     case 'subagent_stop':
       return `Subagent stopped: ${data.agentType ?? 'unknown'}`;
+    case 'stop_failure':
+      return data.error ?? 'API error';
+    case 'pre_compact':
+      return 'Compaction starting';
+    case 'post_compact':
+      return 'Compaction complete';
+    case 'elicitation':
+      return (data.prompt ?? 'MCP structured input request').slice(0, 80);
+    case 'elicitation_result':
+      return (data.prompt ?? 'MCP structured input result').slice(0, 80);
     default:
       return type;
   }

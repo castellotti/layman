@@ -16,6 +16,11 @@ export type EventType =
   | 'subagent_start'
   | 'subagent_stop'
   | 'agent_response'
+  | 'stop_failure'
+  | 'pre_compact'
+  | 'post_compact'
+  | 'elicitation'
+  | 'elicitation_result'
   | 'analysis_result';
 
 export interface AnalysisResult {
