@@ -393,9 +393,20 @@ export function EventCard({ event, index, isSelected, onClick, onSend, collapseH
                 <ReactMarkdown>{event.data.prompt as string}</ReactMarkdown>
               </div>
             ) : (
-              <blockquote className="text-xs text-[#e6edf3] border-l-2 border-[#58a6ff] pl-3 italic">
-                {event.data.prompt as string}
-              </blockquote>
+              <div className="rounded-md border border-[#30363d] overflow-hidden">
+                <div className="flex items-center justify-between px-3 py-1 bg-[#161b22] border-b border-[#30363d]">
+                  <span className="text-[10px] text-[#484f58] font-mono uppercase">Prompt</span>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(event.data.prompt as string).catch(() => {}); }}
+                    className="text-xs text-[#8b949e] hover:text-[#e6edf3] transition-colors"
+                  >
+                    Copy
+                  </button>
+                </div>
+                <pre className="p-3 text-xs text-[#e6edf3] leading-relaxed whitespace-pre-wrap break-words font-sans border-l-2 border-[#58a6ff]">
+                  {event.data.prompt as string}
+                </pre>
+              </div>
             )
           )}
 
