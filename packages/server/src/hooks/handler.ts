@@ -1,3 +1,4 @@
+import { readFile } from 'node:fs/promises';
 import type { FastifyInstance } from 'fastify';
 import { PendingApprovalManager } from './pending.js';
 import { SessionGate } from './gate.js';
@@ -17,6 +18,11 @@ import type {
   SubagentStartInput,
   SubagentStopInput,
   AgentResponseInput,
+  StopFailureInput,
+  PreCompactInput,
+  PostCompactInput,
+  ElicitationInput,
+  ElicitationResultInput,
   PreToolUseResponse,
   PermissionResponse,
   ApprovalDecision,
@@ -24,6 +30,11 @@ import type {
 import type { LaymanConfig } from '../config/schema.js';
 
 const AUTO_ALLOW_TOOLS = new Set(['Read', 'Glob', 'Grep', 'WebSearch']);
+
+// Track the last-emitted assistant message UUID per transcript path.
+// null = transcript seen but no messages emitted yet (emit from start).
+// Keyed by transcript_path since each session/subagent has a unique path.
+const transcriptWatermarks = new Map<string, string | null>();
 
 /** Detect activation curl in a Bash command */
 const ACTIVATION_PATTERN = /curl\b.*\/api\/activate/;
@@ -132,6 +143,26 @@ export function registerHookHandler(
             await handleAgentResponse(body as unknown as AgentResponseInput, eventStore, agentType);
             return reply.status(200).send({});
           }
+          case 'StopFailure': {
+            await handleStopFailure(body as unknown as StopFailureInput, eventStore, agentType);
+            return reply.status(200).send({});
+          }
+          case 'PreCompact': {
+            await handlePreCompact(body as unknown as PreCompactInput, eventStore, agentType);
+            return reply.status(200).send({});
+          }
+          case 'PostCompact': {
+            await handlePostCompact(body as unknown as PostCompactInput, eventStore, agentType);
+            return reply.status(200).send({});
+          }
+          case 'Elicitation': {
+            await handleElicitation(body as unknown as ElicitationInput, eventStore, agentType);
+            return reply.status(200).send({});
+          }
+          case 'ElicitationResult': {
+            await handleElicitationResult(body as unknown as ElicitationResultInput, eventStore, agentType);
+            return reply.status(200).send({});
+          }
           default:
             return reply.status(400).send({ error: `Unknown hook event: ${eventName}` });
         }
@@ -160,6 +191,9 @@ async function handlePreToolUse(
 ): Promise<PreToolUseResponse> {
   const config = getConfig();
   const riskLevel = classifyRisk(input.tool_name, input.tool_input);
+
+  // Emit any assistant "thinking" text that preceded this tool call
+  await emitNewAssistantMessages(input.transcript_path, input.session_id, eventStore, agentType);
 
   // Check auto-allow rules
   const shouldAutoAllow =
@@ -397,6 +431,8 @@ async function handleSessionStart(
   eventStore.add('session_start', input.session_id, {
     source: input.source,
   }, undefined, agentType);
+  // Snapshot the current last assistant UUID so resumed sessions don't re-emit history
+  await initTranscriptWatermark(input.transcript_path);
 }
 
 async function handleSessionEnd(
@@ -407,6 +443,7 @@ async function handleSessionEnd(
 ): Promise<void> {
   eventStore.add('session_end', input.session_id, {}, undefined, agentType);
   gate.deactivate(input.session_id);
+  transcriptWatermarks.delete(input.transcript_path);
 }
 
 async function handleStop(
@@ -415,6 +452,106 @@ async function handleStop(
   agentType: string = 'claude-code'
 ): Promise<void> {
   eventStore.add('agent_stop', input.session_id, {}, undefined, agentType);
+  // Emit the final assistant response (and any intermediate messages not yet emitted)
+  await emitNewAssistantMessages(input.transcript_path, input.session_id, eventStore, agentType);
+}
+
+/** Remap host ~/.claude path to container-mounted /root/.claude path */
+function remapTranscriptPath(hostPath: string): string {
+  const match = hostPath.match(/\.claude\/(.+)$/);
+  if (!match) return hostPath;
+  return `/root/.claude/${match[1]}`;
+}
+
+/** Read transcript content, trying Docker-remapped path first then original */
+async function readTranscriptContent(transcriptPath: string): Promise<string | null> {
+  const containerPath = remapTranscriptPath(transcriptPath);
+  try {
+    return await readFile(containerPath, 'utf-8');
+  } catch {
+    try {
+      return await readFile(transcriptPath, 'utf-8');
+    } catch {
+      return null;
+    }
+  }
+}
+
+/** Snapshot the current last assistant UUID so future calls only emit new messages */
+async function initTranscriptWatermark(transcriptPath: string): Promise<void> {
+  if (transcriptWatermarks.has(transcriptPath)) return;
+  const content = await readTranscriptContent(transcriptPath);
+  if (!content) {
+    transcriptWatermarks.set(transcriptPath, null);
+    return;
+  }
+  const lines = content.trim().split('\n').filter(Boolean);
+  for (let i = lines.length - 1; i >= 0; i--) {
+    try {
+      const obj = JSON.parse(lines[i]) as Record<string, unknown>;
+      if (obj.type === 'assistant' && typeof obj.uuid === 'string') {
+        transcriptWatermarks.set(transcriptPath, obj.uuid);
+        return;
+      }
+    } catch { /* skip */ }
+  }
+  transcriptWatermarks.set(transcriptPath, null);
+}
+
+/** Emit all assistant text messages in the transcript that haven't been emitted yet */
+async function emitNewAssistantMessages(
+  transcriptPath: string,
+  sessionId: string,
+  eventStore: EventStore,
+  agentType: string
+): Promise<void> {
+  // If we haven't seen this transcript before, init watermark first (avoids emitting history)
+  if (!transcriptWatermarks.has(transcriptPath)) {
+    await initTranscriptWatermark(transcriptPath);
+    return; // nothing new to emit on first sight
+  }
+
+  const content = await readTranscriptContent(transcriptPath);
+  if (!content) return;
+
+  const watermark = transcriptWatermarks.get(transcriptPath);
+  const lines = content.trim().split('\n').filter(Boolean);
+
+  let pastWatermark = watermark === null; // null = emit from beginning
+  let newWatermark: string | null = null;
+
+  for (const line of lines) {
+    try {
+      const obj = JSON.parse(line) as Record<string, unknown>;
+      if (obj.type !== 'assistant') continue;
+
+      const uuid = typeof obj.uuid === 'string' ? obj.uuid : null;
+
+      if (!pastWatermark) {
+        if (uuid === watermark) pastWatermark = true;
+        continue;
+      }
+
+      const msg = obj.message as Record<string, unknown> | undefined;
+      const blocks = msg?.content;
+      if (!Array.isArray(blocks)) continue;
+
+      const texts = (blocks as Record<string, unknown>[])
+        .filter((b) => b.type === 'text' && typeof b.text === 'string')
+        .map((b) => (b.text as string).trim())
+        .filter(Boolean);
+
+      if (texts.length > 0) {
+        eventStore.add('agent_response', sessionId, { prompt: texts.join('\n\n') }, undefined, agentType);
+      }
+
+      if (uuid) newWatermark = uuid;
+    } catch { /* skip malformed lines */ }
+  }
+
+  if (newWatermark) {
+    transcriptWatermarks.set(transcriptPath, newWatermark);
+  }
 }
 
 async function handleUserPromptSubmit(
@@ -454,6 +591,52 @@ async function handleAgentResponse(
 ): Promise<void> {
   eventStore.add('agent_response', input.session_id, {
     prompt: input.response,
+  }, undefined, agentType);
+}
+
+async function handleStopFailure(
+  input: StopFailureInput,
+  eventStore: EventStore,
+  agentType: string = 'claude-code'
+): Promise<void> {
+  eventStore.add('stop_failure', input.session_id, {
+    error: input.error,
+  }, undefined, agentType);
+}
+
+async function handlePreCompact(
+  input: PreCompactInput,
+  eventStore: EventStore,
+  agentType: string = 'claude-code'
+): Promise<void> {
+  eventStore.add('pre_compact', input.session_id, {}, undefined, agentType);
+}
+
+async function handlePostCompact(
+  input: PostCompactInput,
+  eventStore: EventStore,
+  agentType: string = 'claude-code'
+): Promise<void> {
+  eventStore.add('post_compact', input.session_id, {}, undefined, agentType);
+}
+
+async function handleElicitation(
+  input: ElicitationInput,
+  eventStore: EventStore,
+  agentType: string = 'claude-code'
+): Promise<void> {
+  eventStore.add('elicitation', input.session_id, {
+    prompt: input.message,
+  }, undefined, agentType);
+}
+
+async function handleElicitationResult(
+  input: ElicitationResultInput,
+  eventStore: EventStore,
+  agentType: string = 'claude-code'
+): Promise<void> {
+  eventStore.add('elicitation_result', input.session_id, {
+    prompt: input.canceled ? '(canceled)' : JSON.stringify(input.result),
   }, undefined, agentType);
 }
 

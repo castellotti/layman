@@ -74,6 +74,32 @@ export interface AgentResponseInput extends HookInputBase {
   response: string;
 }
 
+export interface StopFailureInput extends HookInputBase {
+  hook_event_name: 'StopFailure';
+  error?: string;
+}
+
+export interface PreCompactInput extends HookInputBase {
+  hook_event_name: 'PreCompact';
+}
+
+export interface PostCompactInput extends HookInputBase {
+  hook_event_name: 'PostCompact';
+}
+
+export interface ElicitationInput extends HookInputBase {
+  hook_event_name: 'Elicitation';
+  request_id?: string;
+  message?: string;
+}
+
+export interface ElicitationResultInput extends HookInputBase {
+  hook_event_name: 'ElicitationResult';
+  request_id?: string;
+  result?: Record<string, unknown>;
+  canceled?: boolean;
+}
+
 export type AnyHookInput =
   | PreToolUseInput
   | PostToolUseInput
@@ -86,7 +112,12 @@ export type AnyHookInput =
   | UserPromptSubmitInput
   | SubagentStartInput
   | SubagentStopInput
-  | AgentResponseInput;
+  | AgentResponseInput
+  | StopFailureInput
+  | PreCompactInput
+  | PostCompactInput
+  | ElicitationInput
+  | ElicitationResultInput;
 
 // Response types returned to Claude Code
 export interface PreToolUseResponse {
