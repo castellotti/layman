@@ -41,6 +41,11 @@ const EVENT_ICONS: Record<string, string> = {
   notification: '🔔',
   subagent_start: '🔀',
   subagent_stop: '🔀',
+  stop_failure: '⚠',
+  pre_compact: '📦',
+  post_compact: '📦',
+  elicitation: '📋',
+  elicitation_result: '📋',
   analysis_result: '🔍',
 };
 
@@ -60,6 +65,11 @@ const BORDER_COLORS: Record<string, string> = {
   notification: 'border-l-[#58a6ff]',
   subagent_start: 'border-l-[#58a6ff]',
   subagent_stop: 'border-l-[#8b949e]',
+  stop_failure: 'border-l-[#f85149]',
+  pre_compact: 'border-l-[#8b949e]',
+  post_compact: 'border-l-[#8b949e]',
+  elicitation: 'border-l-[#58a6ff]',
+  elicitation_result: 'border-l-[#58a6ff]',
   analysis_result: 'border-l-[#8b949e]',
 };
 
@@ -106,6 +116,16 @@ function getEventSummary(event: TimelineEvent): string {
       return `Subagent started: ${data.agentType ?? 'unknown'}`;
     case 'subagent_stop':
       return `Subagent stopped: ${data.agentType ?? 'unknown'}`;
+    case 'stop_failure':
+      return data.error ?? 'API error';
+    case 'pre_compact':
+      return 'Compaction starting';
+    case 'post_compact':
+      return 'Compaction complete';
+    case 'elicitation':
+      return (data.prompt ?? 'MCP structured input request').slice(0, 80);
+    case 'elicitation_result':
+      return (data.prompt ?? 'MCP structured input result').slice(0, 80);
     default:
       return type;
   }
@@ -161,9 +181,10 @@ export function EventCard({ event, index, isSelected, onClick, onSend, collapseH
 
   const isPending = event.type === 'tool_call_pending' || event.type === 'permission_request';
   const isAgentResponse = event.type === 'agent_response';
+  const isFailed = event.type === 'tool_call_failed';
   // When collapseHistory is on, expansion is driven by selection; otherwise use local toggle
-  // agent_response is always expanded so the user sees the full reply without clicking
-  const expanded = isPending || isAgentResponse || (collapseHistory ? isSelected : expandedLocal);
+  // agent_response and tool_call_failed are always expanded so the content is visible without clicking
+  const expanded = isPending || isAgentResponse || isFailed || (collapseHistory ? isSelected : expandedLocal);
   const borderColor = BORDER_COLORS[event.type] ?? 'border-l-[#30363d]';
   const icon = EVENT_ICONS[event.type] ?? '·';
 
@@ -372,16 +393,28 @@ export function EventCard({ event, index, isSelected, onClick, onSend, collapseH
                 <ReactMarkdown>{event.data.prompt as string}</ReactMarkdown>
               </div>
             ) : (
-              <blockquote className="text-xs text-[#e6edf3] border-l-2 border-[#58a6ff] pl-3 italic">
-                {event.data.prompt as string}
-              </blockquote>
+              <div className="rounded-md border border-[#30363d] overflow-hidden">
+                <div className="flex items-center justify-between px-3 py-1 bg-[#161b22] border-b border-[#30363d]">
+                  <span className="text-[10px] text-[#484f58] font-mono uppercase">Prompt</span>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(event.data.prompt as string).catch(() => {}); }}
+                    className="text-xs text-[#8b949e] hover:text-[#e6edf3] transition-colors"
+                  >
+                    Copy
+                  </button>
+                </div>
+                <pre className="p-3 text-xs text-[#e6edf3] leading-relaxed whitespace-pre-wrap break-words font-sans border-l-2 border-[#58a6ff]">
+                  {event.data.prompt as string}
+                </pre>
+              </div>
             )
           )}
 
           {/* Error */}
           {event.data.error && (
-            <div className="text-xs text-[#f85149] bg-[#f85149]/10 border border-[#f85149]/20 rounded px-3 py-2 font-mono">
-              {event.data.error}
+            <div>
+              <p className="text-[10px] text-[#f85149] mb-1 font-mono uppercase">Error</p>
+              <CodeBlock code={event.data.error} maxLines={15} className="border-[#f85149]/30" />
             </div>
           )}
 
