@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { useSessionStore } from '../../stores/sessionStore.js';
 import { useEventStore } from '../../hooks/useEventStore.js';
 import { AnalysisCard } from '../analysis/AnalysisCard.js';
@@ -21,10 +21,48 @@ export function InvestigationPanel({ onSend }: InvestigationPanelProps) {
     analyzingEventIds,
     laymansEventIds,
     laymansErrors,
+    config,
   } = useSessionStore();
 
   const { getEvent } = useEventStore();
   const [isAskingQuestion, setIsAskingQuestion] = useState(false);
+  const [askModel, setAskModel] = useState('');
+  const [availableModels, setAvailableModels] = useState<string[]>([]);
+  const [fetchingModels, setFetchingModels] = useState(false);
+  const [fetchModelError, setFetchModelError] = useState<string | null>(null);
+
+  const fetchModels = useCallback(async () => {
+    if (!config) return;
+    const p = config.analysis.provider;
+    setFetchingModels(true);
+    setFetchModelError(null);
+    try {
+      const params = new URLSearchParams({ provider: p });
+      if (config.analysis.endpoint) params.set('endpoint', config.analysis.endpoint);
+      const res = await fetch(`/api/models?${params}`);
+      const data = await res.json() as { models?: string[]; error?: string };
+      if (!res.ok || data.error) {
+        setFetchModelError(data.error ?? `HTTP ${res.status}`);
+        setAvailableModels([]);
+      } else {
+        const models = data.models ?? [];
+        setAvailableModels(models);
+        if (models.length && !askModel) setAskModel(models[0]);
+      }
+    } catch (err) {
+      setFetchModelError(err instanceof Error ? err.message : String(err));
+      setAvailableModels([]);
+    } finally {
+      setFetchingModels(false);
+    }
+  }, [config?.analysis.provider, config?.analysis.endpoint, askModel]);
+
+  // Sync askModel default from config when config loads
+  useEffect(() => {
+    if (config?.analysis.model && !askModel) {
+      setAskModel(config.analysis.model);
+    }
+  }, [config?.analysis.model]);
 
   if (!investigationOpen || !selectedEventId) return null;
 
@@ -55,7 +93,7 @@ export function InvestigationPanel({ onSend }: InvestigationPanelProps) {
       const response = await fetch(`/api/analysis/${selectedEventId}/ask`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ question }),
+        body: JSON.stringify({ question, ...(askModel ? { model: askModel } : {}) }),
       });
       if (response.ok) {
         const data = await response.json() as { answer: string; tokens?: { input: number; output: number }; latencyMs?: number; model?: string };
@@ -82,7 +120,12 @@ export function InvestigationPanel({ onSend }: InvestigationPanelProps) {
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-[#30363d] bg-[#161b22] shrink-0">
         <div className="flex items-center gap-2">
-          <span className="text-xs font-semibold text-[#e6edf3]">Investigation</span>
+          <button
+            onClick={() => { handleRequestLaymans('quick'); handleRequestAnalysis('detailed'); }}
+            disabled={isBusy}
+            title="Quick Layman's Terms + Detailed Analysis"
+            className="text-xs font-semibold text-[#e6edf3] hover:text-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >Investigation</button>
           {event.riskLevel && <RiskBadge level={event.riskLevel} compact />}
         </div>
         <div className="flex items-center gap-2">
@@ -140,7 +183,7 @@ export function InvestigationPanel({ onSend }: InvestigationPanelProps) {
         {/* Layman's Terms section */}
         <div>
           <div className="flex items-center justify-between mb-2">
-            <span className="text-[10px] text-[#484f58] font-mono uppercase tracking-wider">
+            <span className="text-sm font-bold text-white uppercase tracking-widest">
               Layman&apos;s Terms
             </span>
             <div className="flex gap-2">
@@ -155,7 +198,7 @@ export function InvestigationPanel({ onSend }: InvestigationPanelProps) {
               <button
                 onClick={() => handleRequestLaymans('detailed')}
                 disabled={isLaymansLoading}
-                className="text-[10px] text-[#3fb950] hover:text-[#56d364] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                className="text-[10px] text-[#58a6ff] hover:text-[#79c0ff] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
                 Detailed
               </button>
@@ -196,14 +239,14 @@ export function InvestigationPanel({ onSend }: InvestigationPanelProps) {
         {/* Analysis section */}
         <div>
           <div className="flex items-center justify-between mb-2">
-            <span className="text-[10px] text-[#484f58] font-mono uppercase tracking-wider">
+            <span className="text-sm font-bold text-white uppercase tracking-widest">
               Analysis
             </span>
             <div className="flex gap-2">
               <button
                 onClick={() => handleRequestAnalysis('quick')}
                 disabled={isAnalyzing}
-                className="text-[10px] text-[#58a6ff] hover:text-[#79c0ff] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                className="text-[10px] text-[#3fb950] hover:text-[#56d364] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
                 {isAnalyzing ? '⏳ Analyzing...' : 'Quick'}
               </button>
@@ -277,9 +320,43 @@ export function InvestigationPanel({ onSend }: InvestigationPanelProps) {
 
         {/* Ask question input */}
         <div>
-          <span className="text-[10px] text-[#484f58] font-mono uppercase tracking-wider block mb-2">
-            Ask a question
-          </span>
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-sm font-bold text-white uppercase tracking-widest">
+              Ask a question
+            </span>
+            <button
+              onClick={fetchModels}
+              disabled={fetchingModels}
+              className="text-[10px] text-[#58a6ff] hover:text-[#79c0ff] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            >
+              {fetchingModels ? 'Fetching...' : '↻ Fetch models'}
+            </button>
+          </div>
+          {availableModels.length > 0 ? (
+            <select
+              value={askModel}
+              onChange={(e) => setAskModel(e.target.value)}
+              className="w-full px-3 py-1.5 text-xs bg-[#0d1117] border border-[#30363d] rounded-md text-[#e6edf3] focus:outline-none focus:border-[#58a6ff] mb-2"
+            >
+              {!availableModels.includes(askModel) && askModel && (
+                <option value={askModel}>{askModel}</option>
+              )}
+              {availableModels.map((m) => (
+                <option key={m} value={m}>{m}</option>
+              ))}
+            </select>
+          ) : (
+            <input
+              type="text"
+              value={askModel}
+              onChange={(e) => setAskModel(e.target.value)}
+              placeholder="Model (default from settings)"
+              className="w-full px-3 py-1.5 text-xs bg-[#0d1117] border border-[#30363d] rounded-md text-[#e6edf3] placeholder-[#484f58] focus:outline-none focus:border-[#58a6ff] mb-2"
+            />
+          )}
+          {fetchModelError && (
+            <p className="text-[10px] text-[#f85149] mb-2">{fetchModelError}</p>
+          )}
           <AskQuestion
             eventId={selectedEventId}
             onAsk={handleAsk}
