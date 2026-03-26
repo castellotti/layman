@@ -247,7 +247,7 @@ export function createServer(config: LaymanConfig): LaymanServer {
 
     fastify.post<{
       Params: { eventId: string };
-      Body: { question: string };
+      Body: { question: string; model?: string };
     }>('/api/analysis/:eventId/ask', async (request, reply) => {
       const event = eventStore.get(request.params.eventId);
       if (!event) return reply.status(404).send({ error: 'Event not found' });
@@ -259,6 +259,7 @@ export function createServer(config: LaymanConfig): LaymanServer {
           toolOutput: event.data.toolOutput,
           previousAnalysis: event.analysis,
           cwd: process.cwd(),
+          modelOverride: request.body.model,
         });
         recorder.recordQA(event.id, event.sessionId, {
           question: request.body.question,

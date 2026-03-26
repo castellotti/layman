@@ -49,6 +49,7 @@ export interface InvestigationContext {
   toolOutput?: unknown;
   previousAnalysis?: AnalysisResult;
   cwd: string;
+  modelOverride?: string;
 }
 
 export interface LaymansResult {
