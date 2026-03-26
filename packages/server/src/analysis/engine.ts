@@ -102,12 +102,16 @@ export class AnalysisEngine {
       context.previousAnalysis
     );
 
+    const effectiveConfig = context.modelOverride
+      ? { ...this.config, model: context.modelOverride, maxTokens: 400 }
+      : { ...this.config, maxTokens: 400 };
+
     return this.withConcurrencyLimit(async () => {
       const startTime = Date.now();
       const raw = await this.callProvider(
         INVESTIGATION_SYSTEM_PROMPT,
         userMessage,
-        { ...this.config, maxTokens: 400 }
+        effectiveConfig
       );
       return {
         text: raw.text.trim(),
@@ -116,7 +120,7 @@ export class AnalysisEngine {
           output: raw.usage.output_tokens ?? raw.usage.completion_tokens ?? 0,
         },
         latencyMs: Date.now() - startTime,
-        model: this.config.model,
+        model: effectiveConfig.model,
       };
     });
   }
