@@ -124,7 +124,7 @@ export function InvestigationPanel({ onSend }: InvestigationPanelProps) {
             onClick={() => { handleRequestLaymans('quick'); handleRequestAnalysis('detailed'); }}
             disabled={isBusy}
             title="Quick Layman's Terms + Detailed Analysis"
-            className="text-xs font-semibold text-[#e6edf3] hover:text-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            className="text-sm font-bold text-[#e6edf3] hover:text-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >Investigation</button>
           {event.riskLevel && <RiskBadge level={event.riskLevel} compact />}
         </div>
@@ -183,7 +183,7 @@ export function InvestigationPanel({ onSend }: InvestigationPanelProps) {
         {/* Layman's Terms section */}
         <div>
           <div className="flex items-center justify-between mb-2">
-            <span className="text-sm font-bold text-white uppercase tracking-widest">
+            <span className="text-xs font-mono text-white uppercase">
               Layman&apos;s Terms
             </span>
             <div className="flex gap-2">
@@ -239,7 +239,7 @@ export function InvestigationPanel({ onSend }: InvestigationPanelProps) {
         {/* Analysis section */}
         <div>
           <div className="flex items-center justify-between mb-2">
-            <span className="text-sm font-bold text-white uppercase tracking-widest">
+            <span className="text-xs font-mono text-white uppercase">
               Analysis
             </span>
             <div className="flex gap-2">
@@ -321,7 +321,7 @@ export function InvestigationPanel({ onSend }: InvestigationPanelProps) {
         {/* Ask question input */}
         <div>
           <div className="flex items-center justify-between mb-2">
-            <span className="text-sm font-bold text-white uppercase tracking-widest">
+            <span className="text-xs font-mono text-white uppercase">
               Ask a question
             </span>
             <button
@@ -336,7 +336,7 @@ export function InvestigationPanel({ onSend }: InvestigationPanelProps) {
             <select
               value={askModel}
               onChange={(e) => setAskModel(e.target.value)}
-              className="w-full px-3 py-1.5 text-xs bg-[#0d1117] border border-[#30363d] rounded-md text-[#e6edf3] focus:outline-none focus:border-[#58a6ff] mb-2"
+              className="w-full px-3 py-1.5 text-xs bg-[#0d1117] border border-[#30363d] rounded-md text-[#8b949e] focus:outline-none focus:border-[#58a6ff] mb-2"
             >
               {!availableModels.includes(askModel) && askModel && (
                 <option value={askModel}>{askModel}</option>
@@ -351,7 +351,7 @@ export function InvestigationPanel({ onSend }: InvestigationPanelProps) {
               value={askModel}
               onChange={(e) => setAskModel(e.target.value)}
               placeholder="Model (default from settings)"
-              className="w-full px-3 py-1.5 text-xs bg-[#0d1117] border border-[#30363d] rounded-md text-[#e6edf3] placeholder-[#484f58] focus:outline-none focus:border-[#58a6ff] mb-2"
+              className="w-full px-3 py-1.5 text-xs bg-[#0d1117] border border-[#30363d] rounded-md text-[#8b949e] placeholder-[#484f58] focus:outline-none focus:border-[#58a6ff] mb-2"
             />
           )}
           {fetchModelError && (
