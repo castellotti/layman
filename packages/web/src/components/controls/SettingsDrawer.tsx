@@ -172,6 +172,10 @@ export function SettingsDrawer({ onSend }: SettingsDrawerProps) {
   const [fetchingModels, setFetchingModels] = useState(false);
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [piiCriteriaOpen, setPiiCriteriaOpen] = useState(false);
+  const [purgeState, setPurgeState] = useState<'idle' | 'scanning' | 'confirming' | 'purging' | 'done' | 'error'>('idle');
+  const [scanResult, setScanResult] = useState<{ categories: { name: string; key: string; count: number }[]; total: number } | null>(null);
+  const [purgeResult, setPurgeResult] = useState<{ redacted: number } | null>(null);
+  const [purgeError, setPurgeError] = useState<string | null>(null);
 
   const provider = config?.analysis.provider ?? 'anthropic';
   const providerCfg = PROVIDER_CONFIG[provider];
@@ -206,6 +210,49 @@ export function SettingsDrawer({ onSend }: SettingsDrawerProps) {
       setFetchingModels(false);
     }
   }, [config?.analysis.provider, config?.analysis.endpoint, config?.analysis.model, onSend]);
+
+  const handlePurgeScan = useCallback(async () => {
+    setPurgeState('scanning');
+    setPurgeError(null);
+    try {
+      const res = await fetch('/api/pii-purge/scan', { method: 'POST' });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const result = await res.json() as { categories: { name: string; key: string; count: number }[]; total: number };
+      setScanResult(result);
+      if (result.total === 0) {
+        setPurgeResult({ redacted: 0 });
+        setPurgeState('done');
+      } else {
+        setPurgeState('confirming');
+      }
+    } catch (err) {
+      setPurgeError(err instanceof Error ? err.message : String(err));
+      setPurgeState('error');
+    }
+  }, []);
+
+  const handlePurgeExecute = useCallback(async () => {
+    setPurgeState('purging');
+    try {
+      const res = await fetch('/api/pii-purge/execute', { method: 'POST' });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const result = await res.json() as { redacted: number };
+      setPurgeResult(result);
+      setPurgeState('done');
+      // Also clear localStorage search history
+      localStorage.removeItem('layman:searchHistory');
+    } catch (err) {
+      setPurgeError(err instanceof Error ? err.message : String(err));
+      setPurgeState('error');
+    }
+  }, []);
+
+  const handlePurgeClose = useCallback(() => {
+    setPurgeState('idle');
+    setScanResult(null);
+    setPurgeResult(null);
+    setPurgeError(null);
+  }, []);
 
   // Auto-fetch models for providers with known endpoints
   useEffect(() => {
@@ -333,6 +380,19 @@ export function SettingsDrawer({ onSend }: SettingsDrawerProps) {
                   </p>
                 </div>
               )}
+            </div>
+
+            <div className="mt-3 pt-3 border-t border-[#30363d]/50 flex items-start justify-between">
+              <p className="text-[10px] text-[#484f58] mt-1">
+                Scan stored sessions and bookmarks for PII and redact all matches.
+              </p>
+              <button
+                onClick={() => void handlePurgeScan()}
+                disabled={purgeState === 'scanning' || purgeState === 'purging'}
+                className="px-3 py-1.5 text-xs font-medium rounded bg-[#da3633]/20 border border-[#f85149]/30 text-[#f85149] hover:bg-[#da3633]/30 disabled:opacity-50 transition-colors shrink-0 ml-3"
+              >
+                {purgeState === 'scanning' ? 'Scanning...' : 'Purge all PII'}
+              </button>
             </div>
           </section>
 
@@ -664,6 +724,90 @@ export function SettingsDrawer({ onSend }: SettingsDrawerProps) {
           </section>
         </div>
       </div>
+
+      {/* PII Purge confirmation dialog */}
+      {(purgeState === 'confirming' || purgeState === 'purging' || purgeState === 'done' || purgeState === 'error') && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center">
+          <div className="fixed inset-0 bg-black/60" onClick={purgeState === 'purging' ? undefined : handlePurgeClose} />
+          <div className="relative bg-[#161b22] border border-[#30363d] rounded-lg shadow-2xl p-5 max-w-md w-full mx-4">
+            {purgeState === 'confirming' && scanResult && (
+              <>
+                <h3 className="text-sm font-semibold text-[#e6edf3] mb-3">PII Scan Results</h3>
+                <p className="text-xs text-[#8b949e] mb-3">
+                  Found PII in {scanResult.total} {scanResult.total === 1 ? 'field' : 'fields'} across stored data:
+                </p>
+                <ul className="space-y-1.5 mb-4">
+                  {scanResult.categories.map((cat) => (
+                    <li key={cat.key} className="flex justify-between text-xs">
+                      <span className="text-[#e6edf3]">{cat.name}</span>
+                      <span className={cat.count > 0 ? 'text-[#f85149] font-medium' : 'text-[#484f58]'}>
+                        {cat.count} {cat.count === 1 ? 'field' : 'fields'}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+                <p className="text-[10px] text-[#f85149] mb-4">
+                  This action cannot be undone. All matched PII will be replaced with [REDACTED].
+                </p>
+                <div className="flex gap-2 justify-end">
+                  <button
+                    onClick={handlePurgeClose}
+                    className="px-3 py-1.5 text-xs rounded bg-[#21262d] border border-[#30363d] text-[#e6edf3] hover:bg-[#30363d] transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={() => void handlePurgeExecute()}
+                    className="px-3 py-1.5 text-xs font-medium rounded bg-[#da3633] text-white hover:bg-[#f85149] transition-colors"
+                  >
+                    Purge {scanResult.total} {scanResult.total === 1 ? 'field' : 'fields'}
+                  </button>
+                </div>
+              </>
+            )}
+            {purgeState === 'purging' && (
+              <div className="text-center py-4">
+                <p className="text-xs text-[#e6edf3]">Purging PII...</p>
+                <p className="text-[10px] text-[#484f58] mt-1">Do not close this dialog.</p>
+              </div>
+            )}
+            {purgeState === 'done' && purgeResult && (
+              <>
+                <h3 className={`text-sm font-semibold mb-2 ${purgeResult.redacted === 0 ? 'text-[#3fb950]' : 'text-[#3fb950]'}`}>
+                  {purgeResult.redacted === 0 ? 'No PII Found' : 'Purge Complete'}
+                </h3>
+                <p className="text-xs text-[#8b949e] mb-4">
+                  {purgeResult.redacted === 0
+                    ? 'No PII was detected in the database.'
+                    : `Redacted ${purgeResult.redacted} ${purgeResult.redacted === 1 ? 'field' : 'fields'}. Search history has also been cleared.`}
+                </p>
+                <div className="flex justify-end">
+                  <button
+                    onClick={handlePurgeClose}
+                    className="px-3 py-1.5 text-xs rounded bg-[#21262d] border border-[#30363d] text-[#e6edf3] hover:bg-[#30363d] transition-colors"
+                  >
+                    Close
+                  </button>
+                </div>
+              </>
+            )}
+            {purgeState === 'error' && (
+              <>
+                <h3 className="text-sm font-semibold text-[#f85149] mb-2">Error</h3>
+                <p className="text-xs text-[#8b949e] mb-4">{purgeError}</p>
+                <div className="flex justify-end">
+                  <button
+                    onClick={handlePurgeClose}
+                    className="px-3 py-1.5 text-xs rounded bg-[#21262d] border border-[#30363d] text-[#e6edf3] hover:bg-[#30363d] transition-colors"
+                  >
+                    Close
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

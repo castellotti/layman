@@ -15,6 +15,7 @@ import { AnalysisEngine } from './analysis/engine.js';
 import { resolveEndpoint } from './analysis/providers/openai-compat.js';
 import { filterPii } from './pii/filter.js';
 import { PII_CATEGORIES, PII_GROUPS } from './pii/categories.js';
+import { scanPii, executePurge } from './pii/purge.js';
 import { updateConfig, saveConfig } from './config/config.js';
 import { openDatabase } from './db/database.js';
 import { SessionRecorder } from './db/recorder.js';
@@ -168,6 +169,23 @@ export function createServer(config: LaymanConfig): LaymanServer {
       categories: PII_CATEGORIES,
       groups: PII_GROUPS,
     }));
+
+    // PII purge — scan all SQLite data for PII matches
+    fastify.post('/api/pii-purge/scan', async () => {
+      return scanPii(db);
+    });
+
+    // PII purge — execute redaction on all SQLite data
+    fastify.post('/api/pii-purge/execute', async () => {
+      const result = executePurge(db);
+      // Broadcast refreshed bookmarks since names may have been redacted
+      broadcast({
+        type: 'bookmarks:state',
+        folders: bookmarkStore.listFolders(),
+        bookmarks: bookmarkStore.listAllBookmarks(),
+      });
+      return result;
+    });
 
     // Status
     fastify.get('/api/status', async (): Promise<SessionStatus> => {

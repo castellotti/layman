@@ -150,6 +150,21 @@ const ALLOWLIST: Set<string> = new Set([
 ]);
 
 /**
+ * Count the number of PII matches in a string without redacting.
+ */
+export function countPiiMatches(input: string): number {
+  let count = 0;
+  for (const { regex } of PII_PATTERNS) {
+    regex.lastIndex = 0;
+    let match: RegExpExecArray | null;
+    while ((match = regex.exec(input)) !== null) {
+      if (!ALLOWLIST.has(match[0])) count++;
+    }
+  }
+  return count;
+}
+
+/**
  * Apply PII redaction to a single string.
  * Returns the redacted version.
  */
@@ -169,7 +184,7 @@ export function redactString(input: string): string {
 /**
  * Recursively walk a value and redact any strings found.
  */
-function redactValue(value: unknown): unknown {
+export function redactValue(value: unknown): unknown {
   if (typeof value === 'string') {
     return redactString(value);
   }
