@@ -72,8 +72,8 @@ describe('redactString', () => {
       expect(redactString(`token: ${jwt}`)).toBe('token: [REDACTED]');
     });
 
-    it('redacts API key assignment', () => {
-      expect(redactString('api_key=sk-abc123def456ghi789jkl012')).toBe('[REDACTED]');
+    it('redacts generic API key assignment', () => {
+      expect(redactString('api_key=sk-abc123def456ghi789jkl012')).toBe('api_key=[REDACTED]');
     });
 
     it('redacts password assignment', () => {
@@ -83,6 +83,69 @@ describe('redactString', () => {
     it('redacts private key block', () => {
       const pem = '-----BEGIN RSA PRIVATE KEY-----\nMIIBog...\n-----END RSA PRIVATE KEY-----';
       expect(redactString(pem)).toBe('[REDACTED]');
+    });
+  });
+
+  describe('API keys', () => {
+    it('redacts Anthropic API key', () => {
+      const key = 'sk-ant-api03-abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789abcdefghij';
+      expect(redactString(`key: ${key}`)).toBe('key: [REDACTED]');
+    });
+
+    it('redacts OpenAI API key (legacy sk- format)', () => {
+      expect(redactString('sk-abcdefghijklmnopqrstuvwx')).toBe('[REDACTED]');
+    });
+
+    it('redacts OpenAI API key (sk-proj- format)', () => {
+      expect(redactString('sk-proj-abcdefghijklmnopqrstuvwx')).toBe('[REDACTED]');
+    });
+  });
+
+  describe('access tokens', () => {
+    it('redacts GitHub classic PAT (ghp_)', () => {
+      expect(redactString('token: ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefgh')).toBe('token: [REDACTED]');
+    });
+
+    it('redacts GitHub fine-grained PAT (github_pat_)', () => {
+      expect(redactString('github_pat_11ABCDEF0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOP')).toBe('[REDACTED]');
+    });
+
+    it('redacts GitHub OAuth token (gho_)', () => {
+      expect(redactString('gho_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefgh')).toBe('[REDACTED]');
+    });
+
+    it('redacts GitHub user-to-server token (ghu_)', () => {
+      expect(redactString('ghu_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefgh')).toBe('[REDACTED]');
+    });
+
+    it('redacts GitHub server-to-server token (ghs_)', () => {
+      expect(redactString('ghs_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefgh')).toBe('[REDACTED]');
+    });
+
+    it('redacts GitHub refresh token (ghr_)', () => {
+      expect(redactString('ghr_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefgh')).toBe('[REDACTED]');
+    });
+  });
+
+  describe('device identifiers', () => {
+    it('redacts Apple legacy UDID (40 hex chars)', () => {
+      expect(redactString('udid: 2b6f0cc904d137be2e1730235f5664094b831186')).toBe('udid: [REDACTED]');
+    });
+
+    it('redacts Apple newer UDID format (8-16 hex)', () => {
+      expect(redactString('device 00008101-001A2B3C4D5E6F78')).toBe('device [REDACTED]');
+    });
+
+    it('redacts Android device ID with label', () => {
+      expect(redactString('android_id=a1b2c3d4e5f6a7b8')).toBe('[REDACTED]');
+    });
+
+    it('redacts IDFA with label', () => {
+      expect(redactString('idfa: 6D92078A-8246-4BA4-AE5B-76104861E7DC')).toBe('[REDACTED]');
+    });
+
+    it('redacts device_id with UUID value', () => {
+      expect(redactString('device_id=550e8400-e29b-41d4-a716-446655440000')).toBe('[REDACTED]');
     });
   });
 

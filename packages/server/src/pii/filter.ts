@@ -24,9 +24,50 @@ export const PII_PATTERNS: PiiPattern[] = [
     id: 'secret',
     regex: /\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b/g,
   },
+  // Anthropic API keys (sk-ant-api03-... typically ~108 chars)
+  {
+    id: 'api_key',
+    regex: /\bsk-ant-api\d{2}-[A-Za-z0-9_-]{20,}\b/g,
+  },
+  // OpenAI API keys (sk-proj-... or legacy sk-... format)
+  {
+    id: 'api_key',
+    regex: /\bsk-(?:proj-)?[A-Za-z0-9_-]{20,}\b/g,
+  },
+  // GitHub access tokens (classic PAT, fine-grained, OAuth, app, refresh)
+  // Prefixes: ghp_, github_pat_, gho_, ghu_, ghs_, ghr_ (up to 255 chars per GitHub docs)
+  {
+    id: 'access_token',
+    regex: /\bgithub_pat_[A-Za-z0-9_]{20,}\b/g,
+  },
+  {
+    id: 'access_token',
+    regex: /\bgh[pousr]_[A-Za-z0-9]{20,}\b/g,
+  },
+  // Apple iOS UDID (legacy 40-char hex lowercase)
+  {
+    id: 'device_id',
+    regex: /\b[0-9a-f]{40}\b/g,
+  },
+  // Apple iOS UDID (newer format: 8 hex digits, dash, 16 hex digits)
+  {
+    id: 'device_id',
+    regex: /\b[0-9A-F]{8}-[0-9A-F]{16}\b/g,
+  },
+  // Android Device ID (ANDROID_ID: exactly 16 lowercase hex chars)
+  {
+    id: 'device_id',
+    regex: /\bandroid[_-]?id\s*[:=]\s*['"]?([0-9a-f]{16})['"]?/gi,
+  },
+  // Apple IDFA / IDFV / Google Advertising ID (UUID format, uppercase hex typical for Apple)
+  // Only match when preceded by a device-ID-like label to avoid false positives on generic UUIDs
+  {
+    id: 'device_id',
+    regex: /(?:idfa|idfv|advertising[_-]?id|device[_-]?id|udid)\s*[:=]\s*['"]?[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}['"]?/gi,
+  },
   // Generic API keys / tokens (long hex or base64 strings preceded by key-like labels)
   {
-    id: 'secret',
+    id: 'api_key',
     regex: /(?:api[_-]?key|api[_-]?secret|access[_-]?token|auth[_-]?token|bearer|secret[_-]?key|private[_-]?key|client[_-]?secret)\s*[:=]\s*['"]?([A-Za-z0-9_\-/.+]{20,})['"]?/gi,
   },
   // Password assignments in text/config
