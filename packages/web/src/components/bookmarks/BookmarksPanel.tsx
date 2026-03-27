@@ -1,11 +1,15 @@
-import React, { useState, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { useSessionStore } from '../../stores/sessionStore.js';
+import { useSearchStore, eventPassesFilters } from '../../stores/searchStore.js';
 import type { ClientMessage } from '../../lib/ws-protocol.js';
 import type { RecordedSession, QAEntry } from '../../lib/types.js';
 import { BookmarkEmptyState } from './BookmarkEmptyState.js';
 import { FolderItem } from './FolderItem.js';
 import { BookmarkItem } from './BookmarkItem.js';
 import { HistoricalEventStream } from './HistoricalEventStream.js';
+import { SearchBar } from '../search/SearchBar.js';
+import { SearchResults } from '../search/SearchResults.js';
+import { EventTypeFilterBar } from '../search/EventTypeFilterBar.js';
 
 interface BookmarksPanelProps {
   onSend: (msg: ClientMessage) => void;
@@ -46,6 +50,15 @@ export function BookmarksPanel({ onSend }: BookmarksPanelProps) {
   const importInputRef = useRef<HTMLInputElement>(null);
 
   const recordingEnabled = config?.sessionRecording ?? false;
+
+  const { searchResults, eventTypeFilters, setEventTypeFilters, clearSearch } = useSearchStore();
+
+  // Apply event type filters to historical events for session viewing
+  // (must be above the early return to maintain stable hook ordering)
+  const filteredHistoricalEvents = useMemo(
+    () => historicalEvents.filter((e) => eventPassesFilters(e, eventTypeFilters, historicalEvents)),
+    [historicalEvents, eventTypeFilters]
+  );
 
   const refreshRecordedSessions = useCallback(() => {
     void fetch('/api/bookmarks/sessions')
@@ -141,6 +154,12 @@ export function BookmarksPanel({ onSend }: BookmarksPanelProps) {
     setSelectedHistoricalEventId(null);
   }, [setViewingSession]);
 
+  // Open a session from search results
+  const handleOpenSessionFromSearch = useCallback(async (sessionId: string) => {
+    clearSearch();
+    await handleSelectSession(sessionId);
+  }, [clearSearch, handleSelectSession]);
+
   // Bookmark CRUD
   const handleRenameBookmark = useCallback(async (id: string, name: string) => {
     await fetch(`/api/bookmarks/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) }).catch(() => {});
@@ -208,7 +227,7 @@ export function BookmarksPanel({ onSend }: BookmarksPanelProps) {
         <div className="w-72 shrink-0 bg-[#161b22] border-r border-[#30363d] flex flex-col h-full">
           {/* Header */}
           <div className="flex items-center justify-between px-4 py-3 border-b border-[#30363d]">
-            <h2 className="text-sm font-semibold text-[#e6edf3]">Bookmarks</h2>
+            <h2 className="text-sm font-semibold text-[#e6edf3]">Sessions</h2>
             <button
               onClick={() => setBookmarksOpen(false)}
               className="text-[#8b949e] hover:text-[#e6edf3] transition-colors text-lg leading-none"
@@ -216,6 +235,15 @@ export function BookmarksPanel({ onSend }: BookmarksPanelProps) {
               ×
             </button>
           </div>
+
+          {/* Search bar */}
+          <SearchBar
+            viewingSessionId={viewingSessionId}
+            viewingSessionLabel={viewingSessionId ? getSessionLabel(
+              recordedSessions.find((s) => s.sessionId === viewingSessionId)?.cwd ?? '',
+              viewingSessionId
+            ) : undefined}
+          />
 
           {/* Live sessions that haven't been saved yet */}
           {unsavedLiveSessions.length > 0 && (
@@ -454,9 +482,14 @@ export function BookmarksPanel({ onSend }: BookmarksPanelProps) {
           </div>
         </div>
 
-        {/* Right: historical event stream */}
+        {/* Right: search results, session view, or empty state */}
         <div className="flex-1 flex flex-col overflow-hidden">
-          {viewingSessionId ? (
+          {searchResults && !viewingSessionId ? (
+            <SearchResults
+              results={searchResults}
+              onOpenSession={(sid) => void handleOpenSessionFromSearch(sid)}
+            />
+          ) : viewingSessionId ? (
             <>
               <div className="flex items-center justify-between px-4 py-3 border-b border-[#30363d] bg-[#161b22] shrink-0">
                 <div>
@@ -474,9 +507,10 @@ export function BookmarksPanel({ onSend }: BookmarksPanelProps) {
                   ×
                 </button>
               </div>
+              <EventTypeFilterBar filters={eventTypeFilters} onChange={setEventTypeFilters} />
               <div className="flex-1 overflow-hidden">
                 <HistoricalEventStream
-                  events={historicalEvents}
+                  events={filteredHistoricalEvents}
                   qaEntries={qaEntries}
                   selectedEventId={selectedHistoricalEventId}
                   onSelectEvent={setSelectedHistoricalEventId}
@@ -485,7 +519,7 @@ export function BookmarksPanel({ onSend }: BookmarksPanelProps) {
             </>
           ) : (
             <div className="flex flex-col items-center justify-center h-full gap-2 text-center p-8">
-              <span className="text-4xl opacity-20">🔖</span>
+              <span className="text-4xl opacity-20"><svg width="36" height="36" viewBox="0 0 16 16" fill="currentColor" opacity="0.2"><path d="M1.5 3.25a.75.75 0 0 1 .75-.75h11.5a.75.75 0 0 1 0 1.5H2.25a.75.75 0 0 1-.75-.75Zm0 4.75A.75.75 0 0 1 2.25 7.25h11.5a.75.75 0 0 1 0 1.5H2.25A.75.75 0 0 1 1.5 8Zm0 4.75a.75.75 0 0 1 .75-.75h11.5a.75.75 0 0 1 0 1.5H2.25a.75.75 0 0 1-.75-.75Z"/></svg></span>
               <p className="text-sm text-[#484f58]">Select a bookmark or history entry to view its session</p>
             </div>
           )}
