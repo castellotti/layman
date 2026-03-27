@@ -13,6 +13,9 @@ import { HookInstaller } from './hooks/installer.js';
 import { registerHookHandler } from './hooks/handler.js';
 import { AnalysisEngine } from './analysis/engine.js';
 import { resolveEndpoint } from './analysis/providers/openai-compat.js';
+import { filterPii } from './pii/filter.js';
+import { PII_CATEGORIES, PII_GROUPS } from './pii/categories.js';
+import { scanPii, executePurge } from './pii/purge.js';
 import { updateConfig, saveConfig } from './config/config.js';
 import { openDatabase } from './db/database.js';
 import { SessionRecorder } from './db/recorder.js';
@@ -42,6 +45,12 @@ export function createServer(config: LaymanConfig): LaymanServer {
   const analysisEngine = new AnalysisEngine(config.analysis);
   const gate = new SessionGate();
   const startTime = Date.now();
+
+  // Wire PII filter — checks config on every event so toggling takes effect immediately
+  eventStore.setDataFilter((data) => {
+    if (getConfig().piiFilter) return filterPii(data);
+    return data;
+  });
 
   // In-memory queue of prompts to be relayed to OpenCode by the plugin.
   interface PendingPrompt { id: string; sessionId: string; prompt: string; queuedAt: number }
@@ -154,6 +163,29 @@ export function createServer(config: LaymanConfig): LaymanServer {
   function registerRoutes(): void {
     // Health check
     fastify.get('/api/health', async () => ({ status: 'ok', version: '0.1.0' }));
+
+    // PII categories — returns the full list of PII categories for the UI
+    fastify.get('/api/pii-categories', async () => ({
+      categories: PII_CATEGORIES,
+      groups: PII_GROUPS,
+    }));
+
+    // PII purge — scan all SQLite data for PII matches
+    fastify.post('/api/pii-purge/scan', async () => {
+      return scanPii(db);
+    });
+
+    // PII purge — execute redaction on all SQLite data
+    fastify.post('/api/pii-purge/execute', async () => {
+      const result = executePurge(db);
+      // Broadcast refreshed bookmarks since names may have been redacted
+      broadcast({
+        type: 'bookmarks:state',
+        folders: bookmarkStore.listFolders(),
+        bookmarks: bookmarkStore.listAllBookmarks(),
+      });
+      return result;
+    });
 
     // Status
     fastify.get('/api/status', async (): Promise<SessionStatus> => {

@@ -15,6 +15,11 @@ export class EventStore extends EventEmitter {
   private events: TimelineEvent[] = [];
   private maxEvents = 10000;
   private sessions: Map<string, { cwd: string; lastSeen: number; agentType: string; opencodeUrl?: string }> = new Map();
+  private dataFilter?: (data: EventData) => EventData;
+
+  setDataFilter(filter: (data: EventData) => EventData): void {
+    this.dataFilter = filter;
+  }
 
   add(
     type: EventType,
@@ -23,13 +28,14 @@ export class EventStore extends EventEmitter {
     riskLevel?: 'low' | 'medium' | 'high',
     agentType: string = 'claude-code'
   ): TimelineEvent {
+    const filteredData = this.dataFilter ? this.dataFilter(data) : data;
     const event: TimelineEvent = {
       id: randomUUID(),
       type,
       timestamp: Date.now(),
       sessionId,
       agentType,
-      data,
+      data: filteredData,
       riskLevel,
     };
 
@@ -95,7 +101,8 @@ export class EventStore extends EventEmitter {
   updateData(eventId: string, dataUpdates: Partial<EventData>): void {
     const event = this.get(eventId);
     if (event) {
-      Object.assign(event.data, dataUpdates);
+      const filtered = this.dataFilter ? this.dataFilter(dataUpdates as EventData) : dataUpdates;
+      Object.assign(event.data, filtered);
       this.emit('event:update', event);
     }
   }

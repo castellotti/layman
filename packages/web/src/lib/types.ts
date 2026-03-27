@@ -136,6 +136,7 @@ export interface LaymanConfig {
   autoApprove: boolean;
   laymansPrompt: string;
   sessionRecording: boolean;
+  piiFilter: boolean;
   showFullCommand: boolean;
   switchToNewestSession: boolean;
 }
