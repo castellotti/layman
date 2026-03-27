@@ -6,6 +6,50 @@ import { PROVIDER_LABELS } from '../../lib/types.js';
 
 const PROVIDER_OPTIONS: AnalysisProvider[] = ['anthropic', 'openai', 'openai-compatible', 'litellm'];
 
+interface PiiCategory {
+  id: string;
+  label: string;
+  description: string;
+  group: 'direct' | 'indirect' | 'special';
+  detected: boolean;
+}
+
+const PII_CATEGORIES: PiiCategory[] = [
+  { id: 'email', label: 'Email addresses', description: 'Business or personal email addresses', group: 'direct', detected: true },
+  { id: 'phone', label: 'Phone numbers', description: 'Telephone numbers in international or local formats', group: 'direct', detected: true },
+  { id: 'ipv4', label: 'IPv4 addresses', description: 'Internet Protocol version 4 addresses', group: 'direct', detected: true },
+  { id: 'ipv6', label: 'IPv6 addresses', description: 'Internet Protocol version 6 addresses', group: 'direct', detected: true },
+  { id: 'mac', label: 'MAC addresses', description: 'Hardware/network interface identifiers', group: 'direct', detected: true },
+  { id: 'ssn', label: 'Social security / tax numbers', description: 'National identification, social security, or tax ID numbers', group: 'direct', detected: true },
+  { id: 'credit_card', label: 'Credit card numbers', description: 'Payment card numbers (Visa, Mastercard, Amex, etc.)', group: 'direct', detected: true },
+  { id: 'iban', label: 'Bank account / IBAN numbers', description: 'International Bank Account Numbers and similar identifiers', group: 'direct', detected: true },
+  { id: 'passport', label: 'Passport numbers', description: 'Government-issued passport document numbers', group: 'direct', detected: true },
+  { id: 'drivers_license', label: "Driver's license numbers", description: "Driver's license or permit identifiers", group: 'direct', detected: true },
+  { id: 'api_key', label: 'API keys', description: 'Provider API keys including Anthropic (sk-ant-) and OpenAI (sk-) formats', group: 'direct', detected: true },
+  { id: 'access_token', label: 'Access tokens', description: 'GitHub tokens (ghp_, github_pat_, gho_, ghu_, ghs_, ghr_) and other bearer tokens', group: 'direct', detected: true },
+  { id: 'device_id', label: 'Device identifiers', description: 'Apple iOS UDIDs, IDFAs, Android device IDs, and advertising IDs', group: 'direct', detected: true },
+  { id: 'secret', label: 'Passwords / secrets / private keys', description: 'Credentials, passwords, private keys, and JWTs', group: 'direct', detected: true },
+  { id: 'name', label: 'Personal names', description: 'First name, last name, full name of natural persons', group: 'indirect', detected: false },
+  { id: 'postal_address', label: 'Postal addresses', description: 'Street addresses, ZIP/postal codes, city, country', group: 'indirect', detected: false },
+  { id: 'user_id', label: 'User / customer / supplier IDs', description: 'System-specific identifiers that map to a natural person', group: 'indirect', detected: false },
+  { id: 'biometric', label: 'Biometric data', description: 'Fingerprints, facial recognition data, voice prints', group: 'indirect', detected: false },
+  { id: 'geolocation', label: 'Geo-location data', description: 'GPS coordinates or location tracking information', group: 'indirect', detected: false },
+  { id: 'dob', label: 'Date of birth', description: 'Birth date that can contribute to identification', group: 'indirect', detected: false },
+  { id: 'racial_ethnic', label: 'Racial or ethnic origin', description: 'Data revealing racial or ethnic background', group: 'special', detected: false },
+  { id: 'political', label: 'Political opinions', description: 'Political party membership or beliefs', group: 'special', detected: false },
+  { id: 'religious', label: 'Religious or philosophical beliefs', description: 'Faith, religious membership, or philosophical convictions', group: 'special', detected: false },
+  { id: 'trade_union', label: 'Trade-union membership', description: 'Membership in trade unions or labor organizations', group: 'special', detected: false },
+  { id: 'health', label: 'Health / medical data', description: 'Medical records, health conditions, prescriptions', group: 'special', detected: false },
+  { id: 'sexual_orientation', label: 'Sexual orientation', description: 'Data concerning sex life or sexual orientation', group: 'special', detected: false },
+  { id: 'criminal', label: 'Criminal records', description: 'Criminal proceedings, convictions, or involvement', group: 'special', detected: false },
+];
+
+const PII_GROUP_LABELS: Record<string, string> = {
+  direct: 'Direct Identifiers (auto-detected)',
+  indirect: 'Indirect Identifiers (reference)',
+  special: 'Special Categories (reference)',
+};
+
 /** Per-provider configuration for what fields to show and their defaults. */
 const PROVIDER_CONFIG: Record<AnalysisProvider, {
   needsEndpoint: boolean;
@@ -127,6 +171,11 @@ export function SettingsDrawer({ onSend }: SettingsDrawerProps) {
   const [availableModels, setAvailableModels] = useState<string[]>([]);
   const [fetchingModels, setFetchingModels] = useState(false);
   const [fetchError, setFetchError] = useState<string | null>(null);
+  const [piiCriteriaOpen, setPiiCriteriaOpen] = useState(false);
+  const [purgeState, setPurgeState] = useState<'idle' | 'scanning' | 'confirming' | 'purging' | 'done' | 'error'>('idle');
+  const [scanResult, setScanResult] = useState<{ categories: { name: string; key: string; count: number }[]; total: number } | null>(null);
+  const [purgeResult, setPurgeResult] = useState<{ redacted: number } | null>(null);
+  const [purgeError, setPurgeError] = useState<string | null>(null);
 
   const provider = config?.analysis.provider ?? 'anthropic';
   const providerCfg = PROVIDER_CONFIG[provider];
@@ -161,6 +210,49 @@ export function SettingsDrawer({ onSend }: SettingsDrawerProps) {
       setFetchingModels(false);
     }
   }, [config?.analysis.provider, config?.analysis.endpoint, config?.analysis.model, onSend]);
+
+  const handlePurgeScan = useCallback(async () => {
+    setPurgeState('scanning');
+    setPurgeError(null);
+    try {
+      const res = await fetch('/api/pii-purge/scan', { method: 'POST' });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const result = await res.json() as { categories: { name: string; key: string; count: number }[]; total: number };
+      setScanResult(result);
+      if (result.total === 0) {
+        setPurgeResult({ redacted: 0 });
+        setPurgeState('done');
+      } else {
+        setPurgeState('confirming');
+      }
+    } catch (err) {
+      setPurgeError(err instanceof Error ? err.message : String(err));
+      setPurgeState('error');
+    }
+  }, []);
+
+  const handlePurgeExecute = useCallback(async () => {
+    setPurgeState('purging');
+    try {
+      const res = await fetch('/api/pii-purge/execute', { method: 'POST' });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const result = await res.json() as { redacted: number };
+      setPurgeResult(result);
+      setPurgeState('done');
+      // Also clear localStorage search history
+      localStorage.removeItem('layman:searchHistory');
+    } catch (err) {
+      setPurgeError(err instanceof Error ? err.message : String(err));
+      setPurgeState('error');
+    }
+  }, []);
+
+  const handlePurgeClose = useCallback(() => {
+    setPurgeState('idle');
+    setScanResult(null);
+    setPurgeResult(null);
+    setPurgeError(null);
+  }, []);
 
   // Auto-fetch models for providers with known endpoints
   useEffect(() => {
@@ -229,6 +321,79 @@ export function SettingsDrawer({ onSend }: SettingsDrawerProps) {
                 />
               </div>
             </label>
+
+            <div className="mt-3">
+              <label className="flex items-center justify-between cursor-pointer">
+                <button
+                  type="button"
+                  onClick={() => setPiiCriteriaOpen(!piiCriteriaOpen)}
+                  className="text-xs text-[#e6edf3] hover:text-[#58a6ff] transition-colors flex items-center gap-1"
+                >
+                  <span className={`inline-block transition-transform text-[10px] ${piiCriteriaOpen ? 'rotate-90' : ''}`}>
+                    &#9656;
+                  </span>
+                  PII filter
+                </button>
+                <div
+                  onClick={() => updateConfig({ piiFilter: !config.piiFilter })}
+                  className={`relative w-8 h-4 rounded-full transition-colors cursor-pointer ${
+                    config.piiFilter ? 'bg-[#238636]' : 'bg-[#30363d]'
+                  }`}
+                >
+                  <div
+                    className={`absolute top-0.5 w-3 h-3 bg-white rounded-full transition-transform ${
+                      config.piiFilter ? 'translate-x-4' : 'translate-x-0.5'
+                    }`}
+                  />
+                </div>
+              </label>
+              <p className="text-[10px] text-[#484f58] mt-1">
+                Redact personally identifiable information from logged events.
+                Click the label to see what is filtered.
+              </p>
+
+              {piiCriteriaOpen && (
+                <div className="mt-2 p-2 bg-[#0d1117] border border-[#30363d] rounded-md max-h-64 overflow-y-auto">
+                  {(['direct', 'indirect', 'special'] as const).map((group) => (
+                    <div key={group} className="mb-2 last:mb-0">
+                      <h4 className="text-[10px] font-semibold text-[#8b949e] uppercase tracking-wider mb-1">
+                        {PII_GROUP_LABELS[group]}
+                      </h4>
+                      <ul className="space-y-0.5">
+                        {PII_CATEGORIES.filter((c) => c.group === group).map((cat) => (
+                          <li key={cat.id} className="flex items-start gap-1.5 text-[10px]">
+                            <span className={`mt-0.5 shrink-0 ${cat.detected ? 'text-[#3fb950]' : 'text-[#484f58]'}`}>
+                              {cat.detected ? '\u25cf' : '\u25cb'}
+                            </span>
+                            <span className="text-[#e6edf3]">
+                              {cat.label}
+                              <span className="text-[#484f58] ml-1">— {cat.description}</span>
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ))}
+                  <p className="text-[10px] text-[#484f58] mt-2 border-t border-[#30363d] pt-2">
+                    <span className="text-[#3fb950]">{'\u25cf'}</span> Auto-detected via pattern matching{' '}
+                    <span className="text-[#484f58] ml-2">{'\u25cb'}</span> Listed for awareness
+                  </p>
+                </div>
+              )}
+            </div>
+
+            <div className="mt-3 pt-3 border-t border-[#30363d]/50 flex items-start justify-between">
+              <p className="text-[10px] text-[#484f58] mt-1">
+                Scan stored sessions and bookmarks for PII and redact all matches.
+              </p>
+              <button
+                onClick={() => void handlePurgeScan()}
+                disabled={purgeState === 'scanning' || purgeState === 'purging'}
+                className="px-3 py-1.5 text-xs font-medium rounded bg-[#da3633]/20 border border-[#f85149]/30 text-[#f85149] hover:bg-[#da3633]/30 disabled:opacity-50 transition-colors shrink-0 ml-3"
+              >
+                {purgeState === 'scanning' ? 'Scanning...' : 'Purge all PII'}
+              </button>
+            </div>
           </section>
 
           <div className="border-t border-[#30363d]" />
@@ -559,6 +724,90 @@ export function SettingsDrawer({ onSend }: SettingsDrawerProps) {
           </section>
         </div>
       </div>
+
+      {/* PII Purge confirmation dialog */}
+      {(purgeState === 'confirming' || purgeState === 'purging' || purgeState === 'done' || purgeState === 'error') && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center">
+          <div className="fixed inset-0 bg-black/60" onClick={purgeState === 'purging' ? undefined : handlePurgeClose} />
+          <div className="relative bg-[#161b22] border border-[#30363d] rounded-lg shadow-2xl p-5 max-w-md w-full mx-4">
+            {purgeState === 'confirming' && scanResult && (
+              <>
+                <h3 className="text-sm font-semibold text-[#e6edf3] mb-3">PII Scan Results</h3>
+                <p className="text-xs text-[#8b949e] mb-3">
+                  Found PII in {scanResult.total} {scanResult.total === 1 ? 'field' : 'fields'} across stored data:
+                </p>
+                <ul className="space-y-1.5 mb-4">
+                  {scanResult.categories.map((cat) => (
+                    <li key={cat.key} className="flex justify-between text-xs">
+                      <span className="text-[#e6edf3]">{cat.name}</span>
+                      <span className={cat.count > 0 ? 'text-[#f85149] font-medium' : 'text-[#484f58]'}>
+                        {cat.count} {cat.count === 1 ? 'field' : 'fields'}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+                <p className="text-[10px] text-[#f85149] mb-4">
+                  This action cannot be undone. All matched PII will be replaced with [REDACTED].
+                </p>
+                <div className="flex gap-2 justify-end">
+                  <button
+                    onClick={handlePurgeClose}
+                    className="px-3 py-1.5 text-xs rounded bg-[#21262d] border border-[#30363d] text-[#e6edf3] hover:bg-[#30363d] transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={() => void handlePurgeExecute()}
+                    className="px-3 py-1.5 text-xs font-medium rounded bg-[#da3633] text-white hover:bg-[#f85149] transition-colors"
+                  >
+                    Purge {scanResult.total} {scanResult.total === 1 ? 'field' : 'fields'}
+                  </button>
+                </div>
+              </>
+            )}
+            {purgeState === 'purging' && (
+              <div className="text-center py-4">
+                <p className="text-xs text-[#e6edf3]">Purging PII...</p>
+                <p className="text-[10px] text-[#484f58] mt-1">Do not close this dialog.</p>
+              </div>
+            )}
+            {purgeState === 'done' && purgeResult && (
+              <>
+                <h3 className={`text-sm font-semibold mb-2 ${purgeResult.redacted === 0 ? 'text-[#3fb950]' : 'text-[#3fb950]'}`}>
+                  {purgeResult.redacted === 0 ? 'No PII Found' : 'Purge Complete'}
+                </h3>
+                <p className="text-xs text-[#8b949e] mb-4">
+                  {purgeResult.redacted === 0
+                    ? 'No PII was detected in the database.'
+                    : `Redacted ${purgeResult.redacted} ${purgeResult.redacted === 1 ? 'field' : 'fields'}. Search history has also been cleared.`}
+                </p>
+                <div className="flex justify-end">
+                  <button
+                    onClick={handlePurgeClose}
+                    className="px-3 py-1.5 text-xs rounded bg-[#21262d] border border-[#30363d] text-[#e6edf3] hover:bg-[#30363d] transition-colors"
+                  >
+                    Close
+                  </button>
+                </div>
+              </>
+            )}
+            {purgeState === 'error' && (
+              <>
+                <h3 className="text-sm font-semibold text-[#f85149] mb-2">Error</h3>
+                <p className="text-xs text-[#8b949e] mb-4">{purgeError}</p>
+                <div className="flex justify-end">
+                  <button
+                    onClick={handlePurgeClose}
+                    className="px-3 py-1.5 text-xs rounded bg-[#21262d] border border-[#30363d] text-[#e6edf3] hover:bg-[#30363d] transition-colors"
+                  >
+                    Close
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
