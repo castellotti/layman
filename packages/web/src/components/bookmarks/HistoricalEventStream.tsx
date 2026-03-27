@@ -35,7 +35,7 @@ export function HistoricalEventStream({ events, qaEntries, selectedEventId, onSe
   }
 
   return (
-    <div className="flex flex-col overflow-y-auto h-full">
+    <div data-print-stream className="flex flex-col overflow-y-auto h-full">
       <div className="px-2 py-2 border-b border-[#30363d] shrink-0">
         <p className="text-[10px] text-[#484f58]">
           {events.length} recorded events · read-only view
@@ -46,7 +46,7 @@ export function HistoricalEventStream({ events, qaEntries, selectedEventId, onSe
         {events.map((event, index) => {
           const eventQA = qaMap.get(event.id) ?? [];
           return (
-            <div key={event.id}>
+            <div key={event.id} data-event-card>
               <EventCard
                 event={event}
                 index={index}

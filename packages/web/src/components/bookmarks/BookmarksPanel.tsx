@@ -219,12 +219,12 @@ export function BookmarksPanel({ onSend }: BookmarksPanelProps) {
   return (
     <div className="fixed inset-0 z-50 flex">
       {/* Overlay */}
-      <div className="fixed inset-0 bg-black/50" onClick={() => setBookmarksOpen(false)} />
+      <div data-bookmarks-overlay className="fixed inset-0 bg-black/50" onClick={() => setBookmarksOpen(false)} />
 
       {/* Panel */}
       <div className="relative flex w-full max-w-5xl mx-auto my-0 h-full bg-[#0d1117] shadow-2xl">
         {/* Left: bookmark tree */}
-        <div className="w-72 shrink-0 bg-[#161b22] border-r border-[#30363d] flex flex-col h-full">
+        <div data-bookmarks-sidebar className="w-72 shrink-0 bg-[#161b22] border-r border-[#30363d] flex flex-col h-full">
           {/* Header */}
           <div className="flex items-center justify-between px-4 py-3 border-b border-[#30363d]">
             <h2 className="text-sm font-semibold text-[#e6edf3]">Sessions</h2>
@@ -498,14 +498,36 @@ export function BookmarksPanel({ onSend }: BookmarksPanelProps) {
                     {recordedSessions.find((s) => s.sessionId === viewingSessionId)?.cwd ?? viewingSessionId}
                   </p>
                 </div>
-                <button
-                  onClick={handleCloseSession}
-                  className="text-[#8b949e] hover:text-[#e6edf3] transition-colors text-lg leading-none"
-                >
-                  ×
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => {
+                      document.body.classList.add('layman-print-historical');
+                      const cleanup = () => {
+                        document.body.classList.remove('layman-print-historical');
+                        window.removeEventListener('afterprint', cleanup);
+                      };
+                      window.addEventListener('afterprint', cleanup);
+                      window.print();
+                    }}
+                    className="flex items-center gap-1 text-[#8b949e] hover:text-[#e6edf3] transition-colors text-xs"
+                    title="Export to PDF"
+                  >
+                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+                    </svg>
+                    Export
+                  </button>
+                  <button
+                    onClick={handleCloseSession}
+                    className="text-[#8b949e] hover:text-[#e6edf3] transition-colors text-lg leading-none"
+                  >
+                    ×
+                  </button>
+                </div>
               </div>
-              <EventTypeFilterBar filters={eventTypeFilters} onChange={setEventTypeFilters} />
+              <div data-print-hide>
+                <EventTypeFilterBar filters={eventTypeFilters} onChange={setEventTypeFilters} />
+              </div>
               <div className="flex-1 overflow-hidden">
                 <HistoricalEventStream
                   events={filteredHistoricalEvents}
