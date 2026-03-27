@@ -18,7 +18,7 @@ function StatusBar() {
   const { count } = usePendingApprovals();
 
   return (
-    <div className="flex items-center justify-between px-4 py-1.5 bg-[#161b22] border-t border-[#30363d] text-[10px] text-[#8b949e] shrink-0">
+    <div data-print-hide className="flex items-center justify-between px-4 py-1.5 bg-[#161b22] border-t border-[#30363d] text-[10px] text-[#8b949e] shrink-0">
       <div className="flex items-center gap-3">
         {count > 0 && (
           <span className="text-[#d29922] font-medium animate-pulse">
@@ -103,6 +103,7 @@ export function App() {
         {/* Drag handle */}
         {investigationOpen && (
           <div
+            data-print-hide
             className="w-1 shrink-0 bg-[#30363d] hover:bg-[#58a6ff]/50 active:bg-[#58a6ff] cursor-col-resize transition-colors select-none"
             onMouseDown={onDividerMouseDown}
           />
@@ -110,7 +111,7 @@ export function App() {
 
         {/* Right panel: Investigation */}
         {investigationOpen && (
-          <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
+          <div data-print-hide className="flex flex-col flex-1 min-w-0 overflow-hidden">
             <InvestigationPanel onSend={send} />
           </div>
         )}

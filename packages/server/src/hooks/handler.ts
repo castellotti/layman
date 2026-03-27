@@ -36,8 +36,8 @@ const AUTO_ALLOW_TOOLS = new Set(['Read', 'Glob', 'Grep', 'WebSearch']);
 // Keyed by transcript_path since each session/subagent has a unique path.
 const transcriptWatermarks = new Map<string, string | null>();
 
-/** Detect activation curl in a Bash command */
-const ACTIVATION_PATTERN = /curl\b.*\/api\/activate/;
+/** Detect activation command in a Bash call (echo marker or legacy curl) */
+const ACTIVATION_PATTERN = /echo\s+["']?layman:activate["']?|curl\b.*\/api\/activate/;
 
 export function registerHookHandler(
   fastify: FastifyInstance,
@@ -64,7 +64,7 @@ export function registerHookHandler(
           rawAgentType === 'opencode' ? 'opencode' : 'claude-code';
         const opencodeUrl = (body as { opencode_url?: string }).opencode_url;
 
-        // Gate check: detect activation curl before gating so we can activate
+        // Gate check: detect activation command before gating so we can activate
         if (sessionId && eventName === 'PreToolUse') {
           const toolName = (body as { tool_name?: string }).tool_name;
           const toolInput = (body as { tool_input?: Record<string, unknown> }).tool_input;

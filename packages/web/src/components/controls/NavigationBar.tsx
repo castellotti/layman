@@ -15,6 +15,7 @@ interface NavigationBarProps {
   onToggleRiskyOnly: () => void;
   onToggleCollapseHistory: () => void;
   onToggleAutoScroll: () => void;
+  onPrint?: () => void;
   availableAgentTypes?: string[];
   activeAgentTypes?: string[];
   onToggleAgentType?: (agentType: string) => void;
@@ -40,12 +41,13 @@ export function NavigationBar({
   onToggleRiskyOnly,
   onToggleCollapseHistory,
   onToggleAutoScroll,
+  onPrint,
   availableAgentTypes,
   activeAgentTypes,
   onToggleAgentType,
 }: NavigationBarProps) {
   return (
-    <div className="flex items-center gap-3 px-4 py-2 bg-[#161b22] border-b border-[#30363d] text-xs flex-wrap">
+    <div data-print-hide className="flex items-center gap-3 px-4 py-2 bg-[#161b22] border-b border-[#30363d] text-xs flex-wrap">
       <div className="flex items-center gap-1">
         <button
           onClick={onFirst}
@@ -148,6 +150,22 @@ export function NavigationBar({
                 </label>
               );
             })}
+          </>
+        )}
+
+        {onPrint && (
+          <>
+            <div className="h-4 w-px bg-[#30363d]" />
+            <button
+              onClick={onPrint}
+              className="flex items-center gap-1 text-[#8b949e] hover:text-[#e6edf3] transition-colors"
+              title="Export to PDF"
+            >
+              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+              </svg>
+              Export
+            </button>
           </>
         )}
       </div>
