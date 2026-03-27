@@ -6,6 +6,47 @@ import { PROVIDER_LABELS } from '../../lib/types.js';
 
 const PROVIDER_OPTIONS: AnalysisProvider[] = ['anthropic', 'openai', 'openai-compatible', 'litellm'];
 
+interface PiiCategory {
+  id: string;
+  label: string;
+  description: string;
+  group: 'direct' | 'indirect' | 'special';
+  detected: boolean;
+}
+
+const PII_CATEGORIES: PiiCategory[] = [
+  { id: 'email', label: 'Email addresses', description: 'Business or personal email addresses', group: 'direct', detected: true },
+  { id: 'phone', label: 'Phone numbers', description: 'Telephone numbers in international or local formats', group: 'direct', detected: true },
+  { id: 'ipv4', label: 'IPv4 addresses', description: 'Internet Protocol version 4 addresses', group: 'direct', detected: true },
+  { id: 'ipv6', label: 'IPv6 addresses', description: 'Internet Protocol version 6 addresses', group: 'direct', detected: true },
+  { id: 'mac', label: 'MAC addresses', description: 'Hardware/network interface identifiers', group: 'direct', detected: true },
+  { id: 'ssn', label: 'Social security / tax numbers', description: 'National identification, social security, or tax ID numbers', group: 'direct', detected: true },
+  { id: 'credit_card', label: 'Credit card numbers', description: 'Payment card numbers (Visa, Mastercard, Amex, etc.)', group: 'direct', detected: true },
+  { id: 'iban', label: 'Bank account / IBAN numbers', description: 'International Bank Account Numbers and similar identifiers', group: 'direct', detected: true },
+  { id: 'passport', label: 'Passport numbers', description: 'Government-issued passport document numbers', group: 'direct', detected: true },
+  { id: 'drivers_license', label: "Driver's license numbers", description: "Driver's license or permit identifiers", group: 'direct', detected: true },
+  { id: 'secret', label: 'Passwords / secrets / API keys', description: 'Credentials, tokens, API keys, private keys, and JWTs', group: 'direct', detected: true },
+  { id: 'name', label: 'Personal names', description: 'First name, last name, full name of natural persons', group: 'indirect', detected: false },
+  { id: 'postal_address', label: 'Postal addresses', description: 'Street addresses, ZIP/postal codes, city, country', group: 'indirect', detected: false },
+  { id: 'user_id', label: 'User / customer / supplier IDs', description: 'System-specific identifiers that map to a natural person', group: 'indirect', detected: false },
+  { id: 'biometric', label: 'Biometric data', description: 'Fingerprints, facial recognition data, voice prints', group: 'indirect', detected: false },
+  { id: 'geolocation', label: 'Geo-location data', description: 'GPS coordinates or location tracking information', group: 'indirect', detected: false },
+  { id: 'dob', label: 'Date of birth', description: 'Birth date that can contribute to identification', group: 'indirect', detected: false },
+  { id: 'racial_ethnic', label: 'Racial or ethnic origin', description: 'Data revealing racial or ethnic background', group: 'special', detected: false },
+  { id: 'political', label: 'Political opinions', description: 'Political party membership or beliefs', group: 'special', detected: false },
+  { id: 'religious', label: 'Religious or philosophical beliefs', description: 'Faith, religious membership, or philosophical convictions', group: 'special', detected: false },
+  { id: 'trade_union', label: 'Trade-union membership', description: 'Membership in trade unions or labor organizations', group: 'special', detected: false },
+  { id: 'health', label: 'Health / medical data', description: 'Medical records, health conditions, prescriptions', group: 'special', detected: false },
+  { id: 'sexual_orientation', label: 'Sexual orientation', description: 'Data concerning sex life or sexual orientation', group: 'special', detected: false },
+  { id: 'criminal', label: 'Criminal records', description: 'Criminal proceedings, convictions, or involvement', group: 'special', detected: false },
+];
+
+const PII_GROUP_LABELS: Record<string, string> = {
+  direct: 'Direct Identifiers (auto-detected)',
+  indirect: 'Indirect Identifiers (reference)',
+  special: 'Special Categories (reference)',
+};
+
 /** Per-provider configuration for what fields to show and their defaults. */
 const PROVIDER_CONFIG: Record<AnalysisProvider, {
   needsEndpoint: boolean;
@@ -127,6 +168,7 @@ export function SettingsDrawer({ onSend }: SettingsDrawerProps) {
   const [availableModels, setAvailableModels] = useState<string[]>([]);
   const [fetchingModels, setFetchingModels] = useState(false);
   const [fetchError, setFetchError] = useState<string | null>(null);
+  const [piiCriteriaOpen, setPiiCriteriaOpen] = useState(false);
 
   const provider = config?.analysis.provider ?? 'anthropic';
   const providerCfg = PROVIDER_CONFIG[provider];
@@ -229,6 +271,66 @@ export function SettingsDrawer({ onSend }: SettingsDrawerProps) {
                 />
               </div>
             </label>
+
+            <div className="mt-3">
+              <label className="flex items-center justify-between cursor-pointer">
+                <button
+                  type="button"
+                  onClick={() => setPiiCriteriaOpen(!piiCriteriaOpen)}
+                  className="text-xs text-[#e6edf3] hover:text-[#58a6ff] transition-colors flex items-center gap-1"
+                >
+                  <span className={`inline-block transition-transform text-[10px] ${piiCriteriaOpen ? 'rotate-90' : ''}`}>
+                    &#9656;
+                  </span>
+                  PII filter
+                </button>
+                <div
+                  onClick={() => updateConfig({ piiFilter: !config.piiFilter })}
+                  className={`relative w-8 h-4 rounded-full transition-colors cursor-pointer ${
+                    config.piiFilter ? 'bg-[#238636]' : 'bg-[#30363d]'
+                  }`}
+                >
+                  <div
+                    className={`absolute top-0.5 w-3 h-3 bg-white rounded-full transition-transform ${
+                      config.piiFilter ? 'translate-x-4' : 'translate-x-0.5'
+                    }`}
+                  />
+                </div>
+              </label>
+              <p className="text-[10px] text-[#484f58] mt-1">
+                Redact personally identifiable information from logged events.
+                Click the label to see what is filtered.
+              </p>
+
+              {piiCriteriaOpen && (
+                <div className="mt-2 p-2 bg-[#0d1117] border border-[#30363d] rounded-md max-h-64 overflow-y-auto">
+                  {(['direct', 'indirect', 'special'] as const).map((group) => (
+                    <div key={group} className="mb-2 last:mb-0">
+                      <h4 className="text-[10px] font-semibold text-[#8b949e] uppercase tracking-wider mb-1">
+                        {PII_GROUP_LABELS[group]}
+                      </h4>
+                      <ul className="space-y-0.5">
+                        {PII_CATEGORIES.filter((c) => c.group === group).map((cat) => (
+                          <li key={cat.id} className="flex items-start gap-1.5 text-[10px]">
+                            <span className={`mt-0.5 shrink-0 ${cat.detected ? 'text-[#3fb950]' : 'text-[#484f58]'}`}>
+                              {cat.detected ? '\u25cf' : '\u25cb'}
+                            </span>
+                            <span className="text-[#e6edf3]">
+                              {cat.label}
+                              <span className="text-[#484f58] ml-1">— {cat.description}</span>
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ))}
+                  <p className="text-[10px] text-[#484f58] mt-2 border-t border-[#30363d] pt-2">
+                    <span className="text-[#3fb950]">{'\u25cf'}</span> Auto-detected via pattern matching{' '}
+                    <span className="text-[#484f58] ml-2">{'\u25cb'}</span> Listed for awareness
+                  </p>
+                </div>
+              )}
+            </div>
           </section>
 
           <div className="border-t border-[#30363d]" />
