@@ -383,12 +383,10 @@ export function BookmarksPanel({ onSend }: BookmarksPanelProps) {
 
           {/* Bookmark tree or empty state */}
           <div className="flex-1 overflow-y-auto py-2 flex flex-col">
-            <div className="flex-1">
-              {!hasContent && !recordingEnabled ? (
+            <div className={hasContent ? 'flex-1' : ''}>
+              {!hasContent && !recordingEnabled && recordedSessions.length === 0 ? (
                 <BookmarkEmptyState recordingEnabled={false} onSend={onSend} />
-              ) : !hasContent && recordingEnabled ? (
-                <BookmarkEmptyState recordingEnabled={true} onSend={onSend} />
-              ) : (
+              ) : hasContent ? (
                 <>
                   {sortedFolders.map((folder) => (
                     <FolderItem
@@ -428,7 +426,7 @@ export function BookmarksPanel({ onSend }: BookmarksPanelProps) {
                     </div>
                   )}
                 </>
-              )}
+              ) : null}
             </div>
 
             {/* History section — all recorded sessions, newest first */}
