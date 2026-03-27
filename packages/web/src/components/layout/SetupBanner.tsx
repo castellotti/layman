@@ -65,7 +65,7 @@ export function SetupBanner({ onInstall }: { onInstall: () => void }) {
       : 'Update';
 
   return (
-    <div className="flex items-center justify-between px-4 py-2.5 bg-[#1c2128] border-b border-[#30363d] text-sm shrink-0">
+    <div data-print-hide className="flex items-center justify-between px-4 py-2.5 bg-[#1c2128] border-b border-[#30363d] text-sm shrink-0">
       <div className="flex items-center gap-2 text-[#d29922]">
         <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />

@@ -59,3 +59,154 @@ body {
   background: rgba(88, 166, 255, 0.3);
   color: var(--text-primary);
 }
+
+/* ===== Print / Export to PDF ===== */
+@media print {
+  *, *::before, *::after {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  html, body, #root {
+    height: auto !important;
+    overflow: visible !important;
+    background: white !important;
+    color: #1f2328 !important;
+  }
+
+  /* --- Live view print mode (body.layman-print-live) --- */
+
+  /* Hide everything that isn't the event stream */
+  body.layman-print-live header,
+  body.layman-print-live [data-print-hide],
+  body.layman-print-live .fixed {
+    display: none !important;
+  }
+
+  /* --- Historical view print mode (body.layman-print-historical) --- */
+
+  /* Hide the main app behind the bookmarks panel */
+  body.layman-print-historical header,
+  body.layman-print-historical [data-print-hide],
+  body.layman-print-historical > #root > div > div:not(.fixed) {
+    display: none !important;
+  }
+
+  /* Override the fixed overlay to be static and visible */
+  body.layman-print-historical .fixed.inset-0.z-50 {
+    position: static !important;
+    display: block !important;
+    height: auto !important;
+  }
+
+  /* Hide the backdrop overlay and sidebar */
+  body.layman-print-historical [data-bookmarks-overlay] {
+    display: none !important;
+  }
+
+  body.layman-print-historical [data-bookmarks-sidebar] {
+    display: none !important;
+  }
+
+  /* Remove panel constraints so content flows naturally */
+  body.layman-print-historical .relative.flex {
+    display: block !important;
+    height: auto !important;
+    max-width: none !important;
+  }
+
+  /* Hide the event type filter bar and session header close button */
+  body.layman-print-historical [data-print-hide] {
+    display: none !important;
+  }
+
+  /* --- Shared print styles --- */
+
+  /* Release ALL height/overflow constraints up the ancestor chain so
+     content can flow across multiple printed pages. */
+  #root,
+  #root > div,
+  #root > div > div,
+  #root > div > div > div,
+  body.layman-print-historical .fixed.inset-0.z-50 *,
+  [data-print-stream],
+  [data-print-stream] > * {
+    overflow: visible !important;
+    height: auto !important;
+    max-height: none !important;
+  }
+
+  /* The app root uses h-screen which pins to viewport — override */
+  #root > div {
+    min-height: 0 !important;
+  }
+
+  /* Flex containers must not shrink content to fit one page */
+  .flex-1,
+  .flex-col {
+    flex: none !important;
+  }
+
+  /* EventCard: light theme */
+  [data-event-card] {
+    break-inside: avoid;
+    page-break-inside: avoid;
+    background: white !important;
+    border-color: #d0d7de !important;
+    margin: 4px 0 !important;
+  }
+
+  [data-event-card] * {
+    color: #1f2328 !important;
+  }
+
+  /* Preserve colored left borders for event type identification */
+  [data-event-card] > div[class*="border-l"] {
+    border-left-width: 3px !important;
+  }
+
+  /* Code blocks: light background */
+  pre, code, .font-mono {
+    background: #f6f8fa !important;
+    color: #1f2328 !important;
+    border-color: #d0d7de !important;
+    white-space: pre-wrap !important;
+    word-break: break-word !important;
+  }
+
+  /* Diff block colors for print */
+  .bg-\[\#0f2a1a\] { background: #dafbe1 !important; }
+  .bg-\[\#2a0f0f\] { background: #ffebe9 !important; }
+  .text-\[\#aff5b4\] { color: #1a7f37 !important; }
+  .text-\[\#ffc0c0\] { color: #cf222e !important; }
+  .text-\[\#3fb950\] { color: #1a7f37 !important; }
+  .text-\[\#f85149\] { color: #cf222e !important; }
+
+  /* Risk/accent colors for print legibility */
+  .text-\[\#d29922\] { color: #9a6700 !important; }
+  .text-\[\#58a6ff\] { color: #0969da !important; }
+  .text-\[\#a371f7\] { color: #8250df !important; }
+
+  /* Muted text: darker for print */
+  .text-\[\#8b949e\] { color: #57606a !important; }
+  .text-\[\#484f58\] { color: #6e7781 !important; }
+  .text-\[\#e6edf3\] { color: #1f2328 !important; }
+
+  /* Background overrides */
+  .bg-\[\#0d1117\],
+  .bg-\[\#161b22\],
+  .bg-\[\#1c2128\],
+  .bg-\[\#1c1a0f\],
+  .bg-\[\#21262d\] {
+    background: white !important;
+  }
+
+  /* Border overrides */
+  .border-\[\#30363d\] { border-color: #d0d7de !important; }
+
+  /* Page setup */
+  @page {
+    margin: 1cm;
+    size: A4;
+  }
+}

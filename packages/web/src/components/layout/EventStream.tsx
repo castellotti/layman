@@ -60,8 +60,22 @@ export function EventStream({ onSend }: EventStreamProps) {
     }
   }, [events.length, autoScroll, followLatest]);
 
+  // When tab becomes visible again, re-sync scroll position if following
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (!document.hidden && autoScroll && scrollRef.current) {
+        setFollowLatest(true);
+        scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, [autoScroll]);
+
   const handleScroll = useCallback(() => {
     if (!autoScroll) return;
+    // Don't let background scroll events with stale geometry break follow mode
+    if (document.hidden) return;
     const el = scrollRef.current;
     if (!el) return;
     const isAtBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 50;
@@ -96,6 +110,16 @@ export function EventStream({ onSend }: EventStreamProps) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [events, setSelectedEvent]);
+
+  const handlePrint = useCallback(() => {
+    document.body.classList.add('layman-print-live');
+    const cleanup = () => {
+      document.body.classList.remove('layman-print-live');
+      window.removeEventListener('afterprint', cleanup);
+    };
+    window.addEventListener('afterprint', cleanup);
+    window.print();
+  }, []);
 
   const goToIndex = (idx: number) => {
     const clamped = Math.max(0, Math.min(idx, events.length - 1));
@@ -181,11 +205,13 @@ export function EventStream({ onSend }: EventStreamProps) {
         availableAgentTypes={availableAgentTypes}
         activeAgentTypes={activeAgentTypes}
         onToggleAgentType={handleToggleAgentType}
+        onPrint={handlePrint}
       />
 
       <div
         ref={scrollRef}
         onScroll={handleScroll}
+        data-print-stream
         className="flex-1 overflow-y-auto py-2"
       >
         {events.length === 0 ? (
@@ -230,7 +256,9 @@ export function EventStream({ onSend }: EventStreamProps) {
       </div>
 
       {activeOpenCodeSession && (
-        <PromptInput sessionId={activeOpenCodeSession.sessionId} />
+        <div data-print-hide>
+          <PromptInput sessionId={activeOpenCodeSession.sessionId} />
+        </div>
       )}
     </div>
   );
