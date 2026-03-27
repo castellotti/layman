@@ -17,6 +17,8 @@ import { updateConfig, saveConfig } from './config/config.js';
 import { openDatabase } from './db/database.js';
 import { SessionRecorder } from './db/recorder.js';
 import { BookmarkStore } from './db/bookmarks.js';
+import { searchEvents } from './db/search.js';
+import type { SearchRequest } from './db/search.js';
 import type { LaymanConfig } from './config/schema.js';
 import type { ServerMessage, ClientMessage, SessionStatus } from './types/index.js';
 
@@ -573,6 +575,15 @@ export function createServer(config: LaymanConfig): LaymanServer {
 
     fastify.get<{ Params: { sessionId: string } }>('/api/bookmarks/sessions/:sessionId/qa', async (request) => {
       return { qa: bookmarkStore.getQAForSession(request.params.sessionId) };
+    });
+
+    // Search across recorded sessions
+    fastify.post<{ Body: SearchRequest }>('/api/search', async (request, reply) => {
+      const { query } = request.body;
+      if (!query?.trim()) {
+        return reply.status(400).send({ error: 'query is required' });
+      }
+      return searchEvents(db, request.body);
     });
 
     // Import events from a saved JSON file (e.g. from /api/events export)

@@ -71,5 +71,8 @@ function applyMigrations(db: Database): void {
 
     CREATE INDEX IF NOT EXISTS idx_bookmarks_folder
       ON bookmarks(folder_id, sort_order);
+
+    CREATE INDEX IF NOT EXISTS idx_recorded_events_type
+      ON recorded_events(type);
   `);
 }
