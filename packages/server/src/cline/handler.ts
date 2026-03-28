@@ -6,7 +6,7 @@
  * The bash hook scripts installed by Layman simply pipe stdin to this endpoint via curl.
  *
  * Key differences from Claude Code hooks:
- * - Cline sessions auto-activate (no gate check needed)
+ * - Sessions require explicit activation via /layman workflow (same gate as Claude Code)
  * - PreToolUse has a 25-second blocking timeout (Cline's hardcoded limit is 30s)
  * - Response format is { cancel: boolean } instead of { hookSpecificOutput: { permissionDecision } }
  * - No transcript_path — agent responses are not captured via transcripts
@@ -37,6 +37,9 @@ const AUTO_ALLOW_TOOLS = new Set(['Read', 'Glob', 'Grep', 'WebSearch', 'ListDire
 /** Cline's hardcoded hook timeout is 30s; we use 25s to leave margin for response transit */
 const CLINE_BLOCKING_TIMEOUT_S = 25;
 
+/** Detect /layman activation command in an execute_command call */
+const ACTIVATION_PATTERN = /echo\s+["']?layman:activate["']?/;
+
 export function registerClineHookHandler(
   fastify: FastifyInstance,
   pendingManager: PendingApprovalManager,
@@ -52,12 +55,27 @@ export function registerClineHookHandler(
       const body = request.body;
 
       try {
-        // Auto-activate Cline sessions — hooks are explicitly installed so the user has opted in
         const sessionId = body.taskId;
         const cwd = body.workspaceRoots?.[0] ?? '';
 
-        if (sessionId) {
-          gate.activate(sessionId);
+        // Gate check: detect /layman activation before gating so we can activate
+        if (sessionId && hookName === 'PreToolUse') {
+          const toolName = body.preToolUse?.toolName;
+          const command = body.preToolUse?.parameters?.command ?? '';
+          if (toolName === 'execute_command' && ACTIVATION_PATTERN.test(command)) {
+            gate.activate(sessionId);
+            if (cwd) eventStore.trackSession(sessionId, cwd, AGENT_TYPE);
+            return reply.send({});
+          }
+        }
+
+        // Gate check: non-activated sessions get instant pass-through
+        if (sessionId && !gate.isActive(sessionId)) {
+          if (hookName === 'PreToolUse') return reply.send({});
+          return reply.status(200).send({});
+        }
+
+        if (sessionId && cwd) {
           eventStore.trackSession(sessionId, cwd, AGENT_TYPE);
         }
 

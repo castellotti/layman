@@ -96,7 +96,8 @@ const OPTIONAL_CLIENTS: OptionalClient[] = [
   {
     name: 'Cline',
     configDir: join(homedir(), 'Documents', 'Cline'),
-    commandsDir: join(homedir(), 'Documents', 'Cline', 'Hooks'),
+    commandsDir: join(homedir(), 'Documents', 'Cline', 'Workflows'),
+    getContent: () => getClineWorkflowContent(),
   },
 ];
 
@@ -221,6 +222,33 @@ function getCommandContent(): string {
     'description: Activate Layman monitoring for this session',
     '---',
     '',
+    'You are activating the Layman monitoring dashboard. Follow these steps:',
+    '',
+    '1. Activate this session with Layman by running:',
+    '   `echo "layman:activate"`',
+    '',
+    '2. Tell the user:',
+    '   "Layman is now monitoring this session. Open http://localhost:8880 to see the dashboard."',
+    '',
+    '3. If Layman does not appear to be monitoring (no events appear in the dashboard), tell the user:',
+    '   "Layman server may not be running. Start it with: docker compose -f ~/layman/docker-compose.yml up -d"',
+    '',
+  ].join('\n');
+}
+
+function getClineWorkflowContent(): string {
+  const __dirname = dirname(fileURLToPath(import.meta.url));
+  const workflowPath = join(__dirname, '..', '..', 'workflows', 'layman.md');
+  const fallbackPath = join(__dirname, '..', 'workflows', 'layman.md');
+
+  if (existsSync(workflowPath)) {
+    return readFileSync(workflowPath, 'utf-8');
+  }
+  if (existsSync(fallbackPath)) {
+    return readFileSync(fallbackPath, 'utf-8');
+  }
+  // Inline fallback
+  return [
     'You are activating the Layman monitoring dashboard. Follow these steps:',
     '',
     '1. Activate this session with Layman by running:',
@@ -498,18 +526,6 @@ export class HookInstaller {
     const defaultContent = getCommandContent();
     const optionalClients: OptionalClientStatus[] = OPTIONAL_CLIENTS.map((client) => {
       const detected = existsSync(client.configDir);
-
-      // Cline uses hook scripts instead of a single command file
-      if (client.name === 'Cline') {
-        const clineStatus = this.getClineHooksStatus();
-        return {
-          name: client.name,
-          detected,
-          commandInstalled: clineStatus.installed,
-          commandUpToDate: clineStatus.upToDate,
-        };
-      }
-
       const fileName = client.fileName ?? 'layman.md';
       const clientCmdPath = join(client.commandsDir, fileName);
       const content = client.getContent ? client.getContent() : defaultContent;
