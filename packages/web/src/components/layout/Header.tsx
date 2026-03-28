@@ -4,7 +4,7 @@ import { useSessionStore } from '../../stores/sessionStore.js';
 function getSessionName(cwd: string, sessionId: string, agentType?: string, showAgentPrefix?: boolean): string {
   const name = cwd ? (cwd.split('/').filter(Boolean).pop() ?? cwd) : sessionId.slice(0, 8);
   if (showAgentPrefix && agentType) {
-    const prefix = agentType === 'claude-code' ? '[CC]' : agentType === 'opencode' ? '[OC]' : `[${agentType.slice(0, 2).toUpperCase()}]`;
+    const prefix = agentType === 'claude-code' ? '[CC]' : agentType === 'opencode' ? '[OC]' : agentType === 'cline' ? '[CL]' : `[${agentType.slice(0, 2).toUpperCase()}]`;
     return `${prefix} ${name}`;
   }
   return name;

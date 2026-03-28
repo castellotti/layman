@@ -36,7 +36,8 @@ export class PendingApprovalManager extends EventEmitter {
   }
 
   async createAndWait(
-    input: PreToolUseInput | PermissionRequestInput
+    input: PreToolUseInput | PermissionRequestInput,
+    timeoutOverride?: number
   ): Promise<ApprovalDecision> {
     const id = randomUUID();
     let resolve!: (d: ApprovalDecision) => void;
@@ -60,11 +61,12 @@ export class PendingApprovalManager extends EventEmitter {
     this.emit('pending:new', approval);
     this.emit('pending:analyze', approval);
 
+    const effectiveTimeout = timeoutOverride ?? this.hookTimeout;
     const timeout = setTimeout(() => {
       if (this.pending.has(id)) {
         this.resolveApproval(id, { decision: 'ask' });
       }
-    }, this.hookTimeout * 1000);
+    }, effectiveTimeout * 1000);
 
     const decision = await promise;
     clearTimeout(timeout);
