@@ -231,4 +231,13 @@ export class BookmarkStore {
     ).all(eventId) as RawQA[];
     return rows.map(toQA);
   }
+
+  deleteSession(sessionId: string): void {
+    const tx = this.db.transaction(() => {
+      this.db.prepare('DELETE FROM recorded_qa WHERE session_id = ?').run(sessionId);
+      this.db.prepare('DELETE FROM recorded_events WHERE session_id = ?').run(sessionId);
+      this.db.prepare('DELETE FROM recorded_sessions WHERE session_id = ?').run(sessionId);
+    });
+    tx();
+  }
 }

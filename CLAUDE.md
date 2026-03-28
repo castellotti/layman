@@ -42,7 +42,7 @@ Layman is a pnpm monorepo with two packages:
 |---|---|---|
 | Claude Code | HTTP hook POSTs to `/hooks/:eventName` | `/layman` slash command |
 | OpenCode | Bidirectional plugin (`packages/opencode-plugin`) | `/layman` slash command |
-| Mistral Vibe | Passive file watcher on `~/.vibe/logs/session/` | Automatic — no activation needed |
+| Mistral Vibe | Passive file watcher on `~/.vibe/logs/session/` | `/layman` slash command |
 | Cline | Shell-script hooks in `~/Documents/Cline/Hooks/` | `/layman` workflow in Cline |
 
 ### How data flows
@@ -51,7 +51,7 @@ Layman is a pnpm monorepo with two packages:
 
 2. **Cline hooks** (`packages/server/src/cline/`): Cline runs bash scripts from `~/Documents/Cline/Hooks/` that pipe JSON stdin to `POST /hooks/cline/:hookName`. The Cline handler (`handler.ts`) translates Cline's field/tool-name format to Layman's internal types via a translator (`translator.ts`), then reuses the same event pipeline. PreToolUse blocks for up to 25 seconds (Cline's hardcoded limit is 30s). Sessions require `/layman` activation, tracked by workspace directory (cwd) so activation survives Plan/Act mode switches.
 
-3. **Mistral Vibe watcher** (`packages/server/src/vibe/watcher.ts`): Polls `~/.vibe/logs/session/<dir>/messages.jsonl` every 2 seconds from a tracked byte offset. Translates Vibe's JSONL message format to Layman events. All Vibe sessions are auto-monitored; sessions idle for 15+ minutes are treated as ended. Sessions within a 5-minute replay window are read from the beginning.
+3. **Mistral Vibe watcher** (`packages/server/src/vibe/watcher.ts`): Polls `~/.vibe/logs/session/<dir>/messages.jsonl` every 2 seconds from a tracked byte offset. Translates Vibe's JSONL message format to Layman events. Sessions require `/layman` activation; sessions idle for 15+ minutes are treated as ended. Sessions within a 5-minute replay window are read from the beginning.
 
 4. **OpenCode plugin** (`packages/opencode-plugin`): A bidirectional plugin that receives events from OpenCode and can send prompts back. Registered in `~/.config/opencode/opencode.json`.
 
