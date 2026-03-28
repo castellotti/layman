@@ -96,8 +96,13 @@ export function registerClineHookHandler(
             handleClineTaskResume(body, eventStore);
             return reply.status(200).send({});
           }
-          case 'TaskCancel':
           case 'TaskComplete': {
+            // TaskComplete fires when the AI finishes a turn (like Claude Code's Stop).
+            // The task/conversation continues — only emit agent_stop, don't end the session.
+            eventStore.add('agent_stop', body.taskId, {}, undefined, AGENT_TYPE);
+            return reply.status(200).send({});
+          }
+          case 'TaskCancel': {
             handleClineTaskEnd(body, eventStore, gate);
             return reply.status(200).send({});
           }
