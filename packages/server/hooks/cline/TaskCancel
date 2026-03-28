@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# Layman hook for Cline — forwards TaskCancel to Layman server (async, 5s timeout)
+curl -s -m 5 -X POST "__LAYMAN_URL__/hooks/cline/TaskCancel" \
+  -H "Content-Type: application/json" -d @- > /dev/null 2>&1
+echo '{}'

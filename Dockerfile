@@ -26,6 +26,8 @@ WORKDIR /app
 
 # Copy built artifacts
 COPY --from=build /app/packages/server/dist ./packages/server/dist
+COPY --from=build /app/packages/server/commands ./packages/server/commands
+COPY --from=build /app/packages/server/hooks ./packages/server/hooks
 COPY --from=build /app/web-dist ./web-dist
 COPY --from=build /app/packages/server/node_modules ./packages/server/node_modules
 COPY --from=build /app/packages/server/package.json ./packages/server/

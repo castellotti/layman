@@ -15,6 +15,9 @@ services:
       # Mount ~/.vibe so the installer can detect Mistral Vibe, install the /layman skill,
       # and the session log watcher can tail messages.jsonl files for passive monitoring.
       - ${HOME}/.vibe:/root/.vibe
+      # Mount ~/Documents/Cline so the installer can detect Cline and write hook scripts
+      # to ~/Documents/Cline/Hooks/ for session monitoring and tool call approval.
+      - ${HOME}/Documents/Cline:/root/Documents/Cline
     environment:
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
