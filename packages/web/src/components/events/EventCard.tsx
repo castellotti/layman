@@ -377,6 +377,32 @@ export function EventCard({ event, index, isSelected, onClick, onSend, collapseH
             );
           })()}
 
+          {/* Permission request details */}
+          {event.type === 'permission_request' && (event.data.permissionRequestType || event.data.permissionSuggestions) && (
+            <div className="space-y-1.5">
+              {event.data.permissionRequestType && (
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] text-[#484f58] font-mono uppercase">Permission type</span>
+                  <span className="text-[10px] font-medium text-[#d29922] bg-[#d29922]/10 border border-[#d29922]/20 px-1.5 py-0.5 rounded">
+                    {event.data.permissionRequestType === 'tool_use' ? 'Tool Use' : 'Execution Mode'}
+                  </span>
+                </div>
+              )}
+              {event.data.permissionSuggestions && event.data.permissionSuggestions.length > 0 && (
+                <div>
+                  <p className="text-[10px] text-[#484f58] mb-1 font-mono uppercase">Allow suggestions</p>
+                  <div className="space-y-1">
+                    {(event.data.permissionSuggestions as Array<Record<string, unknown>>).map((s, i) => (
+                      <div key={i} className="text-[11px] text-[#8b949e] bg-[#0d1117] rounded px-2 py-1 font-mono">
+                        {s.description ? String(s.description) : s.command ? String(s.command) : JSON.stringify(s)}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Prompt text — user_prompt: plain blockquote; agent_response: markdown */}
           {event.data.prompt && (
             isAgentResponse ? (
