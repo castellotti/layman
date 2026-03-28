@@ -227,6 +227,7 @@ async function startServer(
     installer.install();
     installer.installCommand();
     installer.installOptionalClientCommands();
+    installer.installClineHooks();
     console.log('Hooks deduplicated and updated.');
   }
 

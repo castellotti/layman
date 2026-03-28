@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync, existsSync, mkdirSync, unlinkSync } from 'fs';
+import { readFileSync, writeFileSync, existsSync, mkdirSync, unlinkSync, readdirSync, chmodSync } from 'fs';
 import { join, dirname } from 'path';
 import { homedir } from 'os';
 import { createHash } from 'crypto';
@@ -92,6 +92,12 @@ const OPTIONAL_CLIENTS: OptionalClient[] = [
     commandsDir: join(homedir(), '.vibe', 'skills', 'layman'),
     fileName: 'SKILL.md',
     getContent: () => VIBE_SKILL_CONTENT,
+  },
+  {
+    name: 'Cline',
+    configDir: join(homedir(), 'Documents', 'Cline'),
+    commandsDir: join(homedir(), 'Documents', 'Cline', 'Workflows'),
+    getContent: () => getClineWorkflowContent(),
   },
 ];
 
@@ -230,6 +236,33 @@ function getCommandContent(): string {
   ].join('\n');
 }
 
+function getClineWorkflowContent(): string {
+  const __dirname = dirname(fileURLToPath(import.meta.url));
+  const workflowPath = join(__dirname, '..', '..', 'workflows', 'layman.md');
+  const fallbackPath = join(__dirname, '..', 'workflows', 'layman.md');
+
+  if (existsSync(workflowPath)) {
+    return readFileSync(workflowPath, 'utf-8');
+  }
+  if (existsSync(fallbackPath)) {
+    return readFileSync(fallbackPath, 'utf-8');
+  }
+  // Inline fallback
+  return [
+    'You are activating the Layman monitoring dashboard. Follow these steps:',
+    '',
+    '1. Activate this session with Layman by running:',
+    '   `echo "layman:activate"`',
+    '',
+    '2. Tell the user:',
+    '   "Layman is now monitoring this session. Open http://localhost:8880 to see the dashboard."',
+    '',
+    '3. If Layman does not appear to be monitoring (no events appear in the dashboard), tell the user:',
+    '   "Layman server may not be running. Start it with: docker compose -f ~/layman/docker-compose.yml up -d"',
+    '',
+  ].join('\n');
+}
+
 export class HookInstaller {
   constructor(private options: HookInstallerOptions) {}
 
@@ -320,6 +353,92 @@ export class HookInstaller {
         // Ignore
       }
     }
+  }
+
+  /** Install Cline hook scripts to ~/Documents/Cline/Hooks/ if Cline is detected. */
+  installClineHooks(): void {
+    const clineHooksDir = join(homedir(), 'Documents', 'Cline', 'Hooks');
+    const clineConfigDir = join(homedir(), 'Documents', 'Cline');
+
+    if (!existsSync(clineConfigDir)) {
+      // Also check ~/.cline as newer config location
+      if (!existsSync(join(homedir(), '.cline'))) return;
+    }
+
+    // Read bundled hook script templates
+    const __dirname = dirname(fileURLToPath(import.meta.url));
+    const templatesDir = join(__dirname, '..', '..', 'hooks', 'cline');
+    const fallbackDir = join(__dirname, '..', 'hooks', 'cline');
+    const srcDir = existsSync(templatesDir) ? templatesDir : existsSync(fallbackDir) ? fallbackDir : null;
+    if (!srcDir) {
+      console.log('Cline hook templates not found — skipping');
+      return;
+    }
+
+    if (!existsSync(clineHooksDir)) {
+      mkdirSync(clineHooksDir, { recursive: true });
+    }
+
+    const hookFiles = readdirSync(srcDir).filter((f) => !f.startsWith('.'));
+    for (const hookFile of hookFiles) {
+      const template = readFileSync(join(srcDir, hookFile), 'utf-8');
+      const content = template.replace(/__LAYMAN_URL__/g, this.options.serverUrl);
+      const destPath = join(clineHooksDir, hookFile);
+      writeFileSync(destPath, content, { mode: 0o755 });
+    }
+
+    // Write version marker for staleness detection
+    const versionContent = commandHash(hookFiles.map((f) => readFileSync(join(srcDir, f), 'utf-8')).join(''));
+    writeFileSync(join(clineHooksDir, '.layman-version'), versionContent, 'utf-8');
+
+    console.log(`Cline hook scripts installed at ${clineHooksDir} (${hookFiles.length} hooks)`);
+  }
+
+  /** Remove Cline hook scripts installed by Layman. */
+  uninstallClineHooks(): void {
+    const clineHooksDir = join(homedir(), 'Documents', 'Cline', 'Hooks');
+    const versionFile = join(clineHooksDir, '.layman-version');
+
+    // Only remove if we installed them (version marker exists)
+    if (!existsSync(versionFile)) return;
+
+    const __dirname = dirname(fileURLToPath(import.meta.url));
+    const templatesDir = join(__dirname, '..', '..', 'hooks', 'cline');
+    const fallbackDir = join(__dirname, '..', 'hooks', 'cline');
+    const srcDir = existsSync(templatesDir) ? templatesDir : existsSync(fallbackDir) ? fallbackDir : null;
+
+    if (srcDir) {
+      const hookFiles = readdirSync(srcDir).filter((f) => !f.startsWith('.'));
+      for (const hookFile of hookFiles) {
+        const destPath = join(clineHooksDir, hookFile);
+        if (existsSync(destPath)) {
+          try { unlinkSync(destPath); } catch { /* ignore */ }
+        }
+      }
+    }
+
+    try { unlinkSync(versionFile); } catch { /* ignore */ }
+    console.log(`Cline hook scripts removed from ${clineHooksDir}`);
+  }
+
+  /** Check if Cline hook scripts are installed and up to date. */
+  getClineHooksStatus(): { installed: boolean; upToDate: boolean } {
+    const clineHooksDir = join(homedir(), 'Documents', 'Cline', 'Hooks');
+    const versionFile = join(clineHooksDir, '.layman-version');
+
+    if (!existsSync(versionFile)) return { installed: false, upToDate: false };
+
+    const __dirname = dirname(fileURLToPath(import.meta.url));
+    const templatesDir = join(__dirname, '..', '..', 'hooks', 'cline');
+    const fallbackDir = join(__dirname, '..', 'hooks', 'cline');
+    const srcDir = existsSync(templatesDir) ? templatesDir : existsSync(fallbackDir) ? fallbackDir : null;
+    if (!srcDir) return { installed: true, upToDate: false };
+
+    const hookFiles = readdirSync(srcDir).filter((f) => !f.startsWith('.'));
+    const expectedHash = commandHash(hookFiles.map((f) => readFileSync(join(srcDir, f), 'utf-8')).join(''));
+    const installedHash = readFileSync(versionFile, 'utf-8').trim();
+
+    return { installed: true, upToDate: installedHash === expectedHash };
   }
 
   /** Install the slash command for every optional client whose config dir already exists. */

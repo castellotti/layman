@@ -11,6 +11,7 @@ import { EventStore } from './events/store.js';
 import { SessionGate } from './hooks/gate.js';
 import { HookInstaller } from './hooks/installer.js';
 import { registerHookHandler } from './hooks/handler.js';
+import { registerClineHookHandler } from './cline/handler.js';
 import { AnalysisEngine } from './analysis/engine.js';
 import { resolveEndpoint } from './analysis/providers/openai-compat.js';
 import { filterPii } from './pii/filter.js';
@@ -399,6 +400,7 @@ export function createServer(config: LaymanConfig): LaymanServer {
       installer.install();
       installer.installCommand();
       installer.installOptionalClientCommands();
+      installer.installClineHooks();
       return installer.getStatus();
     });
 
@@ -419,6 +421,9 @@ export function createServer(config: LaymanConfig): LaymanServer {
       const session = eventStore.getSessions().find((s) => s.sessionId === sessionId);
       if (!session) {
         return reply.status(404).send({ error: 'Session not found' });
+      }
+      if (session.agentType === 'cline') {
+        return reply.status(400).send({ error: 'Prompt submission is not yet supported for Cline sessions' });
       }
       if (session.agentType !== 'opencode') {
         return reply.status(400).send({ error: 'Prompt submission is only supported for OpenCode sessions' });
@@ -922,6 +927,7 @@ export function createServer(config: LaymanConfig): LaymanServer {
         installer.install();
         installer.installCommand();
         installer.installOptionalClientCommands();
+        installer.installClineHooks();
         break;
       }
       case 'bookmarks:get': {
@@ -937,6 +943,7 @@ export function createServer(config: LaymanConfig): LaymanServer {
 
   // Register hook handler routes
   registerHookHandler(fastify, pendingManager, eventStore, analysisEngine, getConfig, gate);
+  registerClineHookHandler(fastify, pendingManager, eventStore, analysisEngine, getConfig, gate);
 
   let resolvedPort = config.port;
 
