@@ -232,7 +232,7 @@ async function startServer(
   }
 
   console.log(`\nLayman v${VERSION} running at ${url}`);
-  console.log(`Use /layman in Claude Code to activate monitoring for a session\n`);
+  console.log(`Use /layman in your AI agent to activate monitoring for a session\n`);
 
   if (config.open) {
     void openBrowser(url);

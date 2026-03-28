@@ -219,11 +219,11 @@ export function EventStream({ onSend }: EventStreamProps) {
             <div className="text-4xl">👁</div>
             <p className="text-sm font-medium text-[#e6edf3]">Waiting for events...</p>
             <p className="text-xs text-[#8b949e]">
-              Hooks are installed. Start a Claude Code, Cline, or OpenCode session to see events here.
+              Hooks are installed. Start a Claude Code, Cline, OpenCode, or Mistral Vibe session to see events here.
             </p>
             <div className="mt-2 text-xs text-[#484f58] bg-[#161b22] border border-[#30363d] rounded-md px-4 py-3 font-mono text-left">
-              <p className="text-[#8b949e] mb-1"># In another terminal:</p>
-              <p>claude "your task here"</p>
+              <p className="text-[#8b949e] mb-1"># In your AI agent:</p>
+              <p>type /layman to begin</p>
             </div>
           </div>
         ) : (
