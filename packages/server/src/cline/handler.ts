@@ -40,6 +40,16 @@ const CLINE_BLOCKING_TIMEOUT_S = 25;
 /** Detect /layman activation command in an execute_command call */
 const ACTIVATION_PATTERN = /echo\s+["']?layman:activate["']?/;
 
+/**
+ * Tracks which workspace directories have been activated for monitoring.
+ * Keyed by cwd (workspace root). Persists for the lifetime of the Layman process.
+ *
+ * Using cwd instead of taskId means activation survives Plan/Act mode switches and
+ * task cancellations — both of which can change the taskId but keep the same workspace.
+ * Once the user runs /layman in a workspace, all subsequent tasks there are monitored.
+ */
+const activatedCwds = new Set<string>();
+
 export function registerClineHookHandler(
   fastify: FastifyInstance,
   pendingManager: PendingApprovalManager,
@@ -58,15 +68,23 @@ export function registerClineHookHandler(
         const sessionId = body.taskId;
         const cwd = body.workspaceRoots?.[0] ?? '';
 
-        // Gate check: detect /layman activation before gating so we can activate
+        // Gate check: detect /layman activation before gating so we can activate.
+        // On activation, record the cwd so future tasks in this workspace are auto-activated.
         if (sessionId && hookName === 'PreToolUse') {
           const toolName = body.preToolUse?.toolName;
           const command = body.preToolUse?.parameters?.command ?? '';
           if (toolName === 'execute_command' && ACTIVATION_PATTERN.test(command)) {
+            if (cwd) activatedCwds.add(cwd);
             gate.activate(sessionId);
             if (cwd) eventStore.trackSession(sessionId, cwd, AGENT_TYPE);
             return reply.send({});
           }
+        }
+
+        // Auto-activate if the workspace was previously activated (e.g. after a mode switch
+        // or task restart that changed the taskId but kept the same workspace).
+        if (sessionId && cwd && !gate.isActive(sessionId) && activatedCwds.has(cwd)) {
+          gate.activate(sessionId);
         }
 
         // Gate check: non-activated sessions get instant pass-through
@@ -194,6 +212,16 @@ async function handleClinePreToolUse(
 
 function handleClinePostToolUse(body: ClineHookInput, eventStore: EventStore): void {
   const input = translatePostToolUse(body);
+
+  // attempt_completion carries the assistant's final response text in its `result` parameter.
+  // Emit it as an agent_response so the Layman UI shows the AI's reply.
+  if (body.postToolUse?.toolName === 'attempt_completion') {
+    const responseText = body.postToolUse.parameters?.result;
+    if (responseText) {
+      eventStore.add('agent_response', input.session_id, { prompt: responseText }, undefined, AGENT_TYPE);
+    }
+    return;
+  }
 
   // Find the matching pending event to update
   const events = eventStore.getAll();
