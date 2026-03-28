@@ -59,11 +59,39 @@ const COMMANDS_DIR = join(homedir(), '.claude', 'commands');
  * since the binary may not be on PATH (e.g. installed as an app bundle). A config
  * dir existing is a reliable signal the user has set up the client at least once.
  */
-const OPTIONAL_CLIENTS: Array<{ name: string; configDir: string; commandsDir: string }> = [
+interface OptionalClient {
+  name: string;
+  configDir: string;
+  commandsDir: string;
+  /** File name to write (default: 'layman.md') */
+  fileName?: string;
+  /** Custom content generator — if omitted, uses the standard layman.md content */
+  getContent?: () => string;
+}
+
+const VIBE_SKILL_CONTENT = `---
+name: layman
+description: Check Layman monitoring dashboard status
+user-invocable: true
+---
+
+Layman is passively monitoring this Vibe session via session log files.
+
+Tell the user: "Layman is monitoring this session. Open http://localhost:8880 to see the dashboard."
+`;
+
+const OPTIONAL_CLIENTS: OptionalClient[] = [
   {
     name: 'OpenCode',
     configDir: join(homedir(), '.config', 'opencode'),
     commandsDir: join(homedir(), '.config', 'opencode', 'commands'),
+  },
+  {
+    name: 'Mistral Vibe',
+    configDir: join(homedir(), '.vibe'),
+    commandsDir: join(homedir(), '.vibe', 'skills', 'layman'),
+    fileName: 'SKILL.md',
+    getContent: () => VIBE_SKILL_CONTENT,
   },
 ];
 
@@ -296,24 +324,27 @@ export class HookInstaller {
 
   /** Install the slash command for every optional client whose config dir already exists. */
   installOptionalClientCommands(): void {
-    const content = getCommandContent();
-    const hash = commandHash(content);
-    const tagged = `${content.trimEnd()}\n<!-- layman:${hash} -->\n`;
+    const defaultContent = getCommandContent();
 
     for (const client of OPTIONAL_CLIENTS) {
       if (!existsSync(client.configDir)) continue; // client not installed — skip
       if (!existsSync(client.commandsDir)) {
         mkdirSync(client.commandsDir, { recursive: true });
       }
-      writeFileSync(join(client.commandsDir, 'layman.md'), tagged, 'utf-8');
-      console.log(`Layman command installed for ${client.name} at ${join(client.commandsDir, 'layman.md')}`);
+      const content = client.getContent ? client.getContent() : defaultContent;
+      const hash = commandHash(content);
+      const tagged = `${content.trimEnd()}\n<!-- layman:${hash} -->\n`;
+      const fileName = client.fileName ?? 'layman.md';
+      writeFileSync(join(client.commandsDir, fileName), tagged, 'utf-8');
+      console.log(`Layman command installed for ${client.name} at ${join(client.commandsDir, fileName)}`);
     }
   }
 
   /** Remove the slash command for all optional clients where it is present. */
   uninstallOptionalClientCommands(): void {
     for (const client of OPTIONAL_CLIENTS) {
-      const cmdPath = join(client.commandsDir, 'layman.md');
+      const fileName = client.fileName ?? 'layman.md';
+      const cmdPath = join(client.commandsDir, fileName);
       if (existsSync(cmdPath)) {
         try {
           unlinkSync(cmdPath);
@@ -373,11 +404,13 @@ export class HookInstaller {
     }
 
     // Optional client status
-    const expectedContent = getCommandContent();
-    const expectedHash = commandHash(expectedContent);
+    const defaultContent = getCommandContent();
     const optionalClients: OptionalClientStatus[] = OPTIONAL_CLIENTS.map((client) => {
       const detected = existsSync(client.configDir);
-      const clientCmdPath = join(client.commandsDir, 'layman.md');
+      const fileName = client.fileName ?? 'layman.md';
+      const clientCmdPath = join(client.commandsDir, fileName);
+      const content = client.getContent ? client.getContent() : defaultContent;
+      const expectedHash = commandHash(content);
       const commandInstalled = existsSync(clientCmdPath);
       const commandUpToDate = commandInstalled
         ? readFileSync(clientCmdPath, 'utf-8').includes(`layman:${expectedHash}`)
