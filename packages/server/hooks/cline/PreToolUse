@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # Layman hook for Cline — forwards PreToolUse to Layman server (blocking, 28s timeout)
+# Only echoes output when the response is non-trivial (e.g. cancel: true).
+# Exit 0 with no stdout = allow, so we stay silent for pass-through responses.
 RESPONSE=$(curl -s -m 28 -X POST "__LAYMAN_URL__/hooks/cline/PreToolUse" \
   -H "Content-Type: application/json" -d @-)
-if [ $? -ne 0 ] || [ -z "$RESPONSE" ]; then
-  echo '{}'
+if [ $? -ne 0 ] || [ -z "$RESPONSE" ] || [ "$RESPONSE" = "{}" ]; then
   exit 0
 fi
 echo "$RESPONSE"
