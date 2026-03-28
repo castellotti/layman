@@ -371,6 +371,8 @@ async function handlePermissionRequest(
   const timelineEvent = eventStore.add('permission_request', input.session_id, {
     toolName: input.tool_name,
     toolInput: input.tool_input,
+    permissionRequestType: input.permission_request_type,
+    permissionSuggestions: input.permission_suggestions,
   }, riskLevel, agentType);
 
   const shouldAnalyze =
