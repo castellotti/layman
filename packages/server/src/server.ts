@@ -616,6 +616,15 @@ export function createServer(config: LaymanConfig): LaymanServer {
       return { qa: bookmarkStore.getQAForSession(request.params.sessionId) };
     });
 
+    fastify.delete<{ Params: { sessionId: string } }>('/api/bookmarks/sessions/:sessionId', async (request, reply) => {
+      const { sessionId } = request.params;
+      const session = bookmarkStore.getRecordedSession(sessionId);
+      if (!session) return reply.status(404).send({ error: 'Session not found' });
+      bookmarkStore.deleteSession(sessionId);
+      broadcast({ type: 'bookmarks:state', folders: bookmarkStore.listFolders(), bookmarks: bookmarkStore.listAllBookmarks() });
+      return { ok: true };
+    });
+
     // Search across recorded sessions
     fastify.post<{ Body: SearchRequest }>('/api/search', async (request, reply) => {
       const { query } = request.body;

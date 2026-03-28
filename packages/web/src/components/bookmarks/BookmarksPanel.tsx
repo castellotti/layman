@@ -48,6 +48,7 @@ export function BookmarksPanel({ onSend }: BookmarksPanelProps) {
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState<string | null>(null);
   const importInputRef = useRef<HTMLInputElement>(null);
+  const [deleteConfirmSessionId, setDeleteConfirmSessionId] = useState<string | null>(null);
 
   const recordingEnabled = config?.sessionRecording ?? false;
 
@@ -154,6 +155,22 @@ export function BookmarksPanel({ onSend }: BookmarksPanelProps) {
     setSelectedHistoricalEventId(null);
   }, [setViewingSession]);
 
+  const handleDeleteSession = useCallback(async (sessionId: string) => {
+    try {
+      await fetch(`/api/bookmarks/sessions/${sessionId}`, { method: 'DELETE' });
+      if (viewingSessionId === sessionId) {
+        setViewingSession(null);
+        setQaEntries([]);
+        setSelectedHistoricalEventId(null);
+      }
+      refreshRecordedSessions();
+    } catch {
+      // ignore
+    } finally {
+      setDeleteConfirmSessionId(null);
+    }
+  }, [viewingSessionId, setViewingSession, refreshRecordedSessions]);
+
   // Open a session from search results
   const handleOpenSessionFromSearch = useCallback(async (sessionId: string) => {
     clearSearch();
@@ -218,6 +235,32 @@ export function BookmarksPanel({ onSend }: BookmarksPanelProps) {
 
   return (
     <div className="fixed inset-0 z-50 flex">
+      {/* Delete confirmation dialog */}
+      {deleteConfirmSessionId && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60">
+          <div className="bg-[#161b22] border border-[#30363d] rounded-lg shadow-2xl p-6 max-w-sm w-full mx-4">
+            <h3 className="text-sm font-semibold text-[#e6edf3] mb-2">Delete session?</h3>
+            <p className="text-xs text-[#8b949e] mb-5">
+              This will permanently delete all events and Q&amp;A for this session from history. This cannot be undone.
+            </p>
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setDeleteConfirmSessionId(null)}
+                className="px-3 py-1.5 text-xs rounded bg-[#21262d] border border-[#30363d] text-[#8b949e] hover:text-[#e6edf3] transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => void handleDeleteSession(deleteConfirmSessionId)}
+                className="px-3 py-1.5 text-xs rounded bg-[#da3633] border border-[#f85149] text-white hover:bg-[#f85149] transition-colors"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Overlay */}
       <div data-bookmarks-overlay className="fixed inset-0 bg-black/50" onClick={() => setBookmarksOpen(false)} />
 
@@ -499,6 +542,16 @@ export function BookmarksPanel({ onSend }: BookmarksPanelProps) {
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setDeleteConfirmSessionId(viewingSessionId)}
+                    className="flex items-center gap-1 text-[#8b949e] hover:text-[#f85149] transition-colors text-xs"
+                    title="Delete session from history"
+                  >
+                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                    Delete
+                  </button>
                   <button
                     onClick={() => {
                       document.body.classList.add('layman-print-historical');
