@@ -24,6 +24,7 @@ interface NavigationBarProps {
 const AGENT_LABELS: Record<string, string> = {
   'claude-code': 'Claude Code',
   'opencode': 'OpenCode',
+  'mistral-vibe': 'Mistral Vibe',
 };
 
 export function NavigationBar({
