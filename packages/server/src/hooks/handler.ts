@@ -452,8 +452,14 @@ async function handleStop(
   agentType: string = 'claude-code'
 ): Promise<void> {
   eventStore.add('agent_stop', input.session_id, {}, undefined, agentType);
-  // Emit the final assistant response (and any intermediate messages not yet emitted)
-  await emitNewAssistantMessages(input.transcript_path, input.session_id, eventStore, agentType);
+  // Emit the final assistant response (and any intermediate messages not yet emitted).
+  // The transcript file may not be flushed yet when Stop fires, so retry after a short
+  // delay if the first read finds nothing new.
+  const emitted = await emitNewAssistantMessages(input.transcript_path, input.session_id, eventStore, agentType);
+  if (!emitted) {
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    await emitNewAssistantMessages(input.transcript_path, input.session_id, eventStore, agentType);
+  }
 }
 
 /** Remap host ~/.claude path to container-mounted /root/.claude path */
@@ -498,27 +504,29 @@ async function initTranscriptWatermark(transcriptPath: string): Promise<void> {
   transcriptWatermarks.set(transcriptPath, null);
 }
 
-/** Emit all assistant text messages in the transcript that haven't been emitted yet */
+/** Emit all assistant text messages in the transcript that haven't been emitted yet.
+ *  Returns true if at least one agent_response event was emitted. */
 async function emitNewAssistantMessages(
   transcriptPath: string,
   sessionId: string,
   eventStore: EventStore,
   agentType: string
-): Promise<void> {
+): Promise<boolean> {
   // If we haven't seen this transcript before, init watermark first (avoids emitting history)
   if (!transcriptWatermarks.has(transcriptPath)) {
     await initTranscriptWatermark(transcriptPath);
-    return; // nothing new to emit on first sight
+    return false; // nothing new to emit on first sight
   }
 
   const content = await readTranscriptContent(transcriptPath);
-  if (!content) return;
+  if (!content) return false;
 
   const watermark = transcriptWatermarks.get(transcriptPath);
   const lines = content.trim().split('\n').filter(Boolean);
 
   let pastWatermark = watermark === null; // null = emit from beginning
   let newWatermark: string | null = null;
+  let emitted = false;
 
   for (const line of lines) {
     try {
@@ -543,6 +551,7 @@ async function emitNewAssistantMessages(
 
       if (texts.length > 0) {
         eventStore.add('agent_response', sessionId, { prompt: texts.join('\n\n') }, undefined, agentType);
+        emitted = true;
       }
 
       if (uuid) newWatermark = uuid;
@@ -552,6 +561,8 @@ async function emitNewAssistantMessages(
   if (newWatermark) {
     transcriptWatermarks.set(transcriptPath, newWatermark);
   }
+
+  return emitted;
 }
 
 async function handleUserPromptSubmit(
@@ -559,6 +570,11 @@ async function handleUserPromptSubmit(
   eventStore: EventStore,
   agentType: string = 'claude-code'
 ): Promise<void> {
+  // Catch-up: emit any assistant messages from the previous turn that weren't captured
+  // by Stop (e.g. if the transcript wasn't flushed in time). This ensures responses
+  // appear in the timeline before the next user prompt.
+  await emitNewAssistantMessages(input.transcript_path, input.session_id, eventStore, agentType);
+
   eventStore.add('user_prompt', input.session_id, {
     prompt: input.prompt,
   }, undefined, agentType);
