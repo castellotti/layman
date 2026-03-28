@@ -34,6 +34,13 @@ export interface PermissionRequestInput extends HookInputBase {
   tool_name: string;
   tool_input: Record<string, unknown>;
   permission_request_type: 'tool_use' | 'execution_mode';
+  permission_suggestions?: Array<{
+    type: string;
+    tool_name?: string;
+    command?: string;
+    description?: string;
+    [key: string]: unknown;
+  }>;
 }
 
 export interface NotificationInput extends HookInputBase {

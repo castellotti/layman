@@ -58,6 +58,14 @@ export interface ApprovalDecision {
   updatedInput?: Record<string, unknown>;
 }
 
+export interface PermissionSuggestion {
+  type: string;
+  tool_name?: string;
+  command?: string;
+  description?: string;
+  [key: string]: unknown;
+}
+
 export interface EventData {
   toolName?: string;
   toolInput?: Record<string, unknown>;
@@ -70,6 +78,8 @@ export interface EventData {
   approvalId?: string;
   decision?: ApprovalDecision;
   completedAt?: number;
+  permissionRequestType?: 'tool_use' | 'execution_mode';
+  permissionSuggestions?: PermissionSuggestion[];
 }
 
 export interface TimelineEvent {
