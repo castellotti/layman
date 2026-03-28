@@ -23,6 +23,7 @@ import { BookmarkStore } from './db/bookmarks.js';
 import { searchEvents } from './db/search.js';
 import type { SearchRequest } from './db/search.js';
 import type { LaymanConfig } from './config/schema.js';
+import { VibeSessionWatcher } from './vibe/watcher.js';
 import type { ServerMessage, ClientMessage, SessionStatus } from './types/index.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -44,6 +45,7 @@ export function createServer(config: LaymanConfig): LaymanServer {
   const pendingManager = new PendingApprovalManager(config.hookTimeout);
   const analysisEngine = new AnalysisEngine(config.analysis);
   const gate = new SessionGate();
+  const vibeWatcher = new VibeSessionWatcher(eventStore);
   const startTime = Date.now();
 
   // Wire PII filter — checks config on every event so toggling takes effect immediately
@@ -942,6 +944,7 @@ export function createServer(config: LaymanConfig): LaymanServer {
     async start() {
       await registerPlugins();
       registerRoutes();
+      vibeWatcher.start();
 
       // Try ports sequentially if default is taken
       for (let portAttempt = config.port; portAttempt <= config.port + 9; portAttempt++) {
@@ -960,6 +963,7 @@ export function createServer(config: LaymanConfig): LaymanServer {
     },
 
     async stop() {
+      vibeWatcher.stop();
       await fastify.close();
     },
 
