@@ -172,6 +172,10 @@ export function SettingsDrawer({ onSend }: SettingsDrawerProps) {
   const [fetchingModels, setFetchingModels] = useState(false);
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [piiCriteriaOpen, setPiiCriteriaOpen] = useState(false);
+  const [recoveryDialogOpen, setRecoveryDialogOpen] = useState(false);
+  const [recoveryScanState, setRecoveryScanState] = useState<'idle' | 'scanning' | 'done'>('idle');
+  const [recoveryScanCount, setRecoveryScanCount] = useState<number | null>(null);
+  const [recoveryScanSessionCount, setRecoveryScanSessionCount] = useState<number | null>(null);
   const [purgeState, setPurgeState] = useState<'idle' | 'scanning' | 'confirming' | 'purging' | 'done' | 'error'>('idle');
   const [scanResult, setScanResult] = useState<{ categories: { name: string; key: string; count: number }[]; total: number } | null>(null);
   const [purgeResult, setPurgeResult] = useState<{ redacted: number } | null>(null);
@@ -279,6 +283,7 @@ export function SettingsDrawer({ onSend }: SettingsDrawerProps) {
   const canFetch = !providerCfg.needsEndpoint || !!config.analysis.endpoint;
 
   return (
+    <>
     <div className="fixed inset-0 z-50 flex justify-end">
       <div
         className="fixed inset-0 bg-black/50"
@@ -321,6 +326,33 @@ export function SettingsDrawer({ onSend }: SettingsDrawerProps) {
                 />
               </div>
             </label>
+
+            <div className="mt-3">
+              <label className="flex items-center justify-between cursor-pointer">
+                <span className="text-xs text-[#e6edf3]">Enable recording recovery</span>
+                <div
+                  onClick={() => {
+                    if (!config.recordingRecovery) {
+                      setRecoveryDialogOpen(true);
+                    } else {
+                      updateConfig({ recordingRecovery: false });
+                    }
+                  }}
+                  className={`relative w-8 h-4 rounded-full transition-colors cursor-pointer ${
+                    config.recordingRecovery ? 'bg-[#238636]' : 'bg-[#30363d]'
+                  }`}
+                >
+                  <div
+                    className={`absolute top-0.5 w-3 h-3 bg-white rounded-full transition-transform ${
+                      config.recordingRecovery ? 'translate-x-4' : 'translate-x-0.5'
+                    }`}
+                  />
+                </div>
+              </label>
+              <p className="text-[10px] text-[#484f58] mt-1">
+                On startup, scan recent session transcripts for events missing from the record (e.g. written while Layman was stopped) and fill the gaps.
+              </p>
+            </div>
 
             <div className="mt-3">
               <label className="flex items-center justify-between cursor-pointer">
@@ -862,5 +894,89 @@ export function SettingsDrawer({ onSend }: SettingsDrawerProps) {
         </div>
       )}
     </div>
+
+      {/* Recording recovery dialog */}
+      {recoveryDialogOpen && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center">
+          <div
+            className="fixed inset-0 bg-black/60"
+            onClick={() => {
+              if (recoveryScanState !== 'scanning') setRecoveryDialogOpen(false);
+            }}
+          />
+          <div className="relative w-80 bg-[#161b22] border border-[#30363d] rounded-lg shadow-2xl p-5">
+            {recoveryScanState === 'idle' && (
+              <>
+                <h3 className="text-sm font-semibold text-[#e6edf3] mb-2">Enable recording recovery</h3>
+                <p className="text-xs text-[#8b949e] mb-4">
+                  Run an update check now? Layman will compare all sessions in history against their
+                  available transcript logs and fill any gaps. Subsequent startup scans will be faster
+                  since already-checked events will be skipped.
+                </p>
+                <div className="flex justify-end gap-2">
+                  <button
+                    onClick={() => {
+                      updateConfig({ recordingRecovery: true });
+                      setRecoveryDialogOpen(false);
+                    }}
+                    className="px-3 py-1.5 text-xs rounded bg-[#21262d] border border-[#30363d] text-[#8b949e] hover:text-[#e6edf3] hover:bg-[#30363d] transition-colors"
+                  >
+                    Not now
+                  </button>
+                  <button
+                    onClick={async () => {
+                      updateConfig({ recordingRecovery: true });
+                      setRecoveryScanState('scanning');
+                      try {
+                        const res = await fetch('/api/recovery/scan', { method: 'POST' });
+                        const data = await res.json() as { events: number; sessions: number };
+                        setRecoveryScanCount(data.events);
+                        setRecoveryScanSessionCount(data.sessions);
+                      } catch {
+                        setRecoveryScanCount(0);
+                        setRecoveryScanSessionCount(0);
+                      }
+                      setRecoveryScanState('done');
+                    }}
+                    className="px-3 py-1.5 text-xs rounded bg-[#238636] hover:bg-[#2ea043] text-white transition-colors"
+                  >
+                    Scan now
+                  </button>
+                </div>
+              </>
+            )}
+            {recoveryScanState === 'scanning' && (
+              <div className="flex items-center gap-3 py-1">
+                <div className="w-4 h-4 border-2 border-[#58a6ff] border-t-transparent rounded-full animate-spin flex-shrink-0" />
+                <p className="text-xs text-[#8b949e]">Scanning session transcripts…</p>
+              </div>
+            )}
+            {recoveryScanState === 'done' && (
+              <>
+                <h3 className="text-sm font-semibold text-[#e6edf3] mb-2">Scan complete</h3>
+                <p className="text-xs text-[#8b949e] mb-4">
+                  {recoveryScanCount === 0
+                    ? 'No missing events found — all recorded sessions are up to date.'
+                    : `Recovered ${recoveryScanCount} missing event${recoveryScanCount === 1 ? '' : 's'} across ${recoveryScanSessionCount} session${recoveryScanSessionCount === 1 ? '' : 's'}.`}
+                </p>
+                <div className="flex justify-end">
+                  <button
+                    onClick={() => {
+                      setRecoveryDialogOpen(false);
+                      setRecoveryScanState('idle');
+                      setRecoveryScanCount(null);
+                      setRecoveryScanSessionCount(null);
+                    }}
+                    className="px-3 py-1.5 text-xs rounded bg-[#21262d] border border-[#30363d] text-[#e6edf3] hover:bg-[#30363d] transition-colors"
+                  >
+                    Done
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+    </>
   );
 }
