@@ -1,10 +1,19 @@
 # Layman
 
-When AI coding assistants like Claude Code, OpenCode, Mistral Vibe, or Cline help you build software, they do it by reading your files, writing code, and running commands on your computer — often dozens of actions per session, faster than any person could follow.
+"*Catch vibes.*"
 
-Layman is a dashboard that shows you exactly what your AI assistant is doing, in plain language, in your web browser. Think of it like a window into what the AI is actually doing on your machine: every file it reads, every change it makes, every command it runs.
+* Monitor your AI assistants
+* Explain their actions in Layman's Terms
+* Analyze for risk, security, and safety automatically
+* Record and Bookmark sessions including user prompts and agent responses
+  * Opt-in required (per session)
+  * PII filtered by default
 
-**Supported agents:** Claude Code · OpenCode · Mistral Vibe · Cline
+When AI coding assistants like Claude Code, OpenCode, Mistral Vibe, or Cline help you build software, they do it by reading your files, writing code, and performing dozens of actions per session.
+
+Layman is a dashboard that explains exactly what your AI assistants are doing, in plain language, in your web browser. Understand and remember every file AI reads, every change AI makes, every command AI runs.
+
+**Supported agents:** Claude Code · Mistral Vibe · OpenCode · Cline
 
 ---
 
@@ -36,7 +45,7 @@ On first visit, a banner prompts you to click **Install**. This writes the globa
 
 ### Claude Code
 
-Sessions are **not** monitored by default. To opt a session in:
+Sessions are **not** recorded by default. To opt a session in:
 
 1. Start Claude Code in any project directory:
    ```bash
