@@ -35,6 +35,7 @@ export const LaymanConfigSchema = z.object({
   laymansPrompt: z.string().default(DEFAULT_LAYMANS_PROMPT),
   hookUrl: z.string().optional(),
   sessionRecording: z.boolean().default(false),
+  recordingRecovery: z.boolean().default(false),
   piiFilter: z.boolean().default(true),
   showFullCommand: z.boolean().default(false),
   switchToNewestSession: z.boolean().default(false),

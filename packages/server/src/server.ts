@@ -25,6 +25,7 @@ import { searchEvents } from './db/search.js';
 import type { SearchRequest } from './db/search.js';
 import type { LaymanConfig } from './config/schema.js';
 import { VibeSessionWatcher } from './vibe/watcher.js';
+import { recoverSessionGaps } from './hooks/recovery.js';
 import type { ServerMessage, ClientMessage, SessionStatus } from './types/index.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -176,6 +177,11 @@ export function createServer(config: LaymanConfig): LaymanServer {
     // PII purge — scan all SQLite data for PII matches
     fastify.post('/api/pii-purge/scan', async () => {
       return scanPii(db);
+    });
+
+    // Recording recovery — on-demand gap fill across all stored sessions
+    fastify.post('/api/recovery/scan', async () => {
+      return recoverSessionGaps(db, eventStore);
     });
 
     // PII purge — execute redaction on all SQLite data
@@ -961,6 +967,12 @@ export function createServer(config: LaymanConfig): LaymanServer {
       await registerPlugins();
       registerRoutes();
       vibeWatcher.start();
+
+      if (getConfig().recordingRecovery && getConfig().sessionRecording) {
+        void recoverSessionGaps(db, eventStore).then(({ events, sessions }) => {
+          if (events > 0) console.log(`[recovery] Startup scan filled ${events} events across ${sessions} session${sessions === 1 ? '' : 's'}`);
+        });
+      }
 
       // Try ports sequentially if default is taken
       for (let portAttempt = config.port; portAttempt <= config.port + 9; portAttempt++) {

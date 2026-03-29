@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import type { FastifyInstance } from 'fastify';
+import { recoverPreActivationHistory } from './recovery.js';
 import { PendingApprovalManager } from './pending.js';
 import { SessionGate } from './gate.js';
 import { EventStore } from '../events/store.js';
@@ -71,8 +72,30 @@ export function registerHookHandler(
           if (toolName === 'Bash' && toolInput) {
             const command = (toolInput as { command?: string }).command ?? '';
             if (ACTIVATION_PATTERN.test(command)) {
-              gate.activate(sessionId);
+              const isNewActivation = gate.activate(sessionId);
               if (cwd) eventStore.trackSession(sessionId, cwd, agentType, opencodeUrl);
+
+              // Recover events from before /layman was run.
+              // Safe to await: Claude Code is blocked on this PreToolUse response,
+              // so no hook events can race in until we return.
+              // Only runs on the first activation — gate.activate() returns false
+              // for subsequent calls, preventing duplicate injection in-memory.
+              if (isNewActivation) {
+                const transcriptPath = (body as { transcript_path?: string }).transcript_path;
+                if (transcriptPath) {
+                  try {
+                    const count = await recoverPreActivationHistory(
+                      transcriptPath, sessionId, agentType, eventStore
+                    );
+                    if (count > 0) {
+                      console.log(`[recovery] Recovered ${count} pre-activation events for session ${sessionId.slice(0, 8)}`);
+                    }
+                  } catch {
+                    // Non-fatal — activation proceeds even if recovery fails
+                  }
+                }
+              }
+
               return reply.send({});
             }
           }
