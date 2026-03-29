@@ -324,6 +324,27 @@ export function SettingsDrawer({ onSend }: SettingsDrawerProps) {
 
             <div className="mt-3">
               <label className="flex items-center justify-between cursor-pointer">
+                <span className="text-xs text-[#e6edf3]">Enable recording recovery</span>
+                <div
+                  onClick={() => updateConfig({ recordingRecovery: !config.recordingRecovery })}
+                  className={`relative w-8 h-4 rounded-full transition-colors cursor-pointer ${
+                    config.recordingRecovery ? 'bg-[#238636]' : 'bg-[#30363d]'
+                  }`}
+                >
+                  <div
+                    className={`absolute top-0.5 w-3 h-3 bg-white rounded-full transition-transform ${
+                      config.recordingRecovery ? 'translate-x-4' : 'translate-x-0.5'
+                    }`}
+                  />
+                </div>
+              </label>
+              <p className="text-[10px] text-[#484f58] mt-1">
+                On startup, scan recent session transcripts for events missing from the record (e.g. written while Layman was stopped) and fill the gaps.
+              </p>
+            </div>
+
+            <div className="mt-3">
+              <label className="flex items-center justify-between cursor-pointer">
                 <button
                   type="button"
                   onClick={() => setPiiCriteriaOpen(!piiCriteriaOpen)}
