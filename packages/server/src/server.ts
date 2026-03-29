@@ -290,10 +290,28 @@ export function createServer(config: LaymanConfig): LaymanServer {
 
     fastify.post<{
       Params: { eventId: string };
-      Body: { question: string; model?: string };
+      Body: {
+        question: string;
+        model?: string;
+        laymansTerms?: string;
+        failureReason?: string;
+        previousQuestions?: Array<{ question: string; answer: string }>;
+      };
     }>('/api/analysis/:eventId/ask', async (request, reply) => {
       const event = eventStore.get(request.params.eventId);
       if (!event) return reply.status(404).send({ error: 'Event not found' });
+
+      // Build recent session context from event store
+      const allEvents = eventStore.getAll();
+      const sessionEvents = allEvents
+        .filter((e) => e.sessionId === event.sessionId && e.id !== event.id)
+        .slice(-20)
+        .map((e) => ({
+          type: e.type,
+          summary: e.data.toolName
+            ? `${e.data.toolName}: ${JSON.stringify(e.data.toolInput ?? {}).slice(0, 120)}`
+            : (e.data.prompt as string | undefined)?.slice(0, 120) ?? e.type,
+        }));
 
       try {
         const result = await analysisEngine.ask(request.body.question, {
@@ -301,6 +319,10 @@ export function createServer(config: LaymanConfig): LaymanServer {
           toolInput: event.data.toolInput ?? {},
           toolOutput: event.data.toolOutput,
           previousAnalysis: event.analysis,
+          laymansTerms: request.body.laymansTerms ?? event.laymans?.explanation,
+          failureReason: request.body.failureReason ?? (event.data.error as string | undefined),
+          previousQuestions: request.body.previousQuestions,
+          recentSessionEvents: sessionEvents,
           cwd: process.cwd(),
           modelOverride: request.body.model,
         });
@@ -313,6 +335,40 @@ export function createServer(config: LaymanConfig): LaymanServer {
           latencyMs: result.latencyMs,
         });
         return { answer: result.text, tokens: result.tokens, latencyMs: result.latencyMs, model: result.model };
+      } catch (err) {
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        return reply.status(500).send({ error: errorMsg });
+      }
+    });
+
+    // Session summary — generates a plain-English summary of the entire session.
+    fastify.post<{
+      Body: { sessionId?: string; model?: string };
+    }>('/api/sessions/summary', async (request, reply) => {
+      const { sessionId, model } = request.body;
+      const allEvents = eventStore.getAll();
+      const sessionEvents = sessionId
+        ? allEvents.filter((e) => e.sessionId === sessionId)
+        : allEvents;
+
+      if (sessionEvents.length === 0) {
+        return reply.status(404).send({ error: 'No events found for session' });
+      }
+
+      // Build compact event list for summary
+      const eventSummaries = sessionEvents.slice(-100).map((e) => ({
+        type: e.type,
+        summary: e.data.toolName
+          ? `${e.data.toolName}: ${JSON.stringify(e.data.toolInput ?? {}).slice(0, 150)}`
+          : (e.data.prompt as string | undefined)?.slice(0, 150) ?? e.type,
+        toolName: e.data.toolName as string | undefined,
+      }));
+
+      const cwd = eventStore.getSessions().find((s) => !sessionId || s.sessionId === sessionId)?.cwd ?? process.cwd();
+
+      try {
+        const result = await analysisEngine.summarizeSession(eventSummaries, cwd, model);
+        return result;
       } catch (err) {
         const errorMsg = err instanceof Error ? err.message : String(err);
         return reply.status(500).send({ error: errorMsg });

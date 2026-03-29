@@ -406,20 +406,31 @@ export function EventCard({ event, index, isSelected, onClick, onSend, collapseH
             </div>
           )}
 
-          {/* Prompt text — user_prompt: plain blockquote; agent_response: markdown */}
+          {/* Prompt text — user_prompt and agent_response: markdown; others: plain */}
           {event.data.prompt && (
-            isAgentResponse ? (
-              <div className="text-xs text-[#e6edf3] border-l-2 border-[#3fb950]/50 pl-3 prose prose-invert prose-xs max-w-none
-                [&_p]:my-1 [&_p]:leading-relaxed
-                [&_strong]:text-[#e6edf3] [&_strong]:font-semibold
-                [&_em]:text-[#8b949e]
-                [&_code]:text-[#79c0ff] [&_code]:bg-[#0d1117] [&_code]:px-1 [&_code]:rounded [&_code]:text-[11px]
-                [&_pre]:bg-[#0d1117] [&_pre]:rounded [&_pre]:p-2 [&_pre]:overflow-x-auto
-                [&_ul]:list-disc [&_ul]:pl-4 [&_ul]:my-1
-                [&_ol]:list-decimal [&_ol]:pl-4 [&_ol]:my-1
-                [&_li]:my-0.5
-                [&_h1]:text-sm [&_h2]:text-sm [&_h3]:text-xs [&_h1]:font-bold [&_h2]:font-bold [&_h3]:font-semibold">
-                <ReactMarkdown>{event.data.prompt as string}</ReactMarkdown>
+            (isAgentResponse || isUserPrompt) ? (
+              <div className={`rounded-md border border-[#30363d] overflow-hidden`}>
+                <div className="flex items-center justify-between px-3 py-1 bg-[#161b22] border-b border-[#30363d]">
+                  <span className="text-[10px] text-[#484f58] font-mono uppercase">{isUserPrompt ? 'Prompt' : 'Response'}</span>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(event.data.prompt as string).catch(() => {}); }}
+                    className="text-xs text-[#8b949e] hover:text-[#e6edf3] transition-colors"
+                  >
+                    Copy
+                  </button>
+                </div>
+                <div className={`p-3 text-xs text-[#e6edf3] border-l-2 ${isUserPrompt ? 'border-[#58a6ff]' : 'border-[#3fb950]/50'} prose prose-invert prose-xs max-w-none
+                  [&_p]:my-1 [&_p]:leading-relaxed
+                  [&_strong]:text-[#e6edf3] [&_strong]:font-semibold
+                  [&_em]:text-[#8b949e]
+                  [&_code]:text-[#79c0ff] [&_code]:bg-[#0d1117] [&_code]:px-1 [&_code]:rounded [&_code]:text-[11px]
+                  [&_pre]:bg-[#0d1117] [&_pre]:rounded [&_pre]:p-2 [&_pre]:overflow-x-auto
+                  [&_ul]:list-disc [&_ul]:pl-4 [&_ul]:my-1
+                  [&_ol]:list-decimal [&_ol]:pl-4 [&_ol]:my-1
+                  [&_li]:my-0.5
+                  [&_h1]:text-sm [&_h2]:text-sm [&_h3]:text-xs [&_h1]:font-bold [&_h2]:font-bold [&_h3]:font-semibold`}>
+                  <ReactMarkdown>{event.data.prompt as string}</ReactMarkdown>
+                </div>
               </div>
             ) : (
               <div className="rounded-md border border-[#30363d] overflow-hidden">

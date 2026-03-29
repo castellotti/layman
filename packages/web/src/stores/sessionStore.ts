@@ -56,6 +56,10 @@ interface SessionState {
   viewingSessionId: string | null;
   historicalEvents: TimelineEvent[];
 
+  // Session summary
+  sessionSummary: string | null;
+  isSummarizingSession: boolean;
+
   // Actions
   setConnected: (connected: boolean) => void;
   setWsStatus: (status: SessionState['wsStatus']) => void;
@@ -89,6 +93,7 @@ interface SessionState {
   removeBookmark: (bookmarkId: string) => void;
   setViewingSession: (sessionId: string | null) => void;
   setHistoricalEvents: (events: TimelineEvent[]) => void;
+  fetchSessionSummary: (sessionId: string | null, model?: string) => Promise<void>;
 }
 
 export const useSessionStore = create<SessionState>((set) => ({
@@ -122,6 +127,9 @@ export const useSessionStore = create<SessionState>((set) => ({
   bookmarks: [],
   viewingSessionId: null,
   historicalEvents: [],
+
+  sessionSummary: null,
+  isSummarizingSession: false,
 
   setConnected: (connected) => set({ connected }),
 
@@ -318,4 +326,23 @@ export const useSessionStore = create<SessionState>((set) => ({
     })),
 
   setHistoricalEvents: (historicalEvents) => set({ historicalEvents }),
+
+  fetchSessionSummary: async (sessionId, model) => {
+    set({ isSummarizingSession: true, sessionSummary: null });
+    try {
+      const res = await fetch('/api/sessions/summary', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId, ...(model ? { model } : {}) }),
+      });
+      if (res.ok) {
+        const data = await res.json() as { summary: string };
+        set({ sessionSummary: data.summary });
+      }
+    } catch {
+      // Non-fatal
+    } finally {
+      set({ isSummarizingSession: false });
+    }
+  },
 }));

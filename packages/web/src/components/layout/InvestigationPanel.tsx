@@ -109,7 +109,15 @@ export function InvestigationPanel({ onSend }: InvestigationPanelProps) {
       const response = await fetch(`/api/analysis/${selectedEventId}/ask`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ question, ...(askModel ? { model: askModel } : {}) }),
+        body: JSON.stringify({
+          question,
+          ...(askModel ? { model: askModel } : {}),
+          ...(event.laymans?.explanation ? { laymansTerms: event.laymans.explanation } : {}),
+          ...(event.data.error ? { failureReason: String(event.data.error) } : {}),
+          ...(state.questions.length > 0 ? {
+            previousQuestions: state.questions.map((q) => ({ question: q.question, answer: q.answer })),
+          } : {}),
+        }),
       });
       if (response.ok) {
         const data = await response.json() as { answer: string; tokens?: { input: number; output: number }; latencyMs?: number; model?: string };
@@ -132,7 +140,15 @@ export function InvestigationPanel({ onSend }: InvestigationPanelProps) {
       const response = await fetch(`/api/analysis/${selectedEventId}/ask`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ question, ...(askModel ? { model: askModel } : {}) }),
+        body: JSON.stringify({
+          question,
+          ...(askModel ? { model: askModel } : {}),
+          ...(event.laymans?.explanation ? { laymansTerms: event.laymans.explanation } : {}),
+          ...(event.data.error ? { failureReason: String(event.data.error) } : {}),
+          ...(state.questions.length > 0 ? {
+            previousQuestions: state.questions.map((q) => ({ question: q.question, answer: q.answer })),
+          } : {}),
+        }),
       });
       if (response.ok) {
         const data = await response.json() as { answer: string; tokens?: { input: number; output: number }; latencyMs?: number; model?: string };

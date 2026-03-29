@@ -5,11 +5,13 @@ import { OpenAICompatProvider } from './providers/openai-compat.js';
 import {
   ANALYSIS_SYSTEM_PROMPT,
   INVESTIGATION_SYSTEM_PROMPT,
+  SESSION_SUMMARY_SYSTEM_PROMPT,
   buildLaymansSystemPrompt,
   formatAnalysisUserMessage,
   formatInvestigationUserMessage,
+  formatSessionSummaryUserMessage,
 } from './prompt.js';
-import type { AnalysisResult, AnalysisRequest, AnalysisConfig, InvestigationContext, LaymansResult } from './types.js';
+import type { AnalysisResult, AnalysisRequest, AnalysisConfig, InvestigationContext, LaymansResult, SessionSummaryResult } from './types.js';
 
 const DEFAULT_CONFIG: AnalysisConfig = {
   provider: 'anthropic',
@@ -99,7 +101,11 @@ export class AnalysisEngine {
       context.toolName,
       context.toolInput,
       context.toolOutput,
-      context.previousAnalysis
+      context.previousAnalysis,
+      context.laymansTerms,
+      context.failureReason,
+      context.previousQuestions,
+      context.recentSessionEvents
     );
 
     const effectiveConfig = context.modelOverride
@@ -121,6 +127,33 @@ export class AnalysisEngine {
         },
         latencyMs: Date.now() - startTime,
         model: effectiveConfig.model,
+      };
+    });
+  }
+
+  async summarizeSession(
+    events: Array<{ type: string; summary: string; toolName?: string }>,
+    cwd: string,
+    modelOverride?: string
+  ): Promise<SessionSummaryResult> {
+    const effectiveConfig = modelOverride
+      ? { ...this.config, model: modelOverride, maxTokens: 400 }
+      : { ...this.config, maxTokens: 400 };
+
+    return this.withConcurrencyLimit(async () => {
+      const startTime = Date.now();
+      const userMessage = formatSessionSummaryUserMessage(events, cwd);
+      const raw = await this.callProvider(SESSION_SUMMARY_SYSTEM_PROMPT, userMessage, effectiveConfig);
+      const latencyMs = Date.now() - startTime;
+
+      return {
+        summary: raw.text.trim(),
+        model: effectiveConfig.model,
+        latencyMs,
+        tokens: {
+          input: raw.usage.input_tokens ?? raw.usage.prompt_tokens ?? 0,
+          output: raw.usage.output_tokens ?? raw.usage.completion_tokens ?? 0,
+        },
       };
     });
   }
