@@ -24,6 +24,8 @@ export const LaymanConfigSchema = z.object({
   port: z.number().int().min(1).max(65535).default(8880),
   host: z.string().default('localhost'),
   autoAnalyze: z.enum(['all', 'risky', 'none']).default('none'),
+  autoExplain: z.enum(['all', 'medium', 'high', 'none']).default('none'),
+  autoExplainDepth: z.enum(['quick', 'detailed']).default('quick'),
   analysis: AnalysisConfigSchema.default({}),
   autoAllow: AutoAllowRulesSchema.default({}),
   hookTimeout: z.number().int().min(10).max(3600).default(300),

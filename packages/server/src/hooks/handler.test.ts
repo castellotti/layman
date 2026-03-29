@@ -17,6 +17,8 @@ const MOCK_CONFIG: LaymanConfig = {
   port: 8880,
   host: 'localhost',
   autoAnalyze: 'none',
+  autoExplain: 'none',
+  autoExplainDepth: 'quick',
   analysis: {
     provider: 'anthropic',
     model: 'sonnet',

@@ -127,6 +127,8 @@ export interface LaymanConfig {
   port: number;
   host: string;
   autoAnalyze: 'all' | 'risky' | 'none';
+  autoExplain: 'all' | 'medium' | 'high' | 'none';
+  autoExplainDepth: 'quick' | 'detailed';
   analysis: {
     provider: AnalysisProvider;
     model: string;

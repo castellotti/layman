@@ -201,12 +201,34 @@ async function handlePreToolUse(
     (config.autoAllow.readOnly && AUTO_ALLOW_TOOLS.has(input.tool_name)) ||
     isAutoAllowedByPattern(input.tool_name, input.tool_input, config.autoAllow.trustedCommands);
 
+  const shouldAnalyze =
+    config.autoAnalyze === 'all' ||
+    (config.autoAnalyze === 'risky' && riskLevel !== 'low');
+
+  const shouldExplain =
+    config.autoExplain === 'all' ||
+    (config.autoExplain === 'medium' && riskLevel !== 'low') ||
+    (config.autoExplain === 'high' && riskLevel === 'high');
+
   if (shouldAutoAllow) {
     // Record event but don't block
-    eventStore.add('tool_call_approved', input.session_id, {
+    const approvedEvent = eventStore.add('tool_call_approved', input.session_id, {
       toolName: input.tool_name,
       toolInput: input.tool_input,
     }, riskLevel, agentType);
+
+    // Trigger analysis/explain for auto-approved events too
+    if (shouldAnalyze && shouldExplain) {
+      void triggerAnalysis(input, approvedEvent.id, eventStore, analysisEngine, pendingManager, config)
+        .then(() => triggerLaymans(input, approvedEvent.id, eventStore, analysisEngine, config, config.autoExplainDepth));
+    } else {
+      if (shouldAnalyze) {
+        void triggerAnalysis(input, approvedEvent.id, eventStore, analysisEngine, pendingManager, config);
+      }
+      if (shouldExplain) {
+        void triggerLaymans(input, approvedEvent.id, eventStore, analysisEngine, config, config.autoExplainDepth);
+      }
+    }
 
     return {};
   }
@@ -217,14 +239,17 @@ async function handlePreToolUse(
     toolInput: input.tool_input,
   }, riskLevel, agentType);
 
-  // Start analysis concurrently if configured
-  const shouldAnalyze =
-    config.autoAnalyze === 'all' ||
-    (config.autoAnalyze === 'risky' && riskLevel !== 'low');
-
-  if (shouldAnalyze) {
-    void triggerAnalysis(input, timelineEvent.id, eventStore, analysisEngine, pendingManager, config);
-    void triggerLaymans(input, timelineEvent.id, eventStore, analysisEngine, config);
+  if (shouldAnalyze && shouldExplain) {
+    // Run explain after analysis so it can benefit from the analysis result
+    void triggerAnalysis(input, timelineEvent.id, eventStore, analysisEngine, pendingManager, config)
+      .then(() => triggerLaymans(input, timelineEvent.id, eventStore, analysisEngine, config, config.autoExplainDepth));
+  } else {
+    if (shouldAnalyze) {
+      void triggerAnalysis(input, timelineEvent.id, eventStore, analysisEngine, pendingManager, config);
+    }
+    if (shouldExplain) {
+      void triggerLaymans(input, timelineEvent.id, eventStore, analysisEngine, config, config.autoExplainDepth);
+    }
   }
 
   // Block until user decides
@@ -299,7 +324,8 @@ async function triggerLaymans(
   eventId: string,
   eventStore: EventStore,
   analysisEngine: AnalysisEngine,
-  config: LaymanConfig
+  config: LaymanConfig,
+  depth: 'quick' | 'detailed' = 'quick'
 ): Promise<void> {
   try {
     const result = await analysisEngine.laymans(
@@ -307,7 +333,7 @@ async function triggerLaymans(
         toolName: input.tool_name,
         toolInput: input.tool_input,
         cwd: input.cwd,
-        depth: 'quick',
+        depth,
       },
       config.laymansPrompt
     );
