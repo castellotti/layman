@@ -170,6 +170,8 @@ export function InvestigationPanel({ onSend }: InvestigationPanelProps) {
               code={formatInput(event.data.toolInput)}
               language={event.data.toolName === 'Bash' ? 'bash' : 'text'}
               maxLines={15}
+              showWrapToggle={true}
+              defaultWrapped={true}
             />
           )}
 
