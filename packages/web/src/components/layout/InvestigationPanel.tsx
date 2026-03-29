@@ -30,6 +30,9 @@ export function InvestigationPanel({ onSend }: InvestigationPanelProps) {
   const [availableModels, setAvailableModels] = useState<string[]>([]);
   const [fetchingModels, setFetchingModels] = useState(false);
   const [fetchModelError, setFetchModelError] = useState<string | null>(null);
+  const [laymansDepth, setLaymansDepth] = useState<'quick' | 'detailed' | null>(null);
+  const [analysisDepth, setAnalysisDepth] = useState<'quick' | 'detailed' | null>(null);
+  const [isAskingFailure, setIsAskingFailure] = useState(false);
 
   const fetchModels = useCallback(async () => {
     if (!config) return;
@@ -64,6 +67,12 @@ export function InvestigationPanel({ onSend }: InvestigationPanelProps) {
     }
   }, [config?.analysis.model]);
 
+  // Reset depth tracking when navigating to a different event
+  useEffect(() => {
+    setLaymansDepth(null);
+    setAnalysisDepth(null);
+  }, [selectedEventId]);
+
   if (!investigationOpen || !selectedEventId) return null;
 
   const event = getEvent(selectedEventId);
@@ -76,15 +85,45 @@ export function InvestigationPanel({ onSend }: InvestigationPanelProps) {
   const isBusy = isAnalyzing || isLaymansLoading;
 
   const handleRequestAnalysis = (depth: 'quick' | 'detailed') => {
+    setAnalysisDepth(depth);
     onSend({ type: 'analysis:request', eventId: selectedEventId, depth });
   };
 
   const handleRequestLaymans = (depth: 'quick' | 'detailed') => {
+    setLaymansDepth(depth);
     onSend({ type: 'laymans:request', eventId: selectedEventId, depth });
   };
 
   const handleRequestBoth = (depth: 'quick' | 'detailed') => {
+    setLaymansDepth(depth);
+    setAnalysisDepth(depth);
     onSend({ type: 'both:request', eventId: selectedEventId, depth });
+  };
+
+  const handleAskWhyFailed = async (depth: 'quick' | 'detailed') => {
+    const question = depth === 'quick'
+      ? 'Why did this tool call fail and what was wrong?'
+      : 'Why did this tool call fail? What was wrong with the approach, what error occurred, and what was the eventual solution or workaround? Provide a detailed analysis.';
+    setIsAskingFailure(true);
+    try {
+      const response = await fetch(`/api/analysis/${selectedEventId}/ask`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ question, ...(askModel ? { model: askModel } : {}) }),
+      });
+      if (response.ok) {
+        const data = await response.json() as { answer: string; tokens?: { input: number; output: number }; latencyMs?: number; model?: string };
+        addInvestigationQuestion(selectedEventId, question, data.answer, {
+          tokens: data.tokens,
+          latencyMs: data.latencyMs,
+          model: data.model,
+        });
+      }
+    } catch {
+      addInvestigationQuestion(selectedEventId, question, 'Failed to get answer. Please try again.');
+    } finally {
+      setIsAskingFailure(false);
+    }
   };
 
   const handleAsk = async (question: string) => {
@@ -192,17 +231,17 @@ export function InvestigationPanel({ onSend }: InvestigationPanelProps) {
               <button
                 onClick={() => handleRequestLaymans('quick')}
                 disabled={isLaymansLoading}
-                className="text-[10px] text-[#3fb950] hover:text-[#56d364] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                className={`text-[10px] disabled:opacity-50 disabled:cursor-not-allowed transition-colors ${event.laymans && laymansDepth === 'quick' ? 'text-white font-semibold' : 'text-[#3fb950] hover:text-[#56d364]'}`}
               >
-                {isLaymansLoading ? '⏳ Explaining...' : 'Quick'}
+                {isLaymansLoading && laymansDepth === 'quick' ? '⏳ Explaining...' : 'Quick'}
               </button>
               <span className="text-[10px] text-[#484f58]">·</span>
               <button
                 onClick={() => handleRequestLaymans('detailed')}
                 disabled={isLaymansLoading}
-                className="text-[10px] text-[#58a6ff] hover:text-[#79c0ff] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                className={`text-[10px] disabled:opacity-50 disabled:cursor-not-allowed transition-colors ${event.laymans && laymansDepth === 'detailed' ? 'text-white font-semibold' : 'text-[#58a6ff] hover:text-[#79c0ff]'}`}
               >
-                Detailed
+                {isLaymansLoading && laymansDepth === 'detailed' ? '⏳ Explaining...' : 'Detailed'}
               </button>
             </div>
           </div>
@@ -248,17 +287,17 @@ export function InvestigationPanel({ onSend }: InvestigationPanelProps) {
               <button
                 onClick={() => handleRequestAnalysis('quick')}
                 disabled={isAnalyzing}
-                className="text-[10px] text-[#3fb950] hover:text-[#56d364] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                className={`text-[10px] disabled:opacity-50 disabled:cursor-not-allowed transition-colors ${event.analysis && analysisDepth === 'quick' ? 'text-white font-semibold' : 'text-[#3fb950] hover:text-[#56d364]'}`}
               >
-                {isAnalyzing ? '⏳ Analyzing...' : 'Quick'}
+                {isAnalyzing && analysisDepth === 'quick' ? '⏳ Analyzing...' : 'Quick'}
               </button>
               <span className="text-[10px] text-[#484f58]">·</span>
               <button
                 onClick={() => handleRequestAnalysis('detailed')}
                 disabled={isAnalyzing}
-                className="text-[10px] text-[#58a6ff] hover:text-[#79c0ff] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                className={`text-[10px] disabled:opacity-50 disabled:cursor-not-allowed transition-colors ${event.analysis && analysisDepth === 'detailed' ? 'text-white font-semibold' : 'text-[#58a6ff] hover:text-[#79c0ff]'}`}
               >
-                Detailed
+                {isAnalyzing && analysisDepth === 'detailed' ? '⏳ Analyzing...' : 'Detailed'}
               </button>
             </div>
           </div>
@@ -285,6 +324,37 @@ export function InvestigationPanel({ onSend }: InvestigationPanelProps) {
             </div>
           )}
         </div>
+
+        {/* Failure Analysis section — only for tool_call_failed events */}
+        {event.type === 'tool_call_failed' && (
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs font-mono text-white uppercase">
+                Failure Analysis
+              </span>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => void handleAskWhyFailed('quick')}
+                  disabled={isAskingFailure || isAskingQuestion}
+                  className="text-[10px] text-[#3fb950] hover:text-[#56d364] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  {isAskingFailure ? '⏳ Analyzing...' : 'Quick'}
+                </button>
+                <span className="text-[10px] text-[#484f58]">·</span>
+                <button
+                  onClick={() => void handleAskWhyFailed('detailed')}
+                  disabled={isAskingFailure || isAskingQuestion}
+                  className="text-[10px] text-[#58a6ff] hover:text-[#79c0ff] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  Detailed
+                </button>
+              </div>
+            </div>
+            <div className="bg-[#161b22] border border-[#30363d] border-dashed rounded-md p-4 text-center">
+              <span className="text-xs text-[#484f58]">Ask why this tool call failed. Results appear in Questions below.</span>
+            </div>
+          </div>
+        )}
 
         {/* Investigation Q&A */}
         {state.questions.length > 0 && (

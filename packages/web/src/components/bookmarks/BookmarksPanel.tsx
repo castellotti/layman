@@ -219,6 +219,16 @@ export function BookmarksPanel({ onSend }: BookmarksPanelProps) {
     setShowAddBookmark(false);
   }, [newBookmarkSessionId, newBookmarkName, newBookmarkFolderId]);
 
+  const handleQuickBookmark = useCallback(async (sessionId: string) => {
+    const session = recordedSessions.find((s) => s.sessionId === sessionId);
+    const name = getSessionLabel(session?.cwd ?? '', sessionId);
+    await fetch('/api/bookmarks', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sessionId, name, folderId: null }),
+    }).catch(() => {});
+  }, [recordedSessions]);
+
   if (!bookmarksOpen) return null;
 
   const folderBookmarks = (folderId: string) => bookmarks.filter((b) => b.folderId === folderId).sort((a, b) => a.sortOrder - b.sortOrder);
@@ -542,6 +552,18 @@ export function BookmarksPanel({ onSend }: BookmarksPanelProps) {
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
+                  {!bookmarkedSessionIds.has(viewingSessionId) && (
+                    <button
+                      onClick={() => void handleQuickBookmark(viewingSessionId)}
+                      className="flex items-center gap-1 text-[#8b949e] hover:text-[#d29922] transition-colors text-xs"
+                      title="Bookmark this session"
+                    >
+                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
+                      </svg>
+                      Bookmark
+                    </button>
+                  )}
                   <button
                     onClick={() => setDeleteConfirmSessionId(viewingSessionId)}
                     className="flex items-center gap-1 text-[#8b949e] hover:text-[#f85149] transition-colors text-xs"
