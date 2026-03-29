@@ -25,6 +25,36 @@ Layman is a dashboard that explains exactly what your AI assistants are doing, i
 
 ---
 
+## Features
+
+### Tool approval
+
+For Claude Code and Cline, Layman can intercept tool calls before they execute and ask for your approval. Enable this in **Settings → Auto-approve** to control which tools require a human decision.
+
+### AI analysis (optional)
+
+Layman can use an AI model to explain what each action means and flag anything that looks risky. Add your API key when starting the container:
+
+```bash
+ANTHROPIC_API_KEY=your-key-here docker compose -f ~/layman/docker-compose.yml up -d
+```
+
+Supports Anthropic, OpenAI-compatible APIs, and LiteLLM.
+
+### Session history and search
+
+Past sessions are recorded to a local SQLite database. Open the **Sessions** panel (clock icon) to browse history, search across all sessions with full-text search, and filter by event type. Search supports `+required`, `-excluded`, and `"quoted phrases"`.
+
+### PII filter
+
+All logged events are automatically scanned for personally identifiable information (email addresses, API keys, passwords, credit card numbers, etc.) and redacted before storage. Toggle in **Settings → Session Recording → PII Filter**.
+
+### Session export
+
+Export a session as a PDF transcript using the print button in the session view.
+
+---
+
 ## Setup
 
 **Start the Layman server** (one instance handles all your projects):
@@ -132,36 +162,6 @@ If you install a supported client after Layman is already running:
 4. Click **Reinstall** — Layman will detect the new client and install its hooks and commands.
 
 No container restart required.
-
----
-
-## Features
-
-### Tool approval
-
-For Claude Code and Cline, Layman can intercept tool calls before they execute and ask for your approval. Enable this in **Settings → Auto-approve** to control which tools require a human decision.
-
-### AI analysis (optional)
-
-Layman can use an AI model to explain what each action means and flag anything that looks risky. Add your API key when starting the container:
-
-```bash
-ANTHROPIC_API_KEY=your-key-here docker compose -f ~/layman/docker-compose.yml up -d
-```
-
-Supports Anthropic, OpenAI-compatible APIs, and LiteLLM.
-
-### Session history and search
-
-Past sessions are recorded to a local SQLite database. Open the **Sessions** panel (clock icon) to browse history, search across all sessions with full-text search, and filter by event type. Search supports `+required`, `-excluded`, and `"quoted phrases"`.
-
-### PII filter
-
-All logged events are automatically scanned for personally identifiable information (email addresses, API keys, passwords, credit card numbers, etc.) and redacted before storage. Toggle in **Settings → Session Recording → PII Filter**.
-
-### Session export
-
-Export a session as a PDF transcript using the print button in the session view.
 
 ---
 

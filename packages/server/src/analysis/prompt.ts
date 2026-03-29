@@ -99,7 +99,11 @@ export function formatInvestigationUserMessage(
   toolName: string,
   toolInput: Record<string, unknown>,
   toolOutput: unknown | undefined,
-  previousAnalysis: unknown | undefined
+  previousAnalysis: unknown | undefined,
+  laymansTerms?: string,
+  failureReason?: string,
+  previousQuestions?: Array<{ question: string; answer: string }>,
+  recentSessionEvents?: Array<{ type: string; summary: string }>
 ): string {
   const parts = [
     `Tool: ${toolName}`,
@@ -111,11 +115,56 @@ export function formatInvestigationUserMessage(
     parts.push(`Output (truncated): ${outputStr.slice(0, 1000)}`);
   }
 
+  if (failureReason) {
+    parts.push(`Failure reason: ${failureReason}`);
+  }
+
   if (previousAnalysis !== undefined) {
     parts.push(`Previous analysis: ${JSON.stringify(previousAnalysis, null, 2)}`);
   }
 
+  if (laymansTerms) {
+    parts.push(`Plain-language explanation: ${laymansTerms}`);
+  }
+
+  if (previousQuestions && previousQuestions.length > 0) {
+    parts.push(`Previous Q&A in this investigation:`);
+    for (const qa of previousQuestions) {
+      parts.push(`  Q: ${qa.question}\n  A: ${qa.answer}`);
+    }
+  }
+
+  if (recentSessionEvents && recentSessionEvents.length > 0) {
+    parts.push(`Recent session context (last ${recentSessionEvents.length} events):`);
+    for (const ev of recentSessionEvents) {
+      parts.push(`  - ${ev.type}: ${ev.summary}`);
+    }
+  }
+
   parts.push(`\nUser question: ${question}`);
+
+  return parts.join('\n');
+}
+
+export const SESSION_SUMMARY_SYSTEM_PROMPT = `You are Layman, summarizing what an AI coding agent session accomplished. Your audience is a developer who wants a quick, plain-English overview of what the agent did.
+
+Summarize the session in 2-4 sentences. Cover:
+- What the agent was working on (the main task or goal)
+- Key actions taken (files changed, commands run, etc.)
+- Current status (completed, in progress, encountered issues)
+
+Use plain English. No jargon. Be concise and specific. Respond with only the summary text, no JSON or formatting.`;
+
+export function formatSessionSummaryUserMessage(
+  events: Array<{ type: string; summary: string; toolName?: string }>,
+  cwd: string
+): string {
+  const parts = [`Working directory: ${cwd}`, `Session events (${events.length} total):`];
+
+  for (const ev of events) {
+    const tool = ev.toolName ? ` [${ev.toolName}]` : '';
+    parts.push(`  - ${ev.type}${tool}: ${ev.summary}`);
+  }
 
   return parts.join('\n');
 }

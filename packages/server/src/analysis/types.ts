@@ -48,8 +48,19 @@ export interface InvestigationContext {
   toolInput: Record<string, unknown>;
   toolOutput?: unknown;
   previousAnalysis?: AnalysisResult;
+  laymansTerms?: string;
+  failureReason?: string;
+  previousQuestions?: Array<{ question: string; answer: string }>;
+  recentSessionEvents?: Array<{ type: string; summary: string }>;
   cwd: string;
   modelOverride?: string;
+}
+
+export interface SessionSummaryResult {
+  summary: string;
+  model: string;
+  latencyMs: number;
+  tokens: { input: number; output: number };
 }
 
 export interface LaymansResult {
