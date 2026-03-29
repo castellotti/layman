@@ -175,6 +175,7 @@ export function SettingsDrawer({ onSend }: SettingsDrawerProps) {
   const [recoveryDialogOpen, setRecoveryDialogOpen] = useState(false);
   const [recoveryScanState, setRecoveryScanState] = useState<'idle' | 'scanning' | 'done'>('idle');
   const [recoveryScanCount, setRecoveryScanCount] = useState<number | null>(null);
+  const [recoveryScanSessionCount, setRecoveryScanSessionCount] = useState<number | null>(null);
   const [purgeState, setPurgeState] = useState<'idle' | 'scanning' | 'confirming' | 'purging' | 'done' | 'error'>('idle');
   const [scanResult, setScanResult] = useState<{ categories: { name: string; key: string; count: number }[]; total: number } | null>(null);
   const [purgeResult, setPurgeResult] = useState<{ redacted: number } | null>(null);
@@ -928,10 +929,12 @@ export function SettingsDrawer({ onSend }: SettingsDrawerProps) {
                       setRecoveryScanState('scanning');
                       try {
                         const res = await fetch('/api/recovery/scan', { method: 'POST' });
-                        const data = await res.json() as { filled: number };
-                        setRecoveryScanCount(data.filled);
+                        const data = await res.json() as { events: number; sessions: number };
+                        setRecoveryScanCount(data.events);
+                        setRecoveryScanSessionCount(data.sessions);
                       } catch {
                         setRecoveryScanCount(0);
+                        setRecoveryScanSessionCount(0);
                       }
                       setRecoveryScanState('done');
                     }}
@@ -953,8 +956,8 @@ export function SettingsDrawer({ onSend }: SettingsDrawerProps) {
                 <h3 className="text-sm font-semibold text-[#e6edf3] mb-2">Scan complete</h3>
                 <p className="text-xs text-[#8b949e] mb-4">
                   {recoveryScanCount === 0
-                    ? 'No missing events found — all sessions are up to date.'
-                    : `Recovered ${recoveryScanCount} missing event${recoveryScanCount === 1 ? '' : 's'} across your session history.`}
+                    ? 'No missing events found — all recorded sessions are up to date.'
+                    : `Recovered ${recoveryScanCount} missing event${recoveryScanCount === 1 ? '' : 's'} across ${recoveryScanSessionCount} session${recoveryScanSessionCount === 1 ? '' : 's'}.`}
                 </p>
                 <div className="flex justify-end">
                   <button
@@ -962,6 +965,7 @@ export function SettingsDrawer({ onSend }: SettingsDrawerProps) {
                       setRecoveryDialogOpen(false);
                       setRecoveryScanState('idle');
                       setRecoveryScanCount(null);
+                      setRecoveryScanSessionCount(null);
                     }}
                     className="px-3 py-1.5 text-xs rounded bg-[#21262d] border border-[#30363d] text-[#e6edf3] hover:bg-[#30363d] transition-colors"
                   >
