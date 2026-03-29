@@ -353,17 +353,78 @@ private async pollSession(session: TrackedSession): Promise<void> {
     // NOTE: Vibe sets end_time after every turn (not just on close), so end_time is NOT
     // a reliable session-end signal. Instead we use file inactivity as a proxy.
     for (const [, session] of this.sessions) {
-      if (!session.pollTimer) continue; // tombstone — skip
+      // Handle tombstoned sessions: check if they have resumed activity
+      if (!session.pollTimer) {
+        const hasNewActivity = this.checkForNewActivity(session);
+        if (hasNewActivity) {
+          // Measure gap before doing anything else
+          const lastStoredEvent = this.getLastSessionEvent(session.sessionId);
+          const resumedAt = Date.now();
+          const gapMs = lastStoredEvent ? resumedAt - lastStoredEvent.timestamp : 0;
+          const gapMinutes = Math.round(gapMs / 60000);
+
+          console.log(`[vibe] Session ${session.sessionId.slice(0, 8)} resuming — recovering ${gapMinutes}m of missed data`);
+
+          // Restore session tracking and emit session_start *before* catch-up events
+          // so the marker appears at the right position in the timeline
+          this.eventStore.trackSession(session.sessionId, session.cwd, AGENT_TYPE);
+          this.eventStore.add('session_start', session.sessionId, {
+            source: 'resumed',
+            gapMinutes,
+          }, undefined, AGENT_TYPE);
+
+          session.lastActivityMs = resumedAt;
+          session.pollTimer = setInterval(() => void this.pollSession(session), POLL_INTERVAL_MS);
+
+          // Catch up on any missed messages from the gap
+          const beforeOffset = session.byteOffset;
+          await this.pollSession(session);
+          const messagesBytesDelta = session.byteOffset - beforeOffset;
+          console.log(`[vibe] Session ${session.sessionId.slice(0, 8)} resumed: caught up ${messagesBytesDelta} bytes over ${gapMinutes}m gap`);
+        }
+        continue;
+      }
 
       const idleMs = Date.now() - session.lastActivityMs;
       if (idleMs < SESSION_IDLE_TIMEOUT_MS) continue;
 
       // Do one final poll before declaring the session over
+      const beforeOffset = session.byteOffset;
       await this.pollSession(session);
+
+      // If the final poll detected new activity, keep the session alive
+      if (session.byteOffset > beforeOffset) {
+        session.lastActivityMs = Date.now();
+        console.log(`[vibe] Session ${session.sessionId.slice(0, 8)} resumed (activity detected after timeout)`);
+        continue;
+      }
+
       this.eventStore.add('session_end', session.sessionId, {}, undefined, AGENT_TYPE);
       clearInterval(session.pollTimer);
       session.pollTimer = null; // convert to tombstone
       console.log(`[vibe] Session ${session.sessionId.slice(0, 8)} ended (idle ${Math.round(idleMs / 60000)}m)`);
     }
+  }
+
+  /** Check if a session has new data without actually processing it */
+  private checkForNewActivity(session: TrackedSession): boolean {
+    const messagesPath = join(session.dir, 'messages.jsonl');
+    try {
+      const stat = statSync(messagesPath);
+      return stat.size > session.byteOffset;
+    } catch {
+      return false;
+    }
+  }
+
+  /** Get the most recent event in the store for a given session */
+  private getLastSessionEvent(sessionId: string): { timestamp: number } | null {
+    const allEvents = this.eventStore.getAll();
+    for (let i = allEvents.length - 1; i >= 0; i--) {
+      if (allEvents[i].sessionId === sessionId) {
+        return { timestamp: allEvents[i].timestamp };
+      }
+    }
+    return null;
   }
 }
