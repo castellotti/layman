@@ -11,7 +11,7 @@ function getSessionName(cwd: string, sessionId: string, agentType?: string, show
 }
 
 export function Header() {
-  const { wsStatus, serverVersion, sessionStatus, setSettingsOpen, setBookmarksOpen, sessions, activeSessionId, setActiveSession } = useSessionStore();
+  const { wsStatus, serverVersion, sessionStatus, setSettingsOpen, setBookmarksOpen, sessions, activeSessionId, setActiveSession, sessionSummary, isSummarizingSession, fetchSessionSummary } = useSessionStore();
 
   const statusConfig = {
     connecting: { dot: 'bg-[#d29922]', text: 'Connecting...', textColor: 'text-[#d29922]' },
@@ -23,8 +23,8 @@ export function Header() {
   const { dot, text, textColor } = statusConfig[wsStatus];
 
   return (
-    <header className="flex items-center justify-between px-4 py-2.5 bg-[#161b22] border-b border-[#30363d] shrink-0">
-      <div className="flex items-center gap-3">
+    <header className="flex items-center gap-3 px-4 py-2.5 bg-[#161b22] border-b border-[#30363d] shrink-0">
+      <div className="flex items-center gap-3 shrink-0">
         <div className="flex items-center gap-2">
           <span
             className="text-sm font-bold text-[#e6edf3] tracking-tight cursor-pointer hover:text-white transition-colors"
@@ -77,7 +77,25 @@ export function Header() {
         )}
       </div>
 
-      <div className="flex items-center gap-2">
+      {/* Session summary — center */}
+      <div className="flex-1 flex items-center justify-center min-w-0 px-2">
+        <button
+          onClick={() => void fetchSessionSummary(activeSessionId)}
+          disabled={isSummarizingSession}
+          title={sessionSummary ? 'Click to regenerate session summary' : 'Summarize this session in plain English'}
+          className={`max-w-xl truncate text-xs transition-colors disabled:cursor-not-allowed ${
+            isSummarizingSession
+              ? 'text-[#8b949e] animate-pulse cursor-not-allowed'
+              : sessionSummary
+                ? 'text-[#8b949e] hover:text-[#e6edf3] cursor-pointer'
+                : 'text-[#484f58] hover:text-[#8b949e] cursor-pointer'
+          }`}
+        >
+          {isSummarizingSession ? 'Summarizing...' : (sessionSummary ?? 'Summarize Session')}
+        </button>
+      </div>
+
+      <div className="flex items-center gap-2 shrink-0">
         {wsStatus === 'disconnected' && (
           <span className="text-xs text-[#d29922] bg-[#d29922]/10 border border-[#d29922]/30 px-2 py-0.5 rounded-full">
             Auto-reconnecting...
