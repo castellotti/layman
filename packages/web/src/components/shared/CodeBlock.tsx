@@ -6,15 +6,24 @@ interface CodeBlockProps {
   maxLines?: number;
   className?: string;
   showWrapToggle?: boolean;
+  defaultWrapped?: boolean;
 }
 
-export function CodeBlock({ code, language = 'text', maxLines, className = '', showWrapToggle = false }: CodeBlockProps) {
+export function CodeBlock({ code, language = 'text', maxLines, className = '', showWrapToggle = false, defaultWrapped = false }: CodeBlockProps) {
   const [expanded, setExpanded] = useState(false);
-  const [wrapped, setWrapped] = useState(false);
+  const [wrapped, setWrapped] = useState(defaultWrapped);
+  const [copied, setCopied] = useState(false);
 
   const lines = code.split('\n');
   const isLong = maxLines !== undefined && lines.length > maxLines;
   const displayCode = isLong && !expanded ? lines.slice(0, maxLines).join('\n') + '\n...' : code;
+
+  const handleCopy = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    navigator.clipboard.writeText(code).catch(() => {});
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  };
 
   return (
     <div className={`relative rounded-md bg-[#0d1117] border border-[#30363d] overflow-hidden ${className}`}>
@@ -31,18 +40,17 @@ export function CodeBlock({ code, language = 'text', maxLines, className = '', s
                 ↵
               </button>
             )}
-            {language !== 'text' && (
-              <button
-                onClick={() => navigator.clipboard.writeText(code).catch(() => {})}
-                className="text-xs text-[#8b949e] hover:text-[#e6edf3] transition-colors"
-              >
-                Copy
-              </button>
-            )}
+            <button
+              onClick={handleCopy}
+              className="text-xs text-[#8b949e] hover:text-[#e6edf3] transition-colors"
+              title="Copy to clipboard"
+            >
+              {copied ? '✓' : 'Copy'}
+            </button>
           </div>
         </div>
       )}
-      <pre className={`p-3 text-xs font-mono text-[#e6edf3] leading-relaxed ${wrapped ? 'whitespace-pre-wrap break-all' : 'overflow-x-auto'}`}>
+      <pre className={`p-3 text-xs font-mono text-[#e6edf3] leading-relaxed ${wrapped ? 'whitespace-pre-wrap break-words' : 'overflow-x-auto'}`}>
         <code>{displayCode}</code>
       </pre>
       {isLong && (
