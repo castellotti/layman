@@ -184,9 +184,10 @@ export function EventCard({ event, index, isSelected, onClick, onSend, collapseH
   const isPending = event.type === 'tool_call_pending' || event.type === 'permission_request';
   const isAgentResponse = event.type === 'agent_response';
   const isFailed = event.type === 'tool_call_failed';
+  const isUserPrompt = event.type === 'user_prompt';
   // When collapseHistory is on, expansion is driven by selection; otherwise use local toggle
-  // agent_response and tool_call_failed are always expanded so the content is visible without clicking
-  const expanded = isPending || isAgentResponse || isFailed || (collapseHistory ? isSelected : expandedLocal);
+  // agent_response, tool_call_failed, and user_prompt are always expanded so the content is visible without clicking
+  const expanded = isPending || isAgentResponse || isFailed || isUserPrompt || (collapseHistory ? isSelected : expandedLocal);
   const borderColor = BORDER_COLORS[event.type] ?? 'border-l-[#30363d]';
   const icon = EVENT_ICONS[event.type] ?? '·';
 
