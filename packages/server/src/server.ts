@@ -179,6 +179,12 @@ export function createServer(config: LaymanConfig): LaymanServer {
       return scanPii(db);
     });
 
+    // Recording recovery — on-demand gap fill across all stored sessions
+    fastify.post('/api/recovery/scan', async () => {
+      const filled = await recoverSessionGaps(db, eventStore);
+      return { filled };
+    });
+
     // PII purge — execute redaction on all SQLite data
     fastify.post('/api/pii-purge/execute', async () => {
       const result = executePurge(db);
@@ -964,7 +970,9 @@ export function createServer(config: LaymanConfig): LaymanServer {
       vibeWatcher.start();
 
       if (getConfig().recordingRecovery && getConfig().sessionRecording) {
-        void recoverSessionGaps(db, eventStore);
+        void recoverSessionGaps(db, eventStore).then((n) => {
+          if (n > 0) console.log(`[recovery] Startup scan filled ${n} events across all sessions`);
+        });
       }
 
       // Try ports sequentially if default is taken

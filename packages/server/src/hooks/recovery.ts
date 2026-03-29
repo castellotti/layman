@@ -279,7 +279,7 @@ function resolveTranscriptPath(cwd: string, sessionId: string): string | null {
 export async function recoverSessionGaps(
   db: Database,
   eventStore: EventStore
-): Promise<void> {
+): Promise<number> {
   const cutoff = Date.now() - SEVEN_DAYS_MS;
 
   // Sessions with no session_end and last activity within 7 days
@@ -297,6 +297,7 @@ export async function recoverSessionGaps(
     GROUP BY rs.session_id
   `).all(cutoff) as SessionRow[];
 
+  let total = 0;
   for (const { session_id, cwd, last_event_ts } of sessions) {
     const transcriptPath = resolveTranscriptPath(cwd, session_id);
     if (!transcriptPath) continue;
@@ -309,8 +310,10 @@ export async function recoverSessionGaps(
     );
     if (injected > 0) {
       console.log(`[recovery] Filled ${injected}-event gap for session ${session_id.slice(0, 8)}`);
+      total += injected;
     }
   }
+  return total;
 }
 
 /**
