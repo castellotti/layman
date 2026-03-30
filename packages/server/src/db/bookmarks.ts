@@ -218,6 +218,13 @@ export class BookmarkStore {
     return rows.map(toEvent);
   }
 
+  getEventById(eventId: string): TimelineEvent | null {
+    const row = this.db.prepare(
+      'SELECT * FROM recorded_events WHERE id = ?'
+    ).get(eventId) as RawEvent | undefined;
+    return row ? toEvent(row) : null;
+  }
+
   getQAForSession(sessionId: string): QAEntry[] {
     const rows = this.db.prepare(
       'SELECT * FROM recorded_qa WHERE session_id = ? ORDER BY created_at ASC'

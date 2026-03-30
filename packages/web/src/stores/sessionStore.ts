@@ -58,6 +58,8 @@ interface SessionState {
 
   // Session summary
   sessionSummary: string | null;
+  sessionSummaryHistory: Array<{ summary: string; generatedAt: number; sessionId: string | null }>;
+  sessionSummaryError: string | null;
   isSummarizingSession: boolean;
 
   // Actions
@@ -94,6 +96,8 @@ interface SessionState {
   setViewingSession: (sessionId: string | null) => void;
   setHistoricalEvents: (events: TimelineEvent[]) => void;
   fetchSessionSummary: (sessionId: string | null, model?: string) => Promise<void>;
+  clearSessionSummary: () => void;
+  clearSessionSummaryError: () => void;
 }
 
 export const useSessionStore = create<SessionState>((set) => ({
@@ -129,6 +133,8 @@ export const useSessionStore = create<SessionState>((set) => ({
   historicalEvents: [],
 
   sessionSummary: null,
+  sessionSummaryHistory: [],
+  sessionSummaryError: null,
   isSummarizingSession: false,
 
   setConnected: (connected) => set({ connected }),
@@ -152,11 +158,20 @@ export const useSessionStore = create<SessionState>((set) => ({
 
   updateEvent: (eventId, updates) =>
     set((state) => {
+      const result: Partial<SessionState> = {};
       const idx = state.events.findIndex((e) => e.id === eventId);
-      if (idx < 0) return {};
-      const newEvents = [...state.events];
-      newEvents[idx] = { ...newEvents[idx], ...updates };
-      return { events: newEvents };
+      if (idx >= 0) {
+        const newEvents = [...state.events];
+        newEvents[idx] = { ...newEvents[idx], ...updates };
+        result.events = newEvents;
+      }
+      const hidx = state.historicalEvents.findIndex((e) => e.id === eventId);
+      if (hidx >= 0) {
+        const newHist = [...state.historicalEvents];
+        newHist[hidx] = { ...newHist[hidx], ...updates };
+        result.historicalEvents = newHist;
+      }
+      return result;
     }),
 
   setSelectedEvent: (id) =>
@@ -327,20 +342,30 @@ export const useSessionStore = create<SessionState>((set) => ({
 
   setHistoricalEvents: (historicalEvents) => set({ historicalEvents }),
 
+  clearSessionSummary: () => set({ sessionSummary: null, sessionSummaryHistory: [], sessionSummaryError: null }),
+  clearSessionSummaryError: () => set({ sessionSummaryError: null }),
+
   fetchSessionSummary: async (sessionId, model) => {
-    set({ isSummarizingSession: true, sessionSummary: null });
+    set({ isSummarizingSession: true, sessionSummaryError: null });
     try {
       const res = await fetch('/api/sessions/summary', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ sessionId, ...(model ? { model } : {}) }),
       });
-      if (res.ok) {
-        const data = await res.json() as { summary: string };
-        set({ sessionSummary: data.summary });
+      const data = await res.json() as { summary?: string; error?: string };
+      if (res.ok && data.summary) {
+        const entry = { summary: data.summary, generatedAt: Date.now(), sessionId: sessionId ?? null };
+        set((state) => ({
+          sessionSummary: data.summary!,
+          sessionSummaryHistory: [...state.sessionSummaryHistory, entry],
+          sessionSummaryError: null,
+        }));
+      } else {
+        set({ sessionSummaryError: data.error ?? `HTTP ${res.status}` });
       }
-    } catch {
-      // Non-fatal
+    } catch (err) {
+      set({ sessionSummaryError: err instanceof Error ? err.message : 'Network error' });
     } finally {
       set({ isSummarizingSession: false });
     }

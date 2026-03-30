@@ -1,5 +1,6 @@
 import React from 'react';
 import { useSessionStore } from '../../stores/sessionStore.js';
+import { SessionLaymansTerms } from '../shared/SessionLaymansTerms.js';
 
 function getSessionName(cwd: string, sessionId: string, agentType?: string, showAgentPrefix?: boolean): string {
   const name = cwd ? (cwd.split('/').filter(Boolean).pop() ?? cwd) : sessionId.slice(0, 8);
@@ -11,7 +12,12 @@ function getSessionName(cwd: string, sessionId: string, agentType?: string, show
 }
 
 export function Header() {
-  const { wsStatus, serverVersion, sessionStatus, setSettingsOpen, setBookmarksOpen, sessions, activeSessionId, setActiveSession, sessionSummary, isSummarizingSession, fetchSessionSummary } = useSessionStore();
+  const {
+    wsStatus, serverVersion, setSettingsOpen, setBookmarksOpen,
+    sessions, activeSessionId, setActiveSession,
+    sessionSummary, sessionSummaryHistory, sessionSummaryError, isSummarizingSession, fetchSessionSummary,
+    clearSessionSummaryError,
+  } = useSessionStore();
 
   const statusConfig = {
     connecting: { dot: 'bg-[#d29922]', text: 'Connecting...', textColor: 'text-[#d29922]' },
@@ -21,6 +27,11 @@ export function Header() {
   };
 
   const { dot, text, textColor } = statusConfig[wsStatus];
+
+  // Current session history entries (filtered to active session)
+  const historyForSession = sessionSummaryHistory.filter(
+    (h) => h.sessionId === activeSessionId || (!h.sessionId && !activeSessionId)
+  );
 
   return (
     <header className="flex items-center gap-3 px-4 py-2.5 bg-[#161b22] border-b border-[#30363d] shrink-0">
@@ -77,22 +88,17 @@ export function Header() {
         )}
       </div>
 
-      {/* Session summary — center */}
+      {/* Session Layman's Terms — center */}
       <div className="flex-1 flex items-center justify-center min-w-0 px-2">
-        <button
-          onClick={() => void fetchSessionSummary(activeSessionId)}
-          disabled={isSummarizingSession}
-          title={sessionSummary ? 'Click to regenerate session summary' : 'Summarize this session in plain English'}
-          className={`max-w-xl truncate text-xs transition-colors disabled:cursor-not-allowed ${
-            isSummarizingSession
-              ? 'text-[#8b949e] animate-pulse cursor-not-allowed'
-              : sessionSummary
-                ? 'text-[#8b949e] hover:text-[#e6edf3] cursor-pointer'
-                : 'text-[#484f58] hover:text-[#8b949e] cursor-pointer'
-          }`}
-        >
-          {isSummarizingSession ? 'Summarizing...' : (sessionSummary ?? 'Summarize Session')}
-        </button>
+        <SessionLaymansTerms
+          summary={sessionSummary}
+          summaryHistory={historyForSession}
+          summaryError={sessionSummaryError}
+          isSummarizing={isSummarizingSession}
+          onGenerate={() => void fetchSessionSummary(activeSessionId)}
+          onClearError={clearSessionSummaryError}
+          className="max-w-xl w-full justify-center"
+        />
       </div>
 
       <div className="flex items-center gap-2 shrink-0">
