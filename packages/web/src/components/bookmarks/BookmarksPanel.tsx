@@ -7,6 +7,8 @@ import { BookmarkEmptyState } from './BookmarkEmptyState.js';
 import { FolderItem } from './FolderItem.js';
 import { BookmarkItem } from './BookmarkItem.js';
 import { HistoricalEventStream } from './HistoricalEventStream.js';
+import { InvestigationPanel } from '../layout/InvestigationPanel.js';
+import { SessionLaymansTerms } from '../shared/SessionLaymansTerms.js';
 import { SearchBar } from '../search/SearchBar.js';
 import { SearchResults } from '../search/SearchResults.js';
 import { EventTypeFilterBar } from '../search/EventTypeFilterBar.js';
@@ -36,7 +38,11 @@ export function BookmarksPanel({ onSend }: BookmarksPanelProps) {
 
   const [recordedSessions, setRecordedSessions] = useState<RecordedSession[]>([]);
   const [qaEntries, setQaEntries] = useState<QAEntry[]>([]);
-  const [selectedHistoricalEventId, setSelectedHistoricalEventId] = useState<string | null>(null);
+  const [investigatingEventId, setInvestigatingEventId] = useState<string | null>(null);
+  const [historicalSessionSummary, setHistoricalSessionSummary] = useState<string | null>(null);
+  const [historicalSummaryHistory, setHistoricalSummaryHistory] = useState<Array<{ summary: string; generatedAt: number }>>([]);
+  const [historicalSummaryError, setHistoricalSummaryError] = useState<string | null>(null);
+  const [isSummarizingHistorical, setIsSummarizingHistorical] = useState(false);
   const [showAddBookmark, setShowAddBookmark] = useState(false);
   const [newBookmarkName, setNewBookmarkName] = useState('');
   const [newBookmarkSessionId, setNewBookmarkSessionId] = useState('');
@@ -132,7 +138,10 @@ export function BookmarksPanel({ onSend }: BookmarksPanelProps) {
   // Load historical events when a session is selected
   const handleSelectSession = useCallback(async (sessionId: string) => {
     if (viewingSessionId === sessionId) return;
-    setSelectedHistoricalEventId(null);
+    setInvestigatingEventId(null);
+    setHistoricalSessionSummary(null);
+    setHistoricalSummaryHistory([]);
+    setHistoricalSummaryError(null);
     setViewingSession(sessionId);
     try {
       const [evRes, qaRes] = await Promise.all([
@@ -152,8 +161,34 @@ export function BookmarksPanel({ onSend }: BookmarksPanelProps) {
   const handleCloseSession = useCallback(() => {
     setViewingSession(null);
     setQaEntries([]);
-    setSelectedHistoricalEventId(null);
+    setInvestigatingEventId(null);
+    setHistoricalSessionSummary(null);
+    setHistoricalSummaryHistory([]);
+    setHistoricalSummaryError(null);
   }, [setViewingSession]);
+
+  const handleGenerateHistoricalSummary = useCallback(async (sessionId: string) => {
+    setIsSummarizingHistorical(true);
+    setHistoricalSummaryError(null);
+    try {
+      const res = await fetch('/api/sessions/summary', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId }),
+      });
+      const data = await res.json() as { summary?: string; error?: string };
+      if (res.ok && data.summary) {
+        setHistoricalSessionSummary(data.summary);
+        setHistoricalSummaryHistory((prev) => [...prev, { summary: data.summary!, generatedAt: Date.now() }]);
+      } else {
+        setHistoricalSummaryError(data.error ?? `HTTP ${res.status}`);
+      }
+    } catch (err) {
+      setHistoricalSummaryError(err instanceof Error ? err.message : 'Network error');
+    } finally {
+      setIsSummarizingHistorical(false);
+    }
+  }, []);
 
   const handleDeleteSession = useCallback(async (sessionId: string) => {
     try {
@@ -161,7 +196,7 @@ export function BookmarksPanel({ onSend }: BookmarksPanelProps) {
       if (viewingSessionId === sessionId) {
         setViewingSession(null);
         setQaEntries([]);
-        setSelectedHistoricalEventId(null);
+        setInvestigatingEventId(null);
       }
       refreshRecordedSessions();
     } catch {
@@ -275,7 +310,7 @@ export function BookmarksPanel({ onSend }: BookmarksPanelProps) {
       <div data-bookmarks-overlay className="fixed inset-0 bg-black/50" onClick={() => setBookmarksOpen(false)} />
 
       {/* Panel */}
-      <div className="relative flex w-full max-w-5xl mx-auto my-0 h-full bg-[#0d1117] shadow-2xl">
+      <div className={`relative flex w-full mx-auto my-0 h-full bg-[#0d1117] shadow-2xl ${investigatingEventId ? 'max-w-full' : 'max-w-5xl'}`}>
         {/* Left: bookmark tree */}
         <div data-bookmarks-sidebar className="w-72 shrink-0 bg-[#161b22] border-r border-[#30363d] flex flex-col h-full">
           {/* Header */}
@@ -534,86 +569,111 @@ export function BookmarksPanel({ onSend }: BookmarksPanelProps) {
         </div>
 
         {/* Right: search results, session view, or empty state */}
-        <div className="flex-1 flex flex-col overflow-hidden">
+        <div className="flex-1 flex overflow-hidden">
           {searchResults && !viewingSessionId ? (
-            <SearchResults
-              results={searchResults}
-              onOpenSession={(sid) => void handleOpenSessionFromSearch(sid)}
-            />
+            <div className="flex-1 flex flex-col overflow-hidden">
+              <SearchResults
+                results={searchResults}
+                onOpenSession={(sid) => void handleOpenSessionFromSearch(sid)}
+              />
+            </div>
           ) : viewingSessionId ? (
             <>
-              <div className="flex items-center justify-between px-4 py-3 border-b border-[#30363d] bg-[#161b22] shrink-0">
-                <div>
-                  <h3 className="text-sm font-medium text-[#e6edf3]">
-                    {bookmarks.find((b) => b.sessionId === viewingSessionId)?.name ?? 'Session History'}
-                  </h3>
-                  <p className="text-[10px] text-[#484f58]">
-                    {recordedSessions.find((s) => s.sessionId === viewingSessionId)?.cwd ?? viewingSessionId}
-                  </p>
-                </div>
-                <div className="flex items-center gap-2">
-                  {!bookmarkedSessionIds.has(viewingSessionId) && (
+              {/* Session event stream column */}
+              <div className="flex flex-col overflow-hidden" style={{ width: investigatingEventId ? '50%' : '100%' }}>
+                <div className="flex items-center justify-between px-4 py-3 border-b border-[#30363d] bg-[#161b22] shrink-0">
+                  <div className="min-w-0 flex-1 mr-2">
+                    <h3 className="text-sm font-medium text-[#e6edf3] truncate">
+                      {bookmarks.find((b) => b.sessionId === viewingSessionId)?.name ?? 'Session History'}
+                    </h3>
+                    {/* Layman's Terms for historical session */}
+                    <SessionLaymansTerms
+                      summary={historicalSessionSummary}
+                      summaryHistory={historicalSummaryHistory}
+                      summaryError={historicalSummaryError}
+                      isSummarizing={isSummarizingHistorical}
+                      onGenerate={() => void handleGenerateHistoricalSummary(viewingSessionId)}
+                      onClearError={() => setHistoricalSummaryError(null)}
+                      className="max-w-full"
+                      tooltipUp={false}
+                    />
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    {!bookmarkedSessionIds.has(viewingSessionId) && (
+                      <button
+                        onClick={() => void handleQuickBookmark(viewingSessionId)}
+                        className="flex items-center gap-1 text-[#8b949e] hover:text-[#d29922] transition-colors text-xs"
+                        title="Bookmark this session"
+                      >
+                        <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
+                        </svg>
+                        Bookmark
+                      </button>
+                    )}
                     <button
-                      onClick={() => void handleQuickBookmark(viewingSessionId)}
-                      className="flex items-center gap-1 text-[#8b949e] hover:text-[#d29922] transition-colors text-xs"
-                      title="Bookmark this session"
+                      onClick={() => setDeleteConfirmSessionId(viewingSessionId)}
+                      className="flex items-center gap-1 text-[#8b949e] hover:text-[#f85149] transition-colors text-xs"
+                      title="Delete session from history"
                     >
                       <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                       </svg>
-                      Bookmark
+                      Delete
                     </button>
-                  )}
-                  <button
-                    onClick={() => setDeleteConfirmSessionId(viewingSessionId)}
-                    className="flex items-center gap-1 text-[#8b949e] hover:text-[#f85149] transition-colors text-xs"
-                    title="Delete session from history"
-                  >
-                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                    </svg>
-                    Delete
-                  </button>
-                  <button
-                    onClick={() => {
-                      document.body.classList.add('layman-print-historical');
-                      const cleanup = () => {
-                        document.body.classList.remove('layman-print-historical');
-                        window.removeEventListener('afterprint', cleanup);
-                      };
-                      window.addEventListener('afterprint', cleanup);
-                      window.print();
-                    }}
-                    className="flex items-center gap-1 text-[#8b949e] hover:text-[#e6edf3] transition-colors text-xs"
-                    title="Export to PDF"
-                  >
-                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
-                    </svg>
-                    Export
-                  </button>
-                  <button
-                    onClick={handleCloseSession}
-                    className="text-[#8b949e] hover:text-[#e6edf3] transition-colors text-lg leading-none"
-                  >
-                    ×
-                  </button>
+                    <button
+                      onClick={() => {
+                        document.body.classList.add('layman-print-historical');
+                        const cleanup = () => {
+                          document.body.classList.remove('layman-print-historical');
+                          window.removeEventListener('afterprint', cleanup);
+                        };
+                        window.addEventListener('afterprint', cleanup);
+                        window.print();
+                      }}
+                      className="flex items-center gap-1 text-[#8b949e] hover:text-[#e6edf3] transition-colors text-xs"
+                      title="Export to PDF"
+                    >
+                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+                      </svg>
+                      Export
+                    </button>
+                    <button
+                      onClick={handleCloseSession}
+                      className="text-[#8b949e] hover:text-[#e6edf3] transition-colors text-lg leading-none"
+                    >
+                      ×
+                    </button>
+                  </div>
+                </div>
+                <div data-print-hide>
+                  <EventTypeFilterBar filters={eventTypeFilters} onChange={setEventTypeFilters} />
+                </div>
+                <div className="flex-1 overflow-hidden">
+                  <HistoricalEventStream
+                    events={filteredHistoricalEvents}
+                    qaEntries={qaEntries}
+                    selectedEventId={investigatingEventId}
+                    onSelectEvent={(id) => setInvestigatingEventId(investigatingEventId === id ? null : id)}
+                    onSend={onSend}
+                  />
                 </div>
               </div>
-              <div data-print-hide>
-                <EventTypeFilterBar filters={eventTypeFilters} onChange={setEventTypeFilters} />
-              </div>
-              <div className="flex-1 overflow-hidden">
-                <HistoricalEventStream
-                  events={filteredHistoricalEvents}
-                  qaEntries={qaEntries}
-                  selectedEventId={selectedHistoricalEventId}
-                  onSelectEvent={setSelectedHistoricalEventId}
-                />
-              </div>
+
+              {/* Investigation panel column */}
+              {investigatingEventId && (
+                <div className="flex-1 border-l border-[#30363d] overflow-hidden">
+                  <InvestigationPanel
+                    onSend={onSend}
+                    eventId={investigatingEventId}
+                    onClose={() => setInvestigatingEventId(null)}
+                  />
+                </div>
+              )}
             </>
           ) : (
-            <div className="flex flex-col items-center justify-center h-full gap-2 text-center p-8">
+            <div className="flex-1 flex flex-col items-center justify-center h-full gap-2 text-center p-8">
               <span className="text-4xl opacity-20"><svg width="36" height="36" viewBox="0 0 16 16" fill="currentColor" opacity="0.2"><path d="M1.5 3.25a.75.75 0 0 1 .75-.75h11.5a.75.75 0 0 1 0 1.5H2.25a.75.75 0 0 1-.75-.75Zm0 4.75A.75.75 0 0 1 2.25 7.25h11.5a.75.75 0 0 1 0 1.5H2.25A.75.75 0 0 1 1.5 8Zm0 4.75a.75.75 0 0 1 .75-.75h11.5a.75.75 0 0 1 0 1.5H2.25a.75.75 0 0 1-.75-.75Z"/></svg></span>
               <p className="text-sm text-[#484f58]">Select a bookmark or history entry to view its session</p>
             </div>

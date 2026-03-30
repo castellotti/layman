@@ -10,9 +10,10 @@ export interface EventFilters {
 }
 
 export function useEventStore(filters?: EventFilters) {
-  const { events, activeSessionId } = useSessionStore((state) => ({
+  const { events, activeSessionId, historicalEvents } = useSessionStore((state) => ({
     events: state.events,
     activeSessionId: state.activeSessionId,
+    historicalEvents: state.historicalEvents,
   }));
 
   const sessionEvents = useMemo(() => {
@@ -50,7 +51,7 @@ export function useEventStore(filters?: EventFilters) {
   );
 
   const getEvent = (id: string): TimelineEvent | undefined =>
-    events.find((e) => e.id === id);
+    events.find((e) => e.id === id) ?? historicalEvents.find((e) => e.id === id);
 
   return {
     events: filteredEvents,

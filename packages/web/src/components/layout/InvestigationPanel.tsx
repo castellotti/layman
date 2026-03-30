@@ -1,19 +1,44 @@
 import React, { useState, useCallback, useEffect } from 'react';
+import ReactMarkdown from 'react-markdown';
 import { useSessionStore } from '../../stores/sessionStore.js';
 import { useEventStore } from '../../hooks/useEventStore.js';
 import { AnalysisCard } from '../analysis/AnalysisCard.js';
 import { AskQuestion } from '../analysis/AskQuestion.js';
 import { RiskBadge } from '../shared/RiskBadge.js';
 import { CodeBlock } from '../shared/CodeBlock.js';
+import { isMarkdown } from '../../lib/markdown.js';
 import type { ClientMessage } from '../../lib/ws-protocol.js';
+
+const MARKDOWN_PROSE = `text-xs text-[#e6edf3] leading-relaxed prose prose-invert prose-xs max-w-none
+  [&_p]:my-1 [&_p]:leading-relaxed
+  [&_strong]:text-[#e6edf3] [&_strong]:font-semibold
+  [&_em]:text-[#8b949e]
+  [&_code]:text-[#79c0ff] [&_code]:bg-[#0d1117] [&_code]:px-1 [&_code]:rounded [&_code]:text-[11px]
+  [&_pre]:bg-[#0d1117] [&_pre]:rounded [&_pre]:p-2 [&_pre]:overflow-x-auto
+  [&_ul]:list-disc [&_ul]:pl-4 [&_ul]:my-1
+  [&_ol]:list-decimal [&_ol]:pl-4 [&_ol]:my-1
+  [&_li]:my-0.5
+  [&_h1]:text-sm [&_h2]:text-sm [&_h3]:text-xs [&_h1]:font-bold [&_h2]:font-bold [&_h3]:font-semibold
+  [&_blockquote]:border-l-2 [&_blockquote]:border-[#30363d] [&_blockquote]:pl-2 [&_blockquote]:text-[#8b949e]`.replace(/\s+/g, ' ').trim();
+
+function MarkdownOrText({ text, className }: { text: string; className?: string }) {
+  if (isMarkdown(text)) {
+    return <div className={className ?? MARKDOWN_PROSE}><ReactMarkdown>{text}</ReactMarkdown></div>;
+  }
+  return <p className={className ?? 'text-xs text-[#e6edf3] leading-relaxed whitespace-pre-wrap'}>{text}</p>;
+}
 
 interface InvestigationPanelProps {
   onSend: (msg: ClientMessage) => void;
+  /** When provided, renders in "embedded" mode for this specific event (e.g. inside BookmarksPanel) */
+  eventId?: string;
+  /** Called when user closes the embedded panel */
+  onClose?: () => void;
 }
 
-export function InvestigationPanel({ onSend }: InvestigationPanelProps) {
+export function InvestigationPanel({ onSend, eventId: embeddedEventId, onClose }: InvestigationPanelProps) {
   const {
-    selectedEventId,
+    selectedEventId: storeSelectedEventId,
     investigationOpen,
     setInvestigationOpen,
     investigationState,
@@ -23,6 +48,8 @@ export function InvestigationPanel({ onSend }: InvestigationPanelProps) {
     laymansErrors,
     config,
   } = useSessionStore();
+
+  const selectedEventId = embeddedEventId ?? storeSelectedEventId;
 
   const { getEvent } = useEventStore();
   const [isAskingQuestion, setIsAskingQuestion] = useState(false);
@@ -73,7 +100,9 @@ export function InvestigationPanel({ onSend }: InvestigationPanelProps) {
     setAnalysisDepth(null);
   }, [selectedEventId]);
 
-  if (!investigationOpen || !selectedEventId) return null;
+  const isEmbedded = !!embeddedEventId;
+  if (!isEmbedded && (!investigationOpen || !selectedEventId)) return null;
+  if (!selectedEventId) return null;
 
   const event = getEvent(selectedEventId);
   if (!event) return null;
@@ -201,7 +230,7 @@ export function InvestigationPanel({ onSend }: InvestigationPanelProps) {
             {isBusy ? '⏳' : '🔍'} Detailed
           </button>
           <button
-            onClick={() => setInvestigationOpen(false)}
+            onClick={() => { if (onClose) onClose(); else setInvestigationOpen(false); }}
             className="text-[#8b949e] hover:text-[#e6edf3] transition-colors text-lg leading-none"
           >
             ×
@@ -264,7 +293,7 @@ export function InvestigationPanel({ onSend }: InvestigationPanelProps) {
 
           {event.laymans ? (
             <div className="bg-[#161b22] border border-[#30363d] rounded-md p-3 space-y-2">
-              <p className="text-xs text-[#e6edf3] leading-relaxed whitespace-pre-wrap">{event.laymans.explanation}</p>
+              <MarkdownOrText text={event.laymans.explanation} />
               <div className="flex items-center gap-2 text-[10px] text-[#484f58] pt-1 border-t border-[#30363d]">
                 {event.laymans.latencyMs !== undefined && <span>{event.laymans.latencyMs}ms</span>}
                 {event.laymans.tokens && (
@@ -386,7 +415,7 @@ export function InvestigationPanel({ onSend }: InvestigationPanelProps) {
                 </div>
                 <div className="flex gap-2 ml-4">
                   <span className="text-[#3fb950] text-xs shrink-0">A:</span>
-                  <span className="text-xs text-[#e6edf3]">{qa.answer}</span>
+                  <MarkdownOrText text={qa.answer} />
                 </div>
                 {(qa.tokens || qa.latencyMs) && (
                   <div className="ml-4 flex items-center gap-2 text-[10px] text-[#484f58]">

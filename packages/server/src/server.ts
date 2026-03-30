@@ -265,7 +265,7 @@ export function createServer(config: LaymanConfig): LaymanServer {
       Params: { eventId: string };
       Body: { depth?: 'quick' | 'detailed' };
     }>('/api/analysis/:eventId', async (request, reply) => {
-      const event = eventStore.get(request.params.eventId);
+      const event = eventStore.get(request.params.eventId) ?? bookmarkStore.getEventById(request.params.eventId);
       if (!event) return reply.status(404).send({ error: 'Event not found' });
 
       const depth = request.body.depth ?? 'quick';
@@ -298,7 +298,7 @@ export function createServer(config: LaymanConfig): LaymanServer {
         previousQuestions?: Array<{ question: string; answer: string }>;
       };
     }>('/api/analysis/:eventId/ask', async (request, reply) => {
-      const event = eventStore.get(request.params.eventId);
+      const event = eventStore.get(request.params.eventId) ?? bookmarkStore.getEventById(request.params.eventId);
       if (!event) return reply.status(404).send({ error: 'Event not found' });
 
       // Build recent session context from event store
@@ -347,9 +347,14 @@ export function createServer(config: LaymanConfig): LaymanServer {
     }>('/api/sessions/summary', async (request, reply) => {
       const { sessionId, model } = request.body;
       const allEvents = eventStore.getAll();
-      const sessionEvents = sessionId
+      let sessionEvents = sessionId
         ? allEvents.filter((e) => e.sessionId === sessionId)
         : allEvents;
+
+      // Fall back to DB for historical sessions not in the live store
+      if (sessionEvents.length === 0 && sessionId) {
+        sessionEvents = bookmarkStore.getEventsForSession(sessionId);
+      }
 
       if (sessionEvents.length === 0) {
         return reply.status(404).send({ error: 'No events found for session' });
@@ -364,7 +369,10 @@ export function createServer(config: LaymanConfig): LaymanServer {
         toolName: e.data.toolName as string | undefined,
       }));
 
-      const cwd = eventStore.getSessions().find((s) => !sessionId || s.sessionId === sessionId)?.cwd ?? process.cwd();
+      // Try live sessions first, then recorded sessions for cwd
+      const liveCwd = eventStore.getSessions().find((s) => !sessionId || s.sessionId === sessionId)?.cwd;
+      const dbCwd = sessionId ? bookmarkStore.getRecordedSession(sessionId)?.cwd : undefined;
+      const cwd = liveCwd ?? dbCwd ?? process.cwd();
 
       try {
         const result = await analysisEngine.summarizeSession(eventSummaries, cwd, model);
@@ -858,7 +866,7 @@ export function createServer(config: LaymanConfig): LaymanServer {
         break;
       }
       case 'analysis:request': {
-        const event = eventStore.get(message.eventId);
+        const event = eventStore.get(message.eventId) ?? bookmarkStore.getEventById(message.eventId);
         if (!event) break;
 
         void (async () => {
@@ -881,7 +889,7 @@ export function createServer(config: LaymanConfig): LaymanServer {
         break;
       }
       case 'laymans:request': {
-        const event = eventStore.get(message.eventId);
+        const event = eventStore.get(message.eventId) ?? bookmarkStore.getEventById(message.eventId);
         if (!event) break;
 
         void (async () => {
@@ -907,7 +915,7 @@ export function createServer(config: LaymanConfig): LaymanServer {
         break;
       }
       case 'both:request': {
-        const event = eventStore.get(message.eventId);
+        const event = eventStore.get(message.eventId) ?? bookmarkStore.getEventById(message.eventId);
         if (!event) break;
 
         const req = {

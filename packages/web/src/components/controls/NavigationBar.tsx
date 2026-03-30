@@ -26,7 +26,21 @@ const AGENT_LABELS: Record<string, string> = {
   'codex': 'Codex',
   'opencode': 'OpenCode',
   'mistral-vibe': 'Mistral Vibe',
+  'cline': 'Cline',
 };
+
+const AGENT_ORDER = ['claude-code', 'codex', 'opencode', 'mistral-vibe', 'cline'];
+
+function sortAgentTypes(types: string[]): string[] {
+  return [...types].sort((a, b) => {
+    const ai = AGENT_ORDER.indexOf(a);
+    const bi = AGENT_ORDER.indexOf(b);
+    if (ai === -1 && bi === -1) return a.localeCompare(b);
+    if (ai === -1) return 1;
+    if (bi === -1) return -1;
+    return ai - bi;
+  });
+}
 
 export function NavigationBar({
   currentIndex,
@@ -137,7 +151,7 @@ export function NavigationBar({
           <>
             <div className="h-4 w-px bg-[#30363d]" />
             <span className="text-[#484f58]">Agents:</span>
-            {availableAgentTypes.map((at) => {
+            {sortAgentTypes(availableAgentTypes).map((at) => {
               const isActive = !activeAgentTypes || activeAgentTypes.length === 0 || activeAgentTypes.includes(at);
               const label = AGENT_LABELS[at] ?? at;
               return (
