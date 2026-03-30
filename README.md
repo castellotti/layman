@@ -74,7 +74,9 @@ docker compose -f ~/layman/docker-compose.yml up -d
 
 http://localhost:8880
 
-On first visit, a banner prompts you to click **Install**. This writes the global hooks and `/layman` slash command into `~/.claude/` so Claude Code can report to the dashboard. It also installs hooks and commands for any other supported clients it detects. You only need to do this once — or again after a Layman update or after installing a new client.
+On first visit, a modal lists every AI agent client detected on your system. Toggle on the clients you want to integrate, then click **Accept**. Layman writes hooks and slash commands only for the clients you selected. Clients you leave off are remembered and won't be offered again — you can install them any time from **Settings → Client Setup**.
+
+After a Layman update, a banner appears if your hooks or commands are out of date. Click **Update** to refresh them.
 
 ---
 
@@ -104,7 +106,7 @@ Codex uses shell-script hooks that Layman installs to `~/.codex/hooks/layman/` a
 **Installation** (first time or after a Layman update):
 
 1. Ensure Codex is installed (`codex` binary on PATH or at `/opt/homebrew/bin/codex`).
-2. Open the Layman dashboard → **Settings → Client Setup** → click **Install** or **Reinstall**.
+2. Open the Layman dashboard → **Settings → Client Setup** → click **Install** next to Codex.
 3. Layman writes hook scripts to `~/.codex/hooks/layman/`, adds entries to `~/.codex/hooks.json`, and enables the `codex_hooks` feature flag in `~/.codex/config.toml` (required — hooks are disabled by default in Codex).
 
 **Usage:**
@@ -139,7 +141,7 @@ OpenCode requires a one-time plugin registration before first use.
    }
    ```
 
-2. Open the Layman dashboard, go to **Settings → Client Setup**, and click **Reinstall** so Layman detects OpenCode and installs the `/layman` command for it.
+2. Open the Layman dashboard → **Settings → Client Setup** → click **Install** next to OpenCode to install the `/layman` command for it.
 
 3. Start OpenCode and type `/layman` to activate monitoring for the current session.
 
@@ -168,7 +170,7 @@ Cline uses shell-script hooks that Layman installs to `~/Documents/Cline/Hooks/`
 **Installation** (first time or after a Layman update):
 
 1. Ensure Cline is installed in VS Code or IntelliJ.
-2. Open the Layman dashboard → **Settings → Client Setup** → click **Install** or **Reinstall**.
+2. Open the Layman dashboard → **Settings → Client Setup** → click **Install** next to Cline.
 3. Layman writes hook scripts to `~/Documents/Cline/Hooks/` and a workflow file to `~/Documents/Cline/Workflows/layman.md`.
 
 **Activating a session:**
@@ -194,7 +196,7 @@ If you install a supported client after Layman is already running:
 1. Install the client as normal.
 2. Open the Layman dashboard at http://localhost:8880.
 3. Go to **Settings** (gear icon) → **Client Setup**.
-4. Click **Reinstall** — Layman will detect the new client and install its hooks and commands.
+4. Click **Install** next to the newly detected client — Layman writes its hooks and commands.
 
 No container restart required.
 

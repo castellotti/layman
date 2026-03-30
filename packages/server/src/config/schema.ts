@@ -39,6 +39,7 @@ export const LaymanConfigSchema = z.object({
   piiFilter: z.boolean().default(true),
   showFullCommand: z.boolean().default(false),
   switchToNewestSession: z.boolean().default(false),
+  declinedClients: z.array(z.string()).default([]),
 });
 
 export type LaymanConfig = z.infer<typeof LaymanConfigSchema>;

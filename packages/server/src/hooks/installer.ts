@@ -33,10 +33,12 @@ export interface HookInstallerOptions {
 }
 
 export interface OptionalClientStatus {
+  id: string;
   name: string;
   detected: boolean;
   commandInstalled: boolean;
   commandUpToDate: boolean;
+  declined?: boolean;
 }
 
 export interface SetupStatus {
@@ -44,6 +46,7 @@ export interface SetupStatus {
   hooksUpToDate: boolean;
   commandInstalled: boolean;
   commandUpToDate: boolean;
+  claudeCodeDeclined?: boolean;
   optionalClients: OptionalClientStatus[];
 }
 
@@ -60,6 +63,7 @@ const COMMANDS_DIR = join(homedir(), '.claude', 'commands');
  * dir existing is a reliable signal the user has set up the client at least once.
  */
 interface OptionalClient {
+  id: string;
   name: string;
   configDir: string;
   commandsDir: string;
@@ -94,6 +98,7 @@ Tell the user: "Layman is now monitoring this session. Open http://localhost:888
 
 const OPTIONAL_CLIENTS: OptionalClient[] = [
   {
+    id: 'codex',
     name: 'Codex',
     configDir: join(homedir(), '.codex'),
     commandsDir: join(homedir(), '.codex', 'skills', 'layman'),
@@ -101,11 +106,13 @@ const OPTIONAL_CLIENTS: OptionalClient[] = [
     getContent: () => CODEX_SKILL_CONTENT,
   },
   {
+    id: 'opencode',
     name: 'OpenCode',
     configDir: join(homedir(), '.config', 'opencode'),
     commandsDir: join(homedir(), '.config', 'opencode', 'commands'),
   },
   {
+    id: 'mistral-vibe',
     name: 'Mistral Vibe',
     configDir: join(homedir(), '.vibe'),
     commandsDir: join(homedir(), '.vibe', 'skills', 'layman'),
@@ -113,6 +120,7 @@ const OPTIONAL_CLIENTS: OptionalClient[] = [
     getContent: () => VIBE_SKILL_CONTENT,
   },
   {
+    id: 'cline',
     name: 'Cline',
     configDir: join(homedir(), 'Documents', 'Cline'),
     commandsDir: join(homedir(), 'Documents', 'Cline', 'Workflows'),
@@ -645,11 +653,13 @@ export class HookInstaller {
     return { installed: true, upToDate: installedHash === expectedHash };
   }
 
-  /** Install the slash command for every optional client whose config dir already exists. */
-  installOptionalClientCommands(): void {
+  /** Install the slash command for optional clients whose config dir already exists.
+   *  Pass a clientId to restrict to a single client; omit to install all detected. */
+  installOptionalClientCommands(clientId?: string): void {
     const defaultContent = getCommandContent();
+    const clients = clientId ? OPTIONAL_CLIENTS.filter((c) => c.id === clientId) : OPTIONAL_CLIENTS;
 
-    for (const client of OPTIONAL_CLIENTS) {
+    for (const client of clients) {
       if (!existsSync(client.configDir)) continue; // client not installed — skip
       if (!existsSync(client.commandsDir)) {
         mkdirSync(client.commandsDir, { recursive: true });
@@ -677,6 +687,36 @@ export class HookInstaller {
         }
       }
     }
+  }
+
+  /** Install integration for a single client by id ('claude-code' | 'codex' | 'opencode' | 'mistral-vibe' | 'cline'). */
+  installClient(id: string): void {
+    if (id === 'claude-code') {
+      this.install();
+      this.installCommand();
+      return;
+    }
+    this.installOptionalClientCommands(id);
+    if (id === 'codex') this.installCodexHooks();
+    if (id === 'cline') this.installClineHooks();
+  }
+
+  /** Uninstall integration for a single client by id. */
+  uninstallClient(id: string): void {
+    if (id === 'claude-code') {
+      this.uninstall();
+      this.uninstallCommand();
+      return;
+    }
+    const client = OPTIONAL_CLIENTS.find((c) => c.id === id);
+    if (!client) return;
+    const fileName = client.fileName ?? 'layman.md';
+    const cmdPath = join(client.commandsDir, fileName);
+    if (existsSync(cmdPath)) {
+      try { unlinkSync(cmdPath); } catch { /* ignore */ }
+    }
+    if (id === 'codex') this.uninstallCodexHooks();
+    if (id === 'cline') this.uninstallClineHooks();
   }
 
   isInstalled(): boolean {
@@ -738,7 +778,7 @@ export class HookInstaller {
       const commandUpToDate = commandInstalled
         ? readFileSync(clientCmdPath, 'utf-8').includes(`layman:${expectedHash}`)
         : false;
-      return { name: client.name, detected, commandInstalled, commandUpToDate };
+      return { id: client.id, name: client.name, detected, commandInstalled, commandUpToDate };
     });
 
     return { hooksInstalled, hooksUpToDate, commandInstalled, commandUpToDate, optionalClients };

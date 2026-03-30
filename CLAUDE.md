@@ -91,10 +91,25 @@ Layman is a pnpm monorepo with two packages:
 ### Hook installer (`packages/server/src/hooks/installer.ts`)
 
 Manages installation of hooks and slash commands for all supported clients. Key methods:
-- `install()` — writes Claude Code global hooks and runs optional-client detection
+- `install()` — writes Claude Code global hooks (`~/.claude/settings.json`)
+- `installCommand()` — writes the `/layman` slash command to `~/.claude/commands/layman.md`
+- `installClient(id)` — installs a single client by id (`'claude-code'` | `'codex'` | `'opencode'` | `'mistral-vibe'` | `'cline'`)
+- `uninstallClient(id)` — removes integration files for a single client
+- `installOptionalClientCommands(clientId?)` — installs the `/layman` command for detected optional clients; pass a `clientId` to restrict to one
 - `installCodexHooks()` — writes bash hook scripts to `~/.codex/hooks/layman/` and merges entries into `~/.codex/hooks.json`
 - `installClineHooks()` — writes bash hook scripts to `~/Documents/Cline/Hooks/` with `__LAYMAN_URL__` templated in
-- `getStatus()` — returns installation state for all clients (used by the Settings UI)
-- `uninstall()` — removes all Layman-managed files
+- `getStatus()` — returns installation state for all clients (used by the Settings UI); caller is responsible for merging `declinedClients` from config into the returned `SetupStatus`
+- `uninstall()` — removes Claude Code hooks and command file
+- `isInstalled()` — returns true if Claude Code hooks are present
 
-Optional clients (OpenCode, Codex, Mistral Vibe, Cline) are detected by checking whether their config directories exist on the host filesystem. If detected, the corresponding `/layman` command, skill, or workflow file is written.
+Each optional client has an `id` field (`'codex'`, `'opencode'`, `'mistral-vibe'`, `'cline'`) used as the key in `declinedClients` config and in API routes. Optional clients are detected by checking whether their config directories exist on the host filesystem.
+
+**Installation is opt-in.** The server does not auto-install on startup. On first dashboard visit, a modal lists all detected-but-unintegrated clients with toggles (default off); the user selects which to install and clicks **Accept**. Toggled-off clients are saved as `declinedClients` in `~/.claude/layman.json` and won't be offered again until the user clicks **Install** from Settings. Install/Uninstall is also available per-client in **Settings → Client Setup**.
+
+Setup API routes (all in `server.ts`):
+- `GET /api/setup/status` — returns `SetupStatus` with per-client `declined` flags merged from config
+- `POST /api/setup/install` — installs selected clients (`{ clients?: string[] }`); installs all if omitted
+- `POST /api/setup/install/:client` — installs a single client, removes it from `declinedClients`
+- `POST /api/setup/uninstall/:client` — uninstalls a single client
+- `POST /api/setup/decline` — adds clients to `declinedClients` config (`{ clients: string[] }`)
+- `POST /api/setup/undecline/:client` — removes a client from `declinedClients` without installing

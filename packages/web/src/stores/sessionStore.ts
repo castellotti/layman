@@ -48,6 +48,7 @@ interface SessionState {
   // Setup status
   setupStatus: SetupStatus | null;
   setupBannerDismissed: boolean;
+  setupModalDismissed: boolean;
 
   // Bookmarks
   bookmarksOpen: boolean;
@@ -84,6 +85,7 @@ interface SessionState {
   setActiveSession: (id: string | null) => void;
   setSetupStatus: (status: SetupStatus) => void;
   dismissSetupBanner: () => void;
+  dismissSetupModal: () => void;
   markSessionActive: (sessionId: string) => void;
   markSessionInactive: (sessionId: string) => void;
   clearEvents: () => void;
@@ -125,6 +127,7 @@ export const useSessionStore = create<SessionState>((set) => ({
 
   setupStatus: null,
   setupBannerDismissed: false,
+  setupModalDismissed: false,
 
   bookmarksOpen: false,
   bookmarkFolders: [],
@@ -280,6 +283,8 @@ export const useSessionStore = create<SessionState>((set) => ({
   setSetupStatus: (setupStatus) => set({ setupStatus }),
 
   dismissSetupBanner: () => set({ setupBannerDismissed: true }),
+
+  dismissSetupModal: () => set({ setupModalDismissed: true }),
 
   markSessionActive: (sessionId) =>
     set((state) => ({
