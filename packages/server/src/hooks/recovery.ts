@@ -279,7 +279,7 @@ function resolveTranscriptPath(cwd: string, sessionId: string): string | null {
 export async function recoverSessionGaps(
   db: Database,
   eventStore: EventStore
-): Promise<number> {
+): Promise<{ events: number; sessions: number }> {
   const cutoff = Date.now() - SEVEN_DAYS_MS;
 
   // Sessions with no session_end and last activity within 7 days
@@ -352,27 +352,26 @@ async function injectGapEvents(
       ? new Date(obj.timestamp).getTime() : 0;
     if (ts > afterTimestamp) break; // reached the gap — stop pre-scan
 
-    if (obj.type !== 'assistant') continue;
-    const msg = obj.message as { content?: unknown } | undefined;
-    const blocks = Array.isArray(msg?.content) ? msg!.content as Block[] : [];
-    const uuid = typeof obj.uuid === 'string' ? obj.uuid : null;
+    if (obj.type === 'assistant') {
+      const msg = obj.message as { content?: unknown } | undefined;
+      const blocks = Array.isArray(msg?.content) ? msg!.content as Block[] : [];
+      const uuid = typeof obj.uuid === 'string' ? obj.uuid : null;
 
-    for (let i = 0; i < blocks.length; i++) {
-      const block = blocks[i];
-      if (block.type !== 'tool_use') continue;
-      const toolCallId = typeof block.id === 'string' ? block.id : null;
-      if (!toolCallId || !uuid) continue;
-      pendingTools.set(toolCallId, {
-        eventId: `${uuid}_tc_${i}`,
-        name: typeof block.name === 'string' ? block.name : 'unknown',
-        input: (block.input && typeof block.input === 'object')
-          ? block.input as Record<string, unknown> : {},
-        timestamp: ts,
-      });
-    }
-
-    // Remove tools resolved before the gap
-    if (obj.type === 'user') {
+      for (let i = 0; i < blocks.length; i++) {
+        const block = blocks[i];
+        if (block.type !== 'tool_use') continue;
+        const toolCallId = typeof block.id === 'string' ? block.id : null;
+        if (!toolCallId || !uuid) continue;
+        pendingTools.set(toolCallId, {
+          eventId: `${uuid}_tc_${i}`,
+          name: typeof block.name === 'string' ? block.name : 'unknown',
+          input: (block.input && typeof block.input === 'object')
+            ? block.input as Record<string, unknown> : {},
+          timestamp: ts,
+        });
+      }
+    } else if (obj.type === 'user') {
+      // Remove tools resolved before the gap
       const content = (obj.message as { content?: unknown } | undefined)?.content;
       if (Array.isArray(content)) {
         for (const block of content as Block[]) {

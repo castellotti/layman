@@ -75,6 +75,7 @@ export interface EventData {
   agentType?: string;
   notificationType?: string;
   source?: string;
+  gapMinutes?: number;
   approvalId?: string;
   decision?: ApprovalDecision;
   completedAt?: number;
