@@ -22,6 +22,7 @@ interface EventCardProps {
 
 const AGENT_BADGES: Record<string, { label: string; color: string }> = {
   'claude-code':   { label: 'CC', color: 'text-[#a371f7] bg-[#a371f7]/10 border-[#a371f7]/20' },
+  'codex':         { label: 'CX', color: 'text-[#10a37f] bg-[#10a37f]/10 border-[#10a37f]/20' },
   'opencode':      { label: 'OC', color: 'text-[#f0883e] bg-[#f0883e]/10 border-[#f0883e]/20' },
   'mistral-vibe':  { label: 'MV', color: 'text-[#ff6f3c] bg-[#ff6f3c]/10 border-[#ff6f3c]/20' },
   'cline':         { label: 'CL', color: 'text-[#79c0ff] bg-[#79c0ff]/10 border-[#79c0ff]/20' },

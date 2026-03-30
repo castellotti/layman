@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# Layman hook — Codex PreToolUse
+# Forwards the event to the Layman server and returns the approval decision.
+# This hook is synchronous: Codex waits for this script to exit before proceeding.
+
+INPUT=$(cat)
+
+# Inject agent_type using jq if available, otherwise fall back to sed.
+if command -v jq > /dev/null 2>&1; then
+  BODY=$(echo "$INPUT" | jq -c '. + {agent_type: "codex"}' 2>/dev/null)
+fi
+if [ -z "$BODY" ]; then
+  BODY=$(echo "$INPUT" | sed 's/^{/{"agent_type":"codex",/')
+fi
+
+# POST to Layman and capture the response (58s timeout — within Codex's 60s default).
+RESPONSE=$(curl -s -m 58 -X POST "__LAYMAN_URL__/hooks/PreToolUse" \
+  -H "Content-Type: application/json" \
+  -d "$BODY" 2>/dev/null)
+
+# Return the approval response to Codex (empty = allow).
+if [ -n "$RESPONSE" ] && [ "$RESPONSE" != "{}" ]; then
+  echo "$RESPONSE"
+fi

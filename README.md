@@ -9,11 +9,18 @@
   * Opt-in required (per session)
   * PII filtered by default
 
-When AI coding assistants like Claude Code, OpenCode, Mistral Vibe, or Cline help you build software, they do it by reading your files, writing code, and performing dozens of actions per session.
+When AI coding assistants like Claude Code, Codex, OpenCode, Mistral Vibe, or Cline help you build software, they do it by reading your files, writing code, and performing dozens of actions per session.
 
 Layman is a dashboard that explains exactly what your AI assistants are doing, in plain language, in your web browser. Understand and remember every file AI reads, every change AI makes, every command AI runs.
 
-**Supported agents:** Claude Code · Mistral Vibe · OpenCode · Cline
+---
+
+### Supported Agents
+- [Claude Code](https://github.com/anthropics/claude-code)
+- OpenAI [Codex](https://github.com/openai/codex)
+- Mistral [Vibe](https://github.com/mistralai/mistral-vibe)
+- [OpenCode](https://github.com/anomalyco/opencode)
+- [Cline](https://github.com/cline/cline)
 
 ---
 
@@ -87,6 +94,34 @@ Sessions are **not** recorded by default. To opt a session in:
 3. Claude runs an activation command. From that point on, all events flow to the dashboard.
 
 You can activate multiple sessions across different projects — they all appear in the same dashboard.
+
+---
+
+### Codex
+
+Codex uses shell-script hooks that Layman installs to `~/.codex/hooks/layman/` and registers in `~/.codex/hooks.json`. Sessions are activated per-session by typing `@layman` in Codex.
+
+**Installation** (first time or after a Layman update):
+
+1. Ensure Codex is installed (`codex` binary on PATH or at `/opt/homebrew/bin/codex`).
+2. Open the Layman dashboard → **Settings → Client Setup** → click **Install** or **Reinstall**.
+3. Layman writes hook scripts to `~/.codex/hooks/layman/`, adds entries to `~/.codex/hooks.json`, and enables the `codex_hooks` feature flag in `~/.codex/config.toml` (required — hooks are disabled by default in Codex).
+
+**Usage:**
+
+1. Start Codex in any project directory:
+   ```bash
+   codex
+   ```
+
+2. Type `@layman` to activate monitoring for the session. Events will appear in the Layman dashboard.
+
+**Notes:**
+- Codex's hook system is an under-development feature. The installer enables it automatically via `codex_hooks = true` in `~/.codex/config.toml`. You can also enable it manually with `codex features enable codex_hooks`.
+- Codex supports 5 hook events: `PreToolUse`, `PostToolUse`, `SessionStart`, `UserPromptSubmit`, and `Stop`. Features that require `PermissionRequest` or subagent hooks are not available.
+- Tool approval/denial from the Layman UI is supported for `PreToolUse` events.
+- Prompt submission from the Layman UI is not yet supported for Codex sessions.
+- The hook scripts require `jq` on the host (`/usr/bin/jq` works); a `sed` fallback is used if `jq` is not available.
 
 ---
 

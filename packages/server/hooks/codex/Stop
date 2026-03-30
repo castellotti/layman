@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+# Layman hook — Codex Stop
+# Forwards the event to the Layman server (fire-and-forget).
+# The Stop payload includes last_assistant_message which the server uses
+# to emit the agent's final response in the timeline.
+
+INPUT=$(cat)
+
+if command -v jq > /dev/null 2>&1; then
+  BODY=$(echo "$INPUT" | jq -c '. + {agent_type: "codex"}' 2>/dev/null)
+fi
+if [ -z "$BODY" ]; then
+  BODY=$(echo "$INPUT" | sed 's/^{/{"agent_type":"codex",/')
+fi
+
+curl -s -m 5 -X POST "__LAYMAN_URL__/hooks/Stop" \
+  -H "Content-Type: application/json" \
+  -d "$BODY" > /dev/null 2>&1
+
+exit 0

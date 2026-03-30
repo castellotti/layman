@@ -18,11 +18,18 @@ services:
       # Mount ~/Documents/Cline so the installer can detect Cline and write hook scripts
       # to ~/Documents/Cline/Hooks/ for session monitoring and tool call approval.
       - ${HOME}/Documents/Cline:/root/Documents/Cline
+      # Mount ~/.codex so the installer can detect Codex, write hook scripts to
+      # ~/.codex/hooks/layman/, and update ~/.codex/hooks.json.
+      - ${HOME}/.codex:/root/.codex
     environment:
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - LAYMAN_API_KEY=${LAYMAN_API_KEY:-}
       - LAYMAN_URL=http://localhost:8880
+      # HOST_HOME is the real home directory on the host machine. The installer uses it
+      # to write correct absolute paths into ~/.codex/hooks.json — Codex runs on the host
+      # and executes those paths literally, so they must be host paths, not /root/... paths.
+      - HOST_HOME=${HOME}
     command: >
       node packages/server/dist/index.js start
       --host 0.0.0.0

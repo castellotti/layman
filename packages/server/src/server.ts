@@ -462,6 +462,7 @@ export function createServer(config: LaymanConfig): LaymanServer {
       installer.install();
       installer.installCommand();
       installer.installOptionalClientCommands();
+      installer.installCodexHooks();
       installer.installClineHooks();
       return installer.getStatus();
     });
@@ -998,7 +999,8 @@ export function createServer(config: LaymanConfig): LaymanServer {
         installer.install();
         installer.installCommand();
         installer.installOptionalClientCommands();
-        installer.installClineHooks();
+        installer.installCodexHooks();
+      installer.installClineHooks();
         break;
       }
       case 'bookmarks:get': {

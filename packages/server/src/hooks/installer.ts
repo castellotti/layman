@@ -80,11 +80,30 @@ Layman is passively monitoring this Vibe session via session log files.
 Tell the user: "Layman is monitoring this session. Open http://localhost:8880 to see the dashboard."
 `;
 
+const CODEX_SKILL_CONTENT = `---
+name: layman
+description: Activate Layman monitoring for this Codex session
+metadata:
+  short-description: Activate Layman monitoring
+---
+
+You were invoked via \`@layman\`. Layman is now monitoring this session.
+
+Tell the user: "Layman is now monitoring this session. Open http://localhost:8880 to see the dashboard."
+`;
+
 const OPTIONAL_CLIENTS: OptionalClient[] = [
   {
     name: 'OpenCode',
     configDir: join(homedir(), '.config', 'opencode'),
     commandsDir: join(homedir(), '.config', 'opencode', 'commands'),
+  },
+  {
+    name: 'Codex',
+    configDir: join(homedir(), '.codex'),
+    commandsDir: join(homedir(), '.codex', 'skills', 'layman'),
+    fileName: 'SKILL.md',
+    getContent: () => CODEX_SKILL_CONTENT,
   },
   {
     name: 'Mistral Vibe',
@@ -431,6 +450,191 @@ export class HookInstaller {
     const __dirname = dirname(fileURLToPath(import.meta.url));
     const templatesDir = join(__dirname, '..', '..', 'hooks', 'cline');
     const fallbackDir = join(__dirname, '..', 'hooks', 'cline');
+    const srcDir = existsSync(templatesDir) ? templatesDir : existsSync(fallbackDir) ? fallbackDir : null;
+    if (!srcDir) return { installed: true, upToDate: false };
+
+    const hookFiles = readdirSync(srcDir).filter((f) => !f.startsWith('.'));
+    const expectedHash = commandHash(hookFiles.map((f) => readFileSync(join(srcDir, f), 'utf-8')).join(''));
+    const installedHash = readFileSync(versionFile, 'utf-8').trim();
+
+    return { installed: true, upToDate: installedHash === expectedHash };
+  }
+
+  /** Install Codex hook scripts and hooks.json to ~/.codex/ if Codex is detected. */
+  installCodexHooks(): void {
+    const codexConfigDir = join(homedir(), '.codex');
+    if (!existsSync(codexConfigDir)) return;
+
+    const __dirname = dirname(fileURLToPath(import.meta.url));
+    // In production (dist/), __dirname is packages/server/dist/ so hooks are at ../../hooks/codex.
+    // In development (src/), tsup puts output one level shallower, so fall back to ../hooks/codex.
+    const templatesDir = join(__dirname, '..', '..', 'hooks', 'codex');
+    const fallbackDir = join(__dirname, '..', 'hooks', 'codex');
+    const srcDir = existsSync(templatesDir) ? templatesDir : existsSync(fallbackDir) ? fallbackDir : null;
+    if (!srcDir) {
+      console.log('Codex hook templates not found — skipping');
+      return;
+    }
+
+    // Install hook scripts to ~/.codex/hooks/layman/
+    const codexHooksDir = join(codexConfigDir, 'hooks', 'layman');
+    if (!existsSync(codexHooksDir)) {
+      mkdirSync(codexHooksDir, { recursive: true });
+    }
+
+    const hookFiles = readdirSync(srcDir).filter((f) => !f.startsWith('.'));
+    for (const hookFile of hookFiles) {
+      const template = readFileSync(join(srcDir, hookFile), 'utf-8');
+      const content = template.replace(/__LAYMAN_URL__/g, this.options.serverUrl);
+      const destPath = join(codexHooksDir, hookFile);
+      writeFileSync(destPath, content, { mode: 0o755 });
+    }
+
+    // Write version marker for staleness detection
+    const versionContent = commandHash(hookFiles.map((f) => readFileSync(join(srcDir, f), 'utf-8')).join(''));
+    writeFileSync(join(codexHooksDir, '.layman-version'), versionContent, 'utf-8');
+
+    // Merge Layman entries into ~/.codex/hooks.json
+    const hooksJsonPath = join(codexConfigDir, 'hooks.json');
+    let hooksJson: Record<string, unknown[]> = {};
+    if (existsSync(hooksJsonPath)) {
+      try {
+        const raw = readFileSync(hooksJsonPath, 'utf-8');
+        const parsed = JSON.parse(raw) as { hooks?: Record<string, unknown[]> };
+        hooksJson = parsed.hooks ?? {};
+      } catch { /* start fresh */ }
+    }
+
+    const laymanHookMarker = '__layman__';
+    const codexEvents: Array<{ event: string; file: string; timeout: number }> = [
+      { event: 'PreToolUse',       file: 'PreToolUse',       timeout: 60 },
+      { event: 'PostToolUse',      file: 'PostToolUse',      timeout: 10 },
+      { event: 'SessionStart',     file: 'SessionStart',     timeout: 10 },
+      { event: 'UserPromptSubmit', file: 'UserPromptSubmit', timeout: 10 },
+      { event: 'Stop',             file: 'Stop',             timeout: 10 },
+    ];
+
+    // Codex runs on the host machine and executes hook command paths literally.
+    // The installer runs inside Docker where homedir() = /root, but the host home
+    // is passed via HOST_HOME so the paths written to hooks.json are valid on the host.
+    const hostHome = process.env.HOST_HOME || homedir();
+    const hostCodexHooksDir = join(hostHome, '.codex', 'hooks', 'layman');
+
+    for (const { event, file, timeout } of codexEvents) {
+      const scriptPath = join(hostCodexHooksDir, file);
+      if (!hooksJson[event]) hooksJson[event] = [];
+      // Remove existing Layman entries for this event
+      hooksJson[event] = (hooksJson[event] as Array<Record<string, unknown>>).filter(
+        (group) => !(group[laymanHookMarker] === true)
+      );
+      // Add new Layman entry
+      hooksJson[event].push({
+        matcher: '',
+        [laymanHookMarker]: true,
+        hooks: [{ type: 'command', command: scriptPath, timeout }],
+      });
+    }
+
+    writeFileSync(hooksJsonPath, JSON.stringify({ hooks: hooksJson }, null, 2) + '\n', 'utf-8');
+    console.log(`Codex hook scripts installed at ${codexHooksDir} (${hookFiles.length} hooks)`);
+    console.log(`Codex hooks.json updated at ${hooksJsonPath}`);
+
+    // Enable the codex_hooks feature flag in config.toml — it is disabled by default.
+    // Without this, Codex ignores hooks.json entirely and no hook scripts will run.
+    this.enableCodexHooksFeature(codexConfigDir);
+  }
+
+  /**
+   * Enable the `codex_hooks` feature flag in ~/.codex/config.toml.
+   * Codex disables hooks by default; without this flag, hooks.json is ignored.
+   * We do simple line-based TOML editing rather than a full TOML parser.
+   */
+  private enableCodexHooksFeature(codexConfigDir: string): void {
+    const configPath = join(codexConfigDir, 'config.toml');
+    const raw = existsSync(configPath) ? readFileSync(configPath, 'utf-8') : '';
+    const lines = raw.split('\n');
+
+    // Already enabled — nothing to do
+    if (lines.some((l) => /^\s*codex_hooks\s*=\s*true/.test(l))) return;
+
+    // Remove any existing codex_hooks = false line
+    const filtered = lines.filter((l) => !/^\s*codex_hooks\s*=/.test(l));
+
+    // Find the [features] section and insert after it, otherwise append a new section
+    const featuresIdx = filtered.findIndex((l) => /^\[features\]/.test(l));
+    if (featuresIdx !== -1) {
+      filtered.splice(featuresIdx + 1, 0, 'codex_hooks = true');
+    } else {
+      // Ensure a blank line separator before the new section
+      if (filtered.length > 0 && filtered[filtered.length - 1].trim() !== '') {
+        filtered.push('');
+      }
+      filtered.push('[features]', 'codex_hooks = true', '');
+    }
+
+    writeFileSync(configPath, filtered.join('\n'), 'utf-8');
+    console.log('Codex: enabled codex_hooks feature flag in config.toml');
+  }
+
+  /** Remove Codex hook scripts and Layman entries from ~/.codex/hooks.json. */
+  uninstallCodexHooks(): void {
+    const codexConfigDir = join(homedir(), '.codex');
+    const codexHooksDir = join(codexConfigDir, 'hooks', 'layman');
+    const versionFile = join(codexHooksDir, '.layman-version');
+
+    // Only remove scripts if we installed them (version marker exists)
+    if (existsSync(versionFile)) {
+      const __dirname = dirname(fileURLToPath(import.meta.url));
+      // Production path (dist/) vs development path — see installCodexHooks for explanation.
+      const templatesDir = join(__dirname, '..', '..', 'hooks', 'codex');
+      const fallbackDir = join(__dirname, '..', 'hooks', 'codex');
+      const srcDir = existsSync(templatesDir) ? templatesDir : existsSync(fallbackDir) ? fallbackDir : null;
+
+      if (srcDir) {
+        const hookFiles = readdirSync(srcDir).filter((f) => !f.startsWith('.'));
+        for (const hookFile of hookFiles) {
+          const destPath = join(codexHooksDir, hookFile);
+          if (existsSync(destPath)) {
+            try { unlinkSync(destPath); } catch { /* ignore */ }
+          }
+        }
+      }
+      try { unlinkSync(versionFile); } catch { /* ignore */ }
+    }
+
+    // Remove Layman entries from hooks.json
+    const hooksJsonPath = join(codexConfigDir, 'hooks.json');
+    if (existsSync(hooksJsonPath)) {
+      try {
+        const raw = readFileSync(hooksJsonPath, 'utf-8');
+        const parsed = JSON.parse(raw) as { hooks?: Record<string, unknown[]> };
+        if (parsed.hooks) {
+          for (const event of Object.keys(parsed.hooks)) {
+            parsed.hooks[event] = (parsed.hooks[event] as Array<Record<string, unknown>>).filter(
+              (group) => !(group['__layman__'] === true)
+            );
+            if (parsed.hooks[event].length === 0) delete parsed.hooks[event];
+          }
+          if (Object.keys(parsed.hooks).length === 0) delete parsed.hooks;
+          writeFileSync(hooksJsonPath, JSON.stringify(parsed, null, 2) + '\n', 'utf-8');
+        }
+      } catch { /* ignore */ }
+    }
+
+    console.log('Codex hook scripts removed');
+  }
+
+  /** Check if Codex hook scripts are installed and up to date. */
+  getCodexHooksStatus(): { installed: boolean; upToDate: boolean } {
+    const codexHooksDir = join(homedir(), '.codex', 'hooks', 'layman');
+    const versionFile = join(codexHooksDir, '.layman-version');
+
+    if (!existsSync(versionFile)) return { installed: false, upToDate: false };
+
+    const __dirname = dirname(fileURLToPath(import.meta.url));
+    // Production path (dist/) vs development path — see installCodexHooks for explanation.
+    const templatesDir = join(__dirname, '..', '..', 'hooks', 'codex');
+    const fallbackDir = join(__dirname, '..', 'hooks', 'codex');
     const srcDir = existsSync(templatesDir) ? templatesDir : existsSync(fallbackDir) ? fallbackDir : null;
     if (!srcDir) return { installed: true, upToDate: false };
 
