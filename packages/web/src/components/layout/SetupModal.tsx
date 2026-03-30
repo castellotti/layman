@@ -132,7 +132,7 @@ export function SetupModal() {
             disabled={installState === 'installing'}
             className="px-4 py-1.5 text-xs font-medium rounded bg-[#238636] hover:bg-[#2ea043] text-white disabled:opacity-50 transition-colors"
           >
-            {installState === 'installing' ? 'Installing...' : 'Install Selected'}
+            {installState === 'installing' ? 'Installing...' : 'Accept'}
           </button>
         </div>
       </div>

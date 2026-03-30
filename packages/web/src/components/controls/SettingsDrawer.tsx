@@ -133,20 +133,6 @@ function ClientSetupSection() {
     }
   }, [setSetupStatus]);
 
-  const handleUndoDecline = useCallback(async (id: string) => {
-    setClientState((s) => ({ ...s, [id]: 'busy' }));
-    try {
-      const res = await fetch(`/api/setup/undecline/${id}`, { method: 'POST' });
-      if (res.ok) {
-        setSetupStatus(await res.json() as SetupStatus);
-        setClientState((s) => ({ ...s, [id]: 'done' }));
-      } else {
-        setClientState((s) => ({ ...s, [id]: 'error' }));
-      }
-    } catch {
-      setClientState((s) => ({ ...s, [id]: 'error' }));
-    }
-  }, [setSetupStatus]);
 
   const claudeCodeOk = !!(setupStatus?.hooksInstalled && setupStatus.commandInstalled);
   const claudeCodeUpToDate = !!(setupStatus?.hooksUpToDate && setupStatus.commandUpToDate);
@@ -160,12 +146,9 @@ function ClientSetupSection() {
       <div className="flex items-center justify-between min-h-[28px]">
         <div className="flex items-center gap-2">
           <span className="text-xs text-[#e6edf3]">Claude Code</span>
-          {setupStatus?.claudeCodeDeclined && (
-            <span className="text-[10px] text-[#8b949e] italic">declined</span>
-          )}
         </div>
         <div className="flex items-center gap-1.5">
-          {setupStatus && !setupStatus.claudeCodeDeclined && (
+          {setupStatus && claudeCodeOk && (
             <>
               <StatusPip ok={!!(setupStatus.hooksInstalled)} label="hooks" />
               <StatusPip ok={!!(setupStatus.commandInstalled)} label="/layman" />
@@ -177,13 +160,6 @@ function ClientSetupSection() {
             <span className="text-[10px] text-[#3fb950]">Done</span>
           ) : claudeState === 'error' ? (
             <span className="text-[10px] text-[#f85149]">Failed</span>
-          ) : setupStatus?.claudeCodeDeclined ? (
-            <button
-              onClick={() => void handleUndoDecline('claude-code')}
-              className="text-[10px] text-[#58a6ff] hover:underline"
-            >
-              Undo
-            </button>
           ) : claudeCodeOk ? (
             <>
               {!claudeCodeUpToDate && (
@@ -219,18 +195,15 @@ function ClientSetupSection() {
         return (
           <div key={client.id} className="flex items-center justify-between min-h-[28px]">
             <div className="flex items-center gap-2">
-              <span className={`text-xs ${client.detected || client.declined ? 'text-[#e6edf3]' : 'text-[#484f58]'}`}>
+              <span className={`text-xs ${client.detected ? 'text-[#e6edf3]' : 'text-[#484f58]'}`}>
                 {client.name}
               </span>
-              {!client.detected && !client.declined && (
+              {!client.detected && (
                 <span className="text-[10px] text-[#484f58]">(not detected)</span>
-              )}
-              {client.declined && (
-                <span className="text-[10px] text-[#8b949e] italic">declined</span>
               )}
             </div>
             <div className="flex items-center gap-1.5">
-              {client.detected && !client.declined && (
+              {client.detected && ok && (
                 <StatusPip ok={ok} label="/layman" />
               )}
               {state === 'busy' ? (
@@ -239,19 +212,12 @@ function ClientSetupSection() {
                 <span className="text-[10px] text-[#3fb950]">Done</span>
               ) : state === 'error' ? (
                 <span className="text-[10px] text-[#f85149]">Failed</span>
-              ) : client.declined ? (
-                <button
-                  onClick={() => void handleUndoDecline(client.id)}
-                  className="text-[10px] text-[#58a6ff] hover:underline"
-                >
-                  Undo
-                </button>
               ) : client.detected && !ok ? (
                 <button
                   onClick={() => void handleInstallClient(client.id)}
                   className="px-2 py-0.5 text-[10px] font-medium rounded bg-[#238636] text-white hover:bg-[#2ea043] transition-colors"
                 >
-                  {client.commandInstalled ? 'Update' : 'Install'}
+                  Install
                 </button>
               ) : client.detected && ok ? (
                 <button
