@@ -40,7 +40,7 @@ export function SetupModal() {
   const pendingClients = setupStatus ? getPendingClients(setupStatus) : [];
 
   useEffect(() => {
-    setChecked(Object.fromEntries(pendingClients.map((c) => [c.id, true])));
+    setChecked(Object.fromEntries(pendingClients.map((c) => [c.id, false])));
   // Only run when the set of pending client ids changes
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingClients.map((c) => c.id).join(',')]);
@@ -99,21 +99,24 @@ export function SetupModal() {
           </p>
         </div>
 
-        <div className="px-6 py-3 space-y-2">
-          {pendingClients.map((client) => (
-            <label key={client.id} className="flex items-start gap-3 cursor-pointer group">
-              <input
-                type="checkbox"
-                checked={checked[client.id] ?? true}
-                onChange={(e) => setChecked((prev) => ({ ...prev, [client.id]: e.target.checked }))}
-                className="mt-0.5 w-4 h-4 rounded border-[#30363d] bg-[#0d1117] accent-[#238636] cursor-pointer"
-              />
-              <div>
-                <span className="text-sm text-[#e6edf3] group-hover:text-white transition-colors">{client.name}</span>
-                <p className="text-[11px] text-[#8b949e]">{client.description}</p>
+        <div className="px-6 py-3 space-y-3">
+          {pendingClients.map((client) => {
+            const on = checked[client.id] ?? false;
+            return (
+              <div key={client.id} className="flex items-center justify-between gap-4">
+                <div>
+                  <span className="text-sm text-[#e6edf3]">{client.name}</span>
+                  <p className="text-[11px] text-[#8b949e]">{client.description}</p>
+                </div>
+                <div
+                  onClick={() => setChecked((prev) => ({ ...prev, [client.id]: !on }))}
+                  className={`relative w-8 h-4 rounded-full transition-colors cursor-pointer shrink-0 ${on ? 'bg-[#238636]' : 'bg-[#30363d]'}`}
+                >
+                  <div className={`absolute top-0.5 w-3 h-3 bg-white rounded-full transition-transform ${on ? 'translate-x-4' : 'translate-x-0.5'}`} />
+                </div>
               </div>
-            </label>
-          ))}
+            );
+          })}
         </div>
 
         {installState === 'error' && (

@@ -101,7 +101,7 @@ function ClientSetupSection() {
     setupStatus: s.setupStatus,
     setSetupStatus: s.setSetupStatus,
   }));
-  const [clientState, setClientState] = useState<Record<string, 'idle' | 'busy' | 'done' | 'error'>>({});
+  const [clientState, setClientState] = useState<Record<string, 'idle' | 'busy' | 'error'>>({});
 
   const handleInstallClient = useCallback(async (id: string) => {
     setClientState((s) => ({ ...s, [id]: 'busy' }));
@@ -109,7 +109,7 @@ function ClientSetupSection() {
       const res = await fetch(`/api/setup/install/${id}`, { method: 'POST' });
       if (res.ok) {
         setSetupStatus(await res.json() as SetupStatus);
-        setClientState((s) => ({ ...s, [id]: 'done' }));
+        setClientState((s) => ({ ...s, [id]: 'idle' }));
       } else {
         setClientState((s) => ({ ...s, [id]: 'error' }));
       }
@@ -124,7 +124,7 @@ function ClientSetupSection() {
       const res = await fetch(`/api/setup/uninstall/${id}`, { method: 'POST' });
       if (res.ok) {
         setSetupStatus(await res.json() as SetupStatus);
-        setClientState((s) => ({ ...s, [id]: 'done' }));
+        setClientState((s) => ({ ...s, [id]: 'idle' }));
       } else {
         setClientState((s) => ({ ...s, [id]: 'error' }));
       }
@@ -156,8 +156,6 @@ function ClientSetupSection() {
           )}
           {claudeState === 'busy' ? (
             <span className="text-[10px] text-[#8b949e]">...</span>
-          ) : claudeState === 'done' ? (
-            <span className="text-[10px] text-[#3fb950]">Done</span>
           ) : claudeState === 'error' ? (
             <span className="text-[10px] text-[#f85149]">Failed</span>
           ) : claudeCodeOk ? (
@@ -208,8 +206,6 @@ function ClientSetupSection() {
               )}
               {state === 'busy' ? (
                 <span className="text-[10px] text-[#8b949e]">...</span>
-              ) : state === 'done' ? (
-                <span className="text-[10px] text-[#3fb950]">Done</span>
               ) : state === 'error' ? (
                 <span className="text-[10px] text-[#f85149]">Failed</span>
               ) : client.detected && !ok ? (
