@@ -101,62 +101,170 @@ function ClientSetupSection() {
     setupStatus: s.setupStatus,
     setSetupStatus: s.setSetupStatus,
   }));
-  const [installState, setInstallState] = useState<'idle' | 'installing' | 'done' | 'error'>('idle');
+  const [clientState, setClientState] = useState<Record<string, 'idle' | 'busy' | 'done' | 'error'>>({});
 
-  const handleInstall = useCallback(async () => {
-    setInstallState('installing');
+  const handleInstallClient = useCallback(async (id: string) => {
+    setClientState((s) => ({ ...s, [id]: 'busy' }));
     try {
-      const res = await fetch('/api/setup/install', { method: 'POST' });
+      const res = await fetch(`/api/setup/install/${id}`, { method: 'POST' });
       if (res.ok) {
-        const status = await res.json() as SetupStatus;
-        setSetupStatus(status);
-        setInstallState('done');
+        setSetupStatus(await res.json() as SetupStatus);
+        setClientState((s) => ({ ...s, [id]: 'done' }));
       } else {
-        setInstallState('error');
+        setClientState((s) => ({ ...s, [id]: 'error' }));
       }
     } catch {
-      setInstallState('error');
+      setClientState((s) => ({ ...s, [id]: 'error' }));
     }
   }, [setSetupStatus]);
 
-  const claudeOk = !!(setupStatus?.hooksInstalled && setupStatus.commandInstalled);
+  const handleUninstallClient = useCallback(async (id: string) => {
+    setClientState((s) => ({ ...s, [id]: 'busy' }));
+    try {
+      const res = await fetch(`/api/setup/uninstall/${id}`, { method: 'POST' });
+      if (res.ok) {
+        setSetupStatus(await res.json() as SetupStatus);
+        setClientState((s) => ({ ...s, [id]: 'done' }));
+      } else {
+        setClientState((s) => ({ ...s, [id]: 'error' }));
+      }
+    } catch {
+      setClientState((s) => ({ ...s, [id]: 'error' }));
+    }
+  }, [setSetupStatus]);
+
+  const handleUndoDecline = useCallback(async (id: string) => {
+    setClientState((s) => ({ ...s, [id]: 'busy' }));
+    try {
+      const res = await fetch(`/api/setup/undecline/${id}`, { method: 'POST' });
+      if (res.ok) {
+        setSetupStatus(await res.json() as SetupStatus);
+        setClientState((s) => ({ ...s, [id]: 'done' }));
+      } else {
+        setClientState((s) => ({ ...s, [id]: 'error' }));
+      }
+    } catch {
+      setClientState((s) => ({ ...s, [id]: 'error' }));
+    }
+  }, [setSetupStatus]);
+
+  const claudeCodeOk = !!(setupStatus?.hooksInstalled && setupStatus.commandInstalled);
+  const claudeCodeUpToDate = !!(setupStatus?.hooksUpToDate && setupStatus.commandUpToDate);
   const optionalClients: OptionalClientStatus[] = setupStatus?.optionalClients ?? [];
 
-  return (
-    <div className="space-y-3">
-      {/* Claude Code row — always shown, it's the primary client */}
-      <div className="flex items-center justify-between">
-        <span className="text-xs text-[#e6edf3]">Claude Code</span>
-        <div className="flex items-center gap-1.5">
-          <StatusPip ok={!!(setupStatus?.hooksInstalled)} label="hooks" />
-          <StatusPip ok={!!(setupStatus?.commandInstalled)} label="/layman" />
-        </div>
-      </div>
+  const claudeState = clientState['claude-code'] ?? 'idle';
 
-      {/* Optional clients — shown with detected/not-detected state */}
-      {optionalClients.map((client) => (
-        <div key={client.name} className="flex items-center justify-between">
-          <span className={`text-xs ${client.detected ? 'text-[#e6edf3]' : 'text-[#484f58]'}`}>
-            {client.name}
-            {!client.detected && <span className="ml-1 text-[10px]">(not detected)</span>}
-          </span>
-          {client.detected && (
-            <StatusPip ok={client.commandInstalled && client.commandUpToDate} label="/layman" />
+  return (
+    <div className="space-y-2">
+      {/* Claude Code row */}
+      <div className="flex items-center justify-between min-h-[28px]">
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-[#e6edf3]">Claude Code</span>
+          {setupStatus?.claudeCodeDeclined && (
+            <span className="text-[10px] text-[#8b949e] italic">declined</span>
           )}
         </div>
-      ))}
-
-      <div className="flex items-center gap-3 pt-1">
-        <button
-          onClick={() => void handleInstall()}
-          disabled={installState === 'installing'}
-          className="px-3 py-1.5 text-xs font-medium rounded bg-[#21262d] border border-[#30363d] text-[#e6edf3] hover:bg-[#30363d] disabled:opacity-50 transition-colors"
-        >
-          {installState === 'installing' ? 'Installing...' : claudeOk ? 'Reinstall' : 'Install'}
-        </button>
-        {installState === 'done' && <span className="text-[10px] text-[#3fb950]">Done</span>}
-        {installState === 'error' && <span className="text-[10px] text-[#f85149]">Failed</span>}
+        <div className="flex items-center gap-1.5">
+          {setupStatus && !setupStatus.claudeCodeDeclined && (
+            <>
+              <StatusPip ok={!!(setupStatus.hooksInstalled)} label="hooks" />
+              <StatusPip ok={!!(setupStatus.commandInstalled)} label="/layman" />
+            </>
+          )}
+          {claudeState === 'busy' ? (
+            <span className="text-[10px] text-[#8b949e]">...</span>
+          ) : claudeState === 'done' ? (
+            <span className="text-[10px] text-[#3fb950]">Done</span>
+          ) : claudeState === 'error' ? (
+            <span className="text-[10px] text-[#f85149]">Failed</span>
+          ) : setupStatus?.claudeCodeDeclined ? (
+            <button
+              onClick={() => void handleUndoDecline('claude-code')}
+              className="text-[10px] text-[#58a6ff] hover:underline"
+            >
+              Undo
+            </button>
+          ) : claudeCodeOk ? (
+            <>
+              {!claudeCodeUpToDate && (
+                <button
+                  onClick={() => void handleInstallClient('claude-code')}
+                  className="px-2 py-0.5 text-[10px] font-medium rounded bg-[#21262d] border border-[#30363d] text-[#e6edf3] hover:bg-[#30363d] transition-colors"
+                >
+                  Update
+                </button>
+              )}
+              <button
+                onClick={() => void handleUninstallClient('claude-code')}
+                className="px-2 py-0.5 text-[10px] font-medium rounded bg-[#21262d] border border-[#30363d] text-[#8b949e] hover:bg-[#30363d] hover:text-[#f85149] transition-colors"
+              >
+                Uninstall
+              </button>
+            </>
+          ) : (
+            <button
+              onClick={() => void handleInstallClient('claude-code')}
+              className="px-2 py-0.5 text-[10px] font-medium rounded bg-[#238636] text-white hover:bg-[#2ea043] transition-colors"
+            >
+              Install
+            </button>
+          )}
+        </div>
       </div>
+
+      {/* Optional clients */}
+      {optionalClients.map((client) => {
+        const state = clientState[client.id] ?? 'idle';
+        const ok = client.commandInstalled && client.commandUpToDate;
+        return (
+          <div key={client.id} className="flex items-center justify-between min-h-[28px]">
+            <div className="flex items-center gap-2">
+              <span className={`text-xs ${client.detected || client.declined ? 'text-[#e6edf3]' : 'text-[#484f58]'}`}>
+                {client.name}
+              </span>
+              {!client.detected && !client.declined && (
+                <span className="text-[10px] text-[#484f58]">(not detected)</span>
+              )}
+              {client.declined && (
+                <span className="text-[10px] text-[#8b949e] italic">declined</span>
+              )}
+            </div>
+            <div className="flex items-center gap-1.5">
+              {client.detected && !client.declined && (
+                <StatusPip ok={ok} label="/layman" />
+              )}
+              {state === 'busy' ? (
+                <span className="text-[10px] text-[#8b949e]">...</span>
+              ) : state === 'done' ? (
+                <span className="text-[10px] text-[#3fb950]">Done</span>
+              ) : state === 'error' ? (
+                <span className="text-[10px] text-[#f85149]">Failed</span>
+              ) : client.declined ? (
+                <button
+                  onClick={() => void handleUndoDecline(client.id)}
+                  className="text-[10px] text-[#58a6ff] hover:underline"
+                >
+                  Undo
+                </button>
+              ) : client.detected && !ok ? (
+                <button
+                  onClick={() => void handleInstallClient(client.id)}
+                  className="px-2 py-0.5 text-[10px] font-medium rounded bg-[#238636] text-white hover:bg-[#2ea043] transition-colors"
+                >
+                  {client.commandInstalled ? 'Update' : 'Install'}
+                </button>
+              ) : client.detected && ok ? (
+                <button
+                  onClick={() => void handleUninstallClient(client.id)}
+                  className="px-2 py-0.5 text-[10px] font-medium rounded bg-[#21262d] border border-[#30363d] text-[#8b949e] hover:bg-[#30363d] hover:text-[#f85149] transition-colors"
+                >
+                  Uninstall
+                </button>
+              ) : null}
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }

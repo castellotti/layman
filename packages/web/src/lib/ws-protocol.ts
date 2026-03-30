@@ -51,5 +51,5 @@ export type ClientMessage =
   | { type: 'both:request'; eventId: string; depth: 'quick' | 'detailed' }
   | { type: 'analysis:ask'; eventId: string; question: string }
   | { type: 'config:update'; config: Partial<LaymanConfig> }
-  | { type: 'setup:install' }
+  | { type: 'setup:install'; clients?: string[] }
   | { type: 'bookmarks:get' };

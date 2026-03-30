@@ -3,6 +3,7 @@ import { Header } from './components/layout/Header.js';
 import { EventStream } from './components/layout/EventStream.js';
 import { InvestigationPanel } from './components/layout/InvestigationPanel.js';
 import { SetupBanner } from './components/layout/SetupBanner.js';
+import { SetupModal } from './components/layout/SetupModal.js';
 import { SettingsDrawer } from './components/controls/SettingsDrawer.js';
 import { BookmarksPanel } from './components/bookmarks/BookmarksPanel.js';
 import { useSessionStore } from './stores/sessionStore.js';
@@ -124,6 +125,9 @@ export function App() {
 
       {/* Bookmarks panel */}
       <BookmarksPanel onSend={send} />
+
+      {/* First-run setup modal */}
+      <SetupModal />
     </div>
   );
 }
