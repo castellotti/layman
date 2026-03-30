@@ -1,18 +1,23 @@
 import React, { useCallback } from 'react';
 import type { TimelineEvent, QAEntry } from '../../lib/types.js';
 import { EventCard } from '../events/EventCard.js';
+import type { ClientMessage } from '../../lib/ws-protocol.js';
 
 interface HistoricalEventStreamProps {
   events: TimelineEvent[];
   qaEntries: QAEntry[];
   selectedEventId: string | null;
   onSelectEvent: (id: string | null) => void;
+  onSend: (msg: ClientMessage) => void;
 }
 
-// No-op send — historical view is read-only; analysis buttons are hidden via CSS
-function noopSend(): void {}
-
-export function HistoricalEventStream({ events, qaEntries, selectedEventId, onSelectEvent }: HistoricalEventStreamProps) {
+export function HistoricalEventStream({
+  events,
+  qaEntries,
+  selectedEventId,
+  onSelectEvent,
+  onSend,
+}: HistoricalEventStreamProps) {
   const qaByEvent = useCallback(() => {
     const map = new Map<string, QAEntry[]>();
     for (const qa of qaEntries) {
@@ -38,7 +43,7 @@ export function HistoricalEventStream({ events, qaEntries, selectedEventId, onSe
     <div data-print-stream className="flex flex-col overflow-y-auto h-full">
       <div className="px-2 py-2 border-b border-[#30363d] shrink-0">
         <p className="text-[10px] text-[#484f58]">
-          {events.length} recorded events · read-only view
+          {events.length} recorded events · click to investigate
         </p>
       </div>
 
@@ -52,7 +57,7 @@ export function HistoricalEventStream({ events, qaEntries, selectedEventId, onSe
                 index={index}
                 isSelected={selectedEventId === event.id}
                 onClick={() => onSelectEvent(selectedEventId === event.id ? null : event.id)}
-                onSend={noopSend}
+                onSend={onSend}
                 collapseHistory={false}
               />
               {eventQA.length > 0 && selectedEventId === event.id && (

@@ -94,16 +94,16 @@ Tell the user: "Layman is now monitoring this session. Open http://localhost:888
 
 const OPTIONAL_CLIENTS: OptionalClient[] = [
   {
-    name: 'OpenCode',
-    configDir: join(homedir(), '.config', 'opencode'),
-    commandsDir: join(homedir(), '.config', 'opencode', 'commands'),
-  },
-  {
     name: 'Codex',
     configDir: join(homedir(), '.codex'),
     commandsDir: join(homedir(), '.codex', 'skills', 'layman'),
     fileName: 'SKILL.md',
     getContent: () => CODEX_SKILL_CONTENT,
+  },
+  {
+    name: 'OpenCode',
+    configDir: join(homedir(), '.config', 'opencode'),
+    commandsDir: join(homedir(), '.config', 'opencode', 'commands'),
   },
   {
     name: 'Mistral Vibe',
