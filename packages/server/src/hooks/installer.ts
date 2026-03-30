@@ -466,6 +466,8 @@ export class HookInstaller {
     if (!existsSync(codexConfigDir)) return;
 
     const __dirname = dirname(fileURLToPath(import.meta.url));
+    // In production (dist/), __dirname is packages/server/dist/ so hooks are at ../../hooks/codex.
+    // In development (src/), tsup puts output one level shallower, so fall back to ../hooks/codex.
     const templatesDir = join(__dirname, '..', '..', 'hooks', 'codex');
     const fallbackDir = join(__dirname, '..', 'hooks', 'codex');
     const srcDir = existsSync(templatesDir) ? templatesDir : existsSync(fallbackDir) ? fallbackDir : null;
@@ -549,26 +551,28 @@ export class HookInstaller {
    */
   private enableCodexHooksFeature(codexConfigDir: string): void {
     const configPath = join(codexConfigDir, 'config.toml');
-    let content = existsSync(configPath) ? readFileSync(configPath, 'utf-8') : '';
+    const raw = existsSync(configPath) ? readFileSync(configPath, 'utf-8') : '';
+    const lines = raw.split('\n');
 
     // Already enabled — nothing to do
-    if (/^\s*codex_hooks\s*=\s*true/m.test(content)) {
-      return;
-    }
+    if (lines.some((l) => /^\s*codex_hooks\s*=\s*true/.test(l))) return;
 
     // Remove any existing codex_hooks = false line
-    content = content.replace(/^\s*codex_hooks\s*=\s*false\s*\n?/m, '');
+    const filtered = lines.filter((l) => !/^\s*codex_hooks\s*=/.test(l));
 
-    // Append under [features] section if it exists, otherwise add the section
-    if (/^\[features\]/m.test(content)) {
-      content = content.replace(/(\[features\][^\[]*)/s, (match) => {
-        return match.trimEnd() + '\ncodex_hooks = true\n';
-      });
+    // Find the [features] section and insert after it, otherwise append a new section
+    const featuresIdx = filtered.findIndex((l) => /^\[features\]/.test(l));
+    if (featuresIdx !== -1) {
+      filtered.splice(featuresIdx + 1, 0, 'codex_hooks = true');
     } else {
-      content = content.trimEnd() + '\n\n[features]\ncodex_hooks = true\n';
+      // Ensure a blank line separator before the new section
+      if (filtered.length > 0 && filtered[filtered.length - 1].trim() !== '') {
+        filtered.push('');
+      }
+      filtered.push('[features]', 'codex_hooks = true', '');
     }
 
-    writeFileSync(configPath, content, 'utf-8');
+    writeFileSync(configPath, filtered.join('\n'), 'utf-8');
     console.log('Codex: enabled codex_hooks feature flag in config.toml');
   }
 
@@ -581,6 +585,7 @@ export class HookInstaller {
     // Only remove scripts if we installed them (version marker exists)
     if (existsSync(versionFile)) {
       const __dirname = dirname(fileURLToPath(import.meta.url));
+      // Production path (dist/) vs development path — see installCodexHooks for explanation.
       const templatesDir = join(__dirname, '..', '..', 'hooks', 'codex');
       const fallbackDir = join(__dirname, '..', 'hooks', 'codex');
       const srcDir = existsSync(templatesDir) ? templatesDir : existsSync(fallbackDir) ? fallbackDir : null;
@@ -627,6 +632,7 @@ export class HookInstaller {
     if (!existsSync(versionFile)) return { installed: false, upToDate: false };
 
     const __dirname = dirname(fileURLToPath(import.meta.url));
+    // Production path (dist/) vs development path — see installCodexHooks for explanation.
     const templatesDir = join(__dirname, '..', '..', 'hooks', 'codex');
     const fallbackDir = join(__dirname, '..', 'hooks', 'codex');
     const srcDir = existsSync(templatesDir) ? templatesDir : existsSync(fallbackDir) ? fallbackDir : null;

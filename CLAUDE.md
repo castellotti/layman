@@ -41,7 +41,7 @@ Layman is a pnpm monorepo with two packages:
 | Agent | Integration mechanism | Activation |
 |---|---|---|
 | Claude Code | HTTP hook POSTs to `/hooks/:eventName` | `/layman` slash command |
-| Codex | Shell-script hooks via `~/.codex/hooks.json` | Auto (always-on after install) |
+| Codex | Shell-script hooks via `~/.codex/hooks.json` | `@layman` skill |
 | OpenCode | Bidirectional plugin (`packages/opencode-plugin`) | `/layman` slash command |
 | Mistral Vibe | Passive file watcher on `~/.vibe/logs/session/` | `/layman` slash command |
 | Cline | Shell-script hooks in `~/Documents/Cline/Hooks/` | `/layman` workflow in Cline |
@@ -50,7 +50,7 @@ Layman is a pnpm monorepo with two packages:
 
 1. **Claude Code hooks**: Claude Code fires HTTP POSTs to `/hooks/:eventName` (e.g. `PreToolUse`, `PostToolUse`, `SessionStart`). The hook handler in `packages/server/src/hooks/handler.ts` processes each event type, calls `EventStore.add()`, and for blocking hooks (`PreToolUse`, `PermissionRequest`) calls `PendingApprovalManager.createAndWait()` which suspends until the user decides.
 
-2. **Codex hooks** (`packages/server/hooks/codex/`): Codex reads hook config from `~/.codex/hooks.json` and runs shell scripts from `~/.codex/hooks/layman/`. These scripts read hook JSON from stdin, inject `agent_type: "codex"`, and POST to the existing `/hooks/:eventName` handler via curl. The hook format is Claude Code-compatible — same field names and event names — so no separate handler is needed. `PreToolUse` blocks for up to 58 seconds. The `Stop` hook payload includes `last_assistant_message` which the handler uses to emit the agent's final response. Codex sessions auto-activate on first contact (no `/layman` required). Codex supports 5 hook events: `PreToolUse`, `PostToolUse`, `SessionStart`, `UserPromptSubmit`, `Stop`. Async hooks are not supported by Codex.
+2. **Codex hooks** (`packages/server/hooks/codex/`): Codex reads hook config from `~/.codex/hooks.json` and runs shell scripts from `~/.codex/hooks/layman/`. These scripts read hook JSON from stdin, inject `agent_type: "codex"`, and POST to the existing `/hooks/:eventName` handler via curl. The hook format is Claude Code-compatible — same field names and event names — so no separate handler is needed. `PreToolUse` blocks for up to 58 seconds. The `Stop` hook payload includes `last_assistant_message` which the handler uses to emit the agent's final response. Sessions activate when the user types `@layman` — detected via `UserPromptSubmit` hook before the gate check. Codex supports 5 hook events: `PreToolUse`, `PostToolUse`, `SessionStart`, `UserPromptSubmit`, `Stop`. Async hooks are not supported by Codex.
 
 3. **Cline hooks** (`packages/server/src/cline/`): Cline runs bash scripts from `~/Documents/Cline/Hooks/` that pipe JSON stdin to `POST /hooks/cline/:hookName`. The Cline handler (`handler.ts`) translates Cline's field/tool-name format to Layman's internal types via a translator (`translator.ts`), then reuses the same event pipeline. PreToolUse blocks for up to 25 seconds (Cline's hardcoded limit is 30s). Sessions require `/layman` activation, tracked by workspace directory (cwd) so activation survives Plan/Act mode switches.
 
