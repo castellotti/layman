@@ -119,7 +119,7 @@ const OPTIONAL_CLIENTS: OptionalClient[] = [
     name: 'OpenCode',
     configDir: join(homedir(), '.config', 'opencode'),
     commandsDir: join(homedir(), '.config', 'opencode', 'commands'),
-    signalFiles: ['opencode.json'],
+    signalFiles: ['package.json'],
   },
   {
     id: 'mistral-vibe',
