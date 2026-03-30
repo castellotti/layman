@@ -104,12 +104,6 @@ export function registerHookHandler(
           }
         }
 
-        // Pre-gate: record all Codex sessions so /api/codex/activate can find them by cwd.
-        // This runs before the gate check, so we capture sessions even when not yet activated.
-        if (sessionId && cwd && agentType === 'codex') {
-          gate.registerPending(sessionId, cwd, agentType);
-        }
-
         // Codex activation: detect @layman in UserPromptSubmit before the gate drops it.
         // When the user types @layman, activate the session immediately so all subsequent
         // hook events (the skill's tool calls, Stop response, etc.) are captured.
