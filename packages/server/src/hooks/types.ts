@@ -6,7 +6,7 @@ export interface HookInputBase {
   hook_event_name: string;
   transcript_path: string;
   permission_mode: 'default' | 'plan' | 'acceptEdits' | 'dontAsk' | 'bypassPermissions';
-  agent_type?: 'claude-code' | 'opencode' | string;
+  agent_type?: 'claude-code' | 'opencode' | 'codex' | string;
 }
 
 export interface PreToolUseInput extends HookInputBase {
@@ -59,6 +59,8 @@ export interface SessionEndInput extends HookInputBase {
 
 export interface StopInput extends HookInputBase {
   hook_event_name: 'Stop';
+  /** Codex provides the agent's final response text directly on Stop events */
+  last_assistant_message?: string | null;
 }
 
 export interface UserPromptSubmitInput extends HookInputBase {

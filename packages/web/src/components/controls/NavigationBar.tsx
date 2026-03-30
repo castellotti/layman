@@ -23,6 +23,7 @@ interface NavigationBarProps {
 
 const AGENT_LABELS: Record<string, string> = {
   'claude-code': 'Claude Code',
+  'codex': 'Codex',
   'opencode': 'OpenCode',
   'mistral-vibe': 'Mistral Vibe',
 };
