@@ -13,7 +13,14 @@ When AI coding assistants like Claude Code, Codex, OpenCode, Mistral Vibe, or Cl
 
 Layman is a dashboard that explains exactly what your AI assistants are doing, in plain language, in your web browser. Understand and remember every file AI reads, every change AI makes, every command AI runs.
 
-**Supported agents:** Claude Code · Codex · OpenCode · Mistral Vibe · Cline
+---
+
+### Supported Agents
+- [Claude Code](https://github.com/anthropics/claude-code)
+- OpenAI [Codex](https://github.com/openai/codex)
+- Mistral [Vibe](https://github.com/mistralai/mistral-vibe)
+- [OpenCode](https://github.com/anomalyco/opencode)
+- [Cline](https://github.com/cline/cline)
 
 ---
 
