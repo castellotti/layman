@@ -189,7 +189,10 @@ function ClientSetupSection() {
       {/* Optional clients */}
       {optionalClients.map((client) => {
         const state = clientState[client.id] ?? 'idle';
-        const ok = client.commandInstalled && client.commandUpToDate;
+        const commandOk = client.commandInstalled && client.commandUpToDate;
+        const hooksOk = client.hooksInstalled === undefined || client.hooksUpToDate !== false;
+        const fullyOk = commandOk && hooksOk;
+        const needsUpdate = client.detected && client.commandInstalled && !fullyOk;
         return (
           <div key={client.id} className="flex items-center justify-between min-h-[28px]">
             <div className="flex items-center gap-2">
@@ -201,21 +204,33 @@ function ClientSetupSection() {
               )}
             </div>
             <div className="flex items-center gap-1.5">
-              {client.detected && ok && (
-                <StatusPip ok={ok} label="/layman" />
+              {client.detected && client.commandInstalled && (
+                <>
+                  <StatusPip ok={commandOk} label="/layman" />
+                  {client.hooksInstalled !== undefined && (
+                    <StatusPip ok={!!client.hooksUpToDate} label="hooks" />
+                  )}
+                </>
               )}
               {state === 'busy' ? (
                 <span className="text-[10px] text-[#8b949e]">...</span>
               ) : state === 'error' ? (
                 <span className="text-[10px] text-[#f85149]">Failed</span>
-              ) : client.detected && !ok ? (
+              ) : client.detected && !client.commandInstalled ? (
                 <button
                   onClick={() => void handleInstallClient(client.id)}
                   className="px-2 py-0.5 text-[10px] font-medium rounded bg-[#238636] text-white hover:bg-[#2ea043] transition-colors"
                 >
                   Install
                 </button>
-              ) : client.detected && ok ? (
+              ) : needsUpdate ? (
+                <button
+                  onClick={() => void handleInstallClient(client.id)}
+                  className="px-2 py-0.5 text-[10px] font-medium rounded bg-[#21262d] border border-[#30363d] text-[#e6edf3] hover:bg-[#30363d] transition-colors"
+                >
+                  Update
+                </button>
+              ) : client.detected && fullyOk ? (
                 <button
                   onClick={() => void handleUninstallClient(client.id)}
                   className="px-2 py-0.5 text-[10px] font-medium rounded bg-[#21262d] border border-[#30363d] text-[#8b949e] hover:bg-[#30363d] hover:text-[#f85149] transition-colors"

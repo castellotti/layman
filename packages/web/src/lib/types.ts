@@ -198,6 +198,8 @@ export interface OptionalClientStatus {
   detected: boolean;
   commandInstalled: boolean;
   commandUpToDate: boolean;
+  hooksInstalled?: boolean;
+  hooksUpToDate?: boolean;
   declined?: boolean;
 }
 
