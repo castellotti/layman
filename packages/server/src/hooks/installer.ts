@@ -38,6 +38,8 @@ export interface OptionalClientStatus {
   detected: boolean;
   commandInstalled: boolean;
   commandUpToDate: boolean;
+  hooksInstalled?: boolean;
+  hooksUpToDate?: boolean;
   declined?: boolean;
 }
 
@@ -71,6 +73,12 @@ interface OptionalClient {
   fileName?: string;
   /** Custom content generator — if omitted, uses the standard layman.md content */
   getContent?: () => string;
+  /**
+   * Files or directories inside configDir whose presence proves the client is
+   * genuinely installed — not just an empty directory created by a Docker bind mount.
+   * If defined, at least one must exist for `detected` to be true.
+   */
+  signalFiles?: string[];
 }
 
 const VIBE_SKILL_CONTENT = `---
@@ -104,12 +112,14 @@ const OPTIONAL_CLIENTS: OptionalClient[] = [
     commandsDir: join(homedir(), '.codex', 'skills', 'layman'),
     fileName: 'SKILL.md',
     getContent: () => CODEX_SKILL_CONTENT,
+    signalFiles: ['config.toml', 'instructions.md'],
   },
   {
     id: 'opencode',
     name: 'OpenCode',
     configDir: join(homedir(), '.config', 'opencode'),
     commandsDir: join(homedir(), '.config', 'opencode', 'commands'),
+    signalFiles: ['opencode.json'],
   },
   {
     id: 'mistral-vibe',
@@ -118,6 +128,7 @@ const OPTIONAL_CLIENTS: OptionalClient[] = [
     commandsDir: join(homedir(), '.vibe', 'skills', 'layman'),
     fileName: 'SKILL.md',
     getContent: () => VIBE_SKILL_CONTENT,
+    signalFiles: ['config.json', 'logs'],
   },
   {
     id: 'cline',
@@ -125,6 +136,7 @@ const OPTIONAL_CLIENTS: OptionalClient[] = [
     configDir: join(homedir(), 'Documents', 'Cline'),
     commandsDir: join(homedir(), 'Documents', 'Cline', 'Workflows'),
     getContent: () => getClineWorkflowContent(),
+    signalFiles: ['Rules'],
   },
 ];
 
@@ -769,7 +781,12 @@ export class HookInstaller {
     // Optional client status
     const defaultContent = getCommandContent();
     const optionalClients: OptionalClientStatus[] = OPTIONAL_CLIENTS.map((client) => {
-      const detected = existsSync(client.configDir);
+      // Check signal files to avoid false positives from empty Docker mount directories
+      const dirExists = existsSync(client.configDir);
+      const detected = dirExists && (
+        !client.signalFiles?.length ||
+        client.signalFiles.some((f) => existsSync(join(client.configDir, f)))
+      );
       const fileName = client.fileName ?? 'layman.md';
       const clientCmdPath = join(client.commandsDir, fileName);
       const content = client.getContent ? client.getContent() : defaultContent;
@@ -778,7 +795,21 @@ export class HookInstaller {
       const commandUpToDate = commandInstalled
         ? readFileSync(clientCmdPath, 'utf-8').includes(`layman:${expectedHash}`)
         : false;
-      return { id: client.id, name: client.name, detected, commandInstalled, commandUpToDate };
+
+      // Hook script status for clients that use them
+      let hooksInstalled: boolean | undefined;
+      let hooksUpToDate: boolean | undefined;
+      if (client.id === 'codex') {
+        const hs = this.getCodexHooksStatus();
+        hooksInstalled = hs.installed;
+        hooksUpToDate = hs.upToDate;
+      } else if (client.id === 'cline') {
+        const hs = this.getClineHooksStatus();
+        hooksInstalled = hs.installed;
+        hooksUpToDate = hs.upToDate;
+      }
+
+      return { id: client.id, name: client.name, detected, commandInstalled, commandUpToDate, hooksInstalled, hooksUpToDate };
     });
 
     return { hooksInstalled, hooksUpToDate, commandInstalled, commandUpToDate, optionalClients };

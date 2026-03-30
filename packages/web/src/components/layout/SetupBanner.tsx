@@ -40,7 +40,9 @@ export function SetupBanner({ onInstall }: { onInstall: () => void }) {
     (!setupStatus.commandUpToDate && setupStatus.commandInstalled);
 
   const detectedClientsNeedingUpdate = setupStatus.optionalClients?.filter(
-    (c) => c.detected && c.commandInstalled && !c.commandUpToDate
+    (c) => c.detected && c.commandInstalled && (
+      !c.commandUpToDate || (c.hooksInstalled && !c.hooksUpToDate)
+    )
   ) ?? [];
 
   if (!needsUpdate && !detectedClientsNeedingUpdate.length) return null;
