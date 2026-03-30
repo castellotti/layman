@@ -26,9 +26,17 @@ import type { SearchRequest } from './db/search.js';
 import type { LaymanConfig } from './config/schema.js';
 import { VibeSessionWatcher } from './vibe/watcher.js';
 import { recoverSessionGaps } from './hooks/recovery.js';
-import type { ServerMessage, ClientMessage, SessionStatus } from './types/index.js';
+import type { ServerMessage, ClientMessage, SessionStatus, SetupStatus } from './types/index.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+
+function mergeDeclined(status: SetupStatus, declinedClients: string[]): SetupStatus {
+  status.claudeCodeDeclined = declinedClients.includes('claude-code');
+  for (const c of status.optionalClients) {
+    c.declined = declinedClients.includes(c.id);
+  }
+  return status;
+}
 
 export interface LaymanServer {
   start(): Promise<void>;
@@ -457,22 +465,88 @@ export function createServer(config: LaymanConfig): LaymanServer {
         serverUrl: resolvedHookUrl,
         hookTimeout: activeConfig.hookTimeout,
       });
-      return installer.getStatus();
+      return mergeDeclined(installer.getStatus(), activeConfig.declinedClients ?? []);
     });
 
-    // Setup install — write hooks + slash command with user consent
-    fastify.post('/api/setup/install', async () => {
+    // Setup install — install selected clients (by id array) or all if omitted
+    fastify.post<{ Body: { clients?: string[] } }>('/api/setup/install', async (request) => {
       const resolvedHookUrl = activeConfig.hookUrl ?? `http://${activeConfig.host}:${activeConfig.port}`;
       const installer = new HookInstaller({
         serverUrl: resolvedHookUrl,
         hookTimeout: activeConfig.hookTimeout,
       });
-      installer.install();
-      installer.installCommand();
-      installer.installOptionalClientCommands();
-      installer.installCodexHooks();
-      installer.installClineHooks();
-      return installer.getStatus();
+      const { clients } = request.body ?? {};
+      if (clients && clients.length > 0) {
+        for (const id of clients) installer.installClient(id);
+        // Remove newly-installed clients from declinedClients
+        activeConfig = updateConfig({
+          declinedClients: (activeConfig.declinedClients ?? []).filter((c) => !clients.includes(c)),
+        });
+        saveConfig(activeConfig);
+        broadcast({ type: 'session:config', config: activeConfig });
+      } else {
+        installer.install();
+        installer.installCommand();
+        installer.installOptionalClientCommands();
+        installer.installCodexHooks();
+        installer.installClineHooks();
+      }
+      return mergeDeclined(installer.getStatus(), activeConfig.declinedClients ?? []);
+    });
+
+    // Setup install single client
+    fastify.post<{ Params: { client: string } }>('/api/setup/install/:client', async (request) => {
+      const { client } = request.params;
+      const resolvedHookUrl = activeConfig.hookUrl ?? `http://${activeConfig.host}:${activeConfig.port}`;
+      const installer = new HookInstaller({
+        serverUrl: resolvedHookUrl,
+        hookTimeout: activeConfig.hookTimeout,
+      });
+      installer.installClient(client);
+      activeConfig = updateConfig({
+        declinedClients: (activeConfig.declinedClients ?? []).filter((c) => c !== client),
+      });
+      saveConfig(activeConfig);
+      broadcast({ type: 'session:config', config: activeConfig });
+      return mergeDeclined(installer.getStatus(), activeConfig.declinedClients ?? []);
+    });
+
+    // Setup uninstall single client
+    fastify.post<{ Params: { client: string } }>('/api/setup/uninstall/:client', async (request) => {
+      const { client } = request.params;
+      const resolvedHookUrl = activeConfig.hookUrl ?? `http://${activeConfig.host}:${activeConfig.port}`;
+      const installer = new HookInstaller({
+        serverUrl: resolvedHookUrl,
+        hookTimeout: activeConfig.hookTimeout,
+      });
+      installer.uninstallClient(client);
+      return mergeDeclined(installer.getStatus(), activeConfig.declinedClients ?? []);
+    });
+
+    // Record declined clients
+    fastify.post<{ Body: { clients: string[] } }>('/api/setup/decline', async (request) => {
+      const { clients } = request.body ?? {};
+      if (clients && clients.length > 0) {
+        activeConfig = updateConfig({
+          declinedClients: [...new Set([...(activeConfig.declinedClients ?? []), ...clients])],
+        });
+        saveConfig(activeConfig);
+        broadcast({ type: 'session:config', config: activeConfig });
+      }
+      return { ok: true };
+    });
+
+    // Remove a client from the declined list (without installing it)
+    fastify.post<{ Params: { client: string } }>('/api/setup/undecline/:client', async (request) => {
+      const { client } = request.params;
+      activeConfig = updateConfig({
+        declinedClients: (activeConfig.declinedClients ?? []).filter((c) => c !== client),
+      });
+      saveConfig(activeConfig);
+      broadcast({ type: 'session:config', config: activeConfig });
+      const resolvedHookUrl = activeConfig.hookUrl ?? `http://${activeConfig.host}:${activeConfig.port}`;
+      const installer = new HookInstaller({ serverUrl: resolvedHookUrl, hookTimeout: activeConfig.hookTimeout });
+      return mergeDeclined(installer.getStatus(), activeConfig.declinedClients ?? []);
     });
 
     // Send a prompt to an OpenCode session.
@@ -1004,11 +1078,21 @@ export function createServer(config: LaymanConfig): LaymanServer {
           serverUrl: resolvedHookUrl,
           hookTimeout: activeConfig.hookTimeout,
         });
-        installer.install();
-        installer.installCommand();
-        installer.installOptionalClientCommands();
-        installer.installCodexHooks();
-      installer.installClineHooks();
+        const clientsToInstall = message.clients;
+        if (clientsToInstall && clientsToInstall.length > 0) {
+          for (const id of clientsToInstall) installer.installClient(id);
+          activeConfig = updateConfig({
+            declinedClients: (activeConfig.declinedClients ?? []).filter((c) => !clientsToInstall.includes(c)),
+          });
+          saveConfig(activeConfig);
+          broadcast({ type: 'session:config', config: activeConfig });
+        } else {
+          installer.install();
+          installer.installCommand();
+          installer.installOptionalClientCommands();
+          installer.installCodexHooks();
+          installer.installClineHooks();
+        }
         break;
       }
       case 'bookmarks:get': {

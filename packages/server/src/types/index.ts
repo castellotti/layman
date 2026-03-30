@@ -41,11 +41,22 @@ export interface SessionStatus {
   uptime: number;
 }
 
+export interface OptionalClientStatus {
+  id: string;
+  name: string;
+  detected: boolean;
+  commandInstalled: boolean;
+  commandUpToDate: boolean;
+  declined?: boolean;
+}
+
 export interface SetupStatus {
   hooksInstalled: boolean;
   hooksUpToDate: boolean;
   commandInstalled: boolean;
   commandUpToDate: boolean;
+  claudeCodeDeclined?: boolean;
+  optionalClients: OptionalClientStatus[];
 }
 
 export type ServerMessage =
@@ -80,5 +91,5 @@ export type ClientMessage =
   | { type: 'both:request'; eventId: string; depth: 'quick' | 'detailed' }
   | { type: 'analysis:ask'; eventId: string; question: string }
   | { type: 'config:update'; config: Partial<LaymanConfig> }
-  | { type: 'setup:install' }
+  | { type: 'setup:install'; clients?: string[] }
   | { type: 'bookmarks:get' };

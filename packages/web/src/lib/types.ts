@@ -192,10 +192,12 @@ export interface QAEntry {
 }
 
 export interface OptionalClientStatus {
+  id: string;
   name: string;
   detected: boolean;
   commandInstalled: boolean;
   commandUpToDate: boolean;
+  declined?: boolean;
 }
 
 export interface SetupStatus {
@@ -203,5 +205,6 @@ export interface SetupStatus {
   hooksUpToDate: boolean;
   commandInstalled: boolean;
   commandUpToDate: boolean;
+  claudeCodeDeclined?: boolean;
   optionalClients: OptionalClientStatus[];
 }
