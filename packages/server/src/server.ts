@@ -462,6 +462,7 @@ export function createServer(config: LaymanConfig): LaymanServer {
       installer.install();
       installer.installCommand();
       installer.installOptionalClientCommands();
+      installer.installCodexHooks();
       installer.installClineHooks();
       return installer.getStatus();
     });
@@ -566,6 +567,27 @@ export function createServer(config: LaymanConfig): LaymanServer {
 
       gate.activate(sessionId);
       return { ok: true, sessionId };
+    });
+
+    // Codex activation via cwd — called by the @layman skill sub-agent.
+    // Codex's @skill system spawns sub-agents with different session IDs, so we can't
+    // detect activation from the hook stream alone. The SKILL.md instructs the sub-agent
+    // to POST the working directory here; we find all pending Codex sessions with that cwd
+    // and activate them (both parent and sub-agent, which is acceptable noise).
+    fastify.post<{ Body: { cwd?: string } }>('/api/codex/activate', async (request, reply) => {
+      const cwd = (request.body as { cwd?: string } | null)?.cwd?.trim();
+
+      if (!cwd) {
+        return reply.status(400).send({ error: 'cwd required: {"cwd":"/path/to/project"}' });
+      }
+
+      const sessionIds = gate.activateByCwd(cwd, 'codex');
+      for (const sessionId of sessionIds) {
+        eventStore.trackSession(sessionId, cwd, 'codex');
+        console.log(`[codex] Session ${sessionId.slice(0, 8)} activated via @layman skill (cwd: ${cwd})`);
+      }
+
+      return { ok: true, activated: sessionIds.length, sessionIds };
     });
 
     // Deactivate a session
@@ -998,7 +1020,8 @@ export function createServer(config: LaymanConfig): LaymanServer {
         installer.install();
         installer.installCommand();
         installer.installOptionalClientCommands();
-        installer.installClineHooks();
+        installer.installCodexHooks();
+      installer.installClineHooks();
         break;
       }
       case 'bookmarks:get': {

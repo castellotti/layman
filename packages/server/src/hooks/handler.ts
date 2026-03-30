@@ -62,14 +62,17 @@ export function registerHookHandler(
         // with SubagentStart's agent_type field (which is the subagent name, not the source agent)
         const rawAgentType = (body as { agent_type?: string }).agent_type;
         const agentType =
-          rawAgentType === 'opencode' ? 'opencode' : 'claude-code';
+          rawAgentType === 'opencode' ? 'opencode'
+          : rawAgentType === 'codex' ? 'codex'
+          : 'claude-code';
         const opencodeUrl = (body as { opencode_url?: string }).opencode_url;
 
         // Gate check: detect activation command before gating so we can activate
         if (sessionId && eventName === 'PreToolUse') {
           const toolName = (body as { tool_name?: string }).tool_name;
           const toolInput = (body as { tool_input?: Record<string, unknown> }).tool_input;
-          if (toolName === 'Bash' && toolInput) {
+          // 'Bash' = Claude Code/Cline; 'shell' = Codex
+          if ((toolName === 'Bash' || toolName === 'shell') && toolInput) {
             const command = (toolInput as { command?: string }).command ?? '';
             if (ACTIVATION_PATTERN.test(command)) {
               const isNewActivation = gate.activate(sessionId);
@@ -98,6 +101,28 @@ export function registerHookHandler(
 
               return reply.send({});
             }
+          }
+        }
+
+        // Pre-gate: record all Codex sessions so /api/codex/activate can find them by cwd.
+        // This runs before the gate check, so we capture sessions even when not yet activated.
+        if (sessionId && cwd && agentType === 'codex') {
+          gate.registerPending(sessionId, cwd, agentType);
+        }
+
+        // Codex activation: detect @layman in UserPromptSubmit before the gate drops it.
+        // When the user types @layman, activate the session immediately so all subsequent
+        // hook events (the skill's tool calls, Stop response, etc.) are captured.
+        // This fires before the gate check below, so it works even on the very first event.
+        if (sessionId && eventName === 'UserPromptSubmit' && agentType === 'codex') {
+          const prompt = ((body as { prompt?: string }).prompt ?? '').trim();
+          if (/^@layman\b/i.test(prompt)) {
+            const isNewActivation = gate.activate(sessionId);
+            if (cwd) eventStore.trackSession(sessionId, cwd, agentType);
+            if (isNewActivation) {
+              console.log(`[codex] Session ${sessionId.slice(0, 8)} activated via @layman`);
+            }
+            // Fall through — record the user_prompt event so @layman appears in the timeline
           }
         }
 
@@ -503,6 +528,14 @@ async function handleStop(
   agentType: string = 'claude-code'
 ): Promise<void> {
   eventStore.add('agent_stop', input.session_id, {}, undefined, agentType);
+
+  // Codex provides the agent's final response text directly in last_assistant_message.
+  // Use it directly instead of parsing a transcript file.
+  if (input.last_assistant_message) {
+    eventStore.add('agent_response', input.session_id, { prompt: input.last_assistant_message }, undefined, agentType);
+    return;
+  }
+
   // Emit the final assistant response (and any intermediate messages not yet emitted).
   // The transcript file may not be flushed yet when Stop fires, so retry after a short
   // delay if the first read finds nothing new.
@@ -513,11 +546,13 @@ async function handleStop(
   }
 }
 
-/** Remap host ~/.claude path to container-mounted /root/.claude path */
+/** Remap host ~/.claude or ~/.codex path to container-mounted /root/... path */
 function remapTranscriptPath(hostPath: string): string {
-  const match = hostPath.match(/\.claude\/(.+)$/);
-  if (!match) return hostPath;
-  return `/root/.claude/${match[1]}`;
+  const claudeMatch = hostPath.match(/\.claude\/(.+)$/);
+  if (claudeMatch) return `/root/.claude/${claudeMatch[1]}`;
+  const codexMatch = hostPath.match(/\.codex\/(.+)$/);
+  if (codexMatch) return `/root/.codex/${codexMatch[1]}`;
+  return hostPath;
 }
 
 /** Read transcript content, trying Docker-remapped path first then original */

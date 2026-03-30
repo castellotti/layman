@@ -41,6 +41,7 @@ Layman is a pnpm monorepo with two packages:
 | Agent | Integration mechanism | Activation |
 |---|---|---|
 | Claude Code | HTTP hook POSTs to `/hooks/:eventName` | `/layman` slash command |
+| Codex | Shell-script hooks via `~/.codex/hooks.json` | Auto (always-on after install) |
 | OpenCode | Bidirectional plugin (`packages/opencode-plugin`) | `/layman` slash command |
 | Mistral Vibe | Passive file watcher on `~/.vibe/logs/session/` | `/layman` slash command |
 | Cline | Shell-script hooks in `~/Documents/Cline/Hooks/` | `/layman` workflow in Cline |
@@ -49,23 +50,25 @@ Layman is a pnpm monorepo with two packages:
 
 1. **Claude Code hooks**: Claude Code fires HTTP POSTs to `/hooks/:eventName` (e.g. `PreToolUse`, `PostToolUse`, `SessionStart`). The hook handler in `packages/server/src/hooks/handler.ts` processes each event type, calls `EventStore.add()`, and for blocking hooks (`PreToolUse`, `PermissionRequest`) calls `PendingApprovalManager.createAndWait()` which suspends until the user decides.
 
-2. **Cline hooks** (`packages/server/src/cline/`): Cline runs bash scripts from `~/Documents/Cline/Hooks/` that pipe JSON stdin to `POST /hooks/cline/:hookName`. The Cline handler (`handler.ts`) translates Cline's field/tool-name format to Layman's internal types via a translator (`translator.ts`), then reuses the same event pipeline. PreToolUse blocks for up to 25 seconds (Cline's hardcoded limit is 30s). Sessions require `/layman` activation, tracked by workspace directory (cwd) so activation survives Plan/Act mode switches.
+2. **Codex hooks** (`packages/server/hooks/codex/`): Codex reads hook config from `~/.codex/hooks.json` and runs shell scripts from `~/.codex/hooks/layman/`. These scripts read hook JSON from stdin, inject `agent_type: "codex"`, and POST to the existing `/hooks/:eventName` handler via curl. The hook format is Claude Code-compatible — same field names and event names — so no separate handler is needed. `PreToolUse` blocks for up to 58 seconds. The `Stop` hook payload includes `last_assistant_message` which the handler uses to emit the agent's final response. Codex sessions auto-activate on first contact (no `/layman` required). Codex supports 5 hook events: `PreToolUse`, `PostToolUse`, `SessionStart`, `UserPromptSubmit`, `Stop`. Async hooks are not supported by Codex.
 
-3. **Mistral Vibe watcher** (`packages/server/src/vibe/watcher.ts`): Polls `~/.vibe/logs/session/<dir>/messages.jsonl` every 2 seconds from a tracked byte offset. Translates Vibe's JSONL message format to Layman events. Sessions require `/layman` activation; sessions idle for 15+ minutes are treated as ended. Sessions within a 5-minute replay window are read from the beginning.
+3. **Cline hooks** (`packages/server/src/cline/`): Cline runs bash scripts from `~/Documents/Cline/Hooks/` that pipe JSON stdin to `POST /hooks/cline/:hookName`. The Cline handler (`handler.ts`) translates Cline's field/tool-name format to Layman's internal types via a translator (`translator.ts`), then reuses the same event pipeline. PreToolUse blocks for up to 25 seconds (Cline's hardcoded limit is 30s). Sessions require `/layman` activation, tracked by workspace directory (cwd) so activation survives Plan/Act mode switches.
 
-4. **OpenCode plugin** (`packages/opencode-plugin`): A bidirectional plugin that receives events from OpenCode and can send prompts back. Registered in `~/.config/opencode/opencode.json`.
+4. **Mistral Vibe watcher** (`packages/server/src/vibe/watcher.ts`): Polls `~/.vibe/logs/session/<dir>/messages.jsonl` every 2 seconds from a tracked byte offset. Translates Vibe's JSONL message format to Layman events. Sessions require `/layman` activation; sessions idle for 15+ minutes are treated as ended. Sessions within a 5-minute replay window are read from the beginning.
 
-5. **EventStore** (`packages/server/src/events/store.ts`) — in-memory, max 10,000 events, emits `event:new` / `event:update` / `sessions:changed`. Also tracks active sessions (sessionId → cwd) via `trackSession()`. Events passing through the store are automatically scanned by the PII filter before storage.
+5. **OpenCode plugin** (`packages/opencode-plugin`): A bidirectional plugin that receives events from OpenCode and can send prompts back. Registered in `~/.config/opencode/opencode.json`.
 
-6. **Session recording** (`packages/server/src/db/`) — SQLite database (`~/.local/share/layman/layman.db`) records all events for history and full-text search. Search uses SQLite FTS5 with a custom query parser supporting `+required`, `-excluded`, and `"quoted phrases"` operators.
+6. **EventStore** (`packages/server/src/events/store.ts`) — in-memory, max 10,000 events, emits `event:new` / `event:update` / `sessions:changed`. Also tracks active sessions (sessionId → cwd) via `trackSession()`. Events passing through the store are automatically scanned by the PII filter before storage.
 
-7. **WebSocket** (`/ws`): On connect, server replays the last 100 events, all pending approvals, config, and current sessions list. After that, all changes are pushed as typed `ServerMessage` frames. The protocol is defined in `packages/server/src/types/index.ts` (server) and mirrored in `packages/web/src/lib/ws-protocol.ts` (client) — keep these in sync when adding message types.
+7. **Session recording** (`packages/server/src/db/`) — SQLite database (`~/.local/share/layman/layman.db`) records all events for history and full-text search. Search uses SQLite FTS5 with a custom query parser supporting `+required`, `-excluded`, and `"quoted phrases"` operators.
 
-8. **Analysis engine** (`packages/server/src/analysis/engine.ts`) — wraps Anthropic or OpenAI-compatible providers, supports `analyze()` (structured JSON → `AnalysisResult`) and `ask()` (free-form Q&A). Both return `{ text/result, tokens: { input, output }, latencyMs, model }`. Max 3 concurrent requests with a queue.
+8. **WebSocket** (`/ws`): On connect, server replays the last 100 events, all pending approvals, config, and current sessions list. After that, all changes are pushed as typed `ServerMessage` frames. The protocol is defined in `packages/server/src/types/index.ts` (server) and mirrored in `packages/web/src/lib/ws-protocol.ts` (client) — keep these in sync when adding message types.
 
-9. **PII filter** (`packages/server/src/pii/filter.ts`) — regex-based redaction covering 24 categories (emails, API keys, passwords, credit cards, JWTs, etc.). Applied at the EventStore level so all events are covered regardless of source.
+9. **Analysis engine** (`packages/server/src/analysis/engine.ts`) — wraps Anthropic or OpenAI-compatible providers, supports `analyze()` (structured JSON → `AnalysisResult`) and `ask()` (free-form Q&A). Both return `{ text/result, tokens: { input, output }, latencyMs, model }`. Max 3 concurrent requests with a queue.
 
-10. **Client state** — Zustand store in `packages/web/src/stores/sessionStore.ts` holds all events, pending approvals, sessions list, active session filter, and investigation state. The `useEventStore()` hook at `packages/web/src/hooks/useEventStore.ts` applies session + UI filters on top.
+10. **PII filter** (`packages/server/src/pii/filter.ts`) — regex-based redaction covering 24 categories (emails, API keys, passwords, credit cards, JWTs, etc.). Applied at the EventStore level so all events are covered regardless of source.
+
+11. **Client state** — Zustand store in `packages/web/src/stores/sessionStore.ts` holds all events, pending approvals, sessions list, active session filter, and investigation state. The `useEventStore()` hook at `packages/web/src/hooks/useEventStore.ts` applies session + UI filters on top.
 
 ### Key design decisions
 
@@ -83,14 +86,15 @@ Layman is a pnpm monorepo with two packages:
 
 - **Type duplication**: `EventData`, `TimelineEvent`, `AnalysisResult`, and the WebSocket protocol types exist in both the server (`packages/server/src/`) and the client (`packages/web/src/lib/types.ts`, `ws-protocol.ts`). They must be kept in sync manually — there is no shared package.
 
-- **Docker mounts**: The container mounts `${HOME}/.claude` (Claude Code hooks/commands), `${HOME}/.config` (OpenCode detection/commands), `${HOME}/.vibe` (Vibe log watching), and `${HOME}/Documents/Cline` (Cline hook script installation). The `HookInstaller` runs inside the container and writes through these mounts to the host filesystem.
+- **Docker mounts**: The container mounts `${HOME}/.claude` (Claude Code hooks/commands), `${HOME}/.config` (OpenCode detection/commands), `${HOME}/.vibe` (Vibe log watching), `${HOME}/Documents/Cline` (Cline hook script installation), and `${HOME}/.codex` (Codex hook script installation and hooks.json). The `HookInstaller` runs inside the container and writes through these mounts to the host filesystem.
 
 ### Hook installer (`packages/server/src/hooks/installer.ts`)
 
 Manages installation of hooks and slash commands for all supported clients. Key methods:
 - `install()` — writes Claude Code global hooks and runs optional-client detection
+- `installCodexHooks()` — writes bash hook scripts to `~/.codex/hooks/layman/` and merges entries into `~/.codex/hooks.json`
 - `installClineHooks()` — writes bash hook scripts to `~/Documents/Cline/Hooks/` with `__LAYMAN_URL__` templated in
 - `getStatus()` — returns installation state for all clients (used by the Settings UI)
 - `uninstall()` — removes all Layman-managed files
 
-Optional clients (OpenCode, Mistral Vibe, Cline) are detected by checking whether their config directories exist on the host filesystem. If detected, the corresponding `/layman` command or workflow file is written.
+Optional clients (OpenCode, Codex, Mistral Vibe, Cline) are detected by checking whether their config directories exist on the host filesystem. If detected, the corresponding `/layman` command, skill, or workflow file is written.
