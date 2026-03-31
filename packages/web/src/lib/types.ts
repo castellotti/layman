@@ -153,6 +153,8 @@ export interface LaymanConfig {
   piiFilter: boolean;
   showFullCommand: boolean;
   switchToNewestSession: boolean;
+  collapseHistory: boolean;
+  autoScroll: boolean;
 }
 
 export interface BookmarkFolder {

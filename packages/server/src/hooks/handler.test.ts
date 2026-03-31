@@ -40,6 +40,8 @@ const MOCK_CONFIG: LaymanConfig = {
   piiFilter: true,
   showFullCommand: false,
   switchToNewestSession: false,
+  collapseHistory: true,
+  autoScroll: true,
   declinedClients: [],
 };
 

@@ -1,5 +1,6 @@
 import React, { useCallback } from 'react';
 import type { TimelineEvent, QAEntry } from '../../lib/types.js';
+import { useSessionStore } from '../../stores/sessionStore.js';
 import { EventCard } from '../events/EventCard.js';
 import type { ClientMessage } from '../../lib/ws-protocol.js';
 
@@ -18,6 +19,9 @@ export function HistoricalEventStream({
   onSelectEvent,
   onSend,
 }: HistoricalEventStreamProps) {
+  const { config } = useSessionStore();
+  const collapseHistory = config?.collapseHistory ?? true;
+
   const qaByEvent = useCallback(() => {
     const map = new Map<string, QAEntry[]>();
     for (const qa of qaEntries) {
@@ -58,7 +62,7 @@ export function HistoricalEventStream({
                 isSelected={selectedEventId === event.id}
                 onClick={() => onSelectEvent(selectedEventId === event.id ? null : event.id)}
                 onSend={onSend}
-                collapseHistory={false}
+                collapseHistory={collapseHistory}
               />
               {eventQA.length > 0 && selectedEventId === event.id && (
                 <div className="ml-4 mt-1 mb-2 border-l-2 border-[#30363d] pl-3 space-y-2">

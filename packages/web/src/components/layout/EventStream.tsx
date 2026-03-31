@@ -12,38 +12,26 @@ interface EventStreamProps {
 
 export function EventStream({ onSend }: EventStreamProps) {
   const [promptsOnly, setPromptsOnly] = useState(false);
+  const [responsesOnly, setResponsesOnly] = useState(false);
+  const [requestsOnly, setRequestsOnly] = useState(false);
   const [riskyOnly, setRiskyOnly] = useState(false);
-  const [collapseHistory, setCollapseHistory] = useState(true);
-  const [autoScroll, setAutoScroll] = useState(true);
   const [selectedIndex, setSelectedIndex] = useState(-1);
   const [followLatest, setFollowLatest] = useState(true);
-  const [activeAgentTypes, setActiveAgentTypes] = useState<string[]>([]);
 
   const scrollRef = useRef<HTMLDivElement>(null);
-  const { setSelectedEvent, sessions, activeSessionId } = useSessionStore();
+  const { setSelectedEvent, sessions, activeSessionId, config } = useSessionStore();
+
+  const collapseHistory = config?.collapseHistory ?? true;
+  const autoScroll = config?.autoScroll ?? true;
 
   // Show agent badges only when sessions from multiple agent types are active
-  const availableAgentTypes = [...new Set(sessions.map((s) => s.agentType))];
-  const showAgentBadge = availableAgentTypes.length > 1;
-
-  const handleToggleAgentType = (agentType: string) => {
-    setActiveAgentTypes((prev) => {
-      if (prev.length === 0) {
-        // Currently showing all — filter to only the others
-        return availableAgentTypes.filter((at) => at !== agentType);
-      }
-      if (prev.includes(agentType)) {
-        const next = prev.filter((at) => at !== agentType);
-        return next.length === 0 ? [] : next; // If none left, show all
-      }
-      return [...prev, agentType];
-    });
-  };
+  const showAgentBadge = new Set(sessions.map((s) => s.agentType)).size > 1;
 
   const { events, totalCount } = useEventStore({
     promptsOnly,
+    responsesOnly,
+    requestsOnly,
     riskyOnly,
-    agentTypes: activeAgentTypes.length > 0 ? activeAgentTypes : undefined,
   });
 
   // Auto-scroll to bottom when new events arrive and following
@@ -90,16 +78,6 @@ export function EventStream({ onSend }: EventStreamProps) {
       setFollowLatest(false);
     }
   };
-
-  const handleToggleAutoScroll = useCallback(() => {
-    setAutoScroll((prev) => {
-      if (!prev) {
-        // Re-enabling: resume following
-        setFollowLatest(true);
-      }
-      return !prev;
-    });
-  }, []);
 
   const jumpToLatest = useCallback(() => {
     const idx = events.length - 1;
@@ -162,6 +140,14 @@ export function EventStream({ onSend }: EventStreamProps) {
         case 'P':
           setPromptsOnly((v) => !v);
           break;
+        case 'o':
+        case 'O':
+          setResponsesOnly((v) => !v);
+          break;
+        case 'q':
+        case 'Q':
+          setRequestsOnly((v) => !v);
+          break;
         case 'r':
         case 'R':
           setRiskyOnly((v) => !v);
@@ -195,16 +181,13 @@ export function EventStream({ onSend }: EventStreamProps) {
           setFollowLatest(true);
         }}
         promptsOnly={promptsOnly}
+        responsesOnly={responsesOnly}
+        requestsOnly={requestsOnly}
         riskyOnly={riskyOnly}
-        collapseHistory={collapseHistory}
-        autoScroll={autoScroll}
         onTogglePromptsOnly={() => setPromptsOnly((v) => !v)}
+        onToggleResponsesOnly={() => setResponsesOnly((v) => !v)}
+        onToggleRequestsOnly={() => setRequestsOnly((v) => !v)}
         onToggleRiskyOnly={() => setRiskyOnly((v) => !v)}
-        onToggleCollapseHistory={() => setCollapseHistory((v) => !v)}
-        onToggleAutoScroll={handleToggleAutoScroll}
-        availableAgentTypes={availableAgentTypes}
-        activeAgentTypes={activeAgentTypes}
-        onToggleAgentType={handleToggleAgentType}
         onPrint={handlePrint}
       />
 
