@@ -2,7 +2,7 @@ You are activating the Layman monitoring dashboard. Follow these steps:
 
 1. If you are in Plan mode, switch to Act mode first — the activation requires running a shell command.
 
-2. Activate this session with Layman by running:
+2. Use a shell/terminal tool to execute this exact command (do NOT just output it as text — you MUST run it):
    `echo "layman:activate"`
 
 3. Tell the user:
