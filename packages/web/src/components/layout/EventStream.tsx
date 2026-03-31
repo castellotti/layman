@@ -17,7 +17,6 @@ export function EventStream({ onSend }: EventStreamProps) {
   const [riskyOnly, setRiskyOnly] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(-1);
   const [followLatest, setFollowLatest] = useState(true);
-  const [activeAgentTypes, setActiveAgentTypes] = useState<string[]>([]);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const { setSelectedEvent, sessions, activeSessionId, config } = useSessionStore();
@@ -26,29 +25,13 @@ export function EventStream({ onSend }: EventStreamProps) {
   const autoScroll = config?.autoScroll ?? true;
 
   // Show agent badges only when sessions from multiple agent types are active
-  const availableAgentTypes = [...new Set(sessions.map((s) => s.agentType))];
-  const showAgentBadge = availableAgentTypes.length > 1;
-
-  const handleToggleAgentType = (agentType: string) => {
-    setActiveAgentTypes((prev) => {
-      if (prev.length === 0) {
-        // Currently showing all — filter to only the others
-        return availableAgentTypes.filter((at) => at !== agentType);
-      }
-      if (prev.includes(agentType)) {
-        const next = prev.filter((at) => at !== agentType);
-        return next.length === 0 ? [] : next; // If none left, show all
-      }
-      return [...prev, agentType];
-    });
-  };
+  const showAgentBadge = new Set(sessions.map((s) => s.agentType)).size > 1;
 
   const { events, totalCount } = useEventStore({
     promptsOnly,
     responsesOnly,
     requestsOnly,
     riskyOnly,
-    agentTypes: activeAgentTypes.length > 0 ? activeAgentTypes : undefined,
   });
 
   // Auto-scroll to bottom when new events arrive and following
@@ -205,9 +188,6 @@ export function EventStream({ onSend }: EventStreamProps) {
         onToggleResponsesOnly={() => setResponsesOnly((v) => !v)}
         onToggleRequestsOnly={() => setRequestsOnly((v) => !v)}
         onToggleRiskyOnly={() => setRiskyOnly((v) => !v)}
-        availableAgentTypes={availableAgentTypes}
-        activeAgentTypes={activeAgentTypes}
-        onToggleAgentType={handleToggleAgentType}
         onPrint={handlePrint}
       />
 

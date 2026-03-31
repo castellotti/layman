@@ -16,30 +16,6 @@ interface NavigationBarProps {
   onToggleRequestsOnly: () => void;
   onToggleRiskyOnly: () => void;
   onPrint?: () => void;
-  availableAgentTypes?: string[];
-  activeAgentTypes?: string[];
-  onToggleAgentType?: (agentType: string) => void;
-}
-
-const AGENT_LABELS: Record<string, string> = {
-  'claude-code': 'Claude Code',
-  'codex': 'Codex',
-  'opencode': 'OpenCode',
-  'mistral-vibe': 'Mistral Vibe',
-  'cline': 'Cline',
-};
-
-const AGENT_ORDER = ['claude-code', 'codex', 'opencode', 'mistral-vibe', 'cline'];
-
-function sortAgentTypes(types: string[]): string[] {
-  return [...types].sort((a, b) => {
-    const ai = AGENT_ORDER.indexOf(a);
-    const bi = AGENT_ORDER.indexOf(b);
-    if (ai === -1 && bi === -1) return a.localeCompare(b);
-    if (ai === -1) return 1;
-    if (bi === -1) return -1;
-    return ai - bi;
-  });
 }
 
 export function NavigationBar({
@@ -58,9 +34,6 @@ export function NavigationBar({
   onToggleRequestsOnly,
   onToggleRiskyOnly,
   onPrint,
-  availableAgentTypes,
-  activeAgentTypes,
-  onToggleAgentType,
 }: NavigationBarProps) {
   return (
     <div data-print-hide className="flex items-center gap-3 px-4 py-2 bg-[#161b22] border-b border-[#30363d] text-xs flex-wrap">
@@ -156,33 +129,6 @@ export function NavigationBar({
           Risk
         </button>
       </div>
-
-      {/* Agent type pills */}
-      {availableAgentTypes && availableAgentTypes.length > 1 && onToggleAgentType && (
-        <>
-          <div className="h-4 w-px bg-[#30363d]" />
-          <div className="flex items-center gap-1.5">
-            {sortAgentTypes(availableAgentTypes).map((at) => {
-              const isActive = !activeAgentTypes || activeAgentTypes.length === 0 || activeAgentTypes.includes(at);
-              const label = AGENT_LABELS[at] ?? at;
-              return (
-                <button
-                  key={at}
-                  onClick={() => onToggleAgentType(at)}
-                  className={`px-2 py-0.5 text-[10px] rounded-full border transition-colors ${
-                    isActive
-                      ? 'bg-[#21262d] border-[#a371f7] text-[#a371f7]'
-                      : 'bg-transparent border-[#30363d] text-[#484f58] hover:text-[#8b949e]'
-                  }`}
-                  title={`Toggle ${label}`}
-                >
-                  {label}
-                </button>
-              );
-            })}
-          </div>
-        </>
-      )}
 
       {/* Export */}
       {onPrint && (
