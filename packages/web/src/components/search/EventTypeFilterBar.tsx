@@ -28,7 +28,8 @@ interface EventTypeFilterBarProps {
 
 export function EventTypeFilterBar({ filters, onChange }: EventTypeFilterBarProps) {
   return (
-    <div className="flex flex-wrap items-center gap-1.5 px-2 py-1.5">
+    <div className="flex flex-wrap items-center gap-1.5 px-2 py-1.5 text-xs">
+      <span className="text-[#484f58]">Display:</span>
       {PILLS.map((pill) => {
         const active = filters[pill.key];
         return (

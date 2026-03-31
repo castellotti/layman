@@ -107,7 +107,7 @@ export function NavigationBar({
 
       {/* Filter pills */}
       <div className="flex items-center gap-1.5">
-        <span className="text-[#484f58]">Display:</span>
+        <span className="text-[#484f58]">Filters:</span>
         <button
           onClick={onTogglePromptsOnly}
           className={`px-2 py-0.5 text-[10px] rounded-full border transition-colors ${
