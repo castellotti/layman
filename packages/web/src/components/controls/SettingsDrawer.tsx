@@ -827,6 +827,46 @@ export function SettingsDrawer({ onSend }: SettingsDrawerProps) {
                   />
                 </div>
               </label>
+              <label className="flex items-center justify-between cursor-pointer">
+                <div>
+                  <span className="text-xs text-[#e6edf3]">Collapse history</span>
+                  <p className="text-[10px] text-[#484f58] mt-0.5">
+                    Collapse all event entries by default. Click an event to expand it.
+                  </p>
+                </div>
+                <div
+                  onClick={() => updateConfig({ collapseHistory: !config.collapseHistory })}
+                  className={`relative w-8 h-4 rounded-full transition-colors cursor-pointer shrink-0 ml-3 ${
+                    config.collapseHistory ? 'bg-[#238636]' : 'bg-[#30363d]'
+                  }`}
+                >
+                  <div
+                    className={`absolute top-0.5 w-3 h-3 bg-white rounded-full transition-transform ${
+                      config.collapseHistory ? 'translate-x-4' : 'translate-x-0.5'
+                    }`}
+                  />
+                </div>
+              </label>
+              <label className="flex items-center justify-between cursor-pointer">
+                <div>
+                  <span className="text-xs text-[#e6edf3]">Auto-scroll</span>
+                  <p className="text-[10px] text-[#484f58] mt-0.5">
+                    Automatically scroll to the newest event as they arrive during a live session.
+                  </p>
+                </div>
+                <div
+                  onClick={() => updateConfig({ autoScroll: !config.autoScroll })}
+                  className={`relative w-8 h-4 rounded-full transition-colors cursor-pointer shrink-0 ml-3 ${
+                    config.autoScroll ? 'bg-[#238636]' : 'bg-[#30363d]'
+                  }`}
+                >
+                  <div
+                    className={`absolute top-0.5 w-3 h-3 bg-white rounded-full transition-transform ${
+                      config.autoScroll ? 'translate-x-4' : 'translate-x-0.5'
+                    }`}
+                  />
+                </div>
+              </label>
             </div>
           </section>
 

@@ -12,15 +12,17 @@ interface EventStreamProps {
 
 export function EventStream({ onSend }: EventStreamProps) {
   const [promptsOnly, setPromptsOnly] = useState(false);
+  const [responsesOnly, setResponsesOnly] = useState(false);
   const [riskyOnly, setRiskyOnly] = useState(false);
-  const [collapseHistory, setCollapseHistory] = useState(true);
-  const [autoScroll, setAutoScroll] = useState(true);
   const [selectedIndex, setSelectedIndex] = useState(-1);
   const [followLatest, setFollowLatest] = useState(true);
   const [activeAgentTypes, setActiveAgentTypes] = useState<string[]>([]);
 
   const scrollRef = useRef<HTMLDivElement>(null);
-  const { setSelectedEvent, sessions, activeSessionId } = useSessionStore();
+  const { setSelectedEvent, sessions, activeSessionId, config } = useSessionStore();
+
+  const collapseHistory = config?.collapseHistory ?? true;
+  const autoScroll = config?.autoScroll ?? true;
 
   // Show agent badges only when sessions from multiple agent types are active
   const availableAgentTypes = [...new Set(sessions.map((s) => s.agentType))];
@@ -42,6 +44,7 @@ export function EventStream({ onSend }: EventStreamProps) {
 
   const { events, totalCount } = useEventStore({
     promptsOnly,
+    responsesOnly,
     riskyOnly,
     agentTypes: activeAgentTypes.length > 0 ? activeAgentTypes : undefined,
   });
@@ -90,16 +93,6 @@ export function EventStream({ onSend }: EventStreamProps) {
       setFollowLatest(false);
     }
   };
-
-  const handleToggleAutoScroll = useCallback(() => {
-    setAutoScroll((prev) => {
-      if (!prev) {
-        // Re-enabling: resume following
-        setFollowLatest(true);
-      }
-      return !prev;
-    });
-  }, []);
 
   const jumpToLatest = useCallback(() => {
     const idx = events.length - 1;
@@ -162,6 +155,10 @@ export function EventStream({ onSend }: EventStreamProps) {
         case 'P':
           setPromptsOnly((v) => !v);
           break;
+        case 'o':
+        case 'O':
+          setResponsesOnly((v) => !v);
+          break;
         case 'r':
         case 'R':
           setRiskyOnly((v) => !v);
@@ -195,13 +192,11 @@ export function EventStream({ onSend }: EventStreamProps) {
           setFollowLatest(true);
         }}
         promptsOnly={promptsOnly}
+        responsesOnly={responsesOnly}
         riskyOnly={riskyOnly}
-        collapseHistory={collapseHistory}
-        autoScroll={autoScroll}
         onTogglePromptsOnly={() => setPromptsOnly((v) => !v)}
+        onToggleResponsesOnly={() => setResponsesOnly((v) => !v)}
         onToggleRiskyOnly={() => setRiskyOnly((v) => !v)}
-        onToggleCollapseHistory={() => setCollapseHistory((v) => !v)}
-        onToggleAutoScroll={handleToggleAutoScroll}
         availableAgentTypes={availableAgentTypes}
         activeAgentTypes={activeAgentTypes}
         onToggleAgentType={handleToggleAgentType}
