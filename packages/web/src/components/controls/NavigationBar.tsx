@@ -9,9 +9,11 @@ interface NavigationBarProps {
   onLatest: () => void;
   promptsOnly: boolean;
   responsesOnly: boolean;
+  requestsOnly: boolean;
   riskyOnly: boolean;
   onTogglePromptsOnly: () => void;
   onToggleResponsesOnly: () => void;
+  onToggleRequestsOnly: () => void;
   onToggleRiskyOnly: () => void;
   onPrint?: () => void;
   availableAgentTypes?: string[];
@@ -49,9 +51,11 @@ export function NavigationBar({
   onLatest,
   promptsOnly,
   responsesOnly,
+  requestsOnly,
   riskyOnly,
   onTogglePromptsOnly,
   onToggleResponsesOnly,
+  onToggleRequestsOnly,
   onToggleRiskyOnly,
   onPrint,
   availableAgentTypes,
@@ -129,6 +133,18 @@ export function NavigationBar({
         </button>
 
         <button
+          onClick={onToggleRequestsOnly}
+          className={`px-2 py-0.5 text-[10px] rounded-full border transition-colors ${
+            requestsOnly
+              ? 'bg-[#21262d] border-[#58a6ff] text-[#e6edf3]'
+              : 'bg-transparent border-[#30363d] text-[#484f58] hover:text-[#8b949e]'
+          }`}
+          title="Show only permission requests (Q)"
+        >
+          Requests
+        </button>
+
+        <button
           onClick={onToggleRiskyOnly}
           className={`px-2 py-0.5 text-[10px] rounded-full border transition-colors ${
             riskyOnly
@@ -137,7 +153,7 @@ export function NavigationBar({
           }`}
           title="Show only medium/high risk events (R)"
         >
-          Risky
+          Risk
         </button>
       </div>
 

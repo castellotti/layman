@@ -45,10 +45,12 @@ export interface EventTypeFilters {
   prompts: boolean;
   responses: boolean;
   responseFinalOnly: boolean;
+  requests: boolean;
   questions: boolean;
   tools: boolean;
   laymans: boolean;
   analysis: boolean;
+  risk: boolean;
   system: boolean;
 }
 
@@ -56,17 +58,19 @@ export const DEFAULT_EVENT_TYPE_FILTERS: EventTypeFilters = {
   prompts: true,
   responses: true,
   responseFinalOnly: false,
+  requests: true,
   questions: true,
   tools: true,
   laymans: true,
   analysis: true,
+  risk: false,
   system: false,
 };
 
 export const EVENT_TYPE_CATEGORY_MAP: Record<string, (keyof EventTypeFilters)[]> = {
   user_prompt: ['prompts'],
   agent_response: ['responses'],
-  permission_request: ['questions'],
+  permission_request: ['questions', 'requests'],
   elicitation: ['questions'],
   elicitation_result: ['questions'],
   tool_call_pending: ['questions'],
@@ -88,6 +92,11 @@ export const EVENT_TYPE_CATEGORY_MAP: Record<string, (keyof EventTypeFilters)[]>
 };
 
 export function eventPassesFilters(event: TimelineEvent, filters: EventTypeFilters, allEvents?: TimelineEvent[]): boolean {
+  // Risk filter: when enabled, only show medium/high risk events
+  if (filters.risk) {
+    if (event.riskLevel !== 'medium' && event.riskLevel !== 'high') return false;
+  }
+
   const categories = EVENT_TYPE_CATEGORY_MAP[event.type];
   if (!categories) return true; // Unknown types pass through
 

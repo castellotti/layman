@@ -697,7 +697,7 @@ export function SettingsDrawer({ onSend }: SettingsDrawerProps) {
             </div>
             <div className="text-[10px] text-[#484f58] space-y-1">
               <p><span className="text-[#8b949e]">All</span> — every tool call is analyzed automatically</p>
-              <p><span className="text-[#8b949e]">Risky</span> — only bash, writes, network, and other medium/high-risk tools</p>
+              <p><span className="text-[#8b949e]">Risk</span> — only bash, writes, network, and other medium/high-risk tools</p>
               <p><span className="text-[#8b949e]">None</span> — manual only; click Quick or Detailed per event</p>
             </div>
           </section>

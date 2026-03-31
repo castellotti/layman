@@ -13,6 +13,7 @@ interface EventStreamProps {
 export function EventStream({ onSend }: EventStreamProps) {
   const [promptsOnly, setPromptsOnly] = useState(false);
   const [responsesOnly, setResponsesOnly] = useState(false);
+  const [requestsOnly, setRequestsOnly] = useState(false);
   const [riskyOnly, setRiskyOnly] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(-1);
   const [followLatest, setFollowLatest] = useState(true);
@@ -45,6 +46,7 @@ export function EventStream({ onSend }: EventStreamProps) {
   const { events, totalCount } = useEventStore({
     promptsOnly,
     responsesOnly,
+    requestsOnly,
     riskyOnly,
     agentTypes: activeAgentTypes.length > 0 ? activeAgentTypes : undefined,
   });
@@ -159,6 +161,10 @@ export function EventStream({ onSend }: EventStreamProps) {
         case 'O':
           setResponsesOnly((v) => !v);
           break;
+        case 'q':
+        case 'Q':
+          setRequestsOnly((v) => !v);
+          break;
         case 'r':
         case 'R':
           setRiskyOnly((v) => !v);
@@ -193,9 +199,11 @@ export function EventStream({ onSend }: EventStreamProps) {
         }}
         promptsOnly={promptsOnly}
         responsesOnly={responsesOnly}
+        requestsOnly={requestsOnly}
         riskyOnly={riskyOnly}
         onTogglePromptsOnly={() => setPromptsOnly((v) => !v)}
         onToggleResponsesOnly={() => setResponsesOnly((v) => !v)}
+        onToggleRequestsOnly={() => setRequestsOnly((v) => !v)}
         onToggleRiskyOnly={() => setRiskyOnly((v) => !v)}
         availableAgentTypes={availableAgentTypes}
         activeAgentTypes={activeAgentTypes}
