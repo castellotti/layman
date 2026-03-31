@@ -6,15 +6,18 @@ interface FilterPill {
   label: string;
   subToggle?: keyof EventTypeFilters;
   subLabel?: string;
+  activeClass?: string;
 }
 
 const PILLS: FilterPill[] = [
   { key: 'prompts', label: 'Prompts' },
   { key: 'responses', label: 'Responses', subToggle: 'responseFinalOnly', subLabel: 'Final only' },
+  { key: 'requests', label: 'Requests' },
   { key: 'questions', label: 'Questions' },
   { key: 'tools', label: 'Tools' },
   { key: 'laymans', label: "Layman's" },
   { key: 'analysis', label: 'Analysis' },
+  { key: 'risk', label: 'Risk', activeClass: 'bg-[#21262d] border-[#d29922] text-[#d29922]' },
   { key: 'system', label: 'System' },
 ];
 
@@ -25,7 +28,8 @@ interface EventTypeFilterBarProps {
 
 export function EventTypeFilterBar({ filters, onChange }: EventTypeFilterBarProps) {
   return (
-    <div className="flex flex-wrap items-center gap-1.5 px-2 py-1.5">
+    <div className="flex flex-wrap items-center gap-1.5 px-2 py-1.5 text-xs">
+      <span className="text-[#484f58]">Display:</span>
       {PILLS.map((pill) => {
         const active = filters[pill.key];
         return (
@@ -34,7 +38,7 @@ export function EventTypeFilterBar({ filters, onChange }: EventTypeFilterBarProp
               onClick={() => onChange({ [pill.key]: !active })}
               className={`px-2 py-0.5 text-[10px] rounded-full border transition-colors ${
                 active
-                  ? 'bg-[#21262d] border-[#58a6ff] text-[#e6edf3]'
+                  ? (pill.activeClass ?? 'bg-[#21262d] border-[#58a6ff] text-[#e6edf3]')
                   : 'bg-transparent border-[#30363d] text-[#484f58] hover:text-[#8b949e]'
               }`}
             >

@@ -39,6 +39,8 @@ export const LaymanConfigSchema = z.object({
   piiFilter: z.boolean().default(true),
   showFullCommand: z.boolean().default(false),
   switchToNewestSession: z.boolean().default(false),
+  collapseHistory: z.boolean().default(true),
+  autoScroll: z.boolean().default(true),
   declinedClients: z.array(z.string()).default([]),
 });
 

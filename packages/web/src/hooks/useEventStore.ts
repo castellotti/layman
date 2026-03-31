@@ -4,6 +4,8 @@ import type { TimelineEvent, EventType } from '../lib/types.js';
 
 export interface EventFilters {
   promptsOnly?: boolean;
+  responsesOnly?: boolean;
+  requestsOnly?: boolean;
   riskyOnly?: boolean;
   types?: EventType[];
   agentTypes?: string[];
@@ -25,9 +27,15 @@ export function useEventStore(filters?: EventFilters) {
     let result = sessionEvents;
 
     if (filters?.promptsOnly) {
-      result = result.filter((e) =>
-        ['tool_call_pending', 'permission_request'].includes(e.type)
-      );
+      result = result.filter((e) => e.type === 'user_prompt');
+    }
+
+    if (filters?.responsesOnly) {
+      result = result.filter((e) => e.type === 'agent_response');
+    }
+
+    if (filters?.requestsOnly) {
+      result = result.filter((e) => e.type === 'permission_request');
     }
 
     if (filters?.riskyOnly) {
@@ -43,7 +51,7 @@ export function useEventStore(filters?: EventFilters) {
     }
 
     return result;
-  }, [sessionEvents, filters?.promptsOnly, filters?.riskyOnly, filters?.types, filters?.agentTypes]);
+  }, [sessionEvents, filters?.promptsOnly, filters?.responsesOnly, filters?.requestsOnly, filters?.riskyOnly, filters?.types, filters?.agentTypes]);
 
   const pendingEvents = useMemo(
     () => sessionEvents.filter((e) => e.type === 'tool_call_pending' || e.type === 'permission_request'),
