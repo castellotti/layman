@@ -263,7 +263,7 @@ function getCommandContent(): string {
     '',
     'You are activating the Layman monitoring dashboard. Follow these steps:',
     '',
-    '1. Activate this session with Layman by running:',
+    '1. Use the Bash tool to execute this exact command (do NOT just output it as text — you MUST use the Bash tool):',
     '   `echo "layman:activate"`',
     '',
     '2. Tell the user:',
@@ -290,7 +290,7 @@ function getClineWorkflowContent(): string {
   return [
     'You are activating the Layman monitoring dashboard. Follow these steps:',
     '',
-    '1. Activate this session with Layman by running:',
+    '1. Use the Bash tool to execute this exact command (do NOT just output it as text — you MUST use the Bash tool):',
     '   `echo "layman:activate"`',
     '',
     '2. Tell the user:',

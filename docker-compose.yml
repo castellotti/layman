@@ -4,7 +4,7 @@ services:
     image: layman
     container_name: layman
     ports:
-      - "8880:8880"
+      - "127.0.0.1:8880:8880"
     volumes:
       # Mount the host user's ~/.claude so the installer can write global hooks and commands
       - ${HOME}/.claude:/root/.claude
