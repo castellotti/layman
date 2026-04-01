@@ -22,6 +22,7 @@ import { openDatabase } from './db/database.js';
 import { SessionRecorder } from './db/recorder.js';
 import { BookmarkStore } from './db/bookmarks.js';
 import { searchEvents } from './db/search.js';
+import { computeTimeMetrics } from './db/time-metrics.js';
 import type { SearchRequest } from './db/search.js';
 import type { LaymanConfig } from './config/schema.js';
 import { VibeSessionWatcher } from './vibe/watcher.js';
@@ -759,6 +760,17 @@ export function createServer(config: LaymanConfig): LaymanServer {
 
     fastify.get<{ Params: { sessionId: string } }>('/api/bookmarks/sessions/:sessionId/qa', async (request) => {
       return { qa: bookmarkStore.getQAForSession(request.params.sessionId) };
+    });
+
+    fastify.get<{ Params: { sessionId: string }; Querystring: { idleThresholdMinutes?: string } }>('/api/bookmarks/sessions/:sessionId/time-metrics', async (request, reply) => {
+      const { sessionId } = request.params;
+      const session = bookmarkStore.getRecordedSession(sessionId);
+      if (!session) return reply.status(404).send({ error: 'Session not found' });
+      const threshold = request.query.idleThresholdMinutes
+        ? Math.max(1, Math.min(60, parseInt(request.query.idleThresholdMinutes, 10) || 5))
+        : (config.idleThresholdMinutes ?? 5);
+      const events = bookmarkStore.getEventsForSession(sessionId);
+      return computeTimeMetrics(events, threshold);
     });
 
     fastify.delete<{ Params: { sessionId: string } }>('/api/bookmarks/sessions/:sessionId', async (request, reply) => {
