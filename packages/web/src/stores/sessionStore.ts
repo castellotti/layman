@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { TimelineEvent, PendingApprovalDTO, LaymanConfig, SessionStatus, SetupStatus, BookmarkFolder, Bookmark } from '../lib/types.js';
+import type { TimelineEvent, PendingApprovalDTO, LaymanConfig, SessionStatus, SetupStatus, BookmarkFolder, Bookmark, SessionTimeMetrics } from '../lib/types.js';
 import type { SessionInfo } from '../lib/ws-protocol.js';
 
 interface InvestigationState {
@@ -56,6 +56,7 @@ interface SessionState {
   bookmarks: Bookmark[];
   viewingSessionId: string | null;
   historicalEvents: TimelineEvent[];
+  sessionTimeMetrics: SessionTimeMetrics | null;
 
   // Session summary
   sessionSummary: string | null;
@@ -97,6 +98,7 @@ interface SessionState {
   removeBookmark: (bookmarkId: string) => void;
   setViewingSession: (sessionId: string | null) => void;
   setHistoricalEvents: (events: TimelineEvent[]) => void;
+  setSessionTimeMetrics: (metrics: SessionTimeMetrics | null) => void;
   fetchSessionSummary: (sessionId: string | null, model?: string) => Promise<void>;
   clearSessionSummary: () => void;
   clearSessionSummaryError: () => void;
@@ -134,6 +136,7 @@ export const useSessionStore = create<SessionState>((set) => ({
   bookmarks: [],
   viewingSessionId: null,
   historicalEvents: [],
+  sessionTimeMetrics: null,
 
   sessionSummary: null,
   sessionSummaryHistory: [],
@@ -343,9 +346,12 @@ export const useSessionStore = create<SessionState>((set) => ({
     set((state) => ({
       viewingSessionId,
       historicalEvents: viewingSessionId === null ? [] : state.historicalEvents,
+      sessionTimeMetrics: viewingSessionId === null ? null : state.sessionTimeMetrics,
     })),
 
   setHistoricalEvents: (historicalEvents) => set({ historicalEvents }),
+
+  setSessionTimeMetrics: (sessionTimeMetrics) => set({ sessionTimeMetrics }),
 
   clearSessionSummary: () => set({ sessionSummary: null, sessionSummaryHistory: [], sessionSummaryError: null }),
   clearSessionSummaryError: () => set({ sessionSummaryError: null }),
