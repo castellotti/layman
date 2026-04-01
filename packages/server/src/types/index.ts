@@ -20,6 +20,7 @@ export type {
 export type { PendingApproval, PendingApprovalDTO } from '../hooks/pending.js';
 export type { LaymanConfig } from '../config/schema.js';
 export type { BookmarkFolder, Bookmark, RecordedSession, QAEntry } from '../db/types.js';
+export type { SessionTimeMetrics } from '../db/time-metrics.js';
 
 // WebSocket protocol types
 import type { TimelineEvent } from '../events/types.js';

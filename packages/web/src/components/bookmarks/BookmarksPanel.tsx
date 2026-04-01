@@ -2,7 +2,7 @@ import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react'
 import { useSessionStore } from '../../stores/sessionStore.js';
 import { useSearchStore, eventPassesFilters } from '../../stores/searchStore.js';
 import type { ClientMessage } from '../../lib/ws-protocol.js';
-import type { RecordedSession, QAEntry } from '../../lib/types.js';
+import type { RecordedSession, QAEntry, SessionTimeMetrics } from '../../lib/types.js';
 import { BookmarkEmptyState } from './BookmarkEmptyState.js';
 import { FolderItem } from './FolderItem.js';
 import { BookmarkItem } from './BookmarkItem.js';
@@ -35,6 +35,8 @@ export function BookmarksPanel({ onSend }: BookmarksPanelProps) {
     historicalEvents,
     setHistoricalEvents,
   } = useSessionStore();
+
+  const setSessionTimeMetrics = useSessionStore((s) => s.setSessionTimeMetrics);
 
   const [recordedSessions, setRecordedSessions] = useState<RecordedSession[]>([]);
   const [qaEntries, setQaEntries] = useState<QAEntry[]>([]);
@@ -144,19 +146,23 @@ export function BookmarksPanel({ onSend }: BookmarksPanelProps) {
     setHistoricalSummaryError(null);
     setViewingSession(sessionId);
     try {
-      const [evRes, qaRes] = await Promise.all([
+      const [evRes, qaRes, metricsRes] = await Promise.all([
         fetch(`/api/bookmarks/sessions/${sessionId}/events`),
         fetch(`/api/bookmarks/sessions/${sessionId}/qa`),
+        fetch(`/api/bookmarks/sessions/${sessionId}/time-metrics`),
       ]);
       const evData = await evRes.json() as { events?: Parameters<typeof setHistoricalEvents>[0] };
       const qaData = await qaRes.json() as { qa?: QAEntry[] };
+      const metricsData = metricsRes.ok ? await metricsRes.json() as SessionTimeMetrics : null;
       setHistoricalEvents(evData.events ?? []);
       setQaEntries(qaData.qa ?? []);
+      setSessionTimeMetrics(metricsData);
     } catch {
       setHistoricalEvents([]);
       setQaEntries([]);
+      setSessionTimeMetrics(null);
     }
-  }, [viewingSessionId, setViewingSession, setHistoricalEvents]);
+  }, [viewingSessionId, setViewingSession, setHistoricalEvents, setSessionTimeMetrics]);
 
   const handleCloseSession = useCallback(() => {
     setViewingSession(null);
@@ -165,7 +171,8 @@ export function BookmarksPanel({ onSend }: BookmarksPanelProps) {
     setHistoricalSessionSummary(null);
     setHistoricalSummaryHistory([]);
     setHistoricalSummaryError(null);
-  }, [setViewingSession]);
+    setSessionTimeMetrics(null);
+  }, [setViewingSession, setSessionTimeMetrics]);
 
   const handleGenerateHistoricalSummary = useCallback(async (sessionId: string) => {
     setIsSummarizingHistorical(true);

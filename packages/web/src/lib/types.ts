@@ -155,6 +155,7 @@ export interface LaymanConfig {
   switchToNewestSession: boolean;
   collapseHistory: boolean;
   autoScroll: boolean;
+  idleThresholdMinutes: number;
 }
 
 export interface BookmarkFolder {
@@ -212,4 +213,12 @@ export interface SetupStatus {
   commandUpToDate: boolean;
   claudeCodeDeclined?: boolean;
   optionalClients: OptionalClientStatus[];
+}
+
+export interface SessionTimeMetrics {
+  wallClockMs: number;
+  agentActiveMs: number;
+  userActiveMs: number;
+  idleMs: number;
+  idleThresholdMinutes: number;
 }

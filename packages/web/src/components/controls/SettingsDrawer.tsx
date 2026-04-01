@@ -872,6 +872,44 @@ export function SettingsDrawer({ onSend }: SettingsDrawerProps) {
 
           <div className="border-t border-[#30363d]" />
 
+          {/* Session Time Tracking */}
+          <section>
+            <h3 className="text-xs font-semibold text-[#8b949e] uppercase tracking-wider mb-1">
+              Session Time Tracking
+            </h3>
+            <p className="text-[10px] text-[#484f58] mb-3">
+              Configure how session time metrics are calculated in Session History.
+            </p>
+            <div className="space-y-3">
+              <div>
+                <label className="flex items-center justify-between">
+                  <div className="flex-1 min-w-0 mr-3">
+                    <span className="text-xs text-[#e6edf3]">Idle threshold</span>
+                    <p className="text-[10px] text-[#484f58] mt-0.5">
+                      Gaps longer than this between an agent response and your next prompt are classified as idle time (not counted as active work). Lower values are stricter.
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <input
+                      type="number"
+                      min={1}
+                      max={60}
+                      value={config.idleThresholdMinutes ?? 5}
+                      onChange={(e) => {
+                        const v = parseInt(e.target.value, 10);
+                        if (v >= 1 && v <= 60) updateConfig({ idleThresholdMinutes: v });
+                      }}
+                      className="w-14 px-2 py-1 text-xs text-center bg-[#0d1117] border border-[#30363d] rounded text-[#e6edf3] focus:outline-none focus:border-[#58a6ff]"
+                    />
+                    <span className="text-[10px] text-[#484f58]">min</span>
+                  </div>
+                </label>
+              </div>
+            </div>
+          </section>
+
+          <div className="border-t border-[#30363d]" />
+
           {/* Layman's Terms Prompt */}
           <section>
             <h3 className="text-xs font-semibold text-[#8b949e] uppercase tracking-wider mb-1">
