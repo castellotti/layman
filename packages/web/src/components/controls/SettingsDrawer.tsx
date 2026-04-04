@@ -96,10 +96,11 @@ function StatusPip({ ok, label }: { ok: boolean; label: string }) {
   );
 }
 
-function ClientSetupSection() {
-  const { setupStatus, setSetupStatus } = useSessionStore((s) => ({
+function ClientSetupSection({ onSend }: { onSend: (msg: ClientMessage) => void }) {
+  const { setupStatus, setSetupStatus, config } = useSessionStore((s) => ({
     setupStatus: s.setupStatus,
     setSetupStatus: s.setSetupStatus,
+    config: s.config,
   }));
   const [clientState, setClientState] = useState<Record<string, 'idle' | 'busy' | 'error'>>({});
 
@@ -135,7 +136,7 @@ function ClientSetupSection() {
 
 
   const claudeCodeOk = !!(setupStatus?.hooksInstalled && setupStatus.commandInstalled);
-  const claudeCodeUpToDate = !!(setupStatus?.hooksUpToDate && setupStatus.commandUpToDate);
+  const claudeCodeUpToDate = !!(setupStatus?.hooksUpToDate && setupStatus.commandUpToDate && setupStatus.statusLineUpToDate);
   const optionalClients: OptionalClientStatus[] = setupStatus?.optionalClients ?? [];
 
   const claudeState = clientState['claude-code'] ?? 'idle';
@@ -185,6 +186,30 @@ function ClientSetupSection() {
           )}
         </div>
       </div>
+
+      {/* Auto-activate toggle — shown when Claude Code is installed */}
+      {claudeCodeOk && config && (
+        <div className="flex items-center justify-between min-h-[28px] pl-3">
+          <span className="text-[11px] text-[#8b949e]">Auto-activate sessions</span>
+          <button
+            onClick={() => {
+              const clients = config.autoActivateClients ?? [];
+              const enabled = clients.includes('claude-code');
+              const updated = enabled
+                ? clients.filter((c: string) => c !== 'claude-code')
+                : [...clients, 'claude-code'];
+              onSend({ type: 'config:update', config: { autoActivateClients: updated } });
+            }}
+            className={`relative inline-flex h-4 w-8 items-center rounded-full transition-colors ${
+              (config.autoActivateClients ?? []).includes('claude-code') ? 'bg-[#238636]' : 'bg-[#30363d]'
+            }`}
+          >
+            <span className={`inline-block h-3 w-3 rounded-full bg-white transition-transform ${
+              (config.autoActivateClients ?? []).includes('claude-code') ? 'translate-x-4' : 'translate-x-0.5'
+            }`} />
+          </button>
+        </div>
+      )}
 
       {/* Optional clients */}
       {optionalClients.map((client) => {
@@ -939,7 +964,7 @@ export function SettingsDrawer({ onSend }: SettingsDrawerProps) {
               for each AI client detected on this machine. After installing a new client, click
               Reinstall so Layman picks it up.
             </p>
-            <ClientSetupSection />
+            <ClientSetupSection onSend={onSend} />
           </section>
 
           <div className="border-t border-[#30363d]" />

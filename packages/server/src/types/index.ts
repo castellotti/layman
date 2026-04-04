@@ -58,6 +58,8 @@ export interface SetupStatus {
   hooksUpToDate: boolean;
   commandInstalled: boolean;
   commandUpToDate: boolean;
+  statusLineInstalled: boolean;
+  statusLineUpToDate: boolean;
   claudeCodeDeclined?: boolean;
   optionalClients: OptionalClientStatus[];
 }

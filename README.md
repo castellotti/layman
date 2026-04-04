@@ -48,7 +48,9 @@ ANTHROPIC_API_KEY=your-key-here docker compose -f ~/layman/docker-compose.yml up
 
 Supports Anthropic, OpenAI-compatible APIs, and LiteLLM.
 
-### Session history and search
+### Session metrics
+
+When connected to Claude Code, the dashboard shows a live metrics bar with model name, context window usage, cumulative session cost, token counts, lines changed, and rate limit warnings. This data comes from claude-code's StatusLine channel — a relay script installed alongside the hooks.
 
 Past sessions are recorded to a local SQLite database. Open the **Sessions** panel (clock icon) to browse history, search across all sessions with full-text search, and filter by event type. Search supports `+required`, `-excluded`, and `"quoted phrases"`.
 
@@ -96,6 +98,8 @@ Sessions are **not** recorded by default. To opt a session in:
 3. Claude runs an activation command. From that point on, all events flow to the dashboard.
 
 You can activate multiple sessions across different projects — they all appear in the same dashboard.
+
+**Auto-activate:** To skip the `/layman` step, go to **Settings → Client Setup** and toggle **Auto-activate sessions** on the Claude Code row. All new Claude Code sessions will be monitored automatically.
 
 ---
 
