@@ -44,6 +44,7 @@ const MOCK_CONFIG: LaymanConfig = {
   autoScroll: true,
   declinedClients: [],
   idleThresholdMinutes: 5,
+  autoActivateClients: [],
 };
 
 describe('PendingApprovalManager', () => {

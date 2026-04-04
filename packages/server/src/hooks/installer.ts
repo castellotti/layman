@@ -48,12 +48,21 @@ export interface SetupStatus {
   hooksUpToDate: boolean;
   commandInstalled: boolean;
   commandUpToDate: boolean;
+  statusLineInstalled: boolean;
+  statusLineUpToDate: boolean;
   claudeCodeDeclined?: boolean;
   optionalClients: OptionalClientStatus[];
 }
 
 const GLOBAL_SETTINGS_PATH = join(homedir(), '.claude', 'settings.json');
 const COMMANDS_DIR = join(homedir(), '.claude', 'commands');
+const HOOKS_DIR = join(homedir(), '.claude', 'hooks', 'layman');
+
+interface StatusLineSettings {
+  type?: string;
+  command?: string;
+  [key: string]: unknown;
+}
 
 /**
  * Optional AI clients that support slash commands via a commands directory.
@@ -205,7 +214,7 @@ function buildLaymanHooks(serverUrl: string, hookTimeout: number): SettingsHooks
     ],
     Notification: [
       {
-        matcher: 'permission_prompt|idle_prompt',
+        matcher: '',
         hooks: [
           {
             type: 'http',
@@ -228,6 +237,18 @@ function buildLaymanHooks(serverUrl: string, hookTimeout: number): SettingsHooks
     PostCompact: [asyncHook('PostCompact')],
     Elicitation: [asyncHook('Elicitation')],
     ElicitationResult: [asyncHook('ElicitationResult')],
+    // Phase 3: New hook events
+    PermissionDenied: [asyncHook('PermissionDenied')],
+    Setup: [asyncHook('Setup')],
+    ConfigChange: [asyncHook('ConfigChange')],
+    InstructionsLoaded: [asyncHook('InstructionsLoaded')],
+    TaskCreated: [asyncHook('TaskCreated')],
+    TaskCompleted: [asyncHook('TaskCompleted')],
+    TeammateIdle: [asyncHook('TeammateIdle')],
+    WorktreeCreate: [asyncHook('WorktreeCreate')],
+    WorktreeRemove: [asyncHook('WorktreeRemove')],
+    CwdChanged: [asyncHook('CwdChanged')],
+    FileChanged: [asyncHook('FileChanged')],
   };
 }
 
@@ -330,6 +351,9 @@ export class HookInstaller {
 
     writeSettings(GLOBAL_SETTINGS_PATH, settings);
     console.log(`Layman hooks installed at ${GLOBAL_SETTINGS_PATH}`);
+
+    // Also install StatusLine relay
+    this.installStatusLine();
   }
 
   uninstall(): void {
@@ -368,6 +392,9 @@ export class HookInstaller {
     }
 
     console.log(`Layman hooks uninstalled from ${GLOBAL_SETTINGS_PATH}`);
+
+    // Also uninstall StatusLine relay
+    this.uninstallStatusLine();
   }
 
   installCommand(): void {
@@ -731,6 +758,139 @@ export class HookInstaller {
     if (id === 'cline') this.uninstallClineHooks();
   }
 
+  /** Install the StatusLine relay script and configure settings.json to use it. */
+  installStatusLine(): void {
+    const settings = readSettings(GLOBAL_SETTINGS_PATH);
+
+    // Read the bundled relay script template
+    const __dirname = dirname(fileURLToPath(import.meta.url));
+    const templatePath = join(__dirname, '..', '..', 'commands', 'statusline.sh');
+    const fallbackPath = join(__dirname, '..', 'commands', 'statusline.sh');
+    const srcPath = existsSync(templatePath) ? templatePath : existsSync(fallbackPath) ? fallbackPath : null;
+
+    if (!srcPath) {
+      console.log('StatusLine relay script template not found — skipping');
+      return;
+    }
+
+    // Ensure hooks directory exists
+    if (!existsSync(HOOKS_DIR)) {
+      mkdirSync(HOOKS_DIR, { recursive: true });
+    }
+
+    let template = readFileSync(srcPath, 'utf-8');
+    template = template.replace(/__LAYMAN_URL__/g, this.options.serverUrl);
+
+    // Check for existing statusLine config — compose if present and not ours
+    const existing = settings.statusLine as StatusLineSettings | undefined;
+    const destPath = join(HOOKS_DIR, 'statusline.sh');
+
+    // The installer runs inside Docker where homedir() = /root, but the host home
+    // is passed via HOST_HOME so paths written to settings.json are valid on the host.
+    const hostHome = process.env.HOST_HOME || homedir();
+    const hostDestPath = join(hostHome, '.claude', 'hooks', 'layman', 'statusline.sh');
+
+    if (existing?.command && !existing.command.includes('hooks/layman/statusline.sh')) {
+      // User has an existing non-Layman statusLine — compose by setting env var
+      const originalCmd = existing.command;
+      template = `#!/usr/bin/env bash\n# Original statusLine command preserved for chaining\nexport LAYMAN_ORIGINAL_STATUSLINE=${JSON.stringify(originalCmd)}\n${template}`;
+      console.log(`StatusLine: composing with existing command: ${originalCmd}`);
+    }
+
+    writeFileSync(destPath, template, { mode: 0o755 });
+
+    // Write version marker for staleness detection
+    const hash = commandHash(template);
+    writeFileSync(join(HOOKS_DIR, '.statusline-version'), hash, 'utf-8');
+
+    // Update settings.json
+    settings.statusLine = {
+      type: 'command',
+      command: hostDestPath,
+    };
+
+    writeSettings(GLOBAL_SETTINGS_PATH, settings);
+    console.log(`StatusLine relay installed at ${destPath}`);
+  }
+
+  /** Remove the StatusLine relay script and restore original settings. */
+  uninstallStatusLine(): void {
+    const scriptPath = join(HOOKS_DIR, 'statusline.sh');
+    const versionPath = join(HOOKS_DIR, '.statusline-version');
+
+    // Check if the installed script had a composed original command
+    let originalCommand: string | null = null;
+    if (existsSync(scriptPath)) {
+      const content = readFileSync(scriptPath, 'utf-8');
+      const match = content.match(/export LAYMAN_ORIGINAL_STATUSLINE=(".*?")/);
+      if (match) {
+        try {
+          originalCommand = JSON.parse(match[1]) as string;
+        } catch { /* ignore */ }
+      }
+    }
+
+    // Remove script and version file
+    if (existsSync(scriptPath)) {
+      try { unlinkSync(scriptPath); } catch { /* ignore */ }
+    }
+    if (existsSync(versionPath)) {
+      try { unlinkSync(versionPath); } catch { /* ignore */ }
+    }
+
+    // Update settings.json — restore original command or remove statusLine entry
+    if (existsSync(GLOBAL_SETTINGS_PATH)) {
+      const settings = readSettings(GLOBAL_SETTINGS_PATH);
+      if (originalCommand) {
+        settings.statusLine = { type: 'command', command: originalCommand };
+        console.log(`StatusLine: restored original command: ${originalCommand}`);
+      } else {
+        delete settings.statusLine;
+      }
+      writeSettings(GLOBAL_SETTINGS_PATH, settings);
+    }
+
+    console.log('StatusLine relay uninstalled');
+  }
+
+  /** Check if the StatusLine relay is installed and up to date. */
+  getStatusLineStatus(): { installed: boolean; upToDate: boolean } {
+    const versionPath = join(HOOKS_DIR, '.statusline-version');
+    if (!existsSync(versionPath)) return { installed: false, upToDate: false };
+
+    // Check settings.json still points to our script
+    const settings = readSettings(GLOBAL_SETTINGS_PATH);
+    const sl = settings.statusLine as StatusLineSettings | undefined;
+    if (!sl?.command?.includes('hooks/layman/statusline.sh')) {
+      return { installed: false, upToDate: false };
+    }
+
+    // Check hash matches current template
+    const __dirname = dirname(fileURLToPath(import.meta.url));
+    const templatePath = join(__dirname, '..', '..', 'commands', 'statusline.sh');
+    const fallbackPath = join(__dirname, '..', 'commands', 'statusline.sh');
+    const srcPath = existsSync(templatePath) ? templatePath : existsSync(fallbackPath) ? fallbackPath : null;
+    if (!srcPath) return { installed: true, upToDate: false };
+
+    let template = readFileSync(srcPath, 'utf-8');
+    template = template.replace(/__LAYMAN_URL__/g, this.options.serverUrl);
+
+    // Re-compose if the installed script had an original command
+    const scriptPath = join(HOOKS_DIR, 'statusline.sh');
+    if (existsSync(scriptPath)) {
+      const installed = readFileSync(scriptPath, 'utf-8');
+      const match = installed.match(/export LAYMAN_ORIGINAL_STATUSLINE=(".*?")/);
+      if (match) {
+        template = `#!/usr/bin/env bash\n# Original statusLine command preserved for chaining\nexport LAYMAN_ORIGINAL_STATUSLINE=${match[1]}\n${template}`;
+      }
+    }
+
+    const expectedHash = commandHash(template);
+    const installedHash = readFileSync(versionPath, 'utf-8').trim();
+
+    return { installed: true, upToDate: installedHash === expectedHash };
+  }
+
   isInstalled(): boolean {
     if (!existsSync(GLOBAL_SETTINGS_PATH)) return false;
     const settings = readSettings(GLOBAL_SETTINGS_PATH);
@@ -778,6 +938,11 @@ export class HookInstaller {
       commandUpToDate = installed.includes(`layman:${expectedHash}`);
     }
 
+    // StatusLine status
+    const statusLineStatus = this.getStatusLineStatus();
+    const statusLineInstalled = statusLineStatus.installed;
+    const statusLineUpToDate = statusLineStatus.upToDate;
+
     // Optional client status
     const defaultContent = getCommandContent();
     const optionalClients: OptionalClientStatus[] = OPTIONAL_CLIENTS.map((client) => {
@@ -812,7 +977,7 @@ export class HookInstaller {
       return { id: client.id, name: client.name, detected, commandInstalled, commandUpToDate, hooksInstalled, hooksUpToDate };
     });
 
-    return { hooksInstalled, hooksUpToDate, commandInstalled, commandUpToDate, optionalClients };
+    return { hooksInstalled, hooksUpToDate, commandInstalled, commandUpToDate, statusLineInstalled, statusLineUpToDate, optionalClients };
   }
 
   getSettingsPath(): string {

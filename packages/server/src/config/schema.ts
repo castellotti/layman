@@ -43,6 +43,7 @@ export const LaymanConfigSchema = z.object({
   autoScroll: z.boolean().default(true),
   declinedClients: z.array(z.string()).default([]),
   idleThresholdMinutes: z.number().int().min(1).max(60).default(5),
+  autoActivateClients: z.array(z.string()).default([]),
 });
 
 export type LaymanConfig = z.infer<typeof LaymanConfigSchema>;

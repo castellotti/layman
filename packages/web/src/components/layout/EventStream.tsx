@@ -3,6 +3,7 @@ import { useEventStore } from '../../hooks/useEventStore.js';
 import { useSessionStore } from '../../stores/sessionStore.js';
 import { EventCard } from '../events/EventCard.js';
 import { NavigationBar } from '../controls/NavigationBar.js';
+import { SessionMetricsBar } from '../controls/SessionMetricsBar.js';
 import { PromptInput } from '../controls/PromptInput.js';
 import type { ClientMessage } from '../../lib/ws-protocol.js';
 
@@ -191,6 +192,8 @@ export function EventStream({ onSend }: EventStreamProps) {
         onAccessLog={activeSessionId ? () => void fetchAccessLog(activeSessionId) : undefined}
         onPrint={handlePrint}
       />
+
+      <SessionMetricsBar />
 
       <div
         ref={scrollRef}
