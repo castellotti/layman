@@ -12,21 +12,34 @@ import '@xyflow/react/dist/style.css';
 import './flowchart.css';
 import { useEventStore } from '../../hooks/useEventStore.js';
 import { useSessionStore } from '../../stores/sessionStore.js';
+import type { TimelineEvent } from '../../lib/types.js';
 import { buildFlowchartGraph, type FlowchartNodeData } from '../../lib/flowchart-graph.js';
 import { FlowchartNode } from './FlowchartNodes.js';
 
 const nodeTypes: NodeTypes = { flowchartNode: FlowchartNode };
 
-function FlowchartInner() {
-  const { fitView, setCenter, getNode } = useReactFlow();
-  const { setSelectedEvent, selectedEventId } = useSessionStore();
+interface FlowchartInnerProps {
+  /** When provided, uses these events instead of the live event store */
+  externalEvents?: TimelineEvent[];
+  /** Callback when a node is clicked (for historical sessions) */
+  onSelectEvent?: (id: string | null) => void;
+  /** Override selected event id (for historical sessions) */
+  externalSelectedEventId?: string | null;
+}
 
-  const { events } = useEventStore({
+function FlowchartInner({ externalEvents, onSelectEvent, externalSelectedEventId }: FlowchartInnerProps) {
+  const { fitView, setCenter, getNode } = useReactFlow();
+  const { setSelectedEvent, selectedEventId: storeSelectedEventId } = useSessionStore();
+
+  const { events: liveEvents } = useEventStore({
     promptsOnly: false,
     responsesOnly: false,
     requestsOnly: false,
     riskyOnly: false,
   });
+
+  const events = externalEvents ?? liveEvents;
+  const selectedEventId = externalSelectedEventId !== undefined ? externalSelectedEventId : storeSelectedEventId;
 
   const { nodes, edges } = useMemo(
     () => buildFlowchartGraph(events, selectedEventId),
@@ -57,16 +70,18 @@ function FlowchartInner() {
     return () => clearTimeout(t);
   }, [selectedEventId, getNode, setCenter]);
 
+  const handleSelectEvent = onSelectEvent ?? setSelectedEvent;
+
   const onNodeClick = useCallback(
     (_: React.MouseEvent, node: Node<FlowchartNodeData>) => {
-      setSelectedEvent(node.id);
+      handleSelectEvent(node.id);
     },
-    [setSelectedEvent]
+    [handleSelectEvent]
   );
 
   const onPaneClick = useCallback(() => {
-    setSelectedEvent(null);
-  }, [setSelectedEvent]);
+    handleSelectEvent(null);
+  }, [handleSelectEvent]);
 
   // Keyboard controls: arrow keys for pan, +/- for zoom
   useEffect(() => {
@@ -122,11 +137,24 @@ function FlowchartInner() {
   );
 }
 
-export function FlowchartView() {
+interface FlowchartViewProps {
+  /** When provided, uses these events instead of the live event store */
+  events?: TimelineEvent[];
+  /** Callback when a node is clicked (for historical sessions) */
+  onSelectEvent?: (id: string | null) => void;
+  /** Override selected event id (for historical sessions) */
+  selectedEventId?: string | null;
+}
+
+export function FlowchartView({ events, onSelectEvent, selectedEventId }: FlowchartViewProps = {}) {
   return (
     <div className="h-full w-full">
       <ReactFlowProvider>
-        <FlowchartInner />
+        <FlowchartInner
+          externalEvents={events}
+          onSelectEvent={onSelectEvent}
+          externalSelectedEventId={selectedEventId}
+        />
       </ReactFlowProvider>
     </div>
   );

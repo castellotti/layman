@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useCallback, useEffect, useRef, useMemo, Suspense, lazy } from 'react';
 import { useSessionStore } from '../../stores/sessionStore.js';
 import { useSearchStore, eventPassesFilters } from '../../stores/searchStore.js';
 import type { ClientMessage } from '../../lib/ws-protocol.js';
@@ -12,6 +12,8 @@ import { SessionLaymansTerms } from '../shared/SessionLaymansTerms.js';
 import { SearchBar } from '../search/SearchBar.js';
 import { SearchResults } from '../search/SearchResults.js';
 import { EventTypeFilterBar } from '../search/EventTypeFilterBar.js';
+
+const FlowchartView = lazy(() => import('../flowchart/FlowchartView.js').then(m => ({ default: m.FlowchartView })));
 
 interface BookmarksPanelProps {
   onSend: (msg: ClientMessage) => void;
@@ -57,6 +59,7 @@ export function BookmarksPanel({ onSend }: BookmarksPanelProps) {
   const [importResult, setImportResult] = useState<string | null>(null);
   const importInputRef = useRef<HTMLInputElement>(null);
   const [deleteConfirmSessionId, setDeleteConfirmSessionId] = useState<string | null>(null);
+  const [historicalFlowchartOpen, setHistoricalFlowchartOpen] = useState(false);
 
   const recordingEnabled = config?.sessionRecording ?? false;
 
@@ -144,6 +147,7 @@ export function BookmarksPanel({ onSend }: BookmarksPanelProps) {
     setHistoricalSessionSummary(null);
     setHistoricalSummaryHistory([]);
     setHistoricalSummaryError(null);
+    setHistoricalFlowchartOpen(false);
     setViewingSession(sessionId);
     try {
       const [evRes, qaRes, metricsRes] = await Promise.all([
@@ -172,6 +176,7 @@ export function BookmarksPanel({ onSend }: BookmarksPanelProps) {
     setHistoricalSummaryHistory([]);
     setHistoricalSummaryError(null);
     setSessionTimeMetrics(null);
+    setHistoricalFlowchartOpen(false);
   }, [setViewingSession, setSessionTimeMetrics]);
 
   const handleGenerateHistoricalSummary = useCallback(async (sessionId: string) => {
@@ -619,6 +624,22 @@ export function BookmarksPanel({ onSend }: BookmarksPanelProps) {
                       </button>
                     )}
                     <button
+                      onClick={() => setHistoricalFlowchartOpen(!historicalFlowchartOpen)}
+                      className={`flex items-center gap-1 transition-colors text-xs ${
+                        historicalFlowchartOpen
+                          ? 'text-[#58a6ff]'
+                          : 'text-[#8b949e] hover:text-[#e6edf3]'
+                      }`}
+                      title="Flowchart View"
+                    >
+                      <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
+                        <path d="M1 2.5A1.5 1.5 0 012.5 1h2A1.5 1.5 0 016 2.5v1A1.5 1.5 0 014.5 5h-2A1.5 1.5 0 011 3.5v-1zm0 5A1.5 1.5 0 012.5 6h2A1.5 1.5 0 016 7.5v1A1.5 1.5 0 014.5 10h-2A1.5 1.5 0 011 8.5v-1zm9-5A1.5 1.5 0 0111.5 1h2A1.5 1.5 0 0115 2.5v1A1.5 1.5 0 0113.5 5h-2A1.5 1.5 0 0110 3.5v-1zm0 5A1.5 1.5 0 0111.5 6h2A1.5 1.5 0 0115 7.5v1A1.5 1.5 0 0113.5 10h-2A1.5 1.5 0 0110 8.5v-1zM6 3h4M6 8h4" />
+                        <path d="M6 3h4" stroke="currentColor" strokeWidth="1" fill="none" />
+                        <path d="M6 8h4" stroke="currentColor" strokeWidth="1" fill="none" />
+                      </svg>
+                      Flowchart
+                    </button>
+                    <button
                       onClick={() => {
                         void (async () => {
                           try {
@@ -680,13 +701,23 @@ export function BookmarksPanel({ onSend }: BookmarksPanelProps) {
                   <EventTypeFilterBar filters={eventTypeFilters} onChange={setEventTypeFilters} />
                 </div>
                 <div className="flex-1 overflow-hidden">
-                  <HistoricalEventStream
-                    events={filteredHistoricalEvents}
-                    qaEntries={qaEntries}
-                    selectedEventId={investigatingEventId}
-                    onSelectEvent={(id) => setInvestigatingEventId(investigatingEventId === id ? null : id)}
-                    onSend={onSend}
-                  />
+                  {historicalFlowchartOpen ? (
+                    <Suspense fallback={<div className="flex items-center justify-center h-full text-[#484f58] text-xs">Loading flowchart...</div>}>
+                      <FlowchartView
+                        events={filteredHistoricalEvents}
+                        selectedEventId={investigatingEventId}
+                        onSelectEvent={(id) => setInvestigatingEventId(investigatingEventId === id ? null : id)}
+                      />
+                    </Suspense>
+                  ) : (
+                    <HistoricalEventStream
+                      events={filteredHistoricalEvents}
+                      qaEntries={qaEntries}
+                      selectedEventId={investigatingEventId}
+                      onSelectEvent={(id) => setInvestigatingEventId(investigatingEventId === id ? null : id)}
+                      onSend={onSend}
+                    />
+                  )}
                 </div>
               </div>
 
