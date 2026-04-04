@@ -13,6 +13,7 @@ import { homedir } from 'os';
 import type { FSWatcher } from 'fs';
 import type { EventStore } from '../events/store.js';
 import { classifyRisk } from '../events/classifier.js';
+import { extractAccess } from '../events/access-extractor.js';
 
 const AGENT_TYPE = 'mistral-vibe';
 const POLL_INTERVAL_MS = 2000;
@@ -331,13 +332,28 @@ private async pollSession(session: TrackedSession): Promise<void> {
         const toolCallId = msg.tool_call_id;
         const pending = toolCallId ? session.pendingTools.get(toolCallId) : undefined;
         const toolName = pending?.toolName ?? mapToolName(msg.name ?? 'unknown');
+        const toolInput = pending?.toolInput ?? {};
+        const toolOutput = msg.content ?? '';
+        const completedAt = Date.now();
 
-        this.eventStore.add('tool_call_completed', sessionId, {
+        const access = extractAccess(toolName, toolInput, toolOutput, '', completedAt);
+        const filesWithId = access.files.length > 0 ? access.files : undefined;
+        const urlsWithId = access.urls.length > 0 ? access.urls : undefined;
+
+        const event = this.eventStore.add('tool_call_completed', sessionId, {
           toolName,
-          toolInput: pending?.toolInput ?? {},
-          toolOutput: msg.content ?? '',
-          completedAt: Date.now(),
+          toolInput,
+          toolOutput,
+          completedAt,
+          fileAccess: filesWithId,
+          urlAccess: urlsWithId,
         }, undefined, AGENT_TYPE);
+
+        if (filesWithId) filesWithId.forEach(f => f.eventId = event.id);
+        if (urlsWithId) urlsWithId.forEach(u => u.eventId = event.id);
+        if (filesWithId || urlsWithId) {
+          this.eventStore.recordAccess(sessionId, filesWithId ?? [], urlsWithId ?? []);
+        }
 
         if (toolCallId) {
           session.pendingTools.delete(toolCallId);

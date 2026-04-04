@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { TimelineEvent, PendingApprovalDTO, LaymanConfig, SessionStatus, SetupStatus, BookmarkFolder, Bookmark, SessionTimeMetrics } from '../lib/types.js';
+import type { TimelineEvent, PendingApprovalDTO, LaymanConfig, SessionStatus, SetupStatus, BookmarkFolder, Bookmark, SessionTimeMetrics, SessionAccessLog } from '../lib/types.js';
 import type { SessionInfo } from '../lib/ws-protocol.js';
 
 interface InvestigationState {
@@ -58,6 +58,13 @@ interface SessionState {
   historicalEvents: TimelineEvent[];
   sessionTimeMetrics: SessionTimeMetrics | null;
 
+  // Flowchart view
+  flowchartOpen: boolean;
+
+  // Access log
+  accessLogOpen: boolean;
+  accessLogData: SessionAccessLog | null;
+
   // Session summary
   sessionSummary: string | null;
   sessionSummaryHistory: Array<{ summary: string; generatedAt: number; sessionId: string | null }>;
@@ -99,6 +106,10 @@ interface SessionState {
   setViewingSession: (sessionId: string | null) => void;
   setHistoricalEvents: (events: TimelineEvent[]) => void;
   setSessionTimeMetrics: (metrics: SessionTimeMetrics | null) => void;
+  setFlowchartOpen: (open: boolean) => void;
+  setAccessLogOpen: (open: boolean) => void;
+  setAccessLogData: (data: SessionAccessLog | null) => void;
+  fetchAccessLog: (sessionId: string) => Promise<void>;
   fetchSessionSummary: (sessionId: string | null, model?: string) => Promise<void>;
   clearSessionSummary: () => void;
   clearSessionSummaryError: () => void;
@@ -137,6 +148,11 @@ export const useSessionStore = create<SessionState>((set) => ({
   viewingSessionId: null,
   historicalEvents: [],
   sessionTimeMetrics: null,
+
+  flowchartOpen: false,
+
+  accessLogOpen: false,
+  accessLogData: null,
 
   sessionSummary: null,
   sessionSummaryHistory: [],
@@ -352,6 +368,21 @@ export const useSessionStore = create<SessionState>((set) => ({
   setHistoricalEvents: (historicalEvents) => set({ historicalEvents }),
 
   setSessionTimeMetrics: (sessionTimeMetrics) => set({ sessionTimeMetrics }),
+
+  setFlowchartOpen: (open) => set({ flowchartOpen: open }),
+  setAccessLogOpen: (open) => set({ accessLogOpen: open }),
+  setAccessLogData: (data) => set({ accessLogData: data }),
+  fetchAccessLog: async (sessionId) => {
+    try {
+      const res = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/access-log`);
+      if (res.ok) {
+        const data = await res.json() as SessionAccessLog;
+        set({ accessLogData: data, accessLogOpen: true });
+      }
+    } catch {
+      // Non-fatal
+    }
+  },
 
   clearSessionSummary: () => set({ sessionSummary: null, sessionSummaryHistory: [], sessionSummaryError: null }),
   clearSessionSummaryError: () => set({ sessionSummaryError: null }),

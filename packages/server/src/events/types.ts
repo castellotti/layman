@@ -47,6 +47,8 @@ export interface EventData {
   completedAt?: number;
   permissionRequestType?: 'tool_use' | 'execution_mode';
   permissionSuggestions?: PermissionSuggestion[];
+  fileAccess?: FileAccess[];
+  urlAccess?: UrlAccess[];
 }
 
 export interface TimelineEvent {
@@ -59,6 +61,30 @@ export interface TimelineEvent {
   analysis?: AnalysisResult;
   laymans?: LaymansResult;
   riskLevel?: 'low' | 'medium' | 'high';
+}
+
+export interface FileAccess {
+  path: string;
+  filename: string;
+  operation: 'read' | 'wrote' | 'edited' | 'deleted';
+  eventId: string;
+  toolName: string;
+  timestamp: number;
+}
+
+export interface UrlAccess {
+  url: string;
+  hostname: string;
+  eventId: string;
+  toolName: string;
+  timestamp: number;
+  bytesIn?: number;
+  bytesOut?: number;
+}
+
+export interface SessionAccessLog {
+  files: FileAccess[];
+  urls: UrlAccess[];
 }
 
 export interface EventSummary {

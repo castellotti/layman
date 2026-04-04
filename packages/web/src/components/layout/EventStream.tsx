@@ -19,7 +19,7 @@ export function EventStream({ onSend }: EventStreamProps) {
   const [followLatest, setFollowLatest] = useState(true);
 
   const scrollRef = useRef<HTMLDivElement>(null);
-  const { setSelectedEvent, sessions, activeSessionId, config } = useSessionStore();
+  const { setSelectedEvent, sessions, activeSessionId, config, fetchAccessLog } = useSessionStore();
 
   const collapseHistory = config?.collapseHistory ?? true;
   const autoScroll = config?.autoScroll ?? true;
@@ -188,6 +188,7 @@ export function EventStream({ onSend }: EventStreamProps) {
         onToggleResponsesOnly={() => setResponsesOnly((v) => !v)}
         onToggleRequestsOnly={() => setRequestsOnly((v) => !v)}
         onToggleRiskyOnly={() => setRiskyOnly((v) => !v)}
+        onAccessLog={activeSessionId ? () => void fetchAccessLog(activeSessionId) : undefined}
         onPrint={handlePrint}
       />
 

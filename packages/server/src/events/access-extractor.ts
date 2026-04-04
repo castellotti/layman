@@ -1,0 +1,148 @@
+import type { FileAccess, UrlAccess } from './types.js';
+
+export interface AccessExtractionResult {
+  files: FileAccess[];
+  urls: UrlAccess[];
+}
+
+function basename(filePath: string): string {
+  const parts = filePath.split('/');
+  return parts[parts.length - 1] || filePath;
+}
+
+function tryParseHostname(urlStr: string): string | null {
+  try {
+    return new URL(urlStr).hostname;
+  } catch {
+    return null;
+  }
+}
+
+function makeFileAccess(
+  path: string,
+  operation: FileAccess['operation'],
+  eventId: string,
+  toolName: string,
+  timestamp: number
+): FileAccess {
+  return { path, filename: basename(path), operation, eventId, toolName, timestamp };
+}
+
+function makeUrlAccess(
+  url: string,
+  eventId: string,
+  toolName: string,
+  timestamp: number,
+  bytesIn?: number,
+  bytesOut?: number
+): UrlAccess | null {
+  const hostname = tryParseHostname(url);
+  if (!hostname) return null;
+  return { url, hostname, eventId, toolName, timestamp, bytesIn, bytesOut };
+}
+
+/** Conservative regex to extract file paths from rm commands */
+const RM_PATTERN = /\brm\s+(?:-[a-zA-Z]*\s+)*([^\s;|&>]+)/g;
+
+function estimateBytes(value: unknown): number | undefined {
+  if (value === undefined || value === null) return undefined;
+  try {
+    return JSON.stringify(value).length;
+  } catch {
+    return undefined;
+  }
+}
+
+export function extractAccess(
+  toolName: string,
+  toolInput: Record<string, unknown> | undefined,
+  toolOutput: unknown | undefined,
+  eventId: string,
+  timestamp: number
+): AccessExtractionResult {
+  const files: FileAccess[] = [];
+  const urls: UrlAccess[] = [];
+
+  if (!toolInput) return { files, urls };
+
+  const filePath = toolInput.file_path as string | undefined;
+
+  switch (toolName) {
+    case 'Read': {
+      if (filePath) files.push(makeFileAccess(filePath, 'read', eventId, toolName, timestamp));
+      break;
+    }
+    case 'Write': {
+      if (filePath) files.push(makeFileAccess(filePath, 'wrote', eventId, toolName, timestamp));
+      break;
+    }
+    case 'Edit':
+    case 'MultiEdit': {
+      if (filePath) files.push(makeFileAccess(filePath, 'edited', eventId, toolName, timestamp));
+      break;
+    }
+    case 'Bash': {
+      const command = (toolInput.command as string) ?? '';
+      // Extract deleted files from rm commands
+      let match: RegExpExecArray | null;
+      RM_PATTERN.lastIndex = 0;
+      while ((match = RM_PATTERN.exec(command)) !== null) {
+        const path = match[1];
+        if (path && !path.startsWith('-')) {
+          files.push(makeFileAccess(path, 'deleted', eventId, toolName, timestamp));
+        }
+      }
+      break;
+    }
+    case 'Glob':
+    case 'Grep': {
+      const searchPath = toolInput.path as string | undefined;
+      if (searchPath) files.push(makeFileAccess(searchPath, 'read', eventId, toolName, timestamp));
+      break;
+    }
+    case 'WebFetch': {
+      const url = toolInput.url as string | undefined;
+      if (url) {
+        const access = makeUrlAccess(
+          url, eventId, toolName, timestamp,
+          estimateBytes(toolOutput),
+          estimateBytes(toolInput)
+        );
+        if (access) urls.push(access);
+      }
+      break;
+    }
+    case 'WebSearch': {
+      const query = toolInput.query as string | undefined;
+      if (query) {
+        urls.push({
+          url: `search://${query}`,
+          hostname: 'web-search',
+          eventId,
+          toolName,
+          timestamp,
+          bytesIn: estimateBytes(toolOutput),
+          bytesOut: estimateBytes(toolInput),
+        });
+      }
+      break;
+    }
+    default: {
+      // MCP tools or other tools with url parameter
+      if (toolName.startsWith('mcp__')) {
+        const url = toolInput.url as string | undefined;
+        if (url) {
+          const access = makeUrlAccess(
+            url, eventId, toolName, timestamp,
+            estimateBytes(toolOutput),
+            estimateBytes(toolInput)
+          );
+          if (access) urls.push(access);
+        }
+      }
+      break;
+    }
+  }
+
+  return { files, urls };
+}

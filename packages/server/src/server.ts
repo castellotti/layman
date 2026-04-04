@@ -236,6 +236,21 @@ export function createServer(config: LaymanConfig): LaymanServer {
       return event;
     });
 
+    // Access log
+    fastify.get<{ Params: { sessionId: string } }>(
+      '/api/sessions/:sessionId/access-log',
+      async (request) => eventStore.getAccessLog(request.params.sessionId)
+    );
+
+    fastify.get('/api/access-log', async () => {
+      const sessions = eventStore.getSessions();
+      const logs: Record<string, { files: unknown[]; urls: unknown[] }> = {};
+      for (const s of sessions) {
+        logs[s.sessionId] = eventStore.getAccessLog(s.sessionId);
+      }
+      return logs;
+    });
+
     // Pending approvals
     fastify.get('/api/pending', async () => {
       return { pending: pendingManager.getPendingDTO() };

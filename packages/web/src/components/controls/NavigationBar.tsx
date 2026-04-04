@@ -15,6 +15,7 @@ interface NavigationBarProps {
   onToggleResponsesOnly: () => void;
   onToggleRequestsOnly: () => void;
   onToggleRiskyOnly: () => void;
+  onAccessLog?: () => void;
   onPrint?: () => void;
 }
 
@@ -33,6 +34,7 @@ export function NavigationBar({
   onToggleResponsesOnly,
   onToggleRequestsOnly,
   onToggleRiskyOnly,
+  onAccessLog,
   onPrint,
 }: NavigationBarProps) {
   return (
@@ -129,6 +131,23 @@ export function NavigationBar({
           Risk
         </button>
       </div>
+
+      {/* Access Log */}
+      {onAccessLog && (
+        <>
+          <div className="h-4 w-px bg-[#30363d]" />
+          <button
+            onClick={onAccessLog}
+            className="flex items-center gap-1 text-[#8b949e] hover:text-[#e6edf3] transition-colors"
+            title="Access Log"
+          >
+            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+            </svg>
+            Access Log
+          </button>
+        </>
+      )}
 
       {/* Export */}
       {onPrint && (

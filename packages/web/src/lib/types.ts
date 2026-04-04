@@ -81,6 +81,8 @@ export interface EventData {
   completedAt?: number;
   permissionRequestType?: 'tool_use' | 'execution_mode';
   permissionSuggestions?: PermissionSuggestion[];
+  fileAccess?: FileAccess[];
+  urlAccess?: UrlAccess[];
 }
 
 export interface TimelineEvent {
@@ -213,6 +215,30 @@ export interface SetupStatus {
   commandUpToDate: boolean;
   claudeCodeDeclined?: boolean;
   optionalClients: OptionalClientStatus[];
+}
+
+export interface FileAccess {
+  path: string;
+  filename: string;
+  operation: 'read' | 'wrote' | 'edited' | 'deleted';
+  eventId: string;
+  toolName: string;
+  timestamp: number;
+}
+
+export interface UrlAccess {
+  url: string;
+  hostname: string;
+  eventId: string;
+  toolName: string;
+  timestamp: number;
+  bytesIn?: number;
+  bytesOut?: number;
+}
+
+export interface SessionAccessLog {
+  files: FileAccess[];
+  urls: UrlAccess[];
 }
 
 export interface SessionTimeMetrics {
