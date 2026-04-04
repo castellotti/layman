@@ -17,6 +17,7 @@ export function Header() {
     sessions, activeSessionId, setActiveSession,
     sessionSummary, sessionSummaryHistory, sessionSummaryError, isSummarizingSession, fetchSessionSummary,
     clearSessionSummaryError,
+    flowchartOpen, setFlowchartOpen,
   } = useSessionStore();
 
   const statusConfig = {
@@ -107,6 +108,21 @@ export function Header() {
             Auto-reconnecting...
           </span>
         )}
+        <button
+          onClick={() => setFlowchartOpen(!flowchartOpen)}
+          className={`p-1.5 rounded-md transition-colors ${
+            flowchartOpen
+              ? 'text-[#58a6ff] bg-[#58a6ff]/10'
+              : 'text-[#8b949e] hover:text-[#e6edf3] hover:bg-[#30363d]'
+          }`}
+          title="Flowchart View (F)"
+        >
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+            <path d="M1 2.5A1.5 1.5 0 012.5 1h2A1.5 1.5 0 016 2.5v1A1.5 1.5 0 014.5 5h-2A1.5 1.5 0 011 3.5v-1zm0 5A1.5 1.5 0 012.5 6h2A1.5 1.5 0 016 7.5v1A1.5 1.5 0 014.5 10h-2A1.5 1.5 0 011 8.5v-1zm9-5A1.5 1.5 0 0111.5 1h2A1.5 1.5 0 0115 2.5v1A1.5 1.5 0 0113.5 5h-2A1.5 1.5 0 0110 3.5v-1zm0 5A1.5 1.5 0 0111.5 6h2A1.5 1.5 0 0115 7.5v1A1.5 1.5 0 0113.5 10h-2A1.5 1.5 0 0110 8.5v-1zM6 3h4M6 8h4" />
+            <path d="M6 3h4" stroke="currentColor" strokeWidth="1" fill="none" />
+            <path d="M6 8h4" stroke="currentColor" strokeWidth="1" fill="none" />
+          </svg>
+        </button>
         <button
           onClick={() => setBookmarksOpen(true)}
           className="p-1.5 rounded-md text-[#8b949e] hover:text-[#e6edf3] hover:bg-[#30363d] transition-colors"

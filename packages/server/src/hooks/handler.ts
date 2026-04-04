@@ -5,6 +5,7 @@ import { PendingApprovalManager } from './pending.js';
 import { SessionGate } from './gate.js';
 import { EventStore } from '../events/store.js';
 import { classifyRisk } from '../events/classifier.js';
+import { extractAccess } from '../events/access-extractor.js';
 import { AnalysisEngine } from '../analysis/engine.js';
 import type {
   PreToolUseInput,
@@ -400,16 +401,40 @@ async function handlePostToolUse(
   );
 
   const completedAt = Date.now();
+  const access = extractAccess(input.tool_name, input.tool_input, input.tool_output, '', completedAt);
+
   if (pendingEvent && pendingEvent.type !== 'tool_call_completed') {
     eventStore.updateType(pendingEvent.id, 'tool_call_completed');
-    eventStore.updateData(pendingEvent.id, { toolOutput: input.tool_output, completedAt });
+    eventStore.updateData(pendingEvent.id, {
+      toolOutput: input.tool_output,
+      completedAt,
+      fileAccess: access.files.length > 0 ? access.files.map(f => ({ ...f, eventId: pendingEvent.id })) : undefined,
+      urlAccess: access.urls.length > 0 ? access.urls.map(u => ({ ...u, eventId: pendingEvent.id })) : undefined,
+    });
+    if (access.files.length > 0 || access.urls.length > 0) {
+      eventStore.recordAccess(
+        input.session_id,
+        access.files.map(f => ({ ...f, eventId: pendingEvent.id })),
+        access.urls.map(u => ({ ...u, eventId: pendingEvent.id }))
+      );
+    }
   } else {
-    eventStore.add('tool_call_completed', input.session_id, {
+    const filesWithId = access.files.length > 0 ? access.files : undefined;
+    const urlsWithId = access.urls.length > 0 ? access.urls : undefined;
+    const event = eventStore.add('tool_call_completed', input.session_id, {
       toolName: input.tool_name,
       toolInput: input.tool_input,
       toolOutput: input.tool_output,
       completedAt,
+      fileAccess: filesWithId,
+      urlAccess: urlsWithId,
     }, undefined, agentType);
+    // Patch eventIds now that we have the real event id
+    if (filesWithId) filesWithId.forEach(f => f.eventId = event.id);
+    if (urlsWithId) urlsWithId.forEach(u => u.eventId = event.id);
+    if (filesWithId || urlsWithId) {
+      eventStore.recordAccess(input.session_id, filesWithId ?? [], urlsWithId ?? []);
+    }
   }
 }
 
@@ -418,11 +443,24 @@ async function handlePostToolUseFailure(
   eventStore: EventStore,
   agentType: string = 'claude-code'
 ): Promise<void> {
-  eventStore.add('tool_call_failed', input.session_id, {
+  const now = Date.now();
+  const access = extractAccess(input.tool_name, input.tool_input, undefined, '', now);
+  const filesWithId = access.files.length > 0 ? access.files : undefined;
+  const urlsWithId = access.urls.length > 0 ? access.urls : undefined;
+
+  const event = eventStore.add('tool_call_failed', input.session_id, {
     toolName: input.tool_name,
     toolInput: input.tool_input,
     error: input.tool_error,
+    fileAccess: filesWithId,
+    urlAccess: urlsWithId,
   }, undefined, agentType);
+
+  if (filesWithId) filesWithId.forEach(f => f.eventId = event.id);
+  if (urlsWithId) urlsWithId.forEach(u => u.eventId = event.id);
+  if (filesWithId || urlsWithId) {
+    eventStore.recordAccess(input.session_id, filesWithId ?? [], urlsWithId ?? []);
+  }
 }
 
 async function handlePermissionRequest(
