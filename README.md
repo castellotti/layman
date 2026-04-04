@@ -38,21 +38,33 @@ Layman is a dashboard that explains exactly what your AI assistants are doing, i
 
 For Claude Code and Cline, Layman can intercept tool calls before they execute and ask for your approval. Enable this in **Settings → Auto-approve** to control which tools require a human decision.
 
+### Session summary
+
+Each session header shows an AI-generated plain-English summary of what the agent did — updated live as the session progresses and available in history. Click the summary to see previous versions and timestamps.
+
+### Flowchart view
+
+Toggle between the event timeline and an interactive directed graph that shows how tool calls, agent responses, and user prompts connect. Pan and zoom with the mouse or keyboard, and click any node to open the Investigation panel for that event. Available for both live and historical sessions.
+
+### File and URL access tracking
+
+Layman tracks every file the agent reads or writes and every URL it fetches during a session, surfacing them in a dedicated access panel so you can see exactly what was touched.
+
 ### AI analysis (optional)
 
-Layman can use an AI model to explain what each action means and flag anything that looks risky. Add your API key when starting the container:
+Layman can use an AI model to classify the risk level of each action, explain what it means in plain language, and flag anything that looks risky. Add your API key when starting the container:
 
 ```bash
 ANTHROPIC_API_KEY=your-key-here docker compose -f ~/layman/docker-compose.yml up -d
 ```
 
-Supports Anthropic, OpenAI-compatible APIs, and LiteLLM.
+Supports Anthropic, OpenAI-compatible APIs, and LiteLLM. Auto-analysis and auto-explain can be configured independently in **Settings → Analysis**, with severity thresholds (All / Medium+ / High only) and detail level (Quick / Detailed).
 
 ### Session metrics
 
 When connected to Claude Code, the dashboard shows a live metrics bar with model name, context window usage, cumulative session cost, token counts, lines changed, and rate limit warnings. This data comes from claude-code's StatusLine channel — a relay script installed alongside the hooks.
 
-Past sessions are recorded to a local SQLite database. Open the **Sessions** panel (clock icon) to browse history, search across all sessions with full-text search, and filter by event type. Search supports `+required`, `-excluded`, and `"quoted phrases"`.
+Past sessions are recorded to a local SQLite database. Open the **Sessions** panel (clock icon) to browse history and see a time breakdown per session (total time, time the agent was active, time waiting on you, and idle time). Search across all sessions with full-text search and filter by event type. Search supports `+required`, `-excluded`, and `"quoted phrases"`.
 
 ### PII filter
 
