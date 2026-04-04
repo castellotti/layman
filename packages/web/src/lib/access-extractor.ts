@@ -52,6 +52,8 @@ export function extractAccessFromEvents(events: TimelineEvent[]): SessionAccessL
       case 'Bash': {
         const command = (toolInput.command as string) ?? '';
         let match: RegExpExecArray | null;
+
+        // rm → deleted
         RM_PATTERN.lastIndex = 0;
         while ((match = RM_PATTERN.exec(command)) !== null) {
           const path = match[1];
@@ -59,6 +61,26 @@ export function extractAccessFromEvents(events: TimelineEvent[]): SessionAccessL
             files.push({ path, filename: basename(path), operation: 'deleted', eventId, toolName, timestamp });
           }
         }
+
+        // Output redirections: > file (wrote) or >> file (edited/append)
+        const REDIRECT_PATTERN = /(>{1,2})\s*([^\s|;&'"<>]+)/g;
+        REDIRECT_PATTERN.lastIndex = 0;
+        while ((match = REDIRECT_PATTERN.exec(command)) !== null) {
+          const path = match[2];
+          if (path && !path.startsWith('-') && !path.startsWith('/dev/')) {
+            files.push({ path, filename: basename(path), operation: match[1] === '>>' ? 'edited' : 'wrote', eventId, toolName, timestamp });
+          }
+        }
+
+        // cat/head/tail reading files — extract absolute paths from the command
+        if (/\b(?:cat|head|tail|wc)\b/.test(command)) {
+          const PATH_PATTERN = /\s(\/(?!dev\/)\S+)/g;
+          PATH_PATTERN.lastIndex = 0;
+          while ((match = PATH_PATTERN.exec(command)) !== null) {
+            files.push({ path: match[1], filename: basename(match[1]), operation: 'read', eventId, toolName, timestamp });
+          }
+        }
+
         break;
       }
       case 'Glob':

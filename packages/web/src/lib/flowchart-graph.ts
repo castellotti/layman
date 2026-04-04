@@ -148,17 +148,19 @@ export function buildFlowchartGraph(
       if (span.completionEvent) branchEvents.push(span.completionEvent);
       branchEvents.sort((a, b) => a.timestamp - b.timestamp);
 
+      // A branch is still active only if the pending event hasn't been resolved yet
+      const isActive = span.pendingEvent.type === 'tool_call_pending' && !span.completionEvent;
+      const isFailed = span.completionEvent?.type === 'tool_call_failed' || span.pendingEvent.type === 'tool_call_failed';
+
       // Fork edge: spine → branch start
       if (forkEvent && forkEvent.id !== branchEvents[0].id) {
-        const e = makeEdge(`fork-${edgeCount++}`, forkEvent.id, branchEvents[0].id, 'fork', { animated: true });
+        const e = makeEdge(`fork-${edgeCount++}`, forkEvent.id, branchEvents[0].id, 'fork', { animated: isActive });
         edges.push(e);
         g.setEdge(forkEvent.id, branchEvents[0].id);
       }
 
       // Sequential edges within the branch
       for (let i = 0; i < branchEvents.length - 1; i++) {
-        const isActive = !span.completionEvent;
-        const isFailed = span.completionEvent?.type === 'tool_call_failed';
         const category = isActive ? 'branchActive' : isFailed ? 'branchFailed' : 'branchCompleted';
         const e = makeEdge(`branch-${edgeCount++}`, branchEvents[i].id, branchEvents[i + 1].id, category, { animated: isActive });
         edges.push(e);
@@ -168,7 +170,7 @@ export function buildFlowchartGraph(
       // Join edge: branch end → spine
       const branchEnd = branchEvents[branchEvents.length - 1];
       if (joinEvent && branchEnd.id !== joinEvent.id) {
-        const e = makeEdge(`join-${edgeCount++}`, branchEnd.id, joinEvent.id, 'fork', { animated: !span.completionEvent });
+        const e = makeEdge(`join-${edgeCount++}`, branchEnd.id, joinEvent.id, 'fork', { animated: isActive });
         edges.push(e);
         g.setEdge(branchEnd.id, joinEvent.id);
       }

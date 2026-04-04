@@ -34,10 +34,16 @@ export function extractToolSpans(events: TimelineEvent[]): ToolSpan[] {
       const key = spanKey(event);
       const queue = openPending.get(key);
       if (queue && queue.length > 0) {
+        // Traditional model: separate pending + completion events
         const pending = queue.shift()!;
         if (queue.length === 0) openPending.delete(key);
         const span = spans.find(s => s.pendingEvent.id === pending.id);
         if (span) span.completionEvent = event;
+      } else {
+        // Mutation model: the pending event was updated to completed in-place.
+        // Treat this completed event as a self-contained span; its start time is
+        // event.timestamp (when PreToolUse fired) and end time is event.data.completedAt.
+        spans.push({ pendingEvent: event, intermediateEvents: [] });
       }
     } else if (event.type === 'tool_call_approved') {
       // Attach to the most recent unfinished span for this tool
@@ -84,7 +90,8 @@ export function detectParallelGroups(
 
   for (const span of sortedSpans) {
     const startTime = span.pendingEvent.timestamp;
-    const endTime = span.completionEvent?.timestamp ?? Infinity;
+    // For the mutation model, completionEvent is absent but completedAt is on the event data.
+    const endTime = span.completionEvent?.timestamp ?? span.pendingEvent.data.completedAt ?? Infinity;
 
     if (currentGroup.length > 0 && startTime < currentGroupEndTime) {
       // Overlaps with current group
@@ -114,7 +121,8 @@ export function detectParallelGroups(
         if (s.completionEvent && eventIndex.has(s.completionEvent.id)) {
           return eventIndex.get(s.completionEvent.id)!;
         }
-        return events.length - 1;
+        // Mutation model: the pendingEvent itself is the completed event
+        return eventIndex.get(s.pendingEvent.id)!;
       })
     );
 

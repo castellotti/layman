@@ -56,6 +56,39 @@ describe('extractAccess', () => {
       expect(result.files).toHaveLength(0);
     });
 
+    it('extracts output redirect (>) as wrote', () => {
+      const result = extractAccess('Bash', { command: 'echo hello > /tmp/out.txt' }, undefined, eventId, timestamp);
+      expect(result.files).toHaveLength(1);
+      expect(result.files[0].operation).toBe('wrote');
+      expect(result.files[0].path).toBe('/tmp/out.txt');
+    });
+
+    it('extracts append redirect (>>) as edited', () => {
+      const result = extractAccess('Bash', { command: 'echo hello >> /tmp/log.txt' }, undefined, eventId, timestamp);
+      expect(result.files).toHaveLength(1);
+      expect(result.files[0].operation).toBe('edited');
+      expect(result.files[0].path).toBe('/tmp/log.txt');
+    });
+
+    it('ignores /dev/null redirect', () => {
+      const result = extractAccess('Bash', { command: 'command > /dev/null' }, undefined, eventId, timestamp);
+      expect(result.files).toHaveLength(0);
+    });
+
+    it('extracts cat file as read', () => {
+      const result = extractAccess('Bash', { command: 'cat /etc/hosts' }, undefined, eventId, timestamp);
+      expect(result.files).toHaveLength(1);
+      expect(result.files[0].operation).toBe('read');
+      expect(result.files[0].path).toBe('/etc/hosts');
+    });
+
+    it('extracts head/tail with flags as read', () => {
+      const result = extractAccess('Bash', { command: 'head -n 10 /var/log/app.log' }, undefined, eventId, timestamp);
+      expect(result.files).toHaveLength(1);
+      expect(result.files[0].operation).toBe('read');
+      expect(result.files[0].path).toBe('/var/log/app.log');
+    });
+
     it('extracts Glob search path as read', () => {
       const result = extractAccess('Glob', { pattern: '**/*.ts', path: '/src' }, undefined, eventId, timestamp);
       expect(result.files).toHaveLength(1);
