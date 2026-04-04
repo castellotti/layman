@@ -60,6 +60,7 @@ interface SessionState {
 
   // Flowchart view
   flowchartOpen: boolean;
+  flowchartViewMode: 'graph' | 'timeline';
 
   // Access log
   accessLogOpen: boolean;
@@ -110,6 +111,7 @@ interface SessionState {
   setHistoricalEvents: (events: TimelineEvent[]) => void;
   setSessionTimeMetrics: (metrics: SessionTimeMetrics | null) => void;
   setFlowchartOpen: (open: boolean) => void;
+  setFlowchartViewMode: (mode: 'graph' | 'timeline') => void;
   setAccessLogOpen: (open: boolean) => void;
   setAccessLogData: (data: SessionAccessLog | null) => void;
   fetchAccessLog: (sessionId: string) => Promise<void>;
@@ -153,6 +155,7 @@ export const useSessionStore = create<SessionState>((set) => ({
   sessionTimeMetrics: null,
 
   flowchartOpen: false,
+  flowchartViewMode: 'graph' as const,
 
   accessLogOpen: false,
   accessLogData: null,
@@ -407,6 +410,7 @@ export const useSessionStore = create<SessionState>((set) => ({
   setSessionTimeMetrics: (sessionTimeMetrics) => set({ sessionTimeMetrics }),
 
   setFlowchartOpen: (open) => set({ flowchartOpen: open }),
+  setFlowchartViewMode: (mode) => set({ flowchartViewMode: mode }),
   setAccessLogOpen: (open) => set({ accessLogOpen: open }),
   setAccessLogData: (data) => set({ accessLogData: data }),
   fetchAccessLog: async (sessionId) => {

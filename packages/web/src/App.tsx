@@ -2,6 +2,7 @@ import React, { useRef, useState, useCallback, useEffect, Suspense, lazy } from 
 import { Header } from './components/layout/Header.js';
 import { EventStream } from './components/layout/EventStream.js';
 const FlowchartView = lazy(() => import('./components/flowchart/FlowchartView.js').then(m => ({ default: m.FlowchartView })));
+const TimelineView = lazy(() => import('./components/flowchart/TimelineView.js').then(m => ({ default: m.TimelineView })));
 import { InvestigationPanel } from './components/layout/InvestigationPanel.js';
 import { SetupBanner } from './components/layout/SetupBanner.js';
 import { SetupModal } from './components/layout/SetupModal.js';
@@ -46,6 +47,8 @@ export function App() {
   const investigationOpen = useSessionStore((s) => s.investigationOpen);
   const flowchartOpen = useSessionStore((s) => s.flowchartOpen);
   const setFlowchartOpen = useSessionStore((s) => s.setFlowchartOpen);
+  const flowchartViewMode = useSessionStore((s) => s.flowchartViewMode);
+  const setFlowchartViewMode = useSessionStore((s) => s.setFlowchartViewMode);
   const setSetupStatus = useSessionStore((s) => s.setSetupStatus);
   const [leftWidthPct, setLeftWidthPct] = useState(60);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -75,17 +78,26 @@ export function App() {
     e.preventDefault();
   }, []);
 
-  // Global keyboard shortcut: F to toggle flowchart
+  // Global keyboard shortcuts: F to toggle flowchart, G/T to switch graph/timeline
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLSelectElement) return;
-      if ((e.key === 'f' || e.key === 'F') && !e.ctrlKey && !e.metaKey && !e.altKey) {
-        setFlowchartOpen(!flowchartOpen);
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      switch (e.key.toLowerCase()) {
+        case 'f':
+          setFlowchartOpen(!flowchartOpen);
+          break;
+        case 'g':
+          if (flowchartOpen) setFlowchartViewMode('graph');
+          break;
+        case 't':
+          if (flowchartOpen) setFlowchartViewMode('timeline');
+          break;
       }
     };
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
-  }, [flowchartOpen, setFlowchartOpen]);
+  }, [flowchartOpen, setFlowchartOpen, setFlowchartViewMode]);
 
   useEffect(() => {
     const onMouseMove = (e: MouseEvent) => {
@@ -115,9 +127,37 @@ export function App() {
           style={{ width: investigationOpen ? `${leftWidthPct}%` : '100%' }}
         >
           {flowchartOpen ? (
-            <Suspense fallback={<div className="flex items-center justify-center h-full text-[#484f58] text-xs">Loading flowchart...</div>}>
-              <FlowchartView />
-            </Suspense>
+            <div className="flex flex-col h-full">
+              {/* Graph / Timeline tab bar */}
+              <div data-print-hide className="flex items-center gap-1 px-3 py-1.5 bg-[#161b22] border-b border-[#30363d] shrink-0">
+                <button
+                  onClick={() => setFlowchartViewMode('graph')}
+                  className={`text-[10px] font-mono px-2.5 py-1 rounded transition-colors ${
+                    flowchartViewMode === 'graph'
+                      ? 'bg-[#58a6ff]/15 text-[#58a6ff]'
+                      : 'text-[#8b949e] hover:text-[#e6edf3] hover:bg-[#21262d]'
+                  }`}
+                >
+                  Graph
+                </button>
+                <button
+                  onClick={() => setFlowchartViewMode('timeline')}
+                  className={`text-[10px] font-mono px-2.5 py-1 rounded transition-colors ${
+                    flowchartViewMode === 'timeline'
+                      ? 'bg-[#58a6ff]/15 text-[#58a6ff]'
+                      : 'text-[#8b949e] hover:text-[#e6edf3] hover:bg-[#21262d]'
+                  }`}
+                >
+                  Timeline
+                </button>
+                <span className="text-[9px] text-[#484f58] ml-2">G / T</span>
+              </div>
+              <div className="flex-1 min-h-0">
+                <Suspense fallback={<div className="flex items-center justify-center h-full text-[#484f58] text-xs">Loading...</div>}>
+                  {flowchartViewMode === 'graph' ? <FlowchartView /> : <TimelineView />}
+                </Suspense>
+              </div>
+            </div>
           ) : (
             <EventStream onSend={send} />
           )}

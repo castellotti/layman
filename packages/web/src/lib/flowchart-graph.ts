@@ -2,6 +2,7 @@ import dagre from '@dagrejs/dagre';
 import type { Node, Edge } from '@xyflow/react';
 import type { TimelineEvent } from './types.js';
 import { NODE_BORDER_COLORS, EVENT_ICONS } from './event-styles.js';
+import { extractToolSpans, detectParallelGroups, getParallelEventIds } from './parallel-detection.js';
 
 export type FlowchartNodeType = 'userPrompt' | 'toolCall' | 'agentResponse' | 'sessionEvent' | 'default';
 
@@ -57,10 +58,43 @@ function getSublabel(event: TimelineEvent): string {
   return '';
 }
 
-/** Filter out events that are not useful in a flowchart (e.g. analysis_result which is metadata) */
 function isFlowchartRelevant(event: TimelineEvent): boolean {
   const skip = new Set(['analysis_result', 'pre_compact', 'post_compact']);
   return !skip.has(event.type);
+}
+
+// Edge style constants
+const EDGE_STYLES = {
+  spine: { stroke: '#30363d', strokeWidth: 1 },
+  fork: { stroke: '#58a6ff', strokeWidth: 1.5, strokeDasharray: '6 4' },
+  branch: { stroke: '#30363d', strokeWidth: 1 },
+  branchActive: { stroke: '#d29922', strokeWidth: 2 },
+  branchCompleted: { stroke: '#3fb950', strokeWidth: 1.5 },
+  branchFailed: { stroke: '#f85149', strokeWidth: 1.5, strokeDasharray: '8 4' },
+  current: { stroke: '#58a6ff', strokeWidth: 1.5 },
+} as const;
+
+const MARKER_DEFAULTS = { type: 'arrowclosed' as const, width: 12, height: 12 };
+
+function makeEdge(
+  id: string,
+  source: string,
+  target: string,
+  category: keyof typeof EDGE_STYLES,
+  opts?: { animated?: boolean }
+): Edge {
+  const style = EDGE_STYLES[category];
+  const isForkJoin = category === 'fork';
+  return {
+    id,
+    source,
+    target,
+    type: isForkJoin ? 'smoothstep' : 'default',
+    animated: opts?.animated ?? false,
+    className: `edge-${category}`,
+    style: { ...style },
+    markerEnd: { ...MARKER_DEFAULTS, color: style.stroke },
+  };
 }
 
 export function buildFlowchartGraph(
@@ -94,60 +128,73 @@ export function buildFlowchartGraph(
     });
   }
 
-  // Build edges
+  // Detect parallel tool executions
+  const spans = extractToolSpans(relevant);
+  const groups = detectParallelGroups(relevant, spans);
+  const parallelIds = getParallelEventIds(groups);
+
   const edges: Edge[] = [];
+  let edgeCount = 0;
 
-  // Sequential edges: connect each event to the next
-  for (let i = 0; i < relevant.length - 1; i++) {
-    edges.push({
-      id: `seq-${i}`,
-      source: relevant[i].id,
-      target: relevant[i + 1].id,
-      type: 'default',
-      style: { stroke: '#30363d', strokeWidth: 1 },
-      markerEnd: { type: 'arrowclosed' as const, color: '#30363d', width: 12, height: 12 },
-    });
-  }
+  // Build fork/join edges for each parallel group
+  for (const group of groups) {
+    const forkEvent = relevant[group.forkAfterIndex];
+    const joinEvent = relevant[group.joinBeforeIndex];
 
-  // Causal edges: tool_call_pending -> tool_call_completed/failed
-  const pendingEvents = relevant.filter(
-    e => e.type === 'tool_call_pending' || e.type === 'tool_call_approved'
-  );
-  for (const pending of pendingEvents) {
-    const completion = relevant.find(
-      e =>
-        (e.type === 'tool_call_completed' || e.type === 'tool_call_failed') &&
-        e.data.toolName === pending.data.toolName &&
-        e.sessionId === pending.sessionId &&
-        e.timestamp > pending.timestamp
-    );
-    if (completion && completion.id !== relevant[relevant.indexOf(pending) + 1]?.id) {
-      g.setEdge(pending.id, completion.id);
-      edges.push({
-        id: `causal-${pending.id}-${completion.id}`,
-        source: pending.id,
-        target: completion.id,
-        type: 'default',
-        animated: true,
-        style: {
-          stroke: completion.type === 'tool_call_failed' ? '#f85149' : '#3fb950',
-          strokeWidth: 1.5,
-          strokeDasharray: '5 3',
-        },
-      });
-    }
-  }
+    for (const span of group.spans) {
+      // Collect all events in this branch in order
+      const branchEvents: TimelineEvent[] = [span.pendingEvent];
+      branchEvents.push(...span.intermediateEvents);
+      if (span.completionEvent) branchEvents.push(span.completionEvent);
+      branchEvents.sort((a, b) => a.timestamp - b.timestamp);
 
-  // Apply dagre layout
-  for (const edge of edges) {
-    if (g.node(edge.source) && g.node(edge.target)) {
-      // Ensure edge exists in graph for layout
-      if (!g.hasEdge(edge.source, edge.target)) {
-        g.setEdge(edge.source, edge.target);
+      // Fork edge: spine → branch start
+      if (forkEvent && forkEvent.id !== branchEvents[0].id) {
+        const e = makeEdge(`fork-${edgeCount++}`, forkEvent.id, branchEvents[0].id, 'fork', { animated: true });
+        edges.push(e);
+        g.setEdge(forkEvent.id, branchEvents[0].id);
+      }
+
+      // Sequential edges within the branch
+      for (let i = 0; i < branchEvents.length - 1; i++) {
+        const isActive = !span.completionEvent;
+        const isFailed = span.completionEvent?.type === 'tool_call_failed';
+        const category = isActive ? 'branchActive' : isFailed ? 'branchFailed' : 'branchCompleted';
+        const e = makeEdge(`branch-${edgeCount++}`, branchEvents[i].id, branchEvents[i + 1].id, category, { animated: isActive });
+        edges.push(e);
+        g.setEdge(branchEvents[i].id, branchEvents[i + 1].id);
+      }
+
+      // Join edge: branch end → spine
+      const branchEnd = branchEvents[branchEvents.length - 1];
+      if (joinEvent && branchEnd.id !== joinEvent.id) {
+        const e = makeEdge(`join-${edgeCount++}`, branchEnd.id, joinEvent.id, 'fork', { animated: !span.completionEvent });
+        edges.push(e);
+        g.setEdge(branchEnd.id, joinEvent.id);
       }
     }
   }
 
+  // Build spine (sequential) edges for events NOT in parallel groups
+  const lastEventId = relevant[relevant.length - 1]?.id;
+  for (let i = 0; i < relevant.length - 1; i++) {
+    const curr = relevant[i];
+    const next = relevant[i + 1];
+
+    // Skip if either event is inside a parallel group branch
+    if (parallelIds.has(curr.id) || parallelIds.has(next.id)) continue;
+
+    // Skip if this edge would duplicate a fork/join edge
+    if (edges.some(e => e.source === curr.id && e.target === next.id)) continue;
+
+    const isCurrent = next.id === lastEventId;
+    const category = isCurrent ? 'current' : 'spine';
+    const e = makeEdge(`seq-${edgeCount++}`, curr.id, next.id, category, { animated: isCurrent });
+    edges.push(e);
+    g.setEdge(curr.id, next.id);
+  }
+
+  // Apply dagre layout
   dagre.layout(g);
 
   // Apply positions

@@ -39,3 +39,34 @@
 .react-flow__attribution {
   display: none !important;
 }
+
+/* Edge animations */
+@keyframes flow-dash {
+  to { stroke-dashoffset: -20; }
+}
+
+@keyframes edge-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.react-flow__edge.edge-fork .react-flow__edge-path {
+  animation: flow-dash 1s linear infinite;
+}
+
+.react-flow__edge.edge-branchActive .react-flow__edge-path {
+  filter: drop-shadow(0 0 3px #d2992240);
+}
+
+.react-flow__edge.edge-branchCompleted .react-flow__edge-path {
+  filter: drop-shadow(0 0 2px #3fb95030);
+}
+
+.react-flow__edge.edge-branchFailed .react-flow__edge-path {
+  filter: drop-shadow(0 0 3px #f8514940);
+}
+
+.react-flow__edge.edge-current .react-flow__edge-path {
+  animation: edge-pulse 2s ease-in-out infinite;
+  filter: drop-shadow(0 0 4px #58a6ff30);
+}

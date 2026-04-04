@@ -14,6 +14,7 @@ import { SearchResults } from '../search/SearchResults.js';
 import { EventTypeFilterBar } from '../search/EventTypeFilterBar.js';
 
 const FlowchartView = lazy(() => import('../flowchart/FlowchartView.js').then(m => ({ default: m.FlowchartView })));
+const TimelineView = lazy(() => import('../flowchart/TimelineView.js').then(m => ({ default: m.TimelineView })));
 
 interface BookmarksPanelProps {
   onSend: (msg: ClientMessage) => void;
@@ -60,6 +61,7 @@ export function BookmarksPanel({ onSend }: BookmarksPanelProps) {
   const importInputRef = useRef<HTMLInputElement>(null);
   const [deleteConfirmSessionId, setDeleteConfirmSessionId] = useState<string | null>(null);
   const [historicalFlowchartOpen, setHistoricalFlowchartOpen] = useState(false);
+  const [historicalViewMode, setHistoricalViewMode] = useState<'graph' | 'timeline'>('graph');
 
   const recordingEnabled = config?.sessionRecording ?? false;
 
@@ -702,13 +704,47 @@ export function BookmarksPanel({ onSend }: BookmarksPanelProps) {
                 </div>
                 <div className="flex-1 overflow-hidden">
                   {historicalFlowchartOpen ? (
-                    <Suspense fallback={<div className="flex items-center justify-center h-full text-[#484f58] text-xs">Loading flowchart...</div>}>
-                      <FlowchartView
-                        events={filteredHistoricalEvents}
-                        selectedEventId={investigatingEventId}
-                        onSelectEvent={(id) => setInvestigatingEventId(investigatingEventId === id ? null : id)}
-                      />
-                    </Suspense>
+                    <div className="flex flex-col h-full">
+                      <div data-print-hide className="flex items-center gap-1 px-3 py-1.5 bg-[#161b22] border-b border-[#30363d] shrink-0">
+                        <button
+                          onClick={() => setHistoricalViewMode('graph')}
+                          className={`text-[10px] font-mono px-2.5 py-1 rounded transition-colors ${
+                            historicalViewMode === 'graph'
+                              ? 'bg-[#58a6ff]/15 text-[#58a6ff]'
+                              : 'text-[#8b949e] hover:text-[#e6edf3] hover:bg-[#21262d]'
+                          }`}
+                        >
+                          Graph
+                        </button>
+                        <button
+                          onClick={() => setHistoricalViewMode('timeline')}
+                          className={`text-[10px] font-mono px-2.5 py-1 rounded transition-colors ${
+                            historicalViewMode === 'timeline'
+                              ? 'bg-[#58a6ff]/15 text-[#58a6ff]'
+                              : 'text-[#8b949e] hover:text-[#e6edf3] hover:bg-[#21262d]'
+                          }`}
+                        >
+                          Timeline
+                        </button>
+                      </div>
+                      <div className="flex-1 min-h-0">
+                        <Suspense fallback={<div className="flex items-center justify-center h-full text-[#484f58] text-xs">Loading...</div>}>
+                          {historicalViewMode === 'graph' ? (
+                            <FlowchartView
+                              events={filteredHistoricalEvents}
+                              selectedEventId={investigatingEventId}
+                              onSelectEvent={(id) => setInvestigatingEventId(investigatingEventId === id ? null : id)}
+                            />
+                          ) : (
+                            <TimelineView
+                              events={filteredHistoricalEvents}
+                              selectedEventId={investigatingEventId}
+                              onSelectEvent={(id) => setInvestigatingEventId(investigatingEventId === id ? null : id)}
+                            />
+                          )}
+                        </Suspense>
+                      </div>
+                    </div>
                   ) : (
                     <HistoricalEventStream
                       events={filteredHistoricalEvents}
