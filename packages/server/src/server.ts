@@ -2,8 +2,8 @@ import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import staticPlugin from '@fastify/static';
 import websocket from '@fastify/websocket';
-import { existsSync } from 'fs';
-import { join, dirname } from 'path';
+import { existsSync, readFileSync } from 'fs';
+import { join, dirname, resolve } from 'path';
 import { fileURLToPath } from 'url';
 
 import { PendingApprovalManager } from './hooks/pending.js';
@@ -30,6 +30,7 @@ import { recoverSessionGaps } from './hooks/recovery.js';
 import type { ServerMessage, ClientMessage, SessionStatus, SetupStatus } from './types/index.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+const { version: SERVER_VERSION } = JSON.parse(readFileSync(resolve(__dirname, '../package.json'), 'utf-8')) as { version: string };
 
 function mergeDeclined(status: SetupStatus, declinedClients: string[]): SetupStatus {
   status.claudeCodeDeclined = declinedClients.includes('claude-code');
@@ -175,7 +176,7 @@ export function createServer(config: LaymanConfig): LaymanServer {
 
   function registerRoutes(): void {
     // Health check
-    fastify.get('/api/health', async () => ({ status: 'ok', version: '0.1.0' }));
+    fastify.get('/api/health', async () => ({ status: 'ok', version: SERVER_VERSION }));
 
     // PII categories — returns the full list of PII categories for the UI
     fastify.get('/api/pii-categories', async () => ({
@@ -907,7 +908,7 @@ export function createServer(config: LaymanConfig): LaymanServer {
         // Send initial state
         ws.send(JSON.stringify({
           type: 'connected',
-          serverVersion: '0.1.0',
+          serverVersion: SERVER_VERSION,
           eventCount: eventStore.size,
         } satisfies ServerMessage));
 
