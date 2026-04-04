@@ -38,21 +38,33 @@ Layman is a dashboard that explains exactly what your AI assistants are doing, i
 
 For Claude Code and Cline, Layman can intercept tool calls before they execute and ask for your approval. Enable this in **Settings → Auto-approve** to control which tools require a human decision.
 
+### Session summary
+
+Each session header shows an AI-generated plain-English summary of what the agent did — updated live as the session progresses and available in history. Click the summary to see previous versions and timestamps.
+
+### Flowchart view
+
+Toggle between the event timeline and an interactive directed graph that shows how tool calls, agent responses, and user prompts connect. Pan and zoom with the mouse or keyboard, and click any node to open the Investigation panel for that event. Available for both live and historical sessions.
+
+### File and URL access tracking
+
+Layman tracks every file the agent reads or writes and every URL it fetches during a session, surfacing them in a dedicated access panel so you can see exactly what was touched.
+
 ### AI analysis (optional)
 
-Layman can use an AI model to explain what each action means and flag anything that looks risky. Add your API key when starting the container:
+Layman can use an AI model to classify the risk level of each action, explain what it means in plain language, and flag anything that looks risky. Add your API key when starting the container:
 
 ```bash
 ANTHROPIC_API_KEY=your-key-here docker compose -f ~/layman/docker-compose.yml up -d
 ```
 
-Supports Anthropic, OpenAI-compatible APIs, and LiteLLM.
+Supports Anthropic, OpenAI-compatible APIs, and LiteLLM. Auto-analysis and auto-explain can be configured independently in **Settings → Analysis**, with severity thresholds (All / Medium+ / High only) and detail level (Quick / Detailed).
 
 ### Session metrics
 
 When connected to Claude Code, the dashboard shows a live metrics bar with model name, context window usage, cumulative session cost, token counts, lines changed, and rate limit warnings. This data comes from claude-code's StatusLine channel — a relay script installed alongside the hooks.
 
-Past sessions are recorded to a local SQLite database. Open the **Sessions** panel (clock icon) to browse history, search across all sessions with full-text search, and filter by event type. Search supports `+required`, `-excluded`, and `"quoted phrases"`.
+Past sessions are recorded to a local SQLite database. Open the **Sessions** panel (clock icon) to browse history and see a time breakdown per session (total time, time the agent was active, time waiting on you, and idle time). Search across all sessions with full-text search and filter by event type. Search supports `+required`, `-excluded`, and `"quoted phrases"`.
 
 ### PII filter
 
@@ -66,19 +78,57 @@ Export a session as a PDF transcript using the print button in the session view.
 
 ## Setup
 
-**Start the Layman server** (one instance handles all your projects):
+Requires [Docker](https://docs.docker.com/get-started/get-docker/).
+
+**1. Create a compose file** — save this to `~/layman/docker-compose.yml`:
+
+```yaml
+services:
+  layman:
+    image: ghcr.io/castellotti/layman:latest
+    container_name: layman
+    ports:
+      - "127.0.0.1:8880:8880"
+    volumes:
+      - ${HOME}/.claude:/root/.claude
+      - ${HOME}/.config:/root/.config
+      - ${HOME}/.vibe:/root/.vibe
+      - ${HOME}/Documents/Cline:/root/Documents/Cline
+      - ${HOME}/.codex:/root/.codex
+    environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - HOST_HOME=${HOME}
+    command: >
+      node packages/server/dist/index.js start
+      --host 0.0.0.0
+      --no-open
+      --hook-url http://localhost:8880
+    restart: unless-stopped
+```
+
+> **Windows:** Replace `${HOME}` with `${USERPROFILE}` (e.g. `${USERPROFILE}/.claude:/root/.claude`).
+
+**2. Start the server:**
 
 ```bash
 docker compose -f ~/layman/docker-compose.yml up -d
 ```
 
-**Open the dashboard:**
+**3. Open the dashboard:**
 
 http://localhost:8880
 
-On first visit, a modal lists every AI agent client detected on your system. Toggle on the clients you want to integrate, then click **Accept**. Layman writes hooks and slash commands only for the clients you selected. Clients you leave off are remembered and won't be offered again — you can install them any time from **Settings → Client Setup**.
+**4. Install hooks** — on first visit, a modal lists every AI agent client detected on your system. Toggle on the clients you want to integrate and click **Accept**. Layman writes the necessary hooks and slash commands directly to your home directory. You can install or remove individual clients any time from **Settings → Client Setup**.
 
-After a Layman update, a banner appears if your hooks or commands are out of date. Click **Update** to refresh them.
+After a Layman update, pull the latest image and restart:
+
+```bash
+docker compose -f ~/layman/docker-compose.yml pull
+docker compose -f ~/layman/docker-compose.yml up -d
+```
+
+A banner will appear in the dashboard if your hooks or commands are out of date — click **Update** to refresh them.
 
 ---
 
