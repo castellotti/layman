@@ -175,7 +175,6 @@ function buildLaymanHooks(serverUrl: string, hookTimeout: number): SettingsHooks
         type: 'http',
         url: `${serverUrl}/hooks/${eventName}`,
         timeout: 10,
-        async: true,
         _layman: true,
       },
     ],
@@ -238,7 +237,7 @@ function buildLaymanHooks(serverUrl: string, hookTimeout: number): SettingsHooks
     Elicitation: [asyncHook('Elicitation')],
     ElicitationResult: [asyncHook('ElicitationResult')],
     // Phase 3: New hook events
-    PermissionDenied: [asyncHook('PermissionDenied')],
+    // PermissionDenied requires claude-code >= 2.1.89; omitted for compatibility
     Setup: [asyncHook('Setup')],
     ConfigChange: [asyncHook('ConfigChange')],
     InstructionsLoaded: [asyncHook('InstructionsLoaded')],
