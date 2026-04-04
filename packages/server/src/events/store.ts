@@ -1,6 +1,6 @@
 import { EventEmitter } from 'events';
 import { randomUUID } from 'crypto';
-import type { TimelineEvent, EventType, EventData } from './types.js';
+import type { TimelineEvent, EventType, EventData, FileAccess, UrlAccess, SessionAccessLog } from './types.js';
 import type { AnalysisResult, LaymansResult } from '../analysis/types.js';
 
 export interface SessionInfo {
@@ -15,6 +15,7 @@ export class EventStore extends EventEmitter {
   private events: TimelineEvent[] = [];
   private maxEvents = 10000;
   private sessions: Map<string, { cwd: string; lastSeen: number; agentType: string; opencodeUrl?: string }> = new Map();
+  private accessLogs: Map<string, { files: FileAccess[]; urls: UrlAccess[] }> = new Map();
   private dataFilter?: (data: EventData) => EventData;
 
   setDataFilter(filter: (data: EventData) => EventData): void {
@@ -142,6 +143,21 @@ export class EventStore extends EventEmitter {
     return Array.from(this.sessions.entries())
       .map(([sessionId, info]) => ({ sessionId, ...info }))
       .sort((a, b) => b.lastSeen - a.lastSeen);
+  }
+
+  recordAccess(sessionId: string, files: FileAccess[], urls: UrlAccess[]): void {
+    let log = this.accessLogs.get(sessionId);
+    if (!log) {
+      log = { files: [], urls: [] };
+      this.accessLogs.set(sessionId, log);
+    }
+    log.files.push(...files);
+    log.urls.push(...urls);
+    this.emit('access:updated', sessionId);
+  }
+
+  getAccessLog(sessionId: string): SessionAccessLog {
+    return this.accessLogs.get(sessionId) ?? { files: [], urls: [] };
   }
 
   get size(): number {

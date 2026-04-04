@@ -1,11 +1,13 @@
-import React, { useRef, useState, useCallback, useEffect } from 'react';
+import React, { useRef, useState, useCallback, useEffect, Suspense, lazy } from 'react';
 import { Header } from './components/layout/Header.js';
 import { EventStream } from './components/layout/EventStream.js';
+const FlowchartView = lazy(() => import('./components/flowchart/FlowchartView.js').then(m => ({ default: m.FlowchartView })));
 import { InvestigationPanel } from './components/layout/InvestigationPanel.js';
 import { SetupBanner } from './components/layout/SetupBanner.js';
 import { SetupModal } from './components/layout/SetupModal.js';
 import { SettingsDrawer } from './components/controls/SettingsDrawer.js';
 import { BookmarksPanel } from './components/bookmarks/BookmarksPanel.js';
+import { AccessLogPanel } from './components/access/AccessLogPanel.js';
 import { useSessionStore } from './stores/sessionStore.js';
 import { useWebSocket } from './hooks/useWebSocket.js';
 import { usePendingApprovals } from './hooks/usePendingApprovals.js';
@@ -42,6 +44,8 @@ function StatusBar() {
 export function App() {
   const { send } = useWebSocket();
   const investigationOpen = useSessionStore((s) => s.investigationOpen);
+  const flowchartOpen = useSessionStore((s) => s.flowchartOpen);
+  const setFlowchartOpen = useSessionStore((s) => s.setFlowchartOpen);
   const setSetupStatus = useSessionStore((s) => s.setSetupStatus);
   const [leftWidthPct, setLeftWidthPct] = useState(60);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -71,6 +75,18 @@ export function App() {
     e.preventDefault();
   }, []);
 
+  // Global keyboard shortcut: F to toggle flowchart
+  useEffect(() => {
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLSelectElement) return;
+      if ((e.key === 'f' || e.key === 'F') && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        setFlowchartOpen(!flowchartOpen);
+      }
+    };
+    window.addEventListener('keydown', handleKey);
+    return () => window.removeEventListener('keydown', handleKey);
+  }, [flowchartOpen, setFlowchartOpen]);
+
   useEffect(() => {
     const onMouseMove = (e: MouseEvent) => {
       if (!dragging.current || !containerRef.current) return;
@@ -93,12 +109,18 @@ export function App() {
       <SetupBanner onInstall={handleSetupInstall} />
 
       <div ref={containerRef} className="flex flex-1 overflow-hidden">
-        {/* Left panel: Event timeline */}
+        {/* Left panel: Event timeline or Flowchart */}
         <div
           className="flex flex-col min-w-0 overflow-hidden"
           style={{ width: investigationOpen ? `${leftWidthPct}%` : '100%' }}
         >
-          <EventStream onSend={send} />
+          {flowchartOpen ? (
+            <Suspense fallback={<div className="flex items-center justify-center h-full text-[#484f58] text-xs">Loading flowchart...</div>}>
+              <FlowchartView />
+            </Suspense>
+          ) : (
+            <EventStream onSend={send} />
+          )}
         </div>
 
         {/* Drag handle */}
@@ -125,6 +147,9 @@ export function App() {
 
       {/* Bookmarks panel */}
       <BookmarksPanel onSend={send} />
+
+      {/* Access log panel */}
+      <AccessLogPanel />
 
       {/* First-run setup modal */}
       <SetupModal />

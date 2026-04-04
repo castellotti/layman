@@ -435,6 +435,46 @@ export function InvestigationPanel({ onSend, eventId: embeddedEventId, onClose }
           </div>
         )}
 
+        {/* Per-event Access Log */}
+        {(event.data.fileAccess?.length || event.data.urlAccess?.length) ? (
+          <div>
+            <span className="text-[10px] text-[#484f58] font-mono uppercase tracking-wider block mb-2">
+              Access Log
+            </span>
+            {event.data.fileAccess && event.data.fileAccess.length > 0 && (
+              <div className="space-y-0.5 mb-2">
+                {event.data.fileAccess.map((fa, i) => (
+                  <div key={i} className="flex items-center gap-2 text-xs">
+                    <span className="font-semibold text-[10px] w-12 shrink-0" style={{
+                      color: fa.operation === 'read' ? '#a78bfa' : fa.operation === 'wrote' ? '#3fb950' : fa.operation === 'edited' ? '#d29922' : '#f85149'
+                    }}>
+                      {fa.operation}
+                    </span>
+                    <span className="font-mono text-[#8b949e] truncate" title={fa.path}>{fa.path}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+            {event.data.urlAccess && event.data.urlAccess.length > 0 && (
+              <div className="space-y-0.5">
+                {event.data.urlAccess.map((ua, i) => (
+                  <div key={i} className="flex items-center gap-2 text-xs">
+                    <span className="font-semibold text-[10px] text-[#58a6ff] w-12 shrink-0">URL</span>
+                    <span className="font-mono text-[#8b949e] truncate" title={ua.url}>
+                      {ua.url.length > 60 ? ua.url.slice(0, 60) + '...' : ua.url}
+                    </span>
+                    {ua.bytesIn != null && ua.bytesIn > 0 && (
+                      <span className="text-[10px] text-[#484f58] shrink-0">
+                        {ua.bytesIn < 1024 ? `${ua.bytesIn} B` : `${(ua.bytesIn / 1024).toFixed(1)} KB`}
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        ) : null}
+
         {/* Ask question input */}
         <div>
           <div className="flex items-center justify-between mb-2">
