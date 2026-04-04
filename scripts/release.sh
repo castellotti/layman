@@ -60,7 +60,7 @@ echo "  Release: $TAG"
 echo "  Commit:  $(git rev-parse --short HEAD) — $(git log -1 --format='%s')"
 echo "  Target:  ghcr.io/castellotti/layman:${VERSION}"
 echo ""
-read -r -p "Create and push tag '$TAG'? [y/N] " CONFIRM
+read -r -p "Bump versions, commit, tag, and push '$TAG'? [y/N] " CONFIRM
 
 case "$CONFIRM" in
   [yY][eE][sS]|[yY])
@@ -70,6 +70,35 @@ case "$CONFIRM" in
     exit 0
     ;;
 esac
+
+# Bump version in all package.json files
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+for PKG in \
+  "$REPO_ROOT/package.json" \
+  "$REPO_ROOT/packages/server/package.json" \
+  "$REPO_ROOT/packages/web/package.json"; do
+  if [[ -f "$PKG" ]]; then
+    # Use node to do a clean JSON-preserving replacement
+    node -e "
+      const fs = require('fs');
+      const p = JSON.parse(fs.readFileSync('$PKG', 'utf-8'));
+      p.version = '$VERSION';
+      fs.writeFileSync('$PKG', JSON.stringify(p, null, 2) + '\n');
+    "
+    echo "Bumped $PKG → $VERSION"
+  fi
+done
+
+git add \
+  "$REPO_ROOT/package.json" \
+  "$REPO_ROOT/packages/server/package.json" \
+  "$REPO_ROOT/packages/web/package.json"
+
+git commit -m "chore: release $TAG"
+echo "Committed version bump"
+
+git push origin main
+echo "Pushed version bump to main"
 
 git tag -a "$TAG" -m "Release $TAG"
 echo "Created tag $TAG"
