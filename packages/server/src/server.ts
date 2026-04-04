@@ -8,6 +8,7 @@ import { fileURLToPath } from 'url';
 
 import { PendingApprovalManager } from './hooks/pending.js';
 import { EventStore } from './events/store.js';
+import type { FileAccess, UrlAccess } from './events/types.js';
 import { SessionGate } from './hooks/gate.js';
 import { HookInstaller } from './hooks/installer.js';
 import { registerHookHandler } from './hooks/handler.js';
@@ -240,7 +241,20 @@ export function createServer(config: LaymanConfig): LaymanServer {
     // Access log
     fastify.get<{ Params: { sessionId: string } }>(
       '/api/sessions/:sessionId/access-log',
-      async (request) => eventStore.getAccessLog(request.params.sessionId)
+      async (request) => {
+        const { sessionId } = request.params;
+        const live = eventStore.getAccessLog(sessionId);
+        if (live.files.length > 0 || live.urls.length > 0) return live;
+        // Fall back to reconstructing from persisted events for historical sessions
+        const events = bookmarkStore.getEventsForSession(sessionId);
+        const files: FileAccess[] = [];
+        const urls: UrlAccess[] = [];
+        for (const ev of events) {
+          if (ev.data.fileAccess) files.push(...ev.data.fileAccess);
+          if (ev.data.urlAccess) urls.push(...ev.data.urlAccess);
+        }
+        return { files, urls };
+      }
     );
 
     fastify.get('/api/access-log', async () => {
