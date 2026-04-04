@@ -66,19 +66,57 @@ Export a session as a PDF transcript using the print button in the session view.
 
 ## Setup
 
-**Start the Layman server** (one instance handles all your projects):
+Requires [Docker](https://docs.docker.com/get-started/get-docker/).
+
+**1. Create a compose file** — save this to `~/layman/docker-compose.yml`:
+
+```yaml
+services:
+  layman:
+    image: ghcr.io/castellotti/layman:latest
+    container_name: layman
+    ports:
+      - "127.0.0.1:8880:8880"
+    volumes:
+      - ${HOME}/.claude:/root/.claude
+      - ${HOME}/.config:/root/.config
+      - ${HOME}/.vibe:/root/.vibe
+      - ${HOME}/Documents/Cline:/root/Documents/Cline
+      - ${HOME}/.codex:/root/.codex
+    environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - HOST_HOME=${HOME}
+    command: >
+      node packages/server/dist/index.js start
+      --host 0.0.0.0
+      --no-open
+      --hook-url http://localhost:8880
+    restart: unless-stopped
+```
+
+> **Windows:** Replace `${HOME}` with `${USERPROFILE}` (e.g. `${USERPROFILE}/.claude:/root/.claude`).
+
+**2. Start the server:**
 
 ```bash
 docker compose -f ~/layman/docker-compose.yml up -d
 ```
 
-**Open the dashboard:**
+**3. Open the dashboard:**
 
 http://localhost:8880
 
-On first visit, a modal lists every AI agent client detected on your system. Toggle on the clients you want to integrate, then click **Accept**. Layman writes hooks and slash commands only for the clients you selected. Clients you leave off are remembered and won't be offered again — you can install them any time from **Settings → Client Setup**.
+**4. Install hooks** — on first visit, a modal lists every AI agent client detected on your system. Toggle on the clients you want to integrate and click **Accept**. Layman writes the necessary hooks and slash commands directly to your home directory. You can install or remove individual clients any time from **Settings → Client Setup**.
 
-After a Layman update, a banner appears if your hooks or commands are out of date. Click **Update** to refresh them.
+After a Layman update, pull the latest image and restart:
+
+```bash
+docker compose -f ~/layman/docker-compose.yml pull
+docker compose -f ~/layman/docker-compose.yml up -d
+```
+
+A banner will appear in the dashboard if your hooks or commands are out of date — click **Update** to refresh them.
 
 ---
 
