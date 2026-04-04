@@ -48,35 +48,68 @@ export function SessionMetricsBar() {
     sessionMetrics: s.sessionMetrics,
   }));
 
-  // Find metrics for the active session, or pick the most recent if "All" is selected
+  const isAllSessions = activeSessionId === null;
+
+  // Single session: show that session's metrics directly
+  // All sessions: aggregate summable fields across all sessions
   let metrics: SessionMetrics | undefined;
   if (activeSessionId) {
     metrics = sessionMetrics.get(activeSessionId);
-  } else {
-    // Find the most recently updated metrics across all sessions
-    let latest = 0;
+  } else if (sessionMetrics.size > 0) {
+    let totalCost = 0;
+    let totalIn = 0;
+    let totalOut = 0;
+    let totalLinesAdded = 0;
+    let totalLinesRemoved = 0;
+    let latestTimestamp = 0;
+    let hasCost = false;
+    let hasTokens = false;
+    let hasLines = false;
+
     for (const [, m] of sessionMetrics) {
-      if (m.timestamp > latest) {
-        latest = m.timestamp;
-        metrics = m;
+      if (m.costUsd !== undefined) { totalCost += m.costUsd; hasCost = true; }
+      if ((m.totalInputTokens ?? 0) > 0 || (m.totalOutputTokens ?? 0) > 0) {
+        totalIn += m.totalInputTokens ?? 0;
+        totalOut += m.totalOutputTokens ?? 0;
+        hasTokens = true;
       }
+      if ((m.linesAdded ?? 0) > 0 || (m.linesRemoved ?? 0) > 0) {
+        totalLinesAdded += m.linesAdded ?? 0;
+        totalLinesRemoved += m.linesRemoved ?? 0;
+        hasLines = true;
+      }
+      if (m.timestamp > latestTimestamp) latestTimestamp = m.timestamp;
     }
+
+    metrics = {
+      costUsd: hasCost ? totalCost : undefined,
+      totalInputTokens: hasTokens ? totalIn : undefined,
+      totalOutputTokens: hasTokens ? totalOut : undefined,
+      linesAdded: hasLines ? totalLinesAdded : undefined,
+      linesRemoved: hasLines ? totalLinesRemoved : undefined,
+      timestamp: latestTimestamp,
+    };
   }
 
   if (!metrics) return null;
 
-  const hasContext = metrics.contextUsedPct !== undefined;
+  const hasContext = !isAllSessions && metrics.contextUsedPct !== undefined;
   const hasCost = metrics.costUsd !== undefined;
   const hasTokens = (metrics.totalInputTokens ?? 0) > 0 || (metrics.totalOutputTokens ?? 0) > 0;
   const hasLines = (metrics.linesAdded ?? 0) > 0 || (metrics.linesRemoved ?? 0) > 0;
 
   return (
     <div className="flex items-center gap-3 px-3 py-1 bg-[#0d1117] border-b border-[#21262d] text-[10px] text-[#8b949e] flex-wrap" data-print-hide>
-      {/* Model badge */}
-      {metrics.modelDisplayName && (
+      {/* Model badge — single session only */}
+      {!isAllSessions && metrics.modelDisplayName && (
         <span className="px-1.5 py-0.5 rounded bg-[#21262d] text-[#e6edf3] font-medium">
           {metrics.modelDisplayName}
         </span>
+      )}
+
+      {/* "All sessions" label when aggregating */}
+      {isAllSessions && sessionMetrics.size > 1 && (
+        <span className="text-[#484f58]">{sessionMetrics.size} sessions</span>
       )}
 
       {/* Context window fill */}
@@ -110,11 +143,11 @@ export function SessionMetricsBar() {
         </span>
       )}
 
-      {/* Rate limit warnings */}
-      {metrics.rateLimit5hrPct !== undefined && (
+      {/* Rate limit warnings — single session only */}
+      {!isAllSessions && metrics.rateLimit5hrPct !== undefined && (
         <RateLimitBadge label="5h" pct={metrics.rateLimit5hrPct} />
       )}
-      {metrics.rateLimit7dayPct !== undefined && (
+      {!isAllSessions && metrics.rateLimit7dayPct !== undefined && (
         <RateLimitBadge label="7d" pct={metrics.rateLimit7dayPct} />
       )}
     </div>
