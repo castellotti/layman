@@ -83,8 +83,9 @@ export function extractAccess(
     }
     case 'Bash': {
       const command = (toolInput.command as string) ?? '';
-      // Extract deleted files from rm commands
       let match: RegExpExecArray | null;
+
+      // rm → deleted
       RM_PATTERN.lastIndex = 0;
       while ((match = RM_PATTERN.exec(command)) !== null) {
         const path = match[1];
@@ -92,6 +93,26 @@ export function extractAccess(
           files.push(makeFileAccess(path, 'deleted', eventId, toolName, timestamp));
         }
       }
+
+      // Output redirections: > file (wrote) or >> file (edited/append)
+      const REDIRECT_PATTERN = /(>{1,2})\s*([^\s|;&'"<>]+)/g;
+      REDIRECT_PATTERN.lastIndex = 0;
+      while ((match = REDIRECT_PATTERN.exec(command)) !== null) {
+        const path = match[2];
+        if (path && !path.startsWith('-') && !path.startsWith('/dev/')) {
+          files.push(makeFileAccess(path, match[1] === '>>' ? 'edited' : 'wrote', eventId, toolName, timestamp));
+        }
+      }
+
+      // cat/head/tail reading files — extract absolute paths from the command
+      if (/\b(?:cat|head|tail|wc)\b/.test(command)) {
+        const PATH_PATTERN = /\s(\/(?!dev\/)\S+)/g;
+        PATH_PATTERN.lastIndex = 0;
+        while ((match = PATH_PATTERN.exec(command)) !== null) {
+          files.push(makeFileAccess(match[1], 'read', eventId, toolName, timestamp));
+        }
+      }
+
       break;
     }
     case 'Glob':
