@@ -10,7 +10,8 @@ function FlowchartNodeComponent({ data }: { data: FlowchartNodeData }) {
 
   return (
     <>
-      <Handle type="target" position={Position.Left} className="!bg-transparent !border-0 !w-0 !h-0" />
+      <Handle type="target" position={Position.Left} id="left" className="!bg-transparent !border-0 !w-0 !h-0" />
+      <Handle type="target" position={Position.Top} id="top" className="!bg-transparent !border-0 !w-0 !h-0" />
       <div
         className={`rounded-lg cursor-pointer transition-all duration-150 hover:brightness-125 ${
           isSelected ? 'ring-2 ring-[#58a6ff]/60' : ''
@@ -69,7 +70,8 @@ function FlowchartNodeComponent({ data }: { data: FlowchartNodeData }) {
           />
         )}
       </div>
-      <Handle type="source" position={Position.Right} className="!bg-transparent !border-0 !w-0 !h-0" />
+      <Handle type="source" position={Position.Right} id="right" className="!bg-transparent !border-0 !w-0 !h-0" />
+      <Handle type="source" position={Position.Bottom} id="bottom" className="!bg-transparent !border-0 !w-0 !h-0" />
     </>
   );
 }
