@@ -25,6 +25,18 @@ import type {
   PostCompactInput,
   ElicitationInput,
   ElicitationResultInput,
+  PermissionDeniedInput,
+  SetupInput,
+  ConfigChangeInput,
+  InstructionsLoadedInput,
+  TaskCreatedInput,
+  TaskCompletedInput,
+  TeammateIdleInput,
+  WorktreeCreateInput,
+  WorktreeRemoveInput,
+  CwdChangedInput,
+  FileChangedInput,
+  StatusLineInput,
   PreToolUseResponse,
   PermissionResponse,
   ApprovalDecision,
@@ -121,6 +133,30 @@ export function registerHookHandler(
           }
         }
 
+        // Auto-activate: if configured per-client, activate session on any event without /layman
+        if (sessionId && !gate.isActive(sessionId)) {
+          const config = getConfig();
+          if (config.autoActivateClients.includes(agentType)) {
+            const isNewActivation = gate.activate(sessionId);
+            if (cwd) eventStore.trackSession(sessionId, cwd, agentType, opencodeUrl);
+            if (isNewActivation) {
+              console.log(`[auto-activate] Session ${sessionId.slice(0, 8)} activated for ${agentType}`);
+              // Recover pre-activation history
+              const transcriptPath = (body as { transcript_path?: string }).transcript_path;
+              if (transcriptPath) {
+                try {
+                  const count = await recoverPreActivationHistory(
+                    transcriptPath, sessionId, agentType, eventStore
+                  );
+                  if (count > 0) {
+                    console.log(`[recovery] Recovered ${count} pre-activation events for session ${sessionId.slice(0, 8)}`);
+                  }
+                } catch { /* non-fatal */ }
+              }
+            }
+          }
+        }
+
         // Gate check: non-activated sessions get instant pass-through
         if (sessionId && !gate.isActive(sessionId)) {
           // Blocking hooks must return {} to not stall Claude Code
@@ -204,6 +240,56 @@ export function registerHookHandler(
           }
           case 'ElicitationResult': {
             await handleElicitationResult(body as unknown as ElicitationResultInput, eventStore, agentType);
+            return reply.status(200).send({});
+          }
+          // Phase 3: New hook events
+          case 'PermissionDenied': {
+            await handlePermissionDenied(body as unknown as PermissionDeniedInput, eventStore, agentType);
+            return reply.status(200).send({});
+          }
+          case 'Setup': {
+            await handleSetup(body as unknown as SetupInput, eventStore, agentType);
+            return reply.status(200).send({});
+          }
+          case 'ConfigChange': {
+            await handleConfigChange(body as unknown as ConfigChangeInput, eventStore, agentType);
+            return reply.status(200).send({});
+          }
+          case 'InstructionsLoaded': {
+            await handleInstructionsLoaded(body as unknown as InstructionsLoadedInput, eventStore, agentType);
+            return reply.status(200).send({});
+          }
+          case 'TaskCreated': {
+            await handleTaskCreated(body as unknown as TaskCreatedInput, eventStore, agentType);
+            return reply.status(200).send({});
+          }
+          case 'TaskCompleted': {
+            await handleTaskCompleted(body as unknown as TaskCompletedInput, eventStore, agentType);
+            return reply.status(200).send({});
+          }
+          case 'TeammateIdle': {
+            await handleTeammateIdle(body as unknown as TeammateIdleInput, eventStore, agentType);
+            return reply.status(200).send({});
+          }
+          case 'WorktreeCreate': {
+            await handleWorktreeCreate(body as unknown as WorktreeCreateInput, eventStore, agentType);
+            return reply.status(200).send({});
+          }
+          case 'WorktreeRemove': {
+            await handleWorktreeRemove(body as unknown as WorktreeRemoveInput, eventStore, agentType);
+            return reply.status(200).send({});
+          }
+          case 'CwdChanged': {
+            await handleCwdChanged(body as unknown as CwdChangedInput, eventStore, agentType);
+            return reply.status(200).send({});
+          }
+          case 'FileChanged': {
+            await handleFileChanged(body as unknown as FileChangedInput, eventStore, agentType);
+            return reply.status(200).send({});
+          }
+          // Phase 4: StatusLine
+          case 'StatusLine': {
+            await handleStatusLine(body as unknown as StatusLineInput, eventStore, agentType);
             return reply.status(200).send({});
           }
           default:
@@ -528,6 +614,7 @@ async function handleNotification(
 ): Promise<void> {
   eventStore.add('notification', input.session_id, {
     notificationType: input.notification_type,
+    prompt: input.message || input.title,
   }, undefined, agentType);
 }
 
@@ -538,6 +625,8 @@ async function handleSessionStart(
 ): Promise<void> {
   eventStore.add('session_start', input.session_id, {
     source: input.source,
+    model: input.model,
+    permissionMode: input.permission_mode,
   }, undefined, agentType);
   // Snapshot the current last assistant UUID so resumed sessions don't re-emit history
   await initTranscriptWatermark(input.transcript_path);
@@ -715,6 +804,7 @@ async function handleSubagentStop(
 ): Promise<void> {
   eventStore.add('subagent_stop', input.session_id, {
     agentType: input.agent_type,
+    prompt: input.last_assistant_message ?? undefined,
   }, undefined, agentType);
 }
 
@@ -735,6 +825,8 @@ async function handleStopFailure(
 ): Promise<void> {
   eventStore.add('stop_failure', input.session_id, {
     error: input.error,
+    errorDetails: input.error_details,
+    prompt: input.last_assistant_message ?? undefined,
   }, undefined, agentType);
 }
 
@@ -743,7 +835,10 @@ async function handlePreCompact(
   eventStore: EventStore,
   agentType: string = 'claude-code'
 ): Promise<void> {
-  eventStore.add('pre_compact', input.session_id, {}, undefined, agentType);
+  eventStore.add('pre_compact', input.session_id, {
+    compactTrigger: input.trigger,
+    compactCustomInstructions: input.custom_instructions,
+  }, undefined, agentType);
 }
 
 async function handlePostCompact(
@@ -751,7 +846,10 @@ async function handlePostCompact(
   eventStore: EventStore,
   agentType: string = 'claude-code'
 ): Promise<void> {
-  eventStore.add('post_compact', input.session_id, {}, undefined, agentType);
+  eventStore.add('post_compact', input.session_id, {
+    compactTrigger: input.trigger,
+    compactSummary: input.compact_summary,
+  }, undefined, agentType);
 }
 
 async function handleElicitation(
@@ -790,4 +888,161 @@ function isAutoAllowedByPattern(
       return false;
     }
   });
+}
+
+// Phase 3: New hook event handlers
+
+async function handlePermissionDenied(
+  input: PermissionDeniedInput,
+  eventStore: EventStore,
+  agentType: string = 'claude-code'
+): Promise<void> {
+  eventStore.add('permission_denied', input.session_id, {
+    toolName: input.tool_name,
+    toolInput: input.tool_input,
+    reason: input.reason,
+  }, undefined, agentType);
+}
+
+async function handleSetup(
+  input: SetupInput,
+  eventStore: EventStore,
+  agentType: string = 'claude-code'
+): Promise<void> {
+  eventStore.add('setup', input.session_id, {
+    setupTrigger: input.trigger,
+  }, undefined, agentType);
+}
+
+async function handleConfigChange(
+  input: ConfigChangeInput,
+  eventStore: EventStore,
+  agentType: string = 'claude-code'
+): Promise<void> {
+  eventStore.add('config_change', input.session_id, {
+    configSource: input.source,
+    filePath: input.file_path,
+  }, undefined, agentType);
+}
+
+async function handleInstructionsLoaded(
+  input: InstructionsLoadedInput,
+  eventStore: EventStore,
+  agentType: string = 'claude-code'
+): Promise<void> {
+  eventStore.add('instructions_loaded', input.session_id, {
+    filePath: input.file_path,
+    memoryType: input.memory_type,
+    loadReason: input.load_reason,
+  }, undefined, agentType);
+}
+
+async function handleTaskCreated(
+  input: TaskCreatedInput,
+  eventStore: EventStore,
+  agentType: string = 'claude-code'
+): Promise<void> {
+  eventStore.add('task_created', input.session_id, {
+    taskId: input.task_id,
+    taskSubject: input.task_subject,
+    taskDescription: input.task_description,
+  }, undefined, agentType);
+}
+
+async function handleTaskCompleted(
+  input: TaskCompletedInput,
+  eventStore: EventStore,
+  agentType: string = 'claude-code'
+): Promise<void> {
+  eventStore.add('task_completed', input.session_id, {
+    taskId: input.task_id,
+    taskSubject: input.task_subject,
+  }, undefined, agentType);
+}
+
+async function handleTeammateIdle(
+  input: TeammateIdleInput,
+  eventStore: EventStore,
+  agentType: string = 'claude-code'
+): Promise<void> {
+  eventStore.add('teammate_idle', input.session_id, {
+    teammateName: input.teammate_name,
+    teamName: input.team_name,
+  }, undefined, agentType);
+}
+
+async function handleWorktreeCreate(
+  input: WorktreeCreateInput,
+  eventStore: EventStore,
+  agentType: string = 'claude-code'
+): Promise<void> {
+  eventStore.add('worktree_create', input.session_id, {
+    worktreeName: input.name,
+  }, undefined, agentType);
+}
+
+async function handleWorktreeRemove(
+  input: WorktreeRemoveInput,
+  eventStore: EventStore,
+  agentType: string = 'claude-code'
+): Promise<void> {
+  eventStore.add('worktree_remove', input.session_id, {
+    worktreePath: input.worktree_path,
+  }, undefined, agentType);
+}
+
+async function handleCwdChanged(
+  input: CwdChangedInput,
+  eventStore: EventStore,
+  agentType: string = 'claude-code'
+): Promise<void> {
+  eventStore.add('cwd_changed', input.session_id, {
+    oldCwd: input.old_cwd,
+    newCwd: input.new_cwd,
+  }, undefined, agentType);
+}
+
+async function handleFileChanged(
+  input: FileChangedInput,
+  eventStore: EventStore,
+  agentType: string = 'claude-code'
+): Promise<void> {
+  eventStore.add('file_changed', input.session_id, {
+    filePath: input.file_path,
+    fileEvent: input.event,
+  }, undefined, agentType);
+}
+
+// Phase 4: StatusLine handler
+
+async function handleStatusLine(
+  input: StatusLineInput,
+  eventStore: EventStore,
+  agentType: string = 'claude-code'
+): Promise<void> {
+  eventStore.add('session_metrics', input.session_id, {
+    modelId: input.model?.id,
+    modelDisplayName: input.model?.display_name,
+    costUsd: input.cost?.total_cost_usd,
+    durationMs: input.cost?.total_duration_ms,
+    apiDurationMs: input.cost?.total_api_duration_ms,
+    linesAdded: input.cost?.total_lines_added,
+    linesRemoved: input.cost?.total_lines_removed,
+    totalInputTokens: input.context_window?.total_input_tokens,
+    totalOutputTokens: input.context_window?.total_output_tokens,
+    contextWindowSize: input.context_window?.context_window_size,
+    currentInputTokens: input.context_window?.current_usage?.input_tokens,
+    currentOutputTokens: input.context_window?.current_usage?.output_tokens,
+    cacheReadTokens: input.context_window?.current_usage?.cache_read_input_tokens,
+    cacheCreationTokens: input.context_window?.current_usage?.cache_creation_input_tokens,
+    contextUsedPct: input.context_window?.used_percentage,
+    contextRemainingPct: input.context_window?.remaining_percentage,
+    exceeds200kTokens: input.exceeds_200k_tokens,
+    rateLimit5hrPct: input.rate_limits?.five_hour?.used_percentage,
+    rateLimit5hrResetsAt: input.rate_limits?.five_hour?.resets_at,
+    rateLimit7dayPct: input.rate_limits?.seven_day?.used_percentage,
+    rateLimit7dayResetsAt: input.rate_limits?.seven_day?.resets_at,
+    sessionName: input.session_name,
+    claudeCodeVersion: input.version,
+  }, undefined, agentType);
 }

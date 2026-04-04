@@ -40,7 +40,7 @@ Layman is a pnpm monorepo with two packages:
 
 | Agent | Integration mechanism | Activation |
 |---|---|---|
-| Claude Code | HTTP hook POSTs to `/hooks/:eventName` | `/layman` slash command |
+| Claude Code | HTTP hook POSTs to `/hooks/:eventName` + StatusLine relay | `/layman` slash command or auto-activate |
 | Codex | Shell-script hooks via `~/.codex/hooks.json` | `@layman` skill |
 | OpenCode | Bidirectional plugin (`packages/opencode-plugin`) | `/layman` slash command |
 | Mistral Vibe | Passive file watcher on `~/.vibe/logs/session/` | `/layman` slash command |
@@ -48,7 +48,9 @@ Layman is a pnpm monorepo with two packages:
 
 ### How data flows
 
-1. **Claude Code hooks**: Claude Code fires HTTP POSTs to `/hooks/:eventName` (e.g. `PreToolUse`, `PostToolUse`, `SessionStart`). The hook handler in `packages/server/src/hooks/handler.ts` processes each event type, calls `EventStore.add()`, and for blocking hooks (`PreToolUse`, `PermissionRequest`) calls `PendingApprovalManager.createAndWait()` which suspends until the user decides.
+1. **Claude Code hooks**: Claude Code fires HTTP POSTs to `/hooks/:eventName`. Layman registers for all 27 claude-code hook events: `PreToolUse`, `PostToolUse`, `PostToolUseFailure`, `PermissionRequest`, `Notification`, `SessionStart`, `SessionEnd`, `Stop`, `UserPromptSubmit`, `SubagentStart`, `SubagentStop`, `StopFailure`, `PreCompact`, `PostCompact`, `Elicitation`, `ElicitationResult`, `PermissionDenied`, `Setup`, `ConfigChange`, `InstructionsLoaded`, `TaskCreated`, `TaskCompleted`, `TeammateIdle`, `WorktreeCreate`, `WorktreeRemove`, `CwdChanged`, `FileChanged`. The hook handler in `packages/server/src/hooks/handler.ts` processes each event type, calls `EventStore.add()`, and for blocking hooks (`PreToolUse`, `PermissionRequest`) calls `PendingApprovalManager.createAndWait()` which suspends until the user decides.
+
+1b. **Claude Code StatusLine**: A separate data channel from hooks. Layman installs a relay script (`~/.claude/hooks/layman/statusline.sh`) that receives JSON on stdin after every assistant turn (debounced 300ms by claude-code) and POSTs it to `/hooks/StatusLine`. This carries session metrics unavailable through hooks: cumulative cost, token counts, context window fill %, rate limits, model info, and lines changed. The handler creates `session_metrics` events which are stored in a dedicated per-session map (not the timeline) and displayed in the `SessionMetricsBar` component. If the user has an existing `statusLine` command, the relay script chains to it (preserving their status bar text).
 
 2. **Codex hooks** (`packages/server/hooks/codex/`): Codex reads hook config from `~/.codex/hooks.json` and runs shell scripts from `~/.codex/hooks/layman/`. These scripts read hook JSON from stdin, inject `agent_type: "codex"`, and POST to the existing `/hooks/:eventName` handler via curl. The hook format is Claude Code-compatible — same field names and event names — so no separate handler is needed. `PreToolUse` blocks for up to 58 seconds. The `Stop` hook payload includes `last_assistant_message` which the handler uses to emit the agent's final response. Sessions activate when the user types `@layman` — detected via `UserPromptSubmit` hook before the gate check. Codex supports 5 hook events: `PreToolUse`, `PostToolUse`, `SessionStart`, `UserPromptSubmit`, `Stop`. Async hooks are not supported by Codex.
 
@@ -86,20 +88,28 @@ Layman is a pnpm monorepo with two packages:
 
 - **Type duplication**: `EventData`, `TimelineEvent`, `AnalysisResult`, and the WebSocket protocol types exist in both the server (`packages/server/src/`) and the client (`packages/web/src/lib/types.ts`, `ws-protocol.ts`). They must be kept in sync manually — there is no shared package.
 
-- **Docker mounts**: The container mounts `${HOME}/.claude` (Claude Code hooks/commands), `${HOME}/.config` (OpenCode detection/commands), `${HOME}/.vibe` (Vibe log watching), `${HOME}/Documents/Cline` (Cline hook script installation), and `${HOME}/.codex` (Codex hook script installation and hooks.json). The `HookInstaller` runs inside the container and writes through these mounts to the host filesystem.
+- **Docker mounts**: The container mounts `${HOME}/.claude` (Claude Code hooks/commands/StatusLine relay), `${HOME}/.config` (OpenCode detection/commands), `${HOME}/.vibe` (Vibe log watching), `${HOME}/Documents/Cline` (Cline hook script installation), and `${HOME}/.codex` (Codex hook script installation and hooks.json). The `HookInstaller` runs inside the container and writes through these mounts to the host filesystem.
+
+- **Auto-activate**: The `autoActivateClients` config array (in `~/.claude/layman.json`) lists client agent types (e.g. `'claude-code'`) whose sessions should auto-activate without requiring `/layman`. When a hook event arrives from a matching agent, `handler.ts` calls `gate.activate()` before the gate check, so events flow immediately. The toggle is in Settings → Client Setup on each client's row. Off by default.
+
+- **StatusLine is a single slot**: Claude-code's `statusLine` config accepts exactly one command. If the user already has a custom statusLine, the installer composes by setting `LAYMAN_ORIGINAL_STATUSLINE` in the relay script and piping input to both. Uninstall restores the original command.
+
+- **`session_metrics` events**: StatusLine events fire after every assistant turn (high frequency). They are routed to a dedicated `sessionMetrics: Map<sessionId, SessionMetrics>` in the Zustand store rather than the timeline events array, to avoid flooding the timeline. The `SessionMetricsBar` component reads this map.
 
 ### Hook installer (`packages/server/src/hooks/installer.ts`)
 
-Manages installation of hooks and slash commands for all supported clients. Key methods:
-- `install()` — writes Claude Code global hooks (`~/.claude/settings.json`)
+Manages installation of hooks, slash commands, and the StatusLine relay for all supported clients. Key methods:
+- `install()` — writes Claude Code global hooks and StatusLine relay to `~/.claude/settings.json`
 - `installCommand()` — writes the `/layman` slash command to `~/.claude/commands/layman.md`
+- `installStatusLine()` — writes the StatusLine relay script to `~/.claude/hooks/layman/statusline.sh` and sets `statusLine.command` in settings.json. If an existing statusLine command is present, composes with it (chains both).
+- `uninstallStatusLine()` — removes the relay script and restores any previously configured statusLine command
 - `installClient(id)` — installs a single client by id (`'claude-code'` | `'codex'` | `'opencode'` | `'mistral-vibe'` | `'cline'`)
 - `uninstallClient(id)` — removes integration files for a single client
 - `installOptionalClientCommands(clientId?)` — installs the `/layman` command for detected optional clients; pass a `clientId` to restrict to one
 - `installCodexHooks()` — writes bash hook scripts to `~/.codex/hooks/layman/` and merges entries into `~/.codex/hooks.json`
 - `installClineHooks()` — writes bash hook scripts to `~/Documents/Cline/Hooks/` with `__LAYMAN_URL__` templated in
-- `getStatus()` — returns installation state for all clients (used by the Settings UI); caller is responsible for merging `declinedClients` from config into the returned `SetupStatus`
-- `uninstall()` — removes Claude Code hooks and command file
+- `getStatus()` — returns installation state for all clients including StatusLine (used by the Settings UI); caller is responsible for merging `declinedClients` from config into the returned `SetupStatus`
+- `uninstall()` — removes Claude Code hooks, command file, and StatusLine relay
 - `isInstalled()` — returns true if Claude Code hooks are present
 
 Each optional client has an `id` field (`'codex'`, `'opencode'`, `'mistral-vibe'`, `'cline'`) used as the key in `declinedClients` config and in API routes. Optional clients are detected by checking whether their config directories exist on the host filesystem.

@@ -21,7 +21,19 @@ export type EventType =
   | 'post_compact'
   | 'elicitation'
   | 'elicitation_result'
-  | 'analysis_result';
+  | 'analysis_result'
+  | 'permission_denied'
+  | 'setup'
+  | 'config_change'
+  | 'instructions_loaded'
+  | 'task_created'
+  | 'task_completed'
+  | 'teammate_idle'
+  | 'worktree_create'
+  | 'worktree_remove'
+  | 'cwd_changed'
+  | 'file_changed'
+  | 'session_metrics';
 
 export interface AnalysisResult {
   meaning: string;
@@ -83,6 +95,54 @@ export interface EventData {
   permissionSuggestions?: PermissionSuggestion[];
   fileAccess?: FileAccess[];
   urlAccess?: UrlAccess[];
+  // Phase 1: Previously discarded fields
+  compactTrigger?: 'manual' | 'auto';
+  compactSummary?: string;
+  compactCustomInstructions?: string | null;
+  permissionMode?: string;
+  model?: string;
+  errorDetails?: string;
+  // Phase 3: New hook event fields
+  reason?: string;
+  configSource?: string;
+  filePath?: string;
+  memoryType?: string;
+  loadReason?: string;
+  taskId?: string;
+  taskSubject?: string;
+  taskDescription?: string;
+  teammateName?: string;
+  teamName?: string;
+  worktreeName?: string;
+  worktreePath?: string;
+  oldCwd?: string;
+  newCwd?: string;
+  fileEvent?: string;
+  setupTrigger?: string;
+  // Phase 4: StatusLine session metrics
+  modelId?: string;
+  modelDisplayName?: string;
+  costUsd?: number;
+  durationMs?: number;
+  apiDurationMs?: number;
+  linesAdded?: number;
+  linesRemoved?: number;
+  totalInputTokens?: number;
+  totalOutputTokens?: number;
+  contextWindowSize?: number;
+  currentInputTokens?: number;
+  currentOutputTokens?: number;
+  cacheReadTokens?: number;
+  cacheCreationTokens?: number;
+  contextUsedPct?: number;
+  contextRemainingPct?: number;
+  exceeds200kTokens?: boolean;
+  rateLimit5hrPct?: number;
+  rateLimit5hrResetsAt?: string;
+  rateLimit7dayPct?: number;
+  rateLimit7dayResetsAt?: string;
+  sessionName?: string;
+  claudeCodeVersion?: string;
 }
 
 export interface TimelineEvent {
@@ -158,6 +218,7 @@ export interface LaymanConfig {
   collapseHistory: boolean;
   autoScroll: boolean;
   idleThresholdMinutes: number;
+  autoActivateClients: string[];
 }
 
 export interface BookmarkFolder {
@@ -213,6 +274,8 @@ export interface SetupStatus {
   hooksUpToDate: boolean;
   commandInstalled: boolean;
   commandUpToDate: boolean;
+  statusLineInstalled: boolean;
+  statusLineUpToDate: boolean;
   claudeCodeDeclined?: boolean;
   optionalClients: OptionalClientStatus[];
 }
@@ -247,4 +310,31 @@ export interface SessionTimeMetrics {
   userActiveMs: number;
   idleMs: number;
   idleThresholdMinutes: number;
+}
+
+export interface SessionMetrics {
+  modelId?: string;
+  modelDisplayName?: string;
+  costUsd?: number;
+  durationMs?: number;
+  apiDurationMs?: number;
+  linesAdded?: number;
+  linesRemoved?: number;
+  totalInputTokens?: number;
+  totalOutputTokens?: number;
+  contextWindowSize?: number;
+  currentInputTokens?: number;
+  currentOutputTokens?: number;
+  cacheReadTokens?: number;
+  cacheCreationTokens?: number;
+  contextUsedPct?: number;
+  contextRemainingPct?: number;
+  exceeds200kTokens?: boolean;
+  rateLimit5hrPct?: number;
+  rateLimit5hrResetsAt?: string;
+  rateLimit7dayPct?: number;
+  rateLimit7dayResetsAt?: string;
+  sessionName?: string;
+  claudeCodeVersion?: string;
+  timestamp: number;
 }

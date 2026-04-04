@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { TimelineEvent, PendingApprovalDTO, LaymanConfig, SessionStatus, SetupStatus, BookmarkFolder, Bookmark, SessionTimeMetrics, SessionAccessLog } from '../lib/types.js';
+import type { TimelineEvent, PendingApprovalDTO, LaymanConfig, SessionStatus, SetupStatus, BookmarkFolder, Bookmark, SessionTimeMetrics, SessionAccessLog, SessionMetrics } from '../lib/types.js';
 import type { SessionInfo } from '../lib/ws-protocol.js';
 
 interface InvestigationState {
@@ -64,6 +64,9 @@ interface SessionState {
   // Access log
   accessLogOpen: boolean;
   accessLogData: SessionAccessLog | null;
+
+  // Session metrics from StatusLine (latest per session)
+  sessionMetrics: Map<string, SessionMetrics>;
 
   // Session summary
   sessionSummary: string | null;
@@ -154,6 +157,8 @@ export const useSessionStore = create<SessionState>((set) => ({
   accessLogOpen: false,
   accessLogData: null,
 
+  sessionMetrics: new Map(),
+
   sessionSummary: null,
   sessionSummaryHistory: [],
   sessionSummaryError: null,
@@ -168,6 +173,38 @@ export const useSessionStore = create<SessionState>((set) => ({
 
   addEvent: (event) =>
     set((state) => {
+      // Route session_metrics events to the dedicated map instead of the timeline
+      if (event.type === 'session_metrics') {
+        const newMetrics = new Map(state.sessionMetrics);
+        newMetrics.set(event.sessionId, {
+          modelId: event.data.modelId,
+          modelDisplayName: event.data.modelDisplayName,
+          costUsd: event.data.costUsd,
+          durationMs: event.data.durationMs,
+          apiDurationMs: event.data.apiDurationMs,
+          linesAdded: event.data.linesAdded,
+          linesRemoved: event.data.linesRemoved,
+          totalInputTokens: event.data.totalInputTokens,
+          totalOutputTokens: event.data.totalOutputTokens,
+          contextWindowSize: event.data.contextWindowSize,
+          currentInputTokens: event.data.currentInputTokens,
+          currentOutputTokens: event.data.currentOutputTokens,
+          cacheReadTokens: event.data.cacheReadTokens,
+          cacheCreationTokens: event.data.cacheCreationTokens,
+          contextUsedPct: event.data.contextUsedPct,
+          contextRemainingPct: event.data.contextRemainingPct,
+          exceeds200kTokens: event.data.exceeds200kTokens,
+          rateLimit5hrPct: event.data.rateLimit5hrPct,
+          rateLimit5hrResetsAt: event.data.rateLimit5hrResetsAt,
+          rateLimit7dayPct: event.data.rateLimit7dayPct,
+          rateLimit7dayResetsAt: event.data.rateLimit7dayResetsAt,
+          sessionName: event.data.sessionName,
+          claudeCodeVersion: event.data.claudeCodeVersion,
+          timestamp: event.timestamp,
+        });
+        return { sessionMetrics: newMetrics };
+      }
+
       // Deduplicate by id
       const existing = state.events.findIndex((e) => e.id === event.id);
       if (existing >= 0) {
