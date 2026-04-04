@@ -1,0 +1,313 @@
+/* Dashboard — Tactical Operations Center aesthetic */
+
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=Outfit:wght@300;400;500;600;700&display=swap');
+
+/* === CSS Variables === */
+.dashboard-root {
+  --dash-bg: #080b10;
+  --dash-card-bg: #0c1018;
+  --dash-card-border: #1a2030;
+  --dash-card-hover: #111824;
+  --dash-surface: #0f1520;
+  --dash-text-primary: #e0e8f0;
+  --dash-text-secondary: #5a6a7a;
+  --dash-text-muted: #3a4858;
+  --dash-accent: #00e5ff;
+  --dash-accent-dim: #00e5ff30;
+  --dash-medium: #ffb300;
+  --dash-medium-dim: #ffb30025;
+  --dash-high: #ff3d57;
+  --dash-high-dim: #ff3d5725;
+  --dash-success: #00e676;
+  --dash-border-subtle: #1a2535;
+  --dash-grid-color: #0e1825;
+  --dash-font-data: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+  --dash-font-display: 'Outfit', 'Instrument Sans', system-ui, sans-serif;
+}
+
+/* === Grid background === */
+.dashboard-root {
+  background-color: var(--dash-bg);
+  background-image:
+    radial-gradient(circle at 50% 0%, #00e5ff06 0%, transparent 60%),
+    linear-gradient(var(--dash-grid-color) 1px, transparent 1px),
+    linear-gradient(90deg, var(--dash-grid-color) 1px, transparent 1px);
+  background-size: 100% 100%, 32px 32px, 32px 32px;
+  background-position: 0 0, -1px -1px, -1px -1px;
+}
+
+/* === Session card === */
+.dash-card {
+  background: var(--dash-card-bg);
+  border: 1px solid var(--dash-card-border);
+  border-radius: 8px;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.15s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.dash-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent 0%, var(--dash-accent) 50%, transparent 100%);
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.dash-card:hover {
+  border-color: #253040;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
+}
+
+.dash-card:hover::before {
+  opacity: 0.5;
+}
+
+.dash-card--focused {
+  border-color: var(--dash-accent);
+  box-shadow: 0 0 20px var(--dash-accent-dim), 0 4px 32px rgba(0, 0, 0, 0.5);
+}
+
+.dash-card--focused::before {
+  opacity: 1;
+}
+
+/* === Active session pulse === */
+.dash-pulse {
+  position: relative;
+}
+
+.dash-pulse::after {
+  content: '';
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--dash-success);
+  box-shadow: 0 0 6px var(--dash-success);
+  animation: dash-pulse-anim 2s ease-in-out infinite;
+}
+
+@keyframes dash-pulse-anim {
+  0%, 100% { opacity: 1; box-shadow: 0 0 6px var(--dash-success); }
+  50% { opacity: 0.5; box-shadow: 0 0 12px var(--dash-success), 0 0 24px var(--dash-success); }
+}
+
+/* === Mini activity chain === */
+.dash-chain-node {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  border: 1px solid var(--dash-card-border);
+  background: var(--dash-surface);
+  transition: all 0.15s ease;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.dash-chain-node:hover {
+  transform: scale(1.15);
+  z-index: 2;
+}
+
+.dash-chain-node--pending {
+  animation: dash-node-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes dash-node-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 transparent; }
+  50% { box-shadow: 0 0 8px var(--dash-medium-dim); }
+}
+
+.dash-chain-connector {
+  width: 12px;
+  height: 1px;
+  background: var(--dash-card-border);
+  flex-shrink: 0;
+}
+
+/* === Risk feed === */
+.dash-risk-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+  font-family: var(--dash-font-data);
+  font-size: 10px;
+}
+
+.dash-risk-item:hover {
+  background: #ffffff08;
+}
+
+.dash-risk-badge {
+  font-size: 8px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  text-transform: uppercase;
+  flex-shrink: 0;
+}
+
+.dash-risk-badge--medium {
+  color: var(--dash-medium);
+  background: var(--dash-medium-dim);
+}
+
+.dash-risk-badge--high {
+  color: var(--dash-high);
+  background: var(--dash-high-dim);
+}
+
+/* === Side panel === */
+.dash-side-panel {
+  background: var(--dash-surface);
+  border-left: 1px solid var(--dash-border-subtle);
+  overflow-y: auto;
+}
+
+.dash-panel-section {
+  padding: 16px;
+  border-bottom: 1px solid var(--dash-border-subtle);
+}
+
+.dash-panel-title {
+  font-family: var(--dash-font-display);
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--dash-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  margin-bottom: 12px;
+}
+
+/* === Sparkline === */
+.dash-sparkline-bar {
+  transition: height 0.3s ease, opacity 0.15s ease;
+  rx: 1;
+}
+
+.dash-sparkline-bar:hover {
+  opacity: 1 !important;
+}
+
+/* === Drag handle === */
+.dash-drag-handle {
+  cursor: grab;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  color: var(--dash-text-muted);
+}
+
+.dash-card:hover .dash-drag-handle {
+  opacity: 1;
+}
+
+.dash-drag-handle:active {
+  cursor: grabbing;
+}
+
+/* === Drag state === */
+.dash-card--dragging {
+  opacity: 0.5;
+  transform: scale(0.98);
+}
+
+.dash-card--drag-over {
+  border-color: var(--dash-accent);
+  border-style: dashed;
+}
+
+/* === Scrollbar styling for dashboard === */
+.dashboard-root ::-webkit-scrollbar {
+  width: 4px;
+}
+
+.dashboard-root ::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.dashboard-root ::-webkit-scrollbar-thumb {
+  background: var(--dash-text-muted);
+  border-radius: 2px;
+}
+
+.dashboard-root ::-webkit-scrollbar-thumb:hover {
+  background: var(--dash-text-secondary);
+}
+
+/* === Entry animation === */
+@keyframes dash-card-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.dash-card-enter {
+  animation: dash-card-enter 0.4s ease-out forwards;
+}
+
+/* === Scanline overlay (subtle) === */
+.dash-scanline {
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0, 229, 255, 0.008) 2px,
+    rgba(0, 229, 255, 0.008) 4px
+  );
+  z-index: 1;
+}
+
+/* === Latest output truncation === */
+.dash-output-text {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  font-family: var(--dash-font-data);
+  font-size: 10px;
+  line-height: 1.5;
+  color: var(--dash-text-secondary);
+}
+
+/* === Back to dashboard button === */
+.dash-back-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: 4px;
+  font-family: var(--dash-font-data);
+  font-size: 10px;
+  color: var(--dash-accent);
+  background: var(--dash-accent-dim);
+  border: 1px solid rgba(0, 229, 255, 0.15);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.dash-back-btn:hover {
+  background: rgba(0, 229, 255, 0.15);
+  border-color: rgba(0, 229, 255, 0.3);
+}

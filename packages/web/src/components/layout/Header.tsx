@@ -18,6 +18,7 @@ export function Header() {
     sessionSummary, sessionSummaryHistory, sessionSummaryError, isSummarizingSession, fetchSessionSummary,
     clearSessionSummaryError,
     flowchartOpen, setFlowchartOpen,
+    dashboardOpen, setDashboardOpen,
   } = useSessionStore();
 
   const statusConfig = {
@@ -109,10 +110,28 @@ export function Header() {
           </span>
         )}
         <button
-          onClick={() => setFlowchartOpen(!flowchartOpen)}
+          onClick={() => setDashboardOpen(!dashboardOpen)}
           className={`p-1.5 rounded-md transition-colors ${
-            flowchartOpen
+            dashboardOpen
+              ? 'text-[#00e5ff] bg-[#00e5ff]/10'
+              : 'text-[#8b949e] hover:text-[#e6edf3] hover:bg-[#30363d]'
+          }`}
+          title="Dashboard View (D)"
+        >
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+            <rect x="1" y="1" width="6" height="6" rx="1" />
+            <rect x="9" y="1" width="6" height="6" rx="1" />
+            <rect x="1" y="9" width="6" height="6" rx="1" />
+            <rect x="9" y="9" width="6" height="6" rx="1" />
+          </svg>
+        </button>
+        <button
+          onClick={() => { if (!dashboardOpen) setFlowchartOpen(!flowchartOpen); }}
+          className={`p-1.5 rounded-md transition-colors ${
+            flowchartOpen && !dashboardOpen
               ? 'text-[#58a6ff] bg-[#58a6ff]/10'
+              : dashboardOpen
+              ? 'text-[#484f58] cursor-not-allowed'
               : 'text-[#8b949e] hover:text-[#e6edf3] hover:bg-[#30363d]'
           }`}
           title="Flowchart View (F)"
