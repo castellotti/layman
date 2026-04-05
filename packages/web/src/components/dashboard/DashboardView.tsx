@@ -26,21 +26,24 @@ export function DashboardView() {
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
 
-  // Sort sessions: active first, then by custom order, then by last seen
-  const orderedSessions = useMemo(() => {
-    const sorted = [...sessions].sort((a, b) => {
-      // Active sessions first
-      const aActive = a.active !== false ? 1 : 0;
-      const bActive = b.active !== false ? 1 : 0;
-      if (aActive !== bActive) return bActive - aActive;
+  // Only push a session to the bottom if it has been idle for more than 1 hour
+  const IDLE_SORT_THRESHOLD_MS = 60 * 60 * 1000;
 
-      // Then by custom order
+  const orderedSessions = useMemo(() => {
+    const now = Date.now();
+    const sorted = [...sessions].sort((a, b) => {
+      // A session is "long idle" if inactive AND last seen > 1 hour ago
+      const aLongIdle = a.active === false && (now - a.lastSeen) > IDLE_SORT_THRESHOLD_MS;
+      const bLongIdle = b.active === false && (now - b.lastSeen) > IDLE_SORT_THRESHOLD_MS;
+      if (aLongIdle !== bLongIdle) return aLongIdle ? 1 : -1;
+
+      // Within the same idle-tier, respect custom drag order
       const orderMap = new Map(dashboardSessionOrder.map((id, i) => [id, i]));
       const aOrder = orderMap.get(a.sessionId) ?? 999;
       const bOrder = orderMap.get(b.sessionId) ?? 999;
       if (aOrder !== bOrder) return aOrder - bOrder;
 
-      // Then by most recent activity
+      // Fall back to most recently seen
       return b.lastSeen - a.lastSeen;
     });
     return sorted;

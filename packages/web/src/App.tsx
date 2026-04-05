@@ -90,14 +90,16 @@ export function App() {
       if (e.ctrlKey || e.metaKey || e.altKey) return;
       switch (e.key.toLowerCase()) {
         case 'd':
-          if (dashboardOpen) {
-            setDashboardOpen(false);
-          } else {
-            setDashboardOpen(true);
-          }
+          setDashboardOpen(true);
+          setFlowchartOpen(false);
+          break;
+        case 's':
+          setDashboardOpen(false);
+          setFlowchartOpen(false);
           break;
         case 'f':
-          if (!dashboardOpen) setFlowchartOpen(!flowchartOpen);
+          setDashboardOpen(false);
+          setFlowchartOpen(true);
           break;
         case 'g':
           if (flowchartOpen && !dashboardOpen) setFlowchartViewMode('graph');
