@@ -168,7 +168,7 @@ export const useSessionStore = create<SessionState>((set) => ({
   flowchartOpen: false,
   flowchartViewMode: 'graph' as const,
 
-  dashboardOpen: false,
+  dashboardOpen: true,
   dashboardFocusedSession: null,
   dashboardSessionOrder: [],
   returnToDashboard: false,

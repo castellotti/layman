@@ -246,9 +246,8 @@ function RiskAlertFeed({ events, onDrilldown, sessionId, expanded }: {
   );
 }
 
-/** Latest output with hover-to-expand */
-function LatestOutput({ events, expanded }: { events: TimelineEvent[]; expanded: boolean }) {
-  const [hovered, setHovered] = useState(false);
+/** Latest output — fills remaining card space, no hover jitter */
+function LatestOutput({ events }: { events: TimelineEvent[] }) {
   const lastOutput = useMemo(() => {
     for (let i = events.length - 1; i >= 0; i--) {
       const e = events[i];
@@ -270,17 +269,8 @@ function LatestOutput({ events, expanded }: { events: TimelineEvent[]; expanded:
 
   if (!lastOutput) return null;
 
-  // In expanded mode (1-2 sessions), show more by default
-  const truncateLength = expanded ? 800 : 400;
-  const lineClamp = expanded ? 12 : 5;
-
   return (
-    <div
-      className="relative"
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-    >
-      {/* Label */}
+    <div className="flex flex-col min-h-0 overflow-hidden" style={{ flex: 1 }}>
       <div style={{
         fontFamily: 'var(--dash-font-data)',
         fontSize: 8,
@@ -288,46 +278,22 @@ function LatestOutput({ events, expanded }: { events: TimelineEvent[]; expanded:
         textTransform: 'uppercase',
         letterSpacing: '0.5px',
         marginBottom: 3,
+        flexShrink: 0,
       }}>
         {lastOutput.label}
       </div>
-
-      {/* Truncated view */}
-      {!hovered && (
-        <div
-          className="dash-output-text"
-          style={{ WebkitLineClamp: lineClamp, color: '#9eaab8' }}
-        >
-          {lastOutput.text.slice(0, truncateLength)}
-        </div>
-      )}
-
-      {/* Expanded hover overlay */}
-      {hovered && (
-        <div
-          className="absolute left-0 right-0 z-30 rounded-md p-2 overflow-y-auto"
-          style={{
-            top: 14,
-            maxHeight: 300,
-            background: 'var(--dash-card-bg)',
-            border: '1px solid var(--dash-accent)',
-            boxShadow: '0 8px 32px rgba(0, 0, 0, 0.6), 0 0 12px var(--dash-accent-dim)',
-          }}
-          onClick={(e) => e.stopPropagation()}
-        >
-          <pre style={{
-            fontFamily: 'var(--dash-font-data)',
-            fontSize: 10,
-            lineHeight: 1.5,
-            color: 'var(--dash-text-secondary)',
-            whiteSpace: 'pre-wrap',
-            wordBreak: 'break-word',
-            margin: 0,
-          }}>
-            {lastOutput.text.slice(0, 2000)}
-          </pre>
-        </div>
-      )}
+      <div style={{
+        fontFamily: 'var(--dash-font-data)',
+        fontSize: 10,
+        lineHeight: 1.5,
+        color: '#9eaab8',
+        overflow: 'hidden',
+        flex: 1,
+        whiteSpace: 'pre-wrap',
+        wordBreak: 'break-word',
+      }}>
+        {lastOutput.text}
+      </div>
     </div>
   );
 }
@@ -366,7 +332,8 @@ export function SessionCard({
   // Expanded mode: 1-2 sessions get more vertical space
   const isExpanded = totalCards <= 2;
 
-  const handleClick = useCallback(() => {
+  const handleClick = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
     onFocus(session.sessionId);
   }, [onFocus, session.sessionId]);
 
@@ -383,7 +350,7 @@ export function SessionCard({
   return (
     <div
       ref={dragRef}
-      className={`dash-card dash-card-enter ${isFocused ? 'dash-card--focused' : ''} ${isDragging ? 'dash-card--dragging' : ''} ${isDragOver ? 'dash-card--drag-over' : ''}`}
+      className={`dash-card dash-card-enter flex flex-col ${isFocused ? 'dash-card--focused' : ''} ${isDragging ? 'dash-card--dragging' : ''} ${isDragOver ? 'dash-card--drag-over' : ''}`}
       style={{ animationDelay: `${index * 80}ms` }}
       onClick={handleClick}
       draggable
@@ -399,7 +366,7 @@ export function SessionCard({
       onDragEnd={onDragEnd}
     >
       {/* Card header */}
-      <div className="flex items-center gap-2 px-3 pt-2.5 pb-1">
+      <div className="flex items-center gap-2 px-3 pt-2.5 pb-1 shrink-0">
         {/* Drag handle */}
         <div className="dash-drag-handle flex flex-col gap-0.5" title="Drag to reorder">
           <div className="w-3 h-0.5 rounded-full bg-current" />
@@ -474,17 +441,17 @@ export function SessionCard({
       </div>
 
       {/* Activity chain */}
-      <div className="px-3">
+      <div className="px-3 shrink-0">
         <MiniActivityChain events={events} onDrilldown={onDrilldown} sessionId={session.sessionId} />
       </div>
 
       {/* Tool activity heatmap */}
-      <div className="px-3">
+      <div className="px-3 shrink-0">
         <ToolActivityHeatmap events={events} />
       </div>
 
       {/* Risk feed */}
-      <div className="px-3 pb-1">
+      <div className="px-3 pb-1 shrink-0">
         <RiskAlertFeed
           events={events}
           onDrilldown={onDrilldown}
@@ -493,14 +460,14 @@ export function SessionCard({
         />
       </div>
 
-      {/* Latest output */}
-      <div className="px-3 pb-3">
-        <LatestOutput events={events} expanded={isExpanded} />
+      {/* Latest output — flex-1 so it fills remaining card height */}
+      <div className="px-3 pb-3 flex-1 min-h-0 flex flex-col overflow-hidden">
+        <LatestOutput events={events} />
       </div>
 
       {/* Bottom accent line */}
       <div
-        className="h-px w-full"
+        className="h-px w-full shrink-0"
         style={{
           background: isFocused
             ? 'linear-gradient(90deg, transparent, var(--dash-accent), transparent)'

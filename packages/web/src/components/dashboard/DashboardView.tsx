@@ -166,18 +166,30 @@ export function DashboardView() {
           </div>
 
           {/* Cards grid */}
-          <div className="flex-1 overflow-y-auto p-4">
+          {(() => {
+            const isFew = orderedSessions.length > 0 && orderedSessions.length <= 2;
+            return (
+            <div
+              className="flex-1 p-4"
+              style={{ overflow: isFew ? 'hidden' : 'auto' }}
+            >
             {orderedSessions.length === 0 ? (
               <EmptyState />
             ) : (
-              <div className="grid gap-4" style={{
-                gridTemplateColumns: orderedSessions.length === 1
-                  ? '1fr'
-                  : orderedSessions.length === 2
-                  ? 'repeat(2, 1fr)'
-                  : 'repeat(auto-fill, minmax(380px, 1fr))',
-                maxWidth: '100%',
-              }}>
+              <div
+                className="grid gap-4"
+                style={{
+                  gridTemplateColumns: orderedSessions.length === 1
+                    ? '1fr'
+                    : orderedSessions.length === 2
+                    ? 'repeat(2, 1fr)'
+                    : 'repeat(auto-fill, minmax(380px, 1fr))',
+                  height: isFew ? '100%' : 'auto',
+                  gridTemplateRows: isFew ? '1fr' : 'auto',
+                  maxWidth: '100%',
+                }}
+                onClick={() => setDashboardFocusedSession(null)}
+              >
                 {orderedSessions.map((session, index) => (
                   <SessionCard
                     key={session.sessionId}
@@ -197,7 +209,9 @@ export function DashboardView() {
                 ))}
               </div>
             )}
-          </div>
+            </div>
+            );
+          })()}
         </div>
 
         {/* Right side panel */}

@@ -74,6 +74,7 @@ export function Header() {
     clearSessionSummaryError,
     flowchartOpen, setFlowchartOpen,
     dashboardOpen, setDashboardOpen,
+    dashboardFocusedSession, setDashboardFocusedSession,
   } = useSessionStore();
 
   const statusConfig = {
@@ -139,17 +140,24 @@ export function Header() {
           <span className={`text-xs ${textColor}`}>{text}</span>
         </div>
 
-        {/* Session dropdown — hidden in dashboard mode */}
-        {!dashboardOpen && sessions.length > 0 && (
+        {/* Session dropdown */}
+        {sessions.length > 0 && (
           <>
             <div className="h-4 w-px bg-[#30363d]" />
             {(() => {
               const agentTypes = new Set(sessions.map((s) => s.agentType));
               const showAgentPrefix = agentTypes.size > 1;
+              const value = dashboardOpen ? (dashboardFocusedSession ?? '') : (activeSessionId ?? '');
               return (
                 <select
-                  value={activeSessionId ?? ''}
-                  onChange={(e) => setActiveSession(e.target.value || null)}
+                  value={value}
+                  onChange={(e) => {
+                    if (dashboardOpen) {
+                      setDashboardFocusedSession(e.target.value || null);
+                    } else {
+                      setActiveSession(e.target.value || null);
+                    }
+                  }}
                   className="text-xs bg-[#21262d] border border-[#30363d] text-[#e6edf3] rounded px-2 py-0.5 focus:outline-none focus:border-[#58a6ff] cursor-pointer"
                   title="Filter by session"
                 >
