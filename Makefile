@@ -1,4 +1,4 @@
-.PHONY: build dev test typecheck docker-build docker-run docker-stop docker-logs clean
+.PHONY: build dev test typecheck docker-build docker-run docker-stop docker-logs clean start stop update
 
 # ── Local development ─────────────────────────────────────────────────────────
 
@@ -20,7 +20,24 @@ typecheck:
 clean:
 	rm -rf packages/server/dist web-dist node_modules packages/*/node_modules
 
-# ── Docker ────────────────────────────────────────────────────────────────────
+# ── Quick start (pre-built ghcr.io image) ─────────────────────────────────────
+
+start:
+	docker compose -f docker-compose.ghcr.yml pull
+	docker compose -f docker-compose.ghcr.yml up -d
+	@echo ""
+	@echo "Layman running at http://localhost:8880"
+
+stop:
+	docker compose -f docker-compose.ghcr.yml down
+	@echo "Layman stopped."
+
+update:
+	docker compose -f docker-compose.ghcr.yml pull
+	docker compose -f docker-compose.ghcr.yml up -d
+	@echo "Layman updated and restarted."
+
+# ── Docker (build from source) ────────────────────────────────────────────────
 
 docker-build:
 	docker build -t layman .
