@@ -78,7 +78,12 @@ export async function loadConfig(
   if (process.env.LAYMAN_AUTO_ANALYZE) {
     envConfig.autoAnalyze = process.env.LAYMAN_AUTO_ANALYZE as 'all' | 'risky' | 'none';
   }
-  if (process.env.LAYMAN_AUTO_APPROVE) envConfig.autoApprove = process.env.LAYMAN_AUTO_APPROVE === 'true';
+  if (process.env.LAYMAN_AUTO_APPROVE) {
+    const raw = process.env.LAYMAN_AUTO_APPROVE;
+    if (raw === 'true' || raw === 'all') envConfig.autoApprove = 'all';
+    else if (raw === 'false' || raw === 'none') envConfig.autoApprove = 'none';
+    else if (raw === 'medium' || raw === 'low') envConfig.autoApprove = raw;
+  }
   if (process.env.ANTHROPIC_API_KEY && !envConfig.analysis) {
     envConfig.analysis = { provider: 'anthropic', model: 'sonnet', maxTokens: 400, temperature: 0.1 };
   }

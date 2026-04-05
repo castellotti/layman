@@ -31,7 +31,10 @@ export const LaymanConfigSchema = z.object({
   hookTimeout: z.number().int().min(10).max(3600).default(300),
   theme: z.enum(['dark', 'light', 'system']).default('dark'),
   open: z.boolean().default(true),
-  autoApprove: z.boolean().default(true), // Auto-approve all PreToolUse; only block on PermissionRequest
+  autoApprove: z.union([
+    z.enum(['all', 'medium', 'low', 'none']),
+    z.boolean().transform(b => b ? 'all' : 'none' as const),
+  ]).default('all'), // 'all'=approve everything, 'medium'=approve low+medium, 'low'=approve only low, 'none'=always prompt
   laymansPrompt: z.string().default(DEFAULT_LAYMANS_PROMPT),
   hookUrl: z.string().optional(),
   sessionRecording: z.boolean().default(false),

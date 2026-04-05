@@ -735,24 +735,32 @@ export function SettingsDrawer({ onSend }: SettingsDrawerProps) {
               Auto-Approve
             </h3>
             <p className="text-[10px] text-[#484f58] mb-3">
-              Skip the approval prompt for tool calls that would otherwise require your sign-off.
+              Skip the approval prompt for tool calls below the selected risk threshold.
               Permission requests (where Claude explicitly asks you a question) are always shown.
             </p>
-            <label className="flex items-center justify-between cursor-pointer">
-              <span className="text-xs text-[#e6edf3]">Auto-approve tool calls</span>
-              <div
-                onClick={() => updateConfig({ autoApprove: !config.autoApprove })}
-                className={`relative w-8 h-4 rounded-full transition-colors cursor-pointer ${
-                  config.autoApprove ? 'bg-[#238636]' : 'bg-[#30363d]'
-                }`}
-              >
-                <div
-                  className={`absolute top-0.5 w-3 h-3 bg-white rounded-full transition-transform ${
-                    config.autoApprove ? 'translate-x-4' : 'translate-x-0.5'
-                  }`}
-                />
-              </div>
-            </label>
+            <div className="flex rounded-md overflow-hidden border border-[#30363d] mb-2">
+              {(['all', 'medium', 'low', 'none'] as const).map((level) => {
+                const isActive = (config.autoApprove as string) === level;
+                const labels: Record<string, string> = { all: 'All', medium: 'Medium', low: 'Low', none: 'None' };
+                return (
+                  <button
+                    key={level}
+                    onClick={() => updateConfig({ autoApprove: level })}
+                    className={`flex-1 py-1.5 text-xs font-mono transition-colors ${
+                      isActive ? 'bg-[#238636] text-white' : 'text-[#8b949e] hover:text-[#e6edf3] hover:bg-[#21262d]'
+                    }`}
+                  >
+                    {labels[level]}
+                  </button>
+                );
+              })}
+            </div>
+            <div className="text-[10px] text-[#484f58] space-y-1">
+              <p><span className="text-[#8b949e]">All</span> — every tool call is auto-approved</p>
+              <p><span className="text-[#8b949e]">Medium</span> — low + medium risk auto-approved; high requires sign-off</p>
+              <p><span className="text-[#8b949e]">Low</span> — only low-risk tools auto-approved; medium + high require sign-off</p>
+              <p><span className="text-[#8b949e]">None</span> — every tool call requires manual approval</p>
+            </div>
           </section>
 
           <div className="border-t border-[#30363d]" />

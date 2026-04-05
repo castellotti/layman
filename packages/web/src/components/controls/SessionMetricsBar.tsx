@@ -29,16 +29,21 @@ function ContextBar({ pct }: { pct: number }) {
   );
 }
 
-function RateLimitBadge({ label, pct }: { label: string; pct: number }) {
-  if (pct < 50) return null;
-  const color = pct >= 80 ? '#f85149' : '#d29922';
+function RateLimitMini({ label, pct, resetsAt }: { label: string; pct: number; resetsAt?: string }) {
+  const color = pct >= 80 ? '#f85149' : pct >= 50 ? '#d29922' : '#8b949e';
+  const tooltipParts = [`${label} rate limit: ${Math.round(pct)}% used`];
+  if (resetsAt) tooltipParts.push(`Resets at ${new Date(resetsAt).toLocaleTimeString()}`);
   return (
-    <span
-      className="px-1.5 py-0.5 rounded text-[9px] font-medium tabular-nums"
-      style={{ backgroundColor: `${color}20`, color }}
-    >
-      {label} {Math.round(pct)}%
-    </span>
+    <div className="flex items-center gap-1" title={tooltipParts.join(' · ')}>
+      <span className="text-[#484f58]">{label}</span>
+      <div className="w-8 h-1.5 rounded-full bg-[#21262d] overflow-hidden">
+        <div
+          className="h-full rounded-full transition-all duration-300"
+          style={{ width: `${Math.min(pct, 100)}%`, backgroundColor: color }}
+        />
+      </div>
+      <span className="text-[10px] tabular-nums" style={{ color }}>{Math.round(pct)}%</span>
+    </div>
   );
 }
 
@@ -122,7 +127,10 @@ export function SessionMetricsBar() {
 
       {/* Cost */}
       {hasCost && (
-        <span className="tabular-nums" title="Session cost">
+        <span
+          className="tabular-nums cursor-help"
+          title="Estimated API cost for this session based on token usage at current Anthropic rates. Input tokens include prompt, context window, and any cache reads/writes. Output tokens are the model's responses. Actual billing from Anthropic may differ slightly due to pricing updates or billing rounding."
+        >
           {formatCost(metrics.costUsd!)}
         </span>
       )}
@@ -143,12 +151,12 @@ export function SessionMetricsBar() {
         </span>
       )}
 
-      {/* Rate limit warnings — single session only */}
+      {/* Rate limit usage — single session only */}
       {!isAllSessions && metrics.rateLimit5hrPct !== undefined && (
-        <RateLimitBadge label="5h" pct={metrics.rateLimit5hrPct} />
+        <RateLimitMini label="5h" pct={metrics.rateLimit5hrPct} resetsAt={metrics.rateLimit5hrResetsAt} />
       )}
       {!isAllSessions && metrics.rateLimit7dayPct !== undefined && (
-        <RateLimitBadge label="7d" pct={metrics.rateLimit7dayPct} />
+        <RateLimitMini label="1w" pct={metrics.rateLimit7dayPct} resetsAt={metrics.rateLimit7dayResetsAt} />
       )}
     </div>
   );
