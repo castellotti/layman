@@ -108,8 +108,8 @@ export function Header() {
 
   const views: { key: ViewMode; label: string; icon: React.ReactNode; shortcut: string }[] = [
     { key: 'dashboard', label: 'Dashboard', icon: <IconDashboard />, shortcut: 'D' },
-    { key: 'stream',    label: 'Live Session',    icon: <IconLiveSession />,    shortcut: 'S' },
-    { key: 'flowchart', label: 'Flowchart',  icon: <IconFlowchart />,  shortcut: 'F' },
+    { key: 'stream',    label: 'Logs',      icon: <IconLiveSession />, shortcut: 'S' },
+    { key: 'flowchart', label: 'Flow',      icon: <IconFlowchart />,  shortcut: 'F' },
   ];
 
   return (

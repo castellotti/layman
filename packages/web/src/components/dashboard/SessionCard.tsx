@@ -319,6 +319,25 @@ function ContextMeter({ pct }: { pct: number }) {
   );
 }
 
+/** Rate limit mini-bar (5h or 1w) */
+function RateLimitMini({ label, pct, resetsAt }: { label: string; pct: number; resetsAt?: string }) {
+  const color = pct >= 80 ? 'var(--dash-high)' : pct >= 50 ? 'var(--dash-medium)' : 'var(--dash-text-muted)';
+  const tooltipParts = [`${label} rate limit: ${Math.round(pct)}% used`];
+  if (resetsAt) tooltipParts.push(`Resets at ${new Date(resetsAt).toLocaleTimeString()}`);
+  return (
+    <div className="flex items-center gap-1" title={tooltipParts.join(' · ')}>
+      <span style={{ fontFamily: 'var(--dash-font-data)', fontSize: 8, color: 'var(--dash-text-muted)' }}>{label}</span>
+      <div className="rounded-full overflow-hidden" style={{ width: 28, height: 4, background: 'var(--dash-bg)' }}>
+        <div
+          className="h-full rounded-full"
+          style={{ width: `${Math.min(pct, 100)}%`, background: color, transition: 'width 0.3s ease' }}
+        />
+      </div>
+      <span style={{ fontFamily: 'var(--dash-font-data)', fontSize: 8, color }}>{Math.round(pct)}%</span>
+    </div>
+  );
+}
+
 export function SessionCard({
   session, events, isFocused, onFocus, onDrilldown, index,
   onDragStart, onDragOver, onDragEnd, isDragging, isDragOver, totalCards,
@@ -428,13 +447,20 @@ export function SessionCard({
           <ContextMeter pct={metrics.contextUsedPct} />
         )}
 
+        {/* Rate limit mini-bars */}
+        {metrics?.rateLimit5hrPct != null && (
+          <RateLimitMini label="5h" pct={metrics.rateLimit5hrPct} resetsAt={metrics.rateLimit5hrResetsAt} />
+        )}
+        {metrics?.rateLimit7dayPct != null && (
+          <RateLimitMini label="1w" pct={metrics.rateLimit7dayPct} resetsAt={metrics.rateLimit7dayResetsAt} />
+        )}
+
         {/* Cost */}
         {metrics?.costUsd !== undefined && (
-          <span style={{
-            fontFamily: 'var(--dash-font-data)',
-            fontSize: 9,
-            color: 'var(--dash-text-muted)',
-          }}>
+          <span
+            style={{ fontFamily: 'var(--dash-font-data)', fontSize: 9, color: 'var(--dash-text-muted)', cursor: 'help' }}
+            title="Estimated API cost based on token usage at current Anthropic rates. Actual billing may differ slightly."
+          >
             ${metrics.costUsd < 1 ? metrics.costUsd.toFixed(3) : metrics.costUsd.toFixed(2)}
           </span>
         )}

@@ -162,7 +162,9 @@ async function handleClinePreToolUse(
 
   // Check auto-allow rules
   const shouldAutoAllow =
-    config.autoApprove ||
+    config.autoApprove === 'all' ||
+    (config.autoApprove === 'medium' && (riskLevel === 'low' || riskLevel === 'medium')) ||
+    (config.autoApprove === 'low' && riskLevel === 'low') ||
     (config.autoAllow.readOnly && AUTO_ALLOW_TOOLS.has(input.tool_name)) ||
     isAutoAllowedByPattern(input.tool_name, input.tool_input, config.autoAllow.trustedCommands);
 
