@@ -1,0 +1,29 @@
+services:
+  layman:
+    image: ghcr.io/castellotti/layman:latest
+    container_name: layman
+    ports:
+      - "127.0.0.1:8880:8880"
+    volumes:
+      - ${HOME}/.claude:/root/.claude
+      - ${HOME}/.config:/root/.config
+      - ${HOME}/.vibe:/root/.vibe
+      - ${HOME}/Documents/Cline:/root/Documents/Cline
+      - ${HOME}/.codex:/root/.codex
+    environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - LAYMAN_API_KEY=${LAYMAN_API_KEY:-}
+      - HOST_HOME=${HOME}
+    command: >
+      node packages/server/dist/index.js start
+      --host 0.0.0.0
+      --no-open
+      --hook-url http://localhost:8880
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:8880/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 5s

@@ -40,7 +40,7 @@ For Claude Code and Cline, Layman can intercept tool calls before they execute a
 
 ### Session summary
 
-Each session header shows an AI-generated plain-English summary of what the agent did — updated live as the session progresses and available in history. Click the summary to see previous versions and timestamps.
+Each session header shows an AI-generated plain-English summary of what the agent did - updated live as the session progresses and available in history. Click the summary to see previous versions and timestamps.
 
 ### Flowchart view
 
@@ -62,7 +62,7 @@ Supports Anthropic, OpenAI-compatible APIs, and LiteLLM. Auto-analysis and auto-
 
 ### Session metrics
 
-When connected to Claude Code, the dashboard shows a live metrics bar with model name, context window usage, cumulative session cost, token counts, lines changed, and rate limit warnings. This data comes from claude-code's StatusLine channel — a relay script installed alongside the hooks.
+When connected to Claude Code, the dashboard shows a live metrics bar with model name, context window usage, cumulative session cost, token counts, lines changed, and rate limit warnings. This data comes from claude-code's StatusLine channel - a relay script installed alongside the hooks.
 
 Past sessions are recorded to a local SQLite database. Open the **Sessions** panel (clock icon) to browse history and see a time breakdown per session (total time, time the agent was active, time waiting on you, and idle time). Search across all sessions with full-text search and filter by event type. Search supports `+required`, `-excluded`, and `"quoted phrases"`.
 
@@ -80,55 +80,89 @@ Export a session as a PDF transcript using the print button in the session view.
 
 Requires [Docker](https://docs.docker.com/get-started/get-docker/).
 
-**1. Create a compose file** — save this to `~/layman/docker-compose.yml`:
+### Quick Start
 
-```yaml
-services:
-  layman:
-    image: ghcr.io/castellotti/layman:latest
-    container_name: layman
-    ports:
-      - "127.0.0.1:8880:8880"
-    volumes:
-      - ${HOME}/.claude:/root/.claude
-      - ${HOME}/.config:/root/.config
-      - ${HOME}/.vibe:/root/.vibe
-      - ${HOME}/Documents/Cline:/root/Documents/Cline
-      - ${HOME}/.codex:/root/.codex
-    environment:
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
-      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
-      - HOST_HOME=${HOME}
-    command: >
-      node packages/server/dist/index.js start
-      --host 0.0.0.0
-      --no-open
-      --hook-url http://localhost:8880
-    restart: unless-stopped
-```
-
-> **Windows:** Replace `${HOME}` with `${USERPROFILE}` (e.g. `${USERPROFILE}/.claude:/root/.claude`).
-
-**2. Start the server:**
+**macOS / Linux** - one command downloads the config and starts Layman:
 
 ```bash
-docker compose -f ~/layman/docker-compose.yml up -d
+mkdir -p ~/layman && curl -fsSL https://raw.githubusercontent.com/castellotti/layman/main/docker-compose.ghcr.yml -o ~/layman/docker-compose.yml && docker compose -f ~/layman/docker-compose.yml up -d
 ```
 
-**3. Open the dashboard:**
+**Windows (PowerShell):**
 
-http://localhost:8880
+```powershell
+md -Force "$env:USERPROFILE\layman"; Invoke-WebRequest "https://raw.githubusercontent.com/castellotti/layman/main/docker-compose.ghcr.yml" -OutFile "$env:USERPROFILE\layman\docker-compose.yml"; $env:HOME=$env:USERPROFILE; docker compose -f "$env:USERPROFILE\layman\docker-compose.yml" up -d
+```
 
-**4. Install hooks** — on first visit, a modal lists every AI agent client detected on your system. Toggle on the clients you want to integrate and click **Accept**. Layman writes the necessary hooks and slash commands directly to your home directory. You can install or remove individual clients any time from **Settings → Client Setup**.
+> **Windows / WSL2:** If you're running Docker from a WSL2 terminal, use the macOS/Linux command above instead.
 
-After a Layman update, pull the latest image and restart:
+Then open **http://localhost:8880**. On first visit, a modal lists any AI agent clients detected on your system - toggle the ones you want and click **Accept** to install hooks.
+
+**If you've cloned the repo**, `make start` does the same thing (macOS/Linux).
+
+To update to the latest image:
 
 ```bash
-docker compose -f ~/layman/docker-compose.yml pull
-docker compose -f ~/layman/docker-compose.yml up -d
+# macOS / Linux
+docker compose -f ~/layman/docker-compose.yml pull && docker compose -f ~/layman/docker-compose.yml up -d
 ```
 
-A banner will appear in the dashboard if your hooks or commands are out of date — click **Update** to refresh them.
+```powershell
+# Windows (PowerShell)
+$env:HOME=$env:USERPROFILE; docker compose -f "$env:USERPROFILE\layman\docker-compose.yml" pull; docker compose -f "$env:USERPROFILE\layman\docker-compose.yml" up -d
+```
+
+To stop:
+
+```bash
+# macOS / Linux
+docker compose -f ~/layman/docker-compose.yml down
+```
+
+```powershell
+# Windows (PowerShell)
+docker compose -f "$env:USERPROFILE\layman\docker-compose.yml" down
+```
+
+A banner will appear in the dashboard if your hooks or commands are out of date after an update - click **Update** to refresh them.
+
+---
+
+### Full Details
+
+#### What gets mounted
+
+Layman runs in Docker but needs read/write access to several directories on your host machine so it can install hooks and watch agent log files:
+
+| Mount | Purpose |
+|---|---|
+| `~/.claude` | Read/write Claude Code hooks, slash commands, and the StatusLine relay script |
+| `~/.config` | Detect and write commands for XDG-based clients (e.g. OpenCode) |
+| `~/.vibe` | Detect Mistral Vibe and tail its session log files for passive monitoring |
+| `~/Documents/Cline` | Detect Cline and write hook scripts to `~/Documents/Cline/Hooks/` |
+| `~/.codex` | Detect Codex and write hook scripts and `~/.codex/hooks.json` entries |
+
+Layman only writes inside these directories when you explicitly click **Install** in Settings. Nothing is written automatically on startup.
+
+#### Port binding
+
+The default config binds to `127.0.0.1:8880`, so the dashboard is only reachable from your local machine. Do not change this to `0.0.0.0` unless you have a specific reason and understand the implications - Layman has no authentication.
+
+#### AI analysis (optional)
+
+Layman can use an AI model to classify the risk level of each action and explain it in plain language. To enable this, pass your API key when starting the container:
+
+```bash
+ANTHROPIC_API_KEY=your-key-here docker compose -f ~/layman/docker-compose.yml up -d
+```
+
+Supports Anthropic, OpenAI-compatible APIs, and LiteLLM. Auto-analysis and auto-explain can be configured independently in **Settings → Analysis**, with severity thresholds (All / Medium+ / High only) and detail level (Quick / Detailed).
+
+#### Compose file reference
+
+The compose file downloaded by the Quick Start command is [`docker-compose.ghcr.yml`](docker-compose.ghcr.yml) from this repo. You can review it before running, or substitute any fields (e.g. a pinned image tag instead of `latest`).
+
+> **Windows:** The compose file uses `${HOME}` for volume paths. The PowerShell Quick Start command sets `$env:HOME=$env:USERPROFILE` so Docker Compose resolves these correctly - no manual editing needed. If you run docker compose commands later, prefix them with `$env:HOME=$env:USERPROFILE;` or set `HOME` persistently in your system environment variables.
 
 ---
 
@@ -147,7 +181,7 @@ Sessions are **not** recorded by default. To opt a session in:
 
 3. Claude runs an activation command. From that point on, all events flow to the dashboard.
 
-You can activate multiple sessions across different projects — they all appear in the same dashboard.
+You can activate multiple sessions across different projects - they all appear in the same dashboard.
 
 **Auto-activate:** To skip the `/layman` step, go to **Settings → Client Setup** and toggle **Auto-activate sessions** on the Claude Code row. All new Claude Code sessions will be monitored automatically.
 
@@ -161,7 +195,7 @@ Codex uses shell-script hooks that Layman installs to `~/.codex/hooks/layman/` a
 
 1. Ensure Codex is installed (`codex` binary on PATH or at `/opt/homebrew/bin/codex`).
 2. Open the Layman dashboard → **Settings → Client Setup** → click **Install** next to Codex.
-3. Layman writes hook scripts to `~/.codex/hooks/layman/`, adds entries to `~/.codex/hooks.json`, and enables the `codex_hooks` feature flag in `~/.codex/config.toml` (required — hooks are disabled by default in Codex).
+3. Layman writes hook scripts to `~/.codex/hooks/layman/`, adds entries to `~/.codex/hooks.json`, and enables the `codex_hooks` feature flag in `~/.codex/config.toml` (required - hooks are disabled by default in Codex).
 
 **Usage:**
 
@@ -219,7 +253,7 @@ The `/layman` skill file is installed to `~/.vibe/skills/layman/` for informatio
 
 ### Cline (VS Code / IntelliJ)
 
-Cline uses shell-script hooks that Layman installs to `~/Documents/Cline/Hooks/`. After installation, sessions are **not** monitored by default — you activate per session using the `/layman` workflow.
+Cline uses shell-script hooks that Layman installs to `~/Documents/Cline/Hooks/`. After installation, sessions are **not** monitored by default - you activate per session using the `/layman` workflow.
 
 **Installation** (first time or after a Layman update):
 
@@ -230,14 +264,14 @@ Cline uses shell-script hooks that Layman installs to `~/Documents/Cline/Hooks/`
 **Activating a session:**
 
 1. Open Cline in VS Code or IntelliJ and start a task.
-2. Make sure you are in **Act mode** (not Plan mode) — the activation requires running a shell command.
+2. Make sure you are in **Act mode** (not Plan mode) - the activation requires running a shell command.
 3. Type `/layman` (or `/layman.md`) in the Cline chat.
 4. Cline runs `echo "layman:activate"` and confirms activation.
 
-From that point on, all tool calls in that workspace are monitored. If you switch between Plan and Act modes, monitoring automatically resumes when you return to Act mode — you do not need to run `/layman` again.
+From that point on, all tool calls in that workspace are monitored. If you switch between Plan and Act modes, monitoring automatically resumes when you return to Act mode - you do not need to run `/layman` again.
 
 **Notes:**
-- Tool approval/denial from the Layman UI is supported — Cline will pause and wait up to 25 seconds for your decision before auto-allowing.
+- Tool approval/denial from the Layman UI is supported - Cline will pause and wait up to 25 seconds for your decision before auto-allowing.
 - Prompt submission from the Layman UI is not supported (Cline has no inbound HTTP API).
 - Agent responses are captured when Cline uses `attempt_completion`; purely conversational inline replies may not appear.
 
@@ -250,7 +284,7 @@ If you install a supported client after Layman is already running:
 1. Install the client as normal.
 2. Open the Layman dashboard at http://localhost:8880.
 3. Go to **Settings** (gear icon) → **Client Setup**.
-4. Click **Install** next to the newly detected client — Layman writes its hooks and commands.
+4. Click **Install** next to the newly detected client - Layman writes its hooks and commands.
 
 No container restart required.
 
@@ -259,5 +293,13 @@ No container restart required.
 ## Stopping Layman
 
 ```bash
+# macOS / Linux
 docker compose -f ~/layman/docker-compose.yml down
 ```
+
+```powershell
+# Windows (PowerShell)
+docker compose -f "$env:USERPROFILE\layman\docker-compose.yml" down
+```
+
+If you used `make start`, you can also run `make stop`.
