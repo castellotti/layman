@@ -95,7 +95,7 @@ export function SetupModal() {
         <div className="px-6 pt-6 pb-2">
           <h2 className="text-base font-semibold text-[#e6edf3]">Set up AI agent integrations</h2>
           <p className="mt-1 text-xs text-[#8b949e]">
-            The following AI agent clients were detected on your system. Select the integrations to install:
+            The following AI agent harnesses were detected on your system. Select the integrations to install:
           </p>
         </div>
 

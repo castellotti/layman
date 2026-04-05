@@ -96,7 +96,7 @@ function StatusPip({ ok, label }: { ok: boolean; label: string }) {
   );
 }
 
-function ClientSetupSection({ onSend }: { onSend: (msg: ClientMessage) => void }) {
+function HarnessSetupSection({ onSend }: { onSend: (msg: ClientMessage) => void }) {
   const { setupStatus, setSetupStatus, config } = useSessionStore((s) => ({
     setupStatus: s.setupStatus,
     setSetupStatus: s.setSetupStatus,
@@ -987,17 +987,17 @@ export function SettingsDrawer({ onSend }: SettingsDrawerProps) {
 
           <div className="border-t border-[#30363d]" />
 
-          {/* Client Setup */}
+          {/* Harness Setup */}
           <section>
             <h3 className="text-xs font-semibold text-[#8b949e] uppercase tracking-wider mb-1">
-              Client Setup
+              Harness Setup
             </h3>
             <p className="text-[10px] text-[#484f58] mb-3">
               Installs hooks and the <code className="text-[#8b949e]">/layman</code> slash command
-              for each AI client detected on this machine. After installing a new client, click
+              for each AI harness detected on this machine. After installing a new harness, click
               Reinstall so Layman picks it up.
             </p>
-            <ClientSetupSection onSend={onSend} />
+            <HarnessSetupSection onSend={onSend} />
           </section>
 
           <div className="border-t border-[#30363d]" />

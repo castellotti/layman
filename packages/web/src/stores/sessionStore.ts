@@ -337,20 +337,29 @@ export const useSessionStore = create<SessionState>((set) => ({
 
   setSessions: (sessions) =>
     set((state) => {
+      // The server's sessions:list does not carry the `active` flag — that is managed
+      // client-side via session:activated / session:deactivated messages.  Preserve any
+      // active flag already in state so a sessions:list update never clobbers it.
+      const existingActive = new Map(state.sessions.map(s => [s.sessionId, s.active]));
+      const merged = sessions.map(s => ({
+        ...s,
+        active: s.active !== undefined ? s.active : existingActive.get(s.sessionId),
+      }));
+
       // Auto-select when transitioning to exactly 1 session and none is currently selected
-      if (sessions.length === 1 && state.activeSessionId === null) {
-        return { sessions, activeSessionId: sessions[0].sessionId };
+      if (merged.length === 1 && state.activeSessionId === null) {
+        return { sessions: merged, activeSessionId: merged[0].sessionId };
       }
       // Switch to the newest session when the setting is enabled and a new session appears
-      if (state.config?.switchToNewestSession && sessions.length > state.sessions.length) {
+      if (state.config?.switchToNewestSession && merged.length > state.sessions.length) {
         const existingIds = new Set(state.sessions.map((s) => s.sessionId));
-        const newSessions = sessions.filter((s) => !existingIds.has(s.sessionId));
+        const newSessions = merged.filter((s) => !existingIds.has(s.sessionId));
         if (newSessions.length > 0) {
           const newest = newSessions.reduce((a, b) => (b.lastSeen > a.lastSeen ? b : a));
-          return { sessions, activeSessionId: newest.sessionId };
+          return { sessions: merged, activeSessionId: newest.sessionId };
         }
       }
-      return { sessions, activeSessionId: state.activeSessionId };
+      return { sessions: merged, activeSessionId: state.activeSessionId };
     }),
 
   setActiveSession: (activeSessionId) => set({ activeSessionId }),
@@ -362,11 +371,17 @@ export const useSessionStore = create<SessionState>((set) => ({
   dismissSetupModal: () => set({ setupModalDismissed: true }),
 
   markSessionActive: (sessionId) =>
-    set((state) => ({
-      sessions: state.sessions.map((s) =>
-        s.sessionId === sessionId ? { ...s, active: true } : s
-      ),
-    })),
+    set((state) => {
+      const exists = state.sessions.some(s => s.sessionId === sessionId);
+      if (exists) {
+        return { sessions: state.sessions.map(s => s.sessionId === sessionId ? { ...s, active: true } : s) };
+      }
+      // Session not in list yet (sessions:list may arrive after session:activated).
+      // Add a placeholder so the card appears immediately; sessions:list will fill details.
+      return {
+        sessions: [...state.sessions, { sessionId, cwd: '', lastSeen: Date.now(), agentType: 'claude-code', active: true }],
+      };
+    }),
 
   markSessionInactive: (sessionId) =>
     set((state) => ({
