@@ -208,7 +208,7 @@ export interface LaymanConfig {
   hookTimeout: number;
   theme: 'dark' | 'light' | 'system';
   open: boolean;
-  autoApprove: boolean;
+  autoApprove: 'all' | 'medium' | 'low' | 'none';
   laymansPrompt: string;
   sessionRecording: boolean;
   recordingRecovery: boolean;

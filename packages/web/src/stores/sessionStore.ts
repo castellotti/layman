@@ -62,6 +62,12 @@ interface SessionState {
   flowchartOpen: boolean;
   flowchartViewMode: 'graph' | 'timeline';
 
+  // Dashboard view
+  dashboardOpen: boolean;
+  dashboardFocusedSession: string | null;
+  dashboardSessionOrder: string[];
+  returnToDashboard: boolean;
+
   // Access log
   accessLogOpen: boolean;
   accessLogData: SessionAccessLog | null;
@@ -112,6 +118,11 @@ interface SessionState {
   setSessionTimeMetrics: (metrics: SessionTimeMetrics | null) => void;
   setFlowchartOpen: (open: boolean) => void;
   setFlowchartViewMode: (mode: 'graph' | 'timeline') => void;
+  setDashboardOpen: (open: boolean) => void;
+  setDashboardFocusedSession: (id: string | null) => void;
+  setDashboardSessionOrder: (order: string[]) => void;
+  navigateFromDashboard: (sessionId: string, eventId: string) => void;
+  returnFromDashboardDrilldown: () => void;
   setAccessLogOpen: (open: boolean) => void;
   setAccessLogData: (data: SessionAccessLog | null) => void;
   fetchAccessLog: (sessionId: string) => Promise<void>;
@@ -156,6 +167,11 @@ export const useSessionStore = create<SessionState>((set) => ({
 
   flowchartOpen: false,
   flowchartViewMode: 'graph' as const,
+
+  dashboardOpen: true,
+  dashboardFocusedSession: null,
+  dashboardSessionOrder: [],
+  returnToDashboard: false,
 
   accessLogOpen: false,
   accessLogData: null,
@@ -411,6 +427,30 @@ export const useSessionStore = create<SessionState>((set) => ({
 
   setFlowchartOpen: (open) => set({ flowchartOpen: open }),
   setFlowchartViewMode: (mode) => set({ flowchartViewMode: mode }),
+
+  setDashboardOpen: (open) => set((state) => ({
+    dashboardOpen: open,
+    // When opening dashboard, close flowchart; when closing, clear return flag
+    ...(open ? { flowchartOpen: false } : { returnToDashboard: false }),
+  })),
+  setDashboardFocusedSession: (id) => set({ dashboardFocusedSession: id }),
+  setDashboardSessionOrder: (order) => set({ dashboardSessionOrder: order }),
+  navigateFromDashboard: (sessionId, eventId) => set({
+    dashboardOpen: false,
+    returnToDashboard: true,
+    flowchartOpen: true,
+    flowchartViewMode: 'graph',
+    activeSessionId: sessionId,
+    selectedEventId: eventId,
+    investigationOpen: true,
+  }),
+  returnFromDashboardDrilldown: () => set({
+    dashboardOpen: true,
+    returnToDashboard: false,
+    flowchartOpen: false,
+    investigationOpen: false,
+    selectedEventId: null,
+  }),
   setAccessLogOpen: (open) => set({ accessLogOpen: open }),
   setAccessLogData: (data) => set({ accessLogData: data }),
   fetchAccessLog: async (sessionId) => {
