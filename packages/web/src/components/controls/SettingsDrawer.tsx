@@ -218,52 +218,77 @@ function ClientSetupSection({ onSend }: { onSend: (msg: ClientMessage) => void }
         const hooksOk = client.hooksInstalled === undefined || client.hooksUpToDate !== false;
         const fullyOk = commandOk && hooksOk;
         const needsUpdate = client.detected && client.commandInstalled && !fullyOk;
+        const showAutoActivate = client.id === 'codex' && client.detected && fullyOk && config;
         return (
-          <div key={client.id} className="flex items-center justify-between min-h-[28px]">
-            <div className="flex items-center gap-2">
-              <span className={`text-xs ${client.detected ? 'text-[#e6edf3]' : 'text-[#484f58]'}`}>
-                {client.name}
-              </span>
-              {!client.detected && (
-                <span className="text-[10px] text-[#484f58]">(not detected)</span>
-              )}
+          <div key={client.id}>
+            <div className="flex items-center justify-between min-h-[28px]">
+              <div className="flex items-center gap-2">
+                <span className={`text-xs ${client.detected ? 'text-[#e6edf3]' : 'text-[#484f58]'}`}>
+                  {client.name}
+                </span>
+                {!client.detected && (
+                  <span className="text-[10px] text-[#484f58]">(not detected)</span>
+                )}
+              </div>
+              <div className="flex items-center gap-1.5">
+                {client.detected && client.commandInstalled && (
+                  <>
+                    <StatusPip ok={commandOk} label={client.id === 'codex' ? '$layman' : '/layman'} />
+                    {client.hooksInstalled !== undefined && (
+                      <StatusPip ok={!!client.hooksUpToDate} label="hooks" />
+                    )}
+                  </>
+                )}
+                {state === 'busy' ? (
+                  <span className="text-[10px] text-[#8b949e]">...</span>
+                ) : state === 'error' ? (
+                  <span className="text-[10px] text-[#f85149]">Failed</span>
+                ) : client.detected && !client.commandInstalled ? (
+                  <button
+                    onClick={() => void handleInstallClient(client.id)}
+                    className="px-2 py-0.5 text-[10px] font-medium rounded bg-[#238636] text-white hover:bg-[#2ea043] transition-colors"
+                  >
+                    Install
+                  </button>
+                ) : needsUpdate ? (
+                  <button
+                    onClick={() => void handleInstallClient(client.id)}
+                    className="px-2 py-0.5 text-[10px] font-medium rounded bg-[#21262d] border border-[#30363d] text-[#e6edf3] hover:bg-[#30363d] transition-colors"
+                  >
+                    Update
+                  </button>
+                ) : client.detected && fullyOk ? (
+                  <button
+                    onClick={() => void handleUninstallClient(client.id)}
+                    className="px-2 py-0.5 text-[10px] font-medium rounded bg-[#21262d] border border-[#30363d] text-[#8b949e] hover:bg-[#30363d] hover:text-[#f85149] transition-colors"
+                  >
+                    Uninstall
+                  </button>
+                ) : null}
+              </div>
             </div>
-            <div className="flex items-center gap-1.5">
-              {client.detected && client.commandInstalled && (
-                <>
-                  <StatusPip ok={commandOk} label="/layman" />
-                  {client.hooksInstalled !== undefined && (
-                    <StatusPip ok={!!client.hooksUpToDate} label="hooks" />
-                  )}
-                </>
-              )}
-              {state === 'busy' ? (
-                <span className="text-[10px] text-[#8b949e]">...</span>
-              ) : state === 'error' ? (
-                <span className="text-[10px] text-[#f85149]">Failed</span>
-              ) : client.detected && !client.commandInstalled ? (
+            {showAutoActivate && (
+              <div className="flex items-center justify-between min-h-[28px] pl-3">
+                <span className="text-[11px] text-[#8b949e]">Auto-activate sessions</span>
                 <button
-                  onClick={() => void handleInstallClient(client.id)}
-                  className="px-2 py-0.5 text-[10px] font-medium rounded bg-[#238636] text-white hover:bg-[#2ea043] transition-colors"
+                  onClick={() => {
+                    const clients = config.autoActivateClients ?? [];
+                    const enabled = clients.includes('codex');
+                    const updated = enabled
+                      ? clients.filter((c: string) => c !== 'codex')
+                      : [...clients, 'codex'];
+                    onSend({ type: 'config:update', config: { autoActivateClients: updated } });
+                  }}
+                  className={`relative inline-flex h-4 w-8 items-center rounded-full transition-colors ${
+                    (config.autoActivateClients ?? []).includes('codex') ? 'bg-[#238636]' : 'bg-[#30363d]'
+                  }`}
                 >
-                  Install
+                  <span className={`inline-block h-3 w-3 rounded-full bg-white transition-transform ${
+                    (config.autoActivateClients ?? []).includes('codex') ? 'translate-x-4' : 'translate-x-0.5'
+                  }`} />
                 </button>
-              ) : needsUpdate ? (
-                <button
-                  onClick={() => void handleInstallClient(client.id)}
-                  className="px-2 py-0.5 text-[10px] font-medium rounded bg-[#21262d] border border-[#30363d] text-[#e6edf3] hover:bg-[#30363d] transition-colors"
-                >
-                  Update
-                </button>
-              ) : client.detected && fullyOk ? (
-                <button
-                  onClick={() => void handleUninstallClient(client.id)}
-                  className="px-2 py-0.5 text-[10px] font-medium rounded bg-[#21262d] border border-[#30363d] text-[#8b949e] hover:bg-[#30363d] hover:text-[#f85149] transition-colors"
-                >
-                  Uninstall
-                </button>
-              ) : null}
-            </div>
+              </div>
+            )}
           </div>
         );
       })}
