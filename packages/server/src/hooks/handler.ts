@@ -123,11 +123,11 @@ export function registerHookHandler(
         // This fires before the gate check below, so it works even on the very first event.
         if (sessionId && eventName === 'UserPromptSubmit' && agentType === 'codex') {
           const prompt = ((body as { prompt?: string }).prompt ?? '').trim();
-          if (/^@layman\b/i.test(prompt)) {
+          if (/^\$layman\b/i.test(prompt)) {
             const isNewActivation = gate.activate(sessionId);
             if (cwd) eventStore.trackSession(sessionId, cwd, agentType);
             if (isNewActivation) {
-              console.log(`[codex] Session ${sessionId.slice(0, 8)} activated via @layman`);
+              console.log(`[codex] Session ${sessionId.slice(0, 8)} activated via $layman`);
             }
             // Fall through — record the user_prompt event so @layman appears in the timeline
           }
