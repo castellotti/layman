@@ -90,17 +90,23 @@ export function Header() {
         )}
       </div>
 
-      {/* Session Layman's Terms — center */}
+      {/* Session Layman's Terms — center (hidden in dashboard all-sessions mode to avoid summarizing unrelated sessions) */}
       <div className="flex-1 flex items-center justify-center min-w-0 px-2">
-        <SessionLaymansTerms
-          summary={sessionSummary}
-          summaryHistory={historyForSession}
-          summaryError={sessionSummaryError}
-          isSummarizing={isSummarizingSession}
-          onGenerate={() => void fetchSessionSummary(activeSessionId)}
-          onClearError={clearSessionSummaryError}
-          className="max-w-xl w-full justify-center"
-        />
+        {dashboardOpen && sessions.length > 1 && !activeSessionId ? (
+          <span className="text-[10px] text-[#484f58] font-mono">
+            Select a session to summarize
+          </span>
+        ) : (
+          <SessionLaymansTerms
+            summary={sessionSummary}
+            summaryHistory={historyForSession}
+            summaryError={sessionSummaryError}
+            isSummarizing={isSummarizingSession}
+            onGenerate={() => void fetchSessionSummary(activeSessionId)}
+            onClearError={clearSessionSummaryError}
+            className="max-w-xl w-full justify-center"
+          />
+        )}
       </div>
 
       <div className="flex items-center gap-2 shrink-0">

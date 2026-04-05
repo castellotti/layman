@@ -168,7 +168,11 @@ export function DashboardView() {
               <EmptyState />
             ) : (
               <div className="grid gap-4" style={{
-                gridTemplateColumns: 'repeat(auto-fill, minmax(380px, 1fr))',
+                gridTemplateColumns: orderedSessions.length === 1
+                  ? '1fr'
+                  : orderedSessions.length === 2
+                  ? 'repeat(2, 1fr)'
+                  : 'repeat(auto-fill, minmax(380px, 1fr))',
                 maxWidth: '100%',
               }}>
                 {orderedSessions.map((session, index) => (
@@ -185,6 +189,7 @@ export function DashboardView() {
                     onDragEnd={handleDragEnd}
                     isDragging={dragIndex === index}
                     isDragOver={dragOverIndex === index}
+                    totalCards={orderedSessions.length}
                   />
                 ))}
               </div>

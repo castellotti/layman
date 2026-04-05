@@ -1,4 +1,4 @@
-import React, { useMemo, useCallback, useRef } from 'react';
+import React, { useMemo, useCallback, useRef, useState } from 'react';
 import { useSessionStore } from '../../stores/sessionStore.js';
 import { EVENT_ICONS, NODE_BORDER_COLORS, AGENT_BADGES } from '../../lib/event-styles.js';
 import type { TimelineEvent } from '../../lib/types.js';
@@ -16,6 +16,8 @@ interface SessionCardProps {
   onDragEnd: () => void;
   isDragging: boolean;
   isDragOver: boolean;
+  /** How many total session cards are displayed */
+  totalCards: number;
 }
 
 function getSessionDisplayName(session: SessionInfo): string {
@@ -39,7 +41,6 @@ function MiniActivityChain({ events, onDrilldown, sessionId }: {
   onDrilldown: (sessionId: string, eventId: string) => void;
   sessionId: string;
 }) {
-  // Show last 6 meaningful events (skip session_metrics, etc.)
   const meaningful = useMemo(() =>
     events
       .filter(e => e.type !== 'session_metrics' && e.type !== 'notification')
@@ -86,16 +87,98 @@ function MiniActivityChain({ events, onDrilldown, sessionId }: {
   );
 }
 
-/** Risk items for this session (medium/high only) */
-function RiskAlertFeed({ events, onDrilldown, sessionId }: {
+/** Tool activity heatmap — shows which tools are being called with risk coloring */
+function ToolActivityHeatmap({ events }: { events: TimelineEvent[] }) {
+  const heatData = useMemo(() => {
+    // Collect tool call events
+    const toolEvents = events.filter(e =>
+      e.type.startsWith('tool_call_') || e.type === 'permission_request'
+    );
+    if (toolEvents.length === 0) return null;
+
+    // Group by tool name, track counts and max risk
+    const toolMap = new Map<string, { count: number; risk: 'low' | 'medium' | 'high' }>();
+    for (const e of toolEvents) {
+      const name = e.data.toolName ?? 'unknown';
+      const existing = toolMap.get(name) ?? { count: 0, risk: 'low' as const };
+      existing.count++;
+      if (e.riskLevel === 'high' || (e.riskLevel === 'medium' && existing.risk !== 'high')) {
+        existing.risk = e.riskLevel ?? existing.risk;
+      }
+      toolMap.set(name, existing);
+    }
+
+    // Sort by count descending, take top 8
+    return [...toolMap.entries()]
+      .sort((a, b) => b[1].count - a[1].count)
+      .slice(0, 8);
+  }, [events]);
+
+  if (!heatData || heatData.length === 0) return null;
+
+  const maxCount = heatData[0][1].count;
+
+  const riskColors = {
+    low: 'var(--dash-accent)',
+    medium: 'var(--dash-medium)',
+    high: 'var(--dash-high)',
+  };
+
+  return (
+    <div className="flex flex-wrap gap-0.5 py-1">
+      {heatData.map(([name, { count, risk }]) => {
+        const intensity = 0.15 + (count / maxCount) * 0.35;
+        const shortName = name.length > 16
+          ? name.replace(/^mcp__[^_]+__/, '').slice(0, 14)
+          : name;
+        return (
+          <div
+            key={name}
+            className="rounded"
+            style={{
+              padding: '1px 5px',
+              background: `color-mix(in srgb, ${riskColors[risk]} ${Math.round(intensity * 100)}%, transparent)`,
+              border: `1px solid color-mix(in srgb, ${riskColors[risk]} 12%, transparent)`,
+              lineHeight: '14px',
+            }}
+            title={`${name}: ${count} calls (${risk} risk)`}
+          >
+            <span style={{
+              fontFamily: 'var(--dash-font-data)',
+              fontSize: 8,
+              color: riskColors[risk],
+              opacity: 0.8,
+            }}>
+              {shortName}
+            </span>
+            <span style={{
+              fontFamily: 'var(--dash-font-data)',
+              fontSize: 7,
+              color: 'var(--dash-text-muted)',
+              marginLeft: 3,
+            }}>
+              {count}
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/** Risk items for this session (medium/high only) — scrollable with expand */
+function RiskAlertFeed({ events, onDrilldown, sessionId, expanded }: {
   events: TimelineEvent[];
   onDrilldown: (sessionId: string, eventId: string) => void;
   sessionId: string;
+  /** Whether to show more items (for 1-2 session layouts) */
+  expanded: boolean;
 }) {
+  const [showAll, setShowAll] = useState(false);
+
   const riskyEvents = useMemo(() =>
     events
       .filter(e => e.riskLevel === 'medium' || e.riskLevel === 'high')
-      .slice(-5)
       .reverse(),
     [events]
   );
@@ -108,47 +191,78 @@ function RiskAlertFeed({ events, onDrilldown, sessionId }: {
     );
   }
 
+  const defaultVisible = expanded ? 8 : 4;
+  const visibleEvents = showAll ? riskyEvents : riskyEvents.slice(0, defaultVisible);
+  const hasMore = riskyEvents.length > defaultVisible;
+
   return (
     <div className="flex flex-col gap-0.5">
-      {riskyEvents.map(event => (
-        <div
-          key={event.id}
-          className="dash-risk-item"
-          onClick={(e) => { e.stopPropagation(); onDrilldown(sessionId, event.id); }}
-        >
-          <span className={`dash-risk-badge dash-risk-badge--${event.riskLevel}`}>
-            {event.riskLevel}
-          </span>
-          <span style={{ color: 'var(--dash-text-secondary)' }} className="truncate">
-            {event.data.toolName ?? event.type}
-          </span>
-          {event.data.toolName === 'Bash' && event.data.toolInput?.command != null && (
-            <span style={{ color: 'var(--dash-text-muted)' }} className="truncate flex-1">
-              {String(event.data.toolInput.command).slice(0, 40)}
+      <div
+        className={showAll ? 'overflow-y-auto' : ''}
+        style={showAll ? { maxHeight: expanded ? 240 : 160 } : undefined}
+      >
+        {visibleEvents.map(event => (
+          <div
+            key={event.id}
+            className="dash-risk-item"
+            onClick={(e) => { e.stopPropagation(); onDrilldown(sessionId, event.id); }}
+          >
+            <span className={`dash-risk-badge dash-risk-badge--${event.riskLevel}`}>
+              {event.riskLevel}
             </span>
-          )}
-          <span style={{ color: 'var(--dash-text-muted)', fontSize: 9, flexShrink: 0 }}>
-            {getTimeSince(event.timestamp)}
-          </span>
-        </div>
-      ))}
+            <span style={{ color: 'var(--dash-text-secondary)' }} className="truncate">
+              {event.data.toolName ?? event.type}
+            </span>
+            {event.data.toolName === 'Bash' && event.data.toolInput?.command != null && (
+              <span style={{ color: 'var(--dash-text-muted)' }} className="truncate flex-1">
+                {String(event.data.toolInput.command).slice(0, 40)}
+              </span>
+            )}
+            <span style={{ color: 'var(--dash-text-muted)', fontSize: 9, flexShrink: 0 }}>
+              {getTimeSince(event.timestamp)}
+            </span>
+          </div>
+        ))}
+      </div>
+      {hasMore && (
+        <button
+          className="self-start"
+          style={{
+            fontFamily: 'var(--dash-font-data)',
+            fontSize: 9,
+            color: 'var(--dash-accent)',
+            background: 'none',
+            border: 'none',
+            cursor: 'pointer',
+            padding: '2px 0',
+            opacity: 0.7,
+          }}
+          onClick={(e) => { e.stopPropagation(); setShowAll(!showAll); }}
+        >
+          {showAll ? 'Show less' : `Show all ${riskyEvents.length} alerts`}
+        </button>
+      )}
     </div>
   );
 }
 
-/** Last agent response or tool output, truncated */
-function LatestOutput({ events }: { events: TimelineEvent[] }) {
+/** Latest output with hover-to-expand */
+function LatestOutput({ events, expanded }: { events: TimelineEvent[]; expanded: boolean }) {
+  const [hovered, setHovered] = useState(false);
   const lastOutput = useMemo(() => {
     for (let i = events.length - 1; i >= 0; i--) {
       const e = events[i];
       if (e.type === 'agent_response' && e.data.prompt) {
-        return e.data.prompt;
+        return { text: e.data.prompt, label: 'Response' };
+      }
+      if (e.type === 'user_prompt' && e.data.prompt) {
+        return { text: e.data.prompt, label: 'Prompt' };
       }
       if (e.type === 'tool_call_completed' && e.data.toolOutput) {
         const out = typeof e.data.toolOutput === 'string'
           ? e.data.toolOutput
           : JSON.stringify(e.data.toolOutput);
-        return out.slice(0, 300);
+        return { text: out, label: `Output: ${e.data.toolName ?? 'tool'}` };
       }
     }
     return null;
@@ -156,22 +270,101 @@ function LatestOutput({ events }: { events: TimelineEvent[] }) {
 
   if (!lastOutput) return null;
 
+  // In expanded mode (1-2 sessions), show more by default
+  const truncateLength = expanded ? 800 : 400;
+  const lineClamp = expanded ? 12 : 5;
+
   return (
-    <div className="dash-output-text mt-1.5">
-      {lastOutput.slice(0, 200)}
+    <div
+      className="relative"
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
+      {/* Label */}
+      <div style={{
+        fontFamily: 'var(--dash-font-data)',
+        fontSize: 8,
+        color: 'var(--dash-text-secondary)',
+        textTransform: 'uppercase',
+        letterSpacing: '0.5px',
+        marginBottom: 3,
+      }}>
+        {lastOutput.label}
+      </div>
+
+      {/* Truncated view */}
+      {!hovered && (
+        <div
+          className="dash-output-text"
+          style={{ WebkitLineClamp: lineClamp, color: '#9eaab8' }}
+        >
+          {lastOutput.text.slice(0, truncateLength)}
+        </div>
+      )}
+
+      {/* Expanded hover overlay */}
+      {hovered && (
+        <div
+          className="absolute left-0 right-0 z-30 rounded-md p-2 overflow-y-auto"
+          style={{
+            top: 14,
+            maxHeight: 300,
+            background: 'var(--dash-card-bg)',
+            border: '1px solid var(--dash-accent)',
+            boxShadow: '0 8px 32px rgba(0, 0, 0, 0.6), 0 0 12px var(--dash-accent-dim)',
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <pre style={{
+            fontFamily: 'var(--dash-font-data)',
+            fontSize: 10,
+            lineHeight: 1.5,
+            color: 'var(--dash-text-secondary)',
+            whiteSpace: 'pre-wrap',
+            wordBreak: 'break-word',
+            margin: 0,
+          }}>
+            {lastOutput.text.slice(0, 2000)}
+          </pre>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Context window usage mini-bar */
+function ContextMeter({ pct }: { pct: number }) {
+  const color = pct >= 90 ? 'var(--dash-high)' : pct >= 70 ? 'var(--dash-medium)' : 'var(--dash-accent)';
+  return (
+    <div className="flex items-center gap-1" title={`Context window: ${Math.round(pct)}% used`}>
+      <span style={{ fontFamily: 'var(--dash-font-data)', fontSize: 8, color: 'var(--dash-text-muted)' }}>ctx</span>
+      <div className="rounded-full overflow-hidden" style={{ width: 32, height: 4, background: 'var(--dash-bg)' }}>
+        <div
+          className="h-full rounded-full"
+          style={{
+            width: `${Math.min(pct, 100)}%`,
+            background: color,
+            transition: 'width 0.3s ease',
+          }}
+        />
+      </div>
+      <span style={{ fontFamily: 'var(--dash-font-data)', fontSize: 8, color }}>{Math.round(pct)}%</span>
     </div>
   );
 }
 
 export function SessionCard({
   session, events, isFocused, onFocus, onDrilldown, index,
-  onDragStart, onDragOver, onDragEnd, isDragging, isDragOver,
+  onDragStart, onDragOver, onDragEnd, isDragging, isDragOver, totalCards,
 }: SessionCardProps) {
   const sessionMetrics = useSessionStore(s => s.sessionMetrics);
   const metrics = sessionMetrics.get(session.sessionId);
   const badge = AGENT_BADGES[session.agentType];
   const isActive = session.active !== false;
   const dragRef = useRef<HTMLDivElement>(null);
+
+  // Expanded mode: 1-2 sessions get more vertical space
+  const isExpanded = totalCards <= 2;
 
   const handleClick = useCallback(() => {
     onFocus(session.sessionId);
@@ -263,7 +456,12 @@ export function SessionCard({
           <span className="dash-risk-badge dash-risk-badge--medium">{riskCounts.medium}</span>
         )}
 
-        {/* Metrics mini */}
+        {/* Context usage meter */}
+        {metrics?.contextUsedPct != null && (
+          <ContextMeter pct={metrics.contextUsedPct} />
+        )}
+
+        {/* Cost */}
         {metrics?.costUsd !== undefined && (
           <span style={{
             fontFamily: 'var(--dash-font-data)',
@@ -280,14 +478,24 @@ export function SessionCard({
         <MiniActivityChain events={events} onDrilldown={onDrilldown} sessionId={session.sessionId} />
       </div>
 
+      {/* Tool activity heatmap */}
+      <div className="px-3">
+        <ToolActivityHeatmap events={events} />
+      </div>
+
       {/* Risk feed */}
       <div className="px-3 pb-1">
-        <RiskAlertFeed events={events} onDrilldown={onDrilldown} sessionId={session.sessionId} />
+        <RiskAlertFeed
+          events={events}
+          onDrilldown={onDrilldown}
+          sessionId={session.sessionId}
+          expanded={isExpanded}
+        />
       </div>
 
       {/* Latest output */}
       <div className="px-3 pb-3">
-        <LatestOutput events={events} />
+        <LatestOutput events={events} expanded={isExpanded} />
       </div>
 
       {/* Bottom accent line */}
