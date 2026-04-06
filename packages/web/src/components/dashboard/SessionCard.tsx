@@ -25,6 +25,7 @@ interface SessionCardProps {
 }
 
 function getSessionDisplayName(session: SessionInfo): string {
+  if (session.sessionName) return session.sessionName;
   if (session.cwd) {
     return session.cwd.split('/').filter(Boolean).pop() ?? session.cwd;
   }

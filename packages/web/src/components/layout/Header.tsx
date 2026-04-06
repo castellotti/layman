@@ -2,8 +2,8 @@ import React from 'react';
 import { useSessionStore } from '../../stores/sessionStore.js';
 import { SessionLaymansTerms } from '../shared/SessionLaymansTerms.js';
 
-function getSessionName(cwd: string, sessionId: string, agentType?: string, showAgentPrefix?: boolean): string {
-  const name = cwd ? (cwd.split('/').filter(Boolean).pop() ?? cwd) : sessionId.slice(0, 8);
+function getSessionName(cwd: string, sessionId: string, agentType?: string, showAgentPrefix?: boolean, sessionName?: string): string {
+  const name = sessionName || (cwd ? (cwd.split('/').filter(Boolean).pop() ?? cwd) : sessionId.slice(0, 8));
   if (showAgentPrefix && agentType) {
     const prefix = agentType === 'claude-code' ? '[CC]' : agentType === 'codex' ? '[CX]' : agentType === 'opencode' ? '[OC]' : agentType === 'cline' ? '[CL]' : `[${agentType.slice(0, 2).toUpperCase()}]`;
     return `${prefix} ${name}`;
@@ -75,6 +75,7 @@ export function Header() {
     flowchartOpen, setFlowchartOpen,
     dashboardOpen, setDashboardOpen,
     dashboardFocusedSession, setDashboardFocusedSession,
+    sessionMetrics,
   } = useSessionStore();
 
   const statusConfig = {
@@ -164,11 +165,14 @@ export function Header() {
                   {sessions.length > 1 && (
                     <option value="">All sessions</option>
                   )}
-                  {sessions.map((s) => (
-                    <option key={s.sessionId} value={s.sessionId}>
-                      {getSessionName(s.cwd, s.sessionId, s.agentType, showAgentPrefix)}{s.cwd ? ` · ${s.sessionId.slice(0, 6)}` : ''}
-                    </option>
-                  ))}
+                  {sessions.map((s) => {
+                    const effectiveName = s.sessionName || sessionMetrics.get(s.sessionId)?.sessionName;
+                    return (
+                      <option key={s.sessionId} value={s.sessionId}>
+                        {getSessionName(s.cwd, s.sessionId, s.agentType, showAgentPrefix, effectiveName)}{s.cwd ? ` · ${s.sessionId.slice(0, 6)}` : ''}
+                      </option>
+                    );
+                  })}
                 </select>
               );
             })()}

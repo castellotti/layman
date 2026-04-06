@@ -63,6 +63,30 @@ export class SessionRecorder {
           event.laymans ? JSON.stringify(event.laymans) : null,
           event.riskLevel ?? null,
         );
+
+        // Persist session metadata from session_metrics events
+        if (event.type === 'session_metrics') {
+          const updates: string[] = [];
+          const values: (string | null)[] = [];
+          if (event.data.modelId !== undefined) {
+            updates.push('session_model = ?');
+            values.push(event.data.modelId ?? null);
+          }
+          if (event.data.modelDisplayName !== undefined) {
+            updates.push('session_model_display_name = ?');
+            values.push(event.data.modelDisplayName ?? null);
+          }
+          if (event.data.sessionName !== undefined) {
+            updates.push('session_name = ?');
+            values.push(event.data.sessionName ?? null);
+          }
+          if (updates.length > 0) {
+            values.push(event.sessionId);
+            this.db.prepare(
+              `UPDATE recorded_sessions SET ${updates.join(', ')} WHERE session_id = ?`
+            ).run(...values);
+          }
+        }
       } catch {
         // Non-fatal: recording failure should not disrupt the live session
       }

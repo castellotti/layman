@@ -16,6 +16,8 @@ interface SessionLaymansTermsProps {
   className?: string;
   /** Tooltip opens upward instead of downward (for use inside panels) */
   tooltipUp?: boolean;
+  /** Horizontal alignment of tooltip relative to trigger */
+  tooltipAlign?: 'center' | 'left';
 }
 
 function formatTime(ts: number): string {
@@ -31,6 +33,7 @@ export function SessionLaymansTerms({
   onClearError,
   className,
   tooltipUp = false,
+  tooltipAlign = 'center',
 }: SessionLaymansTermsProps) {
   const [tooltipOpen, setTooltipOpen] = useState(false);
   const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -59,6 +62,10 @@ export function SessionLaymansTerms({
     ? 'bottom-full mb-2'
     : 'top-full mt-2';
 
+  const tooltipAlignClass = tooltipAlign === 'left'
+    ? 'left-0'
+    : 'left-1/2 -translate-x-1/2';
+
   return (
     <div
       className={`relative flex items-center ${className ?? ''}`}
@@ -85,7 +92,7 @@ export function SessionLaymansTerms({
 
       {/* Tooltip */}
       {tooltipOpen && !isSummarizing && (
-        <div className={`absolute left-1/2 -translate-x-1/2 ${tooltipPositionClass} z-50 w-96 max-w-[90vw] bg-[#1c2128] border border-[#30363d] rounded-lg shadow-2xl p-3 space-y-2 text-left pointer-events-none`}>
+        <div className={`absolute ${tooltipAlignClass} ${tooltipPositionClass} z-50 w-96 max-w-[90vw] bg-[#1c2128] border border-[#30363d] rounded-lg shadow-2xl p-3 space-y-2 text-left pointer-events-none`}>
           {summaryHistory.length === 0 ? (
             <>
               <p className="text-[11px] font-semibold text-[#e6edf3]">Layman&apos;s Terms</p>

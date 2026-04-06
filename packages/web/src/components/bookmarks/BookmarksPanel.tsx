@@ -270,7 +270,7 @@ export function BookmarksPanel({ onSend }: BookmarksPanelProps) {
 
   const handleQuickBookmark = useCallback(async (sessionId: string) => {
     const session = recordedSessions.find((s) => s.sessionId === sessionId);
-    const name = getSessionLabel(session?.cwd ?? '', sessionId);
+    const name = session?.sessionName || getSessionLabel(session?.cwd ?? '', sessionId);
     await fetch('/api/bookmarks', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -341,9 +341,12 @@ export function BookmarksPanel({ onSend }: BookmarksPanelProps) {
           {/* Search bar */}
           <SearchBar
             viewingSessionId={viewingSessionId}
-            viewingSessionLabel={viewingSessionId ? getSessionLabel(
-              recordedSessions.find((s) => s.sessionId === viewingSessionId)?.cwd ?? '',
-              viewingSessionId
+            viewingSessionLabel={viewingSessionId ? (
+              recordedSessions.find((s) => s.sessionId === viewingSessionId)?.sessionName
+              ?? getSessionLabel(
+                recordedSessions.find((s) => s.sessionId === viewingSessionId)?.cwd ?? '',
+                viewingSessionId
+              )
             ) : undefined}
           />
 
@@ -357,7 +360,7 @@ export function BookmarksPanel({ onSend }: BookmarksPanelProps) {
               {unsavedLiveSessions.map((s) => (
                 <div key={s.sessionId} className="flex items-center justify-between gap-2">
                   <span className="text-xs text-[#8b949e] truncate flex-1" title={s.cwd || s.sessionId}>
-                    {getSessionLabel(s.cwd, s.sessionId)}
+                    {s.sessionName || getSessionLabel(s.cwd, s.sessionId)}
                   </span>
                   <button
                     onClick={() => void handleSaveCurrentSession(s.sessionId)}
@@ -446,7 +449,7 @@ export function BookmarksPanel({ onSend }: BookmarksPanelProps) {
                 <option value="">Select session...</option>
                 {unbookmarkedSessions.map((s) => (
                   <option key={s.sessionId} value={s.sessionId}>
-                    {getSessionLabel(s.cwd, s.sessionId)} · {new Date(s.lastSeen).toLocaleDateString()}
+                    {s.sessionName || getSessionLabel(s.cwd, s.sessionId)} · {new Date(s.lastSeen).toLocaleDateString()}
                   </option>
                 ))}
                 {unbookmarkedSessions.length === 0 && (
@@ -558,11 +561,14 @@ export function BookmarksPanel({ onSend }: BookmarksPanelProps) {
                         title={s.cwd || s.sessionId}
                       >
                         <div className="flex flex-col min-w-0 flex-1 overflow-hidden">
-                          <span className="text-xs text-[#e6edf3] truncate">{getSessionLabel(s.cwd, s.sessionId)}</span>
+                          <span className="text-xs text-[#e6edf3] truncate">{s.sessionName || getSessionLabel(s.cwd, s.sessionId)}</span>
                           <span className="text-[10px] text-[#484f58]">
                             {new Date(s.lastSeen).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
                             {' '}
                             {new Date(s.lastSeen).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}
+                            {s.sessionModelDisplayName && (
+                              <span className="text-[#58a6ff]"> · {s.sessionModelDisplayName}</span>
+                            )}
                           </span>
                         </div>
                         <div className="shrink-0 flex items-center gap-1">
@@ -598,7 +604,9 @@ export function BookmarksPanel({ onSend }: BookmarksPanelProps) {
                 <div className="flex items-center justify-between px-4 py-3 border-b border-[#30363d] bg-[#161b22] shrink-0">
                   <div className="min-w-0 flex-1 mr-2">
                     <h3 className="text-sm font-medium text-[#e6edf3] truncate">
-                      {bookmarks.find((b) => b.sessionId === viewingSessionId)?.name ?? 'Session History'}
+                      {bookmarks.find((b) => b.sessionId === viewingSessionId)?.name
+                        ?? recordedSessions.find((s) => s.sessionId === viewingSessionId)?.sessionName
+                        ?? 'Session History'}
                     </h3>
                     {/* Layman's Terms for historical session */}
                     <SessionLaymansTerms
@@ -610,6 +618,7 @@ export function BookmarksPanel({ onSend }: BookmarksPanelProps) {
                       onClearError={() => setHistoricalSummaryError(null)}
                       className="max-w-full"
                       tooltipUp={false}
+                      tooltipAlign="left"
                     />
                   </div>
                   <div className="flex items-center gap-2 shrink-0">

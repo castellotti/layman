@@ -1089,4 +1089,9 @@ async function handleStatusLine(
     sessionName: input.session_name,
     claudeCodeVersion: input.version,
   }, undefined, agentType);
+
+  // Propagate session name to live sessions list
+  if (input.session_name) {
+    eventStore.trackSession(input.session_id, input.cwd ?? '', agentType, undefined, input.session_name);
+  }
 }
