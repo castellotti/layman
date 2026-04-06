@@ -2,7 +2,8 @@
 import { Command } from 'commander';
 import { spawn } from 'child_process';
 import { existsSync, writeFileSync, readFileSync } from 'fs';
-import { join } from 'path';
+import { join, dirname, resolve } from 'path';
+import { fileURLToPath } from 'url';
 import { tmpdir } from 'os';
 
 import { createServer } from './server.js';
@@ -11,7 +12,10 @@ import { loadConfig, setConfig } from './config/config.js';
 import type { LaymanConfig } from './config/schema.js';
 
 const PID_FILE = join(tmpdir(), 'layman.pid');
-const VERSION = '0.1.0';
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const { version: VERSION } = JSON.parse(
+  readFileSync(resolve(__dirname, '../package.json'), 'utf-8')
+) as { version: string };
 
 const program = new Command();
 

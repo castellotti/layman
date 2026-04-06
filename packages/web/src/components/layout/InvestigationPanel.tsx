@@ -28,6 +28,23 @@ function MarkdownOrText({ text, className }: { text: string; className?: string 
   return <p className={className ?? 'text-xs text-[#e6edf3] leading-relaxed whitespace-pre-wrap'}>{text}</p>;
 }
 
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      onClick={(e) => {
+        e.stopPropagation();
+        navigator.clipboard.writeText(text).catch(() => {});
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1500);
+      }}
+      className="text-[10px] text-[#8b949e] hover:text-[#e6edf3] transition-colors shrink-0"
+    >
+      {copied ? '✓ Copied' : 'Copy'}
+    </button>
+  );
+}
+
 interface InvestigationPanelProps {
   onSend: (msg: ClientMessage) => void;
   /** When provided, renders in "embedded" mode for this specific event (e.g. inside BookmarksPanel) */
@@ -260,9 +277,14 @@ export function InvestigationPanel({ onSend, eventId: embeddedEventId, onClose }
           )}
 
           {event.data.prompt && (
-            <blockquote className="text-xs text-[#e6edf3] border-l-2 border-[#58a6ff] pl-3 italic">
-              {event.data.prompt}
-            </blockquote>
+            <div className="bg-[#0d1117] border border-[#30363d] rounded-md overflow-hidden">
+              <div className="flex items-center justify-end px-3 py-1 border-b border-[#30363d]">
+                <CopyButton text={event.data.prompt as string} />
+              </div>
+              <div className="px-3 py-2 border-l-2 border-[#58a6ff]">
+                <MarkdownOrText text={event.data.prompt as string} />
+              </div>
+            </div>
           )}
         </div>
 
@@ -409,13 +431,17 @@ export function InvestigationPanel({ onSend, eventId: embeddedEventId, onClose }
             </span>
             {state.questions.map((qa, i) => (
               <div key={i} className="space-y-1">
-                <div className="flex gap-2">
+                <div className="flex gap-2 items-start">
                   <span className="text-[#58a6ff] text-xs shrink-0">Q:</span>
-                  <span className="text-xs text-[#8b949e]">{qa.question}</span>
+                  <span className="text-xs text-[#8b949e] flex-1 min-w-0">{qa.question}</span>
+                  <CopyButton text={qa.question} />
                 </div>
-                <div className="flex gap-2 ml-4">
+                <div className="flex gap-2 ml-4 items-start">
                   <span className="text-[#3fb950] text-xs shrink-0">A:</span>
-                  <MarkdownOrText text={qa.answer} />
+                  <div className="flex-1 min-w-0">
+                    <MarkdownOrText text={qa.answer} />
+                  </div>
+                  <CopyButton text={qa.answer} />
                 </div>
                 {(qa.tokens || qa.latencyMs) && (
                   <div className="ml-4 flex items-center gap-2 text-[10px] text-[#484f58]">

@@ -139,13 +139,13 @@ export function DashboardView() {
 
             {dashboardFocusedSession && (
               <>
-                <span style={{ color: 'var(--dash-text-muted)', fontSize: 10 }}>\u00b7</span>
+                <span style={{ color: 'var(--dash-text-muted)', fontSize: 10 }}>{'\u00b7'}</span>
                 <span style={{
                   fontFamily: 'var(--dash-font-data)',
                   fontSize: 10,
                   color: 'var(--dash-accent)',
                 }}>
-                  Focused: {orderedSessions.find(s => s.sessionId === dashboardFocusedSession)?.cwd?.split('/').pop() ?? dashboardFocusedSession.slice(0, 8)}
+                  Focused: {(() => { const fs = orderedSessions.find(s => s.sessionId === dashboardFocusedSession); return fs?.sessionName || fs?.cwd?.split('/').pop() || dashboardFocusedSession.slice(0, 8); })()}
                 </span>
                 <button
                   onClick={() => setDashboardFocusedSession(null)}

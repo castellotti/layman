@@ -44,6 +44,14 @@ function makeUrlAccess(
 /** Conservative regex to extract file paths from rm commands */
 const RM_PATTERN = /\brm\s+(?:-[a-zA-Z]*\s+)*([^\s;|&>]+)/g;
 
+/** Strip heredoc bodies so their content doesn't get parsed as file paths.
+ *  Keeps the first line (e.g. `cat > file << 'EOF'`) so redirect detection still works. */
+function stripHeredocs(command: string): string {
+  return command.replace(/<<-?\s*['"]?(\w+)['"]?[^\n]*\n[\s\S]*?\n\1(?:\s|$)/g, (match, _delim) => {
+    return match.split('\n')[0];
+  });
+}
+
 function estimateBytes(value: unknown): number | undefined {
   if (value === undefined || value === null) return undefined;
   try {
@@ -82,7 +90,8 @@ export function extractAccess(
       break;
     }
     case 'Bash': {
-      const command = (toolInput.command as string) ?? '';
+      const rawCommand = (toolInput.command as string) ?? '';
+      const command = stripHeredocs(rawCommand);
       let match: RegExpExecArray | null;
 
       // rm → deleted
@@ -105,7 +114,8 @@ export function extractAccess(
       }
 
       // cat/head/tail reading files — extract absolute paths from the command
-      if (/\b(?:cat|head|tail|wc)\b/.test(command)) {
+      // Skip when output redirect is present (e.g. cat > file — writing, not reading)
+      if (/\b(?:cat|head|tail|wc)\b/.test(command) && !/>/.test(command)) {
         const PATH_PATTERN = /\s(\/(?!dev\/)\S+)/g;
         PATH_PATTERN.lastIndex = 0;
         while ((match = PATH_PATTERN.exec(command)) !== null) {
