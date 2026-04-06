@@ -727,12 +727,12 @@ export function SessionCard({
       </div>
 
       {/* Activity chain */}
-      <div ref={chainContainerRef} className="px-3 shrink-0">
+      <div ref={chainContainerRef} className="px-3 shrink-0" style={{ maxWidth: totalCards === 1 ? '50%' : '100%' }}>
         <MiniActivityChain events={events} onDrilldown={onDrilldown} sessionId={session.sessionId} maxItems={chainCapacity} />
       </div>
 
       {/* Tool activity heatmap */}
-      <div className="px-3 shrink-0">
+      <div className="px-3 shrink-0" style={{ maxWidth: totalCards === 1 ? '50%' : '100%' }}>
         <ToolActivityHeatmap events={events} />
       </div>
 
