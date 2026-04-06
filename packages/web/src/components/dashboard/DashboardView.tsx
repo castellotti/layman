@@ -1,6 +1,5 @@
 import React, { useMemo, useState, useCallback, useEffect } from 'react';
 import { useSessionStore } from '../../stores/sessionStore.js';
-import { useEventStore } from '../../hooks/useEventStore.js';
 import { SessionCard } from './SessionCard.js';
 import { SidePanel } from './SidePanel.js';
 import './dashboard.css';
@@ -8,19 +7,13 @@ import './dashboard.css';
 export function DashboardView() {
   const {
     sessions,
+    events: allEvents,
     dashboardFocusedSession,
     setDashboardFocusedSession,
     dashboardSessionOrder,
     setDashboardSessionOrder,
     navigateFromDashboard,
   } = useSessionStore();
-
-  const { events: allEvents } = useEventStore({
-    promptsOnly: false,
-    responsesOnly: false,
-    requestsOnly: false,
-    riskyOnly: false,
-  });
 
   // Drag state
   const [dragIndex, setDragIndex] = useState<number | null>(null);
