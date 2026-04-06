@@ -139,7 +139,7 @@ export function DashboardView() {
 
             {dashboardFocusedSession && (
               <>
-                <span style={{ color: 'var(--dash-text-muted)', fontSize: 10 }}>\u00b7</span>
+                <span style={{ color: 'var(--dash-text-muted)', fontSize: 10 }}>{'\u00b7'}</span>
                 <span style={{
                   fontFamily: 'var(--dash-font-data)',
                   fontSize: 10,

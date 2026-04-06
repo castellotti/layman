@@ -1,7 +1,9 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useState } from 'react';
+import ReactMarkdown from 'react-markdown';
 import type { TimelineEvent, QAEntry, SessionTimeMetrics } from '../../lib/types.js';
 import { useSessionStore } from '../../stores/sessionStore.js';
 import { EventCard } from '../events/EventCard.js';
+import { isMarkdown } from '../../lib/markdown.js';
 import type { ClientMessage } from '../../lib/ws-protocol.js';
 
 function formatMetricDuration(ms: number): string {
@@ -13,6 +15,42 @@ function formatMetricDuration(ms: number): string {
   if (hours > 0) return `${hours}h ${minutes}m`;
   if (minutes > 0) return `${minutes}m ${seconds}s`;
   return `${seconds}s`;
+}
+
+const MARKDOWN_PROSE = `text-[10px] text-[#e6edf3] leading-relaxed prose prose-invert prose-xs max-w-none
+  [&_p]:my-1 [&_p]:leading-relaxed
+  [&_strong]:text-[#e6edf3] [&_strong]:font-semibold
+  [&_em]:text-[#8b949e]
+  [&_code]:text-[#79c0ff] [&_code]:bg-[#0d1117] [&_code]:px-1 [&_code]:rounded [&_code]:text-[10px]
+  [&_pre]:bg-[#0d1117] [&_pre]:rounded [&_pre]:p-2 [&_pre]:overflow-x-auto
+  [&_ul]:list-disc [&_ul]:pl-4 [&_ul]:my-1
+  [&_ol]:list-decimal [&_ol]:pl-4 [&_ol]:my-1
+  [&_li]:my-0.5
+  [&_h1]:text-xs [&_h2]:text-xs [&_h3]:text-[10px] [&_h1]:font-bold [&_h2]:font-bold [&_h3]:font-semibold
+  [&_blockquote]:border-l-2 [&_blockquote]:border-[#30363d] [&_blockquote]:pl-2 [&_blockquote]:text-[#8b949e]`.replace(/\s+/g, ' ').trim();
+
+function HistoricalMarkdownOrText({ text }: { text: string }) {
+  if (isMarkdown(text)) {
+    return <div className={MARKDOWN_PROSE}><ReactMarkdown>{text}</ReactMarkdown></div>;
+  }
+  return <p className="text-[10px] text-[#e6edf3] whitespace-pre-wrap">{text}</p>;
+}
+
+function HistoricalCopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      onClick={(e) => {
+        e.stopPropagation();
+        navigator.clipboard.writeText(text).catch(() => {});
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1500);
+      }}
+      className="text-[9px] text-[#8b949e] hover:text-[#e6edf3] transition-colors shrink-0"
+    >
+      {copied ? '✓' : 'Copy'}
+    </button>
+  );
 }
 
 interface HistoricalEventStreamProps {
@@ -105,8 +143,16 @@ export function HistoricalEventStream({
                   <p className="text-[10px] text-[#484f58] font-medium uppercase tracking-wider">Q&A History</p>
                   {eventQA.map((qa) => (
                     <div key={qa.id} className="space-y-1">
-                      <p className="text-[10px] text-[#58a6ff]">Q: {qa.question}</p>
-                      <p className="text-[10px] text-[#e6edf3]">{qa.answer}</p>
+                      <div className="flex items-start gap-1">
+                        <p className="text-[10px] text-[#58a6ff] flex-1 min-w-0">Q: {qa.question}</p>
+                        <HistoricalCopyButton text={qa.question} />
+                      </div>
+                      <div className="flex items-start gap-1">
+                        <div className="flex-1 min-w-0">
+                          <HistoricalMarkdownOrText text={qa.answer} />
+                        </div>
+                        <HistoricalCopyButton text={qa.answer} />
+                      </div>
                       {(qa.model ?? qa.tokensIn) && (
                         <p className="text-[9px] text-[#484f58]">
                           {qa.model && <span>{qa.model}</span>}

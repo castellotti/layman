@@ -82,6 +82,30 @@ describe('extractAccess', () => {
       expect(result.files[0].path).toBe('/etc/hosts');
     });
 
+    it('cat with heredoc produces single wrote entry, no reads', () => {
+      const cmd = "cat > /tmp/out.txt << 'EOF'\nline1\nline2\nEOF";
+      const result = extractAccess('Bash', { command: cmd }, undefined, eventId, timestamp);
+      expect(result.files).toHaveLength(1);
+      expect(result.files[0].operation).toBe('wrote');
+      expect(result.files[0].path).toBe('/tmp/out.txt');
+    });
+
+    it('cat heredoc with paths in body does not produce spurious reads', () => {
+      const cmd = "cat > /tmp/out.txt << 'EOF'\n/some/absolute/path\n/another/path\nEOF";
+      const result = extractAccess('Bash', { command: cmd }, undefined, eventId, timestamp);
+      expect(result.files).toHaveLength(1);
+      expect(result.files[0].operation).toBe('wrote');
+      expect(result.files[0].path).toBe('/tmp/out.txt');
+    });
+
+    it('cat heredoc with unquoted delimiter', () => {
+      const cmd = "cat > /tmp/config.json << HEREDOC\n{\"key\": \"value\"}\nHEREDOC";
+      const result = extractAccess('Bash', { command: cmd }, undefined, eventId, timestamp);
+      expect(result.files).toHaveLength(1);
+      expect(result.files[0].operation).toBe('wrote');
+      expect(result.files[0].path).toBe('/tmp/config.json');
+    });
+
     it('extracts head/tail with flags as read', () => {
       const result = extractAccess('Bash', { command: 'head -n 10 /var/log/app.log' }, undefined, eventId, timestamp);
       expect(result.files).toHaveLength(1);
