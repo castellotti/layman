@@ -76,7 +76,7 @@ export async function loadConfig(
   if (process.env.LAYMAN_PORT) envConfig.port = parseInt(process.env.LAYMAN_PORT, 10);
   if (process.env.LAYMAN_HOST) envConfig.host = process.env.LAYMAN_HOST;
   if (process.env.LAYMAN_AUTO_ANALYZE) {
-    envConfig.autoAnalyze = process.env.LAYMAN_AUTO_ANALYZE as 'all' | 'risky' | 'none';
+    envConfig.autoAnalyze = process.env.LAYMAN_AUTO_ANALYZE as 'all' | 'medium' | 'high' | 'none';
   }
   if (process.env.LAYMAN_AUTO_APPROVE) {
     const raw = process.env.LAYMAN_AUTO_APPROVE;

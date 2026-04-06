@@ -67,6 +67,7 @@ interface SessionState {
   dashboardFocusedSession: string | null;
   dashboardSessionOrder: string[];
   returnToDashboard: boolean;
+  scrollToEventId: string | null;
 
   // Access log
   accessLogOpen: boolean;
@@ -122,6 +123,8 @@ interface SessionState {
   setDashboardFocusedSession: (id: string | null) => void;
   setDashboardSessionOrder: (order: string[]) => void;
   navigateFromDashboard: (sessionId: string, eventId: string) => void;
+  navigateFromDashboardToLogs: (sessionId: string, eventId: string) => void;
+  clearScrollToEvent: () => void;
   returnFromDashboardDrilldown: () => void;
   setAccessLogOpen: (open: boolean) => void;
   setAccessLogData: (data: SessionAccessLog | null) => void;
@@ -172,6 +175,7 @@ export const useSessionStore = create<SessionState>((set) => ({
   dashboardFocusedSession: null,
   dashboardSessionOrder: [],
   returnToDashboard: false,
+  scrollToEventId: null,
 
   accessLogOpen: false,
   accessLogData: null,
@@ -459,6 +463,16 @@ export const useSessionStore = create<SessionState>((set) => ({
     selectedEventId: eventId,
     investigationOpen: true,
   }),
+  navigateFromDashboardToLogs: (sessionId, eventId) => set({
+    dashboardOpen: false,
+    returnToDashboard: true,
+    flowchartOpen: false,
+    activeSessionId: sessionId,
+    selectedEventId: eventId,
+    investigationOpen: true,
+    scrollToEventId: eventId,
+  }),
+  clearScrollToEvent: () => set({ scrollToEventId: null }),
   returnFromDashboardDrilldown: () => set({
     dashboardOpen: true,
     returnToDashboard: false,

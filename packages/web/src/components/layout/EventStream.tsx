@@ -20,7 +20,7 @@ export function EventStream({ onSend }: EventStreamProps) {
   const [followLatest, setFollowLatest] = useState(true);
 
   const scrollRef = useRef<HTMLDivElement>(null);
-  const { setSelectedEvent, sessions, activeSessionId, config, fetchAccessLog } = useSessionStore();
+  const { setSelectedEvent, sessions, activeSessionId, config, fetchAccessLog, scrollToEventId, clearScrollToEvent } = useSessionStore();
 
   const collapseHistory = config?.collapseHistory ?? true;
   const autoScroll = config?.autoScroll ?? true;
@@ -48,6 +48,22 @@ export function EventStream({ onSend }: EventStreamProps) {
       setSelectedIndex(events.length - 1);
     }
   }, [events.length, autoScroll, followLatest]);
+
+  // Scroll to a specific event when navigating from Dashboard to Logs
+  useEffect(() => {
+    if (!scrollToEventId) return;
+    const idx = events.findIndex(e => e.id === scrollToEventId);
+    if (idx < 0) return;
+    setSelectedIndex(idx);
+    setFollowLatest(false);
+    clearScrollToEvent();
+    requestAnimationFrame(() => {
+      const cards = scrollRef.current?.querySelectorAll('[data-event-card]');
+      if (cards && cards[idx]) {
+        cards[idx].scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    });
+  }, [scrollToEventId, events, clearScrollToEvent]);
 
   // When tab becomes visible again, re-sync scroll position if following
   useEffect(() => {

@@ -17,6 +17,7 @@ const MOCK_CONFIG: LaymanConfig = {
   port: 8880,
   host: 'localhost',
   autoAnalyze: 'none',
+  autoAnalyzeDepth: 'detailed',
   autoExplain: 'none',
   autoExplainDepth: 'quick',
   analysis: {

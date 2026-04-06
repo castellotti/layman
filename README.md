@@ -5,6 +5,7 @@
 * Monitor your AI assistants
 * Explain their actions in Layman's Terms
 * Analyze for risk, security, and safety automatically
+* Visualize live activity in a dashboard, logs, or flowchart
 * Record and Bookmark sessions including user prompts and agent responses
   * Opt-in required (per session)
   * PII filtered by default
@@ -50,7 +51,7 @@ Toggle between the event timeline and an interactive directed graph that shows h
 
 Layman tracks every file the agent reads or writes and every URL it fetches during a session, surfacing them in a dedicated access panel so you can see exactly what was touched.
 
-### AI analysis (optional)
+### AI analysis
 
 Layman can use an AI model to classify the risk level of each action, explain what it means in plain language, and flag anything that looks risky. Auto-analysis and auto-explain can be configured independently in **Settings → Analysis**, with severity thresholds (All / Medium+ / High only) and detail level (Quick / Detailed).
 
@@ -67,6 +68,33 @@ All logged events are automatically scanned for personally identifiable informat
 ### Session export
 
 Export a session as a PDF transcript using the print button in the session view.
+
+---
+
+## Dashboard Icons
+
+| Icon | Meaning |
+|------|---------|
+| ⚡ | Tool call pending approval |
+| ✅ | Tool call approved |
+| ❌ | Tool call denied |
+| ⏭ | Tool call delegated (auto-allowed) |
+| ✓ | Tool call completed |
+| ✗ | Tool call failed |
+| 🔐 | Permission request (Claude asking for explicit approval) |
+| 💬 | User prompt |
+| 🤖 | Agent response |
+| — | Agent stopped |
+| 🟢 | Session started |
+| ⬜ | Session ended |
+| 🔔 | Notification |
+| 🔀 | Subagent started / stopped |
+| ⚠ | Stop failure |
+| 📦 | Context compacted |
+| 📋 | Elicitation (structured input request) |
+| 🔍 | Analysis result |
+
+Agent badges in session cards: **CC** = Claude Code · **CX** = Codex · **OC** = OpenCode · **MV** = Mistral Vibe · **CL** = Cline
 
 ---
 

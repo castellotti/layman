@@ -13,6 +13,7 @@ export function DashboardView() {
     dashboardSessionOrder,
     setDashboardSessionOrder,
     navigateFromDashboard,
+    navigateFromDashboardToLogs,
   } = useSessionStore();
 
   // Drag state
@@ -56,6 +57,11 @@ export function DashboardView() {
   const handleDrilldown = useCallback((sessionId: string, eventId: string) => {
     navigateFromDashboard(sessionId, eventId);
   }, [navigateFromDashboard]);
+
+  // Drill-down to Logs (for prompt/response clicks)
+  const handleDrilldownToLogs = useCallback((sessionId: string, eventId: string) => {
+    navigateFromDashboardToLogs(sessionId, eventId);
+  }, [navigateFromDashboardToLogs]);
 
   // Drag handlers
   const handleDragStart = useCallback((index: number) => {
@@ -185,6 +191,7 @@ export function DashboardView() {
                     isFocused={dashboardFocusedSession === session.sessionId}
                     onFocus={handleFocus}
                     onDrilldown={handleDrilldown}
+                    onDrilldownToLogs={handleDrilldownToLogs}
                     index={index}
                     onDragStart={handleDragStart}
                     onDragOver={handleDragOver}
