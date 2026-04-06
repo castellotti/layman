@@ -90,7 +90,28 @@ export function scanPii(db: Database): PiiScanResult {
     categories.push({ name: 'Chat transcripts', key: 'qa', count });
   }
 
-  // 6. Bookmarks — bookmarks.name + bookmark_folders.name
+  // 6. Access log — fileAccess[].path and urlAccess[].url inside data_json
+  {
+    const rows = db.prepare(
+      `SELECT data_json FROM recorded_events WHERE json_extract(data_json, '$.fileAccess') IS NOT NULL OR json_extract(data_json, '$.urlAccess') IS NOT NULL`,
+    ).all() as { data_json: string }[];
+    let count = 0;
+    for (const row of rows) {
+      try {
+        const data = JSON.parse(row.data_json) as Record<string, unknown>;
+        const files = Array.isArray(data.fileAccess) ? data.fileAccess as { path?: string }[] : [];
+        const urls = Array.isArray(data.urlAccess) ? data.urlAccess as { url?: string }[] : [];
+        const hasFilePii = files.some(f => f.path && hasPii(f.path));
+        const hasUrlPii = urls.some(u => u.url && hasPii(u.url));
+        if (hasFilePii || hasUrlPii) count++;
+      } catch {
+        // skip malformed JSON
+      }
+    }
+    categories.push({ name: 'Access log', key: 'access_log', count });
+  }
+
+  // 7. Bookmarks — bookmarks.name + bookmark_folders.name
   {
     const bookmarkRows = db.prepare('SELECT name FROM bookmarks').all() as { name: string }[];
     const folderRows = db.prepare('SELECT name FROM bookmark_folders').all() as { name: string }[];

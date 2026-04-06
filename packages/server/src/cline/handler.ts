@@ -185,7 +185,8 @@ async function handleClinePreToolUse(
   // Start analysis concurrently if configured
   const shouldAnalyze =
     config.autoAnalyze === 'all' ||
-    (config.autoAnalyze === 'risky' && riskLevel !== 'low');
+    (config.autoAnalyze === 'medium' && riskLevel !== 'low') ||
+    (config.autoAnalyze === 'high' && riskLevel === 'high');
 
   if (shouldAnalyze) {
     void triggerAnalysis(input, timelineEvent.id, eventStore, analysisEngine, pendingManager, config);
@@ -333,7 +334,7 @@ async function triggerAnalysis(
       toolName: input.tool_name,
       toolInput: input.tool_input,
       cwd: input.cwd,
-      depth: 'quick',
+      depth: config.autoAnalyzeDepth,
       recentEvents,
     });
 
