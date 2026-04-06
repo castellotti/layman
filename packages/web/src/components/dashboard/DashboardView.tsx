@@ -1,6 +1,5 @@
 import React, { useMemo, useState, useCallback, useEffect } from 'react';
 import { useSessionStore } from '../../stores/sessionStore.js';
-import { useEventStore } from '../../hooks/useEventStore.js';
 import { SessionCard } from './SessionCard.js';
 import { SidePanel } from './SidePanel.js';
 import './dashboard.css';
@@ -8,6 +7,7 @@ import './dashboard.css';
 export function DashboardView() {
   const {
     sessions,
+    events: allEvents,
     dashboardFocusedSession,
     setDashboardFocusedSession,
     dashboardSessionOrder,
@@ -15,29 +15,15 @@ export function DashboardView() {
     navigateFromDashboard,
   } = useSessionStore();
 
-  const { events: allEvents } = useEventStore({
-    promptsOnly: false,
-    responsesOnly: false,
-    requestsOnly: false,
-    riskyOnly: false,
-  });
-
   // Drag state
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
 
-  // Only push a session to the bottom if it has been idle for more than 1 hour
-  const IDLE_SORT_THRESHOLD_MS = 60 * 60 * 1000;
-
   const orderedSessions = useMemo(() => {
-    const now = Date.now();
-    const sorted = [...sessions].sort((a, b) => {
-      // A session is "long idle" if inactive AND last seen > 1 hour ago
-      const aLongIdle = a.active === false && (now - a.lastSeen) > IDLE_SORT_THRESHOLD_MS;
-      const bLongIdle = b.active === false && (now - b.lastSeen) > IDLE_SORT_THRESHOLD_MS;
-      if (aLongIdle !== bLongIdle) return aLongIdle ? 1 : -1;
-
-      // Within the same idle-tier, respect custom drag order
+    // Only show active sessions in the dashboard — ended sessions are visible in Logs
+    const activeSessions = sessions.filter(s => s.active !== false);
+    const sorted = [...activeSessions].sort((a, b) => {
+      // Respect custom drag order
       const orderMap = new Map(dashboardSessionOrder.map((id, i) => [id, i]));
       const aOrder = orderMap.get(a.sessionId) ?? 999;
       const bOrder = orderMap.get(b.sessionId) ?? 999;
@@ -91,9 +77,10 @@ export function DashboardView() {
     setDragOverIndex(null);
   }, [dragIndex, dragOverIndex, orderedSessions, setDashboardSessionOrder]);
 
-  // Count active sessions
-  const activeCount = useMemo(
-    () => sessions.filter(s => s.active !== false).length,
+  // Count total (all known) sessions vs displayed (active only)
+  const totalSessionCount = sessions.length;
+  const inactiveCount = useMemo(
+    () => sessions.filter(s => s.active === false).length,
     [sessions]
   );
 
@@ -128,10 +115,10 @@ export function DashboardView() {
               fontSize: 10,
               color: 'var(--dash-text-muted)',
             }}>
-              {sessions.length} session{sessions.length !== 1 ? 's' : ''}
-              {activeCount > 0 && (
-                <span style={{ color: 'var(--dash-success)', marginLeft: 6 }}>
-                  {activeCount} active
+              {orderedSessions.length} active
+              {inactiveCount > 0 && (
+                <span style={{ color: 'var(--dash-text-muted)', marginLeft: 6 }}>
+                  · {totalSessionCount} total
                 </span>
               )}
             </span>
@@ -252,7 +239,7 @@ function EmptyState() {
         maxWidth: 280,
         lineHeight: 1.6,
       }}>
-        Sessions will appear here when agents connect. Start a Claude Code, Codex, or other supported agent session.
+        Sessions will appear here when agents connect. Start a Claude Code, Codex, or other supported harness session.
       </div>
     </div>
   );

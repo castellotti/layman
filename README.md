@@ -1,6 +1,6 @@
 # Layman
 
-"*Catch vibes.*"
+*Agentic Insight and Oversight*
 
 * Monitor your AI assistants
 * Explain their actions in Layman's Terms
@@ -15,7 +15,7 @@ Layman is a dashboard that explains exactly what your AI assistants are doing, i
 
 ---
 
-### Supported Agents
+### Supported Harnesses
 - [Claude Code](https://github.com/anthropics/claude-code)
 - OpenAI [Codex](https://github.com/openai/codex)
 - Mistral [Vibe](https://github.com/mistralai/mistral-vibe)
@@ -52,13 +52,7 @@ Layman tracks every file the agent reads or writes and every URL it fetches duri
 
 ### AI analysis (optional)
 
-Layman can use an AI model to classify the risk level of each action, explain what it means in plain language, and flag anything that looks risky. Add your API key when starting the container:
-
-```bash
-ANTHROPIC_API_KEY=your-key-here docker compose -f ~/layman/docker-compose.yml up -d
-```
-
-Supports Anthropic, OpenAI-compatible APIs, and LiteLLM. Auto-analysis and auto-explain can be configured independently in **Settings → Analysis**, with severity thresholds (All / Medium+ / High only) and detail level (Quick / Detailed).
+Layman can use an AI model to classify the risk level of each action, explain what it means in plain language, and flag anything that looks risky. Auto-analysis and auto-explain can be configured independently in **Settings → Analysis**, with severity thresholds (All / Medium+ / High only) and detail level (Quick / Detailed).
 
 ### Session metrics
 
