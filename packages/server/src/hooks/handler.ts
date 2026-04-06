@@ -50,6 +50,12 @@ const AUTO_ALLOW_TOOLS = new Set(['Read', 'Glob', 'Grep', 'WebSearch']);
 // Keyed by transcript_path since each session/subagent has a unique path.
 const transcriptWatermarks = new Map<string, string | null>();
 
+// Sessions where the next Stop response should be suppressed.
+// Set when /layman is called on an already-active session so the
+// "Layman is now monitoring..." reply doesn't overwrite meaningful
+// work history in the dashboard LatestOutput display.
+const suppressNextResponse = new Set<string>();
+
 /** Detect activation command in a Bash call (echo marker or legacy curl) */
 const ACTIVATION_PATTERN = /echo\s+["']?layman:activate["']?|curl\b.*\/api\/activate/;
 
@@ -110,6 +116,11 @@ export function registerHookHandler(
                     // Non-fatal — activation proceeds even if recovery fails
                   }
                 }
+              } else {
+                // Re-activation on an already-active session. The upcoming Stop hook
+                // would emit the "Layman is now monitoring..." response, which would
+                // replace meaningful work history in the dashboard LatestOutput. Suppress it.
+                suppressNextResponse.add(sessionId);
               }
 
               return reply.send({});
@@ -659,6 +670,16 @@ async function handleStop(
     return;
   }
 
+  // If /layman was called on an already-active session, suppress emitting the
+  // "Layman is now monitoring..." response so it doesn't displace real work history
+  // in the dashboard LatestOutput. Advance the watermark so the next Stop works normally.
+  if (suppressNextResponse.has(input.session_id)) {
+    suppressNextResponse.delete(input.session_id);
+    transcriptWatermarks.delete(input.transcript_path);
+    await initTranscriptWatermark(input.transcript_path);
+    return;
+  }
+
   // Emit the final assistant response (and any intermediate messages not yet emitted).
   // The transcript file may not be flushed yet when Stop fires, so retry after a short
   // delay if the first read finds nothing new.
@@ -721,6 +742,13 @@ async function emitNewAssistantMessages(
   eventStore: EventStore,
   agentType: string
 ): Promise<boolean> {
+  // Suppress emission while a /layman re-activation is in flight.
+  // handleStop (or handleUserPromptSubmit as a fallback) will advance the
+  // watermark past the layman response once the turn completes.
+  if (suppressNextResponse.has(sessionId)) {
+    return false;
+  }
+
   // If we haven't seen this transcript before, init watermark first (avoids emitting history)
   if (!transcriptWatermarks.has(transcriptPath)) {
     await initTranscriptWatermark(transcriptPath);
@@ -779,10 +807,19 @@ async function handleUserPromptSubmit(
   eventStore: EventStore,
   agentType: string = 'claude-code'
 ): Promise<void> {
-  // Catch-up: emit any assistant messages from the previous turn that weren't captured
-  // by Stop (e.g. if the transcript wasn't flushed in time). This ensures responses
-  // appear in the timeline before the next user prompt.
-  await emitNewAssistantMessages(input.transcript_path, input.session_id, eventStore, agentType);
+  // Safety valve: if a /layman re-activation's Stop hook never fired, the suppression
+  // flag may still be set when the next user prompt arrives. Consume it here and advance
+  // the watermark so the layman response is skipped and future turns work normally.
+  if (suppressNextResponse.has(input.session_id)) {
+    suppressNextResponse.delete(input.session_id);
+    transcriptWatermarks.delete(input.transcript_path);
+    await initTranscriptWatermark(input.transcript_path);
+  } else {
+    // Catch-up: emit any assistant messages from the previous turn that weren't captured
+    // by Stop (e.g. if the transcript wasn't flushed in time). This ensures responses
+    // appear in the timeline before the next user prompt.
+    await emitNewAssistantMessages(input.transcript_path, input.session_id, eventStore, agentType);
+  }
 
   eventStore.add('user_prompt', input.session_id, {
     prompt: input.prompt,
@@ -804,9 +841,14 @@ async function handleSubagentStop(
   eventStore: EventStore,
   agentType: string = 'claude-code'
 ): Promise<void> {
+  // When /layman re-activates, the subagent's "Layman is now monitoring..." message
+  // should not be stored — it would displace real work history from the dashboard.
+  const prompt = suppressNextResponse.has(input.session_id)
+    ? undefined
+    : (input.last_assistant_message ?? undefined);
   eventStore.add('subagent_stop', input.session_id, {
     agentType: input.agent_type,
-    prompt: input.last_assistant_message ?? undefined,
+    prompt,
   }, undefined, agentType);
 }
 

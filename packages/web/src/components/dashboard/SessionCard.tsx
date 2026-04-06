@@ -246,54 +246,85 @@ function RiskAlertFeed({ events, onDrilldown, sessionId, expanded }: {
   );
 }
 
+const OUTPUT_LABEL_STYLE: React.CSSProperties = {
+  fontFamily: 'var(--dash-font-data)',
+  fontSize: 8,
+  color: 'var(--dash-text-secondary)',
+  textTransform: 'uppercase',
+  letterSpacing: '0.5px',
+  marginBottom: 3,
+  flexShrink: 0,
+};
+
+const OUTPUT_TEXT_STYLE: React.CSSProperties = {
+  fontFamily: 'var(--dash-font-data)',
+  fontSize: 10,
+  lineHeight: 1.5,
+  color: '#9eaab8',
+  overflow: 'hidden',
+  whiteSpace: 'pre-wrap',
+  wordBreak: 'break-word',
+};
+
 /** Latest output — fills remaining card space, no hover jitter */
-function LatestOutput({ events }: { events: TimelineEvent[] }) {
-  const lastOutput = useMemo(() => {
+function LatestOutput({ events, totalCards }: { events: TimelineEvent[]; totalCards: number }) {
+  const isExpanded = totalCards <= 2;
+
+  // Find the most recent prompt and response separately
+  const { primary, secondary } = useMemo(() => {
+    let lastResponse: { text: string; label: string } | null = null;
+    let lastPrompt: { text: string; label: string } | null = null;
+    let lastOther: { text: string; label: string } | null = null;
+
     for (let i = events.length - 1; i >= 0; i--) {
       const e = events[i];
-      if (e.type === 'agent_response' && e.data.prompt) {
-        return { text: e.data.prompt, label: 'Response' };
-      }
-      if (e.type === 'user_prompt' && e.data.prompt) {
-        return { text: e.data.prompt, label: 'Prompt' };
-      }
-      if (e.type === 'tool_call_completed' && e.data.toolOutput) {
+      if (!lastResponse && e.type === 'agent_response' && e.data.prompt) {
+        lastResponse = { text: e.data.prompt, label: 'Response' };
+      } else if (!lastPrompt && e.type === 'user_prompt' && e.data.prompt) {
+        lastPrompt = { text: e.data.prompt, label: 'Prompt' };
+      } else if (!lastOther && e.type === 'tool_call_completed' && e.data.toolOutput) {
         const out = typeof e.data.toolOutput === 'string'
           ? e.data.toolOutput
           : JSON.stringify(e.data.toolOutput);
-        return { text: out, label: `Output: ${e.data.toolName ?? 'tool'}` };
+        lastOther = { text: out, label: `Output: ${e.data.toolName ?? 'tool'}` };
       }
+      if (lastResponse && lastPrompt) break;
     }
-    return null;
-  }, [events]);
 
-  if (!lastOutput) return null;
+    // Primary: the most recent notable item
+    const primary = lastResponse ?? lastPrompt ?? lastOther;
+    // Secondary: for expanded layouts, show the companion item (prompt before response)
+    const secondary = isExpanded && lastResponse && lastPrompt ? lastPrompt : null;
+
+    return { primary, secondary };
+  }, [events, isExpanded]);
+
+  if (!primary) return null;
+
+  // Expanded with both prompt and response: prompt gets up to 28% height, response fills rest
+  if (secondary) {
+    return (
+      <div className="flex flex-col min-h-0 overflow-hidden" style={{ flex: 1, gap: 6 }}>
+        {/* Companion prompt — bounded height so response always gets priority */}
+        <div className="flex flex-col shrink-0" style={{ maxHeight: totalCards === 1 ? '28%' : '20%', overflow: 'hidden' }}>
+          <div style={OUTPUT_LABEL_STYLE}>{secondary.label}</div>
+          <div style={{ ...OUTPUT_TEXT_STYLE, flex: 1 }}>{secondary.text}</div>
+        </div>
+        {/* Divider */}
+        <div style={{ height: 1, background: 'var(--dash-border-subtle)', flexShrink: 0 }} />
+        {/* Primary response — fills remaining space */}
+        <div className="flex flex-col min-h-0 overflow-hidden" style={{ flex: 1 }}>
+          <div style={OUTPUT_LABEL_STYLE}>{primary.label}</div>
+          <div style={{ ...OUTPUT_TEXT_STYLE, flex: 1 }}>{primary.text}</div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col min-h-0 overflow-hidden" style={{ flex: 1 }}>
-      <div style={{
-        fontFamily: 'var(--dash-font-data)',
-        fontSize: 8,
-        color: 'var(--dash-text-secondary)',
-        textTransform: 'uppercase',
-        letterSpacing: '0.5px',
-        marginBottom: 3,
-        flexShrink: 0,
-      }}>
-        {lastOutput.label}
-      </div>
-      <div style={{
-        fontFamily: 'var(--dash-font-data)',
-        fontSize: 10,
-        lineHeight: 1.5,
-        color: '#9eaab8',
-        overflow: 'hidden',
-        flex: 1,
-        whiteSpace: 'pre-wrap',
-        wordBreak: 'break-word',
-      }}>
-        {lastOutput.text}
-      </div>
+      <div style={OUTPUT_LABEL_STYLE}>{primary.label}</div>
+      <div style={{ ...OUTPUT_TEXT_STYLE, flex: 1 }}>{primary.text}</div>
     </div>
   );
 }
@@ -488,7 +519,7 @@ export function SessionCard({
 
       {/* Latest output — flex-1 so it fills remaining card height */}
       <div className="px-3 pb-3 flex-1 min-h-0 flex flex-col overflow-hidden">
-        <LatestOutput events={events} />
+        <LatestOutput events={events} totalCards={totalCards} />
       </div>
 
       {/* Bottom accent line */}
