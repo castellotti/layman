@@ -189,7 +189,8 @@ export const PROVIDER_LABELS: Record<AnalysisProvider, string> = {
 export interface LaymanConfig {
   port: number;
   host: string;
-  autoAnalyze: 'all' | 'risky' | 'none';
+  autoAnalyze: 'all' | 'medium' | 'high' | 'none';
+  autoAnalyzeDepth: 'quick' | 'detailed';
   autoExplain: 'all' | 'medium' | 'high' | 'none';
   autoExplainDepth: 'quick' | 'detailed';
   analysis: {

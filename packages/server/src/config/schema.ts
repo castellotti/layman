@@ -23,7 +23,11 @@ export const DEFAULT_LAYMANS_PROMPT = 'Explain what the AI is doing here in abso
 export const LaymanConfigSchema = z.object({
   port: z.number().int().min(1).max(65535).default(8880),
   host: z.string().default('localhost'),
-  autoAnalyze: z.enum(['all', 'risky', 'none']).default('none'),
+  autoAnalyze: z.union([
+    z.enum(['all', 'medium', 'high', 'none']),
+    z.literal('risky').transform(() => 'medium' as const), // migrate old value
+  ]).default('none'),
+  autoAnalyzeDepth: z.enum(['quick', 'detailed']).default('detailed'),
   autoExplain: z.enum(['all', 'medium', 'high', 'none']).default('none'),
   autoExplainDepth: z.enum(['quick', 'detailed']).default('quick'),
   analysis: AnalysisConfigSchema.default({}),
@@ -34,7 +38,7 @@ export const LaymanConfigSchema = z.object({
   autoApprove: z.union([
     z.enum(['all', 'medium', 'low', 'none']),
     z.boolean().transform(b => b ? 'all' : 'none' as const),
-  ]).default('all'), // 'all'=approve everything, 'medium'=approve low+medium, 'low'=approve only low, 'none'=always prompt
+  ]).default('medium'), // 'all'=approve everything, 'medium'=approve low+medium, 'low'=approve only low, 'none'=always prompt
   laymansPrompt: z.string().default(DEFAULT_LAYMANS_PROMPT),
   hookUrl: z.string().optional(),
   sessionRecording: z.boolean().default(false),

@@ -47,7 +47,7 @@ program
     const cliFlags: Partial<LaymanConfig> = {
       port: parseInt(options.port, 10),
       host: options.host,
-      ...(options.autoAnalyze !== undefined ? { autoAnalyze: options.autoAnalyze as 'all' | 'risky' | 'none' } : {}),
+      ...(options.autoAnalyze !== undefined ? { autoAnalyze: options.autoAnalyze as 'all' | 'medium' | 'high' | 'none' } : {}),
       open: options.open !== false,
       hookTimeout: parseInt(options.hookTimeout, 10),
       hookUrl: options.hookUrl,
@@ -114,7 +114,7 @@ program
     const cliFlags: Partial<LaymanConfig> = {
       port: parseInt(options.port, 10),
       host: options.host,
-      ...(options.autoAnalyze !== undefined ? { autoAnalyze: options.autoAnalyze as 'all' | 'risky' | 'none' } : {}),
+      ...(options.autoAnalyze !== undefined ? { autoAnalyze: options.autoAnalyze as 'all' | 'medium' | 'high' | 'none' } : {}),
       open: options.open !== false,
       hookTimeout: parseInt(options.hookTimeout, 10),
       hookUrl: options.hookUrl,

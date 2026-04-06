@@ -10,6 +10,7 @@ interface SessionCardProps {
   isFocused: boolean;
   onFocus: (sessionId: string) => void;
   onDrilldown: (sessionId: string, eventId: string) => void;
+  onDrilldownToLogs: (sessionId: string, eventId: string) => void;
   index: number;
   onDragStart: (index: number) => void;
   onDragOver: (index: number) => void;
@@ -267,26 +268,30 @@ const OUTPUT_TEXT_STYLE: React.CSSProperties = {
 };
 
 /** Latest output — fills remaining card space, no hover jitter */
-function LatestOutput({ events, totalCards }: { events: TimelineEvent[]; totalCards: number }) {
+function LatestOutput({ events, totalCards, onDrilldown }: {
+  events: TimelineEvent[];
+  totalCards: number;
+  onDrilldown?: (eventId: string) => void;
+}) {
   const isExpanded = totalCards <= 2;
 
   // Find the most recent prompt and response separately
   const { primary, secondary } = useMemo(() => {
-    let lastResponse: { text: string; label: string } | null = null;
-    let lastPrompt: { text: string; label: string } | null = null;
-    let lastOther: { text: string; label: string } | null = null;
+    let lastResponse: { text: string; label: string; eventId: string } | null = null;
+    let lastPrompt: { text: string; label: string; eventId: string } | null = null;
+    let lastOther: { text: string; label: string; eventId: string } | null = null;
 
     for (let i = events.length - 1; i >= 0; i--) {
       const e = events[i];
       if (!lastResponse && e.type === 'agent_response' && e.data.prompt) {
-        lastResponse = { text: e.data.prompt, label: 'Response' };
+        lastResponse = { text: e.data.prompt, label: 'Response', eventId: e.id };
       } else if (!lastPrompt && e.type === 'user_prompt' && e.data.prompt) {
-        lastPrompt = { text: e.data.prompt, label: 'Prompt' };
+        lastPrompt = { text: e.data.prompt, label: 'Prompt', eventId: e.id };
       } else if (!lastOther && e.type === 'tool_call_completed' && e.data.toolOutput) {
         const out = typeof e.data.toolOutput === 'string'
           ? e.data.toolOutput
           : JSON.stringify(e.data.toolOutput);
-        lastOther = { text: out, label: `Output: ${e.data.toolName ?? 'tool'}` };
+        lastOther = { text: out, label: `Output: ${e.data.toolName ?? 'tool'}`, eventId: e.id };
       }
       if (lastResponse && lastPrompt) break;
     }
@@ -301,19 +306,33 @@ function LatestOutput({ events, totalCards }: { events: TimelineEvent[]; totalCa
 
   if (!primary) return null;
 
+  const clickStyle: React.CSSProperties = onDrilldown
+    ? { cursor: 'pointer', borderRadius: 3, padding: '1px 0' }
+    : {};
+
   // Expanded with both prompt and response: prompt gets up to 28% height, response fills rest
   if (secondary) {
     return (
       <div className="flex flex-col min-h-0 overflow-hidden" style={{ flex: 1, gap: 6 }}>
         {/* Companion prompt — bounded height so response always gets priority */}
-        <div className="flex flex-col shrink-0" style={{ maxHeight: totalCards === 1 ? '28%' : '20%', overflow: 'hidden' }}>
+        <div
+          className="flex flex-col shrink-0"
+          style={{ maxHeight: totalCards === 1 ? '28%' : '20%', overflow: 'hidden', ...clickStyle }}
+          onClick={onDrilldown ? (e) => { e.stopPropagation(); onDrilldown(secondary.eventId); } : undefined}
+          title={onDrilldown ? 'View in Logs' : undefined}
+        >
           <div style={OUTPUT_LABEL_STYLE}>{secondary.label}</div>
           <div style={{ ...OUTPUT_TEXT_STYLE, flex: 1 }}>{secondary.text}</div>
         </div>
         {/* Divider */}
         <div style={{ height: 1, background: 'var(--dash-border-subtle)', flexShrink: 0 }} />
         {/* Primary response — fills remaining space */}
-        <div className="flex flex-col min-h-0 overflow-hidden" style={{ flex: 1 }}>
+        <div
+          className="flex flex-col min-h-0 overflow-hidden"
+          style={{ flex: 1, ...clickStyle }}
+          onClick={onDrilldown ? (e) => { e.stopPropagation(); onDrilldown(primary.eventId); } : undefined}
+          title={onDrilldown ? 'View in Logs' : undefined}
+        >
           <div style={OUTPUT_LABEL_STYLE}>{primary.label}</div>
           <div style={{ ...OUTPUT_TEXT_STYLE, flex: 1 }}>{primary.text}</div>
         </div>
@@ -322,7 +341,12 @@ function LatestOutput({ events, totalCards }: { events: TimelineEvent[]; totalCa
   }
 
   return (
-    <div className="flex flex-col min-h-0 overflow-hidden" style={{ flex: 1 }}>
+    <div
+      className="flex flex-col min-h-0 overflow-hidden"
+      style={{ flex: 1, ...clickStyle }}
+      onClick={onDrilldown ? (e) => { e.stopPropagation(); onDrilldown(primary.eventId); } : undefined}
+      title={onDrilldown ? 'View in Logs' : undefined}
+    >
       <div style={OUTPUT_LABEL_STYLE}>{primary.label}</div>
       <div style={{ ...OUTPUT_TEXT_STYLE, flex: 1 }}>{primary.text}</div>
     </div>
@@ -370,7 +394,7 @@ function RateLimitMini({ label, pct, resetsAt }: { label: string; pct: number; r
 }
 
 export function SessionCard({
-  session, events, isFocused, onFocus, onDrilldown, index,
+  session, events, isFocused, onFocus, onDrilldown, onDrilldownToLogs, index,
   onDragStart, onDragOver, onDragEnd, isDragging, isDragOver, totalCards,
 }: SessionCardProps) {
   const sessionMetrics = useSessionStore(s => s.sessionMetrics);
@@ -519,7 +543,11 @@ export function SessionCard({
 
       {/* Latest output — flex-1 so it fills remaining card height */}
       <div className="px-3 pb-3 flex-1 min-h-0 flex flex-col overflow-hidden">
-        <LatestOutput events={events} totalCards={totalCards} />
+        <LatestOutput
+          events={events}
+          totalCards={totalCards}
+          onDrilldown={(eventId) => onDrilldownToLogs(session.sessionId, eventId)}
+        />
       </div>
 
       {/* Bottom accent line */}

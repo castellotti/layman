@@ -345,7 +345,8 @@ async function handlePreToolUse(
 
   const shouldAnalyze =
     config.autoAnalyze === 'all' ||
-    (config.autoAnalyze === 'risky' && riskLevel !== 'low');
+    (config.autoAnalyze === 'medium' && riskLevel !== 'low') ||
+    (config.autoAnalyze === 'high' && riskLevel === 'high');
 
   const shouldExplain =
     config.autoExplain === 'all' ||
@@ -440,7 +441,7 @@ async function triggerAnalysis(
       toolName: input.tool_name,
       toolInput: input.tool_input,
       cwd: input.cwd,
-      depth: 'quick',
+      depth: config.autoAnalyzeDepth,
       recentEvents,
     });
 
@@ -454,8 +455,6 @@ async function triggerAnalysis(
     if (matchingPending) {
       pendingManager.attachAnalysis(matchingPending.id, result);
     }
-
-    void config; // used for config check above
   } catch {
     // Analysis failure doesn't block approval
   }
@@ -582,7 +581,8 @@ async function handlePermissionRequest(
 
   const shouldAnalyze =
     config.autoAnalyze === 'all' ||
-    (config.autoAnalyze === 'risky' && riskLevel !== 'low');
+    (config.autoAnalyze === 'medium' && riskLevel !== 'low') ||
+    (config.autoAnalyze === 'high' && riskLevel === 'high');
 
   if (shouldAnalyze) {
     void triggerAnalysisForPermission(input, timelineEvent.id, eventStore, analysisEngine);

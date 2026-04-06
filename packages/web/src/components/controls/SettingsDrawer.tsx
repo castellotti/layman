@@ -728,10 +728,10 @@ export function SettingsDrawer({ onSend }: SettingsDrawerProps) {
               Auto-Analysis
             </h3>
             <p className="text-[10px] text-[#484f58] mb-3">
-              When to automatically send tool calls to the analysis model.
+              When to automatically send tool calls to the analysis model for risk classification.
             </p>
             <div className="flex gap-2 mb-3">
-              {(['all', 'risky', 'none'] as const).map((mode) => (
+              {(['all', 'medium', 'high', 'none'] as const).map((mode) => (
                 <button
                   key={mode}
                   onClick={() => updateConfig({ autoAnalyze: mode })}
@@ -745,11 +745,32 @@ export function SettingsDrawer({ onSend }: SettingsDrawerProps) {
                 </button>
               ))}
             </div>
-            <div className="text-[10px] text-[#484f58] space-y-1">
-              <p><span className="text-[#8b949e]">All</span> — every tool call is analyzed automatically</p>
-              <p><span className="text-[#8b949e]">Risk</span> — only bash, writes, network, and other medium/high-risk tools</p>
+            <div className="text-[10px] text-[#484f58] space-y-1 mb-3">
+              <p><span className="text-[#8b949e]">All</span> — analyze every tool call automatically</p>
+              <p><span className="text-[#8b949e]">Medium</span> — analyze medium and high-risk tool calls</p>
+              <p><span className="text-[#8b949e]">High</span> — analyze only high-risk tool calls</p>
               <p><span className="text-[#8b949e]">None</span> — manual only; click Quick or Detailed per event</p>
             </div>
+            {config.autoAnalyze !== 'none' && (
+              <div>
+                <p className="text-[10px] text-[#484f58] mb-2">Analysis depth</p>
+                <div className="flex gap-2">
+                  {(['quick', 'detailed'] as const).map((depth) => (
+                    <button
+                      key={depth}
+                      onClick={() => updateConfig({ autoAnalyzeDepth: depth })}
+                      className={`flex-1 px-2 py-1.5 text-xs rounded-md border capitalize transition-colors ${
+                        config.autoAnalyzeDepth === depth
+                          ? 'bg-[#21262d] border-[#388bfd] text-[#58a6ff]'
+                          : 'bg-[#21262d] border-[#30363d] text-[#8b949e] hover:text-[#e6edf3]'
+                      }`}
+                    >
+                      {depth === 'quick' ? '⚡ Quick' : '🔍 Detailed'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </section>
 
           <div className="border-t border-[#30363d]" />

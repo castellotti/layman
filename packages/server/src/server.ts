@@ -15,7 +15,7 @@ import { registerHookHandler } from './hooks/handler.js';
 import { registerClineHookHandler } from './cline/handler.js';
 import { AnalysisEngine } from './analysis/engine.js';
 import { resolveEndpoint } from './analysis/providers/openai-compat.js';
-import { filterPii } from './pii/filter.js';
+import { filterPii, redactValue } from './pii/filter.js';
 import { PII_CATEGORIES, PII_GROUPS } from './pii/categories.js';
 import { scanPii, executePurge } from './pii/purge.js';
 import { updateConfig, saveConfig } from './config/config.js';
@@ -244,24 +244,31 @@ export function createServer(config: LaymanConfig): LaymanServer {
       async (request) => {
         const { sessionId } = request.params;
         const live = eventStore.getAccessLog(sessionId);
-        if (live.files.length > 0 || live.urls.length > 0) return live;
-        // Fall back to reconstructing from persisted events for historical sessions
-        const events = bookmarkStore.getEventsForSession(sessionId);
-        const files: FileAccess[] = [];
-        const urls: UrlAccess[] = [];
-        for (const ev of events) {
-          if (ev.data.fileAccess) files.push(...ev.data.fileAccess);
-          if (ev.data.urlAccess) urls.push(...ev.data.urlAccess);
+        let result: { files: FileAccess[]; urls: UrlAccess[] };
+        if (live.files.length > 0 || live.urls.length > 0) {
+          result = live;
+        } else {
+          // Fall back to reconstructing from persisted events for historical sessions
+          const events = bookmarkStore.getEventsForSession(sessionId);
+          const files: FileAccess[] = [];
+          const urls: UrlAccess[] = [];
+          for (const ev of events) {
+            if (ev.data.fileAccess) files.push(...ev.data.fileAccess);
+            if (ev.data.urlAccess) urls.push(...ev.data.urlAccess);
+          }
+          result = { files, urls };
         }
-        return { files, urls };
+        return getConfig().piiFilter ? redactValue(result) : result;
       }
     );
 
     fastify.get('/api/access-log', async () => {
       const sessions = eventStore.getSessions();
       const logs: Record<string, { files: unknown[]; urls: unknown[] }> = {};
+      const applyPii = getConfig().piiFilter;
       for (const s of sessions) {
-        logs[s.sessionId] = eventStore.getAccessLog(s.sessionId);
+        const log = eventStore.getAccessLog(s.sessionId);
+        logs[s.sessionId] = applyPii ? redactValue(log) as typeof log : log;
       }
       return logs;
     });
