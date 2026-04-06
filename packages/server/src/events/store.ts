@@ -9,12 +9,13 @@ export interface SessionInfo {
   lastSeen: number;
   agentType: string;
   opencodeUrl?: string;
+  sessionName?: string;
 }
 
 export class EventStore extends EventEmitter {
   private events: TimelineEvent[] = [];
   private maxEvents = 10000;
-  private sessions: Map<string, { cwd: string; lastSeen: number; agentType: string; opencodeUrl?: string }> = new Map();
+  private sessions: Map<string, { cwd: string; lastSeen: number; agentType: string; opencodeUrl?: string; sessionName?: string }> = new Map();
   private accessLogs: Map<string, { files: FileAccess[]; urls: UrlAccess[] }> = new Map();
   private dataFilter?: (data: EventData) => EventData;
 
@@ -113,14 +114,15 @@ export class EventStore extends EventEmitter {
     this.emit('store:cleared');
   }
 
-  trackSession(sessionId: string, cwd: string, agentType: string = 'claude-code', opencodeUrl?: string): void {
+  trackSession(sessionId: string, cwd: string, agentType: string = 'claude-code', opencodeUrl?: string, sessionName?: string): void {
     const existing = this.sessions.get(sessionId);
     const isNew = !existing;
     const cwdChanged = existing && existing.cwd !== cwd;
-    // Preserve existing opencodeUrl if none is provided (it may have been set from a previous event)
+    // Preserve existing values if none are provided (they may have been set from a previous event)
     const resolvedUrl = opencodeUrl ?? existing?.opencodeUrl;
-    this.sessions.set(sessionId, { cwd, lastSeen: Date.now(), agentType, opencodeUrl: resolvedUrl });
-    if (isNew || cwdChanged || (opencodeUrl && opencodeUrl !== existing?.opencodeUrl)) {
+    const resolvedName = sessionName ?? existing?.sessionName;
+    this.sessions.set(sessionId, { cwd, lastSeen: Date.now(), agentType, opencodeUrl: resolvedUrl, sessionName: resolvedName });
+    if (isNew || cwdChanged || (opencodeUrl && opencodeUrl !== existing?.opencodeUrl) || (sessionName && sessionName !== existing?.sessionName)) {
       this.emit('sessions:changed', this.getSessions());
     }
   }

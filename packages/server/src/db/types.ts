@@ -20,6 +20,9 @@ export interface RecordedSession {
   agentType: string;
   startedAt: number;
   lastSeen: number;
+  sessionModel?: string;
+  sessionModelDisplayName?: string;
+  sessionName?: string;
 }
 
 export interface QAEntry {

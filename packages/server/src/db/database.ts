@@ -75,4 +75,14 @@ function applyMigrations(db: Database): void {
     CREATE INDEX IF NOT EXISTS idx_recorded_events_type
       ON recorded_events(type);
   `);
+
+  // Migration: add session metadata columns
+  const columns = db.prepare("PRAGMA table_info(recorded_sessions)").all() as Array<{ name: string }>;
+  const colNames = new Set(columns.map(c => c.name));
+  if (!colNames.has('session_model'))
+    db.exec("ALTER TABLE recorded_sessions ADD COLUMN session_model TEXT");
+  if (!colNames.has('session_model_display_name'))
+    db.exec("ALTER TABLE recorded_sessions ADD COLUMN session_model_display_name TEXT");
+  if (!colNames.has('session_name'))
+    db.exec("ALTER TABLE recorded_sessions ADD COLUMN session_name TEXT");
 }
