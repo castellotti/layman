@@ -12,6 +12,8 @@ export function DashboardView() {
     setDashboardFocusedSession,
     dashboardSessionOrder,
     setDashboardSessionOrder,
+    dashboardDismissedSessions,
+    dismissDashboardSession,
     navigateFromDashboard,
     navigateFromDashboardToLogs,
   } = useSessionStore();
@@ -21,8 +23,8 @@ export function DashboardView() {
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
 
   const orderedSessions = useMemo(() => {
-    // Only show active sessions in the dashboard — ended sessions are visible in Logs
-    const activeSessions = sessions.filter(s => s.active !== false);
+    // Only show active, non-dismissed sessions in the dashboard — ended sessions are visible in Logs
+    const activeSessions = sessions.filter(s => s.active !== false && !dashboardDismissedSessions.has(s.sessionId));
     const sorted = [...activeSessions].sort((a, b) => {
       // Respect custom drag order
       const orderMap = new Map(dashboardSessionOrder.map((id, i) => [id, i]));
@@ -34,7 +36,7 @@ export function DashboardView() {
       return b.lastSeen - a.lastSeen;
     });
     return sorted;
-  }, [sessions, dashboardSessionOrder]);
+  }, [sessions, dashboardSessionOrder, dashboardDismissedSessions]);
 
   // Events grouped by session
   const eventsBySession = useMemo(() => {
@@ -52,6 +54,12 @@ export function DashboardView() {
       dashboardFocusedSession === sessionId ? null : sessionId
     );
   }, [dashboardFocusedSession, setDashboardFocusedSession]);
+
+  // Dismiss a session card (hides it; auto-restores on new activity)
+  const handleDismiss = useCallback((sessionId: string) => {
+    dismissDashboardSession(sessionId);
+    if (dashboardFocusedSession === sessionId) setDashboardFocusedSession(null);
+  }, [dismissDashboardSession, dashboardFocusedSession, setDashboardFocusedSession]);
 
   // Drill-down to flowchart + investigation
   const handleDrilldown = useCallback((sessionId: string, eventId: string) => {
@@ -190,6 +198,7 @@ export function DashboardView() {
                     events={eventsBySession.get(session.sessionId) ?? []}
                     isFocused={dashboardFocusedSession === session.sessionId}
                     onFocus={handleFocus}
+                    onDismiss={handleDismiss}
                     onDrilldown={handleDrilldown}
                     onDrilldownToLogs={handleDrilldownToLogs}
                     index={index}
@@ -223,13 +232,20 @@ export function DashboardView() {
 function EmptyState() {
   return (
     <div className="flex flex-col items-center justify-center h-full gap-4">
-      <div style={{
-        fontSize: 48,
-        opacity: 0.15,
-        lineHeight: 1,
-      }}>
-        \u25C9
-      </div>
+      <svg
+        width="56"
+        height="56"
+        viewBox="0 0 56 56"
+        fill="none"
+        style={{ opacity: 0.15, color: 'var(--dash-accent)' }}
+        aria-hidden="true"
+      >
+        <circle cx="28" cy="28" r="24" stroke="currentColor" strokeWidth="1.5"/>
+        <circle cx="28" cy="28" r="15" stroke="currentColor" strokeWidth="1"/>
+        <circle cx="28" cy="28" r="5" stroke="currentColor" strokeWidth="1"/>
+        <line x1="28" y1="4" x2="28" y2="52" stroke="currentColor" strokeWidth="0.5"/>
+        <line x1="4" y1="28" x2="52" y2="28" stroke="currentColor" strokeWidth="0.5"/>
+      </svg>
       <div style={{
         fontFamily: 'var(--dash-font-display)',
         fontSize: 14,

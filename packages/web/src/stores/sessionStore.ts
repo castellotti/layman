@@ -66,6 +66,7 @@ interface SessionState {
   dashboardOpen: boolean;
   dashboardFocusedSession: string | null;
   dashboardSessionOrder: string[];
+  dashboardDismissedSessions: Set<string>;
   returnToDashboard: boolean;
   scrollToEventId: string | null;
 
@@ -122,6 +123,7 @@ interface SessionState {
   setDashboardOpen: (open: boolean) => void;
   setDashboardFocusedSession: (id: string | null) => void;
   setDashboardSessionOrder: (order: string[]) => void;
+  dismissDashboardSession: (sessionId: string) => void;
   navigateFromDashboard: (sessionId: string, eventId: string) => void;
   navigateFromDashboardToLogs: (sessionId: string, eventId: string) => void;
   clearScrollToEvent: () => void;
@@ -174,6 +176,7 @@ export const useSessionStore = create<SessionState>((set) => ({
   dashboardOpen: true,
   dashboardFocusedSession: null,
   dashboardSessionOrder: [],
+  dashboardDismissedSessions: new Set<string>(),
   returnToDashboard: false,
   scrollToEventId: null,
 
@@ -228,14 +231,21 @@ export const useSessionStore = create<SessionState>((set) => ({
         return { sessionMetrics: newMetrics };
       }
 
+      // If this session was manually dismissed, auto-restore it on new activity
+      let dashboardDismissedSessions = state.dashboardDismissedSessions;
+      if (dashboardDismissedSessions.has(event.sessionId)) {
+        dashboardDismissedSessions = new Set(dashboardDismissedSessions);
+        dashboardDismissedSessions.delete(event.sessionId);
+      }
+
       // Deduplicate by id
       const existing = state.events.findIndex((e) => e.id === event.id);
       if (existing >= 0) {
         const newEvents = [...state.events];
         newEvents[existing] = { ...newEvents[existing], ...event };
-        return { events: newEvents };
+        return { events: newEvents, dashboardDismissedSessions };
       }
-      return { events: [...state.events, event] };
+      return { events: [...state.events, event], dashboardDismissedSessions };
     }),
 
   updateEvent: (eventId, updates) =>
@@ -376,14 +386,18 @@ export const useSessionStore = create<SessionState>((set) => ({
 
   markSessionActive: (sessionId) =>
     set((state) => {
+      const newDismissed = new Set(state.dashboardDismissedSessions);
+      newDismissed.delete(sessionId);
       const exists = state.sessions.some(s => s.sessionId === sessionId);
       if (exists) {
-        return { sessions: state.sessions.map(s => s.sessionId === sessionId ? { ...s, active: true } : s) };
+        return {
+          sessions: state.sessions.map(s => s.sessionId === sessionId ? { ...s, active: true } : s),
+          dashboardDismissedSessions: newDismissed,
+        };
       }
-      // Session not in list yet (sessions:list may arrive after session:activated).
-      // Add a placeholder so the card appears immediately; sessions:list will fill details.
       return {
         sessions: [...state.sessions, { sessionId, cwd: '', lastSeen: Date.now(), agentType: 'claude-code', active: true }],
+        dashboardDismissedSessions: newDismissed,
       };
     }),
 
@@ -454,6 +468,12 @@ export const useSessionStore = create<SessionState>((set) => ({
   })),
   setDashboardFocusedSession: (id) => set({ dashboardFocusedSession: id }),
   setDashboardSessionOrder: (order) => set({ dashboardSessionOrder: order }),
+  dismissDashboardSession: (sessionId) =>
+    set((state) => {
+      const newDismissed = new Set(state.dashboardDismissedSessions);
+      newDismissed.add(sessionId);
+      return { dashboardDismissedSessions: newDismissed };
+    }),
   navigateFromDashboard: (sessionId, eventId) => set({
     dashboardOpen: false,
     returnToDashboard: true,

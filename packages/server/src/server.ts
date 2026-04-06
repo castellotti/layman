@@ -58,7 +58,7 @@ export function createServer(config: LaymanConfig): LaymanServer {
   const pendingManager = new PendingApprovalManager(config.hookTimeout);
   const analysisEngine = new AnalysisEngine(config.analysis);
   const gate = new SessionGate();
-  const vibeWatcher = new VibeSessionWatcher(eventStore);
+  const vibeWatcher = new VibeSessionWatcher(eventStore, gate);
   const startTime = Date.now();
 
   // Wire PII filter — checks config on every event so toggling takes effect immediately
