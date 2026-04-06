@@ -145,7 +145,7 @@ export function DashboardView() {
                   fontSize: 10,
                   color: 'var(--dash-accent)',
                 }}>
-                  Focused: {orderedSessions.find(s => s.sessionId === dashboardFocusedSession)?.cwd?.split('/').pop() ?? dashboardFocusedSession.slice(0, 8)}
+                  Focused: {(() => { const fs = orderedSessions.find(s => s.sessionId === dashboardFocusedSession); return fs?.sessionName || fs?.cwd?.split('/').pop() || dashboardFocusedSession.slice(0, 8); })()}
                 </span>
                 <button
                   onClick={() => setDashboardFocusedSession(null)}
