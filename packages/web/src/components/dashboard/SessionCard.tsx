@@ -9,6 +9,7 @@ interface SessionCardProps {
   events: TimelineEvent[];
   isFocused: boolean;
   onFocus: (sessionId: string) => void;
+  onDismiss: (sessionId: string) => void;
   onDrilldown: (sessionId: string, eventId: string) => void;
   onDrilldownToLogs: (sessionId: string, eventId: string) => void;
   index: number;
@@ -394,7 +395,7 @@ function RateLimitMini({ label, pct, resetsAt }: { label: string; pct: number; r
 }
 
 export function SessionCard({
-  session, events, isFocused, onFocus, onDrilldown, onDrilldownToLogs, index,
+  session, events, isFocused, onFocus, onDismiss, onDrilldown, onDrilldownToLogs, index,
   onDragStart, onDragOver, onDragEnd, isDragging, isDragOver, totalCards,
 }: SessionCardProps) {
   const sessionMetrics = useSessionStore(s => s.sessionMetrics);
@@ -519,6 +520,29 @@ export function SessionCard({
             ${metrics.costUsd < 1 ? metrics.costUsd.toFixed(3) : metrics.costUsd.toFixed(2)}
           </span>
         )}
+
+        {/* Dismiss button */}
+        <button
+          title="Close session (re-appears on new activity)"
+          onClick={(e) => { e.stopPropagation(); onDismiss(session.sessionId); }}
+          style={{
+            fontFamily: 'var(--dash-font-data)',
+            fontSize: 12,
+            lineHeight: 1,
+            color: 'var(--dash-text-muted)',
+            background: 'none',
+            border: 'none',
+            cursor: 'pointer',
+            padding: '0 2px',
+            opacity: 0.5,
+            transition: 'opacity 0.15s',
+            flexShrink: 0,
+          }}
+          onMouseEnter={e => (e.currentTarget.style.opacity = '1')}
+          onMouseLeave={e => (e.currentTarget.style.opacity = '0.5')}
+        >
+          ×
+        </button>
       </div>
 
       {/* Activity chain */}
