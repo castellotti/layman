@@ -12,6 +12,7 @@ import { join, basename } from 'path';
 import { homedir } from 'os';
 import type { FSWatcher } from 'fs';
 import type { EventStore } from '../events/store.js';
+import type { SessionGate } from '../hooks/gate.js';
 import { classifyRisk } from '../events/classifier.js';
 import { extractAccess } from '../events/access-extractor.js';
 
@@ -100,13 +101,15 @@ function resolveSessionLogDir(): string | null {
 
 export class VibeSessionWatcher {
   private eventStore: EventStore;
+  private gate: SessionGate;
   private sessions = new Map<string, TrackedSession>();
   private dirWatcher: FSWatcher | null = null;
   private scanTimer: ReturnType<typeof setInterval> | null = null;
   private logDir: string | null = null;
 
-  constructor(eventStore: EventStore) {
+  constructor(eventStore: EventStore, gate: SessionGate) {
     this.eventStore = eventStore;
+    this.gate = gate;
   }
 
   start(): void {
@@ -416,6 +419,7 @@ private async pollSession(session: TrackedSession): Promise<void> {
       }
 
       this.eventStore.add('session_end', session.sessionId, {}, undefined, AGENT_TYPE);
+      this.gate.deactivate(session.sessionId);
       clearInterval(session.pollTimer);
       session.pollTimer = null; // convert to tombstone
       console.log(`[vibe] Session ${session.sessionId.slice(0, 8)} ended (idle ${Math.round(idleMs / 60000)}m)`);
