@@ -1,6 +1,8 @@
-import React, { useMemo, useCallback, useRef, useState } from 'react';
+import React, { useMemo, useCallback, useRef, useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useSessionStore } from '../../stores/sessionStore.js';
-import { EVENT_ICONS, NODE_BORDER_COLORS, AGENT_BADGES } from '../../lib/event-styles.js';
+import { EVENT_ICONS, BORDER_COLORS, NODE_BORDER_COLORS, AGENT_BADGES } from '../../lib/event-styles.js';
+import { RiskBadge } from '../shared/RiskBadge.js';
 import type { TimelineEvent } from '../../lib/types.js';
 import type { SessionInfo } from '../../lib/ws-protocol.js';
 
@@ -29,6 +31,21 @@ function getSessionDisplayName(session: SessionInfo): string {
   return session.sessionId.slice(0, 8);
 }
 
+function formatTime(timestamp: number): string {
+  return new Date(timestamp).toLocaleTimeString('en-US', {
+    hour12: false,
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  });
+}
+
+function formatDuration(ms: number): string {
+  if (ms < 1000) return `${ms}ms`;
+  if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`;
+  return `${Math.floor(ms / 60000)}m${Math.floor((ms % 60000) / 1000)}s`;
+}
+
 function getTimeSince(timestamp: number): string {
   const delta = Date.now() - timestamp;
   if (delta < 5000) return 'now';
@@ -38,16 +55,17 @@ function getTimeSince(timestamp: number): string {
 }
 
 /** Last N events as a compact activity chain */
-function MiniActivityChain({ events, onDrilldown, sessionId }: {
+function MiniActivityChain({ events, onDrilldown, sessionId, maxItems }: {
   events: TimelineEvent[];
   onDrilldown: (sessionId: string, eventId: string) => void;
   sessionId: string;
+  maxItems: number;
 }) {
   const meaningful = useMemo(() =>
     events
       .filter(e => e.type !== 'session_metrics' && e.type !== 'notification')
-      .slice(-6),
-    [events]
+      .slice(-maxItems),
+    [events, maxItems]
   );
 
   if (meaningful.length === 0) {
@@ -92,13 +110,11 @@ function MiniActivityChain({ events, onDrilldown, sessionId }: {
 /** Tool activity heatmap — shows which tools are being called with risk coloring */
 function ToolActivityHeatmap({ events }: { events: TimelineEvent[] }) {
   const heatData = useMemo(() => {
-    // Collect tool call events
     const toolEvents = events.filter(e =>
       e.type.startsWith('tool_call_') || e.type === 'permission_request'
     );
     if (toolEvents.length === 0) return null;
 
-    // Group by tool name, track counts and max risk
     const toolMap = new Map<string, { count: number; risk: 'low' | 'medium' | 'high' }>();
     for (const e of toolEvents) {
       const name = e.data.toolName ?? 'unknown';
@@ -110,7 +126,6 @@ function ToolActivityHeatmap({ events }: { events: TimelineEvent[] }) {
       toolMap.set(name, existing);
     }
 
-    // Sort by count descending, take top 8
     return [...toolMap.entries()]
       .sort((a, b) => b[1].count - a[1].count)
       .slice(0, 8);
@@ -173,7 +188,6 @@ function RiskAlertFeed({ events, onDrilldown, sessionId, expanded }: {
   events: TimelineEvent[];
   onDrilldown: (sessionId: string, eventId: string) => void;
   sessionId: string;
-  /** Whether to show more items (for 1-2 session layouts) */
   expanded: boolean;
 }) {
   const [showAll, setShowAll] = useState(false);
@@ -248,94 +262,113 @@ function RiskAlertFeed({ events, onDrilldown, sessionId, expanded }: {
   );
 }
 
-const OUTPUT_LABEL_STYLE: React.CSSProperties = {
-  fontFamily: 'var(--dash-font-data)',
-  fontSize: 8,
-  color: 'var(--dash-text-secondary)',
-  textTransform: 'uppercase',
-  letterSpacing: '0.5px',
-  marginBottom: 3,
-  flexShrink: 0,
-};
-
-const OUTPUT_TEXT_STYLE: React.CSSProperties = {
-  fontFamily: 'var(--dash-font-data)',
-  fontSize: 10,
-  lineHeight: 1.5,
-  color: '#9eaab8',
-  overflow: 'hidden',
-  whiteSpace: 'pre-wrap',
-  wordBreak: 'break-word',
-};
-
-/** Latest output — fills remaining card space, no hover jitter */
-function LatestOutput({ events, totalCards, onDrilldown }: {
-  events: TimelineEvent[];
-  totalCards: number;
-  onDrilldown?: (eventId: string) => void;
-}) {
-  const isExpanded = totalCards <= 2;
-
-  // Find the most recent prompt and response separately
-  const { primary, secondary } = useMemo(() => {
-    let lastResponse: { text: string; label: string; eventId: string } | null = null;
-    let lastPrompt: { text: string; label: string; eventId: string } | null = null;
-    let lastOther: { text: string; label: string; eventId: string } | null = null;
-
-    for (let i = events.length - 1; i >= 0; i--) {
-      const e = events[i];
-      if (!lastResponse && e.type === 'agent_response' && e.data.prompt) {
-        lastResponse = { text: e.data.prompt, label: 'Response', eventId: e.id };
-      } else if (!lastPrompt && e.type === 'user_prompt' && e.data.prompt) {
-        lastPrompt = { text: e.data.prompt, label: 'Prompt', eventId: e.id };
-      } else if (!lastOther && e.type === 'tool_call_completed' && e.data.toolOutput) {
-        const out = typeof e.data.toolOutput === 'string'
-          ? e.data.toolOutput
-          : JSON.stringify(e.data.toolOutput);
-        lastOther = { text: out, label: `Output: ${e.data.toolName ?? 'tool'}`, eventId: e.id };
-      }
-      if (lastResponse && lastPrompt) break;
+function getTooltipContent(event: TimelineEvent): string | null {
+  const { data, type } = event;
+  if (data.prompt && (type === 'user_prompt' || type === 'agent_response' || type === 'elicitation')) {
+    return data.prompt as string;
+  }
+  if (data.toolInput) {
+    const input = data.toolInput as Record<string, unknown>;
+    if ('command' in input) return String(input.command);
+    if ('file_path' in input) {
+      const path = String(input.file_path);
+      if ('content' in input) return `${path}\n\n${String(input.content).slice(0, 800)}`;
+      if ('old_string' in input) return `${path}\n\n- ${String(input.old_string).slice(0, 300)}\n+ ${String(input.new_string ?? '').slice(0, 300)}`;
+      return path;
     }
+    if ('pattern' in input) return String(input.pattern);
+    if ('query' in input) return String(input.query);
+    if ('url' in input) return String(input.url);
+    if ('prompt' in input) return String(input.prompt).slice(0, 600);
+    return JSON.stringify(input, null, 2).slice(0, 600);
+  }
+  if (data.error) return data.error;
+  if (typeof data.toolOutput === 'string' && data.toolOutput.length > 20) {
+    return data.toolOutput.slice(0, 800);
+  }
+  return null;
+}
 
-    // Primary: the most recent notable item
-    const primary = lastResponse ?? lastPrompt ?? lastOther;
-    // Secondary: for expanded layouts, show the companion item (prompt before response)
-    const secondary = isExpanded && lastResponse && lastPrompt ? lastPrompt : null;
+/** Portal tooltip showing full event content on hover */
+function EventTooltip({ content, x, y }: { content: string; x: number; y: number }) {
+  const GAP = 14;
+  const MAX_W = 480;
+  const left = x + GAP + MAX_W > window.innerWidth ? x - GAP - MAX_W : x + GAP;
+  const top = Math.max(8, Math.min(y - 40, window.innerHeight - 300));
 
-    return { primary, secondary };
-  }, [events, isExpanded]);
+  return createPortal(
+    <div
+      style={{
+        position: 'fixed',
+        left,
+        top,
+        width: MAX_W,
+        maxHeight: 280,
+        background: '#0d1117',
+        border: '1px solid #30363d',
+        borderRadius: 6,
+        padding: '10px 12px',
+        zIndex: 99999,
+        overflowY: 'auto',
+        pointerEvents: 'none',
+        boxShadow: '0 8px 32px rgba(0,0,0,0.6)',
+      }}
+    >
+      <pre
+        style={{
+          fontFamily: "'JetBrains Mono', monospace",
+          fontSize: 11,
+          lineHeight: 1.55,
+          color: '#c9d1d9',
+          whiteSpace: 'pre-wrap',
+          wordBreak: 'break-word',
+          margin: 0,
+        }}
+      >
+        {content}
+      </pre>
+    </div>,
+    document.body
+  );
+}
 
-  if (!primary) return null;
+/** A single collapsed event row matching EventCard's header style */
+function DashboardEventRow({
+  event,
+  globalIndex,
+  onClick,
+  onMouseEnter,
+  onMouseLeave,
+}: {
+  event: TimelineEvent;
+  globalIndex: number;
+  onClick: () => void;
+  onMouseEnter: (e: React.MouseEvent) => void;
+  onMouseLeave: () => void;
+}) {
+  const isPending = event.type === 'tool_call_pending' || event.type === 'permission_request';
+  const borderColor = BORDER_COLORS[event.type] ?? 'border-l-[#30363d]';
+  const icon = EVENT_ICONS[event.type] ?? '·';
+  const borderWidth = isPending ? 'border-l-2' : 'border-l';
+  const bgClass = isPending
+    ? 'bg-[#1c1a0f] hover:bg-[#1c1a0f]/90'
+    : 'bg-[#0c1018] hover:bg-[#161b22]';
 
-  const clickStyle: React.CSSProperties = onDrilldown
-    ? { cursor: 'pointer', borderRadius: 3, padding: '1px 0' }
-    : {};
-
-  // Expanded with both prompt and response: prompt gets up to 28% height, response fills rest
-  if (secondary) {
+  // agent_stop special case (matches EventCard)
+  if (event.type === 'agent_stop') {
     return (
-      <div className="flex flex-col min-h-0 overflow-hidden" style={{ flex: 1, gap: 6 }}>
-        {/* Companion prompt — bounded height so response always gets priority */}
-        <div
-          className="flex flex-col shrink-0"
-          style={{ maxHeight: totalCards === 1 ? '28%' : '20%', overflow: 'hidden', ...clickStyle }}
-          onClick={onDrilldown ? (e) => { e.stopPropagation(); onDrilldown(secondary.eventId); } : undefined}
-          title={onDrilldown ? 'View in Logs' : undefined}
-        >
-          <div style={OUTPUT_LABEL_STYLE}>{secondary.label}</div>
-          <div style={{ ...OUTPUT_TEXT_STYLE, flex: 1 }}>{secondary.text}</div>
-        </div>
-        {/* Divider */}
-        <div style={{ height: 1, background: 'var(--dash-border-subtle)', flexShrink: 0 }} />
-        {/* Primary response — fills remaining space */}
-        <div
-          className="flex flex-col min-h-0 overflow-hidden"
-          style={{ flex: 1, ...clickStyle }}
-          onClick={onDrilldown ? (e) => { e.stopPropagation(); onDrilldown(primary.eventId); } : undefined}
-          title={onDrilldown ? 'View in Logs' : undefined}
-        >
-          <div style={OUTPUT_LABEL_STYLE}>{primary.label}</div>
-          <div style={{ ...OUTPUT_TEXT_STYLE, flex: 1 }}>{primary.text}</div>
+      <div
+        className="mx-2 mb-0.5 rounded border border-[#30363d]/40 bg-[#0c1018] hover:bg-[#161b22] cursor-pointer transition-colors"
+        onClick={onClick}
+        onMouseEnter={onMouseEnter}
+        onMouseLeave={onMouseLeave}
+      >
+        <div className="flex items-center gap-1.5 px-2 py-1">
+          <span className="text-[9px] text-[#484f58] font-mono tabular-nums shrink-0 w-5 text-right">{globalIndex + 1}</span>
+          <span className="text-[#484f58] text-xs">—</span>
+          <span className="text-[10px] text-[#484f58] font-mono">agent stop</span>
+          <div className="flex-1" />
+          <span className="text-[9px] text-[#58a6ff]/70 font-mono tabular-nums shrink-0">{formatTime(event.timestamp)}</span>
         </div>
       </div>
     );
@@ -343,13 +376,148 @@ function LatestOutput({ events, totalCards, onDrilldown }: {
 
   return (
     <div
-      className="flex flex-col min-h-0 overflow-hidden"
-      style={{ flex: 1, ...clickStyle }}
-      onClick={onDrilldown ? (e) => { e.stopPropagation(); onDrilldown(primary.eventId); } : undefined}
-      title={onDrilldown ? 'View in Logs' : undefined}
+      className={`${bgClass} ${borderColor} ${borderWidth} mx-2 mb-0.5 rounded overflow-hidden transition-colors cursor-pointer ${
+        isPending ? 'ring-1 ring-[#d29922]/20' : ''
+      }`}
+      onClick={onClick}
+      onMouseEnter={onMouseEnter}
+      onMouseLeave={onMouseLeave}
     >
-      <div style={OUTPUT_LABEL_STYLE}>{primary.label}</div>
-      <div style={{ ...OUTPUT_TEXT_STYLE, flex: 1 }}>{primary.text}</div>
+      <div className="flex items-center gap-1.5 px-2 py-1">
+        {/* Sequence number */}
+        <span className="text-[9px] text-[#484f58] font-mono tabular-nums shrink-0 w-5 text-right">
+          {globalIndex + 1}
+        </span>
+
+        {/* Icon */}
+        <span className="text-xs shrink-0">{icon}</span>
+
+        {/* Type label */}
+        <span className="text-[10px] text-[#8b949e] font-mono shrink-0">
+          {event.type.replace(/_/g, ' ')}
+        </span>
+
+        {/* Tool name */}
+        {event.data.toolName && (
+          <>
+            <span className="text-[10px] text-[#484f58]">·</span>
+            <span className="text-[10px] font-semibold text-[#e6edf3] truncate min-w-0">
+              {event.data.toolName}
+            </span>
+          </>
+        )}
+
+        {/* Prompt preview (only when no tool name) */}
+        {event.data.prompt && !event.data.toolName && (
+          <span className="text-[10px] text-[#8b949e] truncate min-w-0 italic">
+            {(event.data.prompt as string).slice(0, 50)}
+          </span>
+        )}
+
+        {/* Source / notification / agent type labels */}
+        {event.data.source && (
+          <span className="text-[10px] text-[#8b949e] shrink-0">{event.data.source as string}</span>
+        )}
+        {event.data.notificationType && (
+          <span className="text-[10px] text-[#8b949e] shrink-0">{event.data.notificationType as string}</span>
+        )}
+
+        <div className="flex-1 min-w-0" />
+
+        {/* Risk badge */}
+        {event.riskLevel && event.riskLevel !== 'low' && (
+          <RiskBadge level={event.riskLevel} compact />
+        )}
+
+        {/* Decision badge */}
+        {event.data.decision && (
+          <span className={`text-[9px] font-medium shrink-0 ${
+            (event.data.decision as { decision: string }).decision === 'allow'
+              ? 'text-[#3fb950]'
+              : (event.data.decision as { decision: string }).decision === 'deny'
+                ? 'text-[#f85149]'
+                : 'text-[#8b949e]'
+          }`}>
+            {(event.data.decision as { decision: string }).decision.toUpperCase()}
+          </span>
+        )}
+
+        {/* Pending badge */}
+        {isPending && !event.data.decision && (
+          <span className="text-[9px] font-semibold text-[#d29922] animate-pulse shrink-0">
+            PENDING
+          </span>
+        )}
+
+        {/* Duration */}
+        {event.data.completedAt && (
+          <span className="text-[9px] text-[#484f58] font-mono tabular-nums shrink-0">
+            {formatDuration((event.data.completedAt as number) - event.timestamp)}
+          </span>
+        )}
+
+        {/* Timestamp */}
+        <span className="text-[9px] text-[#484f58] font-mono tabular-nums shrink-0">
+          {formatTime(event.timestamp)}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+/** Scrollable event feed replacing the old bottom sections */
+function DashboardEventFeed({
+  events,
+  sessionId,
+  onDrilldownToLogs,
+  maxItems,
+}: {
+  events: TimelineEvent[];
+  sessionId: string;
+  onDrilldownToLogs: (sessionId: string, eventId: string) => void;
+  maxItems: number;
+}) {
+  const [tooltip, setTooltip] = useState<{ content: string; x: number; y: number } | null>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  const filteredEvents = useMemo(
+    () => events.filter(e => e.type !== 'session_metrics').slice(-maxItems),
+    [events, maxItems]
+  );
+
+  // Keep newest entry visible
+  React.useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [filteredEvents.length]);
+
+  const handleMouseEnter = useCallback((event: TimelineEvent, e: React.MouseEvent) => {
+    const content = getTooltipContent(event);
+    if (content) {
+      setTooltip({ content, x: e.clientX, y: e.clientY });
+    }
+  }, []);
+
+  const handleMouseLeave = useCallback(() => {
+    setTooltip(null);
+  }, []);
+
+  if (filteredEvents.length === 0) return null;
+
+  return (
+    <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto py-1">
+      {filteredEvents.map((event, i) => (
+        <DashboardEventRow
+          key={event.id}
+          event={event}
+          globalIndex={i}
+          onClick={() => onDrilldownToLogs(sessionId, event.id)}
+          onMouseEnter={(e) => handleMouseEnter(event, e)}
+          onMouseLeave={handleMouseLeave}
+        />
+      ))}
+      {tooltip && <EventTooltip content={tooltip.content} x={tooltip.x} y={tooltip.y} />}
     </div>
   );
 }
@@ -403,16 +571,29 @@ export function SessionCard({
   const badge = AGENT_BADGES[session.agentType];
   const isActive = session.active !== false;
   const dragRef = useRef<HTMLDivElement>(null);
+  const chainContainerRef = useRef<HTMLDivElement>(null);
+  const [chainCapacity, setChainCapacity] = useState(6);
 
-  // Expanded mode: 1-2 sessions get more vertical space
-  const isExpanded = totalCards <= 2;
+  // Measure the chain container width and compute how many nodes fit.
+  // Each node is 28px, each connector is 12px → N nodes need (N-1)*40 + 28 px.
+  // Solving: capacity = floor((usableWidth + 12) / 40).
+  useEffect(() => {
+    const el = chainContainerRef.current;
+    if (!el) return;
+    const observer = new ResizeObserver(([entry]) => {
+      const usable = entry.contentRect.width;
+      setChainCapacity(Math.max(1, Math.floor((usable + 12) / 40)));
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
 
   const handleClick = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
     onFocus(session.sessionId);
   }, [onFocus, session.sessionId]);
 
-  // Count risk events
+  // Count risk events for the header summary
   const riskCounts = useMemo(() => {
     let medium = 0, high = 0;
     for (const e of events) {
@@ -546,12 +727,12 @@ export function SessionCard({
       </div>
 
       {/* Activity chain */}
-      <div className="px-3 shrink-0">
-        <MiniActivityChain events={events} onDrilldown={onDrilldown} sessionId={session.sessionId} />
+      <div ref={chainContainerRef} className="px-3 shrink-0" style={{ maxWidth: totalCards === 1 ? '50%' : '100%' }}>
+        <MiniActivityChain events={events} onDrilldown={onDrilldown} sessionId={session.sessionId} maxItems={chainCapacity} />
       </div>
 
       {/* Tool activity heatmap */}
-      <div className="px-3 shrink-0">
+      <div className="px-3 shrink-0" style={{ maxWidth: totalCards === 1 ? '50%' : '100%' }}>
         <ToolActivityHeatmap events={events} />
       </div>
 
@@ -561,16 +742,17 @@ export function SessionCard({
           events={events}
           onDrilldown={onDrilldown}
           sessionId={session.sessionId}
-          expanded={isExpanded}
+          expanded={totalCards <= 2}
         />
       </div>
 
-      {/* Latest output — flex-1 so it fills remaining card height */}
-      <div className="px-3 pb-3 flex-1 min-h-0 flex flex-col overflow-hidden">
-        <LatestOutput
+      {/* Event feed — Logs-style collapsed rows, fills remaining card height */}
+      <div className="px-1 pb-2 flex-1 min-h-0 flex flex-col overflow-hidden">
+        <DashboardEventFeed
           events={events}
-          totalCards={totalCards}
-          onDrilldown={(eventId) => onDrilldownToLogs(session.sessionId, eventId)}
+          sessionId={session.sessionId}
+          onDrilldownToLogs={onDrilldownToLogs}
+          maxItems={chainCapacity}
         />
       </div>
 
