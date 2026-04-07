@@ -201,7 +201,7 @@ export function EventCard({ event, index, isSelected, onClick, onSend, collapseH
 
         {/* Type label */}
         <span className="text-[11px] text-[#8b949e] font-mono shrink-0">
-          {event.type.replace(/_/g, ' ')}
+          {event.type.replace(/_/g, ' ')}{(event.type === 'drift_check' || event.type === 'drift_alert') && event.data.driftType ? ` - ${event.data.driftType === 'rules' ? 'rules' : 'session'}` : ''}
         </span>
 
         {/* Tool name if present */}
