@@ -73,10 +73,17 @@ function QuickStats({ events, focusedSessionId }: SidePanelProps) {
 }
 
 export function SidePanel({ events, focusedSessionId }: SidePanelProps) {
-  const { sessions, sessionMetrics } = useSessionStore(s => ({
+  const { sessions, sessionMetrics, dashboardDismissedSessions } = useSessionStore(s => ({
     sessions: s.sessions,
     sessionMetrics: s.sessionMetrics,
+    dashboardDismissedSessions: s.dashboardDismissedSessions,
   }));
+
+  // Match the same filter as dashboard session cards: active and not dismissed
+  const visibleSessions = useMemo(
+    () => sessions.filter(s => s.active !== false && !dashboardDismissedSessions.has(s.sessionId)),
+    [sessions, dashboardDismissedSessions],
+  );
 
   return (
     <div className="dash-side-panel flex flex-col h-full">
@@ -122,7 +129,7 @@ export function SidePanel({ events, focusedSessionId }: SidePanelProps) {
         </div>
         <EventDensityTimeline
           events={events}
-          sessions={sessions}
+          sessions={visibleSessions}
           focusedSessionId={focusedSessionId}
         />
       </div>

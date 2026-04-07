@@ -102,19 +102,25 @@ interface DriftMonitorPanelProps {
 }
 
 export function DriftMonitorPanel({ focusedSessionId }: DriftMonitorPanelProps) {
-  const { driftState, sessions, config, navigateFromDashboardToLogs } = useSessionStore((s) => ({
+  const { driftState, sessions, dashboardDismissedSessions, config, navigateFromDashboardToLogs } = useSessionStore((s) => ({
     driftState: s.driftState,
     sessions: s.sessions,
+    dashboardDismissedSessions: s.dashboardDismissedSessions,
     config: s.config,
     navigateFromDashboardToLogs: s.navigateFromDashboardToLogs,
   }));
 
   if (!config?.driftMonitoring?.enabled) return null;
 
+  // Match dashboard session card visibility: active and not dismissed
+  const visibleSessions = sessions.filter(
+    (s) => s.active !== false && !dashboardDismissedSessions.has(s.sessionId),
+  );
+
   // Determine which sessions to show
   const relevantSessionIds = focusedSessionId
     ? [focusedSessionId]
-    : sessions.map((s) => s.sessionId);
+    : visibleSessions.map((s) => s.sessionId);
 
   // Collect sessions that have drift data
   const sessionsWithData: Array<{ sessionId: string; ds: DriftState }> = [];
@@ -181,7 +187,7 @@ export function DriftMonitorPanel({ focusedSessionId }: DriftMonitorPanelProps) 
   return (
     <div className="space-y-1">
       {sessionsWithData.map(({ sessionId, ds }, idx) => {
-        const session = sessions.find((s) => s.sessionId === sessionId);
+        const session = visibleSessions.find((s) => s.sessionId === sessionId);
         const name = getSessionDisplayName(session, sessionId);
         return (
           <div key={sessionId}>

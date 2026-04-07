@@ -927,7 +927,7 @@ export function SettingsDrawer({ onSend }: SettingsDrawerProps) {
                   {/* Session drift thresholds */}
                   <div>
                     <span className="text-xs text-[#8b949e] block mb-1">Session drift thresholds</span>
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-1">
                       <span className="text-[10px]" style={{ color: '#00e676' }}>Green</span>
                       <input
                         type="number" min={0} max={100}
@@ -936,7 +936,7 @@ export function SettingsDrawer({ onSend }: SettingsDrawerProps) {
                           const v = parseInt(e.target.value, 10);
                           if (v >= 0 && v <= 100) updateConfig({ driftMonitoring: { ...config.driftMonitoring, sessionDriftThresholds: { ...config.driftMonitoring.sessionDriftThresholds, green: v } } });
                         }}
-                        className="w-10 px-1 py-1 text-xs text-center bg-[#0d1117] border border-[#30363d] rounded text-[#e6edf3] focus:outline-none focus:border-[#58a6ff]"
+                        className="w-12 px-1 py-1 text-xs text-center bg-[#0d1117] border border-[#30363d] rounded text-[#e6edf3] focus:outline-none focus:border-[#58a6ff]"
                       />
                       <span className="text-[10px]" style={{ color: '#ffb300' }}>Yellow</span>
                       <input
@@ -946,7 +946,7 @@ export function SettingsDrawer({ onSend }: SettingsDrawerProps) {
                           const v = parseInt(e.target.value, 10);
                           if (v >= 0 && v <= 100) updateConfig({ driftMonitoring: { ...config.driftMonitoring, sessionDriftThresholds: { ...config.driftMonitoring.sessionDriftThresholds, yellow: v } } });
                         }}
-                        className="w-10 px-1 py-1 text-xs text-center bg-[#0d1117] border border-[#30363d] rounded text-[#e6edf3] focus:outline-none focus:border-[#58a6ff]"
+                        className="w-12 px-1 py-1 text-xs text-center bg-[#0d1117] border border-[#30363d] rounded text-[#e6edf3] focus:outline-none focus:border-[#58a6ff]"
                       />
                       <span className="text-[10px]" style={{ color: '#ff9100' }}>Orange</span>
                       <input
@@ -956,7 +956,7 @@ export function SettingsDrawer({ onSend }: SettingsDrawerProps) {
                           const v = parseInt(e.target.value, 10);
                           if (v >= 0 && v <= 100) updateConfig({ driftMonitoring: { ...config.driftMonitoring, sessionDriftThresholds: { ...config.driftMonitoring.sessionDriftThresholds, orange: v } } });
                         }}
-                        className="w-10 px-1 py-1 text-xs text-center bg-[#0d1117] border border-[#30363d] rounded text-[#e6edf3] focus:outline-none focus:border-[#58a6ff]"
+                        className="w-12 px-1 py-1 text-xs text-center bg-[#0d1117] border border-[#30363d] rounded text-[#e6edf3] focus:outline-none focus:border-[#58a6ff]"
                       />
                       <span className="text-[10px]" style={{ color: '#ff3d57' }}>Red</span>
                     </div>
@@ -965,7 +965,7 @@ export function SettingsDrawer({ onSend }: SettingsDrawerProps) {
                   {/* Rules drift thresholds */}
                   <div>
                     <span className="text-xs text-[#8b949e] block mb-1">Rules drift thresholds</span>
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-1">
                       <span className="text-[10px]" style={{ color: '#00e676' }}>Green</span>
                       <input
                         type="number" min={0} max={100}
@@ -974,7 +974,7 @@ export function SettingsDrawer({ onSend }: SettingsDrawerProps) {
                           const v = parseInt(e.target.value, 10);
                           if (v >= 0 && v <= 100) updateConfig({ driftMonitoring: { ...config.driftMonitoring, rulesDriftThresholds: { ...config.driftMonitoring.rulesDriftThresholds, green: v } } });
                         }}
-                        className="w-10 px-1 py-1 text-xs text-center bg-[#0d1117] border border-[#30363d] rounded text-[#e6edf3] focus:outline-none focus:border-[#58a6ff]"
+                        className="w-12 px-1 py-1 text-xs text-center bg-[#0d1117] border border-[#30363d] rounded text-[#e6edf3] focus:outline-none focus:border-[#58a6ff]"
                       />
                       <span className="text-[10px]" style={{ color: '#ffb300' }}>Yellow</span>
                       <input
@@ -984,7 +984,7 @@ export function SettingsDrawer({ onSend }: SettingsDrawerProps) {
                           const v = parseInt(e.target.value, 10);
                           if (v >= 0 && v <= 100) updateConfig({ driftMonitoring: { ...config.driftMonitoring, rulesDriftThresholds: { ...config.driftMonitoring.rulesDriftThresholds, yellow: v } } });
                         }}
-                        className="w-10 px-1 py-1 text-xs text-center bg-[#0d1117] border border-[#30363d] rounded text-[#e6edf3] focus:outline-none focus:border-[#58a6ff]"
+                        className="w-12 px-1 py-1 text-xs text-center bg-[#0d1117] border border-[#30363d] rounded text-[#e6edf3] focus:outline-none focus:border-[#58a6ff]"
                       />
                       <span className="text-[10px]" style={{ color: '#ff9100' }}>Orange</span>
                       <input
@@ -994,7 +994,7 @@ export function SettingsDrawer({ onSend }: SettingsDrawerProps) {
                           const v = parseInt(e.target.value, 10);
                           if (v >= 0 && v <= 100) updateConfig({ driftMonitoring: { ...config.driftMonitoring, rulesDriftThresholds: { ...config.driftMonitoring.rulesDriftThresholds, orange: v } } });
                         }}
-                        className="w-10 px-1 py-1 text-xs text-center bg-[#0d1117] border border-[#30363d] rounded text-[#e6edf3] focus:outline-none focus:border-[#58a6ff]"
+                        className="w-12 px-1 py-1 text-xs text-center bg-[#0d1117] border border-[#30363d] rounded text-[#e6edf3] focus:outline-none focus:border-[#58a6ff]"
                       />
                       <span className="text-[10px]" style={{ color: '#ff3d57' }}>Red</span>
                     </div>
@@ -1090,7 +1090,7 @@ export function SettingsDrawer({ onSend }: SettingsDrawerProps) {
                 <div>
                   <span className="text-xs text-[#e6edf3]">Switch to newest session</span>
                   <p className="text-[10px] text-[#484f58] mt-0.5">
-                    Automatically select a newly connected session in the session selector
+                    In the Logs view, automatically select a newly connected session in the session selector
                   </p>
                 </div>
                 <div

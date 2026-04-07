@@ -147,11 +147,12 @@ export class DriftMonitor {
     }
   }
 
-  /** Called when a CLAUDE.md file is loaded */
+  /** Called when a CLAUDE.md or AGENTS.md file is loaded */
   async onInstructionsLoaded(sessionId: string, filePath: string): Promise<void> {
-    // Only cache CLAUDE.md files (not other instruction files)
+    // Only cache CLAUDE.md and AGENTS.md files (not other instruction files)
     const lowerPath = filePath.toLowerCase();
-    if (!lowerPath.includes('claude')) return;
+    const basename = lowerPath.split('/').pop() ?? lowerPath;
+    if (!basename.startsWith('claude') && !basename.startsWith('agents')) return;
 
     const content = await readFileContent(filePath);
     if (content) {
@@ -421,7 +422,7 @@ export class DriftMonitor {
     const rules = Array.from(state.claudeMdContents.entries())
       .map(([path, content]) => `[${path}]: ${content.slice(0, 500)}`)
       .join('\n');
-    return rules || 'No CLAUDE.md rules loaded';
+    return rules || 'No CLAUDE.md / AGENTS.md rules loaded';
   }
 
   private worstLevel(a: DriftLevel, b: DriftLevel): DriftLevel {

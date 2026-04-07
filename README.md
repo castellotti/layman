@@ -5,9 +5,10 @@
 * Monitor your AI assistants
 * Explain their actions in Layman's Terms
 * Analyze for risk, security, and safety automatically
-* Visualize live activity in a dashboard, logs, or flowchart
+* Evaluate "Drift" from user directives and `CLAUDE.md` (or `AGENTS.md`) instructions
+* Visualize and explore live activity in a dashboard, logs, or flowchart
 * Record and Bookmark sessions including user prompts and agent responses
-  * Opt-in required (per session)
+  * Opt-in required
   * PII filtered by default
 
 When AI coding assistants like Claude Code, Codex, OpenCode, Mistral Vibe, or Cline help you build software, they do it by reading your files, writing code, and performing dozens of actions per session.
@@ -39,21 +40,26 @@ Layman is a dashboard that explains exactly what your AI assistants are doing, i
 
 For Claude Code and Cline, Layman can intercept tool calls before they execute and ask for your approval. Enable this in **Settings → Auto-approve** to control which tools require a human decision.
 
-### Session summary
+### Drift monitoring
 
-Each session header shows an AI-generated plain-English summary of what the agent did - updated live as the session progresses and available in history. Click the summary to see previous versions and timestamps.
+Layman continuously monitors AI agent sessions for two kinds of drift:
+
+- **Session goal drift** - detects when the agent strays from what you asked it to do (scope creep, phantom file references, pattern breaks).
+- **Rules drift** - detects when the agent violates rules defined in your project's `CLAUDE.md` files (wrong commands, forbidden actions, convention breaks). `AGENTS.md` files are also supported for harnesses besides Claude Code.
+
+Drift scores are EMA-smoothed (alpha 0.3) to avoid reacting to one-off spikes. Scores map to four color levels (green → yellow → orange → red) with configurable thresholds. At **orange** the agent gets an in-context reminder; at **red** Layman can pause the agent entirely and require your approval to continue. Individual drift findings can be dismissed as false positives - dismissed items are fed back into the LLM prompt so they won't be re-flagged.
 
 ### Flowchart view
 
 Toggle between the event timeline and an interactive directed graph that shows how tool calls, agent responses, and user prompts connect. Pan and zoom with the mouse or keyboard, and click any node to open the Investigation panel for that event. Available for both live and historical sessions.
 
-### File and URL access tracking
-
-Layman tracks every file the agent reads or writes and every URL it fetches during a session, surfacing them in a dedicated access panel so you can see exactly what was touched.
-
 ### AI analysis
 
 Layman can use an AI model to classify the risk level of each action, explain what it means in plain language, and flag anything that looks risky. Auto-analysis and auto-explain can be configured independently in **Settings → Analysis**, with severity thresholds (All / Medium+ / High only) and detail level (Quick / Detailed).
+
+### Session summary
+
+Each session header shows an AI-generated plain-English summary of what the agent did - updated live as the session progresses and available in history. Click the summary to see previous versions and timestamps.
 
 ### Session metrics
 
@@ -61,20 +67,13 @@ When connected to Claude Code, the dashboard shows a live metrics bar with model
 
 Past sessions are recorded to a local SQLite database. Open the **Sessions** panel (clock icon) to browse history and see a time breakdown per session (total time, time the agent was active, time waiting on you, and idle time). Search across all sessions with full-text search and filter by event type. Search supports `+required`, `-excluded`, and `"quoted phrases"`.
 
+### File and URL access tracking
+
+Layman tracks every file the agent reads or writes and every URL it fetches during a session, surfacing them in a dedicated access panel so you can see exactly what was touched.
+
 ### PII filter
 
 All logged events are automatically scanned for personally identifiable information (email addresses, API keys, passwords, credit card numbers, etc.) and redacted before storage. Toggle in **Settings → Session Recording → PII Filter**.
-
-### Drift monitoring
-
-Layman continuously monitors AI agent sessions for two kinds of drift:
-
-- **Session goal drift** — detects when the agent strays from what you asked it to do (scope creep, phantom file references, pattern breaks).
-- **Rules drift** — detects when the agent violates rules defined in your project's `CLAUDE.md` files (wrong commands, forbidden actions, convention breaks).
-
-Drift scores are EMA-smoothed (alpha 0.3) to avoid reacting to one-off spikes. Scores map to four color levels (green → yellow → orange → red) with configurable thresholds. At **orange** the agent gets an in-context reminder; at **red** Layman can pause the agent entirely and require your approval to continue. Individual drift findings can be dismissed as false positives — dismissed items are fed back into the LLM prompt so they won't be re-flagged.
-
-Configure in **Settings → Drift Monitoring**: enable/disable, check interval (tool calls and minutes), threshold levels, block-on-red, and remind-on-orange.
 
 ### Session export
 
@@ -84,30 +83,35 @@ Export a session as a PDF transcript using the print button in the session view.
 
 ## Dashboard Icons
 
-| Icon | Meaning |
-|------|---------|
-| ⚡ | Tool call pending approval |
-| ✅ | Tool call approved |
-| ❌ | Tool call denied |
-| ⏭ | Tool call delegated (auto-allowed) |
-| ✓ | Tool call completed |
-| ✗ | Tool call failed |
-| 🔐 | Permission request (Claude asking for explicit approval) |
-| 💬 | User prompt |
-| 🤖 | Agent response |
-| — | Agent stopped |
-| 🟢 | Session started |
-| ⬜ | Session ended |
-| 🔔 | Notification |
-| 🔀 | Subagent started / stopped |
-| ⚠ | Stop failure |
-| 📦 | Context compacted |
-| 📋 | Elicitation (structured input request) |
-| 🔍 | Analysis result |
-| 📐 | Drift check completed |
-| 🚨 | Drift alert (level changed) |
+| Icon | Meaning                                                  |
+|------|----------------------------------------------------------|
+| ⚡    | Tool call pending approval                               |
+| ✅    | Tool call approved                                       |
+| ❌    | Tool call denied                                         |
+| ⏭    | Tool call delegated (auto-allowed)                       |
+| ✓    | Tool call completed                                      |
+| ✗    | Tool call failed                                         |
+| 🔐   | Permission request (Claude asking for explicit approval) |
+| 💬   | User prompt                                              |
+| 🤖   | Agent response                                           |
+| -    | Agent stopped                                            |
+| 🟢   | Session started                                          |
+| ⬜    | Session ended                                            |
+| 🔔   | Notification                                             |
+| 🔀   | Subagent started / stopped                               |
+| ⚠    | Stop failure                                             |
+| 📦   | Context compacted                                        |
+| 📋   | Elicitation (structured input request)                   |
+| 🔍   | Analysis result                                          |
+| 📐   | Drift check completed                                    |
+| 🚨   | Drift alert (level changed)                              |
 
-Agent badges in session cards: **CC** = Claude Code · **CX** = Codex · **OC** = OpenCode · **MV** = Mistral Vibe · **CL** = Cline
+Agent badges in session cards:
+* **CC** = Claude Code
+* **CX** = Codex
+* **OC** = OpenCode
+* **MV** = Mistral Vibe
+* **CL** = Cline
 
 ---
 
@@ -169,13 +173,13 @@ A banner will appear in the dashboard if your hooks or commands are out of date 
 
 Layman runs in Docker but needs read/write access to several directories on your host machine so it can install hooks and watch agent log files:
 
-| Mount | Purpose |
-|---|---|
-| `~/.claude` | Read/write Claude Code hooks, slash commands, and the StatusLine relay script |
-| `~/.config` | Detect and write commands for XDG-based clients (e.g. OpenCode) |
-| `~/.vibe` | Detect Mistral Vibe and tail its session log files for passive monitoring |
-| `~/Documents/Cline` | Detect Cline and write hook scripts to `~/Documents/Cline/Hooks/` |
-| `~/.codex` | Detect Codex and write hook scripts and `~/.codex/hooks.json` entries |
+| Mount               | Purpose                                                                       |
+|---------------------|-------------------------------------------------------------------------------|
+| `~/.claude`         | Read/write Claude Code hooks, slash commands, and the StatusLine relay script |
+| `~/.config`         | Detect and write commands for XDG-based clients (e.g. OpenCode)               |
+| `~/.vibe`           | Detect Mistral Vibe and tail its session log files for passive monitoring     |
+| `~/Documents/Cline` | Detect Cline and write hook scripts to `~/Documents/Cline/Hooks/`             |
+| `~/.codex`          | Detect Codex and write hook scripts and `~/.codex/hooks.json` entries         |
 
 Layman only writes inside these directories when you explicitly click **Install** in Settings. Nothing is written automatically on startup.
 
@@ -278,7 +282,7 @@ Vibe has no hook or plugin system, so Layman monitors it passively by watching V
 
 **No activation step is needed.** When the Layman server is running, any active Vibe session is automatically monitored. Events appear in the dashboard within a few seconds of each turn.
 
-- Layman watches `~/.vibe/logs/session/` for new JSONL messages
+- Layman watches `~/.vibe/logs/session/` for new `JSONL` messages
 - Sessions that started within the last 5 minutes are replayed from the beginning
 - Sessions idle for more than 15 minutes are treated as ended
 
