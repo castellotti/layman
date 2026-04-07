@@ -12,6 +12,7 @@ export interface PendingApproval {
   cwd: string;
   timestamp: number;
   analysis?: AnalysisResult;
+  isDriftBlock?: boolean;
   resolve: (decision: ApprovalDecision) => void;
   promise: Promise<ApprovalDecision>;
 }
@@ -24,6 +25,7 @@ export interface PendingApprovalDTO {
   timestamp: number;
   analysis?: AnalysisResult;
   riskLevel?: 'low' | 'medium' | 'high';
+  isDriftBlock?: boolean;
 }
 
 export class PendingApprovalManager extends EventEmitter {
@@ -37,7 +39,8 @@ export class PendingApprovalManager extends EventEmitter {
 
   async createAndWait(
     input: PreToolUseInput | PermissionRequestInput,
-    timeoutOverride?: number
+    timeoutOverride?: number,
+    options?: { isDriftBlock?: boolean }
   ): Promise<ApprovalDecision> {
     const id = randomUUID();
     let resolve!: (d: ApprovalDecision) => void;
@@ -53,6 +56,7 @@ export class PendingApprovalManager extends EventEmitter {
       sessionId: input.session_id,
       cwd: input.cwd,
       timestamp: Date.now(),
+      isDriftBlock: options?.isDriftBlock,
       resolve,
       promise,
     };
@@ -102,7 +106,19 @@ export class PendingApprovalManager extends EventEmitter {
       toolInput: a.toolInput,
       timestamp: a.timestamp,
       analysis: a.analysis,
+      isDriftBlock: a.isDriftBlock,
     }));
+  }
+
+  releaseDriftBlocks(): string[] {
+    const released: string[] = [];
+    for (const [id, approval] of this.pending) {
+      if (approval.isDriftBlock) {
+        this.resolveApproval(id, { decision: 'allow', reason: 'Drift blocking disabled via config' });
+        released.push(id);
+      }
+    }
+    return released;
   }
 
   get size(): number {

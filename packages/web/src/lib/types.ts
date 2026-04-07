@@ -177,6 +177,7 @@ export interface PendingApprovalDTO {
   timestamp: number;
   analysis?: AnalysisResult;
   riskLevel?: 'low' | 'medium' | 'high';
+  isDriftBlock?: boolean;
 }
 
 export interface SessionStatus {

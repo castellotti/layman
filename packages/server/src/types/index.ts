@@ -101,4 +101,5 @@ export type ClientMessage =
   | { type: 'config:update'; config: Partial<LaymanConfig> }
   | { type: 'setup:install'; clients?: string[] }
   | { type: 'bookmarks:get' }
-  | { type: 'drift:reset'; sessionId: string };
+  | { type: 'drift:reset'; sessionId: string }
+  | { type: 'drift:dismiss'; sessionId: string; approvalId: string };

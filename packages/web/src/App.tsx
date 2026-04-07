@@ -10,6 +10,7 @@ import { SetupModal } from './components/layout/SetupModal.js';
 import { SettingsDrawer } from './components/controls/SettingsDrawer.js';
 import { BookmarksPanel } from './components/bookmarks/BookmarksPanel.js';
 import { AccessLogPanel } from './components/access/AccessLogPanel.js';
+import { DriftBlockDialog } from './components/drift/DriftBlockDialog.js';
 import { useSessionStore } from './stores/sessionStore.js';
 import { useWebSocket } from './hooks/useWebSocket.js';
 import { usePendingApprovals } from './hooks/usePendingApprovals.js';
@@ -150,6 +151,7 @@ export function App() {
         <BookmarksPanel onSend={send} />
         <AccessLogPanel />
         <SetupModal />
+        <DriftBlockDialog onSend={send} />
       </div>
     );
   }
@@ -246,6 +248,9 @@ export function App() {
 
       {/* First-run setup modal */}
       <SetupModal />
+
+      {/* Drift block pop-up */}
+      <DriftBlockDialog onSend={send} />
     </div>
   );
 }

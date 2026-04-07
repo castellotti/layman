@@ -516,6 +516,19 @@ export function EventCard({ event, index, isSelected, onClick, onSend, collapseH
             </div>
           )}
 
+          {/* Drift alert approval controls */}
+          {event.type === 'drift_alert' && !event.data.decision && (() => {
+            const driftApproval = approvals.find((a) => a.isDriftBlock);
+            if (!driftApproval) return null;
+            return (
+              <DriftApprovalBar
+                approvalId={driftApproval.id}
+                sessionId={event.sessionId}
+                onSend={onSend}
+              />
+            );
+          })()}
+
           {/* Analysis card */}
           {event.analysis && (
             <div className="bg-[#0d1117] border border-[#30363d] rounded-md p-3">
@@ -536,6 +549,67 @@ export function EventCard({ event, index, isSelected, onClick, onSend, collapseH
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+function DriftApprovalBar({
+  approvalId,
+  sessionId,
+  onSend,
+}: {
+  approvalId: string;
+  sessionId: string;
+  onSend: (msg: ClientMessage) => void;
+}) {
+  const [decided, setDecided] = useState(false);
+
+  if (decided) {
+    return <div className="text-xs text-[#8b949e] italic pt-1">Decision sent — waiting for agent to continue...</div>;
+  }
+
+  const handleContinue = () => {
+    setDecided(true);
+    onSend({ type: 'approval:decide', approvalId, decision: { decision: 'allow' } });
+  };
+
+  const handleDismiss = () => {
+    setDecided(true);
+    onSend({ type: 'drift:dismiss', sessionId, approvalId });
+  };
+
+  const handleDeny = () => {
+    setDecided(true);
+    onSend({ type: 'approval:decide', approvalId, decision: { decision: 'deny', reason: 'Drift threshold exceeded' } });
+  };
+
+  return (
+    <div className="pt-2 space-y-2">
+      <div className="flex gap-2">
+        <button
+          onClick={handleContinue}
+          className="flex-1 px-3 py-2 text-xs font-semibold rounded-md bg-[#238636] hover:bg-[#2ea043] text-white transition-colors border border-[#3fb950]/30"
+        >
+          Continue
+        </button>
+        <button
+          onClick={handleDismiss}
+          className="flex-1 px-3 py-2 text-xs font-semibold rounded-md transition-colors border"
+          style={{
+            background: 'rgba(210, 153, 34, 0.15)',
+            borderColor: 'rgba(210, 153, 34, 0.3)',
+            color: '#d29922',
+          }}
+        >
+          Dismiss as False Positive
+        </button>
+        <button
+          onClick={handleDeny}
+          className="flex-1 px-3 py-2 text-xs font-semibold rounded-md bg-[#da3633]/20 hover:bg-[#da3633]/30 text-[#f85149] transition-colors border border-[#f85149]/30"
+        >
+          Deny
+        </button>
+      </div>
     </div>
   );
 }

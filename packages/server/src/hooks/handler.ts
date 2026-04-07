@@ -366,7 +366,7 @@ async function handlePreToolUse(
         driftLevel: 'red',
       }, 'high', agentType);
 
-      const decision: ApprovalDecision = await pendingManager.createAndWait(input);
+      const decision: ApprovalDecision = await pendingManager.createAndWait(input, undefined, { isDriftBlock: true });
 
       const finalType =
         decision.decision === 'allow' ? 'tool_call_approved'

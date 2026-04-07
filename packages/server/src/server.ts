@@ -1133,11 +1133,19 @@ export function createServer(config: LaymanConfig): LaymanServer {
         break;
       }
       case 'config:update': {
+        const prevDriftEnabled = activeConfig.driftMonitoring.enabled;
+        const prevBlockOnRed = activeConfig.driftMonitoring.blockOnRed;
         activeConfig = updateConfig(message.config);
         analysisEngine.configure(activeConfig.analysis);
         pendingManager.setHookTimeout(activeConfig.hookTimeout);
         saveConfig(activeConfig);
         broadcast({ type: 'session:config', config: activeConfig });
+        // Release drift blocks if drift blocking was effectively disabled
+        const wasDriftBlocking = prevDriftEnabled && prevBlockOnRed;
+        const isDriftBlocking = activeConfig.driftMonitoring.enabled && activeConfig.driftMonitoring.blockOnRed;
+        if (wasDriftBlocking && !isDriftBlocking) {
+          pendingManager.releaseDriftBlocks();
+        }
         break;
       }
       case 'setup:install': {
@@ -1173,6 +1181,14 @@ export function createServer(config: LaymanConfig): LaymanServer {
       }
       case 'drift:reset': {
         driftMonitor.resetScores(message.sessionId);
+        break;
+      }
+      case 'drift:dismiss': {
+        driftMonitor.resetScores(message.sessionId);
+        pendingManager.resolveApproval(message.approvalId, {
+          decision: 'allow',
+          reason: 'Dismissed as false positive — drift scores reset',
+        });
         break;
       }
     }
