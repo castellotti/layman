@@ -10,15 +10,17 @@ import { SetupModal } from './components/layout/SetupModal.js';
 import { SettingsDrawer } from './components/controls/SettingsDrawer.js';
 import { BookmarksPanel } from './components/bookmarks/BookmarksPanel.js';
 import { AccessLogPanel } from './components/access/AccessLogPanel.js';
+import { DriftBlockDialog } from './components/drift/DriftBlockDialog.js';
 import { useSessionStore } from './stores/sessionStore.js';
 import { useWebSocket } from './hooks/useWebSocket.js';
 import { usePendingApprovals } from './hooks/usePendingApprovals.js';
 import type { SetupStatus } from './lib/types.js';
 
 function StatusBar() {
-  const { events, sessionStatus } = useSessionStore((s) => ({
+  const { events, sessionStatus, serverVersion } = useSessionStore((s) => ({
     events: s.events,
     sessionStatus: s.sessionStatus,
+    serverVersion: s.serverVersion,
   }));
   const { count } = usePendingApprovals();
 
@@ -38,7 +40,7 @@ function StatusBar() {
           </>
         )}
       </div>
-      <span className="text-[#484f58]">Layman v0.1.0</span>
+      <span className="text-[#484f58]">Layman {serverVersion ? `v${serverVersion}` : ''}</span>
     </div>
   );
 }
@@ -150,6 +152,7 @@ export function App() {
         <BookmarksPanel onSend={send} />
         <AccessLogPanel />
         <SetupModal />
+        <DriftBlockDialog onSend={send} />
       </div>
     );
   }
@@ -246,6 +249,9 @@ export function App() {
 
       {/* First-run setup modal */}
       <SetupModal />
+
+      {/* Drift block pop-up */}
+      <DriftBlockDialog onSend={send} />
     </div>
   );
 }

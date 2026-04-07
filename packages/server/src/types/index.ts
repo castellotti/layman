@@ -21,6 +21,7 @@ export type { PendingApproval, PendingApprovalDTO } from '../hooks/pending.js';
 export type { LaymanConfig } from '../config/schema.js';
 export type { BookmarkFolder, Bookmark, RecordedSession, QAEntry } from '../db/types.js';
 export type { SessionTimeMetrics } from '../db/time-metrics.js';
+export type { DriftLevel, DriftState, DriftThresholds, DriftCheckResult, DriftPreToolUseResult } from '../drift/types.js';
 
 // WebSocket protocol types
 import type { TimelineEvent } from '../events/types.js';
@@ -31,6 +32,7 @@ import type { LaymanConfig } from '../config/schema.js';
 import type { LaymansResult } from '../analysis/types.js';
 import type { SessionInfo } from '../events/store.js';
 import type { BookmarkFolder, Bookmark } from '../db/types.js';
+import type { DriftState } from '../drift/types.js';
 
 export interface SessionStatus {
   connected: boolean;
@@ -87,7 +89,8 @@ export type ServerMessage =
   | { type: 'bookmarks:folder:deleted'; folderId: string }
   | { type: 'bookmarks:created'; bookmark: Bookmark }
   | { type: 'bookmarks:updated'; bookmark: Bookmark }
-  | { type: 'bookmarks:deleted'; bookmarkId: string };
+  | { type: 'bookmarks:deleted'; bookmarkId: string }
+  | { type: 'drift:update'; sessionId: string; state: DriftState };
 
 export type ClientMessage =
   | { type: 'approval:decide'; approvalId: string; decision: ApprovalDecision }
@@ -97,4 +100,7 @@ export type ClientMessage =
   | { type: 'analysis:ask'; eventId: string; question: string }
   | { type: 'config:update'; config: Partial<LaymanConfig> }
   | { type: 'setup:install'; clients?: string[] }
-  | { type: 'bookmarks:get' };
+  | { type: 'bookmarks:get' }
+  | { type: 'drift:reset'; sessionId: string }
+  | { type: 'drift:dismiss'; sessionId: string; approvalId: string }
+  | { type: 'drift:dismiss-item'; sessionId: string; category: 'indicator' | 'patternBreak' | 'phantomReference' | 'violation'; value: string };

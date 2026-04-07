@@ -6,6 +6,13 @@ export const AGENT_BADGES: Record<string, { label: string; color: string }> = {
   'cline':         { label: 'CL', color: 'text-[#79c0ff] bg-[#79c0ff]/10 border-[#79c0ff]/20' },
 };
 
+export const DRIFT_COLORS: Record<string, string> = {
+  green: '#00e676',
+  yellow: '#ffb300',
+  orange: '#ff9100',
+  red: '#ff3d57',
+};
+
 export const EVENT_ICONS: Record<string, string> = {
   tool_call_pending: '⚡',
   tool_call_approved: '✅',
@@ -28,6 +35,8 @@ export const EVENT_ICONS: Record<string, string> = {
   elicitation: '📋',
   elicitation_result: '📋',
   analysis_result: '🔍',
+  drift_check: '📐',
+  drift_alert: '🚨',
 };
 
 export const BORDER_COLORS: Record<string, string> = {
@@ -52,6 +61,8 @@ export const BORDER_COLORS: Record<string, string> = {
   elicitation: 'border-l-[#58a6ff]',
   elicitation_result: 'border-l-[#58a6ff]',
   analysis_result: 'border-l-[#8b949e]',
+  drift_check: 'border-l-[#d29922]',
+  drift_alert: 'border-l-[#f85149]',
 };
 
 /** Raw hex colors for flowchart node borders (same palette as BORDER_COLORS but as hex values) */
@@ -77,4 +88,6 @@ export const NODE_BORDER_COLORS: Record<string, string> = {
   elicitation: '#58a6ff',
   elicitation_result: '#58a6ff',
   analysis_result: '#8b949e',
+  drift_check: '#d29922',
+  drift_alert: '#f85149',
 };

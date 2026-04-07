@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { TimelineEvent, PendingApprovalDTO, LaymanConfig, SessionStatus, SetupStatus, BookmarkFolder, Bookmark, SessionTimeMetrics, SessionAccessLog, SessionMetrics } from '../lib/types.js';
+import type { TimelineEvent, PendingApprovalDTO, LaymanConfig, SessionStatus, SetupStatus, BookmarkFolder, Bookmark, SessionTimeMetrics, SessionAccessLog, SessionMetrics, DriftState } from '../lib/types.js';
 import type { SessionInfo } from '../lib/ws-protocol.js';
 
 interface InvestigationState {
@@ -77,6 +77,9 @@ interface SessionState {
   // Session metrics from StatusLine (latest per session)
   sessionMetrics: Map<string, SessionMetrics>;
 
+  // Drift monitoring state (latest per session)
+  driftState: Map<string, DriftState>;
+
   // Session summary
   sessionSummary: string | null;
   sessionSummaryHistory: Array<{ summary: string; generatedAt: number; sessionId: string | null }>;
@@ -134,6 +137,7 @@ interface SessionState {
   fetchSessionSummary: (sessionId: string | null, model?: string) => Promise<void>;
   clearSessionSummary: () => void;
   clearSessionSummaryError: () => void;
+  setDriftState: (sessionId: string, state: DriftState) => void;
 }
 
 export const useSessionStore = create<SessionState>((set) => ({
@@ -184,6 +188,8 @@ export const useSessionStore = create<SessionState>((set) => ({
   accessLogData: null,
 
   sessionMetrics: new Map(),
+
+  driftState: new Map(),
 
   sessionSummary: null,
   sessionSummaryHistory: [],
@@ -542,4 +548,11 @@ export const useSessionStore = create<SessionState>((set) => ({
       set({ isSummarizingSession: false });
     }
   },
+
+  setDriftState: (sessionId, driftData) =>
+    set((prev) => {
+      const newMap = new Map(prev.driftState);
+      newMap.set(sessionId, driftData);
+      return { driftState: newMap };
+    }),
 }));

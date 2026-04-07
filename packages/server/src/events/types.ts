@@ -1,5 +1,6 @@
 import type { ApprovalDecision } from '../hooks/types.js';
 import type { AnalysisResult, LaymansResult } from '../analysis/types.js';
+import type { DriftLevel } from '../drift/types.js';
 
 export type EventType =
   | 'tool_call_pending'
@@ -36,7 +37,10 @@ export type EventType =
   | 'cwd_changed'
   | 'file_changed'
   // Phase 4: StatusLine metrics
-  | 'session_metrics';
+  | 'session_metrics'
+  // Drift monitoring
+  | 'drift_check'
+  | 'drift_alert';
 
 export interface PermissionSuggestion {
   type: string;
@@ -111,6 +115,16 @@ export interface EventData {
   rateLimit7dayResetsAt?: string;
   sessionName?: string;
   claudeCodeVersion?: string;
+  // Drift monitoring
+  driftType?: 'session_goal' | 'rules';
+  driftPct?: number;
+  driftLevel?: DriftLevel;
+  driftPreviousLevel?: DriftLevel;
+  driftSummary?: string;
+  driftIndicators?: string[];
+  driftViolations?: Array<{ rule: string; action: string; severity: string }>;
+  driftPhantomRefs?: string[];
+  driftPatternBreaks?: string[];
 }
 
 export interface TimelineEvent {

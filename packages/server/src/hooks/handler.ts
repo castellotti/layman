@@ -42,6 +42,7 @@ import type {
   ApprovalDecision,
 } from './types.js';
 import type { LaymanConfig } from '../config/schema.js';
+import type { DriftMonitor } from '../drift/monitor.js';
 
 const AUTO_ALLOW_TOOLS = new Set(['Read', 'Glob', 'Grep', 'WebSearch']);
 
@@ -65,7 +66,8 @@ export function registerHookHandler(
   eventStore: EventStore,
   analysisEngine: AnalysisEngine,
   getConfig: () => LaymanConfig,
-  gate: SessionGate
+  gate: SessionGate,
+  driftMonitor?: DriftMonitor
 ): void {
   fastify.post<{ Params: { eventName: string }; Body: Record<string, unknown> }>(
     '/hooks/:eventName',
@@ -185,11 +187,11 @@ export function registerHookHandler(
         switch (eventName) {
           case 'PreToolUse': {
             const input = body as unknown as PreToolUseInput;
-            const response = await handlePreToolUse(input, pendingManager, eventStore, analysisEngine, getConfig, agentType);
+            const response = await handlePreToolUse(input, pendingManager, eventStore, analysisEngine, getConfig, agentType, driftMonitor);
             return reply.send(response);
           }
           case 'PostToolUse': {
-            await handlePostToolUse(body as unknown as PostToolUseInput, eventStore, agentType);
+            await handlePostToolUse(body as unknown as PostToolUseInput, eventStore, agentType, driftMonitor, getConfig);
             return reply.status(200).send({});
           }
           case 'PostToolUseFailure': {
@@ -210,7 +212,7 @@ export function registerHookHandler(
             return reply.status(200).send({});
           }
           case 'SessionEnd': {
-            await handleSessionEnd(body as unknown as SessionEndInput, eventStore, gate, agentType);
+            await handleSessionEnd(body as unknown as SessionEndInput, eventStore, gate, agentType, driftMonitor);
             return reply.status(200).send({});
           }
           case 'Stop': {
@@ -218,7 +220,7 @@ export function registerHookHandler(
             return reply.status(200).send({});
           }
           case 'UserPromptSubmit': {
-            await handleUserPromptSubmit(body as unknown as UserPromptSubmitInput, eventStore, agentType);
+            await handleUserPromptSubmit(body as unknown as UserPromptSubmitInput, eventStore, agentType, driftMonitor, getConfig);
             return reply.status(200).send({});
           }
           case 'SubagentStart': {
@@ -267,7 +269,7 @@ export function registerHookHandler(
             return reply.status(200).send({});
           }
           case 'InstructionsLoaded': {
-            await handleInstructionsLoaded(body as unknown as InstructionsLoadedInput, eventStore, agentType);
+            await handleInstructionsLoaded(body as unknown as InstructionsLoadedInput, eventStore, agentType, driftMonitor, getConfig);
             return reply.status(200).send({});
           }
           case 'TaskCreated': {
@@ -321,13 +323,29 @@ export function registerHookHandler(
   );
 }
 
+function computeShouldAutoAllow(
+  config: LaymanConfig,
+  toolName: string,
+  toolInput: Record<string, unknown>,
+  riskLevel: string,
+): boolean {
+  return (
+    config.autoApprove === 'all' ||
+    (config.autoApprove === 'medium' && (riskLevel === 'low' || riskLevel === 'medium')) ||
+    (config.autoApprove === 'low' && riskLevel === 'low') ||
+    (config.autoAllow.readOnly && AUTO_ALLOW_TOOLS.has(toolName)) ||
+    isAutoAllowedByPattern(toolName, toolInput, config.autoAllow.trustedCommands)
+  );
+}
+
 async function handlePreToolUse(
   input: PreToolUseInput,
   pendingManager: PendingApprovalManager,
   eventStore: EventStore,
   analysisEngine: AnalysisEngine,
   getConfig: () => LaymanConfig,
-  agentType: string = 'claude-code'
+  agentType: string = 'claude-code',
+  driftMonitor?: DriftMonitor
 ): Promise<PreToolUseResponse> {
   const config = getConfig();
   const riskLevel = classifyRisk(input.tool_name, input.tool_input);
@@ -335,13 +353,67 @@ async function handlePreToolUse(
   // Emit any assistant "thinking" text that preceded this tool call
   await emitNewAssistantMessages(input.transcript_path, input.session_id, eventStore, agentType);
 
+  // --- Drift monitoring intervention ---
+  let driftReminder: string | undefined;
+
+  if (driftMonitor && config.driftMonitoring?.enabled) {
+    const driftResult = driftMonitor.checkPreToolUse(input.session_id);
+
+    if (driftResult.shouldBlock) {
+      // Red level: block the agent via pending approval
+      eventStore.add('drift_alert', input.session_id, {
+        driftSummary: driftResult.reason,
+        driftLevel: 'red',
+      }, 'high', agentType);
+
+      const decision: ApprovalDecision = await pendingManager.createAndWait(input, undefined, { isDriftBlock: true });
+
+      const finalType =
+        decision.decision === 'allow' ? 'tool_call_approved'
+        : decision.decision === 'deny' ? 'tool_call_denied'
+        : 'tool_call_delegated';
+
+      eventStore.add(finalType, input.session_id, {
+        toolName: input.tool_name,
+        toolInput: input.tool_input,
+        decision,
+      }, riskLevel, agentType);
+
+      return {
+        hookSpecificOutput: {
+          hookEventName: 'PreToolUse',
+          permissionDecision: decision.decision,
+          permissionDecisionReason: decision.reason ?? driftResult.reason,
+          updatedInput: decision.updatedInput,
+        },
+      };
+    }
+
+    // Orange level: non-blocking reminder via permissionDecisionReason
+    if (driftResult.shouldRemind) {
+      const shouldAutoAllow = computeShouldAutoAllow(config, input.tool_name, input.tool_input, riskLevel);
+
+      if (shouldAutoAllow) {
+        eventStore.add('tool_call_approved', input.session_id, {
+          toolName: input.tool_name,
+          toolInput: input.tool_input,
+        }, riskLevel, agentType);
+
+        return {
+          hookSpecificOutput: {
+            hookEventName: 'PreToolUse',
+            permissionDecision: 'allow',
+            permissionDecisionReason: `[Drift Monitor] ${driftResult.reason}. Key rules: ${(driftResult.rulesSummary ?? '').slice(0, 500)}`,
+          },
+        };
+      }
+      // Not auto-allowed: capture drift context for pending approval flow
+      driftReminder = `[Drift Monitor] ${driftResult.reason}`;
+    }
+  }
+
   // Check auto-allow rules
-  const shouldAutoAllow =
-    config.autoApprove === 'all' ||
-    (config.autoApprove === 'medium' && (riskLevel === 'low' || riskLevel === 'medium')) ||
-    (config.autoApprove === 'low' && riskLevel === 'low') ||
-    (config.autoAllow.readOnly && AUTO_ALLOW_TOOLS.has(input.tool_name)) ||
-    isAutoAllowedByPattern(input.tool_name, input.tool_input, config.autoAllow.trustedCommands);
+  const shouldAutoAllow = computeShouldAutoAllow(config, input.tool_name, input.tool_input, riskLevel);
 
   const shouldAnalyze =
     config.autoAnalyze === 'all' ||
@@ -413,7 +485,7 @@ async function handlePreToolUse(
     hookSpecificOutput: {
       hookEventName: 'PreToolUse',
       permissionDecision: decision.decision,
-      permissionDecisionReason: decision.reason,
+      permissionDecisionReason: decision.reason ?? driftReminder,
       updatedInput: decision.updatedInput,
     },
   };
@@ -487,7 +559,9 @@ async function triggerLaymans(
 async function handlePostToolUse(
   input: PostToolUseInput,
   eventStore: EventStore,
-  agentType: string = 'claude-code'
+  agentType: string = 'claude-code',
+  driftMonitor?: DriftMonitor,
+  getConfig?: () => LaymanConfig
 ): Promise<void> {
   // Find the pending event to update it
   const events = eventStore.getAll();
@@ -533,6 +607,16 @@ async function handlePostToolUse(
     if (filesWithId || urlsWithId) {
       eventStore.recordAccess(input.session_id, filesWithId ?? [], urlsWithId ?? []);
     }
+  }
+
+  // Notify drift monitor of completed tool call
+  if (driftMonitor && getConfig?.().driftMonitoring?.enabled) {
+    driftMonitor.onToolCallCompleted(
+      input.session_id,
+      input.tool_name,
+      input.tool_input,
+      input.tool_output,
+    );
   }
 }
 
@@ -649,11 +733,13 @@ async function handleSessionEnd(
   input: SessionEndInput,
   eventStore: EventStore,
   gate: SessionGate,
-  agentType: string = 'claude-code'
+  agentType: string = 'claude-code',
+  driftMonitor?: DriftMonitor
 ): Promise<void> {
   eventStore.add('session_end', input.session_id, {}, undefined, agentType);
   gate.deactivate(input.session_id);
   transcriptWatermarks.delete(input.transcript_path);
+  if (driftMonitor) driftMonitor.reset(input.session_id);
 }
 
 async function handleStop(
@@ -805,7 +891,9 @@ async function emitNewAssistantMessages(
 async function handleUserPromptSubmit(
   input: UserPromptSubmitInput,
   eventStore: EventStore,
-  agentType: string = 'claude-code'
+  agentType: string = 'claude-code',
+  driftMonitor?: DriftMonitor,
+  getConfig?: () => LaymanConfig
 ): Promise<void> {
   // Safety valve: if a /layman re-activation's Stop hook never fired, the suppression
   // flag may still be set when the next user prompt arrives. Consume it here and advance
@@ -824,6 +912,11 @@ async function handleUserPromptSubmit(
   eventStore.add('user_prompt', input.session_id, {
     prompt: input.prompt,
   }, undefined, agentType);
+
+  // Notify drift monitor of user prompt
+  if (driftMonitor && getConfig?.().driftMonitoring?.enabled) {
+    driftMonitor.onUserPrompt(input.session_id, input.prompt);
+  }
 }
 
 async function handleSubagentStart(
@@ -972,13 +1065,20 @@ async function handleConfigChange(
 async function handleInstructionsLoaded(
   input: InstructionsLoadedInput,
   eventStore: EventStore,
-  agentType: string = 'claude-code'
+  agentType: string = 'claude-code',
+  driftMonitor?: DriftMonitor,
+  getConfig?: () => LaymanConfig
 ): Promise<void> {
   eventStore.add('instructions_loaded', input.session_id, {
     filePath: input.file_path,
     memoryType: input.memory_type,
     loadReason: input.load_reason,
   }, undefined, agentType);
+
+  // Cache CLAUDE.md content for drift monitoring
+  if (driftMonitor && getConfig?.().driftMonitoring?.enabled) {
+    void driftMonitor.onInstructionsLoaded(input.session_id, input.file_path);
+  }
 }
 
 async function handleTaskCreated(
