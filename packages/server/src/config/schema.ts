@@ -35,7 +35,7 @@ export const DriftMonitoringConfigSchema = z.object({
   checkIntervalMinutes: z.number().int().min(1).max(60).default(5),
   sessionDriftThresholds: DriftThresholdsSchema.default({}),
   rulesDriftThresholds: DriftThresholdsSchema.default({}),
-  blockOnRed: z.boolean().default(true),
+  blockOnRed: z.boolean().default(false),
   remindOnOrange: z.boolean().default(true),
 });
 
