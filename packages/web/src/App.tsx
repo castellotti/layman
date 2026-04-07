@@ -17,9 +17,10 @@ import { usePendingApprovals } from './hooks/usePendingApprovals.js';
 import type { SetupStatus } from './lib/types.js';
 
 function StatusBar() {
-  const { events, sessionStatus } = useSessionStore((s) => ({
+  const { events, sessionStatus, serverVersion } = useSessionStore((s) => ({
     events: s.events,
     sessionStatus: s.sessionStatus,
+    serverVersion: s.serverVersion,
   }));
   const { count } = usePendingApprovals();
 
@@ -39,7 +40,7 @@ function StatusBar() {
           </>
         )}
       </div>
-      <span className="text-[#484f58]">Layman v0.1.0</span>
+      <span className="text-[#484f58]">Layman {serverVersion ? `v${serverVersion}` : ''}</span>
     </div>
   );
 }

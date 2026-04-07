@@ -1,6 +1,7 @@
-import React, { useCallback, useMemo } from 'react';
+import React, { useCallback } from 'react';
 import { useSessionStore } from '../../stores/sessionStore.js';
 import type { DriftLevel, DriftState } from '../../lib/types.js';
+import type { SessionInfo } from '../../lib/ws-protocol.js';
 
 const DRIFT_COLORS: Record<DriftLevel, string> = {
   green: '#00e676',
@@ -8,11 +9,6 @@ const DRIFT_COLORS: Record<DriftLevel, string> = {
   orange: '#ff9100',
   red: '#ff3d57',
 };
-
-function worstLevel(a: DriftLevel, b: DriftLevel): DriftLevel {
-  const order: Record<DriftLevel, number> = { green: 0, yellow: 1, orange: 2, red: 3 };
-  return order[a] >= order[b] ? a : b;
-}
 
 function DriftBar({
   label,
@@ -101,6 +97,12 @@ function buildRulesTooltip(ds: DriftState): string {
   return parts.join('\n');
 }
 
+function getSessionDisplayName(session: SessionInfo | undefined, sessionId: string): string {
+  if (session?.sessionName) return session.sessionName;
+  if (session?.cwd) return session.cwd.split('/').filter(Boolean).pop() ?? session.cwd;
+  return sessionId.slice(0, 8);
+}
+
 interface DriftMonitorPanelProps {
   focusedSessionId: string | null;
 }
@@ -116,62 +118,33 @@ export function DriftMonitorPanel({ focusedSessionId }: DriftMonitorPanelProps) 
 
   if (!config?.driftMonitoring?.enabled) return null;
 
-  // Determine which sessions to aggregate
+  // Determine which sessions to show
   const relevantSessionIds = focusedSessionId
     ? [focusedSessionId]
     : sessions.map((s) => s.sessionId);
 
-  // Aggregate: take worst-case across relevant sessions
-  let sessionGoalPct = 0;
-  let rulesPct = 0;
-  let sessionGoalLevel: DriftLevel = 'green';
-  let rulesLevel: DriftLevel = 'green';
-  let hasData = false;
-  let worstSessionDs: DriftState | null = null;
-  let worstRulesDs: DriftState | null = null;
-
+  // Collect sessions that have drift data
+  const sessionsWithData: Array<{ sessionId: string; ds: DriftState }> = [];
   for (const sid of relevantSessionIds) {
     const ds = driftState.get(sid);
-    if (!ds) continue;
-    hasData = true;
-    if (ds.sessionGoalDriftPct >= sessionGoalPct) {
-      sessionGoalPct = ds.sessionGoalDriftPct;
-      sessionGoalLevel = worstLevel(sessionGoalLevel, ds.sessionGoalDriftLevel);
-      worstSessionDs = ds;
-    }
-    if (ds.rulesDriftPct >= rulesPct) {
-      rulesPct = ds.rulesDriftPct;
-      rulesLevel = worstLevel(rulesLevel, ds.rulesDriftLevel);
-      worstRulesDs = ds;
-    }
+    if (ds) sessionsWithData.push({ sessionId: sid, ds });
   }
 
-  // Build tooltips from worst-case session data
-  const sessionTooltip = worstSessionDs ? buildSessionTooltip(worstSessionDs) : undefined;
-  const rulesTooltip = worstRulesDs ? buildRulesTooltip(worstRulesDs) : undefined;
-
-  // Click handler: navigate to the latest drift_check event in Logs
-  const handleBarClick = useCallback((driftType: 'session_goal' | 'rules') => {
-    const targetSessionId = driftType === 'session_goal'
-      ? worstSessionDs?.sessionId
-      : worstRulesDs?.sessionId;
-    if (!targetSessionId) return;
-
-    // Find latest drift_check or drift_alert for this session + type
+  const handleBarClick = useCallback((sessionId: string, driftType: 'session_goal' | 'rules') => {
     for (let i = events.length - 1; i >= 0; i--) {
       const e = events[i];
       if (
         (e.type === 'drift_check' || e.type === 'drift_alert') &&
-        e.sessionId === targetSessionId &&
+        e.sessionId === sessionId &&
         e.data.driftType === driftType
       ) {
-        navigateFromDashboardToLogs(targetSessionId, e.id);
+        navigateFromDashboardToLogs(sessionId, e.id);
         return;
       }
     }
-  }, [events, worstSessionDs?.sessionId, worstRulesDs?.sessionId, navigateFromDashboardToLogs]);
+  }, [events, navigateFromDashboardToLogs]);
 
-  if (!hasData) {
+  if (sessionsWithData.length === 0) {
     return (
       <div
         style={{
@@ -187,22 +160,75 @@ export function DriftMonitorPanel({ focusedSessionId }: DriftMonitorPanelProps) 
     );
   }
 
+  // Single session (focused or only one with data): show without header
+  if (sessionsWithData.length === 1) {
+    const { sessionId, ds } = sessionsWithData[0];
+    return (
+      <div className="space-y-2">
+        <DriftBar
+          label="Session"
+          pct={ds.sessionGoalDriftPct}
+          level={ds.sessionGoalDriftLevel}
+          tooltip={buildSessionTooltip(ds)}
+          onClick={() => handleBarClick(sessionId, 'session_goal')}
+        />
+        <DriftBar
+          label="Rules"
+          pct={ds.rulesDriftPct}
+          level={ds.rulesDriftLevel}
+          tooltip={buildRulesTooltip(ds)}
+          onClick={() => handleBarClick(sessionId, 'rules')}
+        />
+      </div>
+    );
+  }
+
+  // Multiple sessions: show per-session groups separated by name
   return (
-    <div className="space-y-2">
-      <DriftBar
-        label="Session"
-        pct={sessionGoalPct}
-        level={sessionGoalLevel}
-        tooltip={sessionTooltip}
-        onClick={() => handleBarClick('session_goal')}
-      />
-      <DriftBar
-        label="Rules"
-        pct={rulesPct}
-        level={rulesLevel}
-        tooltip={rulesTooltip}
-        onClick={() => handleBarClick('rules')}
-      />
+    <div className="space-y-1">
+      {sessionsWithData.map(({ sessionId, ds }, idx) => {
+        const session = sessions.find((s) => s.sessionId === sessionId);
+        const name = getSessionDisplayName(session, sessionId);
+        return (
+          <div key={sessionId}>
+            {idx > 0 && (
+              <div style={{ borderTop: '1px solid var(--dash-border)', margin: '4px 0' }} />
+            )}
+            <div
+              style={{
+                fontFamily: 'var(--dash-font-data)',
+                fontSize: 9,
+                color: 'var(--dash-text-muted)',
+                textTransform: 'uppercase',
+                letterSpacing: '0.5px',
+                marginBottom: 3,
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+              }}
+              title={sessionId}
+            >
+              {name}
+            </div>
+            <div className="space-y-1">
+              <DriftBar
+                label="Session"
+                pct={ds.sessionGoalDriftPct}
+                level={ds.sessionGoalDriftLevel}
+                tooltip={buildSessionTooltip(ds)}
+                onClick={() => handleBarClick(sessionId, 'session_goal')}
+              />
+              <DriftBar
+                label="Rules"
+                pct={ds.rulesDriftPct}
+                level={ds.rulesDriftLevel}
+                tooltip={buildRulesTooltip(ds)}
+                onClick={() => handleBarClick(sessionId, 'rules')}
+              />
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
