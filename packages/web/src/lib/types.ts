@@ -255,6 +255,13 @@ export interface DriftMonitoringConfig {
   remindOnOrange: boolean;
 }
 
+export interface DismissedDriftItems {
+  indicators: string[];
+  patternBreaks: string[];
+  phantomReferences: string[];
+  violations: string[];
+}
+
 export interface DriftState {
   sessionId: string;
   sessionGoalDriftPct: number;
@@ -268,6 +275,7 @@ export interface DriftState {
   sessionGoalIndicators?: string[];
   rulesSummary?: string;
   rulesViolations?: Array<{ rule: string; action: string; severity: string }>;
+  dismissedItems?: DismissedDriftItems;
 }
 
 export interface BookmarkFolder {

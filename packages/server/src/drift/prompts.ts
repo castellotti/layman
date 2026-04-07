@@ -65,6 +65,25 @@ export function buildGoalDriftUserMessage(state: DriftSessionState): string {
     }
   }
 
+  // Inject dismissed false positives so the LLM avoids re-flagging them
+  const d = state.dismissedItems;
+  const hasDismissals = d.indicators.length > 0 || d.patternBreaks.length > 0 || d.phantomReferences.length > 0;
+  if (hasDismissals) {
+    parts.push('\nPREVIOUSLY DISMISSED (ignore these — the user confirmed them as false positives):');
+    if (d.indicators.length > 0) {
+      parts.push('  Indicators:');
+      for (const item of d.indicators) parts.push(`    - ${item}`);
+    }
+    if (d.patternBreaks.length > 0) {
+      parts.push('  Pattern Breaks:');
+      for (const item of d.patternBreaks) parts.push(`    - ${item}`);
+    }
+    if (d.phantomReferences.length > 0) {
+      parts.push('  Phantom References:');
+      for (const item of d.phantomReferences) parts.push(`    - ${item}`);
+    }
+  }
+
   return parts.join('\n');
 }
 
@@ -123,6 +142,14 @@ export function buildRulesDriftUserMessage(state: DriftSessionState): string {
         entry += `\n     Output: ${redactString(JSON.stringify(tc.toolOutput).slice(0, 300))}`;
       }
       parts.push(entry);
+    }
+  }
+
+  // Inject dismissed violations so the LLM avoids re-flagging them
+  if (state.dismissedItems.violations.length > 0) {
+    parts.push('\nPREVIOUSLY DISMISSED VIOLATIONS (ignore these — the user confirmed them as false positives):');
+    for (const item of state.dismissedItems.violations) {
+      parts.push(`  - ${item}`);
     }
   }
 

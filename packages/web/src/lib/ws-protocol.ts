@@ -57,4 +57,5 @@ export type ClientMessage =
   | { type: 'setup:install'; clients?: string[] }
   | { type: 'bookmarks:get' }
   | { type: 'drift:reset'; sessionId: string }
-  | { type: 'drift:dismiss'; sessionId: string; approvalId: string };
+  | { type: 'drift:dismiss'; sessionId: string; approvalId: string }
+  | { type: 'drift:dismiss-item'; sessionId: string; category: 'indicator' | 'patternBreak' | 'phantomReference' | 'violation'; value: string };

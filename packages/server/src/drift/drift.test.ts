@@ -194,6 +194,7 @@ describe('buildGoalDriftUserMessage', () => {
       checkInProgress: false,
       lastGoalResult: null,
       lastRulesResult: null,
+      dismissedItems: { indicators: [], patternBreaks: [], phantomReferences: [], violations: [] },
       ...overrides,
     };
   }
@@ -253,6 +254,7 @@ describe('buildRulesDriftUserMessage', () => {
       checkInProgress: false,
       lastGoalResult: null,
       lastRulesResult: null,
+      dismissedItems: { indicators: [], patternBreaks: [], phantomReferences: [], violations: [] },
       ...overrides,
     };
   }

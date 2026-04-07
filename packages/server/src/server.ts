@@ -1191,6 +1191,10 @@ export function createServer(config: LaymanConfig): LaymanServer {
         });
         break;
       }
+      case 'drift:dismiss-item': {
+        driftMonitor.dismissItem(message.sessionId, message.category, message.value);
+        break;
+      }
     }
   }
 

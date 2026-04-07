@@ -10,6 +10,7 @@ import type {
   DriftSessionState,
   DriftCheckResult,
   DriftPreToolUseResult,
+  DismissedDriftItems,
 } from './types.js';
 import {
   GOAL_DRIFT_SYSTEM_PROMPT,
@@ -43,6 +44,7 @@ function createSessionState(sessionId: string): DriftSessionState {
     checkInProgress: false,
     lastGoalResult: null,
     lastRulesResult: null,
+    dismissedItems: { indicators: [], patternBreaks: [], phantomReferences: [], violations: [] },
   };
 }
 
@@ -312,6 +314,35 @@ export class DriftMonitor {
     state.rulesDriftPct = 0;
     state.rulesDriftLevel = 'green';
     state.interventionPending = false;
+    state.dismissedItems = { indicators: [], patternBreaks: [], phantomReferences: [], violations: [] };
+
+    this.broadcast({
+      type: 'drift:update',
+      sessionId,
+      state: this.buildDriftState(state),
+    });
+  }
+
+  /** Dismiss a single drift item as a false positive */
+  dismissItem(
+    sessionId: string,
+    category: 'indicator' | 'patternBreak' | 'phantomReference' | 'violation',
+    value: string,
+  ): void {
+    const state = this.sessions.get(sessionId);
+    if (!state) return;
+
+    const categoryMap: Record<string, keyof DismissedDriftItems> = {
+      indicator: 'indicators',
+      patternBreak: 'patternBreaks',
+      phantomReference: 'phantomReferences',
+      violation: 'violations',
+    };
+
+    const list = state.dismissedItems[categoryMap[category]];
+    if (!list.includes(value)) {
+      list.push(value);
+    }
 
     this.broadcast({
       type: 'drift:update',
@@ -374,6 +405,7 @@ export class DriftMonitor {
       sessionGoalIndicators: state.lastGoalResult?.indicators,
       rulesSummary: state.lastRulesResult?.summary,
       rulesViolations: state.lastRulesResult?.violations,
+      dismissedItems: state.dismissedItems,
     };
   }
 

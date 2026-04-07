@@ -34,6 +34,7 @@ export function DriftBlockDialog({ onSend }: DriftBlockDialogProps) {
     ?? [...driftState.values()].find((d) => d.sessionId);
   const sessionId = (driftBlockApproval.toolInput.session_id as string)
     ?? ds?.sessionId ?? '';
+  const dismissedItems = ds?.dismissedItems;
 
   const isDecided = decided.has(driftBlockApproval.id);
 
@@ -104,22 +105,42 @@ export function DriftBlockDialog({ onSend }: DriftBlockDialogProps) {
           <p className="text-xs text-[#8b949e] leading-relaxed">{summary}</p>
           {ds?.sessionGoalIndicators && ds.sessionGoalIndicators.length > 0 && (
             <ul className="mt-2 space-y-0.5">
-              {ds.sessionGoalIndicators.map((ind, i) => (
-                <li key={i} className="text-xs text-[#8b949e] flex items-start gap-1.5">
-                  <span style={{ color: '#d29922' }}>&#x2022;</span>
-                  {ind}
-                </li>
-              ))}
+              {ds.sessionGoalIndicators.map((ind, i) => {
+                const isDismissed = dismissedItems?.indicators?.includes(ind);
+                return (
+                  <li key={i} className={`text-xs flex items-start gap-1.5 ${isDismissed ? 'line-through opacity-40' : 'text-[#8b949e]'}`}>
+                    <span style={{ color: '#d29922' }}>&#x2022;</span>
+                    <span className="flex-1">{ind}</span>
+                    {!isDismissed && (
+                      <button
+                        className="text-[#484f58] hover:text-[#8b949e] text-[10px] shrink-0 px-1"
+                        onClick={(e) => { e.stopPropagation(); onSend({ type: 'drift:dismiss-item', sessionId, category: 'indicator', value: ind }); }}
+                        title="Dismiss as false positive"
+                      >&times;</button>
+                    )}
+                  </li>
+                );
+              })}
             </ul>
           )}
           {ds?.rulesViolations && ds.rulesViolations.length > 0 && (
             <ul className="mt-2 space-y-0.5">
-              {ds.rulesViolations.map((v, i) => (
-                <li key={i} className="text-xs text-[#8b949e] flex items-start gap-1.5">
-                  <span style={{ color: '#f85149' }}>&#x2022;</span>
-                  <span><strong className="text-[#e6edf3]">{v.rule}</strong>: {v.action}</span>
-                </li>
-              ))}
+              {ds.rulesViolations.map((v, i) => {
+                const isDismissed = dismissedItems?.violations?.includes(v.rule);
+                return (
+                  <li key={i} className={`text-xs flex items-start gap-1.5 ${isDismissed ? 'line-through opacity-40' : 'text-[#8b949e]'}`}>
+                    <span style={{ color: '#f85149' }}>&#x2022;</span>
+                    <span className="flex-1"><strong className="text-[#e6edf3]">{v.rule}</strong>: {v.action}</span>
+                    {!isDismissed && (
+                      <button
+                        className="text-[#484f58] hover:text-[#8b949e] text-[10px] shrink-0 px-1"
+                        onClick={(e) => { e.stopPropagation(); onSend({ type: 'drift:dismiss-item', sessionId, category: 'violation', value: v.rule }); }}
+                        title="Dismiss as false positive"
+                      >&times;</button>
+                    )}
+                  </li>
+                );
+              })}
             </ul>
           )}
         </div>

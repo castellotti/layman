@@ -6,6 +6,14 @@ export interface DriftThresholds {
   orange: number;  // % below this = orange, above = red (default 50)
 }
 
+/** Items the user has dismissed as false positives (per-session, in-memory) */
+export interface DismissedDriftItems {
+  indicators: string[];
+  patternBreaks: string[];
+  phantomReferences: string[];
+  violations: string[];
+}
+
 /** Public drift state broadcast to clients via WebSocket */
 export interface DriftState {
   sessionId: string;
@@ -20,6 +28,7 @@ export interface DriftState {
   sessionGoalIndicators?: string[];
   rulesSummary?: string;
   rulesViolations?: Array<{ rule: string; action: string; severity: string }>;
+  dismissedItems?: DismissedDriftItems;
 }
 
 /** Result from a single drift algorithm LLM call */
@@ -61,6 +70,8 @@ export interface DriftSessionState {
   // Latest check results (for building DriftState summaries)
   lastGoalResult: DriftCheckResult | null;
   lastRulesResult: DriftCheckResult | null;
+  // Per-item false positive dismissals
+  dismissedItems: DismissedDriftItems;
 }
 
 /** Result of checkPreToolUse — determines whether to block or remind */
