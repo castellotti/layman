@@ -1,14 +1,8 @@
 import React, { useCallback } from 'react';
 import { useSessionStore } from '../../stores/sessionStore.js';
+import { DRIFT_COLORS } from '../../lib/event-styles.js';
 import type { DriftLevel, DriftState } from '../../lib/types.js';
 import type { SessionInfo } from '../../lib/ws-protocol.js';
-
-const DRIFT_COLORS: Record<DriftLevel, string> = {
-  green: '#00e676',
-  yellow: '#ffb300',
-  orange: '#ff9100',
-  red: '#ff3d57',
-};
 
 function DriftBar({
   label,
@@ -108,11 +102,10 @@ interface DriftMonitorPanelProps {
 }
 
 export function DriftMonitorPanel({ focusedSessionId }: DriftMonitorPanelProps) {
-  const { driftState, sessions, config, events, navigateFromDashboardToLogs } = useSessionStore((s) => ({
+  const { driftState, sessions, config, navigateFromDashboardToLogs } = useSessionStore((s) => ({
     driftState: s.driftState,
     sessions: s.sessions,
     config: s.config,
-    events: s.events,
     navigateFromDashboardToLogs: s.navigateFromDashboardToLogs,
   }));
 
@@ -131,6 +124,7 @@ export function DriftMonitorPanel({ focusedSessionId }: DriftMonitorPanelProps) 
   }
 
   const handleBarClick = useCallback((sessionId: string, driftType: 'session_goal' | 'rules') => {
+    const events = useSessionStore.getState().events;
     for (let i = events.length - 1; i >= 0; i--) {
       const e = events[i];
       if (
@@ -142,7 +136,7 @@ export function DriftMonitorPanel({ focusedSessionId }: DriftMonitorPanelProps) 
         return;
       }
     }
-  }, [events, navigateFromDashboardToLogs]);
+  }, [navigateFromDashboardToLogs]);
 
   if (sessionsWithData.length === 0) {
     return (

@@ -62,9 +62,6 @@ export interface DriftSessionState {
   lastCheckModel: string;
   // CLAUDE.md content cache
   claudeMdContents: Map<string, string>;
-  // Intervention state
-  interventionPending: boolean;
-  lastInterventionTimestamp: number;
   // Running check guard
   checkInProgress: boolean;
   // Latest check results (for building DriftState summaries)

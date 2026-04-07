@@ -1,15 +1,9 @@
 import React, { useMemo, useState } from 'react';
 import { useSessionStore } from '../../stores/sessionStore.js';
 import { usePendingApprovals } from '../../hooks/usePendingApprovals.js';
+import { DRIFT_COLORS } from '../../lib/event-styles.js';
 import type { ClientMessage } from '../../lib/ws-protocol.js';
 import type { DriftLevel } from '../../lib/types.js';
-
-const DRIFT_COLORS: Record<DriftLevel, string> = {
-  green: '#00e676',
-  yellow: '#ffb300',
-  orange: '#ff9100',
-  red: '#ff3d57',
-};
 
 interface DriftBlockDialogProps {
   onSend: (msg: ClientMessage) => void;
@@ -30,10 +24,10 @@ export function DriftBlockDialog({ onSend }: DriftBlockDialogProps) {
 
   if (!driftBlockApproval) return null;
 
-  const ds = driftState.get(driftBlockApproval.toolInput.session_id as string)
-    ?? [...driftState.values()].find((d) => d.sessionId);
-  const sessionId = (driftBlockApproval.toolInput.session_id as string)
-    ?? ds?.sessionId ?? '';
+  const rawSessionId = typeof driftBlockApproval.toolInput.session_id === 'string'
+    ? driftBlockApproval.toolInput.session_id : '';
+  const ds = rawSessionId ? driftState.get(rawSessionId) : undefined;
+  const sessionId = rawSessionId || ds?.sessionId || '';
   const dismissedItems = ds?.dismissedItems;
 
   const isDecided = decided.has(driftBlockApproval.id);

@@ -39,8 +39,6 @@ function createSessionState(sessionId: string): DriftSessionState {
     rulesDriftLevel: 'green',
     lastCheckModel: '',
     claudeMdContents: new Map(),
-    interventionPending: false,
-    lastInterventionTimestamp: 0,
     checkInProgress: false,
     lastGoalResult: null,
     lastRulesResult: null,
@@ -313,7 +311,6 @@ export class DriftMonitor {
     state.sessionGoalDriftLevel = 'green';
     state.rulesDriftPct = 0;
     state.rulesDriftLevel = 'green';
-    state.interventionPending = false;
     state.dismissedItems = { indicators: [], patternBreaks: [], phantomReferences: [], violations: [] };
 
     this.broadcast({

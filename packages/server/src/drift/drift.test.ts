@@ -189,8 +189,6 @@ describe('buildGoalDriftUserMessage', () => {
       rulesDriftLevel: 'green',
       lastCheckModel: '',
       claudeMdContents: new Map(),
-      interventionPending: false,
-      lastInterventionTimestamp: 0,
       checkInProgress: false,
       lastGoalResult: null,
       lastRulesResult: null,
@@ -226,6 +224,21 @@ describe('buildGoalDriftUserMessage', () => {
     const msg = buildGoalDriftUserMessage(makeState({ initialPrompt: null }));
     expect(msg).toContain('no initial prompt');
   });
+
+  it('includes dismissed items in prompt', () => {
+    const msg = buildGoalDriftUserMessage(makeState({
+      dismissedItems: {
+        indicators: ['scope creep detected'],
+        patternBreaks: ['changed approach'],
+        phantomReferences: ['ghost.ts'],
+        violations: [],
+      },
+    }));
+    expect(msg).toContain('PREVIOUSLY DISMISSED');
+    expect(msg).toContain('scope creep detected');
+    expect(msg).toContain('changed approach');
+    expect(msg).toContain('ghost.ts');
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -249,8 +262,6 @@ describe('buildRulesDriftUserMessage', () => {
       rulesDriftLevel: 'green',
       lastCheckModel: '',
       claudeMdContents: new Map([['CLAUDE.md', 'Do not use vi.mock']]),
-      interventionPending: false,
-      lastInterventionTimestamp: 0,
       checkInProgress: false,
       lastGoalResult: null,
       lastRulesResult: null,
@@ -274,5 +285,18 @@ describe('buildRulesDriftUserMessage', () => {
   it('handles empty claudeMdContents', () => {
     const msg = buildRulesDriftUserMessage(makeState({ claudeMdContents: new Map() }));
     expect(msg).toContain('no CLAUDE.md files loaded');
+  });
+
+  it('includes dismissed violations in prompt', () => {
+    const msg = buildRulesDriftUserMessage(makeState({
+      dismissedItems: {
+        indicators: [],
+        patternBreaks: [],
+        phantomReferences: [],
+        violations: ['no mocks rule'],
+      },
+    }));
+    expect(msg).toContain('PREVIOUSLY DISMISSED VIOLATIONS');
+    expect(msg).toContain('no mocks rule');
   });
 });

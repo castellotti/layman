@@ -6,6 +6,13 @@ export const AGENT_BADGES: Record<string, { label: string; color: string }> = {
   'cline':         { label: 'CL', color: 'text-[#79c0ff] bg-[#79c0ff]/10 border-[#79c0ff]/20' },
 };
 
+export const DRIFT_COLORS: Record<string, string> = {
+  green: '#00e676',
+  yellow: '#ffb300',
+  orange: '#ff9100',
+  red: '#ff3d57',
+};
+
 export const EVENT_ICONS: Record<string, string> = {
   tool_call_pending: '⚡',
   tool_call_approved: '✅',

@@ -1000,6 +1000,16 @@ export function SettingsDrawer({ onSend }: SettingsDrawerProps) {
                     </div>
                   </div>
 
+                  {/* Threshold ordering warning */}
+                  {(config.driftMonitoring.sessionDriftThresholds.green >= config.driftMonitoring.sessionDriftThresholds.yellow
+                    || config.driftMonitoring.sessionDriftThresholds.yellow >= config.driftMonitoring.sessionDriftThresholds.orange
+                    || config.driftMonitoring.rulesDriftThresholds.green >= config.driftMonitoring.rulesDriftThresholds.yellow
+                    || config.driftMonitoring.rulesDriftThresholds.yellow >= config.driftMonitoring.rulesDriftThresholds.orange) && (
+                    <p className="text-[10px] text-[#d29922] mt-1">
+                      Thresholds should be ordered: Green &lt; Yellow &lt; Orange
+                    </p>
+                  )}
+
                   {/* Block on Red */}
                   <label className="flex items-center justify-between cursor-pointer">
                     <div>
