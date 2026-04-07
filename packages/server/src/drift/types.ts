@@ -15,6 +15,11 @@ export interface DriftState {
   rulesDriftLevel: DriftLevel;
   lastCheckTimestamp: number;
   lastCheckModel: string;
+  // Latest check summaries (for UI tooltips)
+  sessionGoalSummary?: string;
+  sessionGoalIndicators?: string[];
+  rulesSummary?: string;
+  rulesViolations?: Array<{ rule: string; action: string; severity: string }>;
 }
 
 /** Result from a single drift algorithm LLM call */
@@ -53,6 +58,9 @@ export interface DriftSessionState {
   lastInterventionTimestamp: number;
   // Running check guard
   checkInProgress: boolean;
+  // Latest check results (for building DriftState summaries)
+  lastGoalResult: DriftCheckResult | null;
+  lastRulesResult: DriftCheckResult | null;
 }
 
 /** Result of checkPreToolUse — determines whether to block or remind */

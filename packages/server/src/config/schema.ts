@@ -24,7 +24,10 @@ export const DriftThresholdsSchema = z.object({
   green: z.number().min(0).max(100).default(15),
   yellow: z.number().min(0).max(100).default(30),
   orange: z.number().min(0).max(100).default(50),
-});
+}).refine(
+  (v) => v.green < v.yellow && v.yellow < v.orange,
+  { message: 'Drift thresholds must satisfy: green < yellow < orange' }
+);
 
 export const DriftMonitoringConfigSchema = z.object({
   enabled: z.boolean().default(false),

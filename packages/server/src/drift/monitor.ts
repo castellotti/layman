@@ -21,6 +21,7 @@ import {
 
 const MAX_RECENT_PROMPTS = 10;
 const MAX_RECENT_TOOL_CALLS = 20;
+const MAX_TOOL_OUTPUT_SIZE = 2000;
 const EMA_ALPHA = 0.3;
 
 function createSessionState(sessionId: string): DriftSessionState {
@@ -40,20 +41,24 @@ function createSessionState(sessionId: string): DriftSessionState {
     interventionPending: false,
     lastInterventionTimestamp: 0,
     checkInProgress: false,
+    lastGoalResult: null,
+    lastRulesResult: null,
   };
 }
 
-function classifyLevel(pct: number, thresholds: { green: number; yellow: number; orange: number }): DriftLevel {
-  if (pct < thresholds.green) return 'green';
-  if (pct < thresholds.yellow) return 'yellow';
-  if (pct < thresholds.orange) return 'orange';
+export function classifyLevel(pct: number, thresholds: { green: number; yellow: number; orange: number }): DriftLevel {
+  // Runtime guard: sort thresholds if misordered
+  const sorted = [thresholds.green, thresholds.yellow, thresholds.orange].sort((a, b) => a - b);
+  if (pct < sorted[0]) return 'green';
+  if (pct < sorted[1]) return 'yellow';
+  if (pct < sorted[2]) return 'orange';
   return 'red';
 }
 
-/** Remap host path to container-mounted path (same logic as handler.ts) */
+/** Remap host path to container-mounted path (macOS + Linux) */
 function remapPath(hostPath: string): string {
-  const homeMatch = hostPath.match(/^\/Users\/[^/]+\/(.+)$/);
-  if (homeMatch) return `/root/${homeMatch[1]}`;
+  const match = hostPath.match(/^\/(?:Users|home)\/[^/]+\/(.+)$/);
+  if (match) return `/root/${match[1]}`;
   return hostPath;
 }
 
@@ -122,7 +127,15 @@ export class DriftMonitor {
     toolOutput?: unknown,
   ): void {
     const state = this.getOrCreateSession(sessionId);
-    state.recentToolCalls.push({ toolName, toolInput, toolOutput });
+
+    // Truncate output to bound memory usage in the ring buffer
+    const truncatedOutput = typeof toolOutput === 'string'
+      ? toolOutput.slice(0, MAX_TOOL_OUTPUT_SIZE)
+      : toolOutput != null
+        ? JSON.stringify(toolOutput).slice(0, MAX_TOOL_OUTPUT_SIZE)
+        : undefined;
+
+    state.recentToolCalls.push({ toolName, toolInput, toolOutput: truncatedOutput });
     if (state.recentToolCalls.length > MAX_RECENT_TOOL_CALLS) {
       state.recentToolCalls.shift();
     }
@@ -162,6 +175,9 @@ export class DriftMonitor {
     if (!state || state.checkInProgress) return;
 
     state.checkInProgress = true;
+    // Reset counter immediately (before async LLM calls) so tool calls arriving
+    // during the check accumulate toward the NEXT threshold. checkInProgress guard
+    // prevents re-triggering until this check completes.
     state.toolCallsSinceLastCheck = 0;
     state.lastCheckTimestamp = Date.now();
 
@@ -182,6 +198,8 @@ export class DriftMonitor {
       state.sessionGoalDriftLevel = classifyLevel(state.sessionGoalDriftPct, config.driftMonitoring.sessionDriftThresholds);
       state.rulesDriftLevel = classifyLevel(state.rulesDriftPct, config.driftMonitoring.rulesDriftThresholds);
       state.lastCheckModel = goalResult.model || rulesResult.model || '';
+      state.lastGoalResult = goalResult.result;
+      state.lastRulesResult = rulesResult.result;
 
       // Emit drift_check events
       this.eventStore.add('drift_check', sessionId, {
@@ -352,6 +370,10 @@ export class DriftMonitor {
       rulesDriftLevel: state.rulesDriftLevel,
       lastCheckTimestamp: state.lastCheckTimestamp,
       lastCheckModel: state.lastCheckModel,
+      sessionGoalSummary: state.lastGoalResult?.summary,
+      sessionGoalIndicators: state.lastGoalResult?.indicators,
+      rulesSummary: state.lastRulesResult?.summary,
+      rulesViolations: state.lastRulesResult?.violations,
     };
   }
 

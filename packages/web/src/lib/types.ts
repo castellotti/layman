@@ -262,6 +262,11 @@ export interface DriftState {
   rulesDriftLevel: DriftLevel;
   lastCheckTimestamp: number;
   lastCheckModel: string;
+  // Latest check summaries (for UI tooltips)
+  sessionGoalSummary?: string;
+  sessionGoalIndicators?: string[];
+  rulesSummary?: string;
+  rulesViolations?: Array<{ rule: string; action: string; severity: string }>;
 }
 
 export interface BookmarkFolder {

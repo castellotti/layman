@@ -1,4 +1,5 @@
 import type { DriftSessionState, DriftCheckResult } from './types.js';
+import { redactString } from '../pii/filter.js';
 
 // ---------------------------------------------------------------------------
 // Algorithm 1: Session Goal / Constraint Drift
@@ -35,12 +36,12 @@ Respond with ONLY the JSON object.`;
 export function buildGoalDriftUserMessage(state: DriftSessionState): string {
   const parts: string[] = [];
 
-  parts.push(`ORIGINAL USER PROMPT:\n${state.initialPrompt ?? '(no initial prompt captured yet)'}`);
+  parts.push(`ORIGINAL USER PROMPT:\n${redactString(state.initialPrompt ?? '(no initial prompt captured yet)')}`);
 
   if (state.recentPrompts.length > 0) {
     parts.push(`\nRECENT USER PROMPTS (last ${state.recentPrompts.length}):`);
     for (let i = 0; i < state.recentPrompts.length; i++) {
-      parts.push(`  ${i + 1}. ${state.recentPrompts[i].slice(0, 300)}`);
+      parts.push(`  ${i + 1}. ${redactString(state.recentPrompts[i].slice(0, 300))}`);
     }
   }
 
@@ -48,9 +49,9 @@ export function buildGoalDriftUserMessage(state: DriftSessionState): string {
     parts.push(`\nRECENT TOOL CALLS (last ${state.recentToolCalls.length}):`);
     for (let i = 0; i < state.recentToolCalls.length; i++) {
       const tc = state.recentToolCalls[i];
-      let entry = `  ${i + 1}. ${tc.toolName}: ${JSON.stringify(tc.toolInput).slice(0, 200)}`;
+      let entry = `  ${i + 1}. ${tc.toolName}: ${redactString(JSON.stringify(tc.toolInput).slice(0, 200))}`;
       if (tc.toolOutput) {
-        entry += `\n     Output: ${JSON.stringify(tc.toolOutput).slice(0, 200)}`;
+        entry += `\n     Output: ${redactString(JSON.stringify(tc.toolOutput).slice(0, 200))}`;
       }
       parts.push(entry);
     }
@@ -109,9 +110,9 @@ export function buildRulesDriftUserMessage(state: DriftSessionState): string {
     parts.push(`\nRECENT TOOL CALLS (last ${state.recentToolCalls.length}):`);
     for (let i = 0; i < state.recentToolCalls.length; i++) {
       const tc = state.recentToolCalls[i];
-      let entry = `  ${i + 1}. ${tc.toolName}: ${JSON.stringify(tc.toolInput).slice(0, 300)}`;
+      let entry = `  ${i + 1}. ${tc.toolName}: ${redactString(JSON.stringify(tc.toolInput).slice(0, 300))}`;
       if (tc.toolOutput) {
-        entry += `\n     Output: ${JSON.stringify(tc.toolOutput).slice(0, 300)}`;
+        entry += `\n     Output: ${redactString(JSON.stringify(tc.toolOutput).slice(0, 300))}`;
       }
       parts.push(entry);
     }

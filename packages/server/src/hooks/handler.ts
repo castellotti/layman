@@ -323,6 +323,21 @@ export function registerHookHandler(
   );
 }
 
+function computeShouldAutoAllow(
+  config: LaymanConfig,
+  toolName: string,
+  toolInput: Record<string, unknown>,
+  riskLevel: string,
+): boolean {
+  return (
+    config.autoApprove === 'all' ||
+    (config.autoApprove === 'medium' && (riskLevel === 'low' || riskLevel === 'medium')) ||
+    (config.autoApprove === 'low' && riskLevel === 'low') ||
+    (config.autoAllow.readOnly && AUTO_ALLOW_TOOLS.has(toolName)) ||
+    isAutoAllowedByPattern(toolName, toolInput, config.autoAllow.trustedCommands)
+  );
+}
+
 async function handlePreToolUse(
   input: PreToolUseInput,
   pendingManager: PendingApprovalManager,
@@ -339,6 +354,8 @@ async function handlePreToolUse(
   await emitNewAssistantMessages(input.transcript_path, input.session_id, eventStore, agentType);
 
   // --- Drift monitoring intervention ---
+  let driftReminder: string | undefined;
+
   if (driftMonitor && config.driftMonitoring?.enabled) {
     const driftResult = driftMonitor.checkPreToolUse(input.session_id);
 
@@ -374,13 +391,7 @@ async function handlePreToolUse(
 
     // Orange level: non-blocking reminder via permissionDecisionReason
     if (driftResult.shouldRemind) {
-      // Check auto-allow — if allowed, attach the reminder to the response
-      const shouldAutoAllow =
-        config.autoApprove === 'all' ||
-        (config.autoApprove === 'medium' && (riskLevel === 'low' || riskLevel === 'medium')) ||
-        (config.autoApprove === 'low' && riskLevel === 'low') ||
-        (config.autoAllow.readOnly && AUTO_ALLOW_TOOLS.has(input.tool_name)) ||
-        isAutoAllowedByPattern(input.tool_name, input.tool_input, config.autoAllow.trustedCommands);
+      const shouldAutoAllow = computeShouldAutoAllow(config, input.tool_name, input.tool_input, riskLevel);
 
       if (shouldAutoAllow) {
         eventStore.add('tool_call_approved', input.session_id, {
@@ -396,18 +407,13 @@ async function handlePreToolUse(
           },
         };
       }
-      // If not auto-allowed, fall through to normal pending flow
-      // but we'll attach the drift context to the decision reason later
+      // Not auto-allowed: capture drift context for pending approval flow
+      driftReminder = `[Drift Monitor] ${driftResult.reason}`;
     }
   }
 
   // Check auto-allow rules
-  const shouldAutoAllow =
-    config.autoApprove === 'all' ||
-    (config.autoApprove === 'medium' && (riskLevel === 'low' || riskLevel === 'medium')) ||
-    (config.autoApprove === 'low' && riskLevel === 'low') ||
-    (config.autoAllow.readOnly && AUTO_ALLOW_TOOLS.has(input.tool_name)) ||
-    isAutoAllowedByPattern(input.tool_name, input.tool_input, config.autoAllow.trustedCommands);
+  const shouldAutoAllow = computeShouldAutoAllow(config, input.tool_name, input.tool_input, riskLevel);
 
   const shouldAnalyze =
     config.autoAnalyze === 'all' ||
@@ -479,7 +485,7 @@ async function handlePreToolUse(
     hookSpecificOutput: {
       hookEventName: 'PreToolUse',
       permissionDecision: decision.decision,
-      permissionDecisionReason: decision.reason,
+      permissionDecisionReason: decision.reason ?? driftReminder,
       updatedInput: decision.updatedInput,
     },
   };

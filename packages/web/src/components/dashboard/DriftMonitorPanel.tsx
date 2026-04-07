@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { useCallback, useMemo } from 'react';
 import { useSessionStore } from '../../stores/sessionStore.js';
-import type { DriftLevel } from '../../lib/types.js';
+import type { DriftLevel, DriftState } from '../../lib/types.js';
 
 const DRIFT_COLORS: Record<DriftLevel, string> = {
   green: '#00e676',
@@ -14,10 +14,27 @@ function worstLevel(a: DriftLevel, b: DriftLevel): DriftLevel {
   return order[a] >= order[b] ? a : b;
 }
 
-function DriftBar({ label, pct, level }: { label: string; pct: number; level: DriftLevel }) {
+function DriftBar({
+  label,
+  pct,
+  level,
+  tooltip,
+  onClick,
+}: {
+  label: string;
+  pct: number;
+  level: DriftLevel;
+  tooltip?: string;
+  onClick?: () => void;
+}) {
   const color = DRIFT_COLORS[level];
   return (
-    <div className="flex items-center justify-between gap-2">
+    <div
+      className="flex items-center justify-between gap-2"
+      style={{ cursor: onClick ? 'pointer' : undefined }}
+      title={tooltip}
+      onClick={onClick}
+    >
       <span
         style={{
           fontFamily: 'var(--dash-font-data)',
@@ -60,15 +77,41 @@ function DriftBar({ label, pct, level }: { label: string; pct: number; level: Dr
   );
 }
 
+function buildSessionTooltip(ds: DriftState): string {
+  const parts: string[] = [];
+  parts.push(`Session drift: ${Math.round(ds.sessionGoalDriftPct)}% (${ds.sessionGoalDriftLevel})`);
+  if (ds.sessionGoalSummary) parts.push(ds.sessionGoalSummary);
+  if (ds.sessionGoalIndicators?.length) {
+    for (const ind of ds.sessionGoalIndicators) {
+      parts.push(`  \u2022 ${ind}`);
+    }
+  }
+  return parts.join('\n');
+}
+
+function buildRulesTooltip(ds: DriftState): string {
+  const parts: string[] = [];
+  parts.push(`Rules drift: ${Math.round(ds.rulesDriftPct)}% (${ds.rulesDriftLevel})`);
+  if (ds.rulesSummary) parts.push(ds.rulesSummary);
+  if (ds.rulesViolations?.length) {
+    for (const v of ds.rulesViolations) {
+      parts.push(`  \u2022 [${v.severity}] ${v.rule}: ${v.action}`);
+    }
+  }
+  return parts.join('\n');
+}
+
 interface DriftMonitorPanelProps {
   focusedSessionId: string | null;
 }
 
 export function DriftMonitorPanel({ focusedSessionId }: DriftMonitorPanelProps) {
-  const { driftState, sessions, config } = useSessionStore((s) => ({
+  const { driftState, sessions, config, events, navigateFromDashboardToLogs } = useSessionStore((s) => ({
     driftState: s.driftState,
     sessions: s.sessions,
     config: s.config,
+    events: s.events,
+    navigateFromDashboardToLogs: s.navigateFromDashboardToLogs,
   }));
 
   if (!config?.driftMonitoring?.enabled) return null;
@@ -84,16 +127,49 @@ export function DriftMonitorPanel({ focusedSessionId }: DriftMonitorPanelProps) 
   let sessionGoalLevel: DriftLevel = 'green';
   let rulesLevel: DriftLevel = 'green';
   let hasData = false;
+  let worstSessionDs: DriftState | null = null;
+  let worstRulesDs: DriftState | null = null;
 
   for (const sid of relevantSessionIds) {
     const ds = driftState.get(sid);
     if (!ds) continue;
     hasData = true;
-    sessionGoalPct = Math.max(sessionGoalPct, ds.sessionGoalDriftPct);
-    rulesPct = Math.max(rulesPct, ds.rulesDriftPct);
-    sessionGoalLevel = worstLevel(sessionGoalLevel, ds.sessionGoalDriftLevel);
-    rulesLevel = worstLevel(rulesLevel, ds.rulesDriftLevel);
+    if (ds.sessionGoalDriftPct >= sessionGoalPct) {
+      sessionGoalPct = ds.sessionGoalDriftPct;
+      sessionGoalLevel = worstLevel(sessionGoalLevel, ds.sessionGoalDriftLevel);
+      worstSessionDs = ds;
+    }
+    if (ds.rulesDriftPct >= rulesPct) {
+      rulesPct = ds.rulesDriftPct;
+      rulesLevel = worstLevel(rulesLevel, ds.rulesDriftLevel);
+      worstRulesDs = ds;
+    }
   }
+
+  // Build tooltips from worst-case session data
+  const sessionTooltip = worstSessionDs ? buildSessionTooltip(worstSessionDs) : undefined;
+  const rulesTooltip = worstRulesDs ? buildRulesTooltip(worstRulesDs) : undefined;
+
+  // Click handler: navigate to the latest drift_check event in Logs
+  const handleBarClick = useCallback((driftType: 'session_goal' | 'rules') => {
+    const targetSessionId = driftType === 'session_goal'
+      ? worstSessionDs?.sessionId
+      : worstRulesDs?.sessionId;
+    if (!targetSessionId) return;
+
+    // Find latest drift_check or drift_alert for this session + type
+    for (let i = events.length - 1; i >= 0; i--) {
+      const e = events[i];
+      if (
+        (e.type === 'drift_check' || e.type === 'drift_alert') &&
+        e.sessionId === targetSessionId &&
+        e.data.driftType === driftType
+      ) {
+        navigateFromDashboardToLogs(targetSessionId, e.id);
+        return;
+      }
+    }
+  }, [events, worstSessionDs?.sessionId, worstRulesDs?.sessionId, navigateFromDashboardToLogs]);
 
   if (!hasData) {
     return (
@@ -113,8 +189,20 @@ export function DriftMonitorPanel({ focusedSessionId }: DriftMonitorPanelProps) 
 
   return (
     <div className="space-y-2">
-      <DriftBar label="Session" pct={sessionGoalPct} level={sessionGoalLevel} />
-      <DriftBar label="Rules" pct={rulesPct} level={rulesLevel} />
+      <DriftBar
+        label="Session"
+        pct={sessionGoalPct}
+        level={sessionGoalLevel}
+        tooltip={sessionTooltip}
+        onClick={() => handleBarClick('session_goal')}
+      />
+      <DriftBar
+        label="Rules"
+        pct={rulesPct}
+        level={rulesLevel}
+        tooltip={rulesTooltip}
+        onClick={() => handleBarClick('rules')}
+      />
     </div>
   );
 }
