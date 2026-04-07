@@ -3,6 +3,7 @@ import { useSessionStore } from '../../stores/sessionStore.js';
 import { ActivitySparkline } from './ActivitySparkline.js';
 import { TokenUsageChart } from './TokenUsageChart.js';
 import { EventDensityTimeline } from './EventDensityTimeline.js';
+import { DriftMonitorPanel } from './DriftMonitorPanel.js';
 import type { TimelineEvent } from '../../lib/types.js';
 
 interface SidePanelProps {
@@ -106,6 +107,12 @@ export function SidePanel({ events, focusedSessionId }: SidePanelProps) {
           sessions={sessions}
           focusedSessionId={focusedSessionId}
         />
+      </div>
+
+      {/* Drift monitor */}
+      <div className="dash-panel-section">
+        <div className="dash-panel-title">Drift Monitor</div>
+        <DriftMonitorPanel focusedSessionId={focusedSessionId} />
       </div>
 
       {/* All sessions density timeline */}

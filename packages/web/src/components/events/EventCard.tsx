@@ -75,6 +75,10 @@ function getEventSummary(event: TimelineEvent): string {
       return (data.prompt ?? 'MCP structured input request').slice(0, 80);
     case 'elicitation_result':
       return (data.prompt ?? 'MCP structured input result').slice(0, 80);
+    case 'drift_check':
+      return `${data.driftType === 'rules' ? 'Rules' : 'Session'} drift: ${data.driftPct ?? 0}% (${data.driftLevel ?? 'green'})`;
+    case 'drift_alert':
+      return `Drift alert: ${data.driftType === 'rules' ? 'Rules' : 'Session'} → ${data.driftLevel ?? 'red'}`;
     default:
       return type;
   }
@@ -132,9 +136,10 @@ export function EventCard({ event, index, isSelected, onClick, onSend, collapseH
   const isAgentResponse = event.type === 'agent_response';
   const isFailed = event.type === 'tool_call_failed';
   const isUserPrompt = event.type === 'user_prompt';
+  const isDriftEvent = event.type === 'drift_alert' || event.type === 'drift_check';
   // When collapseHistory is on, expansion is driven by selection; otherwise use local toggle
-  // agent_response, tool_call_failed, and user_prompt are always expanded so the content is visible without clicking
-  const expanded = isPending || isAgentResponse || isFailed || isUserPrompt || (collapseHistory ? isSelected : expandedLocal);
+  // agent_response, tool_call_failed, user_prompt, and drift events are always expanded so content is visible without clicking
+  const expanded = isPending || isAgentResponse || isFailed || isUserPrompt || isDriftEvent || (collapseHistory ? isSelected : expandedLocal);
   const borderColor = BORDER_COLORS[event.type] ?? 'border-l-[#30363d]';
   const icon = EVENT_ICONS[event.type] ?? '·';
 
@@ -196,7 +201,7 @@ export function EventCard({ event, index, isSelected, onClick, onSend, collapseH
 
         {/* Type label */}
         <span className="text-[11px] text-[#8b949e] font-mono shrink-0">
-          {event.type.replace(/_/g, ' ')}
+          {event.type.replace(/_/g, ' ')}{(event.type === 'drift_check' || event.type === 'drift_alert') && event.data.driftType ? ` - ${event.data.driftType === 'rules' ? 'rules' : 'session'}` : ''}
         </span>
 
         {/* Tool name if present */}
@@ -427,6 +432,24 @@ export function EventCard({ event, index, isSelected, onClick, onSend, collapseH
             </p>
           )}
 
+          {/* Drift event details */}
+          {(event.type === 'drift_check' || event.type === 'drift_alert') && (
+            <DriftDetailSection event={event} onSend={onSend} />
+          )}
+
+          {/* Drift alert approval controls */}
+          {event.type === 'drift_alert' && !event.data.decision && (() => {
+            const driftApproval = approvals.find((a) => a.isDriftBlock);
+            if (!driftApproval) return null;
+            return (
+              <DriftApprovalBar
+                approvalId={driftApproval.id}
+                sessionId={event.sessionId}
+                onSend={onSend}
+              />
+            );
+          })()}
+
           {/* Analysis card */}
           {event.analysis && (
             <div className="bg-[#0d1117] border border-[#30363d] rounded-md p-3">
@@ -445,6 +468,206 @@ export function EventCard({ event, index, isSelected, onClick, onSend, collapseH
               />
             </div>
           )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function DriftApprovalBar({
+  approvalId,
+  sessionId,
+  onSend,
+}: {
+  approvalId: string;
+  sessionId: string;
+  onSend: (msg: ClientMessage) => void;
+}) {
+  const [decided, setDecided] = useState(false);
+
+  if (decided) {
+    return <div className="text-xs text-[#8b949e] italic pt-1">Decision sent — waiting for agent to continue...</div>;
+  }
+
+  const handleContinue = () => {
+    setDecided(true);
+    onSend({ type: 'approval:decide', approvalId, decision: { decision: 'allow' } });
+  };
+
+  const handleDismiss = () => {
+    setDecided(true);
+    onSend({ type: 'drift:dismiss', sessionId, approvalId });
+  };
+
+  const handleDeny = () => {
+    setDecided(true);
+    onSend({ type: 'approval:decide', approvalId, decision: { decision: 'deny', reason: 'Drift threshold exceeded' } });
+  };
+
+  return (
+    <div className="pt-2 space-y-2">
+      <div className="flex gap-2">
+        <button
+          onClick={handleContinue}
+          className="flex-1 px-3 py-2 text-xs font-semibold rounded-md bg-[#238636] hover:bg-[#2ea043] text-white transition-colors border border-[#3fb950]/30"
+        >
+          Continue
+        </button>
+        <button
+          onClick={handleDismiss}
+          className="flex-1 px-3 py-2 text-xs font-semibold rounded-md transition-colors border"
+          style={{
+            background: 'rgba(210, 153, 34, 0.15)',
+            borderColor: 'rgba(210, 153, 34, 0.3)',
+            color: '#d29922',
+          }}
+        >
+          Dismiss as False Positive
+        </button>
+        <button
+          onClick={handleDeny}
+          className="flex-1 px-3 py-2 text-xs font-semibold rounded-md bg-[#da3633]/20 hover:bg-[#da3633]/30 text-[#f85149] transition-colors border border-[#f85149]/30"
+        >
+          Deny
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function DismissItemButton({
+  sessionId,
+  category,
+  value,
+  onSend,
+}: {
+  sessionId: string;
+  category: 'indicator' | 'patternBreak' | 'phantomReference' | 'violation';
+  value: string;
+  onSend: (msg: ClientMessage) => void;
+}) {
+  return (
+    <button
+      className="ml-auto text-[#484f58] hover:text-[#8b949e] text-[10px] shrink-0 px-1"
+      onClick={(e) => {
+        e.stopPropagation();
+        onSend({ type: 'drift:dismiss-item', sessionId, category, value });
+      }}
+      title="Dismiss as false positive"
+    >
+      &times;
+    </button>
+  );
+}
+
+function DriftDetailSection({
+  event,
+  onSend,
+}: {
+  event: TimelineEvent;
+  onSend: (msg: ClientMessage) => void;
+}) {
+  const dismissed = useSessionStore((s) => s.driftState.get(event.sessionId)?.dismissedItems);
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center gap-3">
+        <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${
+          event.data.driftType === 'rules'
+            ? 'bg-[#58a6ff]/10 text-[#58a6ff] border border-[#58a6ff]/20'
+            : 'bg-[#d29922]/10 text-[#d29922] border border-[#d29922]/20'
+        }`}>
+          {event.data.driftType === 'rules' ? 'RULES DRIFT' : 'SESSION DRIFT'}
+        </span>
+        <span className={`text-xs font-mono font-semibold ${
+          event.data.driftLevel === 'green' ? 'text-[#00e676]'
+            : event.data.driftLevel === 'yellow' ? 'text-[#ffb300]'
+            : event.data.driftLevel === 'orange' ? 'text-[#ff9100]'
+            : 'text-[#ff3d57]'
+        }`}>
+          {Math.round(event.data.driftPct ?? 0)}%
+        </span>
+        {event.data.driftPreviousLevel && event.data.driftPreviousLevel !== event.data.driftLevel && (
+          <span className="text-[10px] text-[#8b949e]">
+            {event.data.driftPreviousLevel} → {event.data.driftLevel}
+          </span>
+        )}
+      </div>
+      {event.data.driftSummary && (
+        <p className="text-xs text-[#e6edf3] leading-relaxed">{event.data.driftSummary}</p>
+      )}
+      {event.data.driftIndicators && event.data.driftIndicators.length > 0 && (
+        <div>
+          <p className="text-[10px] text-[#484f58] font-mono uppercase mb-1">Indicators</p>
+          <ul className="space-y-0.5">
+            {event.data.driftIndicators.map((ind, i) => {
+              const isDismissed = dismissed?.indicators?.includes(ind);
+              return (
+                <li key={i} className={`text-[11px] flex items-start gap-1.5 ${isDismissed ? 'line-through opacity-40' : 'text-[#8b949e]'}`}>
+                  <span className="text-[#d29922] mt-0.5 shrink-0">&#8226;</span>
+                  <span className="flex-1">{ind}</span>
+                  {!isDismissed && <DismissItemButton sessionId={event.sessionId} category="indicator" value={ind} onSend={onSend} />}
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
+      {event.data.driftViolations && event.data.driftViolations.length > 0 && (
+        <div>
+          <p className="text-[10px] text-[#484f58] font-mono uppercase mb-1">Violations</p>
+          <div className="space-y-1">
+            {event.data.driftViolations.map((v, i) => {
+              const isDismissed = dismissed?.violations?.includes(v.rule);
+              return (
+                <div key={i} className={`text-[11px] bg-[#0d1117] rounded px-2 py-1 border border-[#30363d] flex items-center ${isDismissed ? 'line-through opacity-40' : ''}`}>
+                  <span className="flex-1">
+                    <span className={`font-medium ${
+                      v.severity === 'critical' ? 'text-[#f85149]' : v.severity === 'major' ? 'text-[#ff9100]' : 'text-[#ffb300]'
+                    }`}>{v.severity}</span>
+                    <span className="text-[#484f58] mx-1">|</span>
+                    <span className="text-[#8b949e]">{v.rule}</span>
+                    <span className="text-[#484f58] mx-1">&rarr;</span>
+                    <span className="text-[#e6edf3]">{v.action}</span>
+                  </span>
+                  {!isDismissed && <DismissItemButton sessionId={event.sessionId} category="violation" value={v.rule} onSend={onSend} />}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+      {event.data.driftPhantomRefs && event.data.driftPhantomRefs.length > 0 && (
+        <div>
+          <p className="text-[10px] text-[#484f58] font-mono uppercase mb-1">Phantom references</p>
+          <ul className="space-y-0.5">
+            {event.data.driftPhantomRefs.map((ref, i) => {
+              const isDismissed = dismissed?.phantomReferences?.includes(ref);
+              return (
+                <li key={i} className={`text-[11px] font-mono flex items-start gap-1.5 ${isDismissed ? 'line-through opacity-40' : 'text-[#f85149]'}`}>
+                  <span className="flex-1">{ref}</span>
+                  {!isDismissed && <DismissItemButton sessionId={event.sessionId} category="phantomReference" value={ref} onSend={onSend} />}
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
+      {event.data.driftPatternBreaks && event.data.driftPatternBreaks.length > 0 && (
+        <div>
+          <p className="text-[10px] text-[#484f58] font-mono uppercase mb-1">Pattern breaks</p>
+          <ul className="space-y-0.5">
+            {event.data.driftPatternBreaks.map((pb, i) => {
+              const isDismissed = dismissed?.patternBreaks?.includes(pb);
+              return (
+                <li key={i} className={`text-[11px] flex items-start gap-1.5 ${isDismissed ? 'line-through opacity-40' : 'text-[#8b949e]'}`}>
+                  <span className="text-[#ff9100] mt-0.5 shrink-0">&#8226;</span>
+                  <span className="flex-1">{pb}</span>
+                  {!isDismissed && <DismissItemButton sessionId={event.sessionId} category="patternBreak" value={pb} onSend={onSend} />}
+                </li>
+              );
+            })}
+          </ul>
         </div>
       )}
     </div>

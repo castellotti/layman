@@ -860,6 +860,206 @@ export function SettingsDrawer({ onSend }: SettingsDrawerProps) {
 
           <div className="border-t border-[#30363d]" />
 
+          {/* Drift Monitoring */}
+          <section>
+            <h3 className="text-xs font-semibold text-[#8b949e] uppercase tracking-wider mb-1">
+              Drift Monitoring
+            </h3>
+            <p className="text-[10px] text-[#484f58] mb-3">
+              Periodically assess whether the AI agent is drifting from original goals or CLAUDE.md rules.
+              Uses the configured analysis model.
+            </p>
+            <div className="space-y-3">
+              <label className="flex items-center justify-between cursor-pointer">
+                <span className="text-xs text-[#e6edf3]">Enable drift monitoring</span>
+                <div
+                  onClick={() => updateConfig({ driftMonitoring: { ...config.driftMonitoring, enabled: !config.driftMonitoring.enabled } })}
+                  className={`relative w-8 h-4 rounded-full transition-colors cursor-pointer ${
+                    config.driftMonitoring.enabled ? 'bg-[#238636]' : 'bg-[#30363d]'
+                  }`}
+                >
+                  <div
+                    className={`absolute top-0.5 w-3 h-3 bg-white rounded-full transition-transform ${
+                      config.driftMonitoring.enabled ? 'translate-x-4' : 'translate-x-0.5'
+                    }`}
+                  />
+                </div>
+              </label>
+
+              {config.driftMonitoring.enabled && (
+                <>
+                  {/* Check interval */}
+                  <div className="flex items-center justify-between">
+                    <div className="flex-1 min-w-0 mr-3">
+                      <span className="text-xs text-[#e6edf3]">Check interval</span>
+                      <p className="text-[10px] text-[#484f58] mt-0.5">
+                        Run drift check every N tool completions or N minutes, whichever comes first.
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <input
+                        type="number"
+                        min={1}
+                        max={100}
+                        value={config.driftMonitoring.checkIntervalToolCalls}
+                        onChange={(e) => {
+                          const v = parseInt(e.target.value, 10);
+                          if (v >= 1 && v <= 100) updateConfig({ driftMonitoring: { ...config.driftMonitoring, checkIntervalToolCalls: v } });
+                        }}
+                        className="w-14 px-2 py-1 text-xs text-center bg-[#0d1117] border border-[#30363d] rounded text-[#e6edf3] focus:outline-none focus:border-[#58a6ff]"
+                      />
+                      <span className="text-[10px] text-[#484f58]">tools</span>
+                      <input
+                        type="number"
+                        min={1}
+                        max={60}
+                        value={config.driftMonitoring.checkIntervalMinutes}
+                        onChange={(e) => {
+                          const v = parseInt(e.target.value, 10);
+                          if (v >= 1 && v <= 60) updateConfig({ driftMonitoring: { ...config.driftMonitoring, checkIntervalMinutes: v } });
+                        }}
+                        className="w-14 px-2 py-1 text-xs text-center bg-[#0d1117] border border-[#30363d] rounded text-[#e6edf3] focus:outline-none focus:border-[#58a6ff]"
+                      />
+                      <span className="text-[10px] text-[#484f58]">min</span>
+                    </div>
+                  </div>
+
+                  {/* Session drift thresholds */}
+                  <div>
+                    <span className="text-xs text-[#8b949e] block mb-1">Session drift thresholds</span>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[10px]" style={{ color: '#00e676' }}>Green</span>
+                      <input
+                        type="number" min={0} max={100}
+                        value={config.driftMonitoring.sessionDriftThresholds.green}
+                        onChange={(e) => {
+                          const v = parseInt(e.target.value, 10);
+                          if (v >= 0 && v <= 100) updateConfig({ driftMonitoring: { ...config.driftMonitoring, sessionDriftThresholds: { ...config.driftMonitoring.sessionDriftThresholds, green: v } } });
+                        }}
+                        className="w-10 px-1 py-1 text-xs text-center bg-[#0d1117] border border-[#30363d] rounded text-[#e6edf3] focus:outline-none focus:border-[#58a6ff]"
+                      />
+                      <span className="text-[10px]" style={{ color: '#ffb300' }}>Yellow</span>
+                      <input
+                        type="number" min={0} max={100}
+                        value={config.driftMonitoring.sessionDriftThresholds.yellow}
+                        onChange={(e) => {
+                          const v = parseInt(e.target.value, 10);
+                          if (v >= 0 && v <= 100) updateConfig({ driftMonitoring: { ...config.driftMonitoring, sessionDriftThresholds: { ...config.driftMonitoring.sessionDriftThresholds, yellow: v } } });
+                        }}
+                        className="w-10 px-1 py-1 text-xs text-center bg-[#0d1117] border border-[#30363d] rounded text-[#e6edf3] focus:outline-none focus:border-[#58a6ff]"
+                      />
+                      <span className="text-[10px]" style={{ color: '#ff9100' }}>Orange</span>
+                      <input
+                        type="number" min={0} max={100}
+                        value={config.driftMonitoring.sessionDriftThresholds.orange}
+                        onChange={(e) => {
+                          const v = parseInt(e.target.value, 10);
+                          if (v >= 0 && v <= 100) updateConfig({ driftMonitoring: { ...config.driftMonitoring, sessionDriftThresholds: { ...config.driftMonitoring.sessionDriftThresholds, orange: v } } });
+                        }}
+                        className="w-10 px-1 py-1 text-xs text-center bg-[#0d1117] border border-[#30363d] rounded text-[#e6edf3] focus:outline-none focus:border-[#58a6ff]"
+                      />
+                      <span className="text-[10px]" style={{ color: '#ff3d57' }}>Red</span>
+                    </div>
+                  </div>
+
+                  {/* Rules drift thresholds */}
+                  <div>
+                    <span className="text-xs text-[#8b949e] block mb-1">Rules drift thresholds</span>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[10px]" style={{ color: '#00e676' }}>Green</span>
+                      <input
+                        type="number" min={0} max={100}
+                        value={config.driftMonitoring.rulesDriftThresholds.green}
+                        onChange={(e) => {
+                          const v = parseInt(e.target.value, 10);
+                          if (v >= 0 && v <= 100) updateConfig({ driftMonitoring: { ...config.driftMonitoring, rulesDriftThresholds: { ...config.driftMonitoring.rulesDriftThresholds, green: v } } });
+                        }}
+                        className="w-10 px-1 py-1 text-xs text-center bg-[#0d1117] border border-[#30363d] rounded text-[#e6edf3] focus:outline-none focus:border-[#58a6ff]"
+                      />
+                      <span className="text-[10px]" style={{ color: '#ffb300' }}>Yellow</span>
+                      <input
+                        type="number" min={0} max={100}
+                        value={config.driftMonitoring.rulesDriftThresholds.yellow}
+                        onChange={(e) => {
+                          const v = parseInt(e.target.value, 10);
+                          if (v >= 0 && v <= 100) updateConfig({ driftMonitoring: { ...config.driftMonitoring, rulesDriftThresholds: { ...config.driftMonitoring.rulesDriftThresholds, yellow: v } } });
+                        }}
+                        className="w-10 px-1 py-1 text-xs text-center bg-[#0d1117] border border-[#30363d] rounded text-[#e6edf3] focus:outline-none focus:border-[#58a6ff]"
+                      />
+                      <span className="text-[10px]" style={{ color: '#ff9100' }}>Orange</span>
+                      <input
+                        type="number" min={0} max={100}
+                        value={config.driftMonitoring.rulesDriftThresholds.orange}
+                        onChange={(e) => {
+                          const v = parseInt(e.target.value, 10);
+                          if (v >= 0 && v <= 100) updateConfig({ driftMonitoring: { ...config.driftMonitoring, rulesDriftThresholds: { ...config.driftMonitoring.rulesDriftThresholds, orange: v } } });
+                        }}
+                        className="w-10 px-1 py-1 text-xs text-center bg-[#0d1117] border border-[#30363d] rounded text-[#e6edf3] focus:outline-none focus:border-[#58a6ff]"
+                      />
+                      <span className="text-[10px]" style={{ color: '#ff3d57' }}>Red</span>
+                    </div>
+                  </div>
+
+                  {/* Threshold ordering warning */}
+                  {(config.driftMonitoring.sessionDriftThresholds.green >= config.driftMonitoring.sessionDriftThresholds.yellow
+                    || config.driftMonitoring.sessionDriftThresholds.yellow >= config.driftMonitoring.sessionDriftThresholds.orange
+                    || config.driftMonitoring.rulesDriftThresholds.green >= config.driftMonitoring.rulesDriftThresholds.yellow
+                    || config.driftMonitoring.rulesDriftThresholds.yellow >= config.driftMonitoring.rulesDriftThresholds.orange) && (
+                    <p className="text-[10px] text-[#d29922] mt-1">
+                      Thresholds should be ordered: Green &lt; Yellow &lt; Orange
+                    </p>
+                  )}
+
+                  {/* Block on Red */}
+                  <label className="flex items-center justify-between cursor-pointer">
+                    <div>
+                      <span className="text-xs text-[#e6edf3]">Block on red</span>
+                      <p className="text-[10px] text-[#484f58] mt-0.5">
+                        Halt the agent and require approval when drift reaches red level
+                      </p>
+                    </div>
+                    <div
+                      onClick={() => updateConfig({ driftMonitoring: { ...config.driftMonitoring, blockOnRed: !config.driftMonitoring.blockOnRed } })}
+                      className={`relative w-8 h-4 rounded-full transition-colors cursor-pointer shrink-0 ml-3 ${
+                        config.driftMonitoring.blockOnRed ? 'bg-[#238636]' : 'bg-[#30363d]'
+                      }`}
+                    >
+                      <div
+                        className={`absolute top-0.5 w-3 h-3 bg-white rounded-full transition-transform ${
+                          config.driftMonitoring.blockOnRed ? 'translate-x-4' : 'translate-x-0.5'
+                        }`}
+                      />
+                    </div>
+                  </label>
+
+                  {/* Remind on Orange */}
+                  <label className="flex items-center justify-between cursor-pointer">
+                    <div>
+                      <span className="text-xs text-[#e6edf3]">Remind on orange</span>
+                      <p className="text-[10px] text-[#484f58] mt-0.5">
+                        Inject a rules summary into tool responses when drift reaches orange
+                      </p>
+                    </div>
+                    <div
+                      onClick={() => updateConfig({ driftMonitoring: { ...config.driftMonitoring, remindOnOrange: !config.driftMonitoring.remindOnOrange } })}
+                      className={`relative w-8 h-4 rounded-full transition-colors cursor-pointer shrink-0 ml-3 ${
+                        config.driftMonitoring.remindOnOrange ? 'bg-[#238636]' : 'bg-[#30363d]'
+                      }`}
+                    >
+                      <div
+                        className={`absolute top-0.5 w-3 h-3 bg-white rounded-full transition-transform ${
+                          config.driftMonitoring.remindOnOrange ? 'translate-x-4' : 'translate-x-0.5'
+                        }`}
+                      />
+                    </div>
+                  </label>
+                </>
+              )}
+            </div>
+          </section>
+
+          <div className="border-t border-[#30363d]" />
+
           {/* User Interface */}
           <section>
             <h3 className="text-xs font-semibold text-[#8b949e] uppercase tracking-wider mb-3">

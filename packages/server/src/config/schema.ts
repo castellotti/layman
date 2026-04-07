@@ -20,6 +20,25 @@ export const AnalysisConfigSchema = z.object({
 
 export const DEFAULT_LAYMANS_PROMPT = 'Explain what the AI is doing here in absolute layman\'s terms to someone who has no understanding of technology';
 
+export const DriftThresholdsSchema = z.object({
+  green: z.number().min(0).max(100).default(15),
+  yellow: z.number().min(0).max(100).default(30),
+  orange: z.number().min(0).max(100).default(50),
+}).refine(
+  (v) => v.green < v.yellow && v.yellow < v.orange,
+  { message: 'Drift thresholds must satisfy: green < yellow < orange' }
+);
+
+export const DriftMonitoringConfigSchema = z.object({
+  enabled: z.boolean().default(false),
+  checkIntervalToolCalls: z.number().int().min(1).max(100).default(10),
+  checkIntervalMinutes: z.number().int().min(1).max(60).default(5),
+  sessionDriftThresholds: DriftThresholdsSchema.default({}),
+  rulesDriftThresholds: DriftThresholdsSchema.default({}),
+  blockOnRed: z.boolean().default(true),
+  remindOnOrange: z.boolean().default(true),
+});
+
 export const LaymanConfigSchema = z.object({
   port: z.number().int().min(1).max(65535).default(8880),
   host: z.string().default('localhost'),
@@ -51,6 +70,7 @@ export const LaymanConfigSchema = z.object({
   declinedClients: z.array(z.string()).default([]),
   idleThresholdMinutes: z.number().int().min(1).max(60).default(5),
   autoActivateClients: z.array(z.string()).default([]),
+  driftMonitoring: DriftMonitoringConfigSchema.default({}),
 });
 
 export type LaymanConfig = z.infer<typeof LaymanConfigSchema>;

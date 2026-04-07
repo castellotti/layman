@@ -108,26 +108,9 @@ export class AnalysisEngine {
       context.recentSessionEvents
     );
 
-    const effectiveConfig = context.modelOverride
-      ? { ...this.config, model: context.modelOverride, maxTokens: 400 }
-      : { ...this.config, maxTokens: 400 };
-
-    return this.withConcurrencyLimit(async () => {
-      const startTime = Date.now();
-      const raw = await this.callProvider(
-        INVESTIGATION_SYSTEM_PROMPT,
-        userMessage,
-        effectiveConfig
-      );
-      return {
-        text: raw.text.trim(),
-        tokens: {
-          input: raw.usage.input_tokens ?? raw.usage.prompt_tokens ?? 0,
-          output: raw.usage.output_tokens ?? raw.usage.completion_tokens ?? 0,
-        },
-        latencyMs: Date.now() - startTime,
-        model: effectiveConfig.model,
-      };
+    return this.callRaw(INVESTIGATION_SYSTEM_PROMPT, userMessage, {
+      ...(context.modelOverride ? { model: context.modelOverride } : {}),
+      maxTokens: 400,
     });
   }
 
@@ -136,25 +119,27 @@ export class AnalysisEngine {
     cwd: string,
     modelOverride?: string
   ): Promise<SessionSummaryResult> {
-    const effectiveConfig = modelOverride
-      ? { ...this.config, model: modelOverride, maxTokens: 400 }
-      : { ...this.config, maxTokens: 400 };
+    const userMessage = formatSessionSummaryUserMessage(events, cwd);
+    const raw = await this.callRaw(SESSION_SUMMARY_SYSTEM_PROMPT, userMessage, {
+      ...(modelOverride ? { model: modelOverride } : {}),
+      maxTokens: 400,
+    });
+    return { summary: raw.text, model: raw.model, latencyMs: raw.latencyMs, tokens: raw.tokens };
+  }
 
-    return this.withConcurrencyLimit(async () => {
-      const startTime = Date.now();
-      const userMessage = formatSessionSummaryUserMessage(events, cwd);
-      const raw = await this.callProvider(SESSION_SUMMARY_SYSTEM_PROMPT, userMessage, effectiveConfig);
-      const latencyMs = Date.now() - startTime;
-
-      return {
-        summary: raw.text.trim(),
-        model: effectiveConfig.model,
-        latencyMs,
-        tokens: {
-          input: raw.usage.input_tokens ?? raw.usage.prompt_tokens ?? 0,
-          output: raw.usage.output_tokens ?? raw.usage.completion_tokens ?? 0,
-        },
-      };
+  /**
+   * Run a drift detection assessment with custom prompts.
+   * Uses the configured analysis model (or an override) via the shared concurrency limiter.
+   */
+  async assessDrift(
+    systemPrompt: string,
+    userMessage: string,
+    modelOverride?: string
+  ): Promise<{ text: string; tokens: { input: number; output: number }; latencyMs: number; model: string }> {
+    return this.callRaw(systemPrompt, userMessage, {
+      ...(modelOverride ? { model: modelOverride } : {}),
+      maxTokens: 500,
+      temperature: 0.1,
     });
   }
 
@@ -162,27 +147,31 @@ export class AnalysisEngine {
     request: AnalysisRequest,
     prompt: string
   ): Promise<LaymansResult> {
-    const effectiveConfig = {
-      ...this.config,
+    const systemPrompt = buildLaymansSystemPrompt(prompt, request.depth);
+    const userMessage = formatAnalysisUserMessage(request);
+    const raw = await this.callRaw(systemPrompt, userMessage, {
       maxTokens: request.depth === 'detailed' ? 800 : 300,
-    };
+    });
+    return { explanation: raw.text, model: raw.model, latencyMs: raw.latencyMs, tokens: raw.tokens };
+  }
 
+  private async callRaw(
+    systemPrompt: string,
+    userMessage: string,
+    configOverrides?: Partial<AnalysisConfig>
+  ): Promise<{ text: string; tokens: { input: number; output: number }; latencyMs: number; model: string }> {
+    const effectiveConfig = { ...this.config, ...configOverrides };
     return this.withConcurrencyLimit(async () => {
       const startTime = Date.now();
-      const systemPrompt = buildLaymansSystemPrompt(prompt, request.depth);
-      const userMessage = formatAnalysisUserMessage(request);
-
       const raw = await this.callProvider(systemPrompt, userMessage, effectiveConfig);
-      const latencyMs = Date.now() - startTime;
-
-      const inputTokens = raw.usage.input_tokens ?? raw.usage.prompt_tokens ?? 0;
-      const outputTokens = raw.usage.output_tokens ?? raw.usage.completion_tokens ?? 0;
-
       return {
-        explanation: raw.text.trim(),
+        text: raw.text.trim(),
+        tokens: {
+          input: raw.usage.input_tokens ?? raw.usage.prompt_tokens ?? 0,
+          output: raw.usage.output_tokens ?? raw.usage.completion_tokens ?? 0,
+        },
+        latencyMs: Date.now() - startTime,
         model: effectiveConfig.model,
-        latencyMs,
-        tokens: { input: inputTokens, output: outputTokens },
       };
     });
   }

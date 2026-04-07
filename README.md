@@ -65,6 +65,17 @@ Past sessions are recorded to a local SQLite database. Open the **Sessions** pan
 
 All logged events are automatically scanned for personally identifiable information (email addresses, API keys, passwords, credit card numbers, etc.) and redacted before storage. Toggle in **Settings → Session Recording → PII Filter**.
 
+### Drift monitoring
+
+Layman continuously monitors AI agent sessions for two kinds of drift:
+
+- **Session goal drift** — detects when the agent strays from what you asked it to do (scope creep, phantom file references, pattern breaks).
+- **Rules drift** — detects when the agent violates rules defined in your project's `CLAUDE.md` files (wrong commands, forbidden actions, convention breaks).
+
+Drift scores are EMA-smoothed (alpha 0.3) to avoid reacting to one-off spikes. Scores map to four color levels (green → yellow → orange → red) with configurable thresholds. At **orange** the agent gets an in-context reminder; at **red** Layman can pause the agent entirely and require your approval to continue. Individual drift findings can be dismissed as false positives — dismissed items are fed back into the LLM prompt so they won't be re-flagged.
+
+Configure in **Settings → Drift Monitoring**: enable/disable, check interval (tool calls and minutes), threshold levels, block-on-red, and remind-on-orange.
+
 ### Session export
 
 Export a session as a PDF transcript using the print button in the session view.
@@ -93,6 +104,8 @@ Export a session as a PDF transcript using the print button in the session view.
 | 📦 | Context compacted |
 | 📋 | Elicitation (structured input request) |
 | 🔍 | Analysis result |
+| 📐 | Drift check completed |
+| 🚨 | Drift alert (level changed) |
 
 Agent badges in session cards: **CC** = Claude Code · **CX** = Codex · **OC** = OpenCode · **MV** = Mistral Vibe · **CL** = Cline
 

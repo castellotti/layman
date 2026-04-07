@@ -14,6 +14,7 @@ import { HookInstaller } from './hooks/installer.js';
 import { registerHookHandler } from './hooks/handler.js';
 import { registerClineHookHandler } from './cline/handler.js';
 import { AnalysisEngine } from './analysis/engine.js';
+import { DriftMonitor } from './drift/monitor.js';
 import { resolveEndpoint } from './analysis/providers/openai-compat.js';
 import { filterPii, redactValue } from './pii/filter.js';
 import { PII_CATEGORIES, PII_GROUPS } from './pii/categories.js';
@@ -60,6 +61,9 @@ export function createServer(config: LaymanConfig): LaymanServer {
   const gate = new SessionGate();
   const vibeWatcher = new VibeSessionWatcher(eventStore, gate);
   const startTime = Date.now();
+  // DriftMonitor is initialized here with a placeholder broadcast function.
+  // The real broadcast is wired up after wsClients is defined below.
+  let driftMonitor: DriftMonitor;
 
   // Wire PII filter — checks config on every event so toggling takes effect immediately
   eventStore.setDataFilter((data) => {
@@ -91,6 +95,9 @@ export function createServer(config: LaymanConfig): LaymanServer {
       }
     }
   }
+
+  // Now that broadcast exists, create the DriftMonitor
+  driftMonitor = new DriftMonitor(eventStore, analysisEngine, pendingManager, getConfig, broadcast);
 
   // Forward store events to WebSocket
   eventStore.on('event:new', (event) => {
@@ -966,6 +973,18 @@ export function createServer(config: LaymanConfig): LaymanServer {
           bookmarks: bookmarkStore.listAllBookmarks(),
         } satisfies ServerMessage));
 
+        // Send current drift state for active sessions
+        for (const session of eventStore.getSessions()) {
+          const driftState = driftMonitor.getState(session.sessionId);
+          if (driftState) {
+            ws.send(JSON.stringify({
+              type: 'drift:update',
+              sessionId: session.sessionId,
+              state: driftState,
+            } satisfies ServerMessage));
+          }
+        }
+
         ws.on('message', (data: unknown) => {
           try {
             const message = JSON.parse(String(data)) as ClientMessage;
@@ -1114,11 +1133,19 @@ export function createServer(config: LaymanConfig): LaymanServer {
         break;
       }
       case 'config:update': {
+        const prevDriftEnabled = activeConfig.driftMonitoring.enabled;
+        const prevBlockOnRed = activeConfig.driftMonitoring.blockOnRed;
         activeConfig = updateConfig(message.config);
         analysisEngine.configure(activeConfig.analysis);
         pendingManager.setHookTimeout(activeConfig.hookTimeout);
         saveConfig(activeConfig);
         broadcast({ type: 'session:config', config: activeConfig });
+        // Release drift blocks if drift blocking was effectively disabled
+        const wasDriftBlocking = prevDriftEnabled && prevBlockOnRed;
+        const isDriftBlocking = activeConfig.driftMonitoring.enabled && activeConfig.driftMonitoring.blockOnRed;
+        if (wasDriftBlocking && !isDriftBlocking) {
+          pendingManager.releaseDriftBlocks();
+        }
         break;
       }
       case 'setup:install': {
@@ -1152,11 +1179,27 @@ export function createServer(config: LaymanConfig): LaymanServer {
         });
         break;
       }
+      case 'drift:reset': {
+        driftMonitor.resetScores(message.sessionId);
+        break;
+      }
+      case 'drift:dismiss': {
+        driftMonitor.resetScores(message.sessionId);
+        pendingManager.resolveApproval(message.approvalId, {
+          decision: 'allow',
+          reason: 'Dismissed as false positive — drift scores reset',
+        });
+        break;
+      }
+      case 'drift:dismiss-item': {
+        driftMonitor.dismissItem(message.sessionId, message.category, message.value);
+        break;
+      }
     }
   }
 
   // Register hook handler routes
-  registerHookHandler(fastify, pendingManager, eventStore, analysisEngine, getConfig, gate);
+  registerHookHandler(fastify, pendingManager, eventStore, analysisEngine, getConfig, gate, driftMonitor);
   registerClineHookHandler(fastify, pendingManager, eventStore, analysisEngine, getConfig, gate);
 
   let resolvedPort = config.port;
