@@ -75,6 +75,10 @@ function getEventSummary(event: TimelineEvent): string {
       return (data.prompt ?? 'MCP structured input request').slice(0, 80);
     case 'elicitation_result':
       return (data.prompt ?? 'MCP structured input result').slice(0, 80);
+    case 'drift_check':
+      return `${data.driftType === 'rules' ? 'Rules' : 'Session'} drift: ${data.driftPct ?? 0}% (${data.driftLevel ?? 'green'})`;
+    case 'drift_alert':
+      return `Drift alert: ${data.driftType === 'rules' ? 'Rules' : 'Session'} → ${data.driftLevel ?? 'red'}`;
     default:
       return type;
   }
@@ -425,6 +429,91 @@ export function EventCard({ event, index, isSelected, onClick, onSend, collapseH
             <p className="text-xs text-[#f85149]">
               Reason: {event.data.decision.reason}
             </p>
+          )}
+
+          {/* Drift event details */}
+          {(event.type === 'drift_check' || event.type === 'drift_alert') && (
+            <div className="space-y-2">
+              <div className="flex items-center gap-3">
+                <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${
+                  event.data.driftType === 'rules'
+                    ? 'bg-[#58a6ff]/10 text-[#58a6ff] border border-[#58a6ff]/20'
+                    : 'bg-[#d29922]/10 text-[#d29922] border border-[#d29922]/20'
+                }`}>
+                  {event.data.driftType === 'rules' ? 'RULES DRIFT' : 'SESSION DRIFT'}
+                </span>
+                <span className={`text-xs font-mono font-semibold ${
+                  event.data.driftLevel === 'green' ? 'text-[#00e676]'
+                    : event.data.driftLevel === 'yellow' ? 'text-[#ffb300]'
+                    : event.data.driftLevel === 'orange' ? 'text-[#ff9100]'
+                    : 'text-[#ff3d57]'
+                }`}>
+                  {Math.round(event.data.driftPct ?? 0)}%
+                </span>
+                {event.data.driftPreviousLevel && event.data.driftPreviousLevel !== event.data.driftLevel && (
+                  <span className="text-[10px] text-[#8b949e]">
+                    {event.data.driftPreviousLevel} → {event.data.driftLevel}
+                  </span>
+                )}
+              </div>
+              {event.data.driftSummary && (
+                <p className="text-xs text-[#e6edf3] leading-relaxed">{event.data.driftSummary}</p>
+              )}
+              {event.data.driftIndicators && event.data.driftIndicators.length > 0 && (
+                <div>
+                  <p className="text-[10px] text-[#484f58] font-mono uppercase mb-1">Indicators</p>
+                  <ul className="space-y-0.5">
+                    {event.data.driftIndicators.map((ind, i) => (
+                      <li key={i} className="text-[11px] text-[#8b949e] flex items-start gap-1.5">
+                        <span className="text-[#d29922] mt-0.5 shrink-0">&#8226;</span>
+                        {ind}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {event.data.driftViolations && event.data.driftViolations.length > 0 && (
+                <div>
+                  <p className="text-[10px] text-[#484f58] font-mono uppercase mb-1">Violations</p>
+                  <div className="space-y-1">
+                    {event.data.driftViolations.map((v, i) => (
+                      <div key={i} className="text-[11px] bg-[#0d1117] rounded px-2 py-1 border border-[#30363d]">
+                        <span className={`font-medium ${
+                          v.severity === 'critical' ? 'text-[#f85149]' : v.severity === 'major' ? 'text-[#ff9100]' : 'text-[#ffb300]'
+                        }`}>{v.severity}</span>
+                        <span className="text-[#484f58] mx-1">|</span>
+                        <span className="text-[#8b949e]">{v.rule}</span>
+                        <span className="text-[#484f58] mx-1">→</span>
+                        <span className="text-[#e6edf3]">{v.action}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {event.data.driftPhantomRefs && event.data.driftPhantomRefs.length > 0 && (
+                <div>
+                  <p className="text-[10px] text-[#484f58] font-mono uppercase mb-1">Phantom references</p>
+                  <ul className="space-y-0.5">
+                    {event.data.driftPhantomRefs.map((ref, i) => (
+                      <li key={i} className="text-[11px] text-[#f85149] font-mono">{ref}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {event.data.driftPatternBreaks && event.data.driftPatternBreaks.length > 0 && (
+                <div>
+                  <p className="text-[10px] text-[#484f58] font-mono uppercase mb-1">Pattern breaks</p>
+                  <ul className="space-y-0.5">
+                    {event.data.driftPatternBreaks.map((pb, i) => (
+                      <li key={i} className="text-[11px] text-[#8b949e] flex items-start gap-1.5">
+                        <span className="text-[#ff9100] mt-0.5 shrink-0">&#8226;</span>
+                        {pb}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
           )}
 
           {/* Analysis card */}

@@ -28,6 +28,8 @@ export const EVENT_ICONS: Record<string, string> = {
   elicitation: '📋',
   elicitation_result: '📋',
   analysis_result: '🔍',
+  drift_check: '📐',
+  drift_alert: '🚨',
 };
 
 export const BORDER_COLORS: Record<string, string> = {
@@ -52,6 +54,8 @@ export const BORDER_COLORS: Record<string, string> = {
   elicitation: 'border-l-[#58a6ff]',
   elicitation_result: 'border-l-[#58a6ff]',
   analysis_result: 'border-l-[#8b949e]',
+  drift_check: 'border-l-[#d29922]',
+  drift_alert: 'border-l-[#f85149]',
 };
 
 /** Raw hex colors for flowchart node borders (same palette as BORDER_COLORS but as hex values) */
@@ -77,4 +81,6 @@ export const NODE_BORDER_COLORS: Record<string, string> = {
   elicitation: '#58a6ff',
   elicitation_result: '#58a6ff',
   analysis_result: '#8b949e',
+  drift_check: '#d29922',
+  drift_alert: '#f85149',
 };

@@ -33,7 +33,9 @@ export type EventType =
   | 'worktree_remove'
   | 'cwd_changed'
   | 'file_changed'
-  | 'session_metrics';
+  | 'session_metrics'
+  | 'drift_check'
+  | 'drift_alert';
 
 export interface AnalysisResult {
   meaning: string;
@@ -143,6 +145,16 @@ export interface EventData {
   rateLimit7dayResetsAt?: string;
   sessionName?: string;
   claudeCodeVersion?: string;
+  // Drift monitoring
+  driftType?: 'session_goal' | 'rules';
+  driftPct?: number;
+  driftLevel?: DriftLevel;
+  driftPreviousLevel?: DriftLevel;
+  driftSummary?: string;
+  driftIndicators?: string[];
+  driftViolations?: Array<{ rule: string; action: string; severity: string }>;
+  driftPhantomRefs?: string[];
+  driftPatternBreaks?: string[];
 }
 
 export interface TimelineEvent {
@@ -220,6 +232,36 @@ export interface LaymanConfig {
   autoScroll: boolean;
   idleThresholdMinutes: number;
   autoActivateClients: string[];
+  driftMonitoring: DriftMonitoringConfig;
+}
+
+// Drift monitoring types
+export type DriftLevel = 'green' | 'yellow' | 'orange' | 'red';
+
+export interface DriftThresholds {
+  green: number;
+  yellow: number;
+  orange: number;
+}
+
+export interface DriftMonitoringConfig {
+  enabled: boolean;
+  checkIntervalToolCalls: number;
+  checkIntervalMinutes: number;
+  sessionDriftThresholds: DriftThresholds;
+  rulesDriftThresholds: DriftThresholds;
+  blockOnRed: boolean;
+  remindOnOrange: boolean;
+}
+
+export interface DriftState {
+  sessionId: string;
+  sessionGoalDriftPct: number;
+  sessionGoalDriftLevel: DriftLevel;
+  rulesDriftPct: number;
+  rulesDriftLevel: DriftLevel;
+  lastCheckTimestamp: number;
+  lastCheckModel: string;
 }
 
 export interface BookmarkFolder {

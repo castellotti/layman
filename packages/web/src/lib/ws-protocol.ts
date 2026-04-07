@@ -8,6 +8,7 @@ import type {
   SessionStatus,
   BookmarkFolder,
   Bookmark,
+  DriftState,
 } from './types.js';
 
 export interface SessionInfo {
@@ -43,7 +44,8 @@ export type ServerMessage =
   | { type: 'bookmarks:folder:deleted'; folderId: string }
   | { type: 'bookmarks:created'; bookmark: Bookmark }
   | { type: 'bookmarks:updated'; bookmark: Bookmark }
-  | { type: 'bookmarks:deleted'; bookmarkId: string };
+  | { type: 'bookmarks:deleted'; bookmarkId: string }
+  | { type: 'drift:update'; sessionId: string; state: DriftState };
 
 export type ClientMessage =
   | { type: 'approval:decide'; approvalId: string; decision: ApprovalDecision }
@@ -53,4 +55,5 @@ export type ClientMessage =
   | { type: 'analysis:ask'; eventId: string; question: string }
   | { type: 'config:update'; config: Partial<LaymanConfig> }
   | { type: 'setup:install'; clients?: string[] }
-  | { type: 'bookmarks:get' };
+  | { type: 'bookmarks:get' }
+  | { type: 'drift:reset'; sessionId: string };

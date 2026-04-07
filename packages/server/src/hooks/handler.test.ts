@@ -46,6 +46,15 @@ const MOCK_CONFIG: LaymanConfig = {
   declinedClients: [],
   idleThresholdMinutes: 5,
   autoActivateClients: [],
+  driftMonitoring: {
+    enabled: false,
+    checkIntervalToolCalls: 10,
+    checkIntervalMinutes: 5,
+    sessionDriftThresholds: { green: 15, yellow: 30, orange: 50 },
+    rulesDriftThresholds: { green: 15, yellow: 30, orange: 50 },
+    blockOnRed: true,
+    remindOnOrange: true,
+  },
 };
 
 describe('PendingApprovalManager', () => {

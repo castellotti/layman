@@ -158,6 +158,34 @@ export class AnalysisEngine {
     });
   }
 
+  /**
+   * Run a drift detection assessment with custom prompts.
+   * Uses the configured analysis model (or an override) via the shared concurrency limiter.
+   */
+  async assessDrift(
+    systemPrompt: string,
+    userMessage: string,
+    modelOverride?: string
+  ): Promise<{ text: string; tokens: { input: number; output: number }; latencyMs: number; model: string }> {
+    const effectiveConfig = modelOverride
+      ? { ...this.config, model: modelOverride, maxTokens: 500, temperature: 0.1 }
+      : { ...this.config, maxTokens: 500, temperature: 0.1 };
+
+    return this.withConcurrencyLimit(async () => {
+      const startTime = Date.now();
+      const raw = await this.callProvider(systemPrompt, userMessage, effectiveConfig);
+      return {
+        text: raw.text.trim(),
+        tokens: {
+          input: raw.usage.input_tokens ?? raw.usage.prompt_tokens ?? 0,
+          output: raw.usage.output_tokens ?? raw.usage.completion_tokens ?? 0,
+        },
+        latencyMs: Date.now() - startTime,
+        model: effectiveConfig.model,
+      };
+    });
+  }
+
   async laymans(
     request: AnalysisRequest,
     prompt: string
