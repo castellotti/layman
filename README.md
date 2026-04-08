@@ -28,7 +28,7 @@ Layman is a dashboard that explains exactly what your AI assistants are doing, i
 
 ## Screenshot
 
-<img width="1525" height="1060" alt="Screenshot 2026-04-06 at 11 45 46 PM" src="https://github.com/user-attachments/assets/ede75767-1fd1-40e9-9f46-d800c7918c3d" />
+<img width="1412" height="860" alt="layman_screenshot" src="https://github.com/user-attachments/assets/2b0294bc-b889-4a4c-a42f-2f25fc1aff0f" />
 
 ---
 
