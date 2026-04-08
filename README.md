@@ -15,6 +15,8 @@ When AI coding assistants like Claude Code, Codex, OpenCode, Mistral Vibe, or Cl
 
 Layman is a dashboard that explains exactly what your AI assistants are doing, in plain language, in your web browser. Understand and remember every file AI reads, every change AI makes, every command AI runs.
 
+![layman-demo-dashboard](https://github.com/user-attachments/assets/a9dba255-e5fa-4127-89af-2df93f1840d7)
+
 ---
 
 ### Supported Harnesses
