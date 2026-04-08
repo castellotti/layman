@@ -13,6 +13,7 @@ import { homedir } from 'os';
 import type { FSWatcher } from 'fs';
 import type { EventStore } from '../events/store.js';
 import type { SessionGate } from '../hooks/gate.js';
+import type { LaymanConfig } from '../config/schema.js';
 import { classifyRisk } from '../events/classifier.js';
 import { extractAccess } from '../events/access-extractor.js';
 
@@ -102,14 +103,16 @@ function resolveSessionLogDir(): string | null {
 export class VibeSessionWatcher {
   private eventStore: EventStore;
   private gate: SessionGate;
+  private getConfig: () => LaymanConfig;
   private sessions = new Map<string, TrackedSession>();
   private dirWatcher: FSWatcher | null = null;
   private scanTimer: ReturnType<typeof setInterval> | null = null;
   private logDir: string | null = null;
 
-  constructor(eventStore: EventStore, gate: SessionGate) {
+  constructor(eventStore: EventStore, gate: SessionGate, getConfig: () => LaymanConfig) {
     this.eventStore = eventStore;
     this.gate = gate;
+    this.getConfig = getConfig;
   }
 
   start(): void {
@@ -203,6 +206,12 @@ export class VibeSessionWatcher {
 
     const sessionId = meta.session_id;
     const cwd = meta.environment?.working_directory ?? '';
+
+    // Auto-activate: if configured, activate Vibe sessions via the gate
+    const config = this.getConfig();
+    if (config.autoActivateClients.includes(AGENT_TYPE)) {
+      this.gate.activate(sessionId);
+    }
 
     // Register session with EventStore
     this.eventStore.trackSession(sessionId, cwd, AGENT_TYPE);

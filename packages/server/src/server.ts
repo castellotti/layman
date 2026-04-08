@@ -59,7 +59,6 @@ export function createServer(config: LaymanConfig): LaymanServer {
   const pendingManager = new PendingApprovalManager(config.hookTimeout);
   const analysisEngine = new AnalysisEngine(config.analysis);
   const gate = new SessionGate();
-  const vibeWatcher = new VibeSessionWatcher(eventStore, gate);
   const startTime = Date.now();
   // DriftMonitor is initialized here with a placeholder broadcast function.
   // The real broadcast is wired up after wsClients is defined below.
@@ -77,6 +76,8 @@ export function createServer(config: LaymanConfig): LaymanServer {
 
   let activeConfig = config;
   const getConfig = (): LaymanConfig => activeConfig;
+
+  const vibeWatcher = new VibeSessionWatcher(eventStore, gate, getConfig);
 
   // Persistent storage
   const db = openDatabase();

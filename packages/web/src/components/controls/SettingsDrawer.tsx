@@ -219,7 +219,7 @@ export function HarnessSetupSection({ onSend }: { onSend: (msg: ClientMessage) =
         const hooksOk = client.hooksInstalled === undefined || client.hooksUpToDate !== false;
         const fullyOk = commandOk && hooksOk;
         const needsUpdate = client.detected && client.commandInstalled && !fullyOk;
-        const showAutoActivate = client.id === 'codex' && client.detected && fullyOk && config;
+        const showAutoActivate = client.detected && fullyOk && config;
         return (
           <div key={client.id}>
             <div className="flex items-center justify-between min-h-[28px]">
@@ -274,18 +274,18 @@ export function HarnessSetupSection({ onSend }: { onSend: (msg: ClientMessage) =
                 <button
                   onClick={() => {
                     const clients = config.autoActivateClients ?? [];
-                    const enabled = clients.includes('codex');
+                    const enabled = clients.includes(client.id);
                     const updated = enabled
-                      ? clients.filter((c: string) => c !== 'codex')
-                      : [...clients, 'codex'];
+                      ? clients.filter((c: string) => c !== client.id)
+                      : [...clients, client.id];
                     onSend({ type: 'config:update', config: { autoActivateClients: updated } });
                   }}
                   className={`relative inline-flex h-4 w-8 items-center rounded-full transition-colors ${
-                    (config.autoActivateClients ?? []).includes('codex') ? 'bg-[#238636]' : 'bg-[#30363d]'
+                    (config.autoActivateClients ?? []).includes(client.id) ? 'bg-[#238636]' : 'bg-[#30363d]'
                   }`}
                 >
                   <span className={`inline-block h-3 w-3 rounded-full bg-white transition-transform ${
-                    (config.autoActivateClients ?? []).includes('codex') ? 'translate-x-4' : 'translate-x-0.5'
+                    (config.autoActivateClients ?? []).includes(client.id) ? 'translate-x-4' : 'translate-x-0.5'
                   }`} />
                 </button>
               </div>
@@ -429,25 +429,24 @@ export function SettingsDrawer({ onSend }: SettingsDrawerProps) {
       <div className="relative w-96 bg-[#161b22] border-l border-[#30363d] h-full overflow-y-auto shadow-2xl">
         <div className="sticky top-0 flex items-center justify-between px-4 py-3 bg-[#161b22] border-b border-[#30363d] z-10">
           <h2 className="text-sm font-semibold text-[#e6edf3]">Settings</h2>
-          <button
-            onClick={() => setSettingsOpen(false)}
-            className="text-[#8b949e] hover:text-[#e6edf3] transition-colors text-lg"
-          >
-            ×
-          </button>
+          <div className="flex items-center gap-4">
+            <button
+              onClick={() => setWizardOpen(true)}
+              className="flex items-center gap-1.5 px-2 py-1 text-[10px] font-medium rounded-md bg-[#21262d] border border-[#30363d] text-[#e6edf3] hover:bg-[#30363d] hover:border-[#484f58] transition-colors"
+            >
+              <svg width="11" height="11" viewBox="0 0 16 16" fill="currentColor" className="text-[#58a6ff] shrink-0"><path d="M8.186 1.113a.5.5 0 0 0-.372 0L1.846 3.5l5.84 2.737a.5.5 0 0 0 .428 0l5.84-2.737-5.768-2.387zM15 4.239l-6.5 3.046a1.5 1.5 0 0 1-1.284-.016L1 4.239V11.5a.5.5 0 0 0 .276.447l6.5 3.25a.5.5 0 0 0 .448 0l6.5-3.25A.5.5 0 0 0 15 11.5V4.239z"/></svg>
+              Setup Wizard
+            </button>
+            <button
+              onClick={() => setSettingsOpen(false)}
+              className="text-[#8b949e] hover:text-[#e6edf3] transition-colors text-lg"
+            >
+              ×
+            </button>
+          </div>
         </div>
 
         <div className="p-4 space-y-6">
-          {/* Setup Wizard launcher */}
-          <button
-            onClick={() => setWizardOpen(true)}
-            className="w-full flex items-center justify-center gap-2 px-3 py-2 text-xs font-medium rounded-md bg-[#21262d] border border-[#30363d] text-[#e6edf3] hover:bg-[#30363d] hover:border-[#484f58] transition-colors"
-          >
-            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" className="text-[#58a6ff]"><path d="M8.186 1.113a.5.5 0 0 0-.372 0L1.846 3.5l5.84 2.737a.5.5 0 0 0 .428 0l5.84-2.737-5.768-2.387zM15 4.239l-6.5 3.046a1.5 1.5 0 0 1-1.284-.016L1 4.239V11.5a.5.5 0 0 0 .276.447l6.5 3.25a.5.5 0 0 0 .448 0l6.5-3.25A.5.5 0 0 0 15 11.5V4.239z"/></svg>
-            Setup Wizard
-          </button>
-
-          <div className="border-t border-[#30363d]" />
 
           {/* Session Recording */}
           <section>
@@ -678,6 +677,25 @@ export function SettingsDrawer({ onSend }: SettingsDrawerProps) {
                 )}
               </div>
             </div>
+          </section>
+
+          <div className="border-t border-[#30363d]" />
+
+          {/* Layman's Terms Prompt */}
+          <section>
+            <h3 className="text-xs font-semibold text-[#8b949e] uppercase tracking-wider mb-1">
+              Layman&apos;s Terms Prompt
+            </h3>
+            <p className="text-[10px] text-[#484f58] mb-3">
+              The instruction given to the LLM when generating plain-language explanations.
+            </p>
+            <textarea
+              value={config.laymansPrompt ?? ''}
+              onChange={(e) => updateConfig({ laymansPrompt: e.target.value })}
+              rows={3}
+              className="w-full px-3 py-2 text-xs bg-[#0d1117] border border-[#30363d] rounded-md text-[#e6edf3] placeholder-[#484f58] focus:outline-none focus:border-[#58a6ff] resize-y"
+              placeholder="Explain what the AI is doing here in absolute layman's terms..."
+            />
           </section>
 
           <div className="border-t border-[#30363d]" />
@@ -1198,25 +1216,6 @@ export function SettingsDrawer({ onSend }: SettingsDrawerProps) {
                 </label>
               </div>
             </div>
-          </section>
-
-          <div className="border-t border-[#30363d]" />
-
-          {/* Layman's Terms Prompt */}
-          <section>
-            <h3 className="text-xs font-semibold text-[#8b949e] uppercase tracking-wider mb-1">
-              Layman&apos;s Terms Prompt
-            </h3>
-            <p className="text-[10px] text-[#484f58] mb-3">
-              The instruction given to the LLM when generating plain-language explanations.
-            </p>
-            <textarea
-              value={config.laymansPrompt ?? ''}
-              onChange={(e) => updateConfig({ laymansPrompt: e.target.value })}
-              rows={3}
-              className="w-full px-3 py-2 text-xs bg-[#0d1117] border border-[#30363d] rounded-md text-[#e6edf3] placeholder-[#484f58] focus:outline-none focus:border-[#58a6ff] resize-y"
-              placeholder="Explain what the AI is doing here in absolute layman's terms..."
-            />
           </section>
 
           <div className="border-t border-[#30363d]" />

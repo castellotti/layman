@@ -88,6 +88,17 @@ export function registerClineHookHandler(
           gate.activate(sessionId);
         }
 
+        // Auto-activate: if configured per-client, activate session on any event without /layman
+        if (sessionId && !gate.isActive(sessionId)) {
+          const config = getConfig();
+          if (config.autoActivateClients.includes(AGENT_TYPE)) {
+            if (cwd) activatedCwds.add(cwd);
+            gate.activate(sessionId);
+            if (cwd) eventStore.trackSession(sessionId, cwd, AGENT_TYPE);
+            console.log(`[auto-activate] Cline session ${sessionId.slice(0, 8)} activated`);
+          }
+        }
+
         // Gate check: non-activated sessions get instant pass-through
         if (sessionId && !gate.isActive(sessionId)) {
           if (hookName === 'PreToolUse') return reply.send({});
