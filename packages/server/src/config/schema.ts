@@ -71,6 +71,7 @@ export const LaymanConfigSchema = z.object({
   idleThresholdMinutes: z.number().int().min(1).max(60).default(5),
   autoActivateClients: z.array(z.string()).default([]),
   driftMonitoring: DriftMonitoringConfigSchema.default({}),
+  setupWizardComplete: z.boolean().default(false),
 });
 
 export type LaymanConfig = z.infer<typeof LaymanConfigSchema>;

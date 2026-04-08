@@ -234,6 +234,7 @@ export interface LaymanConfig {
   idleThresholdMinutes: number;
   autoActivateClients: string[];
   driftMonitoring: DriftMonitoringConfig;
+  setupWizardComplete: boolean;
 }
 
 // Drift monitoring types
