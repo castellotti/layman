@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useMemo } from 'react';
 import { PROVIDER_CONFIG } from '../../controls/SettingsDrawer.js';
 import { PROVIDER_LABELS } from '../../../lib/types.js';
 import type { LaymanConfig, AnalysisProvider } from '../../../lib/types.js';
@@ -18,9 +18,9 @@ export function AnalysisModelStep({ config, onConfigChange }: AnalysisModelStepP
   const provider = config.analysis.provider;
   const providerCfg = PROVIDER_CONFIG[provider];
 
-  const updateAnalysis = (updates: Partial<LaymanConfig['analysis']>) => {
+  const updateAnalysis = useCallback((updates: Partial<LaymanConfig['analysis']>) => {
     onConfigChange({ analysis: { ...config.analysis, ...updates } });
-  };
+  }, [onConfigChange, config.analysis]);
 
   const canFetch = !providerCfg.needsEndpoint || !!config.analysis.endpoint;
 
@@ -52,7 +52,7 @@ export function AnalysisModelStep({ config, onConfigChange }: AnalysisModelStepP
     } finally {
       setFetchingModels(false);
     }
-  }, [config.analysis.provider, config.analysis.endpoint, config.analysis.model]);
+  }, [config.analysis.provider, config.analysis.endpoint, config.analysis.model, updateAnalysis]);
 
   // Auto-fetch models for providers with known endpoints
   useEffect(() => {

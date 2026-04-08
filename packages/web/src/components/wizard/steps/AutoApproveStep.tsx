@@ -24,7 +24,7 @@ export function AutoApproveStep({ config, onConfigChange }: AutoApproveStepProps
       </h3>
       <div className="flex rounded-md overflow-hidden border border-[#30363d] mb-2">
         {(['all', 'medium', 'low', 'none'] as const).map((level) => {
-          const isActive = (config.autoApprove as string) === level;
+          const isActive = config.autoApprove === level;
           const labels: Record<string, string> = { all: 'All', medium: 'Medium', low: 'Low', none: 'None' };
           return (
             <button

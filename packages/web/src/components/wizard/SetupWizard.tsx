@@ -38,6 +38,9 @@ function WizardModal({ onSend, onClose, isFirstRun }: {
     }
   }, [config]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // NOTE: Nested config sections (analysis, autoAllow, driftMonitoring) must be
+  // explicitly spread here. If a new nested section is added to LaymanConfig,
+  // update this merge logic to match.
   const handleConfigChange = useCallback((updates: Partial<LaymanConfig>) => {
     setDraftConfig((prev) => {
       if (!prev) return prev;
@@ -96,6 +99,7 @@ function WizardModal({ onSend, onClose, isFirstRun }: {
     const handleKey = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLSelectElement) return;
       if (e.key === 'Escape') {
+        e.stopPropagation();
         handleClose();
       }
     };

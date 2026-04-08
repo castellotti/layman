@@ -6,6 +6,11 @@ interface DriftMonitoringStepProps {
 }
 
 export function DriftMonitoringStep({ config, onConfigChange }: DriftMonitoringStepProps) {
+  const parseNum = (v: string, min: number) => {
+    const n = parseInt(v, 10);
+    return isNaN(n) ? min : n;
+  };
+
   const updateDrift = (updates: Partial<LaymanConfig['driftMonitoring']>) => {
     onConfigChange({ driftMonitoring: { ...config.driftMonitoring, ...updates } });
   };
@@ -67,7 +72,7 @@ export function DriftMonitoringStep({ config, onConfigChange }: DriftMonitoringS
                   max={100}
                   value={config.driftMonitoring.checkIntervalToolCalls}
                   onChange={(e) => {
-                    const v = parseInt(e.target.value, 10);
+                    const v = parseNum(e.target.value, 1);
                     if (v >= 1 && v <= 100) updateDrift({ checkIntervalToolCalls: v });
                   }}
                   className="w-14 px-2 py-1 text-xs text-center bg-[#0d1117] border border-[#30363d] rounded text-[#e6edf3] focus:outline-none focus:border-[#58a6ff]"
@@ -79,7 +84,7 @@ export function DriftMonitoringStep({ config, onConfigChange }: DriftMonitoringS
                   max={60}
                   value={config.driftMonitoring.checkIntervalMinutes}
                   onChange={(e) => {
-                    const v = parseInt(e.target.value, 10);
+                    const v = parseNum(e.target.value, 1);
                     if (v >= 1 && v <= 60) updateDrift({ checkIntervalMinutes: v });
                   }}
                   className="w-14 px-2 py-1 text-xs text-center bg-[#0d1117] border border-[#30363d] rounded text-[#e6edf3] focus:outline-none focus:border-[#58a6ff]"
@@ -97,7 +102,7 @@ export function DriftMonitoringStep({ config, onConfigChange }: DriftMonitoringS
                   type="number" min={0} max={100}
                   value={config.driftMonitoring.sessionDriftThresholds.green}
                   onChange={(e) => {
-                    const v = parseInt(e.target.value, 10);
+                    const v = parseNum(e.target.value, 0);
                     if (v >= 0 && v <= 100) updateSessionThresholds({ green: v });
                   }}
                   className="w-12 px-1 py-1 text-xs text-center bg-[#0d1117] border border-[#30363d] rounded text-[#e6edf3] focus:outline-none focus:border-[#58a6ff]"
@@ -107,7 +112,7 @@ export function DriftMonitoringStep({ config, onConfigChange }: DriftMonitoringS
                   type="number" min={0} max={100}
                   value={config.driftMonitoring.sessionDriftThresholds.yellow}
                   onChange={(e) => {
-                    const v = parseInt(e.target.value, 10);
+                    const v = parseNum(e.target.value, 0);
                     if (v >= 0 && v <= 100) updateSessionThresholds({ yellow: v });
                   }}
                   className="w-12 px-1 py-1 text-xs text-center bg-[#0d1117] border border-[#30363d] rounded text-[#e6edf3] focus:outline-none focus:border-[#58a6ff]"
@@ -117,7 +122,7 @@ export function DriftMonitoringStep({ config, onConfigChange }: DriftMonitoringS
                   type="number" min={0} max={100}
                   value={config.driftMonitoring.sessionDriftThresholds.orange}
                   onChange={(e) => {
-                    const v = parseInt(e.target.value, 10);
+                    const v = parseNum(e.target.value, 0);
                     if (v >= 0 && v <= 100) updateSessionThresholds({ orange: v });
                   }}
                   className="w-12 px-1 py-1 text-xs text-center bg-[#0d1117] border border-[#30363d] rounded text-[#e6edf3] focus:outline-none focus:border-[#58a6ff]"
@@ -135,7 +140,7 @@ export function DriftMonitoringStep({ config, onConfigChange }: DriftMonitoringS
                   type="number" min={0} max={100}
                   value={config.driftMonitoring.rulesDriftThresholds.green}
                   onChange={(e) => {
-                    const v = parseInt(e.target.value, 10);
+                    const v = parseNum(e.target.value, 0);
                     if (v >= 0 && v <= 100) updateRulesThresholds({ green: v });
                   }}
                   className="w-12 px-1 py-1 text-xs text-center bg-[#0d1117] border border-[#30363d] rounded text-[#e6edf3] focus:outline-none focus:border-[#58a6ff]"
@@ -145,7 +150,7 @@ export function DriftMonitoringStep({ config, onConfigChange }: DriftMonitoringS
                   type="number" min={0} max={100}
                   value={config.driftMonitoring.rulesDriftThresholds.yellow}
                   onChange={(e) => {
-                    const v = parseInt(e.target.value, 10);
+                    const v = parseNum(e.target.value, 0);
                     if (v >= 0 && v <= 100) updateRulesThresholds({ yellow: v });
                   }}
                   className="w-12 px-1 py-1 text-xs text-center bg-[#0d1117] border border-[#30363d] rounded text-[#e6edf3] focus:outline-none focus:border-[#58a6ff]"
@@ -155,7 +160,7 @@ export function DriftMonitoringStep({ config, onConfigChange }: DriftMonitoringS
                   type="number" min={0} max={100}
                   value={config.driftMonitoring.rulesDriftThresholds.orange}
                   onChange={(e) => {
-                    const v = parseInt(e.target.value, 10);
+                    const v = parseNum(e.target.value, 0);
                     if (v >= 0 && v <= 100) updateRulesThresholds({ orange: v });
                   }}
                   className="w-12 px-1 py-1 text-xs text-center bg-[#0d1117] border border-[#30363d] rounded text-[#e6edf3] focus:outline-none focus:border-[#58a6ff]"
