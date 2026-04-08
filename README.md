@@ -85,6 +85,16 @@ For Claude Code and Cline, Layman can intercept tool calls before they execute a
 
 <img width="981" height="419" alt="Screenshot 2026-03-18 at 12 04 50 AM" src="https://github.com/user-attachments/assets/c103aeac-ce58-4180-b939-e64c52759023" />
 
+### Session History, Bookmarks, and Search
+
+Sessions can optionally be recorded to a local SQLite database, capturing all user prompts, system responses, permission requests, tool calls, etc. Once captured, session data can be searched, bookmarked, and reviewed with a variety of session filters.
+
+<img width="1020" height="443" alt="Screenshot 2026-04-08 at 12 59 01 PM" src="https://github.com/user-attachments/assets/fd62ff2c-c8dd-4657-afb0-f4095e279324" />
+
+Searches cover the complete history of recorded sessions, with its own set of search filters.
+
+<img width="1010" height="460" alt="Screenshot 2026-04-08 at 1 07 37 PM" src="https://github.com/user-attachments/assets/5fe40711-3555-4961-b6c5-579887286869" />
+
 ### File and URL access tracking
 
 Layman tracks every file the agent reads or writes and every URL it fetches during a session, surfacing them in a dedicated access panel so you can see exactly what was touched.
