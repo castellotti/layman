@@ -20,21 +20,18 @@ const STEPS = [
 
 const TOTAL_STEPS = STEPS.length;
 
-interface SetupWizardProps {
+/** Shared wizard modal UI — used by both first-run and manual launch. */
+function WizardModal({ onSend, onClose, isFirstRun }: {
   onSend: (msg: ClientMessage) => void;
-}
-
-export function SetupWizard({ onSend }: SetupWizardProps) {
-  const { config, setupWizardDismissed, dismissSetupWizard } = useSessionStore((s) => ({
-    config: s.config,
-    setupWizardDismissed: s.setupWizardDismissed,
-    dismissSetupWizard: s.dismissSetupWizard,
-  }));
+  onClose: () => void;
+  isFirstRun: boolean;
+}) {
+  const config = useSessionStore((s) => s.config);
 
   const [currentStep, setCurrentStep] = useState(0);
   const [draftConfig, setDraftConfig] = useState<LaymanConfig | null>(null);
 
-  // Initialize draft config once the real config arrives
+  // Initialize draft config from current live config
   useEffect(() => {
     if (config && !draftConfig) {
       setDraftConfig({ ...config });
@@ -65,21 +62,22 @@ export function SetupWizard({ onSend }: SetupWizardProps) {
     });
   }, []);
 
-  const handleSkip = useCallback(() => {
-    onSend({ type: 'config:update', config: { setupWizardComplete: true } });
-    dismissSetupWizard();
-  }, [onSend, dismissSetupWizard]);
+  const handleClose = useCallback(() => {
+    if (isFirstRun) {
+      onSend({ type: 'config:update', config: { setupWizardComplete: true } });
+    }
+    onClose();
+  }, [isFirstRun, onSend, onClose]);
 
   const handleFinish = useCallback(() => {
     if (draftConfig) {
-      // Send all draft changes + mark wizard complete
       const { port, host, ...configToSend } = draftConfig;
       onSend({ type: 'config:update', config: { ...configToSend, setupWizardComplete: true } });
     } else {
       onSend({ type: 'config:update', config: { setupWizardComplete: true } });
     }
-    dismissSetupWizard();
-  }, [draftConfig, onSend, dismissSetupWizard]);
+    onClose();
+  }, [draftConfig, onSend, onClose]);
 
   const handleNext = useCallback(() => {
     if (currentStep < TOTAL_STEPS - 1) {
@@ -93,35 +91,33 @@ export function SetupWizard({ onSend }: SetupWizardProps) {
     }
   }, [currentStep]);
 
-  // Keyboard shortcuts
+  // Escape key closes
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLSelectElement) return;
       if (e.key === 'Escape') {
-        handleSkip();
+        handleClose();
       }
     };
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
-  }, [handleSkip]);
+  }, [handleClose]);
 
-  // Don't render if wizard is complete or dismissed
-  if (!config || config.setupWizardComplete || setupWizardDismissed) return null;
-  if (!draftConfig) return null;
+  if (!config || !draftConfig) return null;
 
   const isLastStep = currentStep === TOTAL_STEPS - 1;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60">
       <div className="w-full max-w-2xl mx-4 bg-[#161b22] border border-[#30363d] rounded-lg shadow-2xl flex flex-col" style={{ maxHeight: '85vh' }}>
         {/* Header with progress indicator */}
         <div className="px-6 pt-5 pb-4 border-b border-[#30363d] shrink-0">
           <div className="flex items-center justify-between mb-4">
             <h1 className="text-sm font-semibold text-[#e6edf3]">Setup Wizard</h1>
             <button
-              onClick={handleSkip}
+              onClick={handleClose}
               className="text-[#8b949e] hover:text-[#e6edf3] transition-colors text-lg leading-none"
-              title="Skip setup"
+              title="Close"
             >
               ×
             </button>
@@ -171,10 +167,10 @@ export function SetupWizard({ onSend }: SetupWizardProps) {
         {/* Footer navigation */}
         <div className="flex items-center justify-between px-6 py-4 border-t border-[#30363d] shrink-0">
           <button
-            onClick={handleSkip}
+            onClick={handleClose}
             className="text-xs text-[#8b949e] hover:text-[#e6edf3] transition-colors"
           >
-            Skip setup
+            {isFirstRun ? 'Skip setup' : 'Cancel'}
           </button>
           <div className="flex items-center gap-2">
             {currentStep > 0 && (
@@ -189,11 +185,44 @@ export function SetupWizard({ onSend }: SetupWizardProps) {
               onClick={isLastStep ? handleFinish : handleNext}
               className="px-4 py-1.5 text-xs font-medium rounded bg-[#238636] hover:bg-[#2ea043] text-white transition-colors"
             >
-              {isLastStep ? 'Finish' : 'Next'}
+              {isLastStep ? (isFirstRun ? 'Finish' : 'Save') : 'Next'}
             </button>
           </div>
         </div>
       </div>
     </div>
+  );
+}
+
+/** Auto-show wrapper for first-run onboarding. Renders in App.tsx. */
+export function SetupWizard({ onSend }: { onSend: (msg: ClientMessage) => void }) {
+  const { config, setupWizardDismissed, dismissSetupWizard } = useSessionStore((s) => ({
+    config: s.config,
+    setupWizardDismissed: s.setupWizardDismissed,
+    dismissSetupWizard: s.dismissSetupWizard,
+  }));
+
+  if (!config || config.setupWizardComplete || setupWizardDismissed) return null;
+
+  return (
+    <WizardModal
+      onSend={onSend}
+      onClose={dismissSetupWizard}
+      isFirstRun={true}
+    />
+  );
+}
+
+/** Manually launched wizard from Settings. Pre-populated with current config. */
+export function SetupWizardManual({ onSend, onClose }: {
+  onSend: (msg: ClientMessage) => void;
+  onClose: () => void;
+}) {
+  return (
+    <WizardModal
+      onSend={onSend}
+      onClose={onClose}
+      isFirstRun={false}
+    />
   );
 }
