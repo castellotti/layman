@@ -49,12 +49,6 @@ Drift scores are EMA-smoothed (alpha 0.3) to avoid reacting to one-off spikes. S
 
 <img width="833" height="385" alt="Screenshot 2026-04-06 at 11 46 38 PM" src="https://github.com/user-attachments/assets/e4054dc2-c05b-4b35-9bce-c287714a7004" />
 
-### Flowchart view
-
-Toggle between the event timeline and an interactive directed graph that shows how tool calls, agent responses, and user prompts connect. Pan and zoom with the mouse or keyboard, and click any node to open the Investigation panel for that event. Available for both live and historical sessions.
-
-<img width="1266" height="473" alt="Screenshot 2026-04-07 at 7 58 46 PM" src="https://github.com/user-attachments/assets/9f72ed19-a7f1-4fb4-ad61-aeb5c97fe11d" />
-
 ### AI analysis
 
 Layman can use an AI model to classify the risk level of each action, explain what it means in plain language, and flag anything that looks risky.
@@ -62,6 +56,14 @@ Layman can use an AI model to classify the risk level of each action, explain wh
 <img width="635" height="613" alt="Screenshot 2026-04-07 at 11 15 12 PM" src="https://github.com/user-attachments/assets/e9bdec54-c883-425e-9cbe-d429cafcb230" />
 
 ![layman-demo-flowchart-analysis](https://github.com/user-attachments/assets/3a71177e-41be-4920-97e6-6005354c169d)
+
+### Flowchart view
+
+Toggle between the event timeline and an interactive directed graph that shows how tool calls, agent responses, and user prompts connect. Pan and zoom with the mouse or keyboard, and click any node to open the Investigation panel for that event. Available for both live and historical sessions.
+
+<img width="1266" height="473" alt="Screenshot 2026-04-07 at 7 58 46 PM" src="https://github.com/user-attachments/assets/9f72ed19-a7f1-4fb4-ad61-aeb5c97fe11d" />
+
+![layman-demo-dashboard-flowchart-zoom](https://github.com/user-attachments/assets/bbb1534a-8d05-49b2-a9b9-aa8eced0d8f8)
 
 ### Session summary
 
