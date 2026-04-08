@@ -48,15 +48,21 @@ function RateLimitMini({ label, pct, resetsAt }: { label: string; pct: number; r
 }
 
 export function SessionMetricsBar() {
-  const { activeSessionId, sessionMetrics } = useSessionStore((s) => ({
+  const { activeSessionId, sessionMetrics, sessions } = useSessionStore((s) => ({
     activeSessionId: s.activeSessionId,
     sessionMetrics: s.sessionMetrics,
+    sessions: s.sessions,
   }));
 
   const isAllSessions = activeSessionId === null;
 
+  // Build set of currently-open session IDs for filtering
+  const activeSessionIds = new Set(
+    sessions.filter((s) => s.active !== false).map((s) => s.sessionId)
+  );
+
   // Single session: show that session's metrics directly
-  // All sessions: aggregate summable fields across all sessions
+  // All sessions: aggregate summable fields across only currently-open sessions
   let metrics: SessionMetrics | undefined;
   if (activeSessionId) {
     metrics = sessionMetrics.get(activeSessionId);
@@ -70,8 +76,12 @@ export function SessionMetricsBar() {
     let hasCost = false;
     let hasTokens = false;
     let hasLines = false;
+    let activeCount = 0;
 
-    for (const [, m] of sessionMetrics) {
+    for (const [sid, m] of sessionMetrics) {
+      // Only include metrics from currently-open sessions
+      if (!activeSessionIds.has(sid)) continue;
+      activeCount++;
       if (m.costUsd !== undefined) { totalCost += m.costUsd; hasCost = true; }
       if ((m.totalInputTokens ?? 0) > 0 || (m.totalOutputTokens ?? 0) > 0) {
         totalIn += m.totalInputTokens ?? 0;
@@ -85,6 +95,8 @@ export function SessionMetricsBar() {
       }
       if (m.timestamp > latestTimestamp) latestTimestamp = m.timestamp;
     }
+
+    if (activeCount === 0) return null;
 
     metrics = {
       costUsd: hasCost ? totalCost : undefined,
@@ -113,8 +125,8 @@ export function SessionMetricsBar() {
       )}
 
       {/* "All sessions" label when aggregating */}
-      {isAllSessions && sessionMetrics.size > 1 && (
-        <span className="text-[#484f58]">{sessionMetrics.size} sessions</span>
+      {isAllSessions && activeSessionIds.size > 1 && (
+        <span className="text-[#484f58]">{activeSessionIds.size} sessions</span>
       )}
 
       {/* Context window fill */}

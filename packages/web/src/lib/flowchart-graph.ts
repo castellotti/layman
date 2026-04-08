@@ -39,6 +39,10 @@ function getLabel(event: TimelineEvent): string {
   if (type === 'subagent_stop') return 'Subagent Stop';
   if (type === 'notification') return 'Notification';
   if (event.data.toolName) return event.data.toolName;
+  if (type === 'drift_check' || type === 'drift_alert') {
+    const suffix = event.data.driftType === 'rules' ? 'rules' : 'session';
+    return `${type.replace(/_/g, ' ')} - ${suffix}`;
+  }
   return type.replace(/_/g, ' ');
 }
 
