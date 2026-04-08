@@ -26,19 +26,13 @@ Layman is a dashboard that explains exactly what your AI assistants are doing, i
 
 ---
 
-## Screenshots
+## Screenshot
 
-<img width="1280" height="939" alt="Screenshot 2026-03-21 at 22-50-36 Layman" src="https://github.com/user-attachments/assets/c286b021-1ecc-4ab3-9043-d47a28d11c93" />
-
-<img width="1280" height="939" alt="Screenshot 2026-03-22 at 05-05-05 Layman" src="https://github.com/user-attachments/assets/48800a9c-d790-4265-a615-5947744f014f" />
+<img width="1525" height="1060" alt="Screenshot 2026-04-06 at 11 45 46 PM" src="https://github.com/user-attachments/assets/ede75767-1fd1-40e9-9f46-d800c7918c3d" />
 
 ---
 
 ## Features
-
-### Tool approval
-
-For Claude Code and Cline, Layman can intercept tool calls before they execute and ask for your approval. Enable this in **Settings → Auto-approve** to control which tools require a human decision.
 
 ### Drift monitoring
 
@@ -49,31 +43,53 @@ Layman continuously monitors AI agent sessions for two kinds of drift:
 
 Drift scores are EMA-smoothed (alpha 0.3) to avoid reacting to one-off spikes. Scores map to four color levels (green → yellow → orange → red) with configurable thresholds. At **orange** the agent gets an in-context reminder; at **red** Layman can pause the agent entirely and require your approval to continue. Individual drift findings can be dismissed as false positives - dismissed items are fed back into the LLM prompt so they won't be re-flagged.
 
+<img width="366" height="435" alt="Screenshot 2026-04-07 at 6 15 50 PM" src="https://github.com/user-attachments/assets/df4bb03a-89e1-4b7d-a5f8-ee92a64d1878" />
+
+<img width="249" height="153" alt="Screenshot 2026-04-07 at 8 01 28 PM" src="https://github.com/user-attachments/assets/3d6792c1-496e-47a7-acc0-2cb114f293f6" />
+
+<img width="833" height="385" alt="Screenshot 2026-04-06 at 11 46 38 PM" src="https://github.com/user-attachments/assets/e4054dc2-c05b-4b35-9bce-c287714a7004" />
+
 ### Flowchart view
 
 Toggle between the event timeline and an interactive directed graph that shows how tool calls, agent responses, and user prompts connect. Pan and zoom with the mouse or keyboard, and click any node to open the Investigation panel for that event. Available for both live and historical sessions.
 
+<img width="1266" height="473" alt="Screenshot 2026-04-07 at 7 58 46 PM" src="https://github.com/user-attachments/assets/9f72ed19-a7f1-4fb4-ad61-aeb5c97fe11d" />
+
 ### AI analysis
 
-Layman can use an AI model to classify the risk level of each action, explain what it means in plain language, and flag anything that looks risky. Auto-analysis and auto-explain can be configured independently in **Settings → Analysis**, with severity thresholds (All / Medium+ / High only) and detail level (Quick / Detailed).
+Layman can use an AI model to classify the risk level of each action, explain what it means in plain language, and flag anything that looks risky.
+
+<img width="635" height="613" alt="Screenshot 2026-04-07 at 11 15 12 PM" src="https://github.com/user-attachments/assets/e9bdec54-c883-425e-9cbe-d429cafcb230" />
 
 ### Session summary
 
-Each session header shows an AI-generated plain-English summary of what the agent did - updated live as the session progresses and available in history. Click the summary to see previous versions and timestamps.
+Each session header shows an AI-generated plain-English summary of what the agent did, updated live as the session progresses and available in history. Click the summary to see previous versions and timestamps.
+
+<img width="403" height="294" alt="Screenshot 2026-04-07 at 11 17 40 PM" src="https://github.com/user-attachments/assets/4ab329e6-3e17-4028-a8c2-9fcfd3052320" />
 
 ### Session metrics
 
-When connected to Claude Code, the dashboard shows a live metrics bar with model name, context window usage, cumulative session cost, token counts, lines changed, and rate limit warnings. This data comes from claude-code's StatusLine channel - a relay script installed alongside the hooks.
+When connected to Claude Code, the dashboard shows a live metrics bar with model name, context window usage, cumulative session cost, token counts, lines changed, and rate limit warnings.
 
-Past sessions are recorded to a local SQLite database. Open the **Sessions** panel (clock icon) to browse history and see a time breakdown per session (total time, time the agent was active, time waiting on you, and idle time). Search across all sessions with full-text search and filter by event type. Search supports `+required`, `-excluded`, and `"quoted phrases"`.
+<img width="553" height="28" alt="Screenshot 2026-04-07 at 11 39 20 PM" src="https://github.com/user-attachments/assets/1d1ce557-e0ef-4dd3-9d3b-384d753c0bd2" />
+
+### Tool approval
+
+For Claude Code and Cline, Layman can intercept tool calls before they execute and ask for your approval.
+
+<img width="981" height="419" alt="Screenshot 2026-03-18 at 12 04 50 AM" src="https://github.com/user-attachments/assets/c103aeac-ce58-4180-b939-e64c52759023" />
 
 ### File and URL access tracking
 
 Layman tracks every file the agent reads or writes and every URL it fetches during a session, surfacing them in a dedicated access panel so you can see exactly what was touched.
 
+<img width="689" height="378" alt="Screenshot 2026-04-07 at 11 29 55 PM" src="https://github.com/user-attachments/assets/8aed7008-188a-4bea-9490-c81f695dfd67" />
+
 ### PII filter
 
 All logged events are automatically scanned for personally identifiable information (email addresses, API keys, passwords, credit card numbers, etc.) and redacted before storage. Toggle in **Settings → Session Recording → PII Filter**.
+
+<img width="460" height="343" alt="Screenshot 2026-04-07 at 6 07 32 PM" src="https://github.com/user-attachments/assets/215e8672-c105-4354-a0df-406eb0532c5a" />
 
 ### Session export
 
