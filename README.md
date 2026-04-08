@@ -91,9 +91,11 @@ All logged events are automatically scanned for personally identifiable informat
 
 <img width="460" height="343" alt="Screenshot 2026-04-07 at 6 07 32 PM" src="https://github.com/user-attachments/assets/215e8672-c105-4354-a0df-406eb0532c5a" />
 
-### Session export
+### Setup Wizard
 
-Export a session as a PDF transcript using the print button in the session view.
+Intial setup is aided by a complete setup wizard to walk through some available configuration options.
+
+![layman_setup_wizard](https://github.com/user-attachments/assets/c2be7511-6bc2-4514-8b56-4c66660c7ce9)
 
 ---
 
