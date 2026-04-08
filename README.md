@@ -36,6 +36,14 @@ Layman is a dashboard that explains exactly what your AI assistants are doing, i
 
 ## Features
 
+### AI analysis
+
+Layman can use an AI model to classify the risk level of each action, explain what it means in plain language, and flag anything that looks risky.
+
+<img width="635" height="613" alt="Screenshot 2026-04-07 at 11 15 12 PM" src="https://github.com/user-attachments/assets/e9bdec54-c883-425e-9cbe-d429cafcb230" />
+
+![layman-demo-flowchart-analysis](https://github.com/user-attachments/assets/3a71177e-41be-4920-97e6-6005354c169d)
+
 ### Drift monitoring
 
 Layman continuously monitors AI agent sessions for two kinds of drift:
@@ -50,14 +58,6 @@ Drift scores are EMA-smoothed (alpha 0.3) to avoid reacting to one-off spikes. S
 <img width="249" height="153" alt="Screenshot 2026-04-07 at 8 01 28 PM" src="https://github.com/user-attachments/assets/3d6792c1-496e-47a7-acc0-2cb114f293f6" />
 
 <img width="833" height="385" alt="Screenshot 2026-04-06 at 11 46 38 PM" src="https://github.com/user-attachments/assets/e4054dc2-c05b-4b35-9bce-c287714a7004" />
-
-### AI analysis
-
-Layman can use an AI model to classify the risk level of each action, explain what it means in plain language, and flag anything that looks risky.
-
-<img width="635" height="613" alt="Screenshot 2026-04-07 at 11 15 12 PM" src="https://github.com/user-attachments/assets/e9bdec54-c883-425e-9cbe-d429cafcb230" />
-
-![layman-demo-flowchart-analysis](https://github.com/user-attachments/assets/3a71177e-41be-4920-97e6-6005354c169d)
 
 ### Flowchart view
 
