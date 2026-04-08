@@ -6,7 +6,7 @@ const TimelineView = lazy(() => import('./components/flowchart/TimelineView.js')
 const DashboardView = lazy(() => import('./components/dashboard/DashboardView.js').then(m => ({ default: m.DashboardView })));
 import { InvestigationPanel } from './components/layout/InvestigationPanel.js';
 import { SetupBanner } from './components/layout/SetupBanner.js';
-import { SetupModal } from './components/layout/SetupModal.js';
+import { SetupWizard } from './components/wizard/SetupWizard.js';
 import { SettingsDrawer } from './components/controls/SettingsDrawer.js';
 import { BookmarksPanel } from './components/bookmarks/BookmarksPanel.js';
 import { AccessLogPanel } from './components/access/AccessLogPanel.js';
@@ -151,7 +151,7 @@ export function App() {
         <SettingsDrawer onSend={send} />
         <BookmarksPanel onSend={send} />
         <AccessLogPanel />
-        <SetupModal />
+        <SetupWizard onSend={send} />
         <DriftBlockDialog onSend={send} />
       </div>
     );
@@ -247,8 +247,8 @@ export function App() {
       {/* Access log panel */}
       <AccessLogPanel />
 
-      {/* First-run setup modal */}
-      <SetupModal />
+      {/* First-run setup wizard */}
+      <SetupWizard onSend={send} />
 
       {/* Drift block pop-up */}
       <DriftBlockDialog onSend={send} />

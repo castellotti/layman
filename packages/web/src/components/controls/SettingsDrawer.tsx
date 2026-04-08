@@ -51,7 +51,7 @@ const PII_GROUP_LABELS: Record<string, string> = {
 };
 
 /** Per-provider configuration for what fields to show and their defaults. */
-const PROVIDER_CONFIG: Record<AnalysisProvider, {
+export const PROVIDER_CONFIG: Record<AnalysisProvider, {
   needsEndpoint: boolean;
   endpointPlaceholder: string;
   apiKeyPlaceholder: string;
@@ -96,7 +96,7 @@ function StatusPip({ ok, label }: { ok: boolean; label: string }) {
   );
 }
 
-function HarnessSetupSection({ onSend }: { onSend: (msg: ClientMessage) => void }) {
+export function HarnessSetupSection({ onSend }: { onSend: (msg: ClientMessage) => void }) {
   const { setupStatus, setSetupStatus, config } = useSessionStore((s) => ({
     setupStatus: s.setupStatus,
     setSetupStatus: s.setSetupStatus,
