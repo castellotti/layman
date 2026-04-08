@@ -61,6 +61,8 @@ Layman can use an AI model to classify the risk level of each action, explain wh
 
 <img width="635" height="613" alt="Screenshot 2026-04-07 at 11 15 12 PM" src="https://github.com/user-attachments/assets/e9bdec54-c883-425e-9cbe-d429cafcb230" />
 
+![layman-demo-flowchart-analysis](https://github.com/user-attachments/assets/3a71177e-41be-4920-97e6-6005354c169d)
+
 ### Session summary
 
 Each session header shows an AI-generated plain-English summary of what the agent did, updated live as the session progresses and available in history. Click the summary to see previous versions and timestamps.
