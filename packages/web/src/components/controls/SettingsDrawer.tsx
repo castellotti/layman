@@ -1,5 +1,6 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import { useSessionStore } from '../../stores/sessionStore.js';
+import { SetupWizardManual } from '../wizard/SetupWizard.js';
 import type { ClientMessage } from '../../lib/ws-protocol.js';
 import type { LaymanConfig, AnalysisProvider, SetupStatus, OptionalClientStatus } from '../../lib/types.js';
 import { PROVIDER_LABELS } from '../../lib/types.js';
@@ -51,7 +52,7 @@ const PII_GROUP_LABELS: Record<string, string> = {
 };
 
 /** Per-provider configuration for what fields to show and their defaults. */
-const PROVIDER_CONFIG: Record<AnalysisProvider, {
+export const PROVIDER_CONFIG: Record<AnalysisProvider, {
   needsEndpoint: boolean;
   endpointPlaceholder: string;
   apiKeyPlaceholder: string;
@@ -96,7 +97,7 @@ function StatusPip({ ok, label }: { ok: boolean; label: string }) {
   );
 }
 
-function HarnessSetupSection({ onSend }: { onSend: (msg: ClientMessage) => void }) {
+export function HarnessSetupSection({ onSend }: { onSend: (msg: ClientMessage) => void }) {
   const { setupStatus, setSetupStatus, config } = useSessionStore((s) => ({
     setupStatus: s.setupStatus,
     setSetupStatus: s.setSetupStatus,
@@ -303,6 +304,7 @@ interface SettingsDrawerProps {
 export function SettingsDrawer({ onSend }: SettingsDrawerProps) {
   const { settingsOpen, setSettingsOpen, config } = useSessionStore();
 
+  const [wizardOpen, setWizardOpen] = useState(false);
   const [availableModels, setAvailableModels] = useState<string[]>([]);
   const [fetchingModels, setFetchingModels] = useState(false);
   const [fetchError, setFetchError] = useState<string | null>(null);
@@ -436,6 +438,17 @@ export function SettingsDrawer({ onSend }: SettingsDrawerProps) {
         </div>
 
         <div className="p-4 space-y-6">
+          {/* Setup Wizard launcher */}
+          <button
+            onClick={() => setWizardOpen(true)}
+            className="w-full flex items-center justify-center gap-2 px-3 py-2 text-xs font-medium rounded-md bg-[#21262d] border border-[#30363d] text-[#e6edf3] hover:bg-[#30363d] hover:border-[#484f58] transition-colors"
+          >
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" className="text-[#58a6ff]"><path d="M8.186 1.113a.5.5 0 0 0-.372 0L1.846 3.5l5.84 2.737a.5.5 0 0 0 .428 0l5.84-2.737-5.768-2.387zM15 4.239l-6.5 3.046a1.5 1.5 0 0 1-1.284-.016L1 4.239V11.5a.5.5 0 0 0 .276.447l6.5 3.25a.5.5 0 0 0 .448 0l6.5-3.25A.5.5 0 0 0 15 11.5V4.239z"/></svg>
+            Setup Wizard
+          </button>
+
+          <div className="border-t border-[#30363d]" />
+
           {/* Session Recording */}
           <section>
             <h3 className="text-xs font-semibold text-[#8b949e] uppercase tracking-wider mb-1">
@@ -1418,6 +1431,11 @@ export function SettingsDrawer({ onSend }: SettingsDrawerProps) {
             )}
           </div>
         </div>
+      )}
+
+      {/* Manual Setup Wizard */}
+      {wizardOpen && (
+        <SetupWizardManual onSend={onSend} onClose={() => setWizardOpen(false)} />
       )}
     </>
   );

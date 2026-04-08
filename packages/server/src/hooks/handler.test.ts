@@ -55,6 +55,7 @@ const MOCK_CONFIG: LaymanConfig = {
     blockOnRed: true,
     remindOnOrange: true,
   },
+  setupWizardComplete: false,
 };
 
 describe('PendingApprovalManager', () => {

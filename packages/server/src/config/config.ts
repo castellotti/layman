@@ -71,6 +71,11 @@ export async function loadConfig(
   // Auto-saved runtime config (.claude/layman.json)
   const runtimeFile = loadRuntimeConfig();
 
+  // Existing users who already have a config file should not see the wizard
+  if (Object.keys(runtimeFile).length > 0 && runtimeFile.setupWizardComplete === undefined) {
+    runtimeFile.setupWizardComplete = true;
+  }
+
   // Env vars
   const envConfig: Partial<LaymanConfig> = {};
   if (process.env.LAYMAN_PORT) envConfig.port = parseInt(process.env.LAYMAN_PORT, 10);
