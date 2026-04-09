@@ -36,7 +36,7 @@ Layman is a dashboard that explains exactly what your AI assistants are doing, i
 
 ## Features
 
-### Risk analysis
+### Automated analysis
 
 Layman can use an AI model to classify the risk level of each action, explain what it means in plain language, and flag anything that looks risky.
 
