@@ -111,7 +111,7 @@ export function SidePanel({ events, focusedSessionId }: SidePanelProps) {
         <div className="dash-panel-title">Token Usage</div>
         <TokenUsageChart
           sessionMetrics={sessionMetrics}
-          sessions={sessions}
+          sessions={visibleSessions}
           focusedSessionId={focusedSessionId}
         />
       </div>

@@ -100,13 +100,18 @@ export function createServer(config: LaymanConfig): LaymanServer {
   // Now that broadcast exists, create the DriftMonitor
   driftMonitor = new DriftMonitor(eventStore, analysisEngine, pendingManager, getConfig, broadcast);
 
+  // Build sessions list annotated with active flag from the gate
+  function buildSessionsList() {
+    return eventStore.getSessions().map(s => ({ ...s, active: gate.isActive(s.sessionId) }));
+  }
+
   // Forward store events to WebSocket
   eventStore.on('event:new', (event) => {
     broadcast({ type: 'event:new', event });
   });
 
-  eventStore.on('sessions:changed', (sessions) => {
-    broadcast({ type: 'sessions:list', sessions });
+  eventStore.on('sessions:changed', () => {
+    broadcast({ type: 'sessions:list', sessions: buildSessionsList() });
   });
 
   eventStore.on('event:update', (event) => {
@@ -961,10 +966,10 @@ export function createServer(config: LaymanConfig): LaymanServer {
           ws.send(JSON.stringify({ type: 'approval:pending', approval } satisfies ServerMessage));
         }
 
-        // Send current sessions list
+        // Send current sessions list with active flags
         ws.send(JSON.stringify({
           type: 'sessions:list',
-          sessions: eventStore.getSessions(),
+          sessions: buildSessionsList(),
         } satisfies ServerMessage));
 
         // Send bookmarks state
@@ -975,7 +980,7 @@ export function createServer(config: LaymanConfig): LaymanServer {
         } satisfies ServerMessage));
 
         // Send current drift state for active sessions
-        for (const session of eventStore.getSessions()) {
+        for (const session of buildSessionsList()) {
           const driftState = driftMonitor.getState(session.sessionId);
           if (driftState) {
             ws.send(JSON.stringify({

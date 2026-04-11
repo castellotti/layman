@@ -705,7 +705,7 @@ export function SessionCard({
 
         {/* Dismiss button */}
         <button
-          title="Close session (re-appears on new activity)"
+          title="Close session (deactivates monitoring; resume via Session History)"
           onClick={(e) => { e.stopPropagation(); onDismiss(session.sessionId); }}
           style={{
             fontFamily: 'var(--dash-font-data)',

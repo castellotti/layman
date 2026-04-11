@@ -360,9 +360,8 @@ export const useSessionStore = create<SessionState>((set) => ({
 
   setSessions: (sessions) =>
     set((state) => {
-      // The server's sessions:list does not carry the `active` flag — that is managed
-      // client-side via session:activated / session:deactivated messages.  Preserve any
-      // active flag already in state so a sessions:list update never clobbers it.
+      // The server includes `active` in sessions:list (based on gate state). Prefer the
+      // server's value; fall back to local state for any session the server didn't annotate.
       const existingActive = new Map(state.sessions.map(s => [s.sessionId, s.active]));
       const merged = sessions.map(s => ({
         ...s,

@@ -55,11 +55,22 @@ export function DashboardView() {
     );
   }, [dashboardFocusedSession, setDashboardFocusedSession]);
 
-  // Dismiss a session card (hides it; auto-restores on new activity)
+  // Close a session card: deactivate server-side (so it leaves TOKEN USAGE too), then dismiss locally
   const handleDismiss = useCallback((sessionId: string) => {
+    const session = sessions.find(s => s.sessionId === sessionId);
+    if (session?.active !== false) {
+      // Session is still active — deactivate it on the server so the gate stops processing it
+      // and it is removed from TOKEN USAGE. The server will broadcast session:deactivated,
+      // which marks it inactive client-side. We also dismiss locally for immediate UI feedback.
+      fetch('/api/deactivate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ session_id: sessionId }),
+      }).catch(() => {/* ignore network errors */});
+    }
     dismissDashboardSession(sessionId);
     if (dashboardFocusedSession === sessionId) setDashboardFocusedSession(null);
-  }, [dismissDashboardSession, dashboardFocusedSession, setDashboardFocusedSession]);
+  }, [sessions, dismissDashboardSession, dashboardFocusedSession, setDashboardFocusedSession]);
 
   // Drill-down to flowchart + investigation
   const handleDrilldown = useCallback((sessionId: string, eventId: string) => {

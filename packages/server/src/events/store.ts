@@ -8,6 +8,7 @@ export interface SessionInfo {
   cwd: string;
   lastSeen: number;
   agentType: string;
+  active?: boolean;
   opencodeUrl?: string;
   sessionName?: string;
 }
