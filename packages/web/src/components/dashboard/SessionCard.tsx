@@ -518,7 +518,7 @@ function DashboardEventFeed({
         const isPendingEvent = event.type === 'tool_call_pending';
         const pendingApproval = isPendingEvent
           ? approvals.find(
-              (a) => a.toolName === event.data.toolName && Math.abs(a.timestamp - event.timestamp) < 5000
+              (a) => a.sessionId === sessionId && a.toolName === event.data.toolName && Math.abs(a.timestamp - event.timestamp) < 5000
             )
           : undefined;
         return (
@@ -534,7 +534,7 @@ function DashboardEventFeed({
               <div className="mx-2 mb-1 px-2 py-1.5 rounded bg-[#1c1a0f] border border-[#d29922]/20">
                 <ApprovalBar
                   approvalId={pendingApproval.id}
-                  toolName={pendingApproval.toolName ?? ''}
+                  toolName={pendingApproval.toolName}
                   onSend={onSend}
                 />
               </div>
@@ -632,7 +632,7 @@ export function SessionCard({
     <div
       ref={dragRef}
       className={`dash-card dash-card-enter flex flex-col ${isFocused ? 'dash-card--focused' : ''} ${isDragging ? 'dash-card--dragging' : ''} ${isDragOver ? 'dash-card--drag-over' : ''}`}
-      style={{ animationDelay: `${index * 80}ms`, ...(isSpanning ? { gridRow: 'span 2' } : {}) }}
+      style={{ animationDelay: `${index * 80}ms`, gridRow: isSpanning ? 'span 2' : undefined }}
       onClick={handleClick}
       draggable
       onDragStart={(e) => {

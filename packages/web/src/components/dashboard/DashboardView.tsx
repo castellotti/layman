@@ -204,28 +204,23 @@ export function DashboardView({ onSend }: DashboardViewProps) {
             let gridTemplateColumns: string;
             let gridTemplateRows: string;
             let overflow: string;
-            let height: string;
 
             if (count === 1) {
               gridTemplateColumns = '1fr';
               gridTemplateRows = '1fr';
               overflow = 'hidden';
-              height = '100%';
             } else if (count === 2) {
               gridTemplateColumns = 'repeat(2, 1fr)';
               gridTemplateRows = '1fr';
               overflow = 'hidden';
-              height = '100%';
             } else if (isThree) {
               gridTemplateColumns = 'repeat(2, 1fr)';
               gridTemplateRows = 'repeat(2, 1fr)';
               overflow = 'hidden';
-              height = '100%';
             } else {
               gridTemplateColumns = 'repeat(auto-fill, minmax(380px, 1fr))';
               gridTemplateRows = 'auto';
               overflow = 'auto';
-              height = 'auto';
             }
 
             return (
@@ -246,7 +241,9 @@ export function DashboardView({ onSend }: DashboardViewProps) {
                 }}
                 onClick={() => setDashboardFocusedSession(null)}
               >
-                {displaySessions.map((session, index) => (
+                {displaySessions.map((session, displayIndex) => {
+                  const orderIndex = orderedSessions.indexOf(session);
+                  return (
                   <SessionCard
                     key={session.sessionId}
                     session={session}
@@ -257,16 +254,17 @@ export function DashboardView({ onSend }: DashboardViewProps) {
                     onDrilldown={handleDrilldown}
                     onDrilldownToLogs={handleDrilldownToLogs}
                     onSend={onSend}
-                    index={orderedSessions.indexOf(session)}
+                    index={orderIndex}
                     onDragStart={handleDragStart}
                     onDragOver={handleDragOver}
                     onDragEnd={handleDragEnd}
-                    isDragging={dragIndex === orderedSessions.indexOf(session)}
-                    isDragOver={dragOverIndex === orderedSessions.indexOf(session)}
+                    isDragging={dragIndex === orderIndex}
+                    isDragOver={dragOverIndex === orderIndex}
                     totalCards={count}
-                    isSpanning={isThree && index === 0}
+                    isSpanning={isThree && displayIndex === 0}
                   />
-                ))}
+                  );
+                })}
               </div>
             )}
             </div>
