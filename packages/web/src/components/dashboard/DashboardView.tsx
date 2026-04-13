@@ -2,9 +2,14 @@ import React, { useMemo, useState, useCallback, useEffect } from 'react';
 import { useSessionStore } from '../../stores/sessionStore.js';
 import { SessionCard } from './SessionCard.js';
 import { SidePanel } from './SidePanel.js';
+import type { ClientMessage } from '../../lib/ws-protocol.js';
 import './dashboard.css';
 
-export function DashboardView() {
+interface DashboardViewProps {
+  onSend: (msg: ClientMessage) => void;
+}
+
+export function DashboardView({ onSend }: DashboardViewProps) {
   const {
     sessions,
     events: allEvents,
@@ -179,30 +184,69 @@ export function DashboardView() {
 
           {/* Cards grid */}
           {(() => {
-            const isFew = orderedSessions.length > 0 && orderedSessions.length <= 2;
+            const count = orderedSessions.length;
+            const isFew = count > 0 && count <= 2;
+            const isThree = count === 3;
+
+            // For 3 sessions: reorder so the featured (focused or first) is at index 0
+            const featuredId = isThree
+              ? (dashboardFocusedSession && orderedSessions.some(s => s.sessionId === dashboardFocusedSession)
+                  ? dashboardFocusedSession
+                  : orderedSessions[0]?.sessionId)
+              : null;
+            const displaySessions = isThree && featuredId
+              ? [
+                  orderedSessions.find(s => s.sessionId === featuredId)!,
+                  ...orderedSessions.filter(s => s.sessionId !== featuredId),
+                ]
+              : orderedSessions;
+
+            let gridTemplateColumns: string;
+            let gridTemplateRows: string;
+            let overflow: string;
+            let height: string;
+
+            if (count === 1) {
+              gridTemplateColumns = '1fr';
+              gridTemplateRows = '1fr';
+              overflow = 'hidden';
+              height = '100%';
+            } else if (count === 2) {
+              gridTemplateColumns = 'repeat(2, 1fr)';
+              gridTemplateRows = '1fr';
+              overflow = 'hidden';
+              height = '100%';
+            } else if (isThree) {
+              gridTemplateColumns = 'repeat(2, 1fr)';
+              gridTemplateRows = 'repeat(2, 1fr)';
+              overflow = 'hidden';
+              height = '100%';
+            } else {
+              gridTemplateColumns = 'repeat(auto-fill, minmax(380px, 1fr))';
+              gridTemplateRows = 'auto';
+              overflow = 'auto';
+              height = 'auto';
+            }
+
             return (
             <div
-              className="flex-1 p-4"
-              style={{ overflow: isFew ? 'hidden' : 'auto' }}
+              className="flex-1 min-h-0 p-4 flex flex-col"
+              style={{ overflow }}
             >
-            {orderedSessions.length === 0 ? (
+            {count === 0 ? (
               <EmptyState />
             ) : (
               <div
-                className="grid gap-4"
+                className="grid gap-4 flex-1 min-h-0"
                 style={{
-                  gridTemplateColumns: orderedSessions.length === 1
-                    ? '1fr'
-                    : orderedSessions.length === 2
-                    ? 'repeat(2, 1fr)'
-                    : 'repeat(auto-fill, minmax(380px, 1fr))',
-                  height: isFew ? '100%' : 'auto',
-                  gridTemplateRows: isFew ? '1fr' : 'auto',
+                  gridTemplateColumns,
+                  gridTemplateRows,
+                  height: isFew || isThree ? '100%' : 'auto',
                   maxWidth: '100%',
                 }}
                 onClick={() => setDashboardFocusedSession(null)}
               >
-                {orderedSessions.map((session, index) => (
+                {displaySessions.map((session, index) => (
                   <SessionCard
                     key={session.sessionId}
                     session={session}
@@ -212,13 +256,15 @@ export function DashboardView() {
                     onDismiss={handleDismiss}
                     onDrilldown={handleDrilldown}
                     onDrilldownToLogs={handleDrilldownToLogs}
-                    index={index}
+                    onSend={onSend}
+                    index={orderedSessions.indexOf(session)}
                     onDragStart={handleDragStart}
                     onDragOver={handleDragOver}
                     onDragEnd={handleDragEnd}
-                    isDragging={dragIndex === index}
-                    isDragOver={dragOverIndex === index}
-                    totalCards={orderedSessions.length}
+                    isDragging={dragIndex === orderedSessions.indexOf(session)}
+                    isDragOver={dragOverIndex === orderedSessions.indexOf(session)}
+                    totalCards={count}
+                    isSpanning={isThree && index === 0}
                   />
                 ))}
               </div>

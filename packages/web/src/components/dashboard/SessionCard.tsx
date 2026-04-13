@@ -1,10 +1,12 @@
 import React, { useMemo, useCallback, useRef, useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useSessionStore } from '../../stores/sessionStore.js';
+import { usePendingApprovals } from '../../hooks/usePendingApprovals.js';
+import { ApprovalBar } from '../controls/ApprovalBar.js';
 import { EVENT_ICONS, BORDER_COLORS, NODE_BORDER_COLORS, AGENT_BADGES } from '../../lib/event-styles.js';
 import { RiskBadge } from '../shared/RiskBadge.js';
 import type { TimelineEvent } from '../../lib/types.js';
-import type { SessionInfo } from '../../lib/ws-protocol.js';
+import type { SessionInfo, ClientMessage } from '../../lib/ws-protocol.js';
 
 interface SessionCardProps {
   session: SessionInfo;
@@ -14,6 +16,7 @@ interface SessionCardProps {
   onDismiss: (sessionId: string) => void;
   onDrilldown: (sessionId: string, eventId: string) => void;
   onDrilldownToLogs: (sessionId: string, eventId: string) => void;
+  onSend: (msg: ClientMessage) => void;
   index: number;
   onDragStart: (index: number) => void;
   onDragOver: (index: number) => void;
@@ -22,6 +25,8 @@ interface SessionCardProps {
   isDragOver: boolean;
   /** How many total session cards are displayed */
   totalCards: number;
+  /** Whether this card should span 2 rows in the grid (3-session layout) */
+  isSpanning?: boolean;
 }
 
 function getSessionDisplayName(session: SessionInfo): string {
@@ -471,19 +476,20 @@ function DashboardEventFeed({
   events,
   sessionId,
   onDrilldownToLogs,
-  maxItems,
+  onSend,
 }: {
   events: TimelineEvent[];
   sessionId: string;
   onDrilldownToLogs: (sessionId: string, eventId: string) => void;
-  maxItems: number;
+  onSend: (msg: ClientMessage) => void;
 }) {
   const [tooltip, setTooltip] = useState<{ content: string; x: number; y: number } | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const { approvals } = usePendingApprovals();
 
   const filteredEvents = useMemo(
-    () => events.filter(e => e.type !== 'session_metrics').slice(-maxItems),
-    [events, maxItems]
+    () => events.filter(e => e.type !== 'session_metrics'),
+    [events]
   );
 
   // Keep newest entry visible
@@ -508,16 +514,34 @@ function DashboardEventFeed({
 
   return (
     <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto py-1">
-      {filteredEvents.map((event, i) => (
-        <DashboardEventRow
-          key={event.id}
-          event={event}
-          globalIndex={i}
-          onClick={() => onDrilldownToLogs(sessionId, event.id)}
-          onMouseEnter={(e) => handleMouseEnter(event, e)}
-          onMouseLeave={handleMouseLeave}
-        />
-      ))}
+      {filteredEvents.map((event, i) => {
+        const isPendingEvent = event.type === 'tool_call_pending';
+        const pendingApproval = isPendingEvent
+          ? approvals.find(
+              (a) => a.toolName === event.data.toolName && Math.abs(a.timestamp - event.timestamp) < 5000
+            )
+          : undefined;
+        return (
+          <React.Fragment key={event.id}>
+            <DashboardEventRow
+              event={event}
+              globalIndex={i}
+              onClick={() => onDrilldownToLogs(sessionId, event.id)}
+              onMouseEnter={(e) => handleMouseEnter(event, e)}
+              onMouseLeave={handleMouseLeave}
+            />
+            {pendingApproval && (
+              <div className="mx-2 mb-1 px-2 py-1.5 rounded bg-[#1c1a0f] border border-[#d29922]/20">
+                <ApprovalBar
+                  approvalId={pendingApproval.id}
+                  toolName={pendingApproval.toolName ?? ''}
+                  onSend={onSend}
+                />
+              </div>
+            )}
+          </React.Fragment>
+        );
+      })}
       {tooltip && <EventTooltip content={tooltip.content} x={tooltip.x} y={tooltip.y} />}
     </div>
   );
@@ -564,8 +588,8 @@ function RateLimitMini({ label, pct, resetsAt }: { label: string; pct: number; r
 }
 
 export function SessionCard({
-  session, events, isFocused, onFocus, onDismiss, onDrilldown, onDrilldownToLogs, index,
-  onDragStart, onDragOver, onDragEnd, isDragging, isDragOver, totalCards,
+  session, events, isFocused, onFocus, onDismiss, onDrilldown, onDrilldownToLogs, onSend, index,
+  onDragStart, onDragOver, onDragEnd, isDragging, isDragOver, totalCards, isSpanning,
 }: SessionCardProps) {
   const sessionMetrics = useSessionStore(s => s.sessionMetrics);
   const metrics = sessionMetrics.get(session.sessionId);
@@ -608,7 +632,7 @@ export function SessionCard({
     <div
       ref={dragRef}
       className={`dash-card dash-card-enter flex flex-col ${isFocused ? 'dash-card--focused' : ''} ${isDragging ? 'dash-card--dragging' : ''} ${isDragOver ? 'dash-card--drag-over' : ''}`}
-      style={{ animationDelay: `${index * 80}ms` }}
+      style={{ animationDelay: `${index * 80}ms`, ...(isSpanning ? { gridRow: 'span 2' } : {}) }}
       onClick={handleClick}
       draggable
       onDragStart={(e) => {
@@ -753,7 +777,7 @@ export function SessionCard({
           events={events}
           sessionId={session.sessionId}
           onDrilldownToLogs={onDrilldownToLogs}
-          maxItems={chainCapacity}
+          onSend={onSend}
         />
       </div>
 
