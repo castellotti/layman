@@ -174,6 +174,7 @@ export interface PendingApprovalDTO {
   eventName: string;
   toolName: string;
   toolInput: Record<string, unknown>;
+  sessionId: string;
   timestamp: number;
   analysis?: AnalysisResult;
   riskLevel?: 'low' | 'medium' | 'high';

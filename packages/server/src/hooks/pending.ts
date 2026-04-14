@@ -22,6 +22,7 @@ export interface PendingApprovalDTO {
   eventName: string;
   toolName: string;
   toolInput: Record<string, unknown>;
+  sessionId: string;
   timestamp: number;
   analysis?: AnalysisResult;
   riskLevel?: 'low' | 'medium' | 'high';
@@ -104,6 +105,7 @@ export class PendingApprovalManager extends EventEmitter {
       eventName: a.eventName,
       toolName: a.toolName,
       toolInput: a.toolInput,
+      sessionId: a.sessionId,
       timestamp: a.timestamp,
       analysis: a.analysis,
       isDriftBlock: a.isDriftBlock,
