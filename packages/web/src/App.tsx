@@ -144,7 +144,7 @@ export function App() {
         <SetupBanner onInstall={handleSetupInstall} />
         <div className="flex-1 overflow-hidden">
           <Suspense fallback={<div className="flex items-center justify-center h-full text-[#484f58] text-xs">Loading dashboard...</div>}>
-            <DashboardView />
+            <DashboardView onSend={send} />
           </Suspense>
         </div>
         <StatusBar />
