@@ -1,4 +1,4 @@
-import React, { useRef, useState, useCallback, useEffect, Suspense, lazy } from 'react';
+import React, { useRef, useState, useCallback, useEffect, useMemo, Suspense, lazy } from 'react';
 import { Header } from './components/layout/Header.js';
 import { EventStream } from './components/layout/EventStream.js';
 const FlowchartView = lazy(() => import('./components/flowchart/FlowchartView.js').then(m => ({ default: m.FlowchartView })));
@@ -31,27 +31,34 @@ function StatusBar() {
   const { count } = usePendingApprovals();
   const [changelogOpen, setChangelogOpen] = useState(false);
 
-  // Determine the single active harness (if unambiguous).
   // Exclude sessions marked inactive OR dismissed by the user (dismissed = user explicitly closed them).
-  const activeSessions = sessions.filter((s) => s.active !== false && !dashboardDismissedSessions.has(s.sessionId));
+  const activeSessions = useMemo(
+    () => sessions.filter((s) => s.active !== false && !dashboardDismissedSessions.has(s.sessionId)),
+    [sessions, dashboardDismissedSessions]
+  );
+  const activeSessionTypes = useMemo(
+    () => [...new Set(activeSessions.map((s) => s.agentType))],
+    [activeSessions]
+  );
+
+  // Determine the single active harness (if unambiguous). effectiveSessionId starts null so a
+  // dismissed activeSessionId never leaks into the metrics lookup.
   let activeAgentType: string | null = null;
-  let effectiveSessionId: string | null = activeSessionId;
+  let effectiveSessionId: string | null = null;
   if (activeSessionId && !dashboardDismissedSessions.has(activeSessionId)) {
     const sess = sessions.find((s) => s.sessionId === activeSessionId);
     activeAgentType = sess?.agentType ?? null;
-  } else if (activeSessions.length > 0) {
-    const types = [...new Set(activeSessions.map((s) => s.agentType))];
-    if (types.length === 1) {
-      activeAgentType = types[0];
-      effectiveSessionId = activeSessions[activeSessions.length - 1].sessionId;
-    }
+    effectiveSessionId = activeSessionId;
+  } else if (activeSessionTypes.length === 1) {
+    activeAgentType = activeSessionTypes[0];
+    effectiveSessionId = activeSessions[activeSessions.length - 1].sessionId;
   }
 
   const metrics = effectiveSessionId ? sessionMetrics.get(effectiveSessionId) : undefined;
   const harnessVersion = activeAgentType === 'claude-code' ? metrics?.claudeCodeVersion : undefined;
   const modelName = metrics?.modelDisplayName;
   const displayName = activeAgentType ? (HARNESS_DISPLAY_NAMES[activeAgentType] ?? activeAgentType) : null;
-  const canShowChangelog = activeAgentType ? hasChangelog(activeAgentType) : false;
+  const canShowChangelog = activeAgentType !== null && hasChangelog(activeAgentType);
 
   return (
     <>

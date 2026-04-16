@@ -26,7 +26,6 @@ interface GitHubRelease {
   tag_name: string;
   body: string;
   published_at: string;
-  html_url: string;
 }
 
 const CHANGELOG_CONFIG: Record<string, { rawUrl?: string; sourceUrl: string; useGithubReleases?: string }> = {

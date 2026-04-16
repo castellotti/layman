@@ -53,20 +53,20 @@ export function ChangelogModal({ agentType, activeVersion, onClose }: ChangelogM
   const scrolledRef = useRef(false);
   const displayName = HARNESS_DISPLAY_NAMES[agentType] ?? agentType;
 
-  // Scroll to active version after markdown first renders. Guard with scrolledRef so
-  // re-renders (e.g. from cached markdown delivered on a second open) don't re-scroll.
+  // Scroll to the active version after markdown first renders. Guard with scrolledRef so
+  // cached markdown re-delivered on a second open doesn't re-scroll.
+  // rAF ensures the DOM has painted before we query headings.
   useEffect(() => {
     if (scrolledRef.current || !markdown || !contentRef.current || !activeVersion) return;
     const container = contentRef.current;
-    const id = setTimeout(() => {
+    const id = requestAnimationFrame(() => {
       const latestVersion = getLatestVersion(container);
-      // Only scroll away from top if the active version is not the latest
       if (latestVersion && latestVersion !== activeVersion) {
         scrollToVersion(container, activeVersion);
       }
       scrolledRef.current = true;
-    }, 50);
-    return () => clearTimeout(id);
+    });
+    return () => cancelAnimationFrame(id);
   }, [markdown, activeVersion]);
 
   // Close on Escape
@@ -90,18 +90,15 @@ export function ChangelogModal({ agentType, activeVersion, onClose }: ChangelogM
         className="bg-[#0d1117] border border-[#30363d] rounded-lg shadow-2xl w-full max-w-3xl max-h-[80vh] flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-[#30363d] shrink-0">
-          <div className="flex items-center gap-3">
-            <h2 className="text-sm font-semibold text-[#e6edf3]">
-              {displayName} Changelog
-              {activeVersion && (
-                <span className="ml-2 text-[10px] font-mono text-[#484f58] font-normal">
-                  v{activeVersion} active
-                </span>
-              )}
-            </h2>
-          </div>
+          <h2 className="text-sm font-semibold text-[#e6edf3]">
+            {displayName} Changelog
+            {activeVersion && (
+              <span className="ml-2 text-[10px] font-mono text-[#484f58] font-normal">
+                v{activeVersion} active
+              </span>
+            )}
+          </h2>
           <div className="flex items-center gap-3">
             {sourceUrl && (
               <a
@@ -126,7 +123,6 @@ export function ChangelogModal({ agentType, activeVersion, onClose }: ChangelogM
           </div>
         </div>
 
-        {/* Content */}
         <div ref={contentRef} className="flex-1 overflow-y-auto p-5">
           {loading && (
             <div className="flex items-center justify-center py-12 text-[#484f58] text-xs">
