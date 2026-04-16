@@ -15,16 +15,8 @@ import { ChangelogModal } from './components/shared/ChangelogModal.js';
 import { useSessionStore } from './stores/sessionStore.js';
 import { useWebSocket } from './hooks/useWebSocket.js';
 import { usePendingApprovals } from './hooks/usePendingApprovals.js';
-import { hasChangelog } from './hooks/useChangelog.js';
+import { hasChangelog, HARNESS_DISPLAY_NAMES } from './hooks/useChangelog.js';
 import type { SetupStatus } from './lib/types.js';
-
-const HARNESS_DISPLAY_NAMES: Record<string, string> = {
-  'claude-code': 'Claude Code',
-  'mistral-vibe': 'Mistral Vibe',
-  cline: 'Cline',
-  codex: 'Codex',
-  opencode: 'OpenCode',
-};
 
 function StatusBar() {
   const { events, sessionStatus, serverVersion, sessions, activeSessionId, sessionMetrics, dashboardDismissedSessions } = useSessionStore((s) => ({
@@ -44,7 +36,7 @@ function StatusBar() {
   const activeSessions = sessions.filter((s) => s.active !== false && !dashboardDismissedSessions.has(s.sessionId));
   let activeAgentType: string | null = null;
   let effectiveSessionId: string | null = activeSessionId;
-  if (activeSessionId) {
+  if (activeSessionId && !dashboardDismissedSessions.has(activeSessionId)) {
     const sess = sessions.find((s) => s.sessionId === activeSessionId);
     activeAgentType = sess?.agentType ?? null;
   } else if (activeSessions.length > 0) {

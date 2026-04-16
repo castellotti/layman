@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
-import { useChangelog } from '../../hooks/useChangelog.js';
+import { useChangelog, HARNESS_DISPLAY_NAMES } from '../../hooks/useChangelog.js';
 
 const MARKDOWN_PROSE = `text-xs text-[#e6edf3] leading-relaxed prose prose-invert prose-xs max-w-none
   [&_p]:my-1 [&_p]:leading-relaxed
@@ -17,21 +17,13 @@ const MARKDOWN_PROSE = `text-xs text-[#e6edf3] leading-relaxed prose prose-inver
   [&_hr]:border-[#21262d] [&_hr]:my-4
   [&_blockquote]:border-l-2 [&_blockquote]:border-[#30363d] [&_blockquote]:pl-2 [&_blockquote]:text-[#8b949e]`.replace(/\s+/g, ' ').trim();
 
-const HARNESS_DISPLAY_NAMES: Record<string, string> = {
-  'claude-code': 'Claude Code',
-  'mistral-vibe': 'Mistral Vibe',
-  cline: 'Cline',
-  codex: 'Codex',
-  opencode: 'OpenCode',
-};
-
 interface ChangelogModalProps {
   agentType: string;
   activeVersion?: string;
   onClose: () => void;
 }
 
-/** Extract version strings from h2 heading text. Handles formats like:
+/** Extract version string from heading text. Handles formats like:
  *  "## [2.1.92] - 2024-01-01", "## v2.1.92", "## 2.1.92 — 2024-01-01", "## 2.1.92" */
 function extractVersion(heading: string): string | null {
   const m = heading.match(/v?(\d+\.\d+[\w.-]*)/);
@@ -41,8 +33,7 @@ function extractVersion(heading: string): string | null {
 function scrollToVersion(container: HTMLElement, version: string) {
   const headings = container.querySelectorAll('h2');
   for (const h of headings) {
-    const v = extractVersion(h.textContent ?? '');
-    if (v === version || h.textContent?.includes(version)) {
+    if (extractVersion(h.textContent ?? '') === version) {
       h.scrollIntoView({ behavior: 'smooth', block: 'start' });
       return true;
     }
@@ -59,19 +50,21 @@ function getLatestVersion(container: HTMLElement): string | null {
 export function ChangelogModal({ agentType, activeVersion, onClose }: ChangelogModalProps) {
   const { loading, markdown, sourceUrl, error } = useChangelog(agentType);
   const contentRef = useRef<HTMLDivElement>(null);
+  const scrolledRef = useRef(false);
   const displayName = HARNESS_DISPLAY_NAMES[agentType] ?? agentType;
 
-  // Scroll to active version after markdown renders
+  // Scroll to active version after markdown first renders. Guard with scrolledRef so
+  // re-renders (e.g. from cached markdown delivered on a second open) don't re-scroll.
   useEffect(() => {
-    if (!markdown || !contentRef.current || !activeVersion) return;
+    if (scrolledRef.current || !markdown || !contentRef.current || !activeVersion) return;
     const container = contentRef.current;
-    // Give react-markdown a tick to render
     const id = setTimeout(() => {
       const latestVersion = getLatestVersion(container);
-      // Only scroll away from top if active version is not the latest
+      // Only scroll away from top if the active version is not the latest
       if (latestVersion && latestVersion !== activeVersion) {
         scrollToVersion(container, activeVersion);
       }
+      scrolledRef.current = true;
     }, 50);
     return () => clearTimeout(id);
   }, [markdown, activeVersion]);
@@ -94,8 +87,7 @@ export function ChangelogModal({ agentType, activeVersion, onClose }: ChangelogM
       onClick={onClose}
     >
       <div
-        className="bg-[#0d1117] border border-[#30363d] rounded-lg shadow-2xl w-full max-w-2xl max-h-[80vh] flex flex-col"
-        style={{ maxWidth: 720 }}
+        className="bg-[#0d1117] border border-[#30363d] rounded-lg shadow-2xl w-full max-w-3xl max-h-[80vh] flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}

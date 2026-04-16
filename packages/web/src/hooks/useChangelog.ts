@@ -6,19 +6,30 @@ export interface ChangelogEntry {
   fetchedAt: number;
 }
 
+export const HARNESS_DISPLAY_NAMES: Record<string, string> = {
+  'claude-code': 'Claude Code',
+  'mistral-vibe': 'Mistral Vibe',
+  cline: 'Cline',
+  codex: 'Codex',
+  opencode: 'OpenCode',
+};
+
 // Module-level cache: agentType → entry (10-minute TTL)
 const cache = new Map<string, ChangelogEntry>();
 const TTL_MS = 10 * 60 * 1000;
 
+// In-flight promise map prevents duplicate fetches when the modal is opened
+// before a prior fetch has settled.
+const inflight = new Map<string, Promise<ChangelogEntry>>();
+
 interface GitHubRelease {
   tag_name: string;
-  name: string;
   body: string;
   published_at: string;
   html_url: string;
 }
 
-const CHANGELOG_CONFIG: Record<string, { rawUrl: string; sourceUrl: string; useGithubReleases?: string }> = {
+const CHANGELOG_CONFIG: Record<string, { rawUrl?: string; sourceUrl: string; useGithubReleases?: string }> = {
   'claude-code': {
     rawUrl: 'https://raw.githubusercontent.com/anthropics/claude-code/refs/heads/main/CHANGELOG.md',
     sourceUrl: 'https://github.com/anthropics/claude-code/blob/main/CHANGELOG.md',
@@ -32,7 +43,8 @@ const CHANGELOG_CONFIG: Record<string, { rawUrl: string; sourceUrl: string; useG
     sourceUrl: 'https://github.com/cline/cline/blob/main/CHANGELOG.md',
   },
   codex: {
-    rawUrl: '',
+    // Uses GitHub Releases API (unauthenticated: 60 req/hour per IP).
+    // The 10-min module cache means at most 6 fetches/hour in normal use.
     sourceUrl: 'https://github.com/openai/codex/releases',
     useGithubReleases: 'openai/codex',
   },
@@ -54,25 +66,36 @@ async function fetchGithubReleases(repo: string): Promise<string> {
     .join('\n\n---\n\n');
 }
 
-async function fetchChangelog(agentType: string): Promise<ChangelogEntry> {
-  const cached = cache.get(agentType);
-  if (cached && Date.now() - cached.fetchedAt < TTL_MS) return cached;
-
+async function doFetch(agentType: string): Promise<ChangelogEntry> {
   const config = CHANGELOG_CONFIG[agentType];
   if (!config) throw new Error(`No changelog configured for ${agentType}`);
 
   let markdown: string;
   if (config.useGithubReleases) {
     markdown = await fetchGithubReleases(config.useGithubReleases);
-  } else {
+  } else if (config.rawUrl) {
     const res = await fetch(config.rawUrl);
     if (!res.ok) throw new Error(`Fetch error: ${res.status}`);
     markdown = await res.text();
+  } else {
+    throw new Error(`No fetch URL configured for ${agentType}`);
   }
 
   const entry: ChangelogEntry = { markdown, sourceUrl: config.sourceUrl, fetchedAt: Date.now() };
   cache.set(agentType, entry);
   return entry;
+}
+
+async function fetchChangelog(agentType: string): Promise<ChangelogEntry> {
+  const cached = cache.get(agentType);
+  if (cached && Date.now() - cached.fetchedAt < TTL_MS) return cached;
+
+  const existing = inflight.get(agentType);
+  if (existing) return existing;
+
+  const p = doFetch(agentType).finally(() => inflight.delete(agentType));
+  inflight.set(agentType, p);
+  return p;
 }
 
 export function hasChangelog(agentType: string): boolean {
