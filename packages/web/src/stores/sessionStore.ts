@@ -10,7 +10,7 @@ interface InvestigationState {
   };
 }
 
-interface SessionState {
+export interface SessionState {
   // Connection
   connected: boolean;
   serverVersion: string;
