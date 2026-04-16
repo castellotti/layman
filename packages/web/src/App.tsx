@@ -11,37 +11,107 @@ import { SettingsDrawer } from './components/controls/SettingsDrawer.js';
 import { BookmarksPanel } from './components/bookmarks/BookmarksPanel.js';
 import { AccessLogPanel } from './components/access/AccessLogPanel.js';
 import { DriftBlockDialog } from './components/drift/DriftBlockDialog.js';
+import { ChangelogModal } from './components/shared/ChangelogModal.js';
 import { useSessionStore } from './stores/sessionStore.js';
 import { useWebSocket } from './hooks/useWebSocket.js';
 import { usePendingApprovals } from './hooks/usePendingApprovals.js';
+import { hasChangelog } from './hooks/useChangelog.js';
 import type { SetupStatus } from './lib/types.js';
 
+const HARNESS_DISPLAY_NAMES: Record<string, string> = {
+  'claude-code': 'Claude Code',
+  'mistral-vibe': 'Mistral Vibe',
+  cline: 'Cline',
+  codex: 'Codex',
+  opencode: 'OpenCode',
+};
+
 function StatusBar() {
-  const { events, sessionStatus, serverVersion } = useSessionStore((s) => ({
+  const { events, sessionStatus, serverVersion, sessions, activeSessionId, sessionMetrics, dashboardDismissedSessions } = useSessionStore((s) => ({
     events: s.events,
     sessionStatus: s.sessionStatus,
     serverVersion: s.serverVersion,
+    sessions: s.sessions,
+    activeSessionId: s.activeSessionId,
+    sessionMetrics: s.sessionMetrics,
+    dashboardDismissedSessions: s.dashboardDismissedSessions,
   }));
   const { count } = usePendingApprovals();
+  const [changelogOpen, setChangelogOpen] = useState(false);
+
+  // Determine the single active harness (if unambiguous).
+  // Exclude sessions marked inactive OR dismissed by the user (dismissed = user explicitly closed them).
+  const activeSessions = sessions.filter((s) => s.active !== false && !dashboardDismissedSessions.has(s.sessionId));
+  let activeAgentType: string | null = null;
+  let effectiveSessionId: string | null = activeSessionId;
+  if (activeSessionId) {
+    const sess = sessions.find((s) => s.sessionId === activeSessionId);
+    activeAgentType = sess?.agentType ?? null;
+  } else if (activeSessions.length > 0) {
+    const types = [...new Set(activeSessions.map((s) => s.agentType))];
+    if (types.length === 1) {
+      activeAgentType = types[0];
+      effectiveSessionId = activeSessions[activeSessions.length - 1].sessionId;
+    }
+  }
+
+  const metrics = effectiveSessionId ? sessionMetrics.get(effectiveSessionId) : undefined;
+  const harnessVersion = activeAgentType === 'claude-code' ? metrics?.claudeCodeVersion : undefined;
+  const modelName = metrics?.modelDisplayName;
+  const displayName = activeAgentType ? (HARNESS_DISPLAY_NAMES[activeAgentType] ?? activeAgentType) : null;
+  const canShowChangelog = activeAgentType ? hasChangelog(activeAgentType) : false;
 
   return (
-    <div data-print-hide className="flex items-center justify-between px-4 py-1.5 bg-[#161b22] border-t border-[#30363d] text-[10px] text-[#8b949e] shrink-0">
-      <div className="flex items-center gap-3">
-        {count > 0 && (
-          <span className="text-[#d29922] font-medium animate-pulse">
-            ⚡ {count} pending {count === 1 ? 'approval' : 'approvals'}
-          </span>
-        )}
-        <span>{events.length} events</span>
-        {sessionStatus && (
-          <>
-            <span>·</span>
-            <span>Uptime: {sessionStatus.uptime}s</span>
-          </>
-        )}
+    <>
+      <div data-print-hide className="flex items-center justify-between px-4 py-1.5 bg-[#161b22] border-t border-[#30363d] text-[10px] text-[#8b949e] shrink-0">
+        <div className="flex items-center gap-3">
+          {count > 0 && (
+            <span className="text-[#d29922] font-medium animate-pulse">
+              ⚡ {count} pending {count === 1 ? 'approval' : 'approvals'}
+            </span>
+          )}
+          <span>{events.length} events</span>
+          {sessionStatus && (
+            <>
+              <span>·</span>
+              <span>Uptime: {sessionStatus.uptime}s</span>
+            </>
+          )}
+        </div>
+        <div className="flex items-center gap-2 text-[#484f58]">
+          {displayName && (
+            <>
+              {canShowChangelog ? (
+                <button
+                  onClick={() => setChangelogOpen(true)}
+                  className="hover:text-[#8b949e] transition-colors"
+                  title={`View ${displayName} changelog`}
+                >
+                  {displayName}{harnessVersion ? ` v${harnessVersion}` : ''}
+                </button>
+              ) : (
+                <span>{displayName}{harnessVersion ? ` v${harnessVersion}` : ''}</span>
+              )}
+              <span className="text-[#30363d]">|</span>
+            </>
+          )}
+          {modelName && (
+            <>
+              <span className="text-[#6e7681]">{modelName}</span>
+              <span className="text-[#30363d]">|</span>
+            </>
+          )}
+          <span>Layman {serverVersion ? `v${serverVersion}` : ''}</span>
+        </div>
       </div>
-      <span className="text-[#484f58]">Layman {serverVersion ? `v${serverVersion}` : ''}</span>
-    </div>
+      {changelogOpen && activeAgentType && (
+        <ChangelogModal
+          agentType={activeAgentType}
+          activeVersion={harnessVersion}
+          onClose={() => setChangelogOpen(false)}
+        />
+      )}
+    </>
   );
 }
 
