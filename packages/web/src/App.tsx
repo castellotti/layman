@@ -1,4 +1,4 @@
-import React, { useRef, useState, useCallback, useEffect, useMemo, Suspense, lazy } from 'react';
+import React, { useRef, useState, useCallback, useEffect, Suspense, lazy } from 'react';
 import { Header } from './components/layout/Header.js';
 import { EventStream } from './components/layout/EventStream.js';
 const FlowchartView = lazy(() => import('./components/flowchart/FlowchartView.js').then(m => ({ default: m.FlowchartView })));
@@ -13,50 +13,58 @@ import { AccessLogPanel } from './components/access/AccessLogPanel.js';
 import { DriftBlockDialog } from './components/drift/DriftBlockDialog.js';
 import { ChangelogModal } from './components/shared/ChangelogModal.js';
 import { useSessionStore } from './stores/sessionStore.js';
+import type { SessionState } from './stores/sessionStore.js';
 import { useWebSocket } from './hooks/useWebSocket.js';
 import { usePendingApprovals } from './hooks/usePendingApprovals.js';
 import { hasChangelog, HARNESS_DISPLAY_NAMES } from './hooks/useChangelog.js';
+import { shallow } from 'zustand/shallow';
 import type { SetupStatus } from './lib/types.js';
 
 function StatusBar() {
-  const { events, sessionStatus, serverVersion, sessions, activeSessionId, sessionMetrics, dashboardDismissedSessions } = useSessionStore((s) => ({
-    events: s.events,
-    sessionStatus: s.sessionStatus,
-    serverVersion: s.serverVersion,
-    sessions: s.sessions,
-    activeSessionId: s.activeSessionId,
-    sessionMetrics: s.sessionMetrics,
-    dashboardDismissedSessions: s.dashboardDismissedSessions,
-  }));
+  // Derive only scalars inside the selector so useShallow can compare primitives.
+  // This prevents re-renders from Map/Array reference churn (sessionMetrics rebuilds
+  // on every assistant turn; sessions rebuilds on every session change).
+  const { eventCount, sessionStatus, serverVersion, activeAgentType, harnessVersion, modelName } =
+    useSessionStore(
+      (s: SessionState) => {
+        const dismissed = s.dashboardDismissedSessions;
+        // Exclude inactive or user-dismissed sessions
+        const activeSessions = s.sessions.filter(
+          (sess) => sess.active !== false && !dismissed.has(sess.sessionId)
+        );
+
+        // Determine the single active harness (if unambiguous).
+        // effectiveSessionId starts null so a dismissed activeSessionId never leaks into metrics.
+        let agentType: string | null = null;
+        let effectiveSessionId: string | null = null;
+        if (s.activeSessionId && !dismissed.has(s.activeSessionId)) {
+          const sess = s.sessions.find((x) => x.sessionId === s.activeSessionId);
+          agentType = sess?.agentType ?? null;
+          effectiveSessionId = s.activeSessionId;
+        } else {
+          const types = [...new Set(activeSessions.map((x) => x.agentType))];
+          if (types.length === 1) {
+            agentType = types[0];
+            effectiveSessionId = activeSessions[activeSessions.length - 1].sessionId;
+          }
+        }
+
+        const metrics = effectiveSessionId ? s.sessionMetrics.get(effectiveSessionId) : undefined;
+        return {
+          eventCount: s.events.length,
+          sessionStatus: s.sessionStatus,
+          serverVersion: s.serverVersion,
+          activeAgentType: agentType,
+          harnessVersion: agentType === 'claude-code' ? metrics?.claudeCodeVersion : undefined,
+          modelName: metrics?.modelDisplayName,
+        };
+      },
+      shallow
+    );
+
   const { count } = usePendingApprovals();
   const [changelogOpen, setChangelogOpen] = useState(false);
 
-  // Exclude sessions marked inactive OR dismissed by the user (dismissed = user explicitly closed them).
-  const activeSessions = useMemo(
-    () => sessions.filter((s) => s.active !== false && !dashboardDismissedSessions.has(s.sessionId)),
-    [sessions, dashboardDismissedSessions]
-  );
-  const activeSessionTypes = useMemo(
-    () => [...new Set(activeSessions.map((s) => s.agentType))],
-    [activeSessions]
-  );
-
-  // Determine the single active harness (if unambiguous). effectiveSessionId starts null so a
-  // dismissed activeSessionId never leaks into the metrics lookup.
-  let activeAgentType: string | null = null;
-  let effectiveSessionId: string | null = null;
-  if (activeSessionId && !dashboardDismissedSessions.has(activeSessionId)) {
-    const sess = sessions.find((s) => s.sessionId === activeSessionId);
-    activeAgentType = sess?.agentType ?? null;
-    effectiveSessionId = activeSessionId;
-  } else if (activeSessionTypes.length === 1) {
-    activeAgentType = activeSessionTypes[0];
-    effectiveSessionId = activeSessions[activeSessions.length - 1].sessionId;
-  }
-
-  const metrics = effectiveSessionId ? sessionMetrics.get(effectiveSessionId) : undefined;
-  const harnessVersion = activeAgentType === 'claude-code' ? metrics?.claudeCodeVersion : undefined;
-  const modelName = metrics?.modelDisplayName;
   const displayName = activeAgentType ? (HARNESS_DISPLAY_NAMES[activeAgentType] ?? activeAgentType) : null;
   const canShowChangelog = activeAgentType !== null && hasChangelog(activeAgentType);
 
@@ -69,7 +77,7 @@ function StatusBar() {
               ⚡ {count} pending {count === 1 ? 'approval' : 'approvals'}
             </span>
           )}
-          <span>{events.length} events</span>
+          <span>{eventCount} events</span>
           {sessionStatus && (
             <>
               <span>·</span>
