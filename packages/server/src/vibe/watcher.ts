@@ -24,7 +24,7 @@ const execFileAsync = promisify(execFile);
 /** Returns the set of PIDs for running vibe processes */
 async function getVibePids(): Promise<Set<number>> {
   try {
-    const { stdout } = await execFileAsync('pgrep', ['-x', 'vibe']);
+    const { stdout } = await execFileAsync('pgrep', ['-x', 'vibe'], { timeout: 5000 });
     return new Set(
       stdout.trim().split('\n').filter(Boolean).map(Number).filter(n => !isNaN(n))
     );
@@ -36,8 +36,8 @@ async function getVibePids(): Promise<Set<number>> {
 /** Returns the working directory of a process by PID (macOS/Linux) */
 async function getProcessCwd(pid: number): Promise<string> {
   try {
-    // macOS: lsof -p PID -a -d cwd -Fn outputs "pPID\nnPATH"
-    const { stdout } = await execFileAsync('lsof', ['-p', String(pid), '-a', '-d', 'cwd', '-Fn']);
+    // macOS/Linux: lsof -p PID -a -d cwd -Fn outputs "pPID\nnPATH"
+    const { stdout } = await execFileAsync('lsof', ['-p', String(pid), '-a', '-d', 'cwd', '-Fn'], { timeout: 5000 });
     const match = stdout.match(/^n(.+)$/m);
     return match ? match[1].trim() : '';
   } catch {
@@ -162,22 +162,8 @@ export class VibeSessionWatcher {
     this.logDir = resolveSessionLogDir();
     if (this.logDir) {
       console.log(`[vibe] Session watcher started, watching ${this.logDir}`);
-
-      // Scan for recently-active sessions
       this.scanExistingSessions();
-
-      // Watch for new session directories
-      try {
-        this.dirWatcher = watch(this.logDir, (eventType, filename) => {
-          if (!filename || !this.logDir) return;
-          const dirPath = join(this.logDir, filename);
-          if (this.sessions.has(dirPath)) return;
-          // Small delay for meta.json to be written
-          setTimeout(() => this.tryAddSession(dirPath), 500);
-        });
-      } catch {
-        // fs.watch may fail on some systems — fall back to periodic scan
-      }
+      this.startDirWatcher(this.logDir);
     } else {
       console.log('[vibe] Session log directory not found yet; will retry on each scan');
     }
@@ -192,20 +178,27 @@ export class VibeSessionWatcher {
         if (this.logDir) {
           console.log(`[vibe] Session log directory found: ${this.logDir}`);
           this.scanExistingSessions();
-          try {
-            this.dirWatcher = watch(this.logDir, (eventType, filename) => {
-              if (!filename || !this.logDir) return;
-              const dirPath = join(this.logDir, filename);
-              if (this.sessions.has(dirPath)) return;
-              setTimeout(() => this.tryAddSession(dirPath), 500);
-            });
-          } catch { /* fall back to periodic scan */ }
+          this.startDirWatcher(this.logDir);
         }
       }
       this.scanExistingSessions();
       void this.cleanupEndedSessions();
       void this.checkVibeProcesses();
     }, SCAN_INTERVAL_MS);
+  }
+
+  private startDirWatcher(logDir: string): void {
+    try {
+      this.dirWatcher = watch(logDir, (eventType, filename) => {
+        if (!filename || !this.logDir) return;
+        const dirPath = join(this.logDir, filename);
+        if (this.sessions.has(dirPath)) return;
+        // Small delay for meta.json to be written
+        setTimeout(() => this.tryAddSession(dirPath), 500);
+      });
+    } catch {
+      // fs.watch may fail on some systems — fall back to periodic scan
+    }
   }
 
   stop(): void {
@@ -263,9 +256,10 @@ export class VibeSessionWatcher {
       console.log(`[vibe] Placeholder session ${sessionId} for process PID ${pid} (${cwd || 'unknown cwd'})`);
     }
 
-    // Exited processes: close any placeholder session that was never replaced
-    for (const pid of this.knownVibePids) {
-      if (currentPids.has(pid)) continue;
+    // Exited processes: close any placeholder session that was never replaced.
+    // Collect first to avoid mutating the Set while iterating it.
+    const exitedPids = [...this.knownVibePids].filter(pid => !currentPids.has(pid));
+    for (const pid of exitedPids) {
       this.knownVibePids.delete(pid);
 
       const pending = this.pendingSessions.get(pid);
