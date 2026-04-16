@@ -7,7 +7,9 @@
  */
 
 import { watch, existsSync, readdirSync, statSync, readFileSync } from 'fs';
-import { open, readFile } from 'fs/promises';
+import { open } from 'fs/promises';
+import { execFile } from 'child_process';
+import { promisify } from 'util';
 import { join, basename } from 'path';
 import { homedir } from 'os';
 import type { FSWatcher } from 'fs';
@@ -16,6 +18,32 @@ import type { SessionGate } from '../hooks/gate.js';
 import type { LaymanConfig } from '../config/schema.js';
 import { classifyRisk } from '../events/classifier.js';
 import { extractAccess } from '../events/access-extractor.js';
+
+const execFileAsync = promisify(execFile);
+
+/** Returns the set of PIDs for running vibe processes */
+async function getVibePids(): Promise<Set<number>> {
+  try {
+    const { stdout } = await execFileAsync('pgrep', ['-x', 'vibe'], { timeout: 5000 });
+    return new Set(
+      stdout.trim().split('\n').filter(Boolean).map(Number).filter(n => !isNaN(n))
+    );
+  } catch {
+    return new Set();
+  }
+}
+
+/** Returns the working directory of a process by PID (macOS/Linux) */
+async function getProcessCwd(pid: number): Promise<string> {
+  try {
+    // macOS/Linux: lsof -p PID -a -d cwd -Fn outputs "pPID\nnPATH"
+    const { stdout } = await execFileAsync('lsof', ['-p', String(pid), '-a', '-d', 'cwd', '-Fn'], { timeout: 5000 });
+    const match = stdout.match(/^n(.+)$/m);
+    return match ? match[1].trim() : '';
+  } catch {
+    return '';
+  }
+}
 
 const AGENT_TYPE = 'mistral-vibe';
 const POLL_INTERVAL_MS = 2000;
@@ -100,6 +128,13 @@ function resolveSessionLogDir(): string | null {
   return null;
 }
 
+/** A synthetic placeholder session created when a vibe process is detected at launch,
+ *  before the first user message creates meta.json. */
+interface PendingSession {
+  sessionId: string;
+  cwd: string;
+}
+
 export class VibeSessionWatcher {
   private eventStore: EventStore;
   private gate: SessionGate;
@@ -108,6 +143,11 @@ export class VibeSessionWatcher {
   private dirWatcher: FSWatcher | null = null;
   private scanTimer: ReturnType<typeof setInterval> | null = null;
   private logDir: string | null = null;
+  /** PIDs of vibe processes we've already seen */
+  private knownVibePids = new Set<number>();
+  /** Synthetic placeholder sessions keyed by PID, active before real meta.json appears */
+  private pendingSessions = new Map<number, PendingSession>();
+  private vibeCheckInProgress = false;
 
   constructor(eventStore: EventStore, gate: SessionGate, getConfig: () => LaymanConfig) {
     this.eventStore = eventStore;
@@ -116,17 +156,37 @@ export class VibeSessionWatcher {
   }
 
   start(): void {
+    void this.checkVibeProcesses();
+
     this.logDir = resolveSessionLogDir();
-    if (!this.logDir) return; // Vibe not installed or no sessions yet
+    if (this.logDir) {
+      console.log(`[vibe] Session watcher started, watching ${this.logDir}`);
+      this.scanExistingSessions();
+      this.startDirWatcher(this.logDir);
+    } else {
+      console.log('[vibe] Session log directory not found yet; will retry on each scan');
+    }
 
-    console.log(`[vibe] Session watcher started, watching ${this.logDir}`);
+    // Periodic scan to catch anything fs.watch misses (fs.watch is unreliable on
+    // Docker Desktop bind mounts) and to detect newly-ended sessions.
+    this.scanTimer = setInterval(() => {
+      if (!this.logDir) {
+        // Re-resolve in case vibe was installed after Layman started
+        this.logDir = resolveSessionLogDir();
+        if (this.logDir) {
+          console.log(`[vibe] Session log directory found: ${this.logDir}`);
+          this.startDirWatcher(this.logDir);
+        }
+      }
+      if (this.logDir) this.scanExistingSessions();
+      void this.cleanupEndedSessions();
+      void this.checkVibeProcesses();
+    }, SCAN_INTERVAL_MS);
+  }
 
-    // Scan for recently-active sessions
-    this.scanExistingSessions();
-
-    // Watch for new session directories
+  private startDirWatcher(logDir: string): void {
     try {
-      this.dirWatcher = watch(this.logDir, (eventType, filename) => {
+      this.dirWatcher = watch(logDir, (eventType, filename) => {
         if (!filename || !this.logDir) return;
         const dirPath = join(this.logDir, filename);
         if (this.sessions.has(dirPath)) return;
@@ -136,13 +196,6 @@ export class VibeSessionWatcher {
     } catch {
       // fs.watch may fail on some systems — fall back to periodic scan
     }
-
-    // Periodic scan to catch anything fs.watch misses (fs.watch is unreliable on
-    // Docker Desktop bind mounts) and to detect newly-ended sessions.
-    this.scanTimer = setInterval(() => {
-      this.scanExistingSessions();
-      void this.cleanupEndedSessions();
-    }, SCAN_INTERVAL_MS);
   }
 
   stop(): void {
@@ -158,6 +211,74 @@ export class VibeSessionWatcher {
       if (session.pollTimer) clearInterval(session.pollTimer);
     }
     this.sessions.clear();
+    this.pendingSessions.clear();
+    this.knownVibePids.clear();
+  }
+
+  /**
+   * Detects running vibe processes and creates synthetic placeholder sessions at
+   * launch, before the user sends the first message (which is when Vibe writes meta.json).
+   * When the real session directory appears, tryAddSession transitions away from the
+   * placeholder. When the process exits without a real session, the placeholder is closed.
+   */
+  private async checkVibeProcesses(): Promise<void> {
+    if (this.vibeCheckInProgress) return;
+    this.vibeCheckInProgress = true;
+    try {
+      await this.doCheckVibeProcesses();
+    } finally {
+      this.vibeCheckInProgress = false;
+    }
+  }
+
+  private async doCheckVibeProcesses(): Promise<void> {
+    const currentPids = await getVibePids();
+
+    // Resolve cwds for all new PIDs in parallel
+    const newPids = [...currentPids].filter(pid => !this.knownVibePids.has(pid));
+    for (const pid of newPids) this.knownVibePids.add(pid);
+
+    const newPidCwds = await Promise.all(
+      newPids.map(pid => getProcessCwd(pid).then(cwd => ({ pid, cwd })))
+    );
+
+    for (const { pid, cwd } of newPidCwds) {
+      if (this.cwdCovered(cwd)) continue;
+
+      const sessionId = `vibe-pending-${pid}`;
+      this.pendingSessions.set(pid, { sessionId, cwd });
+
+      this.eventStore.trackSession(sessionId, cwd, AGENT_TYPE);
+      this.eventStore.add('session_start', sessionId, { source: 'process-detected' }, undefined, AGENT_TYPE);
+
+      if (this.getConfig().autoActivateClients.includes(AGENT_TYPE)) {
+        this.gate.activate(sessionId);
+      }
+
+      console.log(`[vibe] Placeholder session ${sessionId} for process PID ${pid} (${cwd || 'unknown cwd'})`);
+    }
+
+    // Close placeholders whose process has exited without producing a real session.
+    // Collect first to avoid mutating the Set while iterating it.
+    const exitedPids = [...this.knownVibePids].filter(pid => !currentPids.has(pid));
+    for (const pid of exitedPids) {
+      this.knownVibePids.delete(pid);
+
+      const pending = this.pendingSessions.get(pid);
+      if (!pending) continue;
+      this.pendingSessions.delete(pid);
+
+      this.eventStore.add('session_end', pending.sessionId, {}, undefined, AGENT_TYPE);
+      this.gate.deactivate(pending.sessionId);
+      console.log(`[vibe] Placeholder session ${pending.sessionId} closed (process PID ${pid} exited)`);
+    }
+  }
+
+  /** Returns true if any tracked or pending session already covers the given cwd. */
+  private cwdCovered(cwd: string): boolean {
+    for (const s of this.sessions.values()) if (s.cwd === cwd) return true;
+    for (const s of this.pendingSessions.values()) if (s.cwd === cwd) return true;
+    return false;
   }
 
   private scanExistingSessions(): void {
@@ -206,6 +327,17 @@ export class VibeSessionWatcher {
 
     const sessionId = meta.session_id;
     const cwd = meta.environment?.working_directory ?? '';
+
+    // If a placeholder session exists for this cwd, close it before registering the real one
+    for (const [pid, pending] of this.pendingSessions) {
+      if (pending.cwd === cwd) {
+        this.pendingSessions.delete(pid);
+        this.eventStore.add('session_end', pending.sessionId, {}, undefined, AGENT_TYPE);
+        this.gate.deactivate(pending.sessionId);
+        console.log(`[vibe] Placeholder session ${pending.sessionId} replaced by real session ${sessionId.slice(0, 8)}`);
+        break;
+      }
+    }
 
     // Auto-activate: if configured, activate Vibe sessions via the gate
     const config = this.getConfig();
