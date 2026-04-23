@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import type { TimelineEvent } from '../../lib/types.js';
 import type { ClientMessage } from '../../lib/ws-protocol.js';
 import { RiskBadge } from '../shared/RiskBadge.js';
@@ -380,8 +381,11 @@ export function EventCard({ event, index, isSelected, onClick, onSend, collapseH
                   [&_ul]:list-disc [&_ul]:pl-4 [&_ul]:my-1
                   [&_ol]:list-decimal [&_ol]:pl-4 [&_ol]:my-1
                   [&_li]:my-0.5
-                  [&_h1]:text-sm [&_h2]:text-sm [&_h3]:text-xs [&_h1]:font-bold [&_h2]:font-bold [&_h3]:font-semibold`}>
-                  <ReactMarkdown>{event.data.prompt as string}</ReactMarkdown>
+                  [&_h1]:text-sm [&_h2]:text-sm [&_h3]:text-xs [&_h1]:font-bold [&_h2]:font-bold [&_h3]:font-semibold
+                  [&_table]:w-full [&_table]:border-collapse [&_table]:my-2
+                  [&_th]:border [&_th]:border-[#30363d] [&_th]:px-2 [&_th]:py-1 [&_th]:text-left [&_th]:font-semibold [&_th]:bg-[#161b22]
+                  [&_td]:border [&_td]:border-[#30363d] [&_td]:px-2 [&_td]:py-1`}>
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{event.data.prompt as string}</ReactMarkdown>
                 </div>
               </div>
             ) : (
