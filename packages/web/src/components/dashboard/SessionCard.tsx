@@ -415,7 +415,7 @@ function DashboardEventRow({
 
         {/* Prompt preview (only when no tool name) */}
         {event.data.prompt && !event.data.toolName && (
-          <span className="text-[10px] text-[#8b949e] truncate min-w-0 italic">
+          <span className="text-[10px] text-[#58a6ff] truncate min-w-0 italic">
             {(event.data.prompt as string).slice(0, 50)}
           </span>
         )}
