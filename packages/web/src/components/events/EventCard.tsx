@@ -382,6 +382,7 @@ export function EventCard({ event, index, isSelected, onClick, onSend, collapseH
                   [&_ol]:list-decimal [&_ol]:pl-4 [&_ol]:my-1
                   [&_li]:my-0.5
                   [&_h1]:text-sm [&_h2]:text-sm [&_h3]:text-xs [&_h1]:font-bold [&_h2]:font-bold [&_h3]:font-semibold
+                  [&_hr]:border-[#30363d] [&_hr]:my-3
                   [&_table]:w-full [&_table]:border-collapse [&_table]:my-2
                   [&_th]:border [&_th]:border-[#30363d] [&_th]:px-2 [&_th]:py-1 [&_th]:text-left [&_th]:font-semibold [&_th]:bg-[#161b22]
                   [&_td]:border [&_td]:border-[#30363d] [&_td]:px-2 [&_td]:py-1`}>

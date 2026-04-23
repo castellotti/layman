@@ -16,7 +16,10 @@ const MARKDOWN_PROSE = `text-xs text-[#e6edf3] leading-relaxed prose prose-inver
   [&_h2]:mt-6 [&_h2]:mb-2 [&_h2]:text-[#58a6ff] [&_h2]:border-b [&_h2]:border-[#21262d] [&_h2]:pb-1
   [&_h3]:mt-3 [&_h3]:mb-1 [&_h3]:text-[#e6edf3]
   [&_hr]:border-[#21262d] [&_hr]:my-4
-  [&_blockquote]:border-l-2 [&_blockquote]:border-[#30363d] [&_blockquote]:pl-2 [&_blockquote]:text-[#8b949e]`.replace(/\s+/g, ' ').trim();
+  [&_blockquote]:border-l-2 [&_blockquote]:border-[#30363d] [&_blockquote]:pl-2 [&_blockquote]:text-[#8b949e]
+  [&_table]:w-full [&_table]:border-collapse [&_table]:my-2
+  [&_th]:border [&_th]:border-[#30363d] [&_th]:px-2 [&_th]:py-1 [&_th]:text-left [&_th]:font-semibold [&_th]:bg-[#161b22]
+  [&_td]:border [&_td]:border-[#30363d] [&_td]:px-2 [&_td]:py-1`.replace(/\s+/g, ' ').trim();
 
 interface ChangelogModalProps {
   agentType: string;

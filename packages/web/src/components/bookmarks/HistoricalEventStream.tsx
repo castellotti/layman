@@ -29,6 +29,7 @@ const MARKDOWN_PROSE = `text-[10px] text-[#e6edf3] leading-relaxed prose prose-i
   [&_li]:my-0.5
   [&_h1]:text-xs [&_h2]:text-xs [&_h3]:text-[10px] [&_h1]:font-bold [&_h2]:font-bold [&_h3]:font-semibold
   [&_blockquote]:border-l-2 [&_blockquote]:border-[#30363d] [&_blockquote]:pl-2 [&_blockquote]:text-[#8b949e]
+  [&_hr]:border-[#30363d] [&_hr]:my-3
   [&_table]:w-full [&_table]:border-collapse [&_table]:my-2
   [&_th]:border [&_th]:border-[#30363d] [&_th]:px-2 [&_th]:py-1 [&_th]:text-left [&_th]:font-semibold [&_th]:bg-[#161b22]
   [&_td]:border [&_td]:border-[#30363d] [&_td]:px-2 [&_td]:py-1`.replace(/\s+/g, ' ').trim();
