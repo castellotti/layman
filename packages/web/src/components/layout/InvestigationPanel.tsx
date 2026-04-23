@@ -1,6 +1,8 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+
+const REMARK_PLUGINS = [remarkGfm];
 import { useSessionStore } from '../../stores/sessionStore.js';
 import { useEventStore } from '../../hooks/useEventStore.js';
 import { AnalysisCard } from '../analysis/AnalysisCard.js';
@@ -28,7 +30,7 @@ const MARKDOWN_PROSE = `text-xs text-[#e6edf3] leading-relaxed prose prose-inver
 
 function MarkdownOrText({ text, className }: { text: string; className?: string }) {
   if (isMarkdown(text)) {
-    return <div className={className ?? MARKDOWN_PROSE}><ReactMarkdown remarkPlugins={[remarkGfm]}>{text}</ReactMarkdown></div>;
+    return <div className={className ?? MARKDOWN_PROSE}><ReactMarkdown remarkPlugins={REMARK_PLUGINS}>{text}</ReactMarkdown></div>;
   }
   return <p className={className ?? 'text-xs text-[#e6edf3] leading-relaxed whitespace-pre-wrap'}>{text}</p>;
 }

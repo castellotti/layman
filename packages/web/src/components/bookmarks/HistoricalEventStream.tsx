@@ -1,6 +1,8 @@
 import React, { useCallback, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+
+const REMARK_PLUGINS = [remarkGfm];
 import type { TimelineEvent, QAEntry, SessionTimeMetrics } from '../../lib/types.js';
 import { useSessionStore } from '../../stores/sessionStore.js';
 import { EventCard } from '../events/EventCard.js';
@@ -36,7 +38,7 @@ const MARKDOWN_PROSE = `text-[10px] text-[#e6edf3] leading-relaxed prose prose-i
 
 function HistoricalMarkdownOrText({ text }: { text: string }) {
   if (isMarkdown(text)) {
-    return <div className={MARKDOWN_PROSE}><ReactMarkdown remarkPlugins={[remarkGfm]}>{text}</ReactMarkdown></div>;
+    return <div className={MARKDOWN_PROSE}><ReactMarkdown remarkPlugins={REMARK_PLUGINS}>{text}</ReactMarkdown></div>;
   }
   return <p className="text-[10px] text-[#e6edf3] whitespace-pre-wrap">{text}</p>;
 }

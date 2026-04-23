@@ -1,6 +1,8 @@
 import React, { useEffect, useRef, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+
+const REMARK_PLUGINS = [remarkGfm];
 import { useChangelog, HARNESS_DISPLAY_NAMES } from '../../hooks/useChangelog.js';
 
 const MARKDOWN_PROSE = `text-xs text-[#e6edf3] leading-relaxed prose prose-invert prose-xs max-w-none
@@ -140,7 +142,7 @@ export function ChangelogModal({ agentType, activeVersion, onClose }: ChangelogM
           )}
           {markdown && !loading && (
             <div className={MARKDOWN_PROSE}>
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>{markdown}</ReactMarkdown>
+              <ReactMarkdown remarkPlugins={REMARK_PLUGINS}>{markdown}</ReactMarkdown>
             </div>
           )}
         </div>
