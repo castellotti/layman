@@ -182,7 +182,10 @@ export function BookmarksPanel({ onSend }: BookmarksPanelProps) {
     setHistoricalFlowchartOpen(false);
   }, [setViewingSession, setSessionTimeMetrics]);
 
+  const markSessionInvestigated = useSessionStore((s) => s.markSessionInvestigated);
+
   const handleGenerateHistoricalSummary = useCallback(async (sessionId: string) => {
+    markSessionInvestigated(sessionId);
     setIsSummarizingHistorical(true);
     setHistoricalSummaryError(null);
     try {
@@ -203,7 +206,7 @@ export function BookmarksPanel({ onSend }: BookmarksPanelProps) {
     } finally {
       setIsSummarizingHistorical(false);
     }
-  }, []);
+  }, [markSessionInvestigated]);
 
   const handleDeleteSession = useCallback(async (sessionId: string) => {
     try {

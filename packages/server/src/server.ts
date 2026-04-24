@@ -436,7 +436,7 @@ export function createServer(config: LaymanConfig): LaymanServer {
       const cwd = liveCwd ?? dbCwd ?? process.cwd();
 
       try {
-        const result = await analysisEngine.summarizeSession(eventSummaries, cwd, model);
+        const result = await analysisEngine.summarizeSession(eventSummaries, cwd, model, 'high');
         return result;
       } catch (err) {
         const errorMsg = err instanceof Error ? err.message : String(err);

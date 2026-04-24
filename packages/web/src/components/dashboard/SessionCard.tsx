@@ -709,7 +709,7 @@ export function SessionCard({
             }}
             title="Session has been manually investigated"
           >
-            ⊙ inv
+            ⊙
           </span>
         )}
 

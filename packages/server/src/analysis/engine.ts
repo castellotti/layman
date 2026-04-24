@@ -58,7 +58,9 @@ export class AnalysisEngine {
 
     this.activeRequests++;
     try {
-      // Enforce minimum gap between requests to avoid overwhelming rate-limited proxies
+      // Enforce minimum gap between requests to avoid overwhelming rate-limited proxies.
+      // Note: this gap applies even after a high-priority queue jump, so a user request
+      // may still wait up to MIN_REQUEST_GAP_MS if a background request just fired.
       const elapsed = Date.now() - this.lastRequestTime;
       if (elapsed < MIN_REQUEST_GAP_MS) {
         await new Promise((r) => setTimeout(r, MIN_REQUEST_GAP_MS - elapsed));
@@ -123,13 +125,14 @@ export class AnalysisEngine {
   async summarizeSession(
     events: Array<{ type: string; summary: string; toolName?: string }>,
     cwd: string,
-    modelOverride?: string
+    modelOverride?: string,
+    priority: 'high' | 'normal' = 'normal'
   ): Promise<SessionSummaryResult> {
     const userMessage = formatSessionSummaryUserMessage(events, cwd);
     const raw = await this.callRaw(SESSION_SUMMARY_SYSTEM_PROMPT, userMessage, {
       ...(modelOverride ? { model: modelOverride } : {}),
       maxTokens: 400,
-    });
+    }, priority);
     return { summary: raw.text, model: raw.model, latencyMs: raw.latencyMs, tokens: raw.tokens };
   }
 
