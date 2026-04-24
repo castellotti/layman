@@ -534,15 +534,7 @@ export const useSessionStore = create<SessionState>((set) => ({
   clearSessionSummaryError: () => set({ sessionSummaryError: null }),
 
   fetchSessionSummary: async (sessionId, model) => {
-    // Mark as investigated when the user explicitly requests a session summary
-    if (sessionId) {
-      set((prev) => {
-        if (prev.investigatedSessions.has(sessionId)) return prev;
-        const newSet = new Set(prev.investigatedSessions);
-        newSet.add(sessionId);
-        return { investigatedSessions: newSet };
-      });
-    }
+    if (sessionId) useSessionStore.getState().markSessionInvestigated(sessionId);
     set({ isSummarizingSession: true, sessionSummaryError: null });
     try {
       const res = await fetch('/api/sessions/summary', {

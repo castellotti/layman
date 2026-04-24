@@ -34,6 +34,26 @@ function rateLimitColor(pct: number): string {
   return pct >= 80 ? '#f85149' : pct >= 50 ? '#d29922' : '#8b949e';
 }
 
+function MetricRow({ label, pct, colorFn, title }: {
+  label: string;
+  pct: number;
+  colorFn: (pct: number) => string;
+  title?: string;
+}) {
+  const color = colorFn(pct);
+  return (
+    <div className="flex items-center gap-1.5" title={title}>
+      <span style={{ fontFamily: 'var(--dash-font-data)', fontSize: 8, color: 'var(--dash-text-muted)', width: 20, flexShrink: 0 }}>
+        {label}
+      </span>
+      <MiniBar pct={pct} color={color} />
+      <span style={{ fontFamily: 'var(--dash-font-data)', fontSize: 9, color, width: 28, textAlign: 'right', flexShrink: 0 }}>
+        {Math.round(pct)}%
+      </span>
+    </div>
+  );
+}
+
 export function ContextUsagePanel({
   sessionMetrics,
   sessions,
@@ -69,14 +89,7 @@ export function ContextUsagePanel({
 
   if (rows.length === 0) {
     return (
-      <div
-        style={{
-          fontFamily: 'var(--dash-font-data)',
-          fontSize: 10,
-          color: 'var(--dash-text-muted)',
-          padding: '6px 0',
-        }}
-      >
+      <div style={{ fontFamily: 'var(--dash-font-data)', fontSize: 10, color: 'var(--dash-text-muted)', padding: '6px 0' }}>
         No context data
       </div>
     );
@@ -87,105 +100,28 @@ export function ContextUsagePanel({
       {rows.map(({ sessionId, name, m, hasCtx, has5h, has1w }) => (
         <div key={sessionId} className="flex flex-col gap-1">
           {rows.length > 1 && (
-            <span
-              style={{
-                fontFamily: 'var(--dash-font-data)',
-                fontSize: 9,
-                color: 'var(--dash-text-secondary)',
-              }}
-            >
+            <span style={{ fontFamily: 'var(--dash-font-data)', fontSize: 9, color: 'var(--dash-text-secondary)' }}>
               {name}
             </span>
           )}
           {hasCtx && (
-            <div className="flex items-center gap-1.5">
-              <span
-                style={{
-                  fontFamily: 'var(--dash-font-data)',
-                  fontSize: 8,
-                  color: 'var(--dash-text-muted)',
-                  width: 20,
-                  flexShrink: 0,
-                }}
-              >
-                ctx
-              </span>
-              <MiniBar pct={m.contextUsedPct!} color={contextColor(m.contextUsedPct!)} />
-              <span
-                style={{
-                  fontFamily: 'var(--dash-font-data)',
-                  fontSize: 9,
-                  color: contextColor(m.contextUsedPct!),
-                  width: 28,
-                  textAlign: 'right',
-                  flexShrink: 0,
-                }}
-              >
-                {Math.round(m.contextUsedPct!)}%
-              </span>
-            </div>
+            <MetricRow label="ctx" pct={m.contextUsedPct!} colorFn={contextColor} />
           )}
           {has5h && (
-            <div
-              className="flex items-center gap-1.5"
+            <MetricRow
+              label="5h"
+              pct={m.rateLimit5hrPct!}
+              colorFn={rateLimitColor}
               title={`5-hour rate limit: ${Math.round(m.rateLimit5hrPct!)}% used${m.rateLimit5hrResetsAt ? ` · Resets at ${new Date(m.rateLimit5hrResetsAt).toLocaleTimeString()}` : ''}`}
-            >
-              <span
-                style={{
-                  fontFamily: 'var(--dash-font-data)',
-                  fontSize: 8,
-                  color: 'var(--dash-text-muted)',
-                  width: 20,
-                  flexShrink: 0,
-                }}
-              >
-                5h
-              </span>
-              <MiniBar pct={m.rateLimit5hrPct!} color={rateLimitColor(m.rateLimit5hrPct!)} />
-              <span
-                style={{
-                  fontFamily: 'var(--dash-font-data)',
-                  fontSize: 9,
-                  color: rateLimitColor(m.rateLimit5hrPct!),
-                  width: 28,
-                  textAlign: 'right',
-                  flexShrink: 0,
-                }}
-              >
-                {Math.round(m.rateLimit5hrPct!)}%
-              </span>
-            </div>
+            />
           )}
           {has1w && (
-            <div
-              className="flex items-center gap-1.5"
+            <MetricRow
+              label="1w"
+              pct={m.rateLimit7dayPct!}
+              colorFn={rateLimitColor}
               title={`7-day rate limit: ${Math.round(m.rateLimit7dayPct!)}% used${m.rateLimit7dayResetsAt ? ` · Resets at ${new Date(m.rateLimit7dayResetsAt).toLocaleTimeString()}` : ''}`}
-            >
-              <span
-                style={{
-                  fontFamily: 'var(--dash-font-data)',
-                  fontSize: 8,
-                  color: 'var(--dash-text-muted)',
-                  width: 20,
-                  flexShrink: 0,
-                }}
-              >
-                1w
-              </span>
-              <MiniBar pct={m.rateLimit7dayPct!} color={rateLimitColor(m.rateLimit7dayPct!)} />
-              <span
-                style={{
-                  fontFamily: 'var(--dash-font-data)',
-                  fontSize: 9,
-                  color: rateLimitColor(m.rateLimit7dayPct!),
-                  width: 28,
-                  textAlign: 'right',
-                  flexShrink: 0,
-                }}
-              >
-                {Math.round(m.rateLimit7dayPct!)}%
-              </span>
-            </div>
+            />
           )}
         </div>
       ))}

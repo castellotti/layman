@@ -38,6 +38,7 @@ export function BookmarksPanel({ onSend }: BookmarksPanelProps) {
     historicalEvents,
     setHistoricalEvents,
     investigatedSessions,
+    markSessionInvestigated,
   } = useSessionStore();
 
   const setSessionTimeMetrics = useSessionStore((s) => s.setSessionTimeMetrics);
@@ -182,8 +183,6 @@ export function BookmarksPanel({ onSend }: BookmarksPanelProps) {
     setHistoricalFlowchartOpen(false);
   }, [setViewingSession, setSessionTimeMetrics]);
 
-  const markSessionInvestigated = useSessionStore((s) => s.markSessionInvestigated);
-
   const handleGenerateHistoricalSummary = useCallback(async (sessionId: string) => {
     markSessionInvestigated(sessionId);
     setIsSummarizingHistorical(true);
@@ -295,6 +294,7 @@ export function BookmarksPanel({ onSend }: BookmarksPanelProps) {
   // All sessions available to bookmark (recorded + newly saved)
   const bookmarkedSessionIds = new Set(bookmarks.map((b) => b.sessionId));
   const unbookmarkedSessions = recordedSessions.filter((s) => !bookmarkedSessionIds.has(s.sessionId));
+  const liveSessionIds = new Set(sessions.map((s) => s.sessionId));
 
   return (
     <div className="fixed inset-0 z-50 flex">
@@ -556,7 +556,7 @@ export function BookmarksPanel({ onSend }: BookmarksPanelProps) {
                   recordedSessions.map((s) => {
                     const isBookmarked = bookmarkedSessionIds.has(s.sessionId);
                     const isSelected = viewingSessionId === s.sessionId;
-                    const isLive = sessions.some((ls) => ls.sessionId === s.sessionId);
+                    const isLive = liveSessionIds.has(s.sessionId);
                     const isInvestigated = investigatedSessions.has(s.sessionId);
                     return (
                       <button
