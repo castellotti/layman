@@ -76,6 +76,7 @@ export function Header() {
     dashboardOpen, setDashboardOpen,
     dashboardFocusedSession, setDashboardFocusedSession,
     sessionMetrics,
+    investigatedSessions,
   } = useSessionStore();
 
   const statusConfig = {
@@ -167,9 +168,10 @@ export function Header() {
                   )}
                   {sessions.map((s) => {
                     const effectiveName = s.sessionName || sessionMetrics.get(s.sessionId)?.sessionName;
+                    const investigated = investigatedSessions.has(s.sessionId);
                     return (
                       <option key={s.sessionId} value={s.sessionId}>
-                        {getSessionName(s.cwd, s.sessionId, s.agentType, showAgentPrefix, effectiveName)}{s.cwd ? ` · ${s.sessionId.slice(0, 6)}` : ''}
+                        {investigated ? '⊙ ' : ''}{getSessionName(s.cwd, s.sessionId, s.agentType, showAgentPrefix, effectiveName)}{s.cwd ? ` · ${s.sessionId.slice(0, 6)}` : ''}
                       </option>
                     );
                   })}

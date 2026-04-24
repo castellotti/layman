@@ -37,6 +37,8 @@ export function BookmarksPanel({ onSend }: BookmarksPanelProps) {
     setViewingSession,
     historicalEvents,
     setHistoricalEvents,
+    investigatedSessions,
+    markSessionInvestigated,
   } = useSessionStore();
 
   const setSessionTimeMetrics = useSessionStore((s) => s.setSessionTimeMetrics);
@@ -182,6 +184,7 @@ export function BookmarksPanel({ onSend }: BookmarksPanelProps) {
   }, [setViewingSession, setSessionTimeMetrics]);
 
   const handleGenerateHistoricalSummary = useCallback(async (sessionId: string) => {
+    markSessionInvestigated(sessionId);
     setIsSummarizingHistorical(true);
     setHistoricalSummaryError(null);
     try {
@@ -202,7 +205,7 @@ export function BookmarksPanel({ onSend }: BookmarksPanelProps) {
     } finally {
       setIsSummarizingHistorical(false);
     }
-  }, []);
+  }, [markSessionInvestigated]);
 
   const handleDeleteSession = useCallback(async (sessionId: string) => {
     try {
@@ -291,6 +294,7 @@ export function BookmarksPanel({ onSend }: BookmarksPanelProps) {
   // All sessions available to bookmark (recorded + newly saved)
   const bookmarkedSessionIds = new Set(bookmarks.map((b) => b.sessionId));
   const unbookmarkedSessions = recordedSessions.filter((s) => !bookmarkedSessionIds.has(s.sessionId));
+  const liveSessionIds = new Set(sessions.map((s) => s.sessionId));
 
   return (
     <div className="fixed inset-0 z-50 flex">
@@ -552,7 +556,8 @@ export function BookmarksPanel({ onSend }: BookmarksPanelProps) {
                   recordedSessions.map((s) => {
                     const isBookmarked = bookmarkedSessionIds.has(s.sessionId);
                     const isSelected = viewingSessionId === s.sessionId;
-                    const isLive = sessions.some((ls) => ls.sessionId === s.sessionId);
+                    const isLive = liveSessionIds.has(s.sessionId);
+                    const isInvestigated = investigatedSessions.has(s.sessionId);
                     return (
                       <button
                         key={s.sessionId}
@@ -574,6 +579,9 @@ export function BookmarksPanel({ onSend }: BookmarksPanelProps) {
                         <div className="shrink-0 flex items-center gap-1">
                           {isLive && (
                             <span className="inline-block w-1.5 h-1.5 rounded-full bg-[#3fb950] animate-pulse" title="Active" />
+                          )}
+                          {isInvestigated && (
+                            <span className="text-[10px] text-[#79c0ff]" title="Session manually investigated">⊙</span>
                           )}
                           {isBookmarked && (
                             <span className="text-[10px] text-[#d29922]" title="Bookmarked">🔖</span>

@@ -81,6 +81,9 @@ export interface SessionState {
   // Drift monitoring state (latest per session)
   driftState: Map<string, DriftState>;
 
+  // Sessions that have had user-initiated investigation interactions
+  investigatedSessions: Set<string>;
+
   // Session summary
   sessionSummary: string | null;
   sessionSummaryHistory: Array<{ summary: string; generatedAt: number; sessionId: string | null }>;
@@ -140,6 +143,7 @@ export interface SessionState {
   clearSessionSummary: () => void;
   clearSessionSummaryError: () => void;
   setDriftState: (sessionId: string, state: DriftState) => void;
+  markSessionInvestigated: (sessionId: string) => void;
 }
 
 export const useSessionStore = create<SessionState>((set) => ({
@@ -193,6 +197,8 @@ export const useSessionStore = create<SessionState>((set) => ({
   sessionMetrics: new Map(),
 
   driftState: new Map(),
+
+  investigatedSessions: new Set<string>(),
 
   sessionSummary: null,
   sessionSummaryHistory: [],
@@ -528,6 +534,7 @@ export const useSessionStore = create<SessionState>((set) => ({
   clearSessionSummaryError: () => set({ sessionSummaryError: null }),
 
   fetchSessionSummary: async (sessionId, model) => {
+    if (sessionId) useSessionStore.getState().markSessionInvestigated(sessionId);
     set({ isSummarizingSession: true, sessionSummaryError: null });
     try {
       const res = await fetch('/api/sessions/summary', {
@@ -558,5 +565,13 @@ export const useSessionStore = create<SessionState>((set) => ({
       const newMap = new Map(prev.driftState);
       newMap.set(sessionId, driftData);
       return { driftState: newMap };
+    }),
+
+  markSessionInvestigated: (sessionId) =>
+    set((prev) => {
+      if (prev.investigatedSessions.has(sessionId)) return prev;
+      const newSet = new Set(prev.investigatedSessions);
+      newSet.add(sessionId);
+      return { investigatedSessions: newSet };
     }),
 }));
