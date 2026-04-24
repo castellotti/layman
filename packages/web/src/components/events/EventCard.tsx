@@ -1,23 +1,5 @@
 import React, { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
-
-const REMARK_PLUGINS = [remarkGfm];
-
-const MARKDOWN_PROSE = `text-xs text-[#e6edf3] leading-relaxed prose prose-invert prose-xs max-w-none
-  [&_p]:my-1 [&_p]:leading-relaxed
-  [&_strong]:text-[#e6edf3] [&_strong]:font-semibold
-  [&_em]:text-[#8b949e]
-  [&_code]:text-[#79c0ff] [&_code]:bg-[#0d1117] [&_code]:px-1 [&_code]:rounded [&_code]:text-[11px]
-  [&_pre]:bg-[#0d1117] [&_pre]:rounded [&_pre]:p-2 [&_pre]:overflow-x-auto
-  [&_ul]:list-disc [&_ul]:pl-4 [&_ul]:my-1
-  [&_ol]:list-decimal [&_ol]:pl-4 [&_ol]:my-1
-  [&_li]:my-0.5
-  [&_h1]:text-sm [&_h2]:text-sm [&_h3]:text-xs [&_h1]:font-bold [&_h2]:font-bold [&_h3]:font-semibold
-  [&_hr]:border-[#30363d] [&_hr]:my-3
-  [&_table]:w-full [&_table]:border-collapse [&_table]:my-2
-  [&_th]:border [&_th]:border-[#30363d] [&_th]:px-2 [&_th]:py-1 [&_th]:text-left [&_th]:font-semibold [&_th]:bg-[#161b22]
-  [&_td]:border [&_td]:border-[#30363d] [&_td]:px-2 [&_td]:py-1`.replace(/\s+/g, ' ').trim();
 import type { TimelineEvent } from '../../lib/types.js';
 import type { ClientMessage } from '../../lib/ws-protocol.js';
 import { RiskBadge } from '../shared/RiskBadge.js';
@@ -27,6 +9,9 @@ import { CodeBlock } from '../shared/CodeBlock.js';
 import { DiffBlock } from '../shared/DiffBlock.js';
 import { usePendingApprovals } from '../../hooks/usePendingApprovals.js';
 import { useSessionStore } from '../../stores/sessionStore.js';
+import { AGENT_BADGES, EVENT_ICONS, BORDER_COLORS, DRIFT_COLORS } from '../../lib/event-styles.js';
+import { MARKDOWN_PROSE, REMARK_PLUGINS } from '../../lib/markdown.js';
+import { formatTime, formatDuration } from '../../lib/format.js';
 
 interface EventCardProps {
   event: TimelineEvent;
@@ -36,23 +21,6 @@ interface EventCardProps {
   onSend: (msg: ClientMessage) => void;
   collapseHistory: boolean;
   showAgentBadge?: boolean;
-}
-
-import { AGENT_BADGES, EVENT_ICONS, BORDER_COLORS } from '../../lib/event-styles.js';
-
-function formatTime(timestamp: number): string {
-  return new Date(timestamp).toLocaleTimeString('en-US', {
-    hour12: false,
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-  });
-}
-
-function formatDuration(ms: number): string {
-  if (ms < 1000) return `${ms}ms`;
-  if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`;
-  return `${Math.floor(ms / 60000)}m${Math.floor((ms % 60000) / 1000)}s`;
 }
 
 function getEventSummary(event: TimelineEvent): string {
@@ -588,12 +556,7 @@ function DriftDetailSection({
         }`}>
           {event.data.driftType === 'rules' ? 'RULES DRIFT' : 'SESSION DRIFT'}
         </span>
-        <span className={`text-xs font-mono font-semibold ${
-          event.data.driftLevel === 'green' ? 'text-[#00e676]'
-            : event.data.driftLevel === 'yellow' ? 'text-[#ffb300]'
-            : event.data.driftLevel === 'orange' ? 'text-[#ff9100]'
-            : 'text-[#ff3d57]'
-        }`}>
+        <span className="text-xs font-mono font-semibold" style={{ color: DRIFT_COLORS[event.data.driftLevel ?? 'red'] }}>
           {Math.round(event.data.driftPct ?? 0)}%
         </span>
         {event.data.driftPreviousLevel && event.data.driftPreviousLevel !== event.data.driftLevel && (

@@ -4,7 +4,7 @@ import { recoverPreActivationHistory } from './recovery.js';
 import { PendingApprovalManager } from './pending.js';
 import { SessionGate } from './gate.js';
 import { EventStore } from '../events/store.js';
-import { classifyRisk } from '../events/classifier.js';
+import { classifyRisk, isAutoAllowedByPattern } from '../events/classifier.js';
 import { extractAccess } from '../events/access-extractor.js';
 import { AnalysisEngine } from '../analysis/engine.js';
 import type {
@@ -255,7 +255,6 @@ export function registerHookHandler(
             await handleElicitationResult(body as unknown as ElicitationResultInput, eventStore, agentType);
             return reply.status(200).send({});
           }
-          // Phase 3: New hook events
           case 'PermissionDenied': {
             await handlePermissionDenied(body as unknown as PermissionDeniedInput, eventStore, agentType);
             return reply.status(200).send({});
@@ -300,7 +299,6 @@ export function registerHookHandler(
             await handleFileChanged(body as unknown as FileChangedInput, eventStore, agentType);
             return reply.status(200).send({});
           }
-          // Phase 4: StatusLine
           case 'StatusLine': {
             await handleStatusLine(body as unknown as StatusLineInput, eventStore, agentType);
             return reply.status(200).send({});
@@ -502,7 +500,7 @@ async function triggerAnalysis(
   config: LaymanConfig
 ): Promise<void> {
   try {
-    const recentEvents = eventStore.getAll().slice(-5).map((e) => ({
+    const recentEvents = eventStore.getLast(5).map((e) => ({
       type: e.type,
       summary: e.data.toolName
         ? `${e.data.toolName}: ${JSON.stringify(e.data.toolInput).slice(0, 100)}`
@@ -563,9 +561,7 @@ async function handlePostToolUse(
   driftMonitor?: DriftMonitor,
   getConfig?: () => LaymanConfig
 ): Promise<void> {
-  // Find the pending event to update it
-  const events = eventStore.getAll();
-  const pendingEvent = [...events].reverse().find(
+  const pendingEvent = eventStore.findLast(
     (e) =>
       (e.type === 'tool_call_pending' || e.type === 'tool_call_approved') &&
       e.data.toolName === input.tool_name &&
@@ -620,11 +616,11 @@ async function handlePostToolUse(
   }
 }
 
-async function handlePostToolUseFailure(
+function handlePostToolUseFailure(
   input: PostToolUseFailureInput,
   eventStore: EventStore,
   agentType: string = 'claude-code'
-): Promise<void> {
+): void {
   const now = Date.now();
   const access = extractAccess(input.tool_name, input.tool_input, undefined, '', now);
   const filesWithId = access.files.length > 0 ? access.files : undefined;
@@ -704,11 +700,11 @@ async function triggerAnalysisForPermission(
   }
 }
 
-async function handleNotification(
+function handleNotification(
   input: NotificationInput,
   eventStore: EventStore,
   agentType: string = 'claude-code'
-): Promise<void> {
+): void {
   eventStore.add('notification', input.session_id, {
     notificationType: input.notification_type,
     prompt: input.message || input.title,
@@ -729,13 +725,13 @@ async function handleSessionStart(
   await initTranscriptWatermark(input.transcript_path);
 }
 
-async function handleSessionEnd(
+function handleSessionEnd(
   input: SessionEndInput,
   eventStore: EventStore,
   gate: SessionGate,
   agentType: string = 'claude-code',
   driftMonitor?: DriftMonitor
-): Promise<void> {
+): void {
   eventStore.add('session_end', input.session_id, {}, undefined, agentType);
   gate.deactivate(input.session_id);
   transcriptWatermarks.delete(input.transcript_path);
@@ -919,21 +915,21 @@ async function handleUserPromptSubmit(
   }
 }
 
-async function handleSubagentStart(
+function handleSubagentStart(
   input: SubagentStartInput,
   eventStore: EventStore,
   agentType: string = 'claude-code'
-): Promise<void> {
+): void {
   eventStore.add('subagent_start', input.session_id, {
     agentType: input.agent_type,
   }, undefined, agentType);
 }
 
-async function handleSubagentStop(
+function handleSubagentStop(
   input: SubagentStopInput,
   eventStore: EventStore,
   agentType: string = 'claude-code'
-): Promise<void> {
+): void {
   // When /layman re-activates, the subagent's "Layman is now monitoring..." message
   // should not be stored — it would displace real work history from the dashboard.
   const prompt = suppressNextResponse.has(input.session_id)
@@ -945,21 +941,21 @@ async function handleSubagentStop(
   }, undefined, agentType);
 }
 
-async function handleAgentResponse(
+function handleAgentResponse(
   input: AgentResponseInput,
   eventStore: EventStore,
   agentType: string = 'claude-code'
-): Promise<void> {
+): void {
   eventStore.add('agent_response', input.session_id, {
     prompt: input.response,
   }, undefined, agentType);
 }
 
-async function handleStopFailure(
+function handleStopFailure(
   input: StopFailureInput,
   eventStore: EventStore,
   agentType: string = 'claude-code'
-): Promise<void> {
+): void {
   eventStore.add('stop_failure', input.session_id, {
     error: input.error,
     errorDetails: input.error_details,
@@ -967,73 +963,53 @@ async function handleStopFailure(
   }, undefined, agentType);
 }
 
-async function handlePreCompact(
+function handlePreCompact(
   input: PreCompactInput,
   eventStore: EventStore,
   agentType: string = 'claude-code'
-): Promise<void> {
+): void {
   eventStore.add('pre_compact', input.session_id, {
     compactTrigger: input.trigger,
     compactCustomInstructions: input.custom_instructions,
   }, undefined, agentType);
 }
 
-async function handlePostCompact(
+function handlePostCompact(
   input: PostCompactInput,
   eventStore: EventStore,
   agentType: string = 'claude-code'
-): Promise<void> {
+): void {
   eventStore.add('post_compact', input.session_id, {
     compactTrigger: input.trigger,
     compactSummary: input.compact_summary,
   }, undefined, agentType);
 }
 
-async function handleElicitation(
+function handleElicitation(
   input: ElicitationInput,
   eventStore: EventStore,
   agentType: string = 'claude-code'
-): Promise<void> {
+): void {
   eventStore.add('elicitation', input.session_id, {
     prompt: input.message,
   }, undefined, agentType);
 }
 
-async function handleElicitationResult(
+function handleElicitationResult(
   input: ElicitationResultInput,
   eventStore: EventStore,
   agentType: string = 'claude-code'
-): Promise<void> {
+): void {
   eventStore.add('elicitation_result', input.session_id, {
     prompt: input.canceled ? '(canceled)' : JSON.stringify(input.result),
   }, undefined, agentType);
 }
 
-function isAutoAllowedByPattern(
-  toolName: string,
-  toolInput: Record<string, unknown>,
-  patterns: string[]
-): boolean {
-  if (patterns.length === 0) return false;
-  if (toolName !== 'Bash') return false;
-
-  const command = (toolInput as { command?: string }).command ?? '';
-  return patterns.some((pattern) => {
-    try {
-      return new RegExp(pattern).test(command);
-    } catch {
-      return false;
-    }
-  });
-}
-
-// Phase 3: New hook event handlers
-
-async function handlePermissionDenied(
+function handlePermissionDenied(
   input: PermissionDeniedInput,
   eventStore: EventStore,
   agentType: string = 'claude-code'
-): Promise<void> {
+): void {
   eventStore.add('permission_denied', input.session_id, {
     toolName: input.tool_name,
     toolInput: input.tool_input,
@@ -1041,34 +1017,34 @@ async function handlePermissionDenied(
   }, undefined, agentType);
 }
 
-async function handleSetup(
+function handleSetup(
   input: SetupInput,
   eventStore: EventStore,
   agentType: string = 'claude-code'
-): Promise<void> {
+): void {
   eventStore.add('setup', input.session_id, {
     setupTrigger: input.trigger,
   }, undefined, agentType);
 }
 
-async function handleConfigChange(
+function handleConfigChange(
   input: ConfigChangeInput,
   eventStore: EventStore,
   agentType: string = 'claude-code'
-): Promise<void> {
+): void {
   eventStore.add('config_change', input.session_id, {
     configSource: input.source,
     filePath: input.file_path,
   }, undefined, agentType);
 }
 
-async function handleInstructionsLoaded(
+function handleInstructionsLoaded(
   input: InstructionsLoadedInput,
   eventStore: EventStore,
   agentType: string = 'claude-code',
   driftMonitor?: DriftMonitor,
   getConfig?: () => LaymanConfig
-): Promise<void> {
+): void {
   eventStore.add('instructions_loaded', input.session_id, {
     filePath: input.file_path,
     memoryType: input.memory_type,
@@ -1081,11 +1057,11 @@ async function handleInstructionsLoaded(
   }
 }
 
-async function handleTaskCreated(
+function handleTaskCreated(
   input: TaskCreatedInput,
   eventStore: EventStore,
   agentType: string = 'claude-code'
-): Promise<void> {
+): void {
   eventStore.add('task_created', input.session_id, {
     taskId: input.task_id,
     taskSubject: input.task_subject,
@@ -1093,77 +1069,75 @@ async function handleTaskCreated(
   }, undefined, agentType);
 }
 
-async function handleTaskCompleted(
+function handleTaskCompleted(
   input: TaskCompletedInput,
   eventStore: EventStore,
   agentType: string = 'claude-code'
-): Promise<void> {
+): void {
   eventStore.add('task_completed', input.session_id, {
     taskId: input.task_id,
     taskSubject: input.task_subject,
   }, undefined, agentType);
 }
 
-async function handleTeammateIdle(
+function handleTeammateIdle(
   input: TeammateIdleInput,
   eventStore: EventStore,
   agentType: string = 'claude-code'
-): Promise<void> {
+): void {
   eventStore.add('teammate_idle', input.session_id, {
     teammateName: input.teammate_name,
     teamName: input.team_name,
   }, undefined, agentType);
 }
 
-async function handleWorktreeCreate(
+function handleWorktreeCreate(
   input: WorktreeCreateInput,
   eventStore: EventStore,
   agentType: string = 'claude-code'
-): Promise<void> {
+): void {
   eventStore.add('worktree_create', input.session_id, {
     worktreeName: input.name,
   }, undefined, agentType);
 }
 
-async function handleWorktreeRemove(
+function handleWorktreeRemove(
   input: WorktreeRemoveInput,
   eventStore: EventStore,
   agentType: string = 'claude-code'
-): Promise<void> {
+): void {
   eventStore.add('worktree_remove', input.session_id, {
     worktreePath: input.worktree_path,
   }, undefined, agentType);
 }
 
-async function handleCwdChanged(
+function handleCwdChanged(
   input: CwdChangedInput,
   eventStore: EventStore,
   agentType: string = 'claude-code'
-): Promise<void> {
+): void {
   eventStore.add('cwd_changed', input.session_id, {
     oldCwd: input.old_cwd,
     newCwd: input.new_cwd,
   }, undefined, agentType);
 }
 
-async function handleFileChanged(
+function handleFileChanged(
   input: FileChangedInput,
   eventStore: EventStore,
   agentType: string = 'claude-code'
-): Promise<void> {
+): void {
   eventStore.add('file_changed', input.session_id, {
     filePath: input.file_path,
     fileEvent: input.event,
   }, undefined, agentType);
 }
 
-// Phase 4: StatusLine handler
-
-async function handleStatusLine(
+function handleStatusLine(
   input: StatusLineInput,
   eventStore: EventStore,
   agentType: string = 'claude-code'
-): Promise<void> {
+): void {
   eventStore.add('session_metrics', input.session_id, {
     modelId: input.model?.id,
     modelDisplayName: input.model?.display_name,

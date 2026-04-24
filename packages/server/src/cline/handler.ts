@@ -16,7 +16,7 @@ import type { FastifyInstance } from 'fastify';
 import { PendingApprovalManager } from '../hooks/pending.js';
 import { SessionGate } from '../hooks/gate.js';
 import { EventStore } from '../events/store.js';
-import { classifyRisk } from '../events/classifier.js';
+import { classifyRisk, isAutoAllowedByPattern } from '../events/classifier.js';
 import { extractAccess } from '../events/access-extractor.js';
 import { AnalysisEngine } from '../analysis/engine.js';
 import type { LaymanConfig } from '../config/schema.js';
@@ -238,9 +238,7 @@ function handleClinePostToolUse(body: ClineHookInput, eventStore: EventStore): v
     return;
   }
 
-  // Find the matching pending event to update
-  const events = eventStore.getAll();
-  const pendingEvent = [...events].reverse().find(
+  const pendingEvent = eventStore.findLast(
     (e) =>
       (e.type === 'tool_call_pending' || e.type === 'tool_call_approved') &&
       e.data.toolName === input.tool_name &&
@@ -334,7 +332,7 @@ async function triggerAnalysis(
   config: LaymanConfig
 ): Promise<void> {
   try {
-    const recentEvents = eventStore.getAll().slice(-5).map((e) => ({
+    const recentEvents = eventStore.getLast(5).map((e) => ({
       type: e.type,
       summary: e.data.toolName
         ? `${e.data.toolName}: ${JSON.stringify(e.data.toolInput).slice(0, 100)}`
@@ -376,20 +374,3 @@ async function triggerAnalysis(
   }
 }
 
-function isAutoAllowedByPattern(
-  toolName: string,
-  toolInput: Record<string, unknown>,
-  patterns: string[]
-): boolean {
-  if (patterns.length === 0) return false;
-  if (toolName !== 'Bash') return false;
-
-  const command = (toolInput as { command?: string }).command ?? '';
-  return patterns.some((pattern) => {
-    try {
-      return new RegExp(pattern).test(command);
-    } catch {
-      return false;
-    }
-  });
-}

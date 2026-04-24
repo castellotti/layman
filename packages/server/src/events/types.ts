@@ -24,7 +24,6 @@ export type EventType =
   | 'elicitation'
   | 'elicitation_result'
   | 'analysis_result'
-  // Phase 3: New hook event types
   | 'permission_denied'
   | 'setup'
   | 'config_change'
@@ -36,9 +35,7 @@ export type EventType =
   | 'worktree_remove'
   | 'cwd_changed'
   | 'file_changed'
-  // Phase 4: StatusLine metrics
   | 'session_metrics'
-  // Drift monitoring
   | 'drift_check'
   | 'drift_alert';
 
@@ -67,14 +64,12 @@ export interface EventData {
   permissionSuggestions?: PermissionSuggestion[];
   fileAccess?: FileAccess[];
   urlAccess?: UrlAccess[];
-  // Phase 1: Previously discarded fields
   compactTrigger?: 'manual' | 'auto';
   compactSummary?: string;
   compactCustomInstructions?: string | null;
   permissionMode?: string;
   model?: string;
   errorDetails?: string;
-  // Phase 3: New hook event fields
   reason?: string;
   configSource?: string;
   filePath?: string;
@@ -91,7 +86,6 @@ export interface EventData {
   newCwd?: string;
   fileEvent?: string;
   setupTrigger?: string;
-  // Phase 4: StatusLine session metrics
   modelId?: string;
   modelDisplayName?: string;
   costUsd?: number;
@@ -115,7 +109,6 @@ export interface EventData {
   rateLimit7dayResetsAt?: string;
   sessionName?: string;
   claudeCodeVersion?: string;
-  // Drift monitoring
   driftType?: 'session_goal' | 'rules';
   driftPct?: number;
   driftLevel?: DriftLevel;
