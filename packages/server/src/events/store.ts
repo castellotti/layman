@@ -15,6 +15,7 @@ export interface SessionInfo {
 
 export class EventStore extends EventEmitter {
   private events: TimelineEvent[] = [];
+  private eventById = new Map<string, TimelineEvent>();
   private maxEvents = 10000;
   private sessions: Map<string, { cwd: string; lastSeen: number; agentType: string; opencodeUrl?: string; sessionName?: string }> = new Map();
   private accessLogs: Map<string, { files: FileAccess[]; urls: UrlAccess[] }> = new Map();
@@ -43,28 +44,45 @@ export class EventStore extends EventEmitter {
     };
 
     if (this.events.length >= this.maxEvents) {
-      this.events.shift(); // Evict oldest
+      const evicted = this.events.shift()!;
+      this.eventById.delete(evicted.id);
     }
 
     this.events.push(event);
+    this.eventById.set(event.id, event);
     this.emit('event:new', event);
     return event;
   }
 
   addRaw(event: TimelineEvent): void {
     if (this.events.length >= this.maxEvents) {
-      this.events.shift();
+      const evicted = this.events.shift()!;
+      this.eventById.delete(evicted.id);
     }
     this.events.push(event);
+    this.eventById.set(event.id, event);
     this.emit('event:new', event);
   }
 
   get(id: string): TimelineEvent | undefined {
-    return this.events.find((e) => e.id === id);
+    return this.eventById.get(id);
   }
 
   getAll(): TimelineEvent[] {
     return [...this.events];
+  }
+
+  /** Returns the last n events without copying the full array. */
+  getLast(n: number): TimelineEvent[] {
+    return this.events.slice(-n);
+  }
+
+  /** Scans from the end and returns the first event matching the predicate, or undefined. */
+  findLast(predicate: (e: TimelineEvent) => boolean): TimelineEvent | undefined {
+    for (let i = this.events.length - 1; i >= 0; i--) {
+      if (predicate(this.events[i])) return this.events[i];
+    }
+    return undefined;
   }
 
   getPage(offset: number, limit: number): TimelineEvent[] {
@@ -112,6 +130,7 @@ export class EventStore extends EventEmitter {
 
   clear(): void {
     this.events = [];
+    this.eventById.clear();
     this.emit('store:cleared');
   }
 

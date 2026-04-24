@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useCallback } from 'react';
+import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { useEventStore } from '../../hooks/useEventStore.js';
 import { useSessionStore } from '../../stores/sessionStore.js';
 import { EventCard } from '../events/EventCard.js';
@@ -25,8 +25,10 @@ export function EventStream({ onSend }: EventStreamProps) {
   const collapseHistory = config?.collapseHistory ?? true;
   const autoScroll = config?.autoScroll ?? true;
 
-  // Show agent badges only when sessions from multiple agent types are active
-  const showAgentBadge = new Set(sessions.map((s) => s.agentType)).size > 1;
+  const showAgentBadge = useMemo(
+    () => new Set(sessions.map((s) => s.agentType)).size > 1,
+    [sessions]
+  );
 
   const { events, totalCount } = useEventStore({
     promptsOnly,
