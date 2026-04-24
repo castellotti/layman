@@ -1312,7 +1312,7 @@ export function SettingsDrawer({ onSend }: SettingsDrawerProps) {
             )}
             {purgeState === 'done' && purgeResult && (
               <>
-                <h3 className={`text-sm font-semibold mb-2 ${purgeResult.redacted === 0 ? 'text-[#3fb950]' : 'text-[#3fb950]'}`}>
+                <h3 className="text-sm font-semibold mb-2 text-[#3fb950]">
                   {purgeResult.redacted === 0 ? 'No PII Found' : 'Purge Complete'}
                 </h3>
                 <p className="text-xs text-[#8b949e] mb-4">

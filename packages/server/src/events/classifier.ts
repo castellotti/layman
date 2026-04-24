@@ -93,3 +93,25 @@ export function classifyBashRisk(command: string): 'low' | 'medium' | 'high' {
   // LOW risk: ls, cat, echo, grep, find, test, etc.
   return 'low';
 }
+
+/**
+ * Returns true if the tool call matches one of the user-configured trusted command patterns.
+ * Only applies to Bash/shell tool calls.
+ */
+export function isAutoAllowedByPattern(
+  toolName: string,
+  toolInput: Record<string, unknown>,
+  patterns: string[]
+): boolean {
+  if (patterns.length === 0) return false;
+  if (toolName !== 'Bash' && toolName !== 'shell') return false;
+
+  const command = (toolInput as { command?: string }).command ?? '';
+  return patterns.some((pattern) => {
+    try {
+      return new RegExp(pattern).test(command);
+    } catch {
+      return false;
+    }
+  });
+}

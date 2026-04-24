@@ -16,6 +16,7 @@ export class SessionRecorder {
   private upsertSession: BetterSqlite3.Statement<unknown[]>;
   private insertEvent: BetterSqlite3.Statement<unknown[]>;
   private updateEvent: BetterSqlite3.Statement<unknown[]>;
+  private updateSessionCwd: BetterSqlite3.Statement<unknown[]>;
   private insertQA: BetterSqlite3.Statement<unknown[]>;
 
   constructor(
@@ -38,6 +39,10 @@ export class SessionRecorder {
       UPDATE recorded_events
       SET type = ?, analysis_json = ?, laymans_json = ?, risk_level = ?, data_json = ?
       WHERE id = ?
+    `);
+
+    this.updateSessionCwd = db.prepare(`
+      UPDATE recorded_sessions SET cwd = ?, agent_type = ?, last_seen = ? WHERE session_id = ?
     `);
 
     this.insertQA = db.prepare(`
@@ -111,12 +116,9 @@ export class SessionRecorder {
     store.on('sessions:changed', (sessions: Array<{ sessionId: string; cwd: string; agentType: string; lastSeen: number }>) => {
       if (!this.getRecordingEnabled()) return;
       try {
-        const updateCwd = this.db.prepare(`
-          UPDATE recorded_sessions SET cwd = ?, agent_type = ?, last_seen = ? WHERE session_id = ?
-        `);
         for (const s of sessions) {
           if (s.cwd) {
-            updateCwd.run(s.cwd, s.agentType, s.lastSeen, s.sessionId);
+            this.updateSessionCwd.run(s.cwd, s.agentType, s.lastSeen, s.sessionId);
           }
         }
       } catch {
