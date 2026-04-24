@@ -2,6 +2,7 @@ import React, { useMemo } from 'react';
 import { useSessionStore } from '../../stores/sessionStore.js';
 import { ActivitySparkline } from './ActivitySparkline.js';
 import { TokenUsageChart } from './TokenUsageChart.js';
+import { ContextUsagePanel } from './ContextUsagePanel.js';
 import { EventDensityTimeline } from './EventDensityTimeline.js';
 import { DriftMonitorPanel } from './DriftMonitorPanel.js';
 import type { TimelineEvent } from '../../lib/types.js';
@@ -106,6 +107,12 @@ export function SidePanel({ events, focusedSessionId }: SidePanelProps) {
         />
       </div>
 
+      {/* Drift monitor */}
+      <div className="dash-panel-section">
+        <div className="dash-panel-title">Drift Monitor</div>
+        <DriftMonitorPanel focusedSessionId={focusedSessionId} />
+      </div>
+
       {/* Token usage */}
       <div className="dash-panel-section">
         <div className="dash-panel-title">Token Usage</div>
@@ -116,10 +123,14 @@ export function SidePanel({ events, focusedSessionId }: SidePanelProps) {
         />
       </div>
 
-      {/* Drift monitor */}
+      {/* Context window & rate limits */}
       <div className="dash-panel-section">
-        <div className="dash-panel-title">Drift Monitor</div>
-        <DriftMonitorPanel focusedSessionId={focusedSessionId} />
+        <div className="dash-panel-title">Context & Limits</div>
+        <ContextUsagePanel
+          sessionMetrics={sessionMetrics}
+          sessions={visibleSessions}
+          focusedSessionId={focusedSessionId}
+        />
       </div>
 
       {/* All sessions density timeline */}

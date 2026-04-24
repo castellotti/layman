@@ -591,8 +591,12 @@ export function SessionCard({
   session, events, isFocused, onFocus, onDismiss, onDrilldown, onDrilldownToLogs, onSend, index,
   onDragStart, onDragOver, onDragEnd, isDragging, isDragOver, totalCards, isSpanning,
 }: SessionCardProps) {
-  const sessionMetrics = useSessionStore(s => s.sessionMetrics);
+  const { sessionMetrics, investigatedSessions } = useSessionStore(s => ({
+    sessionMetrics: s.sessionMetrics,
+    investigatedSessions: s.investigatedSessions,
+  }));
   const metrics = sessionMetrics.get(session.sessionId);
+  const isInvestigated = investigatedSessions.has(session.sessionId);
   const badge = AGENT_BADGES[session.agentType];
   const isActive = session.active !== false;
   const dragRef = useRef<HTMLDivElement>(null);
@@ -691,6 +695,21 @@ export function SessionCard({
             className={`text-[9px] font-mono font-semibold px-1.5 py-0.5 rounded border ${badge.color}`}
           >
             {badge.label}
+          </span>
+        )}
+
+        {/* Investigated indicator */}
+        {isInvestigated && (
+          <span
+            className="text-[9px] font-mono px-1 py-0.5 rounded"
+            style={{
+              color: '#79c0ff',
+              background: 'rgba(121,192,255,0.08)',
+              border: '1px solid rgba(121,192,255,0.2)',
+            }}
+            title="Session has been manually investigated"
+          >
+            ⊙
           </span>
         )}
 
