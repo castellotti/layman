@@ -44,10 +44,15 @@ export class AnalysisEngine {
     this.config = { ...this.config, ...config };
   }
 
-  private async withConcurrencyLimit<T>(fn: () => Promise<T>): Promise<T> {
+  private async withConcurrencyLimit<T>(fn: () => Promise<T>, priority: 'high' | 'normal' = 'normal'): Promise<T> {
     if (this.activeRequests >= MAX_CONCURRENT) {
       await new Promise<void>((resolve) => {
-        this.queue.push(resolve);
+        // High-priority requests (user-initiated) jump to the front of the queue
+        if (priority === 'high') {
+          this.queue.unshift(resolve);
+        } else {
+          this.queue.push(resolve);
+        }
       });
     }
 
@@ -67,7 +72,7 @@ export class AnalysisEngine {
     }
   }
 
-  async analyze(request: AnalysisRequest): Promise<AnalysisResult> {
+  async analyze(request: AnalysisRequest, priority: 'high' | 'normal' = 'normal'): Promise<AnalysisResult> {
     // Check cache first
     const cached = this.cache.get(request.toolName, request.toolInput, request.depth);
     if (cached) return cached;
@@ -86,7 +91,7 @@ export class AnalysisEngine {
 
       const parsed = this.parseAnalysisResponse(raw.text, effectiveConfig.model, latencyMs, raw);
       return parsed;
-    });
+    }, priority);
 
     this.cache.set(request.toolName, request.toolInput, request.depth, result);
     return result;
@@ -94,7 +99,8 @@ export class AnalysisEngine {
 
   async ask(
     question: string,
-    context: InvestigationContext
+    context: InvestigationContext,
+    priority: 'high' | 'normal' = 'normal'
   ): Promise<{ text: string; tokens: { input: number; output: number }; latencyMs: number; model: string }> {
     const userMessage = formatInvestigationUserMessage(
       question,
@@ -111,7 +117,7 @@ export class AnalysisEngine {
     return this.callRaw(INVESTIGATION_SYSTEM_PROMPT, userMessage, {
       ...(context.modelOverride ? { model: context.modelOverride } : {}),
       maxTokens: 400,
-    });
+    }, priority);
   }
 
   async summarizeSession(
@@ -145,20 +151,22 @@ export class AnalysisEngine {
 
   async laymans(
     request: AnalysisRequest,
-    prompt: string
+    prompt: string,
+    priority: 'high' | 'normal' = 'normal'
   ): Promise<LaymansResult> {
     const systemPrompt = buildLaymansSystemPrompt(prompt, request.depth);
     const userMessage = formatAnalysisUserMessage(request);
     const raw = await this.callRaw(systemPrompt, userMessage, {
       maxTokens: request.depth === 'detailed' ? 800 : 300,
-    });
+    }, priority);
     return { explanation: raw.text, model: raw.model, latencyMs: raw.latencyMs, tokens: raw.tokens };
   }
 
   private async callRaw(
     systemPrompt: string,
     userMessage: string,
-    configOverrides?: Partial<AnalysisConfig>
+    configOverrides?: Partial<AnalysisConfig>,
+    priority: 'high' | 'normal' = 'normal'
   ): Promise<{ text: string; tokens: { input: number; output: number }; latencyMs: number; model: string }> {
     const effectiveConfig = { ...this.config, ...configOverrides };
     return this.withConcurrencyLimit(async () => {
@@ -173,7 +181,7 @@ export class AnalysisEngine {
         latencyMs: Date.now() - startTime,
         model: effectiveConfig.model,
       };
-    });
+    }, priority);
   }
 
   private async callProvider(

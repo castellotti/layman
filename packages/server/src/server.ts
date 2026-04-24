@@ -386,7 +386,7 @@ export function createServer(config: LaymanConfig): LaymanServer {
           recentSessionEvents: sessionEvents,
           cwd: process.cwd(),
           modelOverride: request.body.model,
-        });
+        }, 'high');
         recorder.recordQA(event.id, event.sessionId, {
           question: request.body.question,
           answer: result.text,
@@ -1028,7 +1028,7 @@ export function createServer(config: LaymanConfig): LaymanServer {
               toolOutput: event.data.toolOutput,
               cwd: process.cwd(),
               depth: message.depth,
-            });
+            }, 'high');
             eventStore.attachAnalysis(message.eventId, result);
             broadcast({ type: 'analysis:result', eventId: message.eventId, result });
           } catch (err) {
@@ -1054,6 +1054,7 @@ export function createServer(config: LaymanConfig): LaymanServer {
                 depth: message.depth,
               },
               activeConfig.laymansPrompt,
+              'high',
             );
             eventStore.attachLaymans(message.eventId, result);
             broadcast({ type: 'laymans:result', eventId: message.eventId, result });
@@ -1080,7 +1081,7 @@ export function createServer(config: LaymanConfig): LaymanServer {
         void (async () => {
           try {
             broadcast({ type: 'laymans:start', eventId: message.eventId });
-            const result = await analysisEngine.laymans(req, activeConfig.laymansPrompt);
+            const result = await analysisEngine.laymans(req, activeConfig.laymansPrompt, 'high');
             eventStore.attachLaymans(message.eventId, result);
             broadcast({ type: 'laymans:result', eventId: message.eventId, result });
           } catch (err) {
@@ -1092,7 +1093,7 @@ export function createServer(config: LaymanConfig): LaymanServer {
         void (async () => {
           try {
             broadcast({ type: 'analysis:start', eventId: message.eventId });
-            const result = await analysisEngine.analyze(req);
+            const result = await analysisEngine.analyze(req, 'high');
             eventStore.attachAnalysis(message.eventId, result);
             broadcast({ type: 'analysis:result', eventId: message.eventId, result });
           } catch (err) {
@@ -1114,7 +1115,7 @@ export function createServer(config: LaymanConfig): LaymanServer {
               toolOutput: event.data.toolOutput,
               previousAnalysis: event.analysis,
               cwd: process.cwd(),
-            });
+            }, 'high');
             // Send answer back as analysis result with answer field
             broadcast({
               type: 'analysis:result',

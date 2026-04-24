@@ -71,6 +71,7 @@ export function InvestigationPanel({ onSend, eventId: embeddedEventId, onClose }
     laymansEventIds,
     laymansErrors,
     config,
+    markSessionInvestigated,
   } = useSessionStore();
 
   const selectedEventId = embeddedEventId ?? storeSelectedEventId;
@@ -139,17 +140,20 @@ export function InvestigationPanel({ onSend, eventId: embeddedEventId, onClose }
 
   const handleRequestAnalysis = (depth: 'quick' | 'detailed') => {
     setAnalysisDepth(depth);
+    markSessionInvestigated(event.sessionId);
     onSend({ type: 'analysis:request', eventId: selectedEventId, depth });
   };
 
   const handleRequestLaymans = (depth: 'quick' | 'detailed') => {
     setLaymansDepth(depth);
+    markSessionInvestigated(event.sessionId);
     onSend({ type: 'laymans:request', eventId: selectedEventId, depth });
   };
 
   const handleRequestBoth = (depth: 'quick' | 'detailed') => {
     setLaymansDepth(depth);
     setAnalysisDepth(depth);
+    markSessionInvestigated(event.sessionId);
     onSend({ type: 'both:request', eventId: selectedEventId, depth });
   };
 
@@ -157,6 +161,7 @@ export function InvestigationPanel({ onSend, eventId: embeddedEventId, onClose }
     const question = depth === 'quick'
       ? 'Why did this tool call fail and what was wrong?'
       : 'Why did this tool call fail? What was wrong with the approach, what error occurred, and what was the eventual solution or workaround? Provide a detailed analysis.';
+    markSessionInvestigated(event.sessionId);
     setIsAskingFailure(true);
     try {
       const response = await fetch(`/api/analysis/${selectedEventId}/ask`, {
@@ -188,6 +193,7 @@ export function InvestigationPanel({ onSend, eventId: embeddedEventId, onClose }
   };
 
   const handleAsk = async (question: string) => {
+    markSessionInvestigated(event.sessionId);
     setIsAskingQuestion(true);
     try {
       const response = await fetch(`/api/analysis/${selectedEventId}/ask`, {
