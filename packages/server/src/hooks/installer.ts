@@ -776,6 +776,17 @@ export class HookInstaller {
 
   // ── Open WebUI ────────────────────────────────────────────────────────────
 
+  /** Return the [v1, legacy] URL pair for a given Open WebUI functions API suffix. */
+  private owuiUrls(baseUrl: string, suffix: string): string[] {
+    return [
+      `${baseUrl}/api/v1/functions${suffix}`,
+      `${baseUrl}/api/functions${suffix}`,
+    ];
+  }
+
+  private static readonly OWUI_AUTH_ERR =
+    'Open WebUI rejected the API key (401). Generate one in Open WebUI → Profile → API Keys.';
+
   private getOpenWebUIFilterContent(callbackUrl?: string): string {
     const __dirname = dirname(fileURLToPath(import.meta.url));
     const templatePath = join(__dirname, '..', '..', 'hooks', 'openwebui', 'filter.py');
@@ -818,20 +829,14 @@ export class HookInstaller {
       meta: { description: 'Captures prompts and responses for Layman monitoring' },
     });
 
-    // Try /api/v1/functions/create first (newer Open WebUI), then /api/functions/create (older)
+    // Try v1 path first (newer Open WebUI), fall back to legacy on network error
     let response: Response | null = null;
-    for (const path of ['/api/v1/functions/create', '/api/functions/create']) {
+    for (const url of this.owuiUrls(openWebUiUrl, '/create')) {
       try {
-        response = await fetch(`${openWebUiUrl}${path}`, {
-          method: 'POST',
-          headers: this.openWebUIHeaders(apiKey),
-          body,
-        });
-        // Stop if we get any real response (not a network error)
-        break;
+        response = await fetch(url, { method: 'POST', headers: this.openWebUIHeaders(apiKey), body });
+        break; // stop on any HTTP response
       } catch {
-        // Connection refused or similar — try next path
-        if (path === '/api/functions/create') throw new Error(`Cannot connect to Open WebUI at ${openWebUiUrl}`);
+        // Connection refused or similar — try next URL
       }
     }
 
@@ -839,13 +844,9 @@ export class HookInstaller {
 
     if (!response.ok) {
       const text = await response.text();
-      if (response.status === 401) {
-        throw new Error(
-          `Open WebUI rejected the API key (401). To get a valid key: open Open WebUI → Admin Panel → Settings → General → enable "API Key Authentication", then go to your profile → API Keys and generate one.`
-        );
-      }
-      // 400 meaning the function id is already registered → update instead
-      if (response.status === 400 && (text.includes('already') || text.includes('registered'))) {
+      if (response.status === 401) throw new Error(HookInstaller.OWUI_AUTH_ERR);
+      // Any 4xx (e.g. 400/409 when the function already exists) → try updating instead
+      if (response.status >= 400 && response.status < 500) {
         await this.updateOpenWebUIFunction(openWebUiUrl, apiKey, content);
       } else {
         throw new Error(`Open WebUI API error ${response.status}: ${text}`);
@@ -867,15 +868,15 @@ export class HookInstaller {
    * so we must toggle both after every create or update.
    */
   private async ensureOpenWebUIFunctionActive(openWebUiUrl: string, apiKey: string): Promise<void> {
+    const id = OPENWEBUI_FUNCTION_ID;
+    const headers = this.openWebUIHeaders(apiKey);
+
     // GET current state
     let isActive = false;
     let isGlobal = false;
-    for (const path of [
-      `/api/v1/functions/id/${OPENWEBUI_FUNCTION_ID}`,
-      `/api/functions/id/${OPENWEBUI_FUNCTION_ID}`,
-    ]) {
+    for (const url of this.owuiUrls(openWebUiUrl, `/id/${id}`)) {
       try {
-        const res = await fetch(`${openWebUiUrl}${path}`, { headers: this.openWebUIHeaders(apiKey) });
+        const res = await fetch(url, { headers });
         if (res.ok) {
           const fn = await res.json() as { is_active?: boolean; is_global?: boolean };
           isActive = fn.is_active ?? false;
@@ -888,15 +889,9 @@ export class HookInstaller {
 
     // Toggle active if not already enabled
     if (!isActive) {
-      for (const path of [
-        `/api/v1/functions/id/${OPENWEBUI_FUNCTION_ID}/toggle`,
-        `/api/functions/id/${OPENWEBUI_FUNCTION_ID}/toggle`,
-      ]) {
+      for (const url of this.owuiUrls(openWebUiUrl, `/id/${id}/toggle`)) {
         try {
-          const res = await fetch(`${openWebUiUrl}${path}`, {
-            method: 'POST',
-            headers: this.openWebUIHeaders(apiKey),
-          });
+          const res = await fetch(url, { method: 'POST', headers });
           if (res.ok || res.status === 404) break;
         } catch { break; }
       }
@@ -904,15 +899,9 @@ export class HookInstaller {
 
     // Toggle global if not already global
     if (!isGlobal) {
-      for (const path of [
-        `/api/v1/functions/id/${OPENWEBUI_FUNCTION_ID}/toggle/global`,
-        `/api/functions/id/${OPENWEBUI_FUNCTION_ID}/toggle/global`,
-      ]) {
+      for (const url of this.owuiUrls(openWebUiUrl, `/id/${id}/toggle/global`)) {
         try {
-          const res = await fetch(`${openWebUiUrl}${path}`, {
-            method: 'POST',
-            headers: this.openWebUIHeaders(apiKey),
-          });
+          const res = await fetch(url, { method: 'POST', headers });
           if (res.ok || res.status === 404) break;
         } catch { break; }
       }
@@ -920,45 +909,25 @@ export class HookInstaller {
   }
 
   private async updateOpenWebUIFunction(openWebUiUrl: string, apiKey: string, content: string): Promise<void> {
-    // Try /api/v1/ then /api/ for version compatibility
-    for (const path of [
-      `/api/v1/functions/id/${OPENWEBUI_FUNCTION_ID}/update`,
-      `/api/functions/id/${OPENWEBUI_FUNCTION_ID}/update`,
-    ]) {
-      const response = await fetch(`${openWebUiUrl}${path}`, {
-        method: 'POST',
-        headers: this.openWebUIHeaders(apiKey),
-        body: JSON.stringify({
-          id: OPENWEBUI_FUNCTION_ID,
-          name: 'Layman Monitor',
-          content,
-          meta: { description: 'Captures prompts and responses for Layman monitoring' },
-        }),
-      });
+    const id = OPENWEBUI_FUNCTION_ID;
+    const body = JSON.stringify({ id, name: 'Layman Monitor', content, meta: { description: 'Captures prompts and responses for Layman monitoring' } });
+    for (const url of this.owuiUrls(openWebUiUrl, `/id/${id}/update`)) {
+      const response = await fetch(url, { method: 'POST', headers: this.openWebUIHeaders(apiKey), body });
       if (response.ok) return;
       if (response.status === 404) continue; // try next path
+      if (response.status === 401) throw new Error(HookInstaller.OWUI_AUTH_ERR);
       const text = await response.text();
-      if (response.status === 401) {
-        throw new Error(`Open WebUI rejected the API key (401). Generate one in Open WebUI → Profile → API Keys.`);
-      }
       throw new Error(`Open WebUI update error ${response.status}: ${text}`);
     }
   }
 
   /** Remove the Layman filter function from Open WebUI. */
   async uninstallOpenWebUIFunction(openWebUiUrl: string, apiKey: string): Promise<void> {
-    for (const path of [
-      `/api/v1/functions/id/${OPENWEBUI_FUNCTION_ID}/delete`,
-      `/api/functions/id/${OPENWEBUI_FUNCTION_ID}/delete`,
-    ]) {
-      const response = await fetch(`${openWebUiUrl}${path}`, {
-        method: 'DELETE',
-        headers: this.openWebUIHeaders(apiKey),
-      });
+    const id = OPENWEBUI_FUNCTION_ID;
+    for (const url of this.owuiUrls(openWebUiUrl, `/id/${id}/delete`)) {
+      const response = await fetch(url, { method: 'DELETE', headers: this.openWebUIHeaders(apiKey) });
       if (response.ok || response.status === 404) break;
-      if (response.status === 401) {
-        throw new Error(`Open WebUI rejected the API key (401). Generate one in Open WebUI → Profile → API Keys.`);
-      }
+      if (response.status === 401) throw new Error(HookInstaller.OWUI_AUTH_ERR);
       const text = await response.text();
       throw new Error(`Open WebUI delete error ${response.status}: ${text}`);
     }

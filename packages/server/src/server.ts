@@ -1270,7 +1270,7 @@ export function createServer(config: LaymanConfig): LaymanServer {
   // Register hook handler routes
   registerHookHandler(fastify, pendingManager, eventStore, analysisEngine, getConfig, gate, driftMonitor);
   registerClineHookHandler(fastify, pendingManager, eventStore, analysisEngine, getConfig, gate);
-  registerOpenWebUIHookHandler(fastify, eventStore, gate);
+  registerOpenWebUIHookHandler(fastify, eventStore, gate, db);
 
   let resolvedPort = config.port;
 

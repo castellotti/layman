@@ -13,19 +13,24 @@
 import type { FastifyInstance } from 'fastify';
 import { EventStore } from '../events/store.js';
 import { SessionGate } from '../hooks/gate.js';
+import type { Database } from '../db/database.js';
 import type { OpenWebUIHookInput } from './translator.js';
 import { translateUserPromptSubmit, translateSessionStart } from './translator.js';
 
 const AGENT_TYPE = 'open-webui';
 
-/** chat_ids we've already emitted session_start for, to avoid duplicates. */
-const knownSessions = new Set<string>();
-
 export function registerOpenWebUIHookHandler(
   fastify: FastifyInstance,
   eventStore: EventStore,
   gate: SessionGate,
+  db: Database,
 ): void {
+  // Seed from DB so a server restart doesn't re-emit session_start for existing chats
+  const rows = db.prepare(
+    'SELECT session_id FROM recorded_sessions WHERE agent_type = ?'
+  ).all(AGENT_TYPE) as Array<{ session_id: string }>;
+  const knownSessions = new Set<string>(rows.map((r) => r.session_id));
+
   fastify.post<{ Body: OpenWebUIHookInput }>(
     '/hooks/openwebui',
     async (request, reply) => {
