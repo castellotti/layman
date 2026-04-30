@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync, existsSync, mkdirSync, unlinkSync, readdirSync, chmodSync } from 'fs';
+import { readFileSync, writeFileSync, existsSync, mkdirSync, unlinkSync, readdirSync } from 'fs';
 import { join, dirname } from 'path';
 import { homedir } from 'os';
 import { createHash } from 'crypto';
@@ -57,6 +57,9 @@ export interface SetupStatus {
 const GLOBAL_SETTINGS_PATH = join(homedir(), '.claude', 'settings.json');
 const COMMANDS_DIR = join(homedir(), '.claude', 'commands');
 const HOOKS_DIR = join(homedir(), '.claude', 'hooks', 'layman');
+const LAYMAN_DATA_DIR = join(homedir(), '.local', 'share', 'layman');
+const OPENWEBUI_VERSION_FILE = join(LAYMAN_DATA_DIR, '.openwebui-version');
+const OPENWEBUI_FUNCTION_ID = 'layman_monitor';
 
 interface StatusLineSettings {
   type?: string;
@@ -499,17 +502,22 @@ export class HookInstaller {
 
     if (!existsSync(versionFile)) return { installed: false, upToDate: false };
 
-    const __dirname = dirname(fileURLToPath(import.meta.url));
-    const templatesDir = join(__dirname, '..', '..', 'hooks', 'cline');
-    const fallbackDir = join(__dirname, '..', 'hooks', 'cline');
-    const srcDir = existsSync(templatesDir) ? templatesDir : existsSync(fallbackDir) ? fallbackDir : null;
-    if (!srcDir) return { installed: true, upToDate: false };
+    try {
+      const __dirname = dirname(fileURLToPath(import.meta.url));
+      const templatesDir = join(__dirname, '..', '..', 'hooks', 'cline');
+      const fallbackDir = join(__dirname, '..', 'hooks', 'cline');
+      const srcDir = existsSync(templatesDir) ? templatesDir : existsSync(fallbackDir) ? fallbackDir : null;
+      if (!srcDir) return { installed: true, upToDate: false };
 
-    const hookFiles = readdirSync(srcDir).filter((f) => !f.startsWith('.'));
-    const expectedHash = commandHash(hookFiles.map((f) => readFileSync(join(srcDir, f), 'utf-8')).join(''));
-    const installedHash = readFileSync(versionFile, 'utf-8').trim();
-
-    return { installed: true, upToDate: installedHash === expectedHash };
+      const hookFiles = readdirSync(srcDir).filter((f) => !f.startsWith('.'));
+      const expectedHash = commandHash(hookFiles.map((f) => readFileSync(join(srcDir, f), 'utf-8')).join(''));
+      const installedHash = readFileSync(versionFile, 'utf-8').trim();
+      return { installed: true, upToDate: installedHash === expectedHash };
+    } catch {
+      // File exists but is temporarily unreadable (e.g. macOS VirtioFS EAGAIN).
+      // Assume up to date — "can't verify" is better than an infinite update loop.
+      return { installed: true, upToDate: true };
+    }
   }
 
   /** Install Codex hook scripts and hooks.json to ~/.codex/ if Codex is detected. */
@@ -683,18 +691,21 @@ export class HookInstaller {
 
     if (!existsSync(versionFile)) return { installed: false, upToDate: false };
 
-    const __dirname = dirname(fileURLToPath(import.meta.url));
-    // Production path (dist/) vs development path — see installCodexHooks for explanation.
-    const templatesDir = join(__dirname, '..', '..', 'hooks', 'codex');
-    const fallbackDir = join(__dirname, '..', 'hooks', 'codex');
-    const srcDir = existsSync(templatesDir) ? templatesDir : existsSync(fallbackDir) ? fallbackDir : null;
-    if (!srcDir) return { installed: true, upToDate: false };
+    try {
+      const __dirname = dirname(fileURLToPath(import.meta.url));
+      // Production path (dist/) vs development path — see installCodexHooks for explanation.
+      const templatesDir = join(__dirname, '..', '..', 'hooks', 'codex');
+      const fallbackDir = join(__dirname, '..', 'hooks', 'codex');
+      const srcDir = existsSync(templatesDir) ? templatesDir : existsSync(fallbackDir) ? fallbackDir : null;
+      if (!srcDir) return { installed: true, upToDate: false };
 
-    const hookFiles = readdirSync(srcDir).filter((f) => !f.startsWith('.'));
-    const expectedHash = commandHash(hookFiles.map((f) => readFileSync(join(srcDir, f), 'utf-8')).join(''));
-    const installedHash = readFileSync(versionFile, 'utf-8').trim();
-
-    return { installed: true, upToDate: installedHash === expectedHash };
+      const hookFiles = readdirSync(srcDir).filter((f) => !f.startsWith('.'));
+      const expectedHash = commandHash(hookFiles.map((f) => readFileSync(join(srcDir, f), 'utf-8')).join(''));
+      const installedHash = readFileSync(versionFile, 'utf-8').trim();
+      return { installed: true, upToDate: installedHash === expectedHash };
+    } catch {
+      return { installed: true, upToDate: true };
+    }
   }
 
   /** Install the slash command for optional clients whose config dir already exists.
@@ -761,6 +772,213 @@ export class HookInstaller {
     }
     if (id === 'codex') this.uninstallCodexHooks();
     if (id === 'cline') this.uninstallClineHooks();
+  }
+
+  // ── Open WebUI ────────────────────────────────────────────────────────────
+
+  private getOpenWebUIFilterContent(callbackUrl?: string): string {
+    const __dirname = dirname(fileURLToPath(import.meta.url));
+    const templatePath = join(__dirname, '..', '..', 'hooks', 'openwebui', 'filter.py');
+    const fallbackPath = join(__dirname, '..', 'hooks', 'openwebui', 'filter.py');
+    const srcPath = existsSync(templatePath) ? templatePath : existsSync(fallbackPath) ? fallbackPath : null;
+    if (!srcPath) throw new Error('Open WebUI filter template not found');
+    const url = callbackUrl ?? this.options.serverUrl;
+    return readFileSync(srcPath, 'utf-8').replace(/__LAYMAN_URL__/g, url);
+  }
+
+  /**
+   * Derive the Layman callback URL that Open WebUI will POST to.
+   * When Open WebUI is reachable via host.docker.internal (i.e. it's running in Docker),
+   * we replace localhost/127.0.0.1 in the server URL with host.docker.internal so the
+   * filter function can reach Layman across the Docker network boundary.
+   */
+  private deriveOpenWebUICallbackUrl(openWebUiUrl: string): string {
+    if (openWebUiUrl.includes('host.docker.internal') || openWebUiUrl.includes('docker.internal')) {
+      return this.options.serverUrl
+        .replace(/localhost/g, 'host.docker.internal')
+        .replace(/127\.0\.0\.1/g, 'host.docker.internal');
+    }
+    return this.options.serverUrl;
+  }
+
+  private openWebUIHeaders(apiKey: string): Record<string, string> {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`;
+    return headers;
+  }
+
+  /** Install the Layman filter function into Open WebUI via its REST API. */
+  async installOpenWebUIFunction(openWebUiUrl: string, apiKey: string): Promise<void> {
+    const callbackUrl = this.deriveOpenWebUICallbackUrl(openWebUiUrl);
+    const content = this.getOpenWebUIFilterContent(callbackUrl);
+    const body = JSON.stringify({
+      id: OPENWEBUI_FUNCTION_ID,
+      name: 'Layman Monitor',
+      content,
+      meta: { description: 'Captures prompts and responses for Layman monitoring' },
+    });
+
+    // Try /api/v1/functions/create first (newer Open WebUI), then /api/functions/create (older)
+    let response: Response | null = null;
+    for (const path of ['/api/v1/functions/create', '/api/functions/create']) {
+      try {
+        response = await fetch(`${openWebUiUrl}${path}`, {
+          method: 'POST',
+          headers: this.openWebUIHeaders(apiKey),
+          body,
+        });
+        // Stop if we get any real response (not a network error)
+        break;
+      } catch {
+        // Connection refused or similar — try next path
+        if (path === '/api/functions/create') throw new Error(`Cannot connect to Open WebUI at ${openWebUiUrl}`);
+      }
+    }
+
+    if (!response) throw new Error(`Cannot connect to Open WebUI at ${openWebUiUrl}`);
+
+    if (!response.ok) {
+      const text = await response.text();
+      if (response.status === 401) {
+        throw new Error(
+          `Open WebUI rejected the API key (401). To get a valid key: open Open WebUI → Admin Panel → Settings → General → enable "API Key Authentication", then go to your profile → API Keys and generate one.`
+        );
+      }
+      // 400 meaning the function id is already registered → update instead
+      if (response.status === 400 && (text.includes('already') || text.includes('registered'))) {
+        await this.updateOpenWebUIFunction(openWebUiUrl, apiKey, content);
+      } else {
+        throw new Error(`Open WebUI API error ${response.status}: ${text}`);
+      }
+    }
+
+    // Enable the function and make it global so it applies to all chats
+    await this.ensureOpenWebUIFunctionActive(openWebUiUrl, apiKey);
+
+    // Write version marker
+    if (!existsSync(LAYMAN_DATA_DIR)) mkdirSync(LAYMAN_DATA_DIR, { recursive: true });
+    writeFileSync(OPENWEBUI_VERSION_FILE, commandHash(content), 'utf-8');
+    console.log(`Open WebUI filter function installed at ${openWebUiUrl}`);
+  }
+
+  /**
+   * Ensure the Layman filter function is active and global.
+   * Open WebUI always creates functions with is_active=false and is_global=false,
+   * so we must toggle both after every create or update.
+   */
+  private async ensureOpenWebUIFunctionActive(openWebUiUrl: string, apiKey: string): Promise<void> {
+    // GET current state
+    let isActive = false;
+    let isGlobal = false;
+    for (const path of [
+      `/api/v1/functions/id/${OPENWEBUI_FUNCTION_ID}`,
+      `/api/functions/id/${OPENWEBUI_FUNCTION_ID}`,
+    ]) {
+      try {
+        const res = await fetch(`${openWebUiUrl}${path}`, { headers: this.openWebUIHeaders(apiKey) });
+        if (res.ok) {
+          const fn = await res.json() as { is_active?: boolean; is_global?: boolean };
+          isActive = fn.is_active ?? false;
+          isGlobal = fn.is_global ?? false;
+          break;
+        }
+        if (res.status === 404) continue;
+      } catch { /* ignore — toggle unconditionally below */ }
+    }
+
+    // Toggle active if not already enabled
+    if (!isActive) {
+      for (const path of [
+        `/api/v1/functions/id/${OPENWEBUI_FUNCTION_ID}/toggle`,
+        `/api/functions/id/${OPENWEBUI_FUNCTION_ID}/toggle`,
+      ]) {
+        try {
+          const res = await fetch(`${openWebUiUrl}${path}`, {
+            method: 'POST',
+            headers: this.openWebUIHeaders(apiKey),
+          });
+          if (res.ok || res.status === 404) break;
+        } catch { break; }
+      }
+    }
+
+    // Toggle global if not already global
+    if (!isGlobal) {
+      for (const path of [
+        `/api/v1/functions/id/${OPENWEBUI_FUNCTION_ID}/toggle/global`,
+        `/api/functions/id/${OPENWEBUI_FUNCTION_ID}/toggle/global`,
+      ]) {
+        try {
+          const res = await fetch(`${openWebUiUrl}${path}`, {
+            method: 'POST',
+            headers: this.openWebUIHeaders(apiKey),
+          });
+          if (res.ok || res.status === 404) break;
+        } catch { break; }
+      }
+    }
+  }
+
+  private async updateOpenWebUIFunction(openWebUiUrl: string, apiKey: string, content: string): Promise<void> {
+    // Try /api/v1/ then /api/ for version compatibility
+    for (const path of [
+      `/api/v1/functions/id/${OPENWEBUI_FUNCTION_ID}/update`,
+      `/api/functions/id/${OPENWEBUI_FUNCTION_ID}/update`,
+    ]) {
+      const response = await fetch(`${openWebUiUrl}${path}`, {
+        method: 'POST',
+        headers: this.openWebUIHeaders(apiKey),
+        body: JSON.stringify({
+          id: OPENWEBUI_FUNCTION_ID,
+          name: 'Layman Monitor',
+          content,
+          meta: { description: 'Captures prompts and responses for Layman monitoring' },
+        }),
+      });
+      if (response.ok) return;
+      if (response.status === 404) continue; // try next path
+      const text = await response.text();
+      if (response.status === 401) {
+        throw new Error(`Open WebUI rejected the API key (401). Generate one in Open WebUI → Profile → API Keys.`);
+      }
+      throw new Error(`Open WebUI update error ${response.status}: ${text}`);
+    }
+  }
+
+  /** Remove the Layman filter function from Open WebUI. */
+  async uninstallOpenWebUIFunction(openWebUiUrl: string, apiKey: string): Promise<void> {
+    for (const path of [
+      `/api/v1/functions/id/${OPENWEBUI_FUNCTION_ID}/delete`,
+      `/api/functions/id/${OPENWEBUI_FUNCTION_ID}/delete`,
+    ]) {
+      const response = await fetch(`${openWebUiUrl}${path}`, {
+        method: 'DELETE',
+        headers: this.openWebUIHeaders(apiKey),
+      });
+      if (response.ok || response.status === 404) break;
+      if (response.status === 401) {
+        throw new Error(`Open WebUI rejected the API key (401). Generate one in Open WebUI → Profile → API Keys.`);
+      }
+      const text = await response.text();
+      throw new Error(`Open WebUI delete error ${response.status}: ${text}`);
+    }
+    if (existsSync(OPENWEBUI_VERSION_FILE)) {
+      try { unlinkSync(OPENWEBUI_VERSION_FILE); } catch { /* ignore */ }
+    }
+    console.log('Open WebUI filter function uninstalled');
+  }
+
+  /** Check whether the Layman filter function is installed and up to date (sync, file-based). */
+  getOpenWebUIFunctionStatus(): { installed: boolean; upToDate: boolean } {
+    if (!existsSync(OPENWEBUI_VERSION_FILE)) return { installed: false, upToDate: false };
+    try {
+      const content = this.getOpenWebUIFilterContent();
+      const expectedHash = commandHash(content);
+      const installedHash = readFileSync(OPENWEBUI_VERSION_FILE, 'utf-8').trim();
+      return { installed: true, upToDate: installedHash === expectedHash };
+    } catch {
+      return { installed: true, upToDate: false };
+    }
   }
 
   /** Install the StatusLine relay script and configure settings.json to use it. */
@@ -863,37 +1081,40 @@ export class HookInstaller {
     const versionPath = join(HOOKS_DIR, '.statusline-version');
     if (!existsSync(versionPath)) return { installed: false, upToDate: false };
 
-    // Check settings.json still points to our script
-    const settings = readSettings(GLOBAL_SETTINGS_PATH);
-    const sl = settings.statusLine as StatusLineSettings | undefined;
-    if (!sl?.command?.includes('hooks/layman/statusline.sh')) {
-      return { installed: false, upToDate: false };
-    }
-
-    // Check hash matches current template
-    const __dirname = dirname(fileURLToPath(import.meta.url));
-    const templatePath = join(__dirname, '..', '..', 'commands', 'statusline.sh');
-    const fallbackPath = join(__dirname, '..', 'commands', 'statusline.sh');
-    const srcPath = existsSync(templatePath) ? templatePath : existsSync(fallbackPath) ? fallbackPath : null;
-    if (!srcPath) return { installed: true, upToDate: false };
-
-    let template = readFileSync(srcPath, 'utf-8');
-    template = template.replace(/__LAYMAN_URL__/g, this.options.serverUrl);
-
-    // Re-compose if the installed script had an original command
-    const scriptPath = join(HOOKS_DIR, 'statusline.sh');
-    if (existsSync(scriptPath)) {
-      const installed = readFileSync(scriptPath, 'utf-8');
-      const match = installed.match(/export LAYMAN_ORIGINAL_STATUSLINE=(".*?")/);
-      if (match) {
-        template = `#!/usr/bin/env bash\n# Original statusLine command preserved for chaining\nexport LAYMAN_ORIGINAL_STATUSLINE=${match[1]}\n${template}`;
+    try {
+      // Check settings.json still points to our script
+      const settings = readSettings(GLOBAL_SETTINGS_PATH);
+      const sl = settings.statusLine as StatusLineSettings | undefined;
+      if (!sl?.command?.includes('hooks/layman/statusline.sh')) {
+        return { installed: false, upToDate: false };
       }
+
+      // Check hash matches current template
+      const __dirname = dirname(fileURLToPath(import.meta.url));
+      const templatePath = join(__dirname, '..', '..', 'commands', 'statusline.sh');
+      const fallbackPath = join(__dirname, '..', 'commands', 'statusline.sh');
+      const srcPath = existsSync(templatePath) ? templatePath : existsSync(fallbackPath) ? fallbackPath : null;
+      if (!srcPath) return { installed: true, upToDate: false };
+
+      let template = readFileSync(srcPath, 'utf-8');
+      template = template.replace(/__LAYMAN_URL__/g, this.options.serverUrl);
+
+      // Re-compose if the installed script had an original command
+      const scriptPath = join(HOOKS_DIR, 'statusline.sh');
+      if (existsSync(scriptPath)) {
+        const installed = readFileSync(scriptPath, 'utf-8');
+        const match = installed.match(/export LAYMAN_ORIGINAL_STATUSLINE=(".*?")/);
+        if (match) {
+          template = `#!/usr/bin/env bash\n# Original statusLine command preserved for chaining\nexport LAYMAN_ORIGINAL_STATUSLINE=${match[1]}\n${template}`;
+        }
+      }
+
+      const expectedHash = commandHash(template);
+      const installedHash = readFileSync(versionPath, 'utf-8').trim();
+      return { installed: true, upToDate: installedHash === expectedHash };
+    } catch {
+      return { installed: true, upToDate: true };
     }
-
-    const expectedHash = commandHash(template);
-    const installedHash = readFileSync(versionPath, 'utf-8').trim();
-
-    return { installed: true, upToDate: installedHash === expectedHash };
   }
 
   isInstalled(): boolean {
@@ -937,16 +1158,27 @@ export class HookInstaller {
     const commandInstalled = existsSync(cmdPath);
     let commandUpToDate = false;
     if (commandInstalled) {
-      const installed = readFileSync(cmdPath, 'utf-8');
-      const expectedContent = getCommandContent();
-      const expectedHash = commandHash(expectedContent);
-      commandUpToDate = installed.includes(`layman:${expectedHash}`);
+      try {
+        const installed = readFileSync(cmdPath, 'utf-8');
+        const expectedContent = getCommandContent();
+        const expectedHash = commandHash(expectedContent);
+        commandUpToDate = installed.includes(`layman:${expectedHash}`);
+      } catch {
+        commandUpToDate = true; // unreadable → assume current, not stale
+      }
     }
 
     // StatusLine status
-    const statusLineStatus = this.getStatusLineStatus();
-    const statusLineInstalled = statusLineStatus.installed;
-    const statusLineUpToDate = statusLineStatus.upToDate;
+    let statusLineInstalled = false;
+    let statusLineUpToDate = false;
+    try {
+      const statusLineStatus = this.getStatusLineStatus();
+      statusLineInstalled = statusLineStatus.installed;
+      statusLineUpToDate = statusLineStatus.upToDate;
+    } catch {
+      statusLineInstalled = true;
+      statusLineUpToDate = true;
+    }
 
     // Optional client status
     const defaultContent = getCommandContent();
@@ -962,9 +1194,14 @@ export class HookInstaller {
       const content = client.getContent ? client.getContent() : defaultContent;
       const expectedHash = commandHash(content);
       const commandInstalled = existsSync(clientCmdPath);
-      const commandUpToDate = commandInstalled
-        ? readFileSync(clientCmdPath, 'utf-8').includes(`layman:${expectedHash}`)
-        : false;
+      let commandUpToDate = false;
+      if (commandInstalled) {
+        try {
+          commandUpToDate = readFileSync(clientCmdPath, 'utf-8').includes(`layman:${expectedHash}`);
+        } catch {
+          commandUpToDate = true; // unreadable → assume current
+        }
+      }
 
       // Hook script status for clients that use them
       let hooksInstalled: boolean | undefined;
@@ -980,6 +1217,18 @@ export class HookInstaller {
       }
 
       return { id: client.id, name: client.name, detected, commandInstalled, commandUpToDate, hooksInstalled, hooksUpToDate };
+    });
+
+    // Open WebUI: detected when a URL is configured; installation is via API (not local files)
+    const owuiStatus = this.getOpenWebUIFunctionStatus();
+    optionalClients.push({
+      id: 'open-webui',
+      name: 'Open WebUI',
+      detected: false, // set by caller based on config.openWebUiUrl being non-empty
+      commandInstalled: false,
+      commandUpToDate: false,
+      hooksInstalled: owuiStatus.installed,
+      hooksUpToDate: owuiStatus.upToDate,
     });
 
     return { hooksInstalled, hooksUpToDate, commandInstalled, commandUpToDate, statusLineInstalled, statusLineUpToDate, optionalClients };

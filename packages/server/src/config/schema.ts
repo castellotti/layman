@@ -72,6 +72,8 @@ export const LaymanConfigSchema = z.object({
   autoActivateClients: z.array(z.string()).default([]),
   driftMonitoring: DriftMonitoringConfigSchema.default({}),
   setupWizardComplete: z.boolean().default(false),
+  openWebUiUrl: z.string().default(''),
+  openWebUiApiKey: z.string().default(''),
 });
 
 export type LaymanConfig = z.infer<typeof LaymanConfigSchema>;

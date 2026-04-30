@@ -236,6 +236,8 @@ export interface LaymanConfig {
   autoActivateClients: string[];
   driftMonitoring: DriftMonitoringConfig;
   setupWizardComplete: boolean;
+  openWebUiUrl: string;
+  openWebUiApiKey: string;
 }
 
 // Drift monitoring types

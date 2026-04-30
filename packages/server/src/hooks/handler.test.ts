@@ -56,6 +56,8 @@ const MOCK_CONFIG: LaymanConfig = {
     remindOnOrange: true,
   },
   setupWizardComplete: false,
+  openWebUiUrl: '',
+  openWebUiApiKey: '',
 };
 
 describe('PendingApprovalManager', () => {
