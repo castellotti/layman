@@ -60,6 +60,10 @@ const HOOKS_DIR = join(homedir(), '.claude', 'hooks', 'layman');
 const LAYMAN_DATA_DIR = join(homedir(), '.local', 'share', 'layman');
 const OPENWEBUI_VERSION_FILE = join(LAYMAN_DATA_DIR, '.openwebui-version');
 const OPENWEBUI_FUNCTION_ID = 'layman_monitor';
+const OPENWEBUI_FUNCTION_META = {
+  name: 'Layman Monitor',
+  meta: { description: 'Captures prompts and responses for Layman monitoring' },
+} as const;
 
 interface StatusLineSettings {
   type?: string;
@@ -822,12 +826,7 @@ export class HookInstaller {
   async installOpenWebUIFunction(openWebUiUrl: string, apiKey: string): Promise<void> {
     const callbackUrl = this.deriveOpenWebUICallbackUrl(openWebUiUrl);
     const content = this.getOpenWebUIFilterContent(callbackUrl);
-    const body = JSON.stringify({
-      id: OPENWEBUI_FUNCTION_ID,
-      name: 'Layman Monitor',
-      content,
-      meta: { description: 'Captures prompts and responses for Layman monitoring' },
-    });
+    const body = JSON.stringify({ id: OPENWEBUI_FUNCTION_ID, ...OPENWEBUI_FUNCTION_META, content });
 
     // Try v1 path first (newer Open WebUI), fall back to legacy on network error
     let response: Response | null = null;
@@ -910,7 +909,7 @@ export class HookInstaller {
 
   private async updateOpenWebUIFunction(openWebUiUrl: string, apiKey: string, content: string): Promise<void> {
     const id = OPENWEBUI_FUNCTION_ID;
-    const body = JSON.stringify({ id, name: 'Layman Monitor', content, meta: { description: 'Captures prompts and responses for Layman monitoring' } });
+    const body = JSON.stringify({ id, ...OPENWEBUI_FUNCTION_META, content });
     for (const url of this.owuiUrls(openWebUiUrl, `/id/${id}/update`)) {
       const response = await fetch(url, { method: 'POST', headers: this.openWebUIHeaders(apiKey), body });
       if (response.ok) return;
