@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.5.0
+
+- Added Open WebUI integration — filter plugin captures prompts and responses via inlet/outlet hooks, with server-side handler, translator, URL config, and auto-activation ([#63](https://github.com/castellotti/layman/pull/63))
+
+## 0.4.2
+
+- Added context/limits panel to the Dashboard showing per-session context window %, 5h rate limit, and 1w rate limit as color-coded mini-bars ([#61](https://github.com/castellotti/layman/pull/61))
+- Added analysis priority queue so user-initiated LLM calls jump ahead of background auto-analysis and drift checks ([#61](https://github.com/castellotti/layman/pull/61))
+- Added investigated session indicator — sessions where the user has manually triggered analysis show a ⊙ badge in Dashboard cards, the session dropdown, and Session History ([#61](https://github.com/castellotti/layman/pull/61))
+- Added harness version, model, and Layman version to the status bar; harness name is clickable and opens a changelog modal with version-aware scrolling ([#59](https://github.com/castellotti/layman/pull/59))
+- Added early Vibe session detection — creates a placeholder session as soon as a `vibe` process is detected, before the user types anything ([#58](https://github.com/castellotti/layman/pull/58))
+- Improved GFM rendering — tables, strikethrough, and horizontal rules now render correctly in all markdown panels; user prompt preview in the Dashboard uses the same blue as the Logs view ([#60](https://github.com/castellotti/layman/pull/60))
+- Refactored server and web hot paths — O(1) event lookup map, shared `isAutoAllowedByPattern()`, de-asynced handlers, and shared `MARKDOWN_PROSE`/`REMARK_PLUGINS` constants ([#62](https://github.com/castellotti/layman/pull/62))
+
 ## 0.4.1
 
 - Fixed Token Usage chart including closed and inactive sessions ([#56](https://github.com/castellotti/layman/pull/56))
