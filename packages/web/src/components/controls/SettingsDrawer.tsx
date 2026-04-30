@@ -97,6 +97,192 @@ function StatusPip({ ok, label }: { ok: boolean; label: string }) {
   );
 }
 
+function OpenWebUIConfigDialog({
+  config,
+  owuiStatus,
+  onSend,
+  onClose,
+  onStatusChange,
+}: {
+  config: LaymanConfig;
+  owuiStatus: OptionalClientStatus | undefined;
+  onSend: (msg: ClientMessage) => void;
+  onClose: () => void;
+  onStatusChange: (status: SetupStatus) => void;
+}) {
+  const [url, setUrl] = useState(config.openWebUiUrl ?? '');
+  const [apiKey, setApiKey] = useState(config.openWebUiApiKey ?? '');
+  const [detecting, setDetecting] = useState(false);
+  const [detectResult, setDetectResult] = useState<string | null>(null);
+  const [installState, setInstallState] = useState<'idle' | 'busy' | 'error' | 'success'>('idle');
+  const [installError, setInstallError] = useState<string | null>(null);
+  const [uninstallState, setUninstallState] = useState<'idle' | 'busy' | 'error'>('idle');
+
+  const isInstalled = !!(owuiStatus?.hooksInstalled);
+  const isUpToDate = !!(owuiStatus?.hooksUpToDate);
+
+  const handleDetect = async () => {
+    setDetecting(true);
+    setDetectResult(null);
+    try {
+      const res = await fetch('/api/setup/openwebui/detect', { method: 'POST' });
+      const data = await res.json() as { detected: boolean; url: string | null; version: string | null };
+      if (data.detected && data.url) {
+        setUrl(data.url);
+        setDetectResult(`Detected Open WebUI${data.version ? ` v${data.version}` : ''} at ${data.url}`);
+      } else {
+        setDetectResult('No Open WebUI instance found on common ports (3000, 8080).');
+      }
+    } catch {
+      setDetectResult('Detection failed — server unreachable.');
+    } finally {
+      setDetecting(false);
+    }
+  };
+
+  const handleSaveConfig = () => {
+    onSend({ type: 'config:update', config: { openWebUiUrl: url.trim(), openWebUiApiKey: apiKey.trim() } });
+  };
+
+  const handleInstall = async () => {
+    handleSaveConfig();
+    setInstallState('busy');
+    setInstallError(null);
+    try {
+      const res = await fetch('/api/setup/openwebui/install', { method: 'POST' });
+      if (res.ok) {
+        onStatusChange(await res.json() as SetupStatus);
+        setInstallState('success');
+      } else {
+        const data = await res.json().catch(() => ({})) as { error?: string };
+        setInstallError(data.error ?? `HTTP ${res.status}`);
+        setInstallState('error');
+      }
+    } catch (e) {
+      setInstallError(e instanceof Error ? e.message : String(e));
+      setInstallState('error');
+    }
+  };
+
+  const handleUninstall = async () => {
+    setUninstallState('busy');
+    try {
+      const res = await fetch('/api/setup/openwebui/uninstall', { method: 'POST' });
+      if (res.ok) {
+        onStatusChange(await res.json() as SetupStatus);
+        setUninstallState('idle');
+      } else {
+        setUninstallState('error');
+      }
+    } catch {
+      setUninstallState('error');
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center">
+      <div className="fixed inset-0 bg-black/60" onClick={onClose} />
+      <div className="relative bg-[#161b22] border border-[#30363d] rounded-lg shadow-2xl p-5 w-[360px] mx-4">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-sm font-semibold text-[#e6edf3]">Open WebUI</h3>
+          <button onClick={onClose} className="text-[#8b949e] hover:text-[#e6edf3] transition-colors text-lg leading-none">×</button>
+        </div>
+
+        <p className="text-[10px] text-[#484f58] mb-4">
+          Installs a filter function into Open WebUI that forwards prompts and responses to Layman.
+          Leave the API key blank if your instance runs without authentication. Otherwise generate one in Open WebUI under{' '}
+          <span className="text-[#8b949e]">Admin Panel → Settings → General → Enable API Key</span>, then{' '}
+          <span className="text-[#8b949e]">Profile → API Keys</span>.
+        </p>
+
+        {/* Status pips */}
+        {isInstalled && (
+          <div className="flex items-center gap-1.5 mb-4">
+            <StatusPip ok={isInstalled} label="filter" />
+            {!isUpToDate && <span className="text-[10px] text-[#d29922]">update available</span>}
+          </div>
+        )}
+
+        {/* URL */}
+        <div className="mb-3">
+          <div className="flex items-center justify-between mb-1">
+            <label className="text-xs text-[#8b949e]">Open WebUI URL</label>
+            <button
+              onClick={() => void handleDetect()}
+              disabled={detecting}
+              className="text-[10px] text-[#58a6ff] hover:text-[#79c0ff] disabled:opacity-40 transition-colors"
+            >
+              {detecting ? 'Detecting…' : '⟳ Auto-detect'}
+            </button>
+          </div>
+          <input
+            type="text"
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+            placeholder="http://localhost:3000"
+            className="w-full px-3 py-1.5 text-xs bg-[#0d1117] border border-[#30363d] rounded-md text-[#e6edf3] placeholder-[#484f58] focus:outline-none focus:border-[#58a6ff]"
+          />
+          {detectResult && (
+            <p className={`text-[10px] mt-1 ${detectResult.startsWith('Detected') ? 'text-[#3fb950]' : 'text-[#484f58]'}`}>
+              {detectResult}
+            </p>
+          )}
+        </div>
+
+        {/* API Key */}
+        <div className="mb-4">
+          <label className="text-xs text-[#8b949e] block mb-1">
+            API Key <span className="text-[#484f58]">(leave blank if auth is disabled)</span>
+          </label>
+          <input
+            type="password"
+            value={apiKey}
+            onChange={(e) => setApiKey(e.target.value)}
+            placeholder="sk-… or leave blank"
+            className="w-full px-3 py-1.5 text-xs bg-[#0d1117] border border-[#30363d] rounded-md text-[#e6edf3] placeholder-[#484f58] focus:outline-none focus:border-[#58a6ff]"
+          />
+        </div>
+
+        {installError && (
+          <p className="text-[10px] text-[#f85149] mb-3">{installError}</p>
+        )}
+        {installState === 'success' && (
+          <p className="text-[10px] text-[#3fb950] mb-3">Filter function installed successfully.</p>
+        )}
+
+        <div className="flex items-center gap-2 justify-between">
+          <div className="flex gap-2">
+            {isInstalled && (
+              <button
+                onClick={() => void handleUninstall()}
+                disabled={uninstallState === 'busy'}
+                className="px-3 py-1.5 text-xs rounded bg-[#21262d] border border-[#30363d] text-[#8b949e] hover:text-[#f85149] hover:bg-[#30363d] disabled:opacity-50 transition-colors"
+              >
+                {uninstallState === 'busy' ? '…' : uninstallState === 'error' ? 'Failed' : 'Uninstall'}
+              </button>
+            )}
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={() => { handleSaveConfig(); onClose(); }}
+              className="px-3 py-1.5 text-xs rounded bg-[#21262d] border border-[#30363d] text-[#e6edf3] hover:bg-[#30363d] transition-colors"
+            >
+              Save
+            </button>
+            <button
+              onClick={() => void handleInstall()}
+              disabled={!url.trim() || installState === 'busy'}
+              className="px-3 py-1.5 text-xs font-medium rounded bg-[#238636] text-white hover:bg-[#2ea043] disabled:opacity-50 transition-colors"
+            >
+              {installState === 'busy' ? 'Installing…' : isInstalled && !isUpToDate ? 'Update' : 'Install'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function HarnessSetupSection({ onSend }: { onSend: (msg: ClientMessage) => void }) {
   const { setupStatus, setSetupStatus, config } = useSessionStore((s) => ({
     setupStatus: s.setupStatus,
@@ -104,6 +290,7 @@ export function HarnessSetupSection({ onSend }: { onSend: (msg: ClientMessage) =
     config: s.config,
   }));
   const [clientState, setClientState] = useState<Record<string, 'idle' | 'busy' | 'error'>>({});
+  const [openWebUIDialogOpen, setOpenWebUIDialogOpen] = useState(false);
 
   const handleInstallClient = useCallback(async (id: string) => {
     setClientState((s) => ({ ...s, [id]: 'busy' }));
@@ -135,14 +322,17 @@ export function HarnessSetupSection({ onSend }: { onSend: (msg: ClientMessage) =
     }
   }, [setSetupStatus]);
 
-
   const claudeCodeOk = !!(setupStatus?.hooksInstalled && setupStatus.commandInstalled);
   const claudeCodeUpToDate = !!(setupStatus?.hooksUpToDate && setupStatus.commandUpToDate && setupStatus.statusLineUpToDate);
   const optionalClients: OptionalClientStatus[] = setupStatus?.optionalClients ?? [];
+  const owuiStatus = optionalClients.find((c) => c.id === 'open-webui');
+  // Separate out Open WebUI from the standard list since it has different UX
+  const standardClients = optionalClients.filter((c) => c.id !== 'open-webui');
 
   const claudeState = clientState['claude-code'] ?? 'idle';
 
   return (
+    <>
     <div className="space-y-2">
       {/* Claude Code row */}
       <div className="flex items-center justify-between min-h-[28px]">
@@ -212,8 +402,8 @@ export function HarnessSetupSection({ onSend }: { onSend: (msg: ClientMessage) =
         </div>
       )}
 
-      {/* Optional clients */}
-      {optionalClients.map((client) => {
+      {/* Standard optional clients (auto-detected by local config dir) */}
+      {standardClients.map((client) => {
         const state = clientState[client.id] ?? 'idle';
         const commandOk = client.commandInstalled && client.commandUpToDate;
         const hooksOk = client.hooksInstalled === undefined || client.hooksUpToDate !== false;
@@ -293,7 +483,36 @@ export function HarnessSetupSection({ onSend }: { onSend: (msg: ClientMessage) =
           </div>
         );
       })}
+
+      {/* Open WebUI — always shown, configured via dialog */}
+      <div className="flex items-center justify-between min-h-[28px]">
+        <div className="flex items-center gap-2">
+          <span className={`text-xs ${owuiStatus?.hooksInstalled ? 'text-[#e6edf3]' : 'text-[#484f58]'}`}>
+            Open WebUI
+          </span>
+          {owuiStatus?.hooksInstalled && (
+            <StatusPip ok={!!owuiStatus.hooksUpToDate} label="filter" />
+          )}
+        </div>
+        <button
+          onClick={() => setOpenWebUIDialogOpen(true)}
+          className="px-2 py-0.5 text-[10px] font-medium rounded bg-[#21262d] border border-[#30363d] text-[#e6edf3] hover:bg-[#30363d] transition-colors"
+        >
+          {owuiStatus?.hooksInstalled && !owuiStatus.hooksUpToDate ? 'Update' : 'Configure'}
+        </button>
+      </div>
     </div>
+
+    {openWebUIDialogOpen && config && (
+      <OpenWebUIConfigDialog
+        config={config}
+        owuiStatus={owuiStatus}
+        onSend={onSend}
+        onClose={() => setOpenWebUIDialogOpen(false)}
+        onStatusChange={setSetupStatus}
+      />
+    )}
+    </>
   );
 }
 

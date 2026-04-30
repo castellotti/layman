@@ -13,6 +13,7 @@ import { SessionGate } from './hooks/gate.js';
 import { HookInstaller } from './hooks/installer.js';
 import { registerHookHandler } from './hooks/handler.js';
 import { registerClineHookHandler } from './cline/handler.js';
+import { registerOpenWebUIHookHandler } from './openwebui/handler.js';
 import { AnalysisEngine } from './analysis/engine.js';
 import { DriftMonitor } from './drift/monitor.js';
 import { resolveEndpoint } from './analysis/providers/openai-compat.js';
@@ -34,10 +35,13 @@ import type { ServerMessage, ClientMessage, SessionStatus, SetupStatus } from '.
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const { version: SERVER_VERSION } = JSON.parse(readFileSync(resolve(__dirname, '../package.json'), 'utf-8')) as { version: string };
 
-function mergeDeclined(status: SetupStatus, declinedClients: string[]): SetupStatus {
+function mergeDeclined(status: SetupStatus, declinedClients: string[], openWebUiUrl?: string): SetupStatus {
   status.claudeCodeDeclined = declinedClients.includes('claude-code');
   for (const c of status.optionalClients) {
     c.declined = declinedClients.includes(c.id);
+    if (c.id === 'open-webui') {
+      c.detected = !!(openWebUiUrl?.trim());
+    }
   }
   return status;
 }
@@ -76,6 +80,11 @@ export function createServer(config: LaymanConfig): LaymanServer {
 
   let activeConfig = config;
   const getConfig = (): LaymanConfig => activeConfig;
+  const makeInstaller = (): HookInstaller =>
+    new HookInstaller({
+      serverUrl: activeConfig.hookUrl ?? `http://${activeConfig.host}:${activeConfig.port}`,
+      hookTimeout: activeConfig.hookTimeout,
+    });
 
   const vibeWatcher = new VibeSessionWatcher(eventStore, gate, getConfig);
 
@@ -513,21 +522,13 @@ export function createServer(config: LaymanConfig): LaymanServer {
 
     // Setup status — check if hooks and slash command are installed
     fastify.get('/api/setup/status', async () => {
-      const resolvedHookUrl = activeConfig.hookUrl ?? `http://${activeConfig.host}:${activeConfig.port}`;
-      const installer = new HookInstaller({
-        serverUrl: resolvedHookUrl,
-        hookTimeout: activeConfig.hookTimeout,
-      });
-      return mergeDeclined(installer.getStatus(), activeConfig.declinedClients ?? []);
+      const installer = makeInstaller();
+      return mergeDeclined(installer.getStatus(), activeConfig.declinedClients ?? [], activeConfig.openWebUiUrl);
     });
 
     // Setup install — install selected clients (by id array) or all if omitted
     fastify.post<{ Body: { clients?: string[] } }>('/api/setup/install', async (request) => {
-      const resolvedHookUrl = activeConfig.hookUrl ?? `http://${activeConfig.host}:${activeConfig.port}`;
-      const installer = new HookInstaller({
-        serverUrl: resolvedHookUrl,
-        hookTimeout: activeConfig.hookTimeout,
-      });
+      const installer = makeInstaller();
       const { clients } = request.body ?? {};
       if (clients && clients.length > 0) {
         for (const id of clients) installer.installClient(id);
@@ -544,36 +545,28 @@ export function createServer(config: LaymanConfig): LaymanServer {
         installer.installCodexHooks();
         installer.installClineHooks();
       }
-      return mergeDeclined(installer.getStatus(), activeConfig.declinedClients ?? []);
+      return mergeDeclined(installer.getStatus(), activeConfig.declinedClients ?? [], activeConfig.openWebUiUrl);
     });
 
     // Setup install single client
     fastify.post<{ Params: { client: string } }>('/api/setup/install/:client', async (request) => {
       const { client } = request.params;
-      const resolvedHookUrl = activeConfig.hookUrl ?? `http://${activeConfig.host}:${activeConfig.port}`;
-      const installer = new HookInstaller({
-        serverUrl: resolvedHookUrl,
-        hookTimeout: activeConfig.hookTimeout,
-      });
+      const installer = makeInstaller();
       installer.installClient(client);
       activeConfig = updateConfig({
         declinedClients: (activeConfig.declinedClients ?? []).filter((c) => c !== client),
       });
       saveConfig(activeConfig);
       broadcast({ type: 'session:config', config: activeConfig });
-      return mergeDeclined(installer.getStatus(), activeConfig.declinedClients ?? []);
+      return mergeDeclined(installer.getStatus(), activeConfig.declinedClients ?? [], activeConfig.openWebUiUrl);
     });
 
     // Setup uninstall single client
     fastify.post<{ Params: { client: string } }>('/api/setup/uninstall/:client', async (request) => {
       const { client } = request.params;
-      const resolvedHookUrl = activeConfig.hookUrl ?? `http://${activeConfig.host}:${activeConfig.port}`;
-      const installer = new HookInstaller({
-        serverUrl: resolvedHookUrl,
-        hookTimeout: activeConfig.hookTimeout,
-      });
+      const installer = makeInstaller();
       installer.uninstallClient(client);
-      return mergeDeclined(installer.getStatus(), activeConfig.declinedClients ?? []);
+      return mergeDeclined(installer.getStatus(), activeConfig.declinedClients ?? [], activeConfig.openWebUiUrl);
     });
 
     // Record declined clients
@@ -597,9 +590,61 @@ export function createServer(config: LaymanConfig): LaymanServer {
       });
       saveConfig(activeConfig);
       broadcast({ type: 'session:config', config: activeConfig });
-      const resolvedHookUrl = activeConfig.hookUrl ?? `http://${activeConfig.host}:${activeConfig.port}`;
-      const installer = new HookInstaller({ serverUrl: resolvedHookUrl, hookTimeout: activeConfig.hookTimeout });
-      return mergeDeclined(installer.getStatus(), activeConfig.declinedClients ?? []);
+      return mergeDeclined(makeInstaller().getStatus(), activeConfig.declinedClients ?? [], activeConfig.openWebUiUrl);
+    });
+
+    // Open WebUI: install filter function via the Open WebUI REST API
+    fastify.post('/api/setup/openwebui/install', async (_request, reply) => {
+      const url = activeConfig.openWebUiUrl?.trim();
+      const apiKey = activeConfig.openWebUiApiKey?.trim();
+      if (!url) return reply.status(400).send({ error: 'openWebUiUrl not configured' });
+      const installer = makeInstaller();
+      try {
+        await installer.installOpenWebUIFunction(url, apiKey ?? '');
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        return reply.status(400).send({ error: msg });
+      }
+      return mergeDeclined(installer.getStatus(), activeConfig.declinedClients ?? [], activeConfig.openWebUiUrl);
+    });
+
+    // Open WebUI: uninstall filter function
+    fastify.post('/api/setup/openwebui/uninstall', async (_request, reply) => {
+      const url = activeConfig.openWebUiUrl?.trim();
+      const apiKey = activeConfig.openWebUiApiKey?.trim();
+      if (!url) return reply.status(400).send({ error: 'openWebUiUrl not configured' });
+      const installer = makeInstaller();
+      try {
+        await installer.uninstallOpenWebUIFunction(url, apiKey ?? '');
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        return reply.status(400).send({ error: msg });
+      }
+      return mergeDeclined(installer.getStatus(), activeConfig.declinedClients ?? [], activeConfig.openWebUiUrl);
+    });
+
+    // Open WebUI: probe common URLs in parallel to auto-detect a running instance
+    fastify.post('/api/setup/openwebui/detect', async (_request, reply) => {
+      const candidates = [
+        'http://host.docker.internal:3000',
+        'http://host.docker.internal:8080',
+        'http://localhost:3000',
+        'http://localhost:8080',
+      ];
+      const results = await Promise.all(
+        candidates.map(async (url) => {
+          try {
+            const res = await fetch(`${url}/api/version`, { signal: AbortSignal.timeout(2000) });
+            if (res.ok) {
+              const data = await res.json().catch(() => ({})) as { version?: string };
+              return { detected: true as const, url, version: data.version ?? null };
+            }
+          } catch { /* not reachable */ }
+          return null;
+        })
+      );
+      const found = results.find((r) => r !== null) ?? null;
+      return reply.send(found ?? { detected: false, url: null, version: null });
     });
 
     // Send a prompt to an OpenCode session.
@@ -1210,6 +1255,7 @@ export function createServer(config: LaymanConfig): LaymanServer {
   // Register hook handler routes
   registerHookHandler(fastify, pendingManager, eventStore, analysisEngine, getConfig, gate, driftMonitor);
   registerClineHookHandler(fastify, pendingManager, eventStore, analysisEngine, getConfig, gate);
+  registerOpenWebUIHookHandler(fastify, eventStore, gate, db);
 
   let resolvedPort = config.port;
 
