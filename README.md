@@ -354,7 +354,7 @@ From that point on, all tool calls in that workspace are monitored. If you switc
 
 ### Open WebUI
 
-Open WebUI uses a filter function that Layman installs directly into your Open WebUI instance via its REST API. Once installed, **all** Open WebUI chat sessions are automatically monitored — no per-session activation step is needed.
+Open WebUI uses a filter function that Layman installs directly into your Open WebUI instance via its REST API. Once installed, **all** Open WebUI chat sessions are automatically monitored - no per-session activation step is needed.
 
 **Installation (first time or after a Layman update):**
 
@@ -365,7 +365,7 @@ Open WebUI uses a filter function that Layman installs directly into your Open W
 
 **Usage:**
 
-Once installed, start any Open WebUI chat — the session appears in the Layman dashboard automatically within seconds of your first message.
+Once installed, start any Open WebUI chat - the session appears in the Layman dashboard automatically within seconds of your first message.
 
 **Docker networking note:**
 
@@ -373,9 +373,8 @@ If Open WebUI runs in Docker, its filter function must be able to reach Layman a
 
 **Notes:**
 - The filter captures user prompts (via Open WebUI's `inlet` hook) and AI responses (via `outlet`).
-- Multi-modal content (images) and thinking blocks are supported — text portions are extracted automatically.
+- Multi-modal content (images) and thinking blocks are supported - text portions are extracted automatically.
 - Tool approval from the Layman UI is not supported (Open WebUI has no mechanism to pause generation mid-stream).
-- The filter version is kept in sync with Layman's version number and is updated automatically when you click **Install** in Settings.
 
 ---
 
