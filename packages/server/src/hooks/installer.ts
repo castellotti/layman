@@ -832,7 +832,7 @@ export class HookInstaller {
     let response: Response | null = null;
     for (const url of this.owuiUrls(openWebUiUrl, '/create')) {
       try {
-        response = await fetch(url, { method: 'POST', headers: this.openWebUIHeaders(apiKey), body });
+        response = await fetch(url, { method: 'POST', headers: this.openWebUIHeaders(apiKey), body, signal: AbortSignal.timeout(15000) });
         break; // stop on any HTTP response
       } catch {
         // Connection refused or similar — try next URL
@@ -888,22 +888,30 @@ export class HookInstaller {
 
     // Toggle active if not already enabled
     if (!isActive) {
+      let activated = false;
       for (const url of this.owuiUrls(openWebUiUrl, `/id/${id}/toggle`)) {
         try {
           const res = await fetch(url, { method: 'POST', headers });
-          if (res.ok || res.status === 404) break;
+          if (res.ok) { activated = true; break; }
+          if (res.status === 404) continue;
+          break;
         } catch { break; }
       }
+      if (!activated) throw new Error('Failed to enable Open WebUI filter — toggle endpoint did not succeed');
     }
 
     // Toggle global if not already global
     if (!isGlobal) {
+      let globalized = false;
       for (const url of this.owuiUrls(openWebUiUrl, `/id/${id}/toggle/global`)) {
         try {
           const res = await fetch(url, { method: 'POST', headers });
-          if (res.ok || res.status === 404) break;
+          if (res.ok) { globalized = true; break; }
+          if (res.status === 404) continue;
+          break;
         } catch { break; }
       }
+      if (!globalized) throw new Error('Failed to make Open WebUI filter global — toggle/global endpoint did not succeed');
     }
   }
 
@@ -911,13 +919,14 @@ export class HookInstaller {
     const id = OPENWEBUI_FUNCTION_ID;
     const body = JSON.stringify({ id, ...OPENWEBUI_FUNCTION_META, content });
     for (const url of this.owuiUrls(openWebUiUrl, `/id/${id}/update`)) {
-      const response = await fetch(url, { method: 'POST', headers: this.openWebUIHeaders(apiKey), body });
+      const response = await fetch(url, { method: 'POST', headers: this.openWebUIHeaders(apiKey), body, signal: AbortSignal.timeout(15000) });
       if (response.ok) return;
       if (response.status === 404) continue; // try next path
       if (response.status === 401) throw new Error(HookInstaller.OWUI_AUTH_ERR);
       const text = await response.text();
       throw new Error(`Open WebUI update error ${response.status}: ${text}`);
     }
+    throw new Error('Open WebUI update failed — function not found on any API path');
   }
 
   /** Remove the Layman filter function from Open WebUI. */

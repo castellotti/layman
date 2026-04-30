@@ -26,10 +26,13 @@ export function registerOpenWebUIHookHandler(
   db: Database,
 ): void {
   // Seed from DB so a server restart doesn't re-emit session_start for existing chats
-  const rows = db.prepare(
-    'SELECT session_id FROM recorded_sessions WHERE agent_type = ?'
-  ).all(AGENT_TYPE) as Array<{ session_id: string }>;
-  const knownSessions = new Set<string>(rows.map((r) => r.session_id));
+  let knownSessions = new Set<string>();
+  try {
+    const rows = db.prepare(
+      'SELECT session_id FROM recorded_sessions WHERE agent_type = ?'
+    ).all(AGENT_TYPE) as Array<{ session_id: string }>;
+    knownSessions = new Set(rows.map((r) => r.session_id));
+  } catch { /* non-fatal: empty set means existing sessions re-emit session_start once */ }
 
   fastify.post<{ Body: OpenWebUIHookInput }>(
     '/hooks/openwebui',
