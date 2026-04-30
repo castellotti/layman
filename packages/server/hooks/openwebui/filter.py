@@ -2,7 +2,7 @@
 title: Layman Monitor
 author: layman
 description: Captures user prompts and AI responses and forwards them to Layman for monitoring.
-version: 0.4.2
+version: 0.5.0
 license: MIT
 """
 
