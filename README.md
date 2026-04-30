@@ -11,7 +11,7 @@
   * Opt-in required
   * PII filtered by default
 
-When AI coding assistants like Claude Code, Codex, OpenCode, Mistral Vibe, or Cline help you build software, they do it by reading your files, writing code, and performing dozens of actions per session.
+When AI coding assistants like Claude Code, Codex, OpenCode, Mistral Vibe, Cline, or Open WebUI help you build software, they do it by reading your files, writing code, and performing dozens of actions per session.
 
 Layman is a dashboard that explains exactly what your AI assistants are doing, in plain language, in your web browser. Understand and remember every file AI reads, every change AI makes, every command AI runs.
 
@@ -25,6 +25,7 @@ Layman is a dashboard that explains exactly what your AI assistants are doing, i
 - Mistral [Vibe](https://github.com/mistralai/mistral-vibe)
 - [OpenCode](https://github.com/anomalyco/opencode)
 - [Cline](https://github.com/cline/cline)
+- [Open WebUI](https://github.com/open-webui/open-webui)
 
 ---
 
@@ -146,6 +147,7 @@ Agent badges in session cards:
 * **OC** = OpenCode
 * **MV** = Mistral Vibe
 * **CL** = Cline
+* **OW** = Open WebUI
 
 ---
 
@@ -347,6 +349,32 @@ From that point on, all tool calls in that workspace are monitored. If you switc
 - Tool approval/denial from the Layman UI is supported - Cline will pause and wait up to 25 seconds for your decision before auto-allowing.
 - Prompt submission from the Layman UI is not supported (Cline has no inbound HTTP API).
 - Agent responses are captured when Cline uses `attempt_completion`; purely conversational inline replies may not appear.
+
+---
+
+### Open WebUI
+
+Open WebUI uses a filter function that Layman installs directly into your Open WebUI instance via its REST API. Once installed, **all** Open WebUI chat sessions are automatically monitored - no per-session activation step is needed.
+
+**Installation (first time or after a Layman update):**
+
+1. Open the Layman dashboard → **Settings → Client Setup** → click **Configure** next to Open WebUI.
+2. Enter your Open WebUI URL (e.g. `http://localhost:3000`). Click **⟳ Auto-detect** to find a running instance automatically.
+3. If your Open WebUI instance requires authentication, enter an API key. Generate one under **Admin Panel → Settings → General → Enable API Key Authentication**, then **Profile → API Keys**. Leave blank if auth is disabled.
+4. Click **Install**. Layman pushes the filter function to Open WebUI and enables it globally.
+
+**Usage:**
+
+Once installed, start any Open WebUI chat - the session appears in the Layman dashboard automatically within seconds of your first message.
+
+**Docker networking note:**
+
+If Open WebUI runs in Docker, its filter function must be able to reach Layman across the Docker network boundary. Layman handles this automatically: if the Open WebUI URL you enter contains `host.docker.internal`, the callback URL embedded in the filter is rewritten to use `host.docker.internal` instead of `localhost`, so the filter can POST to Layman from inside the container.
+
+**Notes:**
+- The filter captures user prompts (via Open WebUI's `inlet` hook) and AI responses (via `outlet`).
+- Multi-modal content (images) and thinking blocks are supported - text portions are extracted automatically.
+- Tool approval from the Layman UI is not supported (Open WebUI has no mechanism to pause generation mid-stream).
 
 ---
 

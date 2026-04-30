@@ -110,6 +110,21 @@ export function DriftMonitorPanel({ focusedSessionId }: DriftMonitorPanelProps) 
     navigateFromDashboardToLogs: s.navigateFromDashboardToLogs,
   }));
 
+  const handleBarClick = useCallback((sessionId: string, driftType: 'session_goal' | 'rules') => {
+    const events = useSessionStore.getState().events;
+    for (let i = events.length - 1; i >= 0; i--) {
+      const e = events[i];
+      if (
+        (e.type === 'drift_check' || e.type === 'drift_alert') &&
+        e.sessionId === sessionId &&
+        e.data.driftType === driftType
+      ) {
+        navigateFromDashboardToLogs(sessionId, e.id);
+        return;
+      }
+    }
+  }, [navigateFromDashboardToLogs]);
+
   if (!config?.driftMonitoring?.enabled) return null;
 
   // Match dashboard session card visibility: active and not dismissed
@@ -128,21 +143,6 @@ export function DriftMonitorPanel({ focusedSessionId }: DriftMonitorPanelProps) 
     const ds = driftState.get(sid);
     if (ds) sessionsWithData.push({ sessionId: sid, ds });
   }
-
-  const handleBarClick = useCallback((sessionId: string, driftType: 'session_goal' | 'rules') => {
-    const events = useSessionStore.getState().events;
-    for (let i = events.length - 1; i >= 0; i--) {
-      const e = events[i];
-      if (
-        (e.type === 'drift_check' || e.type === 'drift_alert') &&
-        e.sessionId === sessionId &&
-        e.data.driftType === driftType
-      ) {
-        navigateFromDashboardToLogs(sessionId, e.id);
-        return;
-      }
-    }
-  }, [navigateFromDashboardToLogs]);
 
   if (sessionsWithData.length === 0) {
     return (

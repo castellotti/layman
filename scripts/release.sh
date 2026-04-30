@@ -89,10 +89,20 @@ for PKG in \
   fi
 done
 
+# Bump version in Open WebUI filter
+FILTER_PY="$REPO_ROOT/packages/server/hooks/openwebui/filter.py"
+EXTRA_GIT_FILES=()
+if [[ -f "$FILTER_PY" ]]; then
+  sed -i '' "s/^version: .*/version: $VERSION/" "$FILTER_PY"
+  echo "Bumped $FILTER_PY → $VERSION"
+  EXTRA_GIT_FILES+=("$FILTER_PY")
+fi
+
 git add \
   "$REPO_ROOT/package.json" \
   "$REPO_ROOT/packages/server/package.json" \
-  "$REPO_ROOT/packages/web/package.json"
+  "$REPO_ROOT/packages/web/package.json" \
+  "${EXTRA_GIT_FILES[@]+"${EXTRA_GIT_FILES[@]}"}"
 
 git commit -m "chore: release $TAG"
 echo "Committed version bump"
