@@ -44,52 +44,6 @@ interface EventCardProps {
   showAgentBadge?: boolean;
 }
 
-function getEventSummary(event: TimelineEvent): string {
-  const { data, type } = event;
-
-  switch (type) {
-    case 'tool_call_pending':
-    case 'tool_call_approved':
-    case 'tool_call_denied':
-    case 'tool_call_delegated':
-    case 'tool_call_completed':
-    case 'tool_call_failed':
-    case 'permission_request':
-      return data.toolName ?? 'Unknown tool';
-    case 'user_prompt':
-      return `"${(data.prompt ?? '').slice(0, 80)}"`;
-    case 'agent_response':
-      return extractReasoning(data.prompt ?? '').response.slice(0, 80);
-    case 'agent_stop':
-      return 'agent stop';
-    case 'session_start':
-      return `Session started (${data.source ?? 'startup'})`;
-    case 'session_end':
-      return 'Session ended';
-    case 'notification':
-      return data.notificationType ?? 'Notification';
-    case 'subagent_start':
-      return `Subagent started: ${data.agentType ?? 'unknown'}`;
-    case 'subagent_stop':
-      return `Subagent stopped: ${data.agentType ?? 'unknown'}`;
-    case 'stop_failure':
-      return data.error ?? 'API error';
-    case 'pre_compact':
-      return 'Compaction starting';
-    case 'post_compact':
-      return 'Compaction complete';
-    case 'elicitation':
-      return (data.prompt ?? 'MCP structured input request').slice(0, 80);
-    case 'elicitation_result':
-      return (data.prompt ?? 'MCP structured input result').slice(0, 80);
-    case 'drift_check':
-      return `${data.driftType === 'rules' ? 'Rules' : 'Session'} drift: ${data.driftPct ?? 0}% (${data.driftLevel ?? 'green'})`;
-    case 'drift_alert':
-      return `Drift alert: ${data.driftType === 'rules' ? 'Rules' : 'Session'} → ${data.driftLevel ?? 'red'}`;
-    default:
-      return type;
-  }
-}
 
 function formatToolInput(toolInput: Record<string, unknown>): string {
   // Special handling for Bash command
@@ -240,9 +194,9 @@ export function EventCard({ event, index, isSelected, onClick, onSend, collapseH
         )}
 
         {/* Prompt text if present */}
-        {event.data.prompt && !event.data.toolName && (
+        {(isAgentResponse ? effectivePrompt : event.data.prompt) && !event.data.toolName && (
           <span className="text-xs text-[#58a6ff] truncate italic">
-            {event.data.prompt.slice(0, 60)}
+            {(isAgentResponse ? effectivePrompt! : event.data.prompt!).slice(0, 60)}
           </span>
         )}
 

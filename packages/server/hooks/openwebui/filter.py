@@ -2,7 +2,7 @@
 title: Layman Monitor
 author: layman
 description: Captures user prompts and AI responses and forwards them to Layman for monitoring.
-version: 0.5.0
+version: 0.5.1
 license: MIT
 """
 
@@ -26,7 +26,7 @@ _REASONING_PATTERNS = [
 ]
 
 
-def _extract_reasoning(text: str):
+def _extract_reasoning(text: str) -> tuple[str | None, str]:
     """Strip reasoning/thinking blocks from *text*, returning (thinking, response).
 
     *thinking* is the concatenated inner text of all matched blocks (HTML-unescaped),

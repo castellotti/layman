@@ -10,6 +10,42 @@ import { isMarkdown, MARKDOWN_PROSE, REMARK_PLUGINS } from '../../lib/markdown.j
 import { extractReasoning } from '../../lib/reasoning.js';
 import type { ClientMessage } from '../../lib/ws-protocol.js';
 
+function AgentResponsePrompt({ event }: { event: { type: string; data: { prompt?: unknown; thinking?: string } } }) {
+  const rawPrompt = (event.data.prompt as string | undefined) ?? '';
+  const { thinking: extractedThinking, response: cleanedPrompt } =
+    event.type === 'agent_response' && !event.data.thinking
+      ? extractReasoning(rawPrompt)
+      : { thinking: null, response: rawPrompt };
+  const displayThinking = event.data.thinking ?? extractedThinking;
+  const displayPrompt = event.type === 'agent_response' ? cleanedPrompt : rawPrompt;
+  return (
+    <>
+      {displayThinking && (
+        <div className="bg-[#0d1117] border border-[#6e40c9]/30 rounded-md overflow-hidden mb-2">
+          <details>
+            <summary className="px-3 py-1 border-b border-[#6e40c9]/20 cursor-pointer text-[10px] text-[#8957e5] font-mono uppercase select-none">
+              Thinking
+            </summary>
+            <div className={`px-3 py-2 border-l-2 border-[#6e40c9]/50 ${MARKDOWN_PROSE} text-[#8b949e]`}>
+              <MarkdownOrText text={displayThinking} />
+            </div>
+          </details>
+        </div>
+      )}
+      {displayPrompt && (
+        <div className="bg-[#0d1117] border border-[#30363d] rounded-md overflow-hidden">
+          <div className="flex items-center justify-end px-3 py-1 border-b border-[#30363d]">
+            <CopyButton text={displayPrompt} />
+          </div>
+          <div className="px-3 py-2 border-l-2 border-[#58a6ff]">
+            <MarkdownOrText text={displayPrompt} />
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
 function MarkdownOrText({ text, className }: { text: string; className?: string }) {
   if (isMarkdown(text)) {
     return <div className={className ?? MARKDOWN_PROSE}><ReactMarkdown remarkPlugins={REMARK_PLUGINS}>{text}</ReactMarkdown></div>;
@@ -271,40 +307,7 @@ export function InvestigationPanel({ onSend, eventId: embeddedEventId, onClose }
             />
           )}
 
-          {event.data.prompt && (() => {
-            const isAgentResp = event.type === 'agent_response';
-            const rawPrompt = event.data.prompt as string;
-            const { thinking: extractedThinking, response: cleanedPrompt } =
-              isAgentResp && !event.data.thinking ? extractReasoning(rawPrompt) : { thinking: null, response: rawPrompt };
-            const displayThinking = event.data.thinking ?? extractedThinking;
-            const displayPrompt = isAgentResp ? cleanedPrompt : rawPrompt;
-            return (
-              <>
-                {displayThinking && (
-                  <div className="bg-[#0d1117] border border-[#6e40c9]/30 rounded-md overflow-hidden mb-2">
-                    <details>
-                      <summary className="px-3 py-1 border-b border-[#6e40c9]/20 cursor-pointer text-[10px] text-[#8957e5] font-mono uppercase select-none">
-                        Thinking
-                      </summary>
-                      <div className={`px-3 py-2 border-l-2 border-[#6e40c9]/50 ${MARKDOWN_PROSE} text-[#8b949e]`}>
-                        <MarkdownOrText text={displayThinking} />
-                      </div>
-                    </details>
-                  </div>
-                )}
-                {displayPrompt && (
-                  <div className="bg-[#0d1117] border border-[#30363d] rounded-md overflow-hidden">
-                    <div className="flex items-center justify-end px-3 py-1 border-b border-[#30363d]">
-                      <CopyButton text={displayPrompt} />
-                    </div>
-                    <div className="px-3 py-2 border-l-2 border-[#58a6ff]">
-                      <MarkdownOrText text={displayPrompt} />
-                    </div>
-                  </div>
-                )}
-              </>
-            );
-          })()}
+          {event.data.prompt && <AgentResponsePrompt event={event} />}
         </div>
 
         {/* Layman's Terms section */}
