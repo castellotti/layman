@@ -855,9 +855,10 @@ export class HookInstaller {
     // Enable the function and make it global so it applies to all chats
     await this.ensureOpenWebUIFunctionActive(openWebUiUrl, apiKey);
 
-    // Write version marker
+    // Write version marker using unsubstituted template so the hash is URL-agnostic.
+    // getOpenWebUIFunctionStatus() reads the same unsubstituted content, so hashes always match.
     if (!existsSync(LAYMAN_DATA_DIR)) mkdirSync(LAYMAN_DATA_DIR, { recursive: true });
-    writeFileSync(OPENWEBUI_VERSION_FILE, commandHash(content), 'utf-8');
+    writeFileSync(OPENWEBUI_VERSION_FILE, commandHash(this.getOpenWebUIFilterContent()), 'utf-8');
     console.log(`Open WebUI filter function installed at ${openWebUiUrl}`);
   }
 

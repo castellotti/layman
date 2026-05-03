@@ -7,6 +7,7 @@ import { EVENT_ICONS, BORDER_COLORS, NODE_BORDER_COLORS, AGENT_BADGES } from '..
 import { RiskBadge } from '../shared/RiskBadge.js';
 import type { TimelineEvent } from '../../lib/types.js';
 import type { SessionInfo, ClientMessage } from '../../lib/ws-protocol.js';
+import { stripReasoning } from '../../lib/reasoning.js';
 
 interface SessionCardProps {
   session: SessionInfo;
@@ -271,7 +272,8 @@ function RiskAlertFeed({ events, onDrilldown, sessionId, expanded }: {
 function getTooltipContent(event: TimelineEvent): string | null {
   const { data, type } = event;
   if (data.prompt && (type === 'user_prompt' || type === 'agent_response' || type === 'elicitation')) {
-    return data.prompt as string;
+    const text = data.prompt as string;
+    return type === 'agent_response' ? (data.thinking ? text : stripReasoning(text)) : text;
   }
   if (data.toolInput) {
     const input = data.toolInput as Record<string, unknown>;
@@ -416,7 +418,10 @@ function DashboardEventRow({
         {/* Prompt preview (only when no tool name) */}
         {event.data.prompt && !event.data.toolName && (
           <span className="text-[10px] text-[#58a6ff] truncate min-w-0 italic">
-            {(event.data.prompt as string).slice(0, 50)}
+            {(event.type === 'agent_response' && !event.data.thinking
+              ? stripReasoning(event.data.prompt as string)
+              : (event.data.prompt as string)
+            ).slice(0, 50)}
           </span>
         )}
 

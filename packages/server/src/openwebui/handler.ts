@@ -60,8 +60,11 @@ export function registerOpenWebUIHookHandler(
             break;
           }
           case 'AgentResponse': {
-            if (body.response) {
-              eventStore.add('agent_response', chatId, { prompt: body.response }, undefined, AGENT_TYPE);
+            if (body.response || body.thinking) {
+              eventStore.add('agent_response', chatId, {
+                prompt: body.response,
+                thinking: body.thinking,
+              }, undefined, AGENT_TYPE);
             }
             break;
           }
