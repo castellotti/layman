@@ -96,11 +96,11 @@ export function EventCard({ event, index, isSelected, onClick, onSend, collapseH
   const isPending = event.type === 'tool_call_pending' || event.type === 'permission_request';
   const isAgentResponse = event.type === 'agent_response';
 
-  const { thinking: effectiveThinking, response: _response } = useMemo(
+  const { thinking: effectiveThinking, response: agentResponse } = useMemo(
     () => getEffectiveAgentContent(event),
     [event.type, event.data.thinking, event.data.prompt]
   );
-  const effectivePrompt = _response || undefined;
+  const effectivePrompt = agentResponse || undefined;
   const isFailed = event.type === 'tool_call_failed';
   const isUserPrompt = event.type === 'user_prompt';
   const isDriftEvent = event.type === 'drift_alert' || event.type === 'drift_check';
