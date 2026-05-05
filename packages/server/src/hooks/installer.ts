@@ -825,7 +825,8 @@ export class HookInstaller {
   /** Install the Layman filter function into Open WebUI via its REST API. */
   async installOpenWebUIFunction(openWebUiUrl: string, apiKey: string): Promise<void> {
     const callbackUrl = this.deriveOpenWebUICallbackUrl(openWebUiUrl);
-    const content = this.getOpenWebUIFilterContent(callbackUrl);
+    const template = this.getOpenWebUIFilterContent();
+    const content = template.replace(/__LAYMAN_URL__/g, callbackUrl);
     const body = JSON.stringify({ id: OPENWEBUI_FUNCTION_ID, ...OPENWEBUI_FUNCTION_META, content });
 
     // Try v1 path first (newer Open WebUI), fall back to legacy on network error
@@ -858,7 +859,6 @@ export class HookInstaller {
     // Write version marker using unsubstituted template so the hash is URL-agnostic.
     // getOpenWebUIFunctionStatus() reads the same unsubstituted content, so hashes always match.
     if (!existsSync(LAYMAN_DATA_DIR)) mkdirSync(LAYMAN_DATA_DIR, { recursive: true });
-    const template = this.getOpenWebUIFilterContent();
     writeFileSync(OPENWEBUI_VERSION_FILE, commandHash(template), 'utf-8');
     console.log(`Open WebUI filter function installed at ${openWebUiUrl}`);
   }

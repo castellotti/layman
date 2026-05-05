@@ -191,10 +191,13 @@ function OpenWebUIConfigDialog({
     }
   };
 
-  const primaryLabel = installState === 'busy' ? 'Installing…'
-    : !urlTrimmed || (isInstalled && isUpToDate) ? 'Save'
-    : !isInstalled ? 'Install'
-    : 'Update';
+  function getPrimaryLabel() {
+    if (installState === 'busy') return 'Installing…';
+    if (!urlTrimmed || (isInstalled && isUpToDate)) return 'Save';
+    if (!isInstalled) return 'Install';
+    return 'Update';
+  }
+  const primaryLabel = getPrimaryLabel();
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center">

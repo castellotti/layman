@@ -3,6 +3,7 @@ import ReactMarkdown from 'react-markdown';
 import type { TimelineEvent } from '../../lib/types.js';
 import type { ClientMessage } from '../../lib/ws-protocol.js';
 import { RiskBadge } from '../shared/RiskBadge.js';
+import { ThinkingBlock } from '../shared/ThinkingBlock.js';
 import { ApprovalBar } from '../controls/ApprovalBar.js';
 import { AnalysisCard } from '../analysis/AnalysisCard.js';
 import { CodeBlock } from '../shared/CodeBlock.js';
@@ -14,25 +15,7 @@ import { MARKDOWN_PROSE, REMARK_PLUGINS } from '../../lib/markdown.js';
 import { formatTime, formatDuration } from '../../lib/format.js';
 import { getEffectiveAgentContent } from '../../lib/reasoning.js';
 
-export function ThinkingBlock({ thinking }: { thinking: string }) {
-  const [open, setOpen] = useState(false);
-  return (
-    <div className="rounded-md border border-[#6e40c9]/30 overflow-hidden">
-      <button
-        className="w-full flex items-center justify-between px-3 py-1 bg-[#161b22] hover:bg-[#1c2128] transition-colors"
-        onClick={(e) => { e.stopPropagation(); setOpen((v) => !v); }}
-      >
-        <span className="text-[10px] text-[#8957e5] font-mono uppercase">Thinking {open ? '▲' : '▼'}</span>
-        <span className="text-[10px] text-[#484f58]">{thinking.length} chars</span>
-      </button>
-      {open && (
-        <div className={`p-3 border-l-2 border-[#6e40c9]/50 max-h-64 overflow-y-auto text-[#8b949e] ${MARKDOWN_PROSE}`}>
-          <ReactMarkdown remarkPlugins={REMARK_PLUGINS}>{thinking}</ReactMarkdown>
-        </div>
-      )}
-    </div>
-  );
-}
+export { ThinkingBlock } from '../shared/ThinkingBlock.js';
 
 interface EventCardProps {
   event: TimelineEvent;
@@ -100,7 +83,7 @@ export function EventCard({ event, index, isSelected, onClick, onSend, collapseH
     () => getEffectiveAgentContent(event),
     [event.type, event.data.thinking, event.data.prompt]
   );
-  const effectivePrompt = agentResponse || undefined;
+  const effectivePrompt = agentResponse.trim() ? agentResponse : undefined;
   const isFailed = event.type === 'tool_call_failed';
   const isUserPrompt = event.type === 'user_prompt';
   const isDriftEvent = event.type === 'drift_alert' || event.type === 'drift_check';
