@@ -135,8 +135,8 @@ class Filter:
                     if remainder:
                         text_parts.append(remainder)
 
-            response_text = " ".join(text_parts)
-            thinking_text = " ".join(thinking_parts)
+            response_text = "\n\n".join(text_parts)
+            thinking_text = "\n\n".join(thinking_parts)
             if response_text or thinking_text:
                 payload: dict = {
                     "event": "AgentResponse",

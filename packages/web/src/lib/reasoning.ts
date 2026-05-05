@@ -8,6 +8,7 @@
  * HTML).  New events have data.thinking set by the filter and data.prompt
  * already clean — this function is a no-op for those.
  */
+import type { TimelineEvent } from './types.js';
 
 const REASONING_PATTERNS: RegExp[] = [
   // <details type="reasoning" ...><summary>...</summary> ... </details>
@@ -64,4 +65,17 @@ export function extractReasoning(text: string): ExtractedReasoning {
 /** Strip reasoning blocks and return only the clean response text. */
 export function stripReasoning(text: string): string {
   return extractReasoning(text).response;
+}
+
+/**
+ * Return the effective thinking and response for any event.
+ * For agent_response events with data.thinking already set (new events from filter),
+ * returns them directly. For old events with embedded reasoning HTML in data.prompt,
+ * extracts it client-side. For all other event types, returns the prompt as-is.
+ */
+export function getEffectiveAgentContent(event: TimelineEvent): { thinking: string | null; response: string } {
+  const rawPrompt = (event.data.prompt as string | undefined) ?? '';
+  if (event.type !== 'agent_response') return { thinking: null, response: rawPrompt };
+  if (event.data.thinking) return { thinking: event.data.thinking, response: rawPrompt };
+  return extractReasoning(rawPrompt);
 }

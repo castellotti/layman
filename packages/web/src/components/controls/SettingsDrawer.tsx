@@ -114,9 +114,8 @@ function OpenWebUIConfigDialog({
   const [apiKey, setApiKey] = useState(config.openWebUiApiKey ?? '');
   const [detecting, setDetecting] = useState(false);
   const [detectResult, setDetectResult] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState(false);
+  const [installState, setInstallState] = useState<'idle' | 'busy' | 'error' | 'success'>('idle');
+  const [installError, setInstallError] = useState<string | null>(null);
   const [uninstallState, setUninstallState] = useState<'idle' | 'busy' | 'error'>('idle');
 
   const isInstalled = !!(owuiStatus?.hooksInstalled);
@@ -154,9 +153,8 @@ function OpenWebUIConfigDialog({
       return;
     }
 
-    setBusy(true);
-    setError(null);
-    setSuccess(false);
+    setInstallState('busy');
+    setInstallError(null);
     try {
       const res = await fetch('/api/setup/openwebui/install', {
         method: 'POST',
@@ -165,15 +163,15 @@ function OpenWebUIConfigDialog({
       });
       if (res.ok) {
         onStatusChange(await res.json() as SetupStatus);
-        setSuccess(true);
+        setInstallState('success');
       } else {
         const data = await res.json().catch(() => ({})) as { error?: string };
-        setError(data.error ?? `HTTP ${res.status}`);
+        setInstallError(data.error ?? `HTTP ${res.status}`);
+        setInstallState('error');
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setBusy(false);
+      setInstallError(e instanceof Error ? e.message : String(e));
+      setInstallState('error');
     }
   };
 
@@ -184,7 +182,7 @@ function OpenWebUIConfigDialog({
       if (res.ok) {
         onStatusChange(await res.json() as SetupStatus);
         setUninstallState('idle');
-        setSuccess(false);
+        setInstallState('idle');
       } else {
         setUninstallState('error');
       }
@@ -193,8 +191,7 @@ function OpenWebUIConfigDialog({
     }
   };
 
-  // Derive button label from current state
-  const primaryLabel = busy ? 'Installing…'
+  const primaryLabel = installState === 'busy' ? 'Installing…'
     : !urlTrimmed || (isInstalled && isUpToDate) ? 'Save'
     : !isInstalled ? 'Install'
     : 'Update';
@@ -263,10 +260,10 @@ function OpenWebUIConfigDialog({
           />
         </div>
 
-        {error && (
-          <p className="text-[10px] text-[#f85149] mb-3">{error}</p>
+        {installState === 'error' && installError && (
+          <p className="text-[10px] text-[#f85149] mb-3">{installError}</p>
         )}
-        {success && (
+        {installState === 'success' && (
           <p className="text-[10px] text-[#3fb950] mb-3">Filter function installed successfully.</p>
         )}
 
@@ -284,7 +281,7 @@ function OpenWebUIConfigDialog({
           </div>
           <button
             onClick={() => void handlePrimary()}
-            disabled={busy}
+            disabled={installState === 'busy'}
             className="px-3 py-1.5 text-xs font-medium rounded bg-[#238636] text-white hover:bg-[#2ea043] disabled:opacity-50 transition-colors"
           >
             {primaryLabel}

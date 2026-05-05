@@ -7,7 +7,7 @@ import { EVENT_ICONS, BORDER_COLORS, NODE_BORDER_COLORS, AGENT_BADGES } from '..
 import { RiskBadge } from '../shared/RiskBadge.js';
 import type { TimelineEvent } from '../../lib/types.js';
 import type { SessionInfo, ClientMessage } from '../../lib/ws-protocol.js';
-import { stripReasoning } from '../../lib/reasoning.js';
+import { stripReasoning, getEffectiveAgentContent } from '../../lib/reasoning.js';
 
 interface SessionCardProps {
   session: SessionInfo;
@@ -362,6 +362,12 @@ function DashboardEventRow({
     ? 'bg-[#1c1a0f] hover:bg-[#1c1a0f]/90'
     : 'bg-[#0c1018] hover:bg-[#161b22]';
 
+  const promptPreview = useMemo(() => {
+    if (!event.data.prompt || event.data.toolName) return null;
+    const { response } = getEffectiveAgentContent(event);
+    return response.slice(0, 50) || null;
+  }, [event.data.prompt, event.data.toolName, event.type, event.data.thinking]);
+
   // agent_stop special case (matches EventCard)
   if (event.type === 'agent_stop') {
     return (
@@ -416,12 +422,9 @@ function DashboardEventRow({
         )}
 
         {/* Prompt preview (only when no tool name) */}
-        {event.data.prompt && !event.data.toolName && (
+        {promptPreview && (
           <span className="text-[10px] text-[#58a6ff] truncate min-w-0 italic">
-            {(event.type === 'agent_response' && !event.data.thinking
-              ? stripReasoning(event.data.prompt as string)
-              : (event.data.prompt as string)
-            ).slice(0, 50)}
+            {promptPreview}
           </span>
         )}
 

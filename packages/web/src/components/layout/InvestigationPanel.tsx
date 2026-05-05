@@ -7,38 +7,23 @@ import { AskQuestion } from '../analysis/AskQuestion.js';
 import { RiskBadge } from '../shared/RiskBadge.js';
 import { CodeBlock } from '../shared/CodeBlock.js';
 import { isMarkdown, MARKDOWN_PROSE, REMARK_PLUGINS } from '../../lib/markdown.js';
-import { extractReasoning } from '../../lib/reasoning.js';
+import { getEffectiveAgentContent } from '../../lib/reasoning.js';
 import type { ClientMessage } from '../../lib/ws-protocol.js';
+import type { TimelineEvent } from '../../lib/types.js';
+import { ThinkingBlock } from '../events/EventCard.js';
 
-function AgentResponsePrompt({ event }: { event: { type: string; data: { prompt?: unknown; thinking?: string } } }) {
-  const rawPrompt = (event.data.prompt as string | undefined) ?? '';
-  const { thinking: extractedThinking, response: cleanedPrompt } =
-    event.type === 'agent_response' && !event.data.thinking
-      ? extractReasoning(rawPrompt)
-      : { thinking: null, response: rawPrompt };
-  const displayThinking = event.data.thinking ?? extractedThinking;
-  const displayPrompt = event.type === 'agent_response' ? cleanedPrompt : rawPrompt;
+function AgentResponsePrompt({ event }: { event: TimelineEvent }) {
+  const { thinking, response } = getEffectiveAgentContent(event);
   return (
     <>
-      {displayThinking && (
-        <div className="bg-[#0d1117] border border-[#6e40c9]/30 rounded-md overflow-hidden mb-2">
-          <details>
-            <summary className="px-3 py-1 border-b border-[#6e40c9]/20 cursor-pointer text-[10px] text-[#8957e5] font-mono uppercase select-none">
-              Thinking
-            </summary>
-            <div className={`px-3 py-2 border-l-2 border-[#6e40c9]/50 ${MARKDOWN_PROSE} text-[#8b949e]`}>
-              <MarkdownOrText text={displayThinking} />
-            </div>
-          </details>
-        </div>
-      )}
-      {displayPrompt && (
+      {thinking && <div className="mb-2"><ThinkingBlock thinking={thinking} /></div>}
+      {response && (
         <div className="bg-[#0d1117] border border-[#30363d] rounded-md overflow-hidden">
           <div className="flex items-center justify-end px-3 py-1 border-b border-[#30363d]">
-            <CopyButton text={displayPrompt} />
+            <CopyButton text={response} />
           </div>
           <div className="px-3 py-2 border-l-2 border-[#58a6ff]">
-            <MarkdownOrText text={displayPrompt} />
+            <MarkdownOrText text={response} />
           </div>
         </div>
       )}
