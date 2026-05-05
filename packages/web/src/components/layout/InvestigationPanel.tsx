@@ -7,7 +7,29 @@ import { AskQuestion } from '../analysis/AskQuestion.js';
 import { RiskBadge } from '../shared/RiskBadge.js';
 import { CodeBlock } from '../shared/CodeBlock.js';
 import { isMarkdown, MARKDOWN_PROSE, REMARK_PLUGINS } from '../../lib/markdown.js';
+import { getEffectiveAgentContent } from '../../lib/reasoning.js';
 import type { ClientMessage } from '../../lib/ws-protocol.js';
+import type { TimelineEvent } from '../../lib/types.js';
+import { ThinkingBlock } from '../events/EventCard.js';
+
+function AgentResponsePrompt({ event }: { event: TimelineEvent }) {
+  const { thinking, response } = getEffectiveAgentContent(event);
+  return (
+    <>
+      {thinking && <div className="mb-2"><ThinkingBlock thinking={thinking} /></div>}
+      {response && (
+        <div className="bg-[#0d1117] border border-[#30363d] rounded-md overflow-hidden">
+          <div className="flex items-center justify-end px-3 py-1 border-b border-[#30363d]">
+            <CopyButton text={response} />
+          </div>
+          <div className="px-3 py-2 border-l-2 border-[#58a6ff]">
+            <MarkdownOrText text={response} />
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
 
 function MarkdownOrText({ text, className }: { text: string; className?: string }) {
   if (isMarkdown(text)) {
@@ -270,16 +292,7 @@ export function InvestigationPanel({ onSend, eventId: embeddedEventId, onClose }
             />
           )}
 
-          {event.data.prompt && (
-            <div className="bg-[#0d1117] border border-[#30363d] rounded-md overflow-hidden">
-              <div className="flex items-center justify-end px-3 py-1 border-b border-[#30363d]">
-                <CopyButton text={event.data.prompt as string} />
-              </div>
-              <div className="px-3 py-2 border-l-2 border-[#58a6ff]">
-                <MarkdownOrText text={event.data.prompt as string} />
-              </div>
-            </div>
-          )}
+          {event.data.prompt && <AgentResponsePrompt event={event} />}
         </div>
 
         {/* Layman's Terms section */}

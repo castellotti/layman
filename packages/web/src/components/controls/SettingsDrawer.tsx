@@ -120,6 +120,7 @@ function OpenWebUIConfigDialog({
 
   const isInstalled = !!(owuiStatus?.hooksInstalled);
   const isUpToDate = !!(owuiStatus?.hooksUpToDate);
+  const urlTrimmed = url.trim();
 
   const handleDetect = async () => {
     setDetecting(true);
@@ -140,16 +141,26 @@ function OpenWebUIConfigDialog({
     }
   };
 
-  const handleSaveConfig = () => {
-    onSend({ type: 'config:update', config: { openWebUiUrl: url.trim(), openWebUiApiKey: apiKey.trim() } });
-  };
+  // Primary action: always saves config; installs/updates when a URL is set and the
+  // filter is missing or outdated. Passes URL + apiKey in the request body so the
+  // server doesn't have to wait for the WebSocket config:update round-trip first.
+  const handlePrimary = async () => {
+    const apiKeyTrimmed = apiKey.trim();
+    onSend({ type: 'config:update', config: { openWebUiUrl: urlTrimmed, openWebUiApiKey: apiKeyTrimmed } });
 
-  const handleInstall = async () => {
-    handleSaveConfig();
+    if (!urlTrimmed || (isInstalled && isUpToDate)) {
+      onClose();
+      return;
+    }
+
     setInstallState('busy');
     setInstallError(null);
     try {
-      const res = await fetch('/api/setup/openwebui/install', { method: 'POST' });
+      const res = await fetch('/api/setup/openwebui/install', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: urlTrimmed, apiKey: apiKeyTrimmed }),
+      });
       if (res.ok) {
         onStatusChange(await res.json() as SetupStatus);
         setInstallState('success');
@@ -171,6 +182,7 @@ function OpenWebUIConfigDialog({
       if (res.ok) {
         onStatusChange(await res.json() as SetupStatus);
         setUninstallState('idle');
+        setInstallState('idle');
       } else {
         setUninstallState('error');
       }
@@ -178,6 +190,11 @@ function OpenWebUIConfigDialog({
       setUninstallState('error');
     }
   };
+
+  const primaryLabel = installState === 'busy' ? 'Installing…'
+    : !urlTrimmed || (isInstalled && isUpToDate) ? 'Save'
+    : !isInstalled ? 'Install'
+    : 'Update';
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center">
@@ -243,7 +260,7 @@ function OpenWebUIConfigDialog({
           />
         </div>
 
-        {installError && (
+        {installState === 'error' && installError && (
           <p className="text-[10px] text-[#f85149] mb-3">{installError}</p>
         )}
         {installState === 'success' && (
@@ -262,21 +279,13 @@ function OpenWebUIConfigDialog({
               </button>
             )}
           </div>
-          <div className="flex gap-2">
-            <button
-              onClick={() => { handleSaveConfig(); onClose(); }}
-              className="px-3 py-1.5 text-xs rounded bg-[#21262d] border border-[#30363d] text-[#e6edf3] hover:bg-[#30363d] transition-colors"
-            >
-              Save
-            </button>
-            <button
-              onClick={() => void handleInstall()}
-              disabled={!url.trim() || installState === 'busy'}
-              className="px-3 py-1.5 text-xs font-medium rounded bg-[#238636] text-white hover:bg-[#2ea043] disabled:opacity-50 transition-colors"
-            >
-              {installState === 'busy' ? 'Installing…' : isInstalled && !isUpToDate ? 'Update' : 'Install'}
-            </button>
-          </div>
+          <button
+            onClick={() => void handlePrimary()}
+            disabled={installState === 'busy'}
+            className="px-3 py-1.5 text-xs font-medium rounded bg-[#238636] text-white hover:bg-[#2ea043] disabled:opacity-50 transition-colors"
+          >
+            {primaryLabel}
+          </button>
         </div>
       </div>
     </div>

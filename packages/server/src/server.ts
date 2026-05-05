@@ -593,20 +593,25 @@ export function createServer(config: LaymanConfig): LaymanServer {
       return mergeDeclined(makeInstaller().getStatus(), activeConfig.declinedClients ?? [], activeConfig.openWebUiUrl);
     });
 
-    // Open WebUI: install filter function via the Open WebUI REST API
-    fastify.post('/api/setup/openwebui/install', async (_request, reply) => {
-      const url = activeConfig.openWebUiUrl?.trim();
-      const apiKey = activeConfig.openWebUiApiKey?.trim();
-      if (!url) return reply.status(400).send({ error: 'openWebUiUrl not configured' });
-      const installer = makeInstaller();
-      try {
-        await installer.installOpenWebUIFunction(url, apiKey ?? '');
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        return reply.status(400).send({ error: msg });
-      }
-      return mergeDeclined(installer.getStatus(), activeConfig.declinedClients ?? [], activeConfig.openWebUiUrl);
-    });
+    // Open WebUI: install filter function via the Open WebUI REST API.
+    // Accepts optional { url, apiKey } in the request body so the client can pass the current
+    // form values without waiting for a config:update WebSocket round-trip first.
+    fastify.post<{ Body?: { url?: string; apiKey?: string } }>(
+      '/api/setup/openwebui/install',
+      async (request, reply) => {
+        const url = (request.body?.url ?? activeConfig.openWebUiUrl)?.trim();
+        const apiKey = (request.body?.apiKey ?? activeConfig.openWebUiApiKey)?.trim();
+        if (!url) return reply.status(400).send({ error: 'openWebUiUrl not configured' });
+        const installer = makeInstaller();
+        try {
+          await installer.installOpenWebUIFunction(url, apiKey ?? '');
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          return reply.status(400).send({ error: msg });
+        }
+        return mergeDeclined(installer.getStatus(), activeConfig.declinedClients ?? [], activeConfig.openWebUiUrl);
+      },
+    );
 
     // Open WebUI: uninstall filter function
     fastify.post('/api/setup/openwebui/uninstall', async (_request, reply) => {
