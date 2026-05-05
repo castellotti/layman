@@ -10,7 +10,7 @@ import { isMarkdown, MARKDOWN_PROSE, REMARK_PLUGINS } from '../../lib/markdown.j
 import { getEffectiveAgentContent } from '../../lib/reasoning.js';
 import type { ClientMessage } from '../../lib/ws-protocol.js';
 import type { TimelineEvent } from '../../lib/types.js';
-import { ThinkingBlock } from '../events/EventCard.js';
+import { ThinkingBlock } from '../shared/ThinkingBlock.js';
 
 function AgentResponsePrompt({ event }: { event: TimelineEvent }) {
   const { thinking, response } = getEffectiveAgentContent(event);

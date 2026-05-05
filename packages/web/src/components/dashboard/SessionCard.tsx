@@ -7,7 +7,7 @@ import { EVENT_ICONS, BORDER_COLORS, NODE_BORDER_COLORS, AGENT_BADGES } from '..
 import { RiskBadge } from '../shared/RiskBadge.js';
 import type { TimelineEvent } from '../../lib/types.js';
 import type { SessionInfo, ClientMessage } from '../../lib/ws-protocol.js';
-import { stripReasoning, getEffectiveAgentContent } from '../../lib/reasoning.js';
+import { getEffectiveAgentContent } from '../../lib/reasoning.js';
 
 interface SessionCardProps {
   session: SessionInfo;
@@ -273,7 +273,7 @@ function getTooltipContent(event: TimelineEvent): string | null {
   const { data, type } = event;
   if (data.prompt && (type === 'user_prompt' || type === 'agent_response' || type === 'elicitation')) {
     const text = data.prompt as string;
-    return type === 'agent_response' ? (data.thinking ? text : stripReasoning(text)) : text;
+    return type === 'agent_response' ? getEffectiveAgentContent(event).response : text;
   }
   if (data.toolInput) {
     const input = data.toolInput as Record<string, unknown>;
