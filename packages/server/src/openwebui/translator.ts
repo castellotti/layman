@@ -21,6 +21,8 @@ export interface OpenWebUIHookInput {
   prompt?: string;
   /** Assistant response text (AgentResponse) */
   response?: string;
+  /** Extended thinking content, if the model produced thinking blocks (AgentResponse) */
+  thinking?: string;
   model?: string;
 }
 

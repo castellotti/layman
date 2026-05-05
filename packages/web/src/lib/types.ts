@@ -86,6 +86,7 @@ export interface EventData {
   toolOutput?: unknown;
   error?: string;
   prompt?: string;
+  thinking?: string;
   agentType?: string;
   notificationType?: string;
   source?: string;

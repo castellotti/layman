@@ -7,6 +7,7 @@ import { EVENT_ICONS, BORDER_COLORS, NODE_BORDER_COLORS, AGENT_BADGES } from '..
 import { RiskBadge } from '../shared/RiskBadge.js';
 import type { TimelineEvent } from '../../lib/types.js';
 import type { SessionInfo, ClientMessage } from '../../lib/ws-protocol.js';
+import { stripReasoning, getEffectiveAgentContent } from '../../lib/reasoning.js';
 
 interface SessionCardProps {
   session: SessionInfo;
@@ -271,7 +272,8 @@ function RiskAlertFeed({ events, onDrilldown, sessionId, expanded }: {
 function getTooltipContent(event: TimelineEvent): string | null {
   const { data, type } = event;
   if (data.prompt && (type === 'user_prompt' || type === 'agent_response' || type === 'elicitation')) {
-    return data.prompt as string;
+    const text = data.prompt as string;
+    return type === 'agent_response' ? (data.thinking ? text : stripReasoning(text)) : text;
   }
   if (data.toolInput) {
     const input = data.toolInput as Record<string, unknown>;
@@ -360,6 +362,12 @@ function DashboardEventRow({
     ? 'bg-[#1c1a0f] hover:bg-[#1c1a0f]/90'
     : 'bg-[#0c1018] hover:bg-[#161b22]';
 
+  const promptPreview = useMemo(() => {
+    if (!event.data.prompt || event.data.toolName) return null;
+    const { response } = getEffectiveAgentContent(event);
+    return response.slice(0, 50) || null;
+  }, [event.data.prompt, event.data.toolName, event.type, event.data.thinking]);
+
   // agent_stop special case (matches EventCard)
   if (event.type === 'agent_stop') {
     return (
@@ -414,9 +422,9 @@ function DashboardEventRow({
         )}
 
         {/* Prompt preview (only when no tool name) */}
-        {event.data.prompt && !event.data.toolName && (
+        {promptPreview && (
           <span className="text-[10px] text-[#58a6ff] truncate min-w-0 italic">
-            {(event.data.prompt as string).slice(0, 50)}
+            {promptPreview}
           </span>
         )}
 

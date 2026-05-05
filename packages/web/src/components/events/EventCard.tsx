@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import type { TimelineEvent } from '../../lib/types.js';
 import type { ClientMessage } from '../../lib/ws-protocol.js';
@@ -12,6 +12,27 @@ import { useSessionStore } from '../../stores/sessionStore.js';
 import { AGENT_BADGES, EVENT_ICONS, BORDER_COLORS, DRIFT_COLORS } from '../../lib/event-styles.js';
 import { MARKDOWN_PROSE, REMARK_PLUGINS } from '../../lib/markdown.js';
 import { formatTime, formatDuration } from '../../lib/format.js';
+import { getEffectiveAgentContent } from '../../lib/reasoning.js';
+
+export function ThinkingBlock({ thinking }: { thinking: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="rounded-md border border-[#6e40c9]/30 overflow-hidden">
+      <button
+        className="w-full flex items-center justify-between px-3 py-1 bg-[#161b22] hover:bg-[#1c2128] transition-colors"
+        onClick={(e) => { e.stopPropagation(); setOpen((v) => !v); }}
+      >
+        <span className="text-[10px] text-[#8957e5] font-mono uppercase">Thinking {open ? '▲' : '▼'}</span>
+        <span className="text-[10px] text-[#484f58]">{thinking.length} chars</span>
+      </button>
+      {open && (
+        <div className={`p-3 border-l-2 border-[#6e40c9]/50 max-h-64 overflow-y-auto text-[#8b949e] ${MARKDOWN_PROSE}`}>
+          <ReactMarkdown remarkPlugins={REMARK_PLUGINS}>{thinking}</ReactMarkdown>
+        </div>
+      )}
+    </div>
+  );
+}
 
 interface EventCardProps {
   event: TimelineEvent;
@@ -23,52 +44,6 @@ interface EventCardProps {
   showAgentBadge?: boolean;
 }
 
-function getEventSummary(event: TimelineEvent): string {
-  const { data, type } = event;
-
-  switch (type) {
-    case 'tool_call_pending':
-    case 'tool_call_approved':
-    case 'tool_call_denied':
-    case 'tool_call_delegated':
-    case 'tool_call_completed':
-    case 'tool_call_failed':
-    case 'permission_request':
-      return data.toolName ?? 'Unknown tool';
-    case 'user_prompt':
-      return `"${(data.prompt ?? '').slice(0, 80)}"`;
-    case 'agent_response':
-      return (data.prompt ?? '').slice(0, 80);
-    case 'agent_stop':
-      return 'agent stop';
-    case 'session_start':
-      return `Session started (${data.source ?? 'startup'})`;
-    case 'session_end':
-      return 'Session ended';
-    case 'notification':
-      return data.notificationType ?? 'Notification';
-    case 'subagent_start':
-      return `Subagent started: ${data.agentType ?? 'unknown'}`;
-    case 'subagent_stop':
-      return `Subagent stopped: ${data.agentType ?? 'unknown'}`;
-    case 'stop_failure':
-      return data.error ?? 'API error';
-    case 'pre_compact':
-      return 'Compaction starting';
-    case 'post_compact':
-      return 'Compaction complete';
-    case 'elicitation':
-      return (data.prompt ?? 'MCP structured input request').slice(0, 80);
-    case 'elicitation_result':
-      return (data.prompt ?? 'MCP structured input result').slice(0, 80);
-    case 'drift_check':
-      return `${data.driftType === 'rules' ? 'Rules' : 'Session'} drift: ${data.driftPct ?? 0}% (${data.driftLevel ?? 'green'})`;
-    case 'drift_alert':
-      return `Drift alert: ${data.driftType === 'rules' ? 'Rules' : 'Session'} → ${data.driftLevel ?? 'red'}`;
-    default:
-      return type;
-  }
-}
 
 function formatToolInput(toolInput: Record<string, unknown>): string {
   // Special handling for Bash command
@@ -120,6 +95,12 @@ export function EventCard({ event, index, isSelected, onClick, onSend, collapseH
 
   const isPending = event.type === 'tool_call_pending' || event.type === 'permission_request';
   const isAgentResponse = event.type === 'agent_response';
+
+  const { thinking: effectiveThinking, response: agentResponse } = useMemo(
+    () => getEffectiveAgentContent(event),
+    [event.type, event.data.thinking, event.data.prompt]
+  );
+  const effectivePrompt = agentResponse || undefined;
   const isFailed = event.type === 'tool_call_failed';
   const isUserPrompt = event.type === 'user_prompt';
   const isDriftEvent = event.type === 'drift_alert' || event.type === 'drift_check';
@@ -209,9 +190,9 @@ export function EventCard({ event, index, isSelected, onClick, onSend, collapseH
         )}
 
         {/* Prompt text if present */}
-        {event.data.prompt && !event.data.toolName && (
+        {effectivePrompt && !event.data.toolName && (
           <span className="text-xs text-[#58a6ff] truncate italic">
-            {event.data.prompt.slice(0, 60)}
+            {effectivePrompt.slice(0, 60)}
           </span>
         )}
 
@@ -344,21 +325,26 @@ export function EventCard({ event, index, isSelected, onClick, onSend, collapseH
             </div>
           )}
 
+          {/* Thinking blocks — agent_response only, collapsible */}
+          {isAgentResponse && effectiveThinking && (
+            <ThinkingBlock thinking={effectiveThinking} />
+          )}
+
           {/* Prompt text — user_prompt and agent_response: markdown; others: plain */}
-          {event.data.prompt && (
+          {effectivePrompt && (
             (isAgentResponse || isUserPrompt) ? (
               <div className={`rounded-md border border-[#30363d] overflow-hidden`}>
                 <div className="flex items-center justify-between px-3 py-1 bg-[#161b22] border-b border-[#30363d]">
                   <span className="text-[10px] text-[#484f58] font-mono uppercase">{isUserPrompt ? 'Prompt' : 'Response'}</span>
                   <button
-                    onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(event.data.prompt as string).catch(() => {}); }}
+                    onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(effectivePrompt!).catch(() => {}); }}
                     className="text-xs text-[#8b949e] hover:text-[#e6edf3] transition-colors"
                   >
                     Copy
                   </button>
                 </div>
                 <div className={`p-3 border-l-2 ${isUserPrompt ? 'border-[#58a6ff]' : 'border-[#3fb950]/50'} ${MARKDOWN_PROSE}`}>
-                  <ReactMarkdown remarkPlugins={REMARK_PLUGINS}>{event.data.prompt as string}</ReactMarkdown>
+                  <ReactMarkdown remarkPlugins={REMARK_PLUGINS}>{effectivePrompt!}</ReactMarkdown>
                 </div>
               </div>
             ) : (
@@ -366,14 +352,14 @@ export function EventCard({ event, index, isSelected, onClick, onSend, collapseH
                 <div className="flex items-center justify-between px-3 py-1 bg-[#161b22] border-b border-[#30363d]">
                   <span className="text-[10px] text-[#484f58] font-mono uppercase">Prompt</span>
                   <button
-                    onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(event.data.prompt as string).catch(() => {}); }}
+                    onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(effectivePrompt!).catch(() => {}); }}
                     className="text-xs text-[#8b949e] hover:text-[#e6edf3] transition-colors"
                   >
                     Copy
                   </button>
                 </div>
                 <pre className="p-3 text-xs text-[#e6edf3] leading-relaxed whitespace-pre-wrap break-words font-sans border-l-2 border-[#58a6ff]">
-                  {event.data.prompt as string}
+                  {effectivePrompt!}
                 </pre>
               </div>
             )
