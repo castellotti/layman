@@ -2,14 +2,16 @@
 title: Layman Monitor
 author: layman
 description: Captures user prompts and AI responses and forwards them to Layman for monitoring.
-version: 0.5.1
+version: 0.6.0
 license: MIT
 """
 
 import html as _html
+import json
 import re
 import aiohttp
 from pydantic import BaseModel
+from urllib.parse import urlparse
 
 # Patterns that reasoning models embed in their text output.
 # Each pattern captures the raw thinking text in group 1.
@@ -87,6 +89,66 @@ class Filter:
 
         return body
 
+    def _extract_web_search(self, body: dict) -> tuple[list[str], list[dict]]:
+        """Extract web search queries and sources from the outlet body.
+
+        Queries come from tool_calls in assistant messages; sources come from
+        body['sources'] (populated by Open WebUI's search pipeline).
+        Returns (queries, sources) where each source has url/hostname/title/content.
+        """
+        queries: list[str] = []
+        messages = body.get("messages", [])
+
+        # Pull queries from assistant tool_calls (tool-based search mode)
+        for msg in messages:
+            if msg.get("role") != "assistant":
+                continue
+            for tc in msg.get("tool_calls", []) or []:
+                fn = tc.get("function", {})
+                name = fn.get("name", "").lower()
+                if "search" not in name:
+                    continue
+                try:
+                    args = json.loads(fn.get("arguments", "{}"))
+                except Exception:
+                    continue
+                q = args.get("query") or args.get("q") or args.get("search_query", "")
+                if q and q not in queries:
+                    queries.append(str(q))
+
+        # Normalize sources from body['sources']
+        sources: list[dict] = []
+        seen_urls: set[str] = set()
+        for s in body.get("sources", []) or []:
+            url = (
+                s.get("url")
+                or s.get("source")
+                or (s.get("metadata") or {}).get("source", "")
+            )
+            if not url or url in seen_urls:
+                continue
+            seen_urls.add(url)
+            try:
+                hostname = urlparse(url).hostname or url
+            except Exception:
+                hostname = url
+            title = (
+                s.get("name")
+                or s.get("title")
+                or (s.get("metadata") or {}).get("title", "")
+                or hostname
+            )
+            raw_content = s.get("content") or s.get("document") or ""
+            content = str(raw_content)[:500] if raw_content else None
+            sources.append({
+                "url": url,
+                "hostname": hostname,
+                "title": str(title),
+                "content": content,
+            })
+
+        return queries, sources
+
     async def outlet(self, body: dict, __user__: dict = {}, __metadata__: dict = {}) -> dict:
         """Capture the assistant's response after the model returns.
 
@@ -149,6 +211,21 @@ class Filter:
                 if thinking_text:
                     payload["thinking"] = thinking_text
                 await self._post(payload)
+
+        # Emit web search event when the response used web sources
+        queries, sources = self._extract_web_search(body)
+        if sources or queries:
+            search_payload: dict = {
+                "event": "WebSearch",
+                "chat_id": chat_id,
+                "user_id": __user__.get("id", ""),
+                "user_name": __user__.get("name", ""),
+                "model": body.get("model", ""),
+                "sources": sources,
+            }
+            if queries:
+                search_payload["queries"] = queries
+            await self._post(search_payload)
 
         return body
 

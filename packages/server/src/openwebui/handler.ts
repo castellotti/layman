@@ -68,6 +68,19 @@ export function registerOpenWebUIHookHandler(
             }
             break;
           }
+          case 'WebSearch': {
+            const sources = (body.sources ?? []).map((s) => ({
+              url: s.url,
+              hostname: s.hostname,
+              title: s.title,
+              ...(s.content != null ? { content: s.content } : {}),
+            }));
+            eventStore.add('web_search', chatId, {
+              webSearchQueries: body.queries?.length ? body.queries : undefined,
+              webSearchSources: sources.length ? sources : undefined,
+            }, undefined, AGENT_TYPE);
+            break;
+          }
           default:
             return reply.status(400).send({ error: `Unknown Open WebUI event: ${(body as { event: string }).event}` });
         }
