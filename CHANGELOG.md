@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.5.1
+
+- Fixed Open WebUI `agent_response` events not appearing — `outlet()` was missing the `__metadata__` parameter so `chat_id` always resolved to `""` and every POST was rejected 400 ([#64](https://github.com/castellotti/layman/pull/64))
+- Fixed thinking blocks not captured for reasoning models — structured `"thinking"` content blocks were keyed incorrectly; plain-text reasoning models (Qwen3, DeepSeek-R1) now have `<details type="reasoning">` / `<think>` / `<thinking>` HTML extracted and displayed in a collapsible Thinking block ([#64](https://github.com/castellotti/layman/pull/64))
+- Fixed Open WebUI Settings "update available" badge not clearing after a successful install — version hash was computed from the URL-substituted content instead of the template, causing a mismatch on subsequent checks ([#64](https://github.com/castellotti/layman/pull/64))
+- Fixed Open WebUI install race condition — install endpoint now accepts URL and API key in the request body so the server doesn't rely on a WebSocket config round-trip completing first ([#64](https://github.com/castellotti/layman/pull/64))
+- Improved Open WebUI Settings UX — Save and Install/Update consolidated into a single button that labels itself based on current state and closes on success ([#64](https://github.com/castellotti/layman/pull/64))
+- Added client-side reasoning extraction — old `agent_response` events with raw `<details>` HTML in `data.prompt` are now rendered correctly without a database migration ([#64](https://github.com/castellotti/layman/pull/64))
+
 ## 0.5.0
 
 - Added Open WebUI integration — filter plugin captures prompts and responses via inlet/outlet hooks, with server-side handler, translator, URL config, and auto-activation ([#63](https://github.com/castellotti/layman/pull/63))
