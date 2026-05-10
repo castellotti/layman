@@ -629,6 +629,12 @@ export function SessionCard({
     return () => observer.disconnect();
   }, []);
 
+  const submitBookmark = useCallback(() => {
+    const name = bookmarkName.trim() || getSessionDisplayName(session);
+    onBookmark?.(session.sessionId, name);
+    setShowBookmarkInput(false);
+  }, [bookmarkName, session, onBookmark]);
+
   const handleClick = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
     onFocus(session.sessionId);
@@ -823,11 +829,7 @@ export function SessionCard({
             value={bookmarkName}
             onChange={(e) => setBookmarkName(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                const name = bookmarkName.trim() || getSessionDisplayName(session);
-                onBookmark?.(session.sessionId, name);
-                setShowBookmarkInput(false);
-              }
+              if (e.key === 'Enter') { submitBookmark(); }
               if (e.key === 'Escape') { setShowBookmarkInput(false); }
             }}
             placeholder="Bookmark name"
@@ -845,11 +847,7 @@ export function SessionCard({
             }}
           />
           <button
-            onClick={() => {
-              const name = bookmarkName.trim() || getSessionDisplayName(session);
-              onBookmark?.(session.sessionId, name);
-              setShowBookmarkInput(false);
-            }}
+            onClick={submitBookmark}
             style={{ fontSize: 10, color: 'var(--dash-success)', background: 'none', border: 'none', cursor: 'pointer', padding: '0 2px' }}
           >✓</button>
           <button

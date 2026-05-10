@@ -2,6 +2,7 @@ import React, { useMemo, useState, useCallback, useEffect } from 'react';
 import { useSessionStore } from '../../stores/sessionStore.js';
 import { SessionCard } from './SessionCard.js';
 import { SidePanel } from './SidePanel.js';
+import { saveAndBookmarkSession } from '../../lib/bookmarks-api.js';
 import type { ClientMessage } from '../../lib/ws-protocol.js';
 import './dashboard.css';
 
@@ -94,27 +95,8 @@ export function DashboardView({ onSend }: DashboardViewProps) {
     navigateFromDashboardToLogs(sessionId, eventId);
   }, [navigateFromDashboardToLogs]);
 
-  // Open a session in Logs without selecting a specific event (double-click session name)
-  const handleOpenInLogs = useCallback((sessionId: string) => {
-    navigateToLogsForSession(sessionId);
-  }, [navigateToLogsForSession]);
-
-  // Bookmark a live session: snapshot it to DB first, then create a named bookmark.
-  // The bookmark is only created if the snapshot succeeded (ensures the session exists in DB).
-  const handleBookmark = useCallback(async (sessionId: string, name: string) => {
-    try {
-      const snapRes = await fetch('/api/bookmarks/sessions/save-current', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sessionId }),
-      });
-      if (!snapRes.ok) return;
-      await fetch('/api/bookmarks', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sessionId, name, folderId: null }),
-      });
-    } catch { /* non-fatal */ }
+  const handleBookmark = useCallback((sessionId: string, name: string) => {
+    void saveAndBookmarkSession(sessionId, name);
   }, []);
 
   // Drag handlers
@@ -283,8 +265,8 @@ export function DashboardView({ onSend }: DashboardViewProps) {
                     onDismiss={handleDismiss}
                     onDrilldown={handleDrilldown}
                     onDrilldownToLogs={handleDrilldownToLogs}
-                    onOpenInLogs={handleOpenInLogs}
-                    onBookmark={bookmarkedSessionIds.has(session.sessionId) ? undefined : (sid, name) => { void handleBookmark(sid, name); }}
+                    onOpenInLogs={navigateToLogsForSession}
+                    onBookmark={bookmarkedSessionIds.has(session.sessionId) ? undefined : handleBookmark}
                     onSend={onSend}
                     index={orderIndex}
                     onDragStart={handleDragStart}

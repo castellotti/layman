@@ -1,6 +1,7 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useMemo, useState, useCallback, useEffect } from 'react';
 import { useSessionStore } from '../../stores/sessionStore.js';
 import { SessionLaymansTerms } from '../shared/SessionLaymansTerms.js';
+import { saveAndBookmarkSession } from '../../lib/bookmarks-api.js';
 
 function getSessionName(cwd: string, sessionId: string, agentType?: string, showAgentPrefix?: boolean, sessionName?: string): string {
   const name = sessionName || (cwd ? (cwd.split('/').filter(Boolean).pop() ?? cwd) : sessionId.slice(0, 8));
@@ -80,6 +81,11 @@ export function Header() {
     bookmarks,
   } = useSessionStore();
 
+  const bookmarkedSessionIds = useMemo(
+    () => new Set(bookmarks.map((b) => b.sessionId)),
+    [bookmarks]
+  );
+
   const [showBookmarkInput, setShowBookmarkInput] = useState(false);
   const [bookmarkName, setBookmarkName] = useState('');
 
@@ -92,19 +98,7 @@ export function Header() {
   const handleBookmarkSession = useCallback(async (name: string) => {
     if (!activeSessionId) return;
     setShowBookmarkInput(false);
-    try {
-      const snapRes = await fetch('/api/bookmarks/sessions/save-current', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sessionId: activeSessionId }),
-      });
-      if (!snapRes.ok) return;
-      await fetch('/api/bookmarks', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sessionId: activeSessionId, name: name.trim() || activeSessionId.slice(0, 8), folderId: null }),
-      });
-    } catch { /* non-fatal */ }
+    void saveAndBookmarkSession(activeSessionId, name.trim() || activeSessionId.slice(0, 8));
   }, [activeSessionId]);
 
   const statusConfig = {
@@ -258,7 +252,7 @@ export function Header() {
         </div>
 
         {/* Bookmark button — shown in Logs view when a session is active and not yet bookmarked */}
-        {currentView === 'stream' && activeSessionId && !bookmarks.some(b => b.sessionId === activeSessionId) && (
+        {currentView === 'stream' && activeSessionId && !bookmarkedSessionIds.has(activeSessionId) && (
           <>
             {showBookmarkInput ? (
               <div className="flex items-center gap-1">
@@ -287,8 +281,7 @@ export function Header() {
               <button
                 onClick={() => {
                   const s = sessions.find(x => x.sessionId === activeSessionId);
-                  const name = s?.sessionName || (s?.cwd ? (s.cwd.split('/').filter(Boolean).pop() ?? s.cwd) : activeSessionId.slice(0, 8));
-                  setBookmarkName(name);
+                  setBookmarkName(s ? getSessionName(s.cwd, s.sessionId, s.agentType, false, s.sessionName) : activeSessionId.slice(0, 8));
                   setShowBookmarkInput(true);
                 }}
                 className="p-1.5 rounded-md text-[#8b949e] hover:text-[#d29922] hover:bg-[#30363d] transition-colors"

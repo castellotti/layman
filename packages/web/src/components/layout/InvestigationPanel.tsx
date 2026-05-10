@@ -109,7 +109,7 @@ export function InvestigationPanel({ onSend, eventId: embeddedEventId, onClose }
         const elapsed = Date.now() - prev.startedAt;
         return { ...prev, elapsedMs: elapsed, phase: elapsed > 800 ? 'waiting' : 'connecting' };
       });
-    }, 100);
+    }, 200);
   }, []);
 
   const clearPendingTimer = useCallback(() => {
