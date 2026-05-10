@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { useSessionStore } from '../../stores/sessionStore.js';
 import { useEventStore } from '../../hooks/useEventStore.js';
@@ -89,6 +89,16 @@ export function InvestigationPanel({ onSend, eventId: embeddedEventId, onClose }
   const [analysisDepth, setAnalysisDepth] = useState<'quick' | 'detailed' | null>(null);
   const [isAskingFailure, setIsAskingFailure] = useState(false);
 
+  type AskPhase = 'connecting' | 'waiting' | 'error';
+  const [pendingAsk, setPendingAsk] = useState<{
+    question: string;
+    phase: AskPhase;
+    startedAt: number;
+    elapsedMs: number;
+    error?: string;
+  } | null>(null);
+  const pendingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
   const fetchModels = useCallback(async () => {
     if (!config) return;
     const p = config.analysis.provider;
@@ -166,6 +176,7 @@ export function InvestigationPanel({ onSend, eventId: embeddedEventId, onClose }
       : 'Why did this tool call fail? What was wrong with the approach, what error occurred, and what was the eventual solution or workaround? Provide a detailed analysis.';
     markSessionInvestigated(event.sessionId);
     setIsAskingFailure(true);
+    startPendingTimer(question);
     try {
       const response = await fetch(`/api/analysis/${selectedEventId}/ask`, {
         method: 'POST',
@@ -180,24 +191,53 @@ export function InvestigationPanel({ onSend, eventId: embeddedEventId, onClose }
           } : {}),
         }),
       });
+      clearPendingTimer();
+      setPendingAsk(null);
       if (response.ok) {
         const data = await response.json() as { answer: string; tokens?: { input: number; output: number }; latencyMs?: number; model?: string };
-        addInvestigationQuestion(selectedEventId, question, data.answer, {
-          tokens: data.tokens,
-          latencyMs: data.latencyMs,
-          model: data.model,
-        });
+        const answer = data.answer?.trim();
+        addInvestigationQuestion(selectedEventId, question,
+          answer || '[The model returned a blank response.]',
+          { tokens: data.tokens, latencyMs: data.latencyMs, model: data.model });
+      } else {
+        addInvestigationQuestion(selectedEventId, question, `Request failed (HTTP ${response.status}). Please try again.`);
       }
-    } catch {
-      addInvestigationQuestion(selectedEventId, question, 'Failed to get answer. Please try again.');
+    } catch (err) {
+      clearPendingTimer();
+      setPendingAsk(null);
+      addInvestigationQuestion(selectedEventId, question,
+        `Network error: ${err instanceof Error ? err.message : 'Could not reach the server.'}`);
     } finally {
       setIsAskingFailure(false);
     }
   };
 
+  const startPendingTimer = useCallback((question: string) => {
+    const startedAt = Date.now();
+    setPendingAsk({ question, phase: 'connecting', startedAt, elapsedMs: 0 });
+    if (pendingTimerRef.current) clearInterval(pendingTimerRef.current);
+    pendingTimerRef.current = setInterval(() => {
+      setPendingAsk((prev) => {
+        if (!prev) return null;
+        const elapsed = Date.now() - prev.startedAt;
+        // Transition from 'connecting' to 'waiting' after 800ms
+        const phase: AskPhase = prev.phase === 'error' ? 'error' : elapsed > 800 ? 'waiting' : 'connecting';
+        return { ...prev, elapsedMs: elapsed, phase };
+      });
+    }, 100);
+  }, []);
+
+  const clearPendingTimer = useCallback(() => {
+    if (pendingTimerRef.current) {
+      clearInterval(pendingTimerRef.current);
+      pendingTimerRef.current = null;
+    }
+  }, []);
+
   const handleAsk = async (question: string) => {
     markSessionInvestigated(event.sessionId);
     setIsAskingQuestion(true);
+    startPendingTimer(question);
     try {
       const response = await fetch(`/api/analysis/${selectedEventId}/ask`, {
         method: 'POST',
@@ -212,16 +252,29 @@ export function InvestigationPanel({ onSend, eventId: embeddedEventId, onClose }
           } : {}),
         }),
       });
+      clearPendingTimer();
+      setPendingAsk(null);
       if (response.ok) {
         const data = await response.json() as { answer: string; tokens?: { input: number; output: number }; latencyMs?: number; model?: string };
-        addInvestigationQuestion(selectedEventId, question, data.answer, {
+        const answer = data.answer?.trim();
+        const finalAnswer = answer
+          ? answer
+          : '[The model returned a blank response. This may indicate a token limit was reached, the model refused to answer, or a provider-side issue occurred.]';
+        addInvestigationQuestion(selectedEventId, question, finalAnswer, {
           tokens: data.tokens,
           latencyMs: data.latencyMs,
           model: data.model,
         });
+      } else {
+        const errData = await response.json().catch(() => ({})) as { error?: string };
+        addInvestigationQuestion(selectedEventId, question,
+          `Request failed (HTTP ${response.status})${errData.error ? `: ${errData.error}` : '. Please try again.'}`);
       }
-    } catch {
-      addInvestigationQuestion(selectedEventId, question, 'Failed to get answer. Please try again.');
+    } catch (err) {
+      clearPendingTimer();
+      setPendingAsk(null);
+      addInvestigationQuestion(selectedEventId, question,
+        `Network error: ${err instanceof Error ? err.message : 'Could not reach the server. Please try again.'}`);
     } finally {
       setIsAskingQuestion(false);
     }
@@ -431,7 +484,7 @@ export function InvestigationPanel({ onSend, eventId: embeddedEventId, onClose }
         )}
 
         {/* Investigation Q&A */}
-        {state.questions.length > 0 && (
+        {(state.questions.length > 0 || pendingAsk) && (
           <div className="space-y-3">
             <span className="text-[10px] text-[#484f58] font-mono uppercase tracking-wider block">
               Questions
@@ -465,6 +518,29 @@ export function InvestigationPanel({ onSend, eventId: embeddedEventId, onClose }
                 )}
               </div>
             ))}
+
+            {/* In-flight ask — shown immediately after submission */}
+            {pendingAsk && (
+              <div className="space-y-1 border border-[#30363d]/60 rounded-md p-2 bg-[#161b22]/50">
+                <div className="flex gap-2 items-start">
+                  <span className="text-[#58a6ff] text-xs shrink-0">Q:</span>
+                  <span className="text-xs text-[#8b949e] flex-1 min-w-0">{pendingAsk.question}</span>
+                </div>
+                <div className="flex gap-2 ml-4 items-center">
+                  <span className="text-[#3fb950] text-xs shrink-0">A:</span>
+                  {pendingAsk.phase === 'error' ? (
+                    <span className="text-xs text-[#f85149]">{pendingAsk.error}</span>
+                  ) : (
+                    <span className="text-[11px] text-[#484f58] font-mono animate-pulse">
+                      {pendingAsk.phase === 'connecting' ? 'Connecting...' : 'Waiting for response...'}
+                    </span>
+                  )}
+                  <span className="text-[10px] text-[#484f58] font-mono tabular-nums ml-1">
+                    {(pendingAsk.elapsedMs / 1000).toFixed(1)}s
+                  </span>
+                </div>
+              </div>
+            )}
           </div>
         )}
 

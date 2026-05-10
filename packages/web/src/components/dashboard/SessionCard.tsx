@@ -17,6 +17,8 @@ interface SessionCardProps {
   onDismiss: (sessionId: string) => void;
   onDrilldown: (sessionId: string, eventId: string) => void;
   onDrilldownToLogs: (sessionId: string, eventId: string) => void;
+  onOpenInLogs?: (sessionId: string) => void;
+  onBookmark?: (sessionId: string, name: string) => void;
   onSend: (msg: ClientMessage) => void;
   index: number;
   onDragStart: (index: number) => void;
@@ -596,7 +598,7 @@ function RateLimitMini({ label, pct, resetsAt }: { label: string; pct: number; r
 }
 
 export function SessionCard({
-  session, events, isFocused, onFocus, onDismiss, onDrilldown, onDrilldownToLogs, onSend, index,
+  session, events, isFocused, onFocus, onDismiss, onDrilldown, onDrilldownToLogs, onOpenInLogs, onBookmark, onSend, index,
   onDragStart, onDragOver, onDragEnd, isDragging, isDragOver, totalCards, isSpanning,
 }: SessionCardProps) {
   const { sessionMetrics, investigatedSessions } = useSessionStore(s => ({
@@ -610,6 +612,8 @@ export function SessionCard({
   const dragRef = useRef<HTMLDivElement>(null);
   const chainContainerRef = useRef<HTMLDivElement>(null);
   const [chainCapacity, setChainCapacity] = useState(6);
+  const [showBookmarkInput, setShowBookmarkInput] = useState(false);
+  const [bookmarkName, setBookmarkName] = useState('');
 
   // Measure the chain container width and compute how many nodes fit.
   // Each node is 28px, each connector is 12px → N nodes need (N-1)*40 + 28 px.
@@ -684,15 +688,18 @@ export function SessionCard({
           )}
         </div>
 
-        {/* Session name */}
+        {/* Session name — double-click opens in Logs */}
         <span
           style={{
             fontFamily: 'var(--dash-font-display)',
             fontSize: 13,
             fontWeight: 600,
             color: isFocused ? 'var(--dash-accent)' : 'var(--dash-text-primary)',
+            cursor: onOpenInLogs ? 'pointer' : undefined,
           }}
           className="truncate"
+          title={onOpenInLogs ? 'Double-click to open in Logs' : undefined}
+          onDoubleClick={(e) => { e.stopPropagation(); onOpenInLogs?.(session.sessionId); }}
         >
           {getSessionDisplayName(session)}
         </span>
@@ -754,6 +761,35 @@ export function SessionCard({
           </span>
         )}
 
+        {/* Bookmark button */}
+        {onBookmark && !showBookmarkInput && (
+          <button
+            title="Bookmark this session"
+            onClick={(e) => {
+              e.stopPropagation();
+              setBookmarkName(getSessionDisplayName(session));
+              setShowBookmarkInput(true);
+            }}
+            style={{
+              fontFamily: 'var(--dash-font-data)',
+              fontSize: 11,
+              lineHeight: 1,
+              color: 'var(--dash-text-muted)',
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
+              padding: '0 2px',
+              opacity: 0.5,
+              transition: 'opacity 0.15s',
+              flexShrink: 0,
+            }}
+            onMouseEnter={e => (e.currentTarget.style.opacity = '1')}
+            onMouseLeave={e => (e.currentTarget.style.opacity = '0.5')}
+          >
+            🔖
+          </button>
+        )}
+
         {/* Dismiss button */}
         <button
           title="Close session (deactivates monitoring; resume via Session History)"
@@ -777,6 +813,51 @@ export function SessionCard({
           ×
         </button>
       </div>
+
+      {/* Inline bookmark name input */}
+      {showBookmarkInput && (
+        <div className="px-3 py-1.5 shrink-0 flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+          <input
+            autoFocus
+            type="text"
+            value={bookmarkName}
+            onChange={(e) => setBookmarkName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                const name = bookmarkName.trim() || getSessionDisplayName(session);
+                onBookmark?.(session.sessionId, name);
+                setShowBookmarkInput(false);
+              }
+              if (e.key === 'Escape') { setShowBookmarkInput(false); }
+            }}
+            placeholder="Bookmark name"
+            style={{
+              flex: 1,
+              fontSize: 11,
+              fontFamily: 'var(--dash-font-data)',
+              background: 'var(--dash-bg)',
+              border: '1px solid var(--dash-accent)',
+              borderRadius: 4,
+              color: 'var(--dash-text-primary)',
+              padding: '2px 6px',
+              outline: 'none',
+              minWidth: 0,
+            }}
+          />
+          <button
+            onClick={() => {
+              const name = bookmarkName.trim() || getSessionDisplayName(session);
+              onBookmark?.(session.sessionId, name);
+              setShowBookmarkInput(false);
+            }}
+            style={{ fontSize: 10, color: 'var(--dash-success)', background: 'none', border: 'none', cursor: 'pointer', padding: '0 2px' }}
+          >✓</button>
+          <button
+            onClick={() => setShowBookmarkInput(false)}
+            style={{ fontSize: 10, color: 'var(--dash-text-muted)', background: 'none', border: 'none', cursor: 'pointer', padding: '0 2px' }}
+          >✕</button>
+        </div>
+      )}
 
       {/* Activity chain */}
       <div ref={chainContainerRef} className="px-3 shrink-0" style={{ maxWidth: totalCards === 1 ? '50%' : '100%' }}>

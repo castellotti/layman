@@ -21,6 +21,7 @@ export function DashboardView({ onSend }: DashboardViewProps) {
     dismissDashboardSession,
     navigateFromDashboard,
     navigateFromDashboardToLogs,
+    navigateToLogsForSession,
   } = useSessionStore();
 
   // Drag state
@@ -86,6 +87,29 @@ export function DashboardView({ onSend }: DashboardViewProps) {
   const handleDrilldownToLogs = useCallback((sessionId: string, eventId: string) => {
     navigateFromDashboardToLogs(sessionId, eventId);
   }, [navigateFromDashboardToLogs]);
+
+  // Open a session in Logs without selecting a specific event (double-click session name)
+  const handleOpenInLogs = useCallback((sessionId: string) => {
+    navigateToLogsForSession(sessionId);
+  }, [navigateToLogsForSession]);
+
+  // Bookmark a live session: snapshot it to DB then create a named bookmark
+  const handleBookmark = useCallback(async (sessionId: string, name: string) => {
+    try {
+      await fetch('/api/bookmarks/sessions/save-current', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId }),
+      });
+    } catch { /* non-fatal */ }
+    try {
+      await fetch('/api/bookmarks', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId, name, folderId: null }),
+      });
+    } catch { /* non-fatal */ }
+  }, []);
 
   // Drag handlers
   const handleDragStart = useCallback((index: number) => {
@@ -253,6 +277,8 @@ export function DashboardView({ onSend }: DashboardViewProps) {
                     onDismiss={handleDismiss}
                     onDrilldown={handleDrilldown}
                     onDrilldownToLogs={handleDrilldownToLogs}
+                    onOpenInLogs={handleOpenInLogs}
+                    onBookmark={(sid, name) => { void handleBookmark(sid, name); }}
                     onSend={onSend}
                     index={orderIndex}
                     onDragStart={handleDragStart}

@@ -134,6 +134,7 @@ export interface SessionState {
   dismissDashboardSession: (sessionId: string) => void;
   navigateFromDashboard: (sessionId: string, eventId: string) => void;
   navigateFromDashboardToLogs: (sessionId: string, eventId: string) => void;
+  navigateToLogsForSession: (sessionId: string) => void;
   clearScrollToEvent: () => void;
   returnFromDashboardDrilldown: () => void;
   setAccessLogOpen: (open: boolean) => void;
@@ -507,6 +508,15 @@ export const useSessionStore = create<SessionState>((set) => ({
     selectedEventId: eventId,
     investigationOpen: true,
     scrollToEventId: eventId,
+  }),
+  navigateToLogsForSession: (sessionId) => set({
+    dashboardOpen: false,
+    returnToDashboard: true,
+    flowchartOpen: false,
+    activeSessionId: sessionId,
+    selectedEventId: null,
+    investigationOpen: false,
+    scrollToEventId: null,
   }),
   clearScrollToEvent: () => set({ scrollToEventId: null }),
   returnFromDashboardDrilldown: () => set({

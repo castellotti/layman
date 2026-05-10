@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useCallback } from 'react';
 import { useSessionStore } from '../../stores/sessionStore.js';
 import { SessionLaymansTerms } from '../shared/SessionLaymansTerms.js';
 
@@ -78,6 +78,28 @@ export function Header() {
     sessionMetrics,
     investigatedSessions,
   } = useSessionStore();
+
+  const [showBookmarkInput, setShowBookmarkInput] = useState(false);
+  const [bookmarkName, setBookmarkName] = useState('');
+
+  const handleBookmarkSession = useCallback(async (name: string) => {
+    if (!activeSessionId) return;
+    setShowBookmarkInput(false);
+    try {
+      await fetch('/api/bookmarks/sessions/save-current', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId: activeSessionId }),
+      });
+    } catch { /* non-fatal */ }
+    try {
+      await fetch('/api/bookmarks', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId: activeSessionId, name: name.trim() || activeSessionId.slice(0, 8), folderId: null }),
+      });
+    } catch { /* non-fatal */ }
+  }, [activeSessionId]);
 
   const statusConfig = {
     connecting: { dot: 'bg-[#d29922]', text: 'Connecting...', textColor: 'text-[#d29922]' },
@@ -228,6 +250,51 @@ export function Header() {
             );
           })}
         </div>
+
+        {/* Bookmark button — shown in Logs view when a session is active */}
+        {currentView === 'stream' && activeSessionId && (
+          <>
+            {showBookmarkInput ? (
+              <div className="flex items-center gap-1">
+                <input
+                  autoFocus
+                  type="text"
+                  value={bookmarkName}
+                  onChange={(e) => setBookmarkName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') { void handleBookmarkSession(bookmarkName); }
+                    if (e.key === 'Escape') { setShowBookmarkInput(false); }
+                  }}
+                  placeholder="Bookmark name..."
+                  className="text-xs bg-[#0d1117] border border-[#58a6ff] rounded px-2 py-0.5 text-[#e6edf3] placeholder-[#484f58] focus:outline-none w-40"
+                />
+                <button
+                  onClick={() => { void handleBookmarkSession(bookmarkName); }}
+                  className="text-xs text-[#3fb950] hover:text-[#56d364] transition-colors"
+                >✓</button>
+                <button
+                  onClick={() => setShowBookmarkInput(false)}
+                  className="text-xs text-[#484f58] hover:text-[#8b949e] transition-colors"
+                >✕</button>
+              </div>
+            ) : (
+              <button
+                onClick={() => {
+                  const s = sessions.find(x => x.sessionId === activeSessionId);
+                  const name = s?.sessionName || (s?.cwd ? (s.cwd.split('/').filter(Boolean).pop() ?? s.cwd) : activeSessionId.slice(0, 8));
+                  setBookmarkName(name);
+                  setShowBookmarkInput(true);
+                }}
+                className="p-1.5 rounded-md text-[#8b949e] hover:text-[#d29922] hover:bg-[#30363d] transition-colors"
+                title="Bookmark current session"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
+                </svg>
+              </button>
+            )}
+          </>
+        )}
 
         {/* Divider */}
         <div className="h-5 w-px bg-[#30363d]" />
