@@ -12,8 +12,15 @@ const AGENT_TYPE = 'open-webui';
 
 // ── Open WebUI hook input shape ──
 
+export interface OpenWebUIWebSearchSource {
+  url: string;
+  hostname: string;
+  title: string;
+  content?: string | null;
+}
+
 export interface OpenWebUIHookInput {
-  event: 'UserPromptSubmit' | 'AgentResponse';
+  event: 'UserPromptSubmit' | 'AgentResponse' | 'WebSearch';
   chat_id: string;
   user_id?: string;
   user_name?: string;
@@ -24,6 +31,10 @@ export interface OpenWebUIHookInput {
   /** Extended thinking content, if the model produced thinking blocks (AgentResponse) */
   thinking?: string;
   model?: string;
+  /** Search queries issued during tool-based web search (WebSearch) */
+  queries?: string[];
+  /** Retrieved web sources with URL, title, and content snippet (WebSearch) */
+  sources?: OpenWebUIWebSearchSource[];
 }
 
 // ── Common base fields ──
