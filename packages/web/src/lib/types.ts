@@ -35,7 +35,8 @@ export type EventType =
   | 'file_changed'
   | 'session_metrics'
   | 'drift_check'
-  | 'drift_alert';
+  | 'drift_alert'
+  | 'web_search';
 
 export interface AnalysisResult {
   meaning: string;
@@ -156,6 +157,15 @@ export interface EventData {
   driftViolations?: Array<{ rule: string; action: string; severity: string }>;
   driftPhantomRefs?: string[];
   driftPatternBreaks?: string[];
+  webSearchQueries?: string[];
+  webSearchSources?: WebSearchSource[];
+}
+
+export interface WebSearchSource {
+  url: string;
+  hostname: string;
+  title: string;
+  content?: string;
 }
 
 export interface TimelineEvent {

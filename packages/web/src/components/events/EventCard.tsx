@@ -78,6 +78,7 @@ export function EventCard({ event, index, isSelected, onClick, onSend, collapseH
 
   const isPending = event.type === 'tool_call_pending' || event.type === 'permission_request';
   const isAgentResponse = event.type === 'agent_response';
+  const isWebSearch = event.type === 'web_search';
 
   const { thinking: effectiveThinking, response: agentResponse } = useMemo(
     () => getEffectiveAgentContent(event),
@@ -88,8 +89,8 @@ export function EventCard({ event, index, isSelected, onClick, onSend, collapseH
   const isUserPrompt = event.type === 'user_prompt';
   const isDriftEvent = event.type === 'drift_alert' || event.type === 'drift_check';
   // When collapseHistory is on, expansion is driven by selection; otherwise use local toggle
-  // agent_response, tool_call_failed, user_prompt, and drift events are always expanded so content is visible without clicking
-  const expanded = isPending || isAgentResponse || isFailed || isUserPrompt || isDriftEvent || (collapseHistory ? isSelected : expandedLocal);
+  // agent_response, tool_call_failed, user_prompt, drift, and web_search events are always expanded so content is visible without clicking
+  const expanded = isPending || isAgentResponse || isFailed || isUserPrompt || isDriftEvent || isWebSearch || (collapseHistory ? isSelected : expandedLocal);
   const borderColor = BORDER_COLORS[event.type] ?? 'border-l-[#30363d]';
   const icon = EVENT_ICONS[event.type] ?? '·';
 
@@ -173,11 +174,24 @@ export function EventCard({ event, index, isSelected, onClick, onSend, collapseH
         )}
 
         {/* Prompt text if present */}
-        {effectivePrompt && !event.data.toolName && (
+        {effectivePrompt && !event.data.toolName && !isWebSearch && (
           <span className="text-xs text-[#58a6ff] truncate italic">
             {effectivePrompt.slice(0, 60)}
           </span>
         )}
+
+        {/* Web search summary in header */}
+        {isWebSearch && (() => {
+          const sourceCount = event.data.webSearchSources?.length ?? 0;
+          const queryCount = event.data.webSearchQueries?.length ?? 0;
+          return (
+            <span className="text-[11px] text-[#79c0ff] truncate">
+              {queryCount > 0 && `${queryCount} ${queryCount === 1 ? 'query' : 'queries'}`}
+              {queryCount > 0 && sourceCount > 0 && ' · '}
+              {sourceCount > 0 && `${sourceCount} ${sourceCount === 1 ? 'source' : 'sources'} retrieved`}
+            </span>
+          );
+        })()}
 
         {/* Session/notification labels */}
         {event.data.source && (
@@ -395,6 +409,63 @@ export function EventCard({ event, index, isSelected, onClick, onSend, collapseH
               />
             );
           })()}
+
+          {/* Web search sources */}
+          {isWebSearch && (
+            <div className="space-y-2">
+              {event.data.webSearchQueries && event.data.webSearchQueries.length > 0 && (
+                <div>
+                  <p className="text-[10px] text-[#484f58] mb-1.5 font-mono uppercase">Queries</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {event.data.webSearchQueries.map((q, i) => (
+                      <span
+                        key={i}
+                        className="text-[11px] text-[#79c0ff] bg-[#79c0ff]/10 border border-[#79c0ff]/20 px-2 py-0.5 rounded font-mono"
+                      >
+                        {q}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {event.data.webSearchSources && event.data.webSearchSources.length > 0 && (
+                <div>
+                  <p className="text-[10px] text-[#484f58] mb-1.5 font-mono uppercase">
+                    Retrieved sources
+                  </p>
+                  <div className="space-y-1.5">
+                    {event.data.webSearchSources.map((src, i) => (
+                      <a
+                        key={i}
+                        href={src.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={(e) => e.stopPropagation()}
+                        className="flex flex-col gap-0.5 rounded-md border border-[#30363d] bg-[#0d1117] px-3 py-2 hover:border-[#79c0ff]/40 hover:bg-[#79c0ff]/5 transition-colors group"
+                      >
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] text-[#79c0ff] bg-[#79c0ff]/10 border border-[#79c0ff]/20 px-1.5 py-0.5 rounded font-mono shrink-0">
+                            {src.hostname}
+                          </span>
+                          <span className="text-[11px] text-[#e6edf3] font-medium truncate group-hover:text-[#79c0ff] transition-colors">
+                            {src.title}
+                          </span>
+                        </div>
+                        <span className="text-[10px] text-[#484f58] font-mono truncate pl-0.5">
+                          {src.url}
+                        </span>
+                        {src.content && (
+                          <p className="text-[11px] text-[#8b949e] mt-0.5 line-clamp-2 leading-relaxed">
+                            {src.content}
+                          </p>
+                        )}
+                      </a>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Analysis card */}
           {event.analysis && (

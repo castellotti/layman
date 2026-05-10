@@ -825,8 +825,10 @@ export class HookInstaller {
   /** Install the Layman filter function into Open WebUI via its REST API. */
   async installOpenWebUIFunction(openWebUiUrl: string, apiKey: string): Promise<void> {
     const callbackUrl = this.deriveOpenWebUICallbackUrl(openWebUiUrl);
+    // template (serverUrl substituted) is used only for hash consistency with getOpenWebUIFunctionStatus().
+    // content uses the actual derived callbackUrl so Docker setups get host.docker.internal, not localhost.
     const template = this.getOpenWebUIFilterContent();
-    const content = template.replace(/__LAYMAN_URL__/g, callbackUrl);
+    const content = this.getOpenWebUIFilterContent(callbackUrl);
     const body = JSON.stringify({ id: OPENWEBUI_FUNCTION_ID, ...OPENWEBUI_FUNCTION_META, content });
 
     // Try v1 path first (newer Open WebUI), fall back to legacy on network error

@@ -142,13 +142,15 @@ function OpenWebUIConfigDialog({
   };
 
   // Primary action: always saves config; installs/updates when a URL is set and the
-  // filter is missing or outdated. Passes URL + apiKey in the request body so the
-  // server doesn't have to wait for the WebSocket config:update round-trip first.
+  // filter is missing, outdated, or the URL changed (URL change means the callback
+  // address baked into the filter needs refreshing). Passes URL + apiKey in the request
+  // body so the server doesn't have to wait for the WebSocket config:update round-trip.
+  const urlChanged = urlTrimmed !== (config.openWebUiUrl ?? '').trim();
   const handlePrimary = async () => {
     const apiKeyTrimmed = apiKey.trim();
     onSend({ type: 'config:update', config: { openWebUiUrl: urlTrimmed, openWebUiApiKey: apiKeyTrimmed } });
 
-    if (!urlTrimmed || (isInstalled && isUpToDate)) {
+    if (!urlTrimmed || (isInstalled && isUpToDate && !urlChanged)) {
       onClose();
       return;
     }
@@ -193,7 +195,7 @@ function OpenWebUIConfigDialog({
 
   function getPrimaryLabel() {
     if (installState === 'busy') return 'Installing…';
-    if (!urlTrimmed || (isInstalled && isUpToDate)) return 'Save';
+    if (!urlTrimmed || (isInstalled && isUpToDate && !urlChanged)) return 'Save';
     if (!isInstalled) return 'Install';
     return 'Update';
   }

@@ -79,6 +79,7 @@ export const EVENT_TYPE_CATEGORY_MAP: Record<string, (keyof EventTypeFilters)[]>
   tool_call_approved: ['tools'],
   tool_call_denied: ['tools'],
   tool_call_delegated: ['tools'],
+  web_search: ['tools'],
   session_start: ['system'],
   session_end: ['system'],
   subagent_start: ['system'],
