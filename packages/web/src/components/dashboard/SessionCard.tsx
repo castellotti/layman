@@ -776,23 +776,12 @@ export function SessionCard({
               setBookmarkName(getSessionDisplayName(session));
               setShowBookmarkInput(true);
             }}
-            style={{
-              fontFamily: 'var(--dash-font-data)',
-              fontSize: 11,
-              lineHeight: 1,
-              color: 'var(--dash-text-muted)',
-              background: 'none',
-              border: 'none',
-              cursor: 'pointer',
-              padding: '0 2px',
-              opacity: 0.5,
-              transition: 'opacity 0.15s',
-              flexShrink: 0,
-            }}
-            onMouseEnter={e => (e.currentTarget.style.opacity = '1')}
-            onMouseLeave={e => (e.currentTarget.style.opacity = '0.5')}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0 2px', flexShrink: 0, color: 'var(--dash-text-muted)', opacity: 0.5, transition: 'opacity 0.15s' }}
+            className="hover:!opacity-100"
           >
-            🔖
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
+            </svg>
           </button>
         )}
 

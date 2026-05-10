@@ -214,8 +214,6 @@ export function InvestigationPanel({ onSend, eventId: embeddedEventId, onClose }
           } : {}),
         }),
       });
-      clearPendingTimer();
-      setPendingAsk(null);
       if (response.ok) {
         const data = await response.json() as { answer: string; tokens?: { input: number; output: number }; latencyMs?: number; model?: string };
         const answer = data.answer?.trim();
@@ -226,11 +224,11 @@ export function InvestigationPanel({ onSend, eventId: embeddedEventId, onClose }
         addInvestigationQuestion(selectedEventId, question, `Request failed (HTTP ${response.status}). Please try again.`);
       }
     } catch (err) {
-      clearPendingTimer();
-      setPendingAsk(null);
       addInvestigationQuestion(selectedEventId, question,
         `Network error: ${err instanceof Error ? err.message : 'Could not reach the server.'}`);
     } finally {
+      clearPendingTimer();
+      setPendingAsk(null);
       setIsAskingFailure(false);
     }
   };
@@ -253,8 +251,6 @@ export function InvestigationPanel({ onSend, eventId: embeddedEventId, onClose }
           } : {}),
         }),
       });
-      clearPendingTimer();
-      setPendingAsk(null);
       if (response.ok) {
         const data = await response.json() as { answer: string; tokens?: { input: number; output: number }; latencyMs?: number; model?: string };
         const answer = data.answer?.trim();
@@ -272,11 +268,11 @@ export function InvestigationPanel({ onSend, eventId: embeddedEventId, onClose }
           `Request failed (HTTP ${response.status})${errData.error ? `: ${errData.error}` : '. Please try again.'}`);
       }
     } catch (err) {
-      clearPendingTimer();
-      setPendingAsk(null);
       addInvestigationQuestion(selectedEventId, question,
         `Network error: ${err instanceof Error ? err.message : 'Could not reach the server. Please try again.'}`);
     } finally {
+      clearPendingTimer();
+      setPendingAsk(null);
       setIsAskingQuestion(false);
     }
   };
@@ -490,6 +486,26 @@ export function InvestigationPanel({ onSend, eventId: embeddedEventId, onClose }
             <span className="text-[10px] text-[#484f58] font-mono uppercase tracking-wider block">
               Questions
             </span>
+            {/* In-flight ask — shown immediately after submission, above prior answers */}
+            {pendingAsk && (
+              <div className="space-y-1 border border-[#30363d]/60 rounded-md p-2 bg-[#161b22]/50">
+                <div className="flex gap-2 items-start">
+                  <span className="text-[#58a6ff] text-xs shrink-0">Q:</span>
+                  <span className="text-xs text-[#8b949e] flex-1 min-w-0">{pendingAsk.question}</span>
+                </div>
+                <div className="flex gap-2 ml-4 items-center">
+                  <span className="text-[#3fb950] text-xs shrink-0">A:</span>
+                  <span className="text-[11px] text-[#484f58] font-mono animate-pulse">
+                    {/* 800ms threshold: first phase covers network round-trip, second covers LLM inference */}
+                    {pendingAsk.phase === 'connecting' ? 'Connecting...' : 'Waiting for response...'}
+                  </span>
+                  <span className="text-[10px] text-[#484f58] font-mono tabular-nums ml-1">
+                    {(pendingAsk.elapsedMs / 1000).toFixed(1)}s
+                  </span>
+                </div>
+              </div>
+            )}
+
             {state.questions.map((qa, i) => (
               <div key={i} className="space-y-1">
                 <div className="flex gap-2 items-start">
@@ -519,25 +535,6 @@ export function InvestigationPanel({ onSend, eventId: embeddedEventId, onClose }
                 )}
               </div>
             ))}
-
-            {/* In-flight ask — shown immediately after submission */}
-            {pendingAsk && (
-              <div className="space-y-1 border border-[#30363d]/60 rounded-md p-2 bg-[#161b22]/50">
-                <div className="flex gap-2 items-start">
-                  <span className="text-[#58a6ff] text-xs shrink-0">Q:</span>
-                  <span className="text-xs text-[#8b949e] flex-1 min-w-0">{pendingAsk.question}</span>
-                </div>
-                <div className="flex gap-2 ml-4 items-center">
-                  <span className="text-[#3fb950] text-xs shrink-0">A:</span>
-                  <span className="text-[11px] text-[#484f58] font-mono animate-pulse">
-                    {pendingAsk.phase === 'connecting' ? 'Connecting...' : 'Waiting for response...'}
-                  </span>
-                  <span className="text-[10px] text-[#484f58] font-mono tabular-nums ml-1">
-                    {(pendingAsk.elapsedMs / 1000).toFixed(1)}s
-                  </span>
-                </div>
-              </div>
-            )}
           </div>
         )}
 

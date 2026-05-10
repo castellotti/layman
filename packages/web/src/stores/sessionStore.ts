@@ -509,15 +509,15 @@ export const useSessionStore = create<SessionState>((set) => ({
     investigationOpen: true,
     scrollToEventId: eventId,
   }),
-  navigateToLogsForSession: (sessionId) => set({
+  navigateToLogsForSession: (sessionId) => set((state) => ({
     dashboardOpen: false,
-    returnToDashboard: true,
+    returnToDashboard: state.dashboardOpen,
     flowchartOpen: false,
     activeSessionId: sessionId,
     selectedEventId: null,
     investigationOpen: false,
     scrollToEventId: null,
-  }),
+  })),
   clearScrollToEvent: () => set({ scrollToEventId: null }),
   returnFromDashboardDrilldown: () => set({
     dashboardOpen: true,

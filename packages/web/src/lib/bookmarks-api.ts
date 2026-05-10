@@ -8,12 +8,12 @@ export async function saveAndBookmarkSession(sessionId: string, name: string): P
       body: JSON.stringify({ sessionId }),
     });
     if (!snapRes.ok) return false;
-    await fetch('/api/bookmarks', {
+    const bookmarkRes = await fetch('/api/bookmarks', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ sessionId, name, folderId: null }),
     });
-    return true;
+    return bookmarkRes.ok;
   } catch {
     return false;
   }

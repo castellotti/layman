@@ -95,10 +95,6 @@ export function DashboardView({ onSend }: DashboardViewProps) {
     navigateFromDashboardToLogs(sessionId, eventId);
   }, [navigateFromDashboardToLogs]);
 
-  const handleBookmark = useCallback((sessionId: string, name: string) => {
-    void saveAndBookmarkSession(sessionId, name);
-  }, []);
-
   // Drag handlers
   const handleDragStart = useCallback((index: number) => {
     setDragIndex(index);
@@ -266,7 +262,7 @@ export function DashboardView({ onSend }: DashboardViewProps) {
                     onDrilldown={handleDrilldown}
                     onDrilldownToLogs={handleDrilldownToLogs}
                     onOpenInLogs={navigateToLogsForSession}
-                    onBookmark={bookmarkedSessionIds.has(session.sessionId) ? undefined : handleBookmark}
+                    onBookmark={bookmarkedSessionIds.has(session.sessionId) ? undefined : saveAndBookmarkSession}
                     onSend={onSend}
                     index={orderIndex}
                     onDragStart={handleDragStart}
