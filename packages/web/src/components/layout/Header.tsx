@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { useSessionStore } from '../../stores/sessionStore.js';
 import { SessionLaymansTerms } from '../shared/SessionLaymansTerms.js';
 
@@ -77,22 +77,28 @@ export function Header() {
     dashboardFocusedSession, setDashboardFocusedSession,
     sessionMetrics,
     investigatedSessions,
+    bookmarks,
   } = useSessionStore();
 
   const [showBookmarkInput, setShowBookmarkInput] = useState(false);
   const [bookmarkName, setBookmarkName] = useState('');
 
+  // Reset bookmark UI when the active session changes
+  useEffect(() => {
+    setShowBookmarkInput(false);
+    setBookmarkName('');
+  }, [activeSessionId]);
+
   const handleBookmarkSession = useCallback(async (name: string) => {
     if (!activeSessionId) return;
     setShowBookmarkInput(false);
     try {
-      await fetch('/api/bookmarks/sessions/save-current', {
+      const snapRes = await fetch('/api/bookmarks/sessions/save-current', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ sessionId: activeSessionId }),
       });
-    } catch { /* non-fatal */ }
-    try {
+      if (!snapRes.ok) return;
       await fetch('/api/bookmarks', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -251,8 +257,8 @@ export function Header() {
           })}
         </div>
 
-        {/* Bookmark button — shown in Logs view when a session is active */}
-        {currentView === 'stream' && activeSessionId && (
+        {/* Bookmark button — shown in Logs view when a session is active and not yet bookmarked */}
+        {currentView === 'stream' && activeSessionId && !bookmarks.some(b => b.sessionId === activeSessionId) && (
           <>
             {showBookmarkInput ? (
               <div className="flex items-center gap-1">

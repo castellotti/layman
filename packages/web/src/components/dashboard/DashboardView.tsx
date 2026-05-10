@@ -13,6 +13,7 @@ export function DashboardView({ onSend }: DashboardViewProps) {
   const {
     sessions,
     events: allEvents,
+    bookmarks,
     dashboardFocusedSession,
     setDashboardFocusedSession,
     dashboardSessionOrder,
@@ -23,6 +24,11 @@ export function DashboardView({ onSend }: DashboardViewProps) {
     navigateFromDashboardToLogs,
     navigateToLogsForSession,
   } = useSessionStore();
+
+  const bookmarkedSessionIds = useMemo(
+    () => new Set(bookmarks.map((b) => b.sessionId)),
+    [bookmarks]
+  );
 
   // Drag state
   const [dragIndex, setDragIndex] = useState<number | null>(null);
@@ -93,16 +99,16 @@ export function DashboardView({ onSend }: DashboardViewProps) {
     navigateToLogsForSession(sessionId);
   }, [navigateToLogsForSession]);
 
-  // Bookmark a live session: snapshot it to DB then create a named bookmark
+  // Bookmark a live session: snapshot it to DB first, then create a named bookmark.
+  // The bookmark is only created if the snapshot succeeded (ensures the session exists in DB).
   const handleBookmark = useCallback(async (sessionId: string, name: string) => {
     try {
-      await fetch('/api/bookmarks/sessions/save-current', {
+      const snapRes = await fetch('/api/bookmarks/sessions/save-current', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ sessionId }),
       });
-    } catch { /* non-fatal */ }
-    try {
+      if (!snapRes.ok) return;
       await fetch('/api/bookmarks', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -278,7 +284,7 @@ export function DashboardView({ onSend }: DashboardViewProps) {
                     onDrilldown={handleDrilldown}
                     onDrilldownToLogs={handleDrilldownToLogs}
                     onOpenInLogs={handleOpenInLogs}
-                    onBookmark={(sid, name) => { void handleBookmark(sid, name); }}
+                    onBookmark={bookmarkedSessionIds.has(session.sessionId) ? undefined : (sid, name) => { void handleBookmark(sid, name); }}
                     onSend={onSend}
                     index={orderIndex}
                     onDragStart={handleDragStart}

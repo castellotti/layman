@@ -12,6 +12,8 @@ import type { ClientMessage } from '../../lib/ws-protocol.js';
 import type { TimelineEvent } from '../../lib/types.js';
 import { ThinkingBlock } from '../shared/ThinkingBlock.js';
 
+type AskPhase = 'connecting' | 'waiting';
+
 function AgentResponsePrompt({ event }: { event: TimelineEvent }) {
   const { thinking, response } = getEffectiveAgentContent(event);
   return (
@@ -89,15 +91,33 @@ export function InvestigationPanel({ onSend, eventId: embeddedEventId, onClose }
   const [analysisDepth, setAnalysisDepth] = useState<'quick' | 'detailed' | null>(null);
   const [isAskingFailure, setIsAskingFailure] = useState(false);
 
-  type AskPhase = 'connecting' | 'waiting' | 'error';
   const [pendingAsk, setPendingAsk] = useState<{
     question: string;
     phase: AskPhase;
     startedAt: number;
     elapsedMs: number;
-    error?: string;
   } | null>(null);
   const pendingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const startPendingTimer = useCallback((question: string) => {
+    const startedAt = Date.now();
+    setPendingAsk({ question, phase: 'connecting', startedAt, elapsedMs: 0 });
+    if (pendingTimerRef.current) clearInterval(pendingTimerRef.current);
+    pendingTimerRef.current = setInterval(() => {
+      setPendingAsk((prev) => {
+        if (!prev) return null;
+        const elapsed = Date.now() - prev.startedAt;
+        return { ...prev, elapsedMs: elapsed, phase: elapsed > 800 ? 'waiting' : 'connecting' };
+      });
+    }, 100);
+  }, []);
+
+  const clearPendingTimer = useCallback(() => {
+    if (pendingTimerRef.current) {
+      clearInterval(pendingTimerRef.current);
+      pendingTimerRef.current = null;
+    }
+  }, []);
 
   const fetchModels = useCallback(async () => {
     if (!config) return;
@@ -137,6 +157,9 @@ export function InvestigationPanel({ onSend, eventId: embeddedEventId, onClose }
     setLaymansDepth(null);
     setAnalysisDepth(null);
   }, [selectedEventId]);
+
+  // Cancel the tick timer when the panel unmounts
+  useEffect(() => () => clearPendingTimer(), [clearPendingTimer]);
 
   const isEmbedded = !!embeddedEventId;
   if (!isEmbedded && (!investigationOpen || !selectedEventId)) return null;
@@ -211,28 +234,6 @@ export function InvestigationPanel({ onSend, eventId: embeddedEventId, onClose }
       setIsAskingFailure(false);
     }
   };
-
-  const startPendingTimer = useCallback((question: string) => {
-    const startedAt = Date.now();
-    setPendingAsk({ question, phase: 'connecting', startedAt, elapsedMs: 0 });
-    if (pendingTimerRef.current) clearInterval(pendingTimerRef.current);
-    pendingTimerRef.current = setInterval(() => {
-      setPendingAsk((prev) => {
-        if (!prev) return null;
-        const elapsed = Date.now() - prev.startedAt;
-        // Transition from 'connecting' to 'waiting' after 800ms
-        const phase: AskPhase = prev.phase === 'error' ? 'error' : elapsed > 800 ? 'waiting' : 'connecting';
-        return { ...prev, elapsedMs: elapsed, phase };
-      });
-    }, 100);
-  }, []);
-
-  const clearPendingTimer = useCallback(() => {
-    if (pendingTimerRef.current) {
-      clearInterval(pendingTimerRef.current);
-      pendingTimerRef.current = null;
-    }
-  }, []);
 
   const handleAsk = async (question: string) => {
     markSessionInvestigated(event.sessionId);
@@ -528,13 +529,9 @@ export function InvestigationPanel({ onSend, eventId: embeddedEventId, onClose }
                 </div>
                 <div className="flex gap-2 ml-4 items-center">
                   <span className="text-[#3fb950] text-xs shrink-0">A:</span>
-                  {pendingAsk.phase === 'error' ? (
-                    <span className="text-xs text-[#f85149]">{pendingAsk.error}</span>
-                  ) : (
-                    <span className="text-[11px] text-[#484f58] font-mono animate-pulse">
-                      {pendingAsk.phase === 'connecting' ? 'Connecting...' : 'Waiting for response...'}
-                    </span>
-                  )}
+                  <span className="text-[11px] text-[#484f58] font-mono animate-pulse">
+                    {pendingAsk.phase === 'connecting' ? 'Connecting...' : 'Waiting for response...'}
+                  </span>
                   <span className="text-[10px] text-[#484f58] font-mono tabular-nums ml-1">
                     {(pendingAsk.elapsedMs / 1000).toFixed(1)}s
                   </span>
