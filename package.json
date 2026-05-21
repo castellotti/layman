@@ -8,5 +8,5 @@
     "typecheck": "pnpm -r typecheck"
   },
   "packageManager": "pnpm@10.29.3",
-  "version": "0.5.1"
+  "version": "0.6.0"
 }
