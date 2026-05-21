@@ -296,11 +296,18 @@ export function BookmarksPanel({ onSend }: BookmarksPanelProps) {
   const unbookmarkedSessions = recordedSessions.filter((s) => !bookmarkedSessionIds.has(s.sessionId));
   const liveSessionIds = new Set(sessions.map((s) => s.sessionId));
 
+  const viewingSession = viewingSessionId
+    ? recordedSessions.find((s) => s.sessionId === viewingSessionId)
+    : undefined;
+  const viewingSessionLabel = viewingSession
+    ? (viewingSession.sessionName ?? getSessionLabel(viewingSession.cwd ?? '', viewingSessionId!))
+    : undefined;
+
   return (
-    <div className="fixed inset-0 z-50 flex">
+    <div className="flex flex-col h-full bg-[#0d1117]">
       {/* Delete confirmation dialog */}
       {deleteConfirmSessionId && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
           <div className="bg-[#161b22] border border-[#30363d] rounded-lg shadow-2xl p-6 max-w-sm w-full mx-4">
             <h3 className="text-sm font-semibold text-[#e6edf3] mb-2">Delete session?</h3>
             <p className="text-xs text-[#8b949e] mb-5">
@@ -324,35 +331,18 @@ export function BookmarksPanel({ onSend }: BookmarksPanelProps) {
         </div>
       )}
 
-      {/* Overlay */}
-      <div data-bookmarks-overlay className="fixed inset-0 bg-black/50" onClick={() => setBookmarksOpen(false)} />
+      {/* Search bar across the full top */}
+      <div data-print-hide>
+        <SearchBar
+          viewingSessionId={viewingSessionId}
+          viewingSessionLabel={viewingSessionLabel}
+        />
+      </div>
 
-      {/* Panel */}
-      <div className={`relative flex w-full mx-auto my-0 h-full bg-[#0d1117] shadow-2xl ${investigatingEventId ? 'max-w-full' : 'max-w-5xl'}`}>
+      {/* Main content: sidebar + right panel */}
+      <div className="flex flex-1 overflow-hidden">
         {/* Left: bookmark tree */}
-        <div data-bookmarks-sidebar className="w-72 shrink-0 bg-[#161b22] border-r border-[#30363d] flex flex-col h-full">
-          {/* Header */}
-          <div className="flex items-center justify-between px-4 py-3 border-b border-[#30363d]">
-            <h2 className="text-sm font-semibold text-[#e6edf3]">Sessions</h2>
-            <button
-              onClick={() => setBookmarksOpen(false)}
-              className="text-[#8b949e] hover:text-[#e6edf3] transition-colors text-lg leading-none"
-            >
-              ×
-            </button>
-          </div>
-
-          {/* Search bar */}
-          <SearchBar
-            viewingSessionId={viewingSessionId}
-            viewingSessionLabel={viewingSessionId ? (
-              recordedSessions.find((s) => s.sessionId === viewingSessionId)?.sessionName
-              ?? getSessionLabel(
-                recordedSessions.find((s) => s.sessionId === viewingSessionId)?.cwd ?? '',
-                viewingSessionId
-              )
-            ) : undefined}
-          />
+        <div data-bookmarks-sidebar className="w-72 shrink-0 bg-[#161b22] border-r border-[#30363d] flex flex-col overflow-hidden">
 
           {/* Live sessions that haven't been saved yet */}
           {unsavedLiveSessions.length > 0 && (
@@ -597,7 +587,7 @@ export function BookmarksPanel({ onSend }: BookmarksPanelProps) {
         </div>
 
         {/* Right: search results, session view, or empty state */}
-        <div className="flex-1 flex overflow-hidden">
+        <div className="flex-1 flex overflow-hidden min-w-0">
           {searchResults && !viewingSessionId ? (
             <div className="flex-1 flex flex-col overflow-hidden">
               <SearchResults

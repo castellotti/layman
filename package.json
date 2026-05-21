@@ -7,10 +7,6 @@
     "test": "pnpm -r test",
     "typecheck": "pnpm -r typecheck"
   },
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "better-sqlite3"
-    ]
-  },
+  "packageManager": "pnpm@10.29.3",
   "version": "0.5.1"
 }

@@ -1,9 +1,9 @@
-FROM node:20-slim AS build
+FROM node:22-slim AS build
 WORKDIR /app
 
 # Install pnpm and native build tools (required for better-sqlite3)
 RUN apt-get update && apt-get install -y python3 make g++ && rm -rf /var/lib/apt/lists/*
-RUN corepack enable && corepack prepare pnpm@latest --activate
+RUN corepack enable && corepack prepare pnpm@10.29.3 --activate
 
 # Copy workspace manifests
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml* ./
@@ -21,7 +21,7 @@ COPY . .
 # Build
 RUN pnpm build
 
-FROM node:20-slim
+FROM node:22-slim
 WORKDIR /app
 
 # Copy built artifacts

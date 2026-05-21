@@ -12,6 +12,7 @@ export const HARNESS_DISPLAY_NAMES: Record<string, string> = {
   cline: 'Cline',
   codex: 'Codex',
   opencode: 'OpenCode',
+  layman: 'Layman',
 };
 
 // Module-level cache: agentType → entry (10-minute TTL)
@@ -46,6 +47,10 @@ const CHANGELOG_CONFIG: Record<string, { rawUrl?: string; sourceUrl: string; use
     // The 10-min module cache means at most 6 fetches/hour in normal use.
     sourceUrl: 'https://github.com/openai/codex/releases',
     useGithubReleases: 'openai/codex',
+  },
+  layman: {
+    rawUrl: 'https://raw.githubusercontent.com/castellotti/layman/refs/heads/main/CHANGELOG.md',
+    sourceUrl: 'https://github.com/castellotti/layman/blob/main/CHANGELOG.md',
   },
 };
 
