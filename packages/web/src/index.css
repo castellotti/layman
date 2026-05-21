@@ -96,11 +96,6 @@ body {
     display: none !important;
   }
 
-  /* Hide the event type filter bar and session header close button */
-  body.layman-print-historical [data-print-hide] {
-    display: none !important;
-  }
-
   /* --- Shared print styles --- */
 
   /* Release ALL height/overflow constraints up the ancestor chain so
