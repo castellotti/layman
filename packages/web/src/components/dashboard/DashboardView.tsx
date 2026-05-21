@@ -2,6 +2,7 @@ import React, { useMemo, useState, useCallback, useEffect } from 'react';
 import { useSessionStore } from '../../stores/sessionStore.js';
 import { SessionCard } from './SessionCard.js';
 import { SidePanel } from './SidePanel.js';
+import { saveAndBookmarkSession } from '../../lib/bookmarks-api.js';
 import type { ClientMessage } from '../../lib/ws-protocol.js';
 import './dashboard.css';
 
@@ -13,6 +14,7 @@ export function DashboardView({ onSend }: DashboardViewProps) {
   const {
     sessions,
     events: allEvents,
+    bookmarks,
     dashboardFocusedSession,
     setDashboardFocusedSession,
     dashboardSessionOrder,
@@ -21,7 +23,13 @@ export function DashboardView({ onSend }: DashboardViewProps) {
     dismissDashboardSession,
     navigateFromDashboard,
     navigateFromDashboardToLogs,
+    navigateToLogsForSession,
   } = useSessionStore();
+
+  const bookmarkedSessionIds = useMemo(
+    () => new Set(bookmarks.map((b) => b.sessionId)),
+    [bookmarks]
+  );
 
   // Drag state
   const [dragIndex, setDragIndex] = useState<number | null>(null);
@@ -253,6 +261,8 @@ export function DashboardView({ onSend }: DashboardViewProps) {
                     onDismiss={handleDismiss}
                     onDrilldown={handleDrilldown}
                     onDrilldownToLogs={handleDrilldownToLogs}
+                    onOpenInLogs={navigateToLogsForSession}
+                    onBookmark={bookmarkedSessionIds.has(session.sessionId) ? undefined : saveAndBookmarkSession}
                     onSend={onSend}
                     index={orderIndex}
                     onDragStart={handleDragStart}
