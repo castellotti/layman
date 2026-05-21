@@ -65,11 +65,11 @@ function IconFlowchart() {
   );
 }
 
-type ViewMode = 'dashboard' | 'stream' | 'flowchart';
+type ViewMode = 'dashboard' | 'stream' | 'flowchart' | 'sessions';
 
 export function Header() {
   const {
-    wsStatus, serverVersion, setSettingsOpen, setBookmarksOpen,
+    wsStatus, setSettingsOpen, setBookmarksOpen, bookmarksOpen,
     sessions, activeSessionId, setActiveSession,
     sessionSummary, sessionSummaryHistory, sessionSummaryError, isSummarizingSession, fetchSessionSummary,
     clearSessionSummaryError,
@@ -101,27 +101,25 @@ export function Header() {
     void saveAndBookmarkSession(activeSessionId, name.trim() || activeSessionId.slice(0, 8));
   }, [activeSessionId]);
 
-  const statusConfig = {
-    connecting: { dot: 'bg-[#d29922]', text: 'Connecting...', textColor: 'text-[#d29922]' },
-    connected: { dot: 'bg-[#3fb950]', text: 'Connected', textColor: 'text-[#3fb950]' },
-    disconnected: { dot: 'bg-[#8b949e]', text: 'Disconnected', textColor: 'text-[#8b949e]' },
-    error: { dot: 'bg-[#f85149]', text: 'Error', textColor: 'text-[#f85149]' },
-  };
-
-  const { dot, text, textColor } = statusConfig[wsStatus];
-
-  const currentView: ViewMode = dashboardOpen ? 'dashboard' : flowchartOpen ? 'flowchart' : 'stream';
+  const currentView: ViewMode = dashboardOpen ? 'dashboard' : bookmarksOpen ? 'sessions' : flowchartOpen ? 'flowchart' : 'stream';
 
   const setView = (view: ViewMode) => {
     if (view === 'dashboard') {
       setDashboardOpen(true);
       setFlowchartOpen(false);
+      setBookmarksOpen(false);
+    } else if (view === 'sessions') {
+      setDashboardOpen(false);
+      setFlowchartOpen(false);
+      setBookmarksOpen(true);
     } else if (view === 'stream') {
       setDashboardOpen(false);
       setFlowchartOpen(false);
+      setBookmarksOpen(false);
     } else {
       setDashboardOpen(false);
       setFlowchartOpen(true);
+      setBookmarksOpen(false);
     }
   };
 
@@ -138,31 +136,15 @@ export function Header() {
 
   return (
     <header className="flex items-center gap-3 px-4 py-2.5 bg-[#161b22] border-b border-[#30363d] shrink-0">
-      {/* Left: logo + status + session selector (hidden in dashboard) */}
+      {/* Left: logo + session selector */}
       <div className="flex items-center gap-3 shrink-0">
-        <div className="flex items-center gap-2">
-          <span
-            className="text-sm font-bold text-[#e6edf3] tracking-tight cursor-pointer hover:text-white transition-colors"
-            onClick={() => { window.location.href = window.location.origin + '/?t=' + Date.now(); }}
-            title="Reload"
-          >LAYMAN</span>
-          {serverVersion && (
-            <a
-              href="https://github.com/castellotti/layman"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-[10px] text-[#484f58] font-mono hover:text-[#8b949e] transition-colors"
-              title="View on GitHub"
-            >v{serverVersion}</a>
-          )}
-        </div>
-
-        <div className="h-4 w-px bg-[#30363d]" />
-
-        <div className="flex items-center gap-1.5">
-          <div className={`w-2 h-2 rounded-full ${dot} ${wsStatus === 'connecting' ? 'animate-pulse' : ''}`} />
-          <span className={`text-xs ${textColor}`}>{text}</span>
-        </div>
+        <a
+          href="https://github.com/castellotti/layman"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-sm font-bold text-[#e6edf3] tracking-tight hover:text-white transition-colors no-underline"
+          title="View on GitHub"
+        >LAYMAN</a>
 
         {/* Session dropdown */}
         {sessions.length > 0 && (
@@ -299,18 +281,28 @@ export function Header() {
         <div className="h-5 w-px bg-[#30363d]" />
 
         <button
-          onClick={() => setBookmarksOpen(true)}
-          className="p-1.5 rounded-md text-[#8b949e] hover:text-[#e6edf3] hover:bg-[#30363d] transition-colors"
+          onClick={() => setView('sessions')}
+          className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md border transition-colors text-xs font-mono ${
+            currentView === 'sessions'
+              ? 'bg-[#58a6ff]/15 text-[#58a6ff] border-[#58a6ff]/30'
+              : 'border-[#30363d] text-[#8b949e] hover:text-[#e6edf3] hover:bg-[#21262d]'
+          }`}
           title="Session History"
         >
           <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M1.5 3.25a.75.75 0 0 1 .75-.75h11.5a.75.75 0 0 1 0 1.5H2.25a.75.75 0 0 1-.75-.75Zm0 4.75A.75.75 0 0 1 2.25 7.25h11.5a.75.75 0 0 1 0 1.5H2.25A.75.75 0 0 1 1.5 8Zm0 4.75a.75.75 0 0 1 .75-.75h11.5a.75.75 0 0 1 0 1.5H2.25a.75.75 0 0 1-.75-.75Z"/></svg>
+          <span className="hidden sm:inline">Sessions</span>
         </button>
+
+        {/* Divider */}
+        <div className="h-5 w-px bg-[#30363d]" />
+
         <button
           onClick={() => setSettingsOpen(true)}
-          className="p-1.5 rounded-md text-[#8b949e] hover:text-[#e6edf3] hover:bg-[#30363d] transition-colors"
+          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md border border-[#30363d] text-[#8b949e] hover:text-[#e6edf3] hover:bg-[#21262d] transition-colors text-xs font-mono"
           title="Settings"
         >
-          ⚙
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0a8.2 8.2 0 0 1 .701.031C9.444.095 9.99.645 10.16 1.29l.288 1.107c.018.066.079.158.212.224.231.114.454.243.668.386.123.082.233.09.299.071l1.103-.303c.644-.176 1.392.021 1.82.63.27.385.506.792.704 1.218.315.675.111 1.422-.364 1.891l-.814.806c-.049.048-.098.147-.088.294.016.257.016.515 0 .772-.01.147.038.246.088.294l.814.806c.475.469.679 1.216.364 1.891a7.977 7.977 0 0 1-.704 1.217c-.428.61-1.176.807-1.82.63l-1.102-.302c-.067-.019-.177-.011-.3.071a5.909 5.909 0 0 1-.668.386c-.133.066-.194.158-.211.224l-.29 1.106c-.168.646-.715 1.196-1.458 1.26a8.006 8.006 0 0 1-1.402 0c-.743-.064-1.289-.614-1.458-1.26l-.289-1.106c-.018-.066-.079-.158-.212-.224a5.738 5.738 0 0 1-.668-.386c-.123-.082-.233-.09-.299-.071l-1.103.303c-.644.176-1.392-.021-1.82-.63a8.12 8.12 0 0 1-.704-1.218c-.315-.675-.111-1.422.363-1.891l.815-.806c.05-.048.098-.147.088-.294a6.214 6.214 0 0 1 0-.772c.01-.147-.038-.246-.088-.294l-.815-.806C.635 6.045.431 5.298.746 4.623a7.92 7.92 0 0 1 .704-1.217c.428-.61 1.176-.807 1.82-.63l1.102.302c.067.019.177.011.3-.071.214-.143.436-.272.667-.386.133-.066.194-.158.211-.224l.29-1.106C5.717.645 6.263.095 7.006.031 7.24.01 7.62 0 8 0Zm1.5 8a1.5 1.5 0 1 0-3 0 1.5 1.5 0 0 0 3 0Z"/></svg>
+          <span className="hidden sm:inline">Settings</span>
         </button>
       </div>
     </header>

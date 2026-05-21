@@ -24,7 +24,7 @@ function StatusBar() {
   // Derive only scalars inside the selector so useShallow can compare primitives.
   // This prevents re-renders from Map/Array reference churn (sessionMetrics rebuilds
   // on every assistant turn; sessions rebuilds on every session change).
-  const { eventCount, sessionStatus, serverVersion, activeAgentType, harnessVersion, modelName } =
+  const { eventCount, sessionStatus, serverVersion, wsStatus, activeAgentType, harnessVersion, modelName } =
     useSessionStore(
       (s: SessionState) => {
         const dismissed = s.dashboardDismissedSessions;
@@ -54,6 +54,7 @@ function StatusBar() {
           eventCount: s.events.length,
           sessionStatus: s.sessionStatus,
           serverVersion: s.serverVersion,
+          wsStatus: s.wsStatus,
           activeAgentType: agentType,
           harnessVersion: agentType === 'claude-code' ? metrics?.claudeCodeVersion : undefined,
           modelName: metrics?.modelDisplayName,
@@ -64,9 +65,18 @@ function StatusBar() {
 
   const { count } = usePendingApprovals();
   const [changelogOpen, setChangelogOpen] = useState(false);
+  const [laymanChangelogOpen, setLaymanChangelogOpen] = useState(false);
 
   const displayName = activeAgentType ? (HARNESS_DISPLAY_NAMES[activeAgentType] ?? activeAgentType) : null;
   const canShowChangelog = activeAgentType !== null && hasChangelog(activeAgentType);
+
+  const wsStatusConfig = {
+    connecting: { dot: 'bg-[#d29922]', text: 'Connecting', textColor: 'text-[#d29922]' },
+    connected: { dot: 'bg-[#3fb950]', text: 'Connected', textColor: 'text-[#3fb950]' },
+    disconnected: { dot: 'bg-[#8b949e]', text: 'Disconnected', textColor: 'text-[#8b949e]' },
+    error: { dot: 'bg-[#f85149]', text: 'Error', textColor: 'text-[#f85149]' },
+  };
+  const { dot, text: wsText, textColor } = wsStatusConfig[wsStatus];
 
   return (
     <>
@@ -108,7 +118,18 @@ function StatusBar() {
               <span className="text-[#30363d]">|</span>
             </>
           )}
-          <span>Layman {serverVersion ? `v${serverVersion}` : ''}</span>
+          <button
+            onClick={() => setLaymanChangelogOpen(true)}
+            className="hover:text-[#8b949e] transition-colors"
+            title="View Layman release notes"
+          >
+            Layman {serverVersion ? `v${serverVersion}` : ''}
+          </button>
+          <span className="text-[#30363d]">|</span>
+          <div className="flex items-center gap-1.5">
+            <div className={`w-1.5 h-1.5 rounded-full ${dot} ${wsStatus === 'connecting' ? 'animate-pulse' : ''}`} />
+            <span className={textColor}>{wsText}</span>
+          </div>
         </div>
       </div>
       {changelogOpen && activeAgentType && (
@@ -116,6 +137,13 @@ function StatusBar() {
           agentType={activeAgentType}
           activeVersion={harnessVersion}
           onClose={() => setChangelogOpen(false)}
+        />
+      )}
+      {laymanChangelogOpen && (
+        <ChangelogModal
+          agentType="layman"
+          activeVersion={serverVersion ?? undefined}
+          onClose={() => setLaymanChangelogOpen(false)}
         />
       )}
     </>
