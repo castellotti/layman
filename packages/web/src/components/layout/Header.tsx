@@ -105,7 +105,7 @@ export function Header() {
 
   const currentView: ViewMode = dashboardOpen ? 'dashboard' : bookmarksOpen ? 'sessions' : flowchartOpen ? 'flowchart' : 'stream';
 
-  const setView = (view: ViewMode) => {
+  const setView = useCallback((view: ViewMode) => {
     if (view === 'dashboard') {
       setDashboardOpen(true);
       setFlowchartOpen(false);
@@ -123,7 +123,7 @@ export function Header() {
       setFlowchartOpen(true);
       setBookmarksOpen(false);
     }
-  };
+  }, [setDashboardOpen, setFlowchartOpen, setBookmarksOpen]);
 
   // Global keyboard shortcuts: D=dashboard, S=logs, F=flowchart, G/T=graph/timeline, Escape=back/close
   useEffect(() => {
@@ -151,7 +151,7 @@ export function Header() {
     };
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
-  }, [flowchartOpen, dashboardOpen, bookmarksOpen, returnToDashboard, setFlowchartViewMode, setDashboardOpen, setFlowchartOpen, setBookmarksOpen, returnFromDashboardDrilldown]);
+  }, [setView, flowchartOpen, dashboardOpen, bookmarksOpen, returnToDashboard, setFlowchartViewMode, returnFromDashboardDrilldown]);
 
   // Current session history entries (filtered to active session)
   const historyForSession = sessionSummaryHistory.filter(
