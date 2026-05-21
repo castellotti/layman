@@ -159,6 +159,8 @@ export function App() {
   const setFlowchartViewMode = useSessionStore((s) => s.setFlowchartViewMode);
   const dashboardOpen = useSessionStore((s) => s.dashboardOpen);
   const setDashboardOpen = useSessionStore((s) => s.setDashboardOpen);
+  const bookmarksOpen = useSessionStore((s) => s.bookmarksOpen);
+  const setBookmarksOpen = useSessionStore((s) => s.setBookmarksOpen);
   const returnToDashboard = useSessionStore((s) => s.returnToDashboard);
   const returnFromDashboardDrilldown = useSessionStore((s) => s.returnFromDashboardDrilldown);
   const setSetupStatus = useSessionStore((s) => s.setSetupStatus);
@@ -199,14 +201,17 @@ export function App() {
         case 'd':
           setDashboardOpen(true);
           setFlowchartOpen(false);
+          setBookmarksOpen(false);
           break;
         case 's':
           setDashboardOpen(false);
           setFlowchartOpen(false);
+          setBookmarksOpen(false);
           break;
         case 'f':
           setDashboardOpen(false);
           setFlowchartOpen(true);
+          setBookmarksOpen(false);
           break;
         case 'g':
           if (flowchartOpen && !dashboardOpen) setFlowchartViewMode('graph');
@@ -223,7 +228,7 @@ export function App() {
     };
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
-  }, [flowchartOpen, dashboardOpen, returnToDashboard, setFlowchartOpen, setFlowchartViewMode, setDashboardOpen, returnFromDashboardDrilldown]);
+  }, [flowchartOpen, dashboardOpen, returnToDashboard, setFlowchartOpen, setFlowchartViewMode, setDashboardOpen, setBookmarksOpen, returnFromDashboardDrilldown]);
 
   useEffect(() => {
     const onMouseMove = (e: MouseEvent) => {
@@ -241,6 +246,24 @@ export function App() {
     };
   }, []);
 
+  // Sessions view takes over the entire content area
+  if (bookmarksOpen) {
+    return (
+      <div className="flex flex-col h-screen bg-[#0d1117] text-[#e6edf3] overflow-hidden">
+        <Header />
+        <SetupBanner onInstall={handleSetupInstall} />
+        <div className="flex-1 overflow-hidden">
+          <BookmarksPanel onSend={send} />
+        </div>
+        <StatusBar />
+        <SettingsDrawer onSend={send} />
+        <AccessLogPanel />
+        <SetupWizard onSend={send} />
+        <DriftBlockDialog onSend={send} />
+      </div>
+    );
+  }
+
   // Dashboard view takes over the entire content area
   if (dashboardOpen) {
     return (
@@ -254,7 +277,6 @@ export function App() {
         </div>
         <StatusBar />
         <SettingsDrawer onSend={send} />
-        <BookmarksPanel onSend={send} />
         <AccessLogPanel />
         <SetupWizard onSend={send} />
         <DriftBlockDialog onSend={send} />
@@ -345,9 +367,6 @@ export function App() {
 
       {/* Settings drawer */}
       <SettingsDrawer onSend={send} />
-
-      {/* Bookmarks panel */}
-      <BookmarksPanel onSend={send} />
 
       {/* Access log panel */}
       <AccessLogPanel />
