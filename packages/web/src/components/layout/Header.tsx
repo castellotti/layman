@@ -74,8 +74,10 @@ export function Header() {
     sessionSummary, sessionSummaryHistory, sessionSummaryError, isSummarizingSession, fetchSessionSummary,
     clearSessionSummaryError,
     flowchartOpen, setFlowchartOpen,
+    flowchartViewMode, setFlowchartViewMode,
     dashboardOpen, setDashboardOpen,
     dashboardFocusedSession, setDashboardFocusedSession,
+    returnToDashboard, returnFromDashboardDrilldown,
     sessionMetrics,
     investigatedSessions,
     bookmarks,
@@ -122,6 +124,34 @@ export function Header() {
       setBookmarksOpen(false);
     }
   };
+
+  // Global keyboard shortcuts: D=dashboard, S=logs, F=flowchart, G/T=graph/timeline, Escape=back/close
+  useEffect(() => {
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLSelectElement) return;
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      switch (e.key.toLowerCase()) {
+        case 'd': setView('dashboard'); break;
+        case 's': setView('stream'); break;
+        case 'f': setView('flowchart'); break;
+        case 'g':
+          if (flowchartOpen && !dashboardOpen) setFlowchartViewMode('graph');
+          break;
+        case 't':
+          if (flowchartOpen && !dashboardOpen) setFlowchartViewMode('timeline');
+          break;
+        case 'escape':
+          if (returnToDashboard) {
+            returnFromDashboardDrilldown();
+          } else if (bookmarksOpen) {
+            setView('stream');
+          }
+          break;
+      }
+    };
+    window.addEventListener('keydown', handleKey);
+    return () => window.removeEventListener('keydown', handleKey);
+  }, [flowchartOpen, dashboardOpen, bookmarksOpen, returnToDashboard, setFlowchartViewMode, setDashboardOpen, setFlowchartOpen, setBookmarksOpen, returnFromDashboardDrilldown]);
 
   // Current session history entries (filtered to active session)
   const historyForSession = sessionSummaryHistory.filter(

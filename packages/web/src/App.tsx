@@ -19,12 +19,13 @@ import { usePendingApprovals } from './hooks/usePendingApprovals.js';
 import { hasChangelog, HARNESS_DISPLAY_NAMES } from './hooks/useChangelog.js';
 import { shallow } from 'zustand/shallow';
 import type { SetupStatus } from './lib/types.js';
+import type { ClientMessage } from './lib/ws-protocol.js';
 
 const WS_STATUS_CONFIG = {
-  connecting:   { dot: 'bg-[#d29922]', text: 'Connecting',   textColor: 'text-[#d29922]' },
-  connected:    { dot: 'bg-[#3fb950]', text: 'Connected',    textColor: 'text-[#3fb950]' },
-  disconnected: { dot: 'bg-[#8b949e]', text: 'Disconnected', textColor: 'text-[#8b949e]' },
-  error:        { dot: 'bg-[#f85149]', text: 'Error',        textColor: 'text-[#f85149]' },
+  connecting:   { dot: 'bg-[#d29922]', pulse: true,  text: 'Connecting',   textColor: 'text-[#d29922]' },
+  connected:    { dot: 'bg-[#3fb950]', pulse: false, text: 'Connected',    textColor: 'text-[#3fb950]' },
+  disconnected: { dot: 'bg-[#8b949e]', pulse: false, text: 'Disconnected', textColor: 'text-[#8b949e]' },
+  error:        { dot: 'bg-[#f85149]', pulse: false, text: 'Error',        textColor: 'text-[#f85149]' },
 };
 
 function StatusBar() {
@@ -71,13 +72,12 @@ function StatusBar() {
     );
 
   const { count } = usePendingApprovals();
-  const [changelogOpen, setChangelogOpen] = useState(false);
-  const [laymanChangelogOpen, setLaymanChangelogOpen] = useState(false);
+  const [changelogOpen, setChangelogOpen] = useState<string | null>(null);
 
   const displayName = activeAgentType ? (HARNESS_DISPLAY_NAMES[activeAgentType] ?? activeAgentType) : null;
   const canShowChangelog = activeAgentType !== null && hasChangelog(activeAgentType);
 
-  const { dot, text: wsText, textColor } = WS_STATUS_CONFIG[wsStatus];
+  const { dot, pulse, text: wsText, textColor } = WS_STATUS_CONFIG[wsStatus];
 
   return (
     <>
@@ -101,7 +101,7 @@ function StatusBar() {
             <>
               {canShowChangelog ? (
                 <button
-                  onClick={() => setChangelogOpen(true)}
+                  onClick={() => setChangelogOpen(activeAgentType)}
                   className="hover:text-[#8b949e] transition-colors"
                   title={`View ${displayName} changelog`}
                 >
@@ -120,7 +120,7 @@ function StatusBar() {
             </>
           )}
           <button
-            onClick={() => setLaymanChangelogOpen(true)}
+            onClick={() => setChangelogOpen('layman')}
             className="hover:text-[#8b949e] transition-colors"
             title="View Layman release notes"
           >
@@ -128,26 +128,40 @@ function StatusBar() {
           </button>
           <span className="text-[#30363d]">|</span>
           <div className="flex items-center gap-1.5">
-            <div className={`w-1.5 h-1.5 rounded-full ${dot} ${wsStatus === 'connecting' ? 'animate-pulse' : ''}`} />
+            <div className={`w-1.5 h-1.5 rounded-full ${dot} ${pulse ? 'animate-pulse' : ''}`} />
             <span className={textColor}>{wsText}</span>
           </div>
         </div>
       </div>
-      {changelogOpen && activeAgentType && (
+      {changelogOpen && (
         <ChangelogModal
-          agentType={activeAgentType}
-          activeVersion={harnessVersion}
-          onClose={() => setChangelogOpen(false)}
-        />
-      )}
-      {laymanChangelogOpen && (
-        <ChangelogModal
-          agentType="layman"
-          activeVersion={serverVersion ?? undefined}
-          onClose={() => setLaymanChangelogOpen(false)}
+          agentType={changelogOpen}
+          activeVersion={changelogOpen === 'layman' ? (serverVersion || undefined) : harnessVersion}
+          onClose={() => setChangelogOpen(null)}
         />
       )}
     </>
+  );
+}
+
+interface AppShellProps {
+  children: React.ReactNode;
+  onSend: (msg: ClientMessage) => void;
+  onInstall: () => void;
+}
+
+function AppShell({ children, onSend, onInstall }: AppShellProps) {
+  return (
+    <div className="flex flex-col h-screen bg-[#0d1117] text-[#e6edf3] overflow-hidden">
+      <Header />
+      <SetupBanner onInstall={onInstall} />
+      {children}
+      <StatusBar />
+      <SettingsDrawer onSend={onSend} />
+      <AccessLogPanel />
+      <SetupWizard onSend={onSend} />
+      <DriftBlockDialog onSend={onSend} />
+    </div>
   );
 }
 
@@ -155,13 +169,10 @@ export function App() {
   const { send } = useWebSocket();
   const investigationOpen = useSessionStore((s) => s.investigationOpen);
   const flowchartOpen = useSessionStore((s) => s.flowchartOpen);
-  const setFlowchartOpen = useSessionStore((s) => s.setFlowchartOpen);
   const flowchartViewMode = useSessionStore((s) => s.flowchartViewMode);
   const setFlowchartViewMode = useSessionStore((s) => s.setFlowchartViewMode);
   const dashboardOpen = useSessionStore((s) => s.dashboardOpen);
-  const setDashboardOpen = useSessionStore((s) => s.setDashboardOpen);
   const bookmarksOpen = useSessionStore((s) => s.bookmarksOpen);
-  const setBookmarksOpen = useSessionStore((s) => s.setBookmarksOpen);
   const returnToDashboard = useSessionStore((s) => s.returnToDashboard);
   const returnFromDashboardDrilldown = useSessionStore((s) => s.returnFromDashboardDrilldown);
   const setSetupStatus = useSessionStore((s) => s.setSetupStatus);
@@ -193,46 +204,6 @@ export function App() {
     e.preventDefault();
   }, []);
 
-  // Global keyboard shortcuts: F=flowchart, G/T=graph/timeline, D=dashboard
-  useEffect(() => {
-    const handleKey = (e: KeyboardEvent) => {
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLSelectElement) return;
-      if (e.ctrlKey || e.metaKey || e.altKey) return;
-      switch (e.key.toLowerCase()) {
-        case 'd':
-          setDashboardOpen(true);
-          setFlowchartOpen(false);
-          setBookmarksOpen(false);
-          break;
-        case 's':
-          setDashboardOpen(false);
-          setFlowchartOpen(false);
-          setBookmarksOpen(false);
-          break;
-        case 'f':
-          setDashboardOpen(false);
-          setFlowchartOpen(true);
-          setBookmarksOpen(false);
-          break;
-        case 'g':
-          if (flowchartOpen && !dashboardOpen) setFlowchartViewMode('graph');
-          break;
-        case 't':
-          if (flowchartOpen && !dashboardOpen) setFlowchartViewMode('timeline');
-          break;
-        case 'escape':
-          if (returnToDashboard) {
-            returnFromDashboardDrilldown();
-          } else if (bookmarksOpen) {
-            setBookmarksOpen(false);
-          }
-          break;
-      }
-    };
-    window.addEventListener('keydown', handleKey);
-    return () => window.removeEventListener('keydown', handleKey);
-  }, [flowchartOpen, dashboardOpen, bookmarksOpen, returnToDashboard, setFlowchartOpen, setFlowchartViewMode, setDashboardOpen, setBookmarksOpen, returnFromDashboardDrilldown]);
-
   useEffect(() => {
     const onMouseMove = (e: MouseEvent) => {
       if (!dragging.current || !containerRef.current) return;
@@ -252,46 +223,29 @@ export function App() {
   // Sessions view takes over the entire content area
   if (bookmarksOpen) {
     return (
-      <div className="flex flex-col h-screen bg-[#0d1117] text-[#e6edf3] overflow-hidden">
-        <Header />
-        <SetupBanner onInstall={handleSetupInstall} />
+      <AppShell onSend={send} onInstall={handleSetupInstall}>
         <div className="flex-1 overflow-hidden">
           <BookmarksPanel onSend={send} />
         </div>
-        <StatusBar />
-        <SettingsDrawer onSend={send} />
-        <AccessLogPanel />
-        <SetupWizard onSend={send} />
-        <DriftBlockDialog onSend={send} />
-      </div>
+      </AppShell>
     );
   }
 
   // Dashboard view takes over the entire content area
   if (dashboardOpen) {
     return (
-      <div className="flex flex-col h-screen bg-[#0d1117] text-[#e6edf3] overflow-hidden">
-        <Header />
-        <SetupBanner onInstall={handleSetupInstall} />
+      <AppShell onSend={send} onInstall={handleSetupInstall}>
         <div className="flex-1 overflow-hidden">
           <Suspense fallback={<div className="flex items-center justify-center h-full text-[#484f58] text-xs">Loading dashboard...</div>}>
             <DashboardView onSend={send} />
           </Suspense>
         </div>
-        <StatusBar />
-        <SettingsDrawer onSend={send} />
-        <AccessLogPanel />
-        <SetupWizard onSend={send} />
-        <DriftBlockDialog onSend={send} />
-      </div>
+      </AppShell>
     );
   }
 
   return (
-    <div className="flex flex-col h-screen bg-[#0d1117] text-[#e6edf3] overflow-hidden">
-      <Header />
-      <SetupBanner onInstall={handleSetupInstall} />
-
+    <AppShell onSend={send} onInstall={handleSetupInstall}>
       {/* Back to Dashboard banner when drilled down from Dashboard */}
       {returnToDashboard && (
         <div data-print-hide className="flex items-center gap-2 px-4 py-1.5 shrink-0" style={{ background: '#0c1018', borderBottom: '1px solid #1a2535' }}>
@@ -365,20 +319,6 @@ export function App() {
           </div>
         )}
       </div>
-
-      <StatusBar />
-
-      {/* Settings drawer */}
-      <SettingsDrawer onSend={send} />
-
-      {/* Access log panel */}
-      <AccessLogPanel />
-
-      {/* First-run setup wizard */}
-      <SetupWizard onSend={send} />
-
-      {/* Drift block pop-up */}
-      <DriftBlockDialog onSend={send} />
-    </div>
+    </AppShell>
   );
 }

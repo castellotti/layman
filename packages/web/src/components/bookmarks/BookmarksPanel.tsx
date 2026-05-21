@@ -296,13 +296,12 @@ export function BookmarksPanel({ onSend }: BookmarksPanelProps) {
   const unbookmarkedSessions = recordedSessions.filter((s) => !bookmarkedSessionIds.has(s.sessionId));
   const liveSessionIds = new Set(sessions.map((s) => s.sessionId));
 
-  const viewingSessionLabel = viewingSessionId ? (
-    recordedSessions.find((s) => s.sessionId === viewingSessionId)?.sessionName
-    ?? getSessionLabel(
-      recordedSessions.find((s) => s.sessionId === viewingSessionId)?.cwd ?? '',
-      viewingSessionId
-    )
-  ) : undefined;
+  const viewingSession = viewingSessionId
+    ? recordedSessions.find((s) => s.sessionId === viewingSessionId)
+    : undefined;
+  const viewingSessionLabel = viewingSession
+    ? (viewingSession.sessionName ?? getSessionLabel(viewingSession.cwd ?? '', viewingSessionId!))
+    : undefined;
 
   return (
     <div className="flex flex-col h-full bg-[#0d1117]">
