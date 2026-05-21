@@ -85,34 +85,15 @@ body {
 
   /* --- Historical view print mode (body.layman-print-historical) --- */
 
-  /* Hide the main app behind the bookmarks panel */
+  /* Sessions is now an inline view (no fixed overlay). Hide chrome:
+     header, status bar / toolbar ([data-print-hide]), search bar
+     (wrapped in [data-print-hide] in BookmarksPanel), sidebar, and
+     any remaining fixed modals (delete confirm, settings drawer, etc.) */
   body.layman-print-historical header,
   body.layman-print-historical [data-print-hide],
-  body.layman-print-historical > #root > div > div:not(.fixed) {
+  body.layman-print-historical [data-bookmarks-sidebar],
+  body.layman-print-historical .fixed {
     display: none !important;
-  }
-
-  /* Override the fixed overlay to be static and visible */
-  body.layman-print-historical .fixed.inset-0.z-50 {
-    position: static !important;
-    display: block !important;
-    height: auto !important;
-  }
-
-  /* Hide the backdrop overlay and sidebar */
-  body.layman-print-historical [data-bookmarks-overlay] {
-    display: none !important;
-  }
-
-  body.layman-print-historical [data-bookmarks-sidebar] {
-    display: none !important;
-  }
-
-  /* Remove panel constraints so content flows naturally */
-  body.layman-print-historical .relative.flex {
-    display: block !important;
-    height: auto !important;
-    max-width: none !important;
   }
 
   /* Hide the event type filter bar and session header close button */
@@ -128,7 +109,8 @@ body {
   #root > div,
   #root > div > div,
   #root > div > div > div,
-  body.layman-print-historical .fixed.inset-0.z-50 *,
+  #root > div > div > div > div,
+  #root > div > div > div > div > div,
   [data-print-stream],
   [data-print-stream] > * {
     overflow: visible !important;

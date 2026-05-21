@@ -333,10 +333,12 @@ export function BookmarksPanel({ onSend }: BookmarksPanelProps) {
       )}
 
       {/* Search bar across the full top */}
-      <SearchBar
-        viewingSessionId={viewingSessionId}
-        viewingSessionLabel={viewingSessionLabel}
-      />
+      <div data-print-hide>
+        <SearchBar
+          viewingSessionId={viewingSessionId}
+          viewingSessionLabel={viewingSessionLabel}
+        />
+      </div>
 
       {/* Main content: sidebar + right panel */}
       <div className="flex flex-1 overflow-hidden">

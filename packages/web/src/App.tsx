@@ -20,6 +20,13 @@ import { hasChangelog, HARNESS_DISPLAY_NAMES } from './hooks/useChangelog.js';
 import { shallow } from 'zustand/shallow';
 import type { SetupStatus } from './lib/types.js';
 
+const WS_STATUS_CONFIG = {
+  connecting:   { dot: 'bg-[#d29922]', text: 'Connecting',   textColor: 'text-[#d29922]' },
+  connected:    { dot: 'bg-[#3fb950]', text: 'Connected',    textColor: 'text-[#3fb950]' },
+  disconnected: { dot: 'bg-[#8b949e]', text: 'Disconnected', textColor: 'text-[#8b949e]' },
+  error:        { dot: 'bg-[#f85149]', text: 'Error',        textColor: 'text-[#f85149]' },
+};
+
 function StatusBar() {
   // Derive only scalars inside the selector so useShallow can compare primitives.
   // This prevents re-renders from Map/Array reference churn (sessionMetrics rebuilds
@@ -70,13 +77,7 @@ function StatusBar() {
   const displayName = activeAgentType ? (HARNESS_DISPLAY_NAMES[activeAgentType] ?? activeAgentType) : null;
   const canShowChangelog = activeAgentType !== null && hasChangelog(activeAgentType);
 
-  const wsStatusConfig = {
-    connecting: { dot: 'bg-[#d29922]', text: 'Connecting', textColor: 'text-[#d29922]' },
-    connected: { dot: 'bg-[#3fb950]', text: 'Connected', textColor: 'text-[#3fb950]' },
-    disconnected: { dot: 'bg-[#8b949e]', text: 'Disconnected', textColor: 'text-[#8b949e]' },
-    error: { dot: 'bg-[#f85149]', text: 'Error', textColor: 'text-[#f85149]' },
-  };
-  const { dot, text: wsText, textColor } = wsStatusConfig[wsStatus];
+  const { dot, text: wsText, textColor } = WS_STATUS_CONFIG[wsStatus];
 
   return (
     <>
@@ -222,13 +223,15 @@ export function App() {
         case 'escape':
           if (returnToDashboard) {
             returnFromDashboardDrilldown();
+          } else if (bookmarksOpen) {
+            setBookmarksOpen(false);
           }
           break;
       }
     };
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
-  }, [flowchartOpen, dashboardOpen, returnToDashboard, setFlowchartOpen, setFlowchartViewMode, setDashboardOpen, setBookmarksOpen, returnFromDashboardDrilldown]);
+  }, [flowchartOpen, dashboardOpen, bookmarksOpen, returnToDashboard, setFlowchartOpen, setFlowchartViewMode, setDashboardOpen, setBookmarksOpen, returnFromDashboardDrilldown]);
 
   useEffect(() => {
     const onMouseMove = (e: MouseEvent) => {

@@ -12,5 +12,6 @@
       "better-sqlite3"
     ]
   },
+  "packageManager": "pnpm@10.29.3",
   "version": "0.5.1"
 }
