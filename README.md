@@ -140,6 +140,7 @@ Intial setup is aided by a complete setup wizard to walk through some available 
 | 🔍   | Analysis result                                          |
 | 📐   | Drift check completed                                    |
 | 🚨   | Drift alert (level changed)                              |
+| 🔎   | Web search (query + retrieved sources)                   |
 
 Agent badges in session cards:
 * **CC** = Claude Code
@@ -374,6 +375,7 @@ If Open WebUI runs in Docker, its filter function must be able to reach Layman a
 **Notes:**
 - The filter captures user prompts (via Open WebUI's `inlet` hook) and AI responses (via `outlet`).
 - Multi-modal content (images) and thinking blocks are supported - text portions are extracted automatically.
+- Web search sessions are automatically captured when Open WebUI's web search pipeline is active - queries and retrieved sources appear as `web_search` timeline events with clickable source cards.
 - Tool approval from the Layman UI is not supported (Open WebUI has no mechanism to pause generation mid-stream).
 
 ---
