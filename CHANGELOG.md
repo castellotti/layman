@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.6.1
+
+- Fixed Cline agent responses not captured - handler now emits `agent_response` events from `Notification` hook for `followup`, `plan_mode_respond`, and `act_mode_respond` sources; `task_complete`/`completion_result` used as fallback if `attempt_completion` `PostToolUse` didn't already capture the response; `Notification` events now store message for debugging ([#69](https://github.com/castellotti/layman/pull/69))
+- Moved bookmark button from Header to NavigationBar between Access Log and Export, styled to match those controls with icon and label; inline naming input appears on click ([#69](https://github.com/castellotti/layman/pull/69))
+
 ## 0.6.0
 
 - Added Open WebUI web search capture - search queries and retrieved sources are recorded as `web_search` timeline events, displayed as clickable source cards with hostname badge, title, URL, and content snippet ([#66](https://github.com/castellotti/layman/pull/66))
