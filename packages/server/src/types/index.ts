@@ -19,7 +19,7 @@ export type {
 } from '../hooks/types.js';
 export type { PendingApproval, PendingApprovalDTO } from '../hooks/pending.js';
 export type { LaymanConfig } from '../config/schema.js';
-export type { BookmarkFolder, Bookmark, RecordedSession, QAEntry } from '../db/types.js';
+export type { BookmarkFolder, Bookmark, RecordedSession, QAEntry, HighlightFolder, Highlight } from '../db/types.js';
 export type { SessionTimeMetrics } from '../db/time-metrics.js';
 export type { DriftLevel, DriftState, DriftThresholds, DriftCheckResult, DriftPreToolUseResult } from '../drift/types.js';
 
@@ -31,7 +31,7 @@ import type { ApprovalDecision } from '../hooks/types.js';
 import type { LaymanConfig } from '../config/schema.js';
 import type { LaymansResult } from '../analysis/types.js';
 import type { SessionInfo } from '../events/store.js';
-import type { BookmarkFolder, Bookmark } from '../db/types.js';
+import type { BookmarkFolder, Bookmark, HighlightFolder, Highlight } from '../db/types.js';
 import type { DriftState } from '../drift/types.js';
 
 export interface SessionStatus {
@@ -90,6 +90,13 @@ export type ServerMessage =
   | { type: 'bookmarks:created'; bookmark: Bookmark }
   | { type: 'bookmarks:updated'; bookmark: Bookmark }
   | { type: 'bookmarks:deleted'; bookmarkId: string }
+  | { type: 'highlights:state'; folders: HighlightFolder[]; highlights: Highlight[] }
+  | { type: 'highlights:folder:created'; folder: HighlightFolder }
+  | { type: 'highlights:folder:updated'; folder: HighlightFolder }
+  | { type: 'highlights:folder:deleted'; folderId: string }
+  | { type: 'highlights:created'; highlight: Highlight }
+  | { type: 'highlights:updated'; highlight: Highlight }
+  | { type: 'highlights:deleted'; highlightId: string }
   | { type: 'drift:update'; sessionId: string; state: DriftState };
 
 export type ClientMessage =

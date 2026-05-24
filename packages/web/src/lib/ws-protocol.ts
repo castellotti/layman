@@ -8,6 +8,8 @@ import type {
   SessionStatus,
   BookmarkFolder,
   Bookmark,
+  HighlightFolder,
+  Highlight,
   DriftState,
 } from './types.js';
 
@@ -45,6 +47,13 @@ export type ServerMessage =
   | { type: 'bookmarks:created'; bookmark: Bookmark }
   | { type: 'bookmarks:updated'; bookmark: Bookmark }
   | { type: 'bookmarks:deleted'; bookmarkId: string }
+  | { type: 'highlights:state'; folders: HighlightFolder[]; highlights: Highlight[] }
+  | { type: 'highlights:folder:created'; folder: HighlightFolder }
+  | { type: 'highlights:folder:updated'; folder: HighlightFolder }
+  | { type: 'highlights:folder:deleted'; folderId: string }
+  | { type: 'highlights:created'; highlight: Highlight }
+  | { type: 'highlights:updated'; highlight: Highlight }
+  | { type: 'highlights:deleted'; highlightId: string }
   | { type: 'drift:update'; sessionId: string; state: DriftState };
 
 export type ClientMessage =

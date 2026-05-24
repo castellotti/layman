@@ -293,6 +293,24 @@ export interface DriftState {
   dismissedItems?: DismissedDriftItems;
 }
 
+export interface HighlightFolder {
+  id: string;
+  name: string;
+  sortOrder: number;
+  createdAt: number;
+}
+
+export interface Highlight {
+  id: string;
+  folderId: string | null;
+  sessionId: string;
+  promptEventId: string;
+  responseEventId: string;
+  name: string;
+  sortOrder: number;
+  createdAt: number;
+}
+
 export interface BookmarkFolder {
   id: string;
   name: string;

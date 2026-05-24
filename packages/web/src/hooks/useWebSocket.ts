@@ -32,6 +32,11 @@ export function useWebSocket(): { send: (msg: ClientMessage) => void } {
     removeFolder,
     upsertBookmark,
     removeBookmark,
+    setHighlights,
+    upsertHighlightFolder,
+    removeHighlightFolder,
+    upsertHighlight,
+    removeHighlight,
     setDriftState,
   } = useSessionStore();
 
@@ -135,12 +140,34 @@ export function useWebSocket(): { send: (msg: ClientMessage) => void } {
           removeBookmark(message.bookmarkId);
           break;
 
+        case 'highlights:state':
+          setHighlights(message.folders, message.highlights);
+          break;
+
+        case 'highlights:folder:created':
+        case 'highlights:folder:updated':
+          upsertHighlightFolder(message.folder);
+          break;
+
+        case 'highlights:folder:deleted':
+          removeHighlightFolder(message.folderId);
+          break;
+
+        case 'highlights:created':
+        case 'highlights:updated':
+          upsertHighlight(message.highlight);
+          break;
+
+        case 'highlights:deleted':
+          removeHighlight(message.highlightId);
+          break;
+
         case 'drift:update':
           setDriftState(message.sessionId, message.state);
           break;
       }
     },
-    [addEvent, addPendingApproval, removePendingApproval, setAnalyzing, setAnalysisError, setLaymans, setLaymansError, setConfig, setServerVersion, setSessionStatus, setSessions, markSessionActive, markSessionInactive, updateEvent, setBookmarks, upsertFolder, removeFolder, upsertBookmark, removeBookmark, setDriftState]
+    [addEvent, addPendingApproval, removePendingApproval, setAnalyzing, setAnalysisError, setLaymans, setLaymansError, setConfig, setServerVersion, setSessionStatus, setSessions, markSessionActive, markSessionInactive, updateEvent, setBookmarks, upsertFolder, removeFolder, upsertBookmark, removeBookmark, setHighlights, upsertHighlightFolder, removeHighlightFolder, upsertHighlight, removeHighlight, setDriftState]
   );
 
   const connect = useCallback(() => {

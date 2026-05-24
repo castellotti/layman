@@ -57,7 +57,10 @@ export class OpenAICompatProvider {
       ],
     });
 
-    const text = response.choices[0]?.message?.content ?? '';
+    const msg = response.choices[0]?.message;
+    // Some providers (e.g. llama.cpp with Qwen3) return thinking tokens in reasoning_content
+    // and the actual output in content. Fall back to reasoning_content if content is empty.
+    const text = msg?.content || (msg as unknown as { reasoning_content?: string })?.reasoning_content || '';
     const usage = response.usage;
 
     return {

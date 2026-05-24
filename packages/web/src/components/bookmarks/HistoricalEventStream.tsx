@@ -136,7 +136,7 @@ export function HistoricalEventStream({
         {events.map((event, index) => {
           const eventQA = qaMap.get(event.id) ?? [];
           return (
-            <div key={event.id} data-event-card>
+            <div key={event.id} data-event-card data-event-id={event.id}>
               <EventCard
                 event={event}
                 index={index}
