@@ -1,6 +1,5 @@
-import React, { useMemo, useCallback, useEffect } from 'react';
+import React, { useCallback, useEffect } from 'react';
 import { useSessionStore } from '../../stores/sessionStore.js';
-import { SessionLaymansTerms } from '../shared/SessionLaymansTerms.js';
 
 function getSessionName(cwd: string, sessionId: string, agentType?: string, showAgentPrefix?: boolean, sessionName?: string): string {
   const name = sessionName || (cwd ? (cwd.split('/').filter(Boolean).pop() ?? cwd) : sessionId.slice(0, 8));
@@ -70,8 +69,6 @@ export function Header() {
   const {
     wsStatus, setSettingsOpen, setBookmarksOpen, bookmarksOpen,
     sessions, activeSessionId, setActiveSession,
-    sessionSummary, sessionSummaryHistory, sessionSummaryError, isSummarizingSession, fetchSessionSummary,
-    clearSessionSummaryError,
     flowchartOpen, setFlowchartOpen,
     flowchartViewMode, setFlowchartViewMode,
     dashboardOpen, setDashboardOpen,
@@ -141,11 +138,6 @@ export function Header() {
     return () => window.removeEventListener('keydown', handleKey);
   }, [setView, flowchartOpen, dashboardOpen, bookmarksOpen, promptsOpen, returnToDashboard, setFlowchartViewMode, returnFromDashboardDrilldown]);
 
-  // Current session history entries (filtered to active session)
-  const historyForSession = sessionSummaryHistory.filter(
-    (h) => h.sessionId === activeSessionId || (!h.sessionId && !activeSessionId)
-  );
-
   const views: { key: ViewMode; label: string; icon: React.ReactNode; shortcut: string }[] = [
     { key: 'dashboard', label: 'Dashboard', icon: <IconDashboard />, shortcut: 'D' },
     { key: 'stream',    label: 'Logs',      icon: <IconLiveSession />, shortcut: 'S' },
@@ -204,20 +196,8 @@ export function Header() {
         )}
       </div>
 
-      {/* Center: Layman's Terms (shown only in logs/flowchart views) */}
-      <div className="flex-1 flex items-center justify-center min-w-0 px-2">
-        {!dashboardOpen && !bookmarksOpen && !promptsOpen && (
-          <SessionLaymansTerms
-            summary={sessionSummary}
-            summaryHistory={historyForSession}
-            summaryError={sessionSummaryError}
-            isSummarizing={isSummarizingSession}
-            onGenerate={() => void fetchSessionSummary(activeSessionId)}
-            onClearError={clearSessionSummaryError}
-            className="max-w-xl w-full justify-center"
-          />
-        )}
-      </div>
+      {/* Spacer */}
+      <div className="flex-1" />
 
       {/* Right: view radio group + divider + sessions + settings */}
       <div className="flex items-center gap-2 shrink-0">
