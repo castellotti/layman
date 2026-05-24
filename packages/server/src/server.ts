@@ -1125,10 +1125,11 @@ export function createServer(config: LaymanConfig): LaymanServer {
         } satisfies ServerMessage));
 
         // Send highlights state
+        const allHighlights = highlightStore.listAll();
         ws.send(JSON.stringify({
           type: 'highlights:state',
-          folders: highlightStore.listFolders(),
-          highlights: highlightStore.listAllHighlights(),
+          folders: allHighlights.folders,
+          highlights: allHighlights.highlights,
         } satisfies ServerMessage));
 
         // Send current drift state for active sessions

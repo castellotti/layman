@@ -45,6 +45,14 @@ function toHighlight(row: RawHighlight): Highlight {
 export class HighlightStore {
   constructor(private db: Database) {}
 
+  private nextFolderOrder(): number {
+    return (this.db.prepare('SELECT COALESCE(MAX(sort_order), -1) as m FROM highlight_folders').get() as { m: number }).m + 1;
+  }
+
+  private nextHighlightOrder(folderId: string | null): number {
+    return (this.db.prepare('SELECT COALESCE(MAX(sort_order), -1) as m FROM highlights WHERE folder_id IS ?').get(folderId) as { m: number }).m + 1;
+  }
+
   // ── Folders ────────────────────────────────────────────────────────────────
 
   listFolders(): HighlightFolder[] {
@@ -55,9 +63,9 @@ export class HighlightStore {
   createFolder(name: string): HighlightFolder {
     const id = randomUUID();
     const now = Date.now();
-    const maxOrder = (this.db.prepare('SELECT COALESCE(MAX(sort_order), -1) as m FROM highlight_folders').get() as { m: number }).m;
-    this.db.prepare('INSERT INTO highlight_folders (id, name, sort_order, created_at) VALUES (?, ?, ?, ?)').run(id, name, maxOrder + 1, now);
-    return toFolder({ id, name, sort_order: maxOrder + 1, created_at: now });
+    const sortOrder = this.nextFolderOrder();
+    this.db.prepare('INSERT INTO highlight_folders (id, name, sort_order, created_at) VALUES (?, ?, ?, ?)').run(id, name, sortOrder, now);
+    return toFolder({ id, name, sort_order: sortOrder, created_at: now });
   }
 
   renameFolder(id: string, name: string): HighlightFolder | null {
@@ -80,6 +88,10 @@ export class HighlightStore {
 
   // ── Highlights ─────────────────────────────────────────────────────────────
 
+  listAll(): { folders: HighlightFolder[]; highlights: Highlight[] } {
+    return { folders: this.listFolders(), highlights: this.listAllHighlights() };
+  }
+
   listAllHighlights(): Highlight[] {
     const rows = this.db.prepare('SELECT * FROM highlights ORDER BY folder_id, sort_order ASC').all() as RawHighlight[];
     return rows.map(toHighlight);
@@ -94,13 +106,11 @@ export class HighlightStore {
     const id = randomUUID();
     const now = Date.now();
     const effectiveFolderId = folderId ?? null;
-    const maxOrder = (this.db.prepare(
-      'SELECT COALESCE(MAX(sort_order), -1) as m FROM highlights WHERE folder_id IS ?'
-    ).get(effectiveFolderId) as { m: number }).m;
+    const sortOrder = this.nextHighlightOrder(effectiveFolderId);
     this.db.prepare(
       'INSERT INTO highlights (id, folder_id, session_id, prompt_event_id, response_event_id, name, sort_order, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
-    ).run(id, effectiveFolderId, sessionId, promptEventId, responseEventId, name, maxOrder + 1, now);
-    return toHighlight({ id, folder_id: effectiveFolderId, session_id: sessionId, prompt_event_id: promptEventId, response_event_id: responseEventId, name, sort_order: maxOrder + 1, created_at: now });
+    ).run(id, effectiveFolderId, sessionId, promptEventId, responseEventId, name, sortOrder, now);
+    return toHighlight({ id, folder_id: effectiveFolderId, session_id: sessionId, prompt_event_id: promptEventId, response_event_id: responseEventId, name, sort_order: sortOrder, created_at: now });
   }
 
   updateHighlight(id: string, fields: { name?: string; folderId?: string | null; sortOrder?: number }): Highlight | null {
@@ -115,7 +125,7 @@ export class HighlightStore {
       params.push(fields.folderId);
     }
     const effectiveSortOrder = fields.sortOrder ?? (fields.folderId !== undefined
-      ? (this.db.prepare('SELECT COALESCE(MAX(sort_order), -1) as m FROM highlights WHERE folder_id IS ?').get(fields.folderId) as { m: number }).m + 1
+      ? this.nextHighlightOrder(fields.folderId)
       : undefined);
     if (effectiveSortOrder !== undefined) {
       setClauses.push('sort_order = ?');

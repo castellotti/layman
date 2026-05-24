@@ -76,12 +76,8 @@ export function EventCard({ event, index, isSelected, onClick, onSend, collapseH
   const [highlighting, setHighlighting] = useState(false);
   const { approvals } = usePendingApprovals();
   const showFullCommand = useSessionStore((s) => s.config?.showFullCommand ?? false);
-  const liveEvents = useSessionStore((s) => s.events);
-  const historicalEvents = useSessionStore((s) => s.historicalEvents);
   const highlightedEventIds = useSessionStore((s) => s.highlightedEventIds);
-  const highlights = useSessionStore((s) => s.highlights);
 
-  const eventList = historicalEvents.some((e) => e.id === event.id) ? historicalEvents : liveEvents;
   const isHighlighted = highlightedEventIds.has(event.id);
 
   const isPending = event.type === 'tool_call_pending' || event.type === 'permission_request';
@@ -114,6 +110,8 @@ export function EventCard({ event, index, isSelected, onClick, onSend, collapseH
     if (highlighting) return;
     setHighlighting(true);
     try {
+      const { events: liveEvents, historicalEvents, highlights } = useSessionStore.getState();
+      const eventList = historicalEvents.some((ev) => ev.id === event.id) ? historicalEvents : liveEvents;
       if (isHighlighted) {
         const existing = highlights.find((h) => h.promptEventId === event.id || h.responseEventId === event.id);
         if (existing) {
@@ -123,7 +121,7 @@ export function EventCard({ event, index, isSelected, onClick, onSend, collapseH
         let promptEventId: string;
         let responseEventId: string;
         let promptText = '';
-        const trueIndex = eventList.findIndex((e) => e.id === event.id);
+        const trueIndex = eventList.findIndex((ev) => ev.id === event.id);
         if (isUserPrompt) {
           promptEventId = event.id;
           promptText = event.data.prompt ?? '';
@@ -131,7 +129,13 @@ export function EventCard({ event, index, isSelected, onClick, onSend, collapseH
           responseEventId = nextResponse?.id ?? event.id;
         } else {
           responseEventId = event.id;
-          const prevPrompt = eventList.slice(0, trueIndex).reverse().find((ev) => ev.type === 'user_prompt' && ev.sessionId === event.sessionId);
+          let prevPrompt: typeof eventList[number] | undefined;
+          for (let i = trueIndex - 1; i >= 0; i--) {
+            if (eventList[i].type === 'user_prompt' && eventList[i].sessionId === event.sessionId) {
+              prevPrompt = eventList[i];
+              break;
+            }
+          }
           promptEventId = prevPrompt?.id ?? event.id;
           promptText = prevPrompt?.data.prompt ?? '';
         }

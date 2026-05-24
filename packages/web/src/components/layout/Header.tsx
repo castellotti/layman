@@ -65,6 +65,14 @@ function IconFlowchart() {
 
 type ViewMode = 'dashboard' | 'stream' | 'flowchart' | 'sessions' | 'prompts';
 
+const VIEW_FLAGS: Record<ViewMode, { dashboard: boolean; flowchart: boolean; bookmarks: boolean; prompts: boolean }> = {
+  dashboard: { dashboard: true,  flowchart: false, bookmarks: false, prompts: false },
+  stream:    { dashboard: false, flowchart: false, bookmarks: false, prompts: false },
+  flowchart: { dashboard: false, flowchart: true,  bookmarks: false, prompts: false },
+  sessions:  { dashboard: false, flowchart: false, bookmarks: true,  prompts: false },
+  prompts:   { dashboard: false, flowchart: false, bookmarks: false, prompts: true  },
+};
+
 export function Header() {
   const {
     wsStatus, setSettingsOpen, setBookmarksOpen, bookmarksOpen,
@@ -82,32 +90,11 @@ export function Header() {
   const currentView: ViewMode = dashboardOpen ? 'dashboard' : bookmarksOpen ? 'sessions' : promptsOpen ? 'prompts' : flowchartOpen ? 'flowchart' : 'stream';
 
   const setView = useCallback((view: ViewMode) => {
-    if (view === 'dashboard') {
-      setDashboardOpen(true);
-      setFlowchartOpen(false);
-      setBookmarksOpen(false);
-      setPromptsOpen(false);
-    } else if (view === 'sessions') {
-      setDashboardOpen(false);
-      setFlowchartOpen(false);
-      setBookmarksOpen(true);
-      setPromptsOpen(false);
-    } else if (view === 'prompts') {
-      setDashboardOpen(false);
-      setFlowchartOpen(false);
-      setBookmarksOpen(false);
-      setPromptsOpen(true);
-    } else if (view === 'stream') {
-      setDashboardOpen(false);
-      setFlowchartOpen(false);
-      setBookmarksOpen(false);
-      setPromptsOpen(false);
-    } else {
-      setDashboardOpen(false);
-      setFlowchartOpen(true);
-      setBookmarksOpen(false);
-      setPromptsOpen(false);
-    }
+    const flags = VIEW_FLAGS[view];
+    setDashboardOpen(flags.dashboard);
+    setFlowchartOpen(flags.flowchart);
+    setBookmarksOpen(flags.bookmarks);
+    setPromptsOpen(flags.prompts);
   }, [setDashboardOpen, setFlowchartOpen, setBookmarksOpen, setPromptsOpen]);
 
   // Global keyboard shortcuts: D=dashboard, S=logs, F=flowchart, G/T=graph/timeline, Escape=back/close

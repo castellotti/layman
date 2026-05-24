@@ -112,7 +112,7 @@ export function BookmarksPanel({ onSend }: BookmarksPanelProps) {
       el.scrollIntoView({ behavior: 'smooth', block: 'center' });
       setBookmarksScrollToEventId(null);
     }
-  }, [bookmarksScrollToEventId, historicalEvents, setBookmarksScrollToEventId]);
+  }, [bookmarksScrollToEventId, historicalEvents.length, setBookmarksScrollToEventId]);
 
   // Snapshot current in-memory session to SQLite
   const handleSaveCurrentSession = useCallback(async (sessionId: string) => {

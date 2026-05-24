@@ -1,5 +1,6 @@
-import React, { useState, useCallback, useRef, useEffect } from 'react';
+import React from 'react';
 import type { Highlight, HighlightFolder } from '../../lib/types.js';
+import { useInlineEdit } from '../../hooks/useInlineEdit.js';
 
 interface HighlightItemProps {
   highlight: Highlight;
@@ -12,47 +13,8 @@ interface HighlightItemProps {
 }
 
 export function HighlightItem({ highlight, folders, isSelected, onSelect, onRename, onMove, onDelete }: HighlightItemProps) {
-  const [editing, setEditing] = useState(false);
-  const [editName, setEditName] = useState(highlight.name);
-  const [showMenu, setShowMenu] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
-  const menuRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (editing && inputRef.current) {
-      inputRef.current.focus();
-      inputRef.current.select();
-    }
-  }, [editing]);
-
-  useEffect(() => {
-    if (!showMenu) return;
-    const handler = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        setShowMenu(false);
-      }
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, [showMenu]);
-
-  const commitRename = useCallback(() => {
-    const trimmed = editName.trim();
-    if (trimmed && trimmed !== highlight.name) {
-      onRename(highlight.id, trimmed);
-    } else {
-      setEditName(highlight.name);
-    }
-    setEditing(false);
-  }, [editName, highlight.id, highlight.name, onRename]);
-
-  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') commitRename();
-    if (e.key === 'Escape') {
-      setEditName(highlight.name);
-      setEditing(false);
-    }
-  }, [commitRename, highlight.name]);
+  const { editing, setEditing, editName, setEditName, showMenu, setShowMenu, inputRef, menuRef, commitRename, handleKeyDown } =
+    useInlineEdit(highlight.name, (name) => onRename(highlight.id, name));
 
   const otherFolders = folders.filter((f) => f.id !== highlight.folderId);
 

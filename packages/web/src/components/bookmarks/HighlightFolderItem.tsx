@@ -1,6 +1,7 @@
-import React, { useState, useCallback, useRef, useEffect } from 'react';
+import React, { useState } from 'react';
 import type { HighlightFolder, Highlight } from '../../lib/types.js';
 import { HighlightItem } from './HighlightItem.js';
+import { useInlineEdit } from '../../hooks/useInlineEdit.js';
 
 interface HighlightFolderItemProps {
   folder: HighlightFolder;
@@ -28,47 +29,8 @@ export function HighlightFolderItem({
   onDeleteHighlight,
 }: HighlightFolderItemProps) {
   const [expanded, setExpanded] = useState(true);
-  const [editing, setEditing] = useState(false);
-  const [editName, setEditName] = useState(folder.name);
-  const [showMenu, setShowMenu] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
-  const menuRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (editing && inputRef.current) {
-      inputRef.current.focus();
-      inputRef.current.select();
-    }
-  }, [editing]);
-
-  useEffect(() => {
-    if (!showMenu) return;
-    const handler = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        setShowMenu(false);
-      }
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, [showMenu]);
-
-  const commitRename = useCallback(() => {
-    const trimmed = editName.trim();
-    if (trimmed && trimmed !== folder.name) {
-      onRenameFolder(folder.id, trimmed);
-    } else {
-      setEditName(folder.name);
-    }
-    setEditing(false);
-  }, [editName, folder.id, folder.name, onRenameFolder]);
-
-  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') commitRename();
-    if (e.key === 'Escape') {
-      setEditName(folder.name);
-      setEditing(false);
-    }
-  }, [commitRename, folder.name]);
+  const { editing, setEditing, editName, setEditName, showMenu, setShowMenu, inputRef, menuRef, commitRename, handleKeyDown } =
+    useInlineEdit(folder.name, (name) => onRenameFolder(folder.id, name));
 
   return (
     <div>

@@ -1,63 +1,29 @@
-import React, { useState, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
 import { useSessionStore } from '../../stores/sessionStore.js';
 import type { Highlight, HighlightFolder, TimelineEvent } from '../../lib/types.js';
 import { HighlightItem } from './HighlightItem.js';
 import { HighlightFolderItem } from './HighlightFolderItem.js';
 import { getEffectiveAgentContent } from '../../lib/reasoning.js';
-
-const REMARK_PLUGINS = [remarkGfm];
-
-const MARKDOWN_PROSE = `text-[10px] text-[#e6edf3] leading-relaxed prose prose-invert prose-xs max-w-none
-  [&_p]:my-1 [&_p]:leading-relaxed
-  [&_strong]:text-[#e6edf3] [&_strong]:font-semibold
-  [&_em]:text-[#8b949e]
-  [&_code]:text-[#79c0ff] [&_code]:bg-[#0d1117] [&_code]:px-1 [&_code]:rounded [&_code]:text-[10px]
-  [&_pre]:bg-[#0d1117] [&_pre]:rounded [&_pre]:p-2 [&_pre]:overflow-x-auto
-  [&_ul]:list-disc [&_ul]:pl-4 [&_ul]:my-1
-  [&_ol]:list-decimal [&_ol]:pl-4 [&_ol]:my-1
-  [&_li]:my-0.5
-  [&_h1]:text-xs [&_h2]:text-xs [&_h3]:text-[10px]
-  [&_blockquote]:border-l-2 [&_blockquote]:border-[#30363d] [&_blockquote]:pl-2 [&_blockquote]:text-[#8b949e]`.replace(/\s+/g, ' ').trim();
+import { MARKDOWN_PROSE_COMPACT, REMARK_PLUGINS } from '../../lib/markdown.js';
 
 interface HighlightEventPair {
   promptEvent: TimelineEvent | null;
   responseEvent: TimelineEvent | null;
 }
 
-function PromptEventBlock({ event }: { event: TimelineEvent }) {
+function EventBlock({ event, kind }: { event: TimelineEvent; kind: 'prompt' | 'response' }) {
   const { response } = getEffectiveAgentContent(event);
-  const text = response.trim() || event.data.prompt || '';
+  const text = kind === 'prompt' ? (response.trim() || event.data.prompt || '') : response.trim();
   return (
     <div className="rounded-md border border-[#30363d] overflow-hidden">
       <div className="flex items-center justify-between px-3 py-1 bg-[#161b22] border-b border-[#30363d]">
-        <span className="text-[10px] text-[#484f58] font-mono uppercase">Prompt</span>
+        <span className="text-[10px] text-[#484f58] font-mono uppercase">{kind === 'prompt' ? 'Prompt' : 'Response'}</span>
         <span className="text-[10px] text-[#484f58]">{new Date(event.timestamp).toLocaleTimeString()}</span>
       </div>
-      <div className="p-3 border-l-2 border-[#58a6ff]">
+      <div className={`p-3 border-l-2 ${kind === 'prompt' ? 'border-[#58a6ff]' : 'border-[#3fb950]/50'}`}>
         {text ? (
-          <div className={MARKDOWN_PROSE}><ReactMarkdown remarkPlugins={REMARK_PLUGINS}>{text}</ReactMarkdown></div>
-        ) : (
-          <span className="text-[10px] text-[#484f58] italic">No content</span>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function ResponseEventBlock({ event }: { event: TimelineEvent }) {
-  const { response } = getEffectiveAgentContent(event);
-  const text = response.trim();
-  return (
-    <div className="rounded-md border border-[#30363d] overflow-hidden">
-      <div className="flex items-center justify-between px-3 py-1 bg-[#161b22] border-b border-[#30363d]">
-        <span className="text-[10px] text-[#484f58] font-mono uppercase">Response</span>
-        <span className="text-[10px] text-[#484f58]">{new Date(event.timestamp).toLocaleTimeString()}</span>
-      </div>
-      <div className="p-3 border-l-2 border-[#3fb950]/50">
-        {text ? (
-          <div className={MARKDOWN_PROSE}><ReactMarkdown remarkPlugins={REMARK_PLUGINS}>{text}</ReactMarkdown></div>
+          <div className={MARKDOWN_PROSE_COMPACT}><ReactMarkdown remarkPlugins={REMARK_PLUGINS}>{text}</ReactMarkdown></div>
         ) : (
           <span className="text-[10px] text-[#484f58] italic">No content</span>
         )}
@@ -83,23 +49,33 @@ export function HighlightsPanel() {
 
   const selectedHighlight = highlights.find((h) => h.id === selectedHighlightId) ?? null;
 
-  const sortedFolders = [...highlightFolders].sort((a, b) => a.sortOrder - b.sortOrder);
+  const sortedFolders = useMemo(
+    () => [...highlightFolders].sort((a, b) => a.sortOrder - b.sortOrder),
+    [highlightFolders]
+  );
 
-  const folderHighlights = (folderId: string) =>
-    highlights.filter((h) => h.folderId === folderId).sort((a, b) => a.sortOrder - b.sortOrder);
+  const folderHighlights = useCallback(
+    (folderId: string) =>
+      highlights.filter((h) => h.folderId === folderId).sort((a, b) => a.sortOrder - b.sortOrder),
+    [highlights]
+  );
 
-  const unfiledHighlights = highlights
-    .filter((h) => h.folderId === null)
-    .sort((a, b) => a.createdAt - b.createdAt);
+  const unfiledHighlights = useMemo(
+    () => highlights.filter((h) => h.folderId === null).sort((a, b) => a.createdAt - b.createdAt),
+    [highlights]
+  );
 
-  const allHighlightsSorted = [
-    ...sortedFolders.flatMap((f) => folderHighlights(f.id)),
-    ...unfiledHighlights,
-  ];
+  const allHighlightsSorted = useMemo(
+    () => [...sortedFolders.flatMap((f) => folderHighlights(f.id)), ...unfiledHighlights],
+    [sortedFolders, folderHighlights, unfiledHighlights]
+  );
 
-  const filteredHighlights = searchQuery.trim()
-    ? allHighlightsSorted.filter((h) => h.name.toLowerCase().includes(searchQuery.toLowerCase()))
-    : null;
+  const filteredHighlights = useMemo(
+    () => searchQuery.trim()
+      ? allHighlightsSorted.filter((h) => h.name.toLowerCase().includes(searchQuery.toLowerCase()))
+      : null,
+    [searchQuery, allHighlightsSorted]
+  );
 
   useEffect(() => {
     if (!selectedHighlightId) {
@@ -342,14 +318,14 @@ export function HighlightsPanel() {
                 ) : (
                   <>
                     {eventPair.promptEvent ? (
-                      <PromptEventBlock event={eventPair.promptEvent} />
+                      <EventBlock event={eventPair.promptEvent} kind="prompt" />
                     ) : (
                       <div className="rounded-md border border-[#30363d] p-3">
                         <p className="text-[10px] text-[#484f58] italic">Prompt event not found (may have been purged)</p>
                       </div>
                     )}
                     {eventPair.responseEvent ? (
-                      <ResponseEventBlock event={eventPair.responseEvent} />
+                      <EventBlock event={eventPair.responseEvent} kind="response" />
                     ) : (
                       <div className="rounded-md border border-[#30363d] p-3">
                         <p className="text-[10px] text-[#484f58] italic">Response event not found (may have been purged)</p>
