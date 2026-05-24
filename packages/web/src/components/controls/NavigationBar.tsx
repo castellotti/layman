@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 
 interface NavigationBarProps {
   currentIndex: number;
@@ -17,6 +17,9 @@ interface NavigationBarProps {
   onToggleRiskyOnly: () => void;
   onAccessLog?: () => void;
   onPrint?: () => void;
+  onBookmark?: (name: string) => void;
+  isBookmarked?: boolean;
+  defaultBookmarkName?: string;
 }
 
 export function NavigationBar({
@@ -36,7 +39,24 @@ export function NavigationBar({
   onToggleRiskyOnly,
   onAccessLog,
   onPrint,
+  onBookmark,
+  isBookmarked,
+  defaultBookmarkName = '',
 }: NavigationBarProps) {
+  const [showBookmarkInput, setShowBookmarkInput] = useState(false);
+  const [bookmarkName, setBookmarkName] = useState('');
+
+  const handleBookmarkClick = () => {
+    setBookmarkName(defaultBookmarkName);
+    setShowBookmarkInput(true);
+  };
+
+  const handleBookmarkSubmit = () => {
+    if (onBookmark) onBookmark(bookmarkName);
+    setShowBookmarkInput(false);
+    setBookmarkName('');
+  };
+
   return (
     <div data-print-hide className="flex items-center gap-3 px-4 py-2 bg-[#161b22] border-b border-[#30363d] text-xs flex-wrap">
       {/* Navigation arrows */}
@@ -146,6 +166,48 @@ export function NavigationBar({
             </svg>
             Access Log
           </button>
+        </>
+      )}
+
+      {/* Bookmark */}
+      {onBookmark && !isBookmarked && (
+        <>
+          <div className="h-4 w-px bg-[#30363d]" />
+          {showBookmarkInput ? (
+            <div className="flex items-center gap-1">
+              <input
+                autoFocus
+                type="text"
+                value={bookmarkName}
+                onChange={(e) => setBookmarkName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleBookmarkSubmit();
+                  if (e.key === 'Escape') { setShowBookmarkInput(false); setBookmarkName(''); }
+                }}
+                placeholder="Bookmark name..."
+                className="text-xs bg-[#0d1117] border border-[#58a6ff] rounded px-2 py-0.5 text-[#e6edf3] placeholder-[#484f58] focus:outline-none w-36"
+              />
+              <button
+                onClick={handleBookmarkSubmit}
+                className="text-xs text-[#3fb950] hover:text-[#56d364] transition-colors"
+              >✓</button>
+              <button
+                onClick={() => { setShowBookmarkInput(false); setBookmarkName(''); }}
+                className="text-xs text-[#484f58] hover:text-[#8b949e] transition-colors"
+              >✕</button>
+            </div>
+          ) : (
+            <button
+              onClick={handleBookmarkClick}
+              className="flex items-center gap-1 text-[#8b949e] hover:text-[#d29922] transition-colors"
+              title="Bookmark current session"
+            >
+              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
+              </svg>
+              Bookmark
+            </button>
+          )}
         </>
       )}
 

@@ -316,11 +316,34 @@ function handleClinePreCompact(body: ClineHookInput, eventStore: EventStore): vo
   eventStore.add('pre_compact', input.session_id, {}, undefined, AGENT_TYPE);
 }
 
+// Sources in user_attention notifications that carry the agent's actual text response
+const AGENT_RESPONSE_SOURCES = new Set(['followup', 'plan_mode_respond', 'act_mode_respond']);
+
 function handleClineNotification(body: ClineHookInput, eventStore: EventStore): void {
   const notification = body.notification;
+  const event = notification?.event ?? 'unknown';
+  const source = notification?.source ?? '';
+  const message = notification?.message;
+
   eventStore.add('notification', body.taskId, {
-    notificationType: notification?.event ?? 'unknown',
+    notificationType: event,
+    ...(message ? { message } : {}),
   }, undefined, AGENT_TYPE);
+
+  if (!message) return;
+
+  if (event === 'user_attention' && AGENT_RESPONSE_SOURCES.has(source)) {
+    // followup, plan_mode_respond, act_mode_respond carry the agent's text directly
+    eventStore.add('agent_response', body.taskId, { prompt: message }, undefined, AGENT_TYPE);
+  } else if (event === 'task_complete' || (event === 'user_attention' && source === 'completion_result')) {
+    // Fallback: emit only if attempt_completion PostToolUse didn't already capture the response
+    const hasResponse = !!eventStore.findLast(
+      (e) => e.type === 'agent_response' && e.sessionId === body.taskId
+    );
+    if (!hasResponse) {
+      eventStore.add('agent_response', body.taskId, { prompt: message }, undefined, AGENT_TYPE);
+    }
+  }
 }
 
 async function triggerAnalysis(
