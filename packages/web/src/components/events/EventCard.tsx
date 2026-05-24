@@ -123,14 +123,15 @@ export function EventCard({ event, index, isSelected, onClick, onSend, collapseH
         let promptEventId: string;
         let responseEventId: string;
         let promptText = '';
+        const trueIndex = eventList.findIndex((e) => e.id === event.id);
         if (isUserPrompt) {
           promptEventId = event.id;
           promptText = event.data.prompt ?? '';
-          const nextResponse = eventList.slice(index + 1).find((ev) => ev.type === 'agent_response' && ev.sessionId === event.sessionId);
+          const nextResponse = eventList.slice(trueIndex + 1).find((ev) => ev.type === 'agent_response' && ev.sessionId === event.sessionId);
           responseEventId = nextResponse?.id ?? event.id;
         } else {
           responseEventId = event.id;
-          const prevPrompt = [...eventList].slice(0, index).reverse().find((ev) => ev.type === 'user_prompt' && ev.sessionId === event.sessionId);
+          const prevPrompt = eventList.slice(0, trueIndex).reverse().find((ev) => ev.type === 'user_prompt' && ev.sessionId === event.sessionId);
           promptEventId = prevPrompt?.id ?? event.id;
           promptText = prevPrompt?.data.prompt ?? '';
         }

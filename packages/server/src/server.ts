@@ -987,22 +987,22 @@ export function createServer(config: LaymanConfig): LaymanServer {
       return { folders: highlightStore.listFolders() };
     });
 
-    fastify.post<{ Body: { name: string } }>('/api/highlights/folders', async (request) => {
-      const folder = highlightStore.createFolder(request.body.name);
+    fastify.post<{ Body: { name: string } }>('/api/highlights/folders', async (request, reply) => {
+      const name = (request.body.name ?? '').trim();
+      if (!name) return reply.status(400).send({ error: 'name is required' });
+      const folder = highlightStore.createFolder(name);
       broadcast({ type: 'highlights:folder:created', folder });
       return { folder };
     });
 
     fastify.patch<{ Params: { id: string }; Body: { name?: string } }>('/api/highlights/folders/:id', async (request, reply) => {
       const { id } = request.params;
-      const { name } = request.body;
-      if (name !== undefined) {
-        const folder = highlightStore.renameFolder(id, name);
-        if (!folder) return reply.status(404).send({ error: 'Folder not found' });
-        broadcast({ type: 'highlights:folder:updated', folder });
-        return { folder };
-      }
-      return reply.status(400).send({ error: 'No valid fields to update' });
+      const name = (request.body.name ?? '').trim();
+      if (!name) return reply.status(400).send({ error: 'name is required' });
+      const folder = highlightStore.renameFolder(id, name);
+      if (!folder) return reply.status(404).send({ error: 'Folder not found' });
+      broadcast({ type: 'highlights:folder:updated', folder });
+      return { folder };
     });
 
     fastify.delete<{ Params: { id: string } }>('/api/highlights/folders/:id', async (request) => {
@@ -1012,9 +1012,10 @@ export function createServer(config: LaymanConfig): LaymanServer {
     });
 
     fastify.post<{ Body: { ids: string[] } }>('/api/highlights/folders/reorder', async (request) => {
-      highlightStore.reorderFolders(request.body.ids);
-      const folders = highlightStore.listFolders();
-      for (const folder of folders) {
+      const { ids } = request.body;
+      highlightStore.reorderFolders(ids);
+      const idSet = new Set(ids);
+      for (const folder of highlightStore.listFolders().filter((f) => idSet.has(f.id))) {
         broadcast({ type: 'highlights:folder:updated', folder });
       }
       return { ok: true };
@@ -1025,8 +1026,10 @@ export function createServer(config: LaymanConfig): LaymanServer {
       return { highlights: highlightStore.listAllHighlights() };
     });
 
-    fastify.post<{ Body: { sessionId: string; promptEventId: string; responseEventId: string; name: string; folderId?: string | null } }>('/api/highlights', async (request) => {
-      const { sessionId, promptEventId, responseEventId, name, folderId } = request.body;
+    fastify.post<{ Body: { sessionId: string; promptEventId: string; responseEventId: string; name: string; folderId?: string | null } }>('/api/highlights', async (request, reply) => {
+      const { sessionId, promptEventId, responseEventId, folderId } = request.body;
+      const name = (request.body.name ?? '').trim();
+      if (!name) return reply.status(400).send({ error: 'name is required' });
       const highlight = highlightStore.createHighlight(sessionId, promptEventId, responseEventId, name, folderId);
       broadcast({ type: 'highlights:created', highlight });
       return { highlight };
@@ -1037,14 +1040,10 @@ export function createServer(config: LaymanConfig): LaymanServer {
       Body: { name?: string; folderId?: string | null; sortOrder?: number };
     }>('/api/highlights/:id', async (request, reply) => {
       const { id } = request.params;
-      const { name, folderId, sortOrder } = request.body;
-      let highlight = null;
-      if (name !== undefined) {
-        highlight = highlightStore.renameHighlight(id, name);
-      }
-      if (folderId !== undefined || sortOrder !== undefined) {
-        highlight = highlightStore.moveHighlight(id, folderId ?? null, sortOrder);
-      }
+      const { folderId, sortOrder } = request.body;
+      const name = request.body.name !== undefined ? request.body.name.trim() : undefined;
+      if (name !== undefined && name === '') return reply.status(400).send({ error: 'name cannot be empty' });
+      const highlight = highlightStore.updateHighlight(id, { name, folderId, sortOrder });
       if (!highlight) return reply.status(404).send({ error: 'Highlight not found' });
       broadcast({ type: 'highlights:updated', highlight });
       return { highlight };
@@ -1057,9 +1056,10 @@ export function createServer(config: LaymanConfig): LaymanServer {
     });
 
     fastify.post<{ Body: { folderId: string | null; ids: string[] } }>('/api/highlights/reorder', async (request) => {
-      highlightStore.reorderHighlights(request.body.folderId, request.body.ids);
-      const highlights = highlightStore.listAllHighlights();
-      for (const highlight of highlights) {
+      const { folderId, ids } = request.body;
+      highlightStore.reorderHighlights(folderId, ids);
+      const idSet = new Set(ids);
+      for (const highlight of highlightStore.listAllHighlights().filter((h) => idSet.has(h.id))) {
         broadcast({ type: 'highlights:updated', highlight });
       }
       return { ok: true };

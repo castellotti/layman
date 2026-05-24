@@ -48,7 +48,7 @@ function PromptEventBlock({ event }: { event: TimelineEvent }) {
 
 function ResponseEventBlock({ event }: { event: TimelineEvent }) {
   const { response } = getEffectiveAgentContent(event);
-  const text = response.trim() || event.data.prompt || '';
+  const text = response.trim();
   return (
     <div className="rounded-md border border-[#30363d] overflow-hidden">
       <div className="flex items-center justify-between px-3 py-1 bg-[#161b22] border-b border-[#30363d]">
@@ -68,7 +68,6 @@ function ResponseEventBlock({ event }: { event: TimelineEvent }) {
 
 export function HighlightsPanel() {
   const {
-    promptsOpen,
     highlightFolders,
     highlights,
     navigateFromPromptsToSession,
@@ -176,8 +175,6 @@ export function HighlightsPanel() {
     if (!selectedHighlight) return;
     navigateFromPromptsToSession(selectedHighlight.sessionId, selectedHighlight.promptEventId);
   }, [selectedHighlight, navigateFromPromptsToSession]);
-
-  if (!promptsOpen) return null;
 
   const hasContent = highlights.length > 0;
 

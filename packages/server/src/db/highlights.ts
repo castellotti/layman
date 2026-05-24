@@ -90,13 +90,6 @@ export class HighlightStore {
     return row ? toHighlight(row) : null;
   }
 
-  findByEventIds(promptEventId: string, responseEventId: string): Highlight | null {
-    const row = this.db.prepare(
-      'SELECT * FROM highlights WHERE prompt_event_id = ? AND response_event_id = ?'
-    ).get(promptEventId, responseEventId) as RawHighlight | undefined;
-    return row ? toHighlight(row) : null;
-  }
-
   createHighlight(sessionId: string, promptEventId: string, responseEventId: string, name: string, folderId?: string | null): Highlight {
     const id = randomUUID();
     const now = Date.now();
@@ -110,21 +103,27 @@ export class HighlightStore {
     return toHighlight({ id, folder_id: effectiveFolderId, session_id: sessionId, prompt_event_id: promptEventId, response_event_id: responseEventId, name, sort_order: maxOrder + 1, created_at: now });
   }
 
-  renameHighlight(id: string, name: string): Highlight | null {
-    this.db.prepare('UPDATE highlights SET name = ? WHERE id = ?').run(name, id);
-    const row = this.db.prepare('SELECT * FROM highlights WHERE id = ?').get(id) as RawHighlight | undefined;
-    return row ? toHighlight(row) : null;
-  }
-
-  moveHighlight(id: string, folderId: string | null, sortOrder?: number): Highlight | null {
-    if (sortOrder !== undefined) {
-      this.db.prepare('UPDATE highlights SET folder_id = ?, sort_order = ? WHERE id = ?').run(folderId, sortOrder, id);
-    } else {
-      const maxOrder = (this.db.prepare(
-        'SELECT COALESCE(MAX(sort_order), -1) as m FROM highlights WHERE folder_id IS ?'
-      ).get(folderId) as { m: number }).m;
-      this.db.prepare('UPDATE highlights SET folder_id = ?, sort_order = ? WHERE id = ?').run(folderId, maxOrder + 1, id);
+  updateHighlight(id: string, fields: { name?: string; folderId?: string | null; sortOrder?: number }): Highlight | null {
+    const setClauses: string[] = [];
+    const params: (string | number | null)[] = [];
+    if (fields.name !== undefined) {
+      setClauses.push('name = ?');
+      params.push(fields.name);
     }
+    if (fields.folderId !== undefined) {
+      setClauses.push('folder_id = ?');
+      params.push(fields.folderId);
+    }
+    const effectiveSortOrder = fields.sortOrder ?? (fields.folderId !== undefined
+      ? (this.db.prepare('SELECT COALESCE(MAX(sort_order), -1) as m FROM highlights WHERE folder_id IS ?').get(fields.folderId) as { m: number }).m + 1
+      : undefined);
+    if (effectiveSortOrder !== undefined) {
+      setClauses.push('sort_order = ?');
+      params.push(effectiveSortOrder);
+    }
+    if (setClauses.length === 0) return null;
+    params.push(id);
+    this.db.prepare(`UPDATE highlights SET ${setClauses.join(', ')} WHERE id = ?`).run(...params);
     const row = this.db.prepare('SELECT * FROM highlights WHERE id = ?').get(id) as RawHighlight | undefined;
     return row ? toHighlight(row) : null;
   }
