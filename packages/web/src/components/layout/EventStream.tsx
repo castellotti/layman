@@ -5,6 +5,7 @@ import { EventCard } from '../events/EventCard.js';
 import { NavigationBar } from '../controls/NavigationBar.js';
 import { SessionMetricsBar } from '../controls/SessionMetricsBar.js';
 import { PromptInput } from '../controls/PromptInput.js';
+import { saveAndBookmarkSession } from '../../lib/bookmarks-api.js';
 import type { ClientMessage } from '../../lib/ws-protocol.js';
 
 interface EventStreamProps {
@@ -20,7 +21,7 @@ export function EventStream({ onSend }: EventStreamProps) {
   const [followLatest, setFollowLatest] = useState(true);
 
   const scrollRef = useRef<HTMLDivElement>(null);
-  const { setSelectedEvent, sessions, activeSessionId, config, fetchAccessLog, scrollToEventId, clearScrollToEvent } = useSessionStore();
+  const { setSelectedEvent, sessions, activeSessionId, config, fetchAccessLog, scrollToEventId, clearScrollToEvent, bookmarks } = useSessionStore();
 
   const collapseHistory = config?.collapseHistory ?? true;
   const autoScroll = config?.autoScroll ?? true;
@@ -178,6 +179,27 @@ export function EventStream({ onSend }: EventStreamProps) {
     return () => window.removeEventListener('keydown', handleKey);
   }, [selectedIndex, events.length]);
 
+  const bookmarkedSessionIds = useMemo(
+    () => new Set(bookmarks.map((b) => b.sessionId)),
+    [bookmarks]
+  );
+
+  const activeSession = useMemo(
+    () => sessions.find((s) => s.sessionId === activeSessionId) ?? null,
+    [sessions, activeSessionId]
+  );
+
+  const defaultBookmarkName = useMemo(() => {
+    if (!activeSession) return activeSessionId?.slice(0, 8) ?? '';
+    const { cwd, sessionId, agentType, sessionName } = activeSession;
+    return sessionName || (cwd ? (cwd.split('/').filter(Boolean).pop() ?? cwd) : sessionId.slice(0, 8));
+  }, [activeSession, activeSessionId]);
+
+  const handleBookmark = useCallback((name: string) => {
+    if (!activeSessionId) return;
+    void saveAndBookmarkSession(activeSessionId, name.trim() || activeSessionId.slice(0, 8));
+  }, [activeSessionId]);
+
   // Determine the active OpenCode session (if any) for prompt submission.
   // Prefer the explicitly-selected session if it's OpenCode; otherwise fall back to
   // the first OpenCode session in the list so the input is always reachable even when
@@ -209,6 +231,9 @@ export function EventStream({ onSend }: EventStreamProps) {
         onToggleRiskyOnly={() => setRiskyOnly((v) => !v)}
         onAccessLog={activeSessionId ? () => void fetchAccessLog(activeSessionId) : undefined}
         onPrint={handlePrint}
+        onBookmark={activeSessionId ? handleBookmark : undefined}
+        isBookmarked={activeSessionId ? bookmarkedSessionIds.has(activeSessionId) : true}
+        defaultBookmarkName={defaultBookmarkName}
       />
 
       <SessionMetricsBar />
