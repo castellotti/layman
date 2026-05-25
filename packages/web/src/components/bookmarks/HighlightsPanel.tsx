@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { useSessionStore } from '../../stores/sessionStore.js';
 import type { Highlight, HighlightFolder, TimelineEvent } from '../../lib/types.js';
@@ -45,7 +45,6 @@ export function HighlightsPanel() {
   const [showNewFolder, setShowNewFolder] = useState(false);
   const [newFolderName, setNewFolderName] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
-  const searchInputRef = useRef<HTMLInputElement>(null);
 
   const selectedHighlight = highlights.find((h) => h.id === selectedHighlightId) ?? null;
 
@@ -159,7 +158,6 @@ export function HighlightsPanel() {
       {/* Search bar */}
       <div className="px-4 py-2 border-b border-[#30363d] bg-[#161b22] shrink-0">
         <input
-          ref={searchInputRef}
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           placeholder="Search highlights..."

@@ -1058,8 +1058,7 @@ export function createServer(config: LaymanConfig): LaymanServer {
     fastify.post<{ Body: { folderId: string | null; ids: string[] } }>('/api/highlights/reorder', async (request) => {
       const { folderId, ids } = request.body;
       highlightStore.reorderHighlights(folderId, ids);
-      const idSet = new Set(ids);
-      for (const highlight of highlightStore.listAllHighlights().filter((h) => idSet.has(h.id))) {
+      for (const highlight of highlightStore.listHighlightsByFolder(folderId)) {
         broadcast({ type: 'highlights:updated', highlight });
       }
       return { ok: true };

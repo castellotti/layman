@@ -513,9 +513,16 @@ export const useSessionStore = create<SessionState>((set) => ({
     }),
 
   removeHighlightFolder: (folderId) =>
-    set((state) => ({
-      highlightFolders: state.highlightFolders.filter((f) => f.id !== folderId),
-    })),
+    set((state) => {
+      const updated = state.highlights.map((h) =>
+        h.folderId === folderId ? { ...h, folderId: null } : h
+      );
+      return {
+        highlightFolders: state.highlightFolders.filter((f) => f.id !== folderId),
+        highlights: updated,
+        highlightedEventIds: computeHighlightedEventIds(updated),
+      };
+    }),
 
   upsertHighlight: (highlight) =>
     set((state) => {

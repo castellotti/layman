@@ -97,6 +97,11 @@ export class HighlightStore {
     return rows.map(toHighlight);
   }
 
+  listHighlightsByFolder(folderId: string | null): Highlight[] {
+    const rows = this.db.prepare('SELECT * FROM highlights WHERE folder_id IS ? ORDER BY sort_order ASC').all(folderId) as RawHighlight[];
+    return rows.map(toHighlight);
+  }
+
   getHighlight(id: string): Highlight | null {
     const row = this.db.prepare('SELECT * FROM highlights WHERE id = ?').get(id) as RawHighlight | undefined;
     return row ? toHighlight(row) : null;
