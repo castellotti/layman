@@ -25,6 +25,24 @@ export interface RecordedSession {
   sessionName?: string;
 }
 
+export interface HighlightFolder {
+  id: string;
+  name: string;
+  sortOrder: number;
+  createdAt: number;
+}
+
+export interface Highlight {
+  id: string;
+  folderId: string | null;
+  sessionId: string;
+  promptEventId: string;
+  responseEventId: string;
+  name: string;
+  sortOrder: number;
+  createdAt: number;
+}
+
 export interface QAEntry {
   id: number;
   eventId: string;

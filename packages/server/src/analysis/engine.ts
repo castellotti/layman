@@ -175,8 +175,16 @@ export class AnalysisEngine {
     return this.withConcurrencyLimit(async () => {
       const startTime = Date.now();
       const raw = await this.callProvider(systemPrompt, userMessage, effectiveConfig);
+      // Strip <think>...</think> blocks emitted by reasoning models (Qwen3, DeepSeek-R1, etc.)
+      // If content after stripping is empty, fall back to last paragraph inside the thinking block.
+      let responseText = raw.text.trim();
+      const thinkBlockMatch = /<think>([\s\S]*?)<\/think>/i.exec(responseText);
+      if (thinkBlockMatch) {
+        const afterThink = responseText.replace(/<think>[\s\S]*?<\/think>\s*/gi, '').trim();
+        responseText = afterThink || thinkBlockMatch[1].trim().split('\n').filter(Boolean).pop() || responseText;
+      }
       return {
-        text: raw.text.trim(),
+        text: responseText,
         tokens: {
           input: raw.usage.input_tokens ?? raw.usage.prompt_tokens ?? 0,
           output: raw.usage.output_tokens ?? raw.usage.completion_tokens ?? 0,

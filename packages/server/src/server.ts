@@ -24,6 +24,7 @@ import { updateConfig, saveConfig } from './config/config.js';
 import { openDatabase } from './db/database.js';
 import { SessionRecorder } from './db/recorder.js';
 import { BookmarkStore } from './db/bookmarks.js';
+import { HighlightStore } from './db/highlights.js';
 import { searchEvents } from './db/search.js';
 import { computeTimeMetrics } from './db/time-metrics.js';
 import type { SearchRequest } from './db/search.js';
@@ -91,6 +92,7 @@ export function createServer(config: LaymanConfig): LaymanServer {
   // Persistent storage
   const db = openDatabase();
   const bookmarkStore = new BookmarkStore(db);
+  const highlightStore = new HighlightStore(db);
   const recorder = new SessionRecorder(db, () => getConfig().sessionRecording);
   recorder.attach(eventStore);
 
@@ -980,6 +982,96 @@ export function createServer(config: LaymanConfig): LaymanServer {
       return { ok: true, eventCount: toSave.length, sessionIds: savedSessionIds };
     });
 
+    // Highlight folders
+    fastify.get('/api/highlights/folders', async () => {
+      return { folders: highlightStore.listFolders() };
+    });
+
+    fastify.post<{ Body: { name: string } }>('/api/highlights/folders', async (request, reply) => {
+      const name = (request.body.name ?? '').trim();
+      if (!name) return reply.status(400).send({ error: 'name is required' });
+      const folder = highlightStore.createFolder(name);
+      broadcast({ type: 'highlights:folder:created', folder });
+      return { folder };
+    });
+
+    fastify.patch<{ Params: { id: string }; Body: { name?: string } }>('/api/highlights/folders/:id', async (request, reply) => {
+      const { id } = request.params;
+      const name = (request.body.name ?? '').trim();
+      if (!name) return reply.status(400).send({ error: 'name is required' });
+      const folder = highlightStore.renameFolder(id, name);
+      if (!folder) return reply.status(404).send({ error: 'Folder not found' });
+      broadcast({ type: 'highlights:folder:updated', folder });
+      return { folder };
+    });
+
+    fastify.delete<{ Params: { id: string } }>('/api/highlights/folders/:id', async (request) => {
+      highlightStore.deleteFolder(request.params.id);
+      broadcast({ type: 'highlights:folder:deleted', folderId: request.params.id });
+      return { ok: true };
+    });
+
+    fastify.post<{ Body: { ids: string[] } }>('/api/highlights/folders/reorder', async (request) => {
+      const { ids } = request.body;
+      highlightStore.reorderFolders(ids);
+      const idSet = new Set(ids);
+      for (const folder of highlightStore.listFolders().filter((f) => idSet.has(f.id))) {
+        broadcast({ type: 'highlights:folder:updated', folder });
+      }
+      return { ok: true };
+    });
+
+    // Highlights
+    fastify.get('/api/highlights', async () => {
+      return { highlights: highlightStore.listAllHighlights() };
+    });
+
+    fastify.post<{ Body: { sessionId: string; promptEventId: string; responseEventId: string; name: string; folderId?: string | null } }>('/api/highlights', async (request, reply) => {
+      const { sessionId, promptEventId, responseEventId, folderId } = request.body;
+      const name = (request.body.name ?? '').trim();
+      if (!name) return reply.status(400).send({ error: 'name is required' });
+      const highlight = highlightStore.createHighlight(sessionId, promptEventId, responseEventId, name, folderId);
+      broadcast({ type: 'highlights:created', highlight });
+      return { highlight };
+    });
+
+    fastify.patch<{
+      Params: { id: string };
+      Body: { name?: string; folderId?: string | null; sortOrder?: number };
+    }>('/api/highlights/:id', async (request, reply) => {
+      const { id } = request.params;
+      const { folderId, sortOrder } = request.body;
+      const name = request.body.name !== undefined ? request.body.name.trim() : undefined;
+      if (name !== undefined && name === '') return reply.status(400).send({ error: 'name cannot be empty' });
+      const highlight = highlightStore.updateHighlight(id, { name, folderId, sortOrder });
+      if (!highlight) return reply.status(404).send({ error: 'Highlight not found' });
+      broadcast({ type: 'highlights:updated', highlight });
+      return { highlight };
+    });
+
+    fastify.delete<{ Params: { id: string } }>('/api/highlights/:id', async (request) => {
+      highlightStore.deleteHighlight(request.params.id);
+      broadcast({ type: 'highlights:deleted', highlightId: request.params.id });
+      return { ok: true };
+    });
+
+    fastify.post<{ Body: { folderId: string | null; ids: string[] } }>('/api/highlights/reorder', async (request) => {
+      const { folderId, ids } = request.body;
+      highlightStore.reorderHighlights(folderId, ids);
+      for (const highlight of highlightStore.listHighlightsByFolder(folderId)) {
+        broadcast({ type: 'highlights:updated', highlight });
+      }
+      return { ok: true };
+    });
+
+    fastify.get<{ Params: { id: string } }>('/api/highlights/:id/events', async (request, reply) => {
+      const highlight = highlightStore.getHighlight(request.params.id);
+      if (!highlight) return reply.status(404).send({ error: 'Highlight not found' });
+      const promptEvent = eventStore.get(highlight.promptEventId) ?? bookmarkStore.getEventById(highlight.promptEventId);
+      const responseEvent = eventStore.get(highlight.responseEventId) ?? bookmarkStore.getEventById(highlight.responseEventId);
+      return { promptEvent, responseEvent };
+    });
+
     // WebSocket — @fastify/websocket v10: handler receives (socket, request) directly
     fastify.register(async (wsInstance) => {
       wsInstance.get('/ws', { websocket: true }, (socket) => {
@@ -1029,6 +1121,14 @@ export function createServer(config: LaymanConfig): LaymanServer {
           type: 'bookmarks:state',
           folders: bookmarkStore.listFolders(),
           bookmarks: bookmarkStore.listAllBookmarks(),
+        } satisfies ServerMessage));
+
+        // Send highlights state
+        const allHighlights = highlightStore.listAll();
+        ws.send(JSON.stringify({
+          type: 'highlights:state',
+          folders: allHighlights.folders,
+          highlights: allHighlights.highlights,
         } satisfies ServerMessage));
 
         // Send current drift state for active sessions

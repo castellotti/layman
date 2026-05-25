@@ -39,6 +39,8 @@ export function BookmarksPanel({ onSend }: BookmarksPanelProps) {
     setHistoricalEvents,
     investigatedSessions,
     markSessionInvestigated,
+    bookmarksScrollToEventId,
+    setBookmarksScrollToEventId,
   } = useSessionStore();
 
   const setSessionTimeMetrics = useSessionStore((s) => s.setSessionTimeMetrics);
@@ -94,6 +96,23 @@ export function BookmarksPanel({ onSend }: BookmarksPanelProps) {
     const interval = setInterval(refreshRecordedSessions, 10_000);
     return () => clearInterval(interval);
   }, [bookmarksOpen, refreshRecordedSessions]);
+
+  // When navigated here from HighlightsPanel with a pre-set viewingSessionId, load it
+  useEffect(() => {
+    if (!bookmarksOpen || !viewingSessionId || historicalEvents.length > 0) return;
+    void handleSelectSession(viewingSessionId);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bookmarksOpen, viewingSessionId]);
+
+  // Scroll to target event after events load (from navigation)
+  useEffect(() => {
+    if (!bookmarksScrollToEventId || historicalEvents.length === 0) return;
+    const el = document.querySelector(`[data-event-id="${bookmarksScrollToEventId}"]`);
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      setBookmarksScrollToEventId(null);
+    }
+  }, [bookmarksScrollToEventId, historicalEvents.length, setBookmarksScrollToEventId]);
 
   // Snapshot current in-memory session to SQLite
   const handleSaveCurrentSession = useCallback(async (sessionId: string) => {

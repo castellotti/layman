@@ -1,6 +1,5 @@
-import React, { useMemo, useCallback, useEffect } from 'react';
+import React, { useCallback, useEffect } from 'react';
 import { useSessionStore } from '../../stores/sessionStore.js';
-import { SessionLaymansTerms } from '../shared/SessionLaymansTerms.js';
 
 function getSessionName(cwd: string, sessionId: string, agentType?: string, showAgentPrefix?: boolean, sessionName?: string): string {
   const name = sessionName || (cwd ? (cwd.split('/').filter(Boolean).pop() ?? cwd) : sessionId.slice(0, 8));
@@ -64,14 +63,20 @@ function IconFlowchart() {
   );
 }
 
-type ViewMode = 'dashboard' | 'stream' | 'flowchart' | 'sessions';
+type ViewMode = 'dashboard' | 'stream' | 'flowchart' | 'sessions' | 'prompts';
+
+const VIEW_FLAGS: Record<ViewMode, { dashboard: boolean; flowchart: boolean; bookmarks: boolean; prompts: boolean }> = {
+  dashboard: { dashboard: true,  flowchart: false, bookmarks: false, prompts: false },
+  stream:    { dashboard: false, flowchart: false, bookmarks: false, prompts: false },
+  flowchart: { dashboard: false, flowchart: true,  bookmarks: false, prompts: false },
+  sessions:  { dashboard: false, flowchart: false, bookmarks: true,  prompts: false },
+  prompts:   { dashboard: false, flowchart: false, bookmarks: false, prompts: true  },
+};
 
 export function Header() {
   const {
     wsStatus, setSettingsOpen, setBookmarksOpen, bookmarksOpen,
     sessions, activeSessionId, setActiveSession,
-    sessionSummary, sessionSummaryHistory, sessionSummaryError, isSummarizingSession, fetchSessionSummary,
-    clearSessionSummaryError,
     flowchartOpen, setFlowchartOpen,
     flowchartViewMode, setFlowchartViewMode,
     dashboardOpen, setDashboardOpen,
@@ -79,29 +84,18 @@ export function Header() {
     returnToDashboard, returnFromDashboardDrilldown,
     sessionMetrics,
     investigatedSessions,
+    promptsOpen, setPromptsOpen,
   } = useSessionStore();
 
-  const currentView: ViewMode = dashboardOpen ? 'dashboard' : bookmarksOpen ? 'sessions' : flowchartOpen ? 'flowchart' : 'stream';
+  const currentView: ViewMode = dashboardOpen ? 'dashboard' : bookmarksOpen ? 'sessions' : promptsOpen ? 'prompts' : flowchartOpen ? 'flowchart' : 'stream';
 
   const setView = useCallback((view: ViewMode) => {
-    if (view === 'dashboard') {
-      setDashboardOpen(true);
-      setFlowchartOpen(false);
-      setBookmarksOpen(false);
-    } else if (view === 'sessions') {
-      setDashboardOpen(false);
-      setFlowchartOpen(false);
-      setBookmarksOpen(true);
-    } else if (view === 'stream') {
-      setDashboardOpen(false);
-      setFlowchartOpen(false);
-      setBookmarksOpen(false);
-    } else {
-      setDashboardOpen(false);
-      setFlowchartOpen(true);
-      setBookmarksOpen(false);
-    }
-  }, [setDashboardOpen, setFlowchartOpen, setBookmarksOpen]);
+    const flags = VIEW_FLAGS[view];
+    setDashboardOpen(flags.dashboard);
+    setFlowchartOpen(flags.flowchart);
+    setBookmarksOpen(flags.bookmarks);
+    setPromptsOpen(flags.prompts);
+  }, [setDashboardOpen, setFlowchartOpen, setBookmarksOpen, setPromptsOpen]);
 
   // Global keyboard shortcuts: D=dashboard, S=logs, F=flowchart, G/T=graph/timeline, Escape=back/close
   useEffect(() => {
@@ -121,7 +115,7 @@ export function Header() {
         case 'escape':
           if (returnToDashboard) {
             returnFromDashboardDrilldown();
-          } else if (bookmarksOpen) {
+          } else if (bookmarksOpen || promptsOpen) {
             setView('stream');
           }
           break;
@@ -129,12 +123,7 @@ export function Header() {
     };
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
-  }, [setView, flowchartOpen, dashboardOpen, bookmarksOpen, returnToDashboard, setFlowchartViewMode, returnFromDashboardDrilldown]);
-
-  // Current session history entries (filtered to active session)
-  const historyForSession = sessionSummaryHistory.filter(
-    (h) => h.sessionId === activeSessionId || (!h.sessionId && !activeSessionId)
-  );
+  }, [setView, flowchartOpen, dashboardOpen, bookmarksOpen, promptsOpen, returnToDashboard, setFlowchartViewMode, returnFromDashboardDrilldown]);
 
   const views: { key: ViewMode; label: string; icon: React.ReactNode; shortcut: string }[] = [
     { key: 'dashboard', label: 'Dashboard', icon: <IconDashboard />, shortcut: 'D' },
@@ -194,20 +183,8 @@ export function Header() {
         )}
       </div>
 
-      {/* Center: Layman's Terms (hidden in dashboard) */}
-      <div className="flex-1 flex items-center justify-center min-w-0 px-2">
-        {!dashboardOpen && (
-          <SessionLaymansTerms
-            summary={sessionSummary}
-            summaryHistory={historyForSession}
-            summaryError={sessionSummaryError}
-            isSummarizing={isSummarizingSession}
-            onGenerate={() => void fetchSessionSummary(activeSessionId)}
-            onClearError={clearSessionSummaryError}
-            className="max-w-xl w-full justify-center"
-          />
-        )}
-      </div>
+      {/* Spacer */}
+      <div className="flex-1" />
 
       {/* Right: view radio group + divider + sessions + settings */}
       <div className="flex items-center gap-2 shrink-0">
@@ -219,13 +196,13 @@ export function Header() {
 
         {/* View radio group */}
         <div className="flex items-center rounded-md overflow-hidden border border-[#30363d]">
-          {views.map(({ key, label, icon, shortcut }) => {
+          {views.map(({ key, label, icon, shortcut }, i) => {
             const isActive = currentView === key;
             return (
               <button
                 key={key}
                 onClick={() => setView(key)}
-                className={`flex items-center gap-1.5 px-2.5 py-1.5 transition-colors text-xs font-mono ${
+                className={`flex items-center gap-1.5 px-2.5 py-1.5 transition-colors text-xs font-mono ${i > 0 ? 'border-l border-[#30363d]' : ''} ${
                   isActive
                     ? key === 'dashboard'
                       ? 'bg-[#00e5ff]/15 text-[#00e5ff]'
@@ -244,18 +221,33 @@ export function Header() {
         {/* Divider */}
         <div className="h-5 w-px bg-[#30363d]" />
 
-        <button
-          onClick={() => setView('sessions')}
-          className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md border transition-colors text-xs font-mono ${
-            currentView === 'sessions'
-              ? 'bg-[#58a6ff]/15 text-[#58a6ff] border-[#58a6ff]/30'
-              : 'border-[#30363d] text-[#8b949e] hover:text-[#e6edf3] hover:bg-[#21262d]'
-          }`}
-          title="Session History"
-        >
-          <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M1.5 3.25a.75.75 0 0 1 .75-.75h11.5a.75.75 0 0 1 0 1.5H2.25a.75.75 0 0 1-.75-.75Zm0 4.75A.75.75 0 0 1 2.25 7.25h11.5a.75.75 0 0 1 0 1.5H2.25A.75.75 0 0 1 1.5 8Zm0 4.75a.75.75 0 0 1 .75-.75h11.5a.75.75 0 0 1 0 1.5H2.25a.75.75 0 0 1-.75-.75Z"/></svg>
-          <span className="hidden sm:inline">Sessions</span>
-        </button>
+        {/* Sessions + Prompts grouped */}
+        <div className="flex items-center rounded-md overflow-hidden border border-[#30363d]">
+          <button
+            onClick={() => setView('sessions')}
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 transition-colors text-xs font-mono ${
+              currentView === 'sessions'
+                ? 'bg-[#58a6ff]/15 text-[#58a6ff]'
+                : 'text-[#8b949e] hover:text-[#e6edf3] hover:bg-[#21262d]'
+            }`}
+            title="Session History"
+          >
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M1.5 3.25a.75.75 0 0 1 .75-.75h11.5a.75.75 0 0 1 0 1.5H2.25a.75.75 0 0 1-.75-.75Zm0 4.75A.75.75 0 0 1 2.25 7.25h11.5a.75.75 0 0 1 0 1.5H2.25A.75.75 0 0 1 1.5 8Zm0 4.75a.75.75 0 0 1 .75-.75h11.5a.75.75 0 0 1 0 1.5H2.25a.75.75 0 0 1-.75-.75Z"/></svg>
+            <span className="hidden sm:inline">Sessions</span>
+          </button>
+          <button
+            onClick={() => setView('prompts')}
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 transition-colors text-xs font-mono border-l border-[#30363d] ${
+              currentView === 'prompts'
+                ? 'bg-[#bc8cff]/15 text-[#bc8cff]'
+                : 'text-[#8b949e] hover:text-[#e6edf3] hover:bg-[#21262d]'
+            }`}
+            title="Prompt Highlights"
+          >
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0a8 8 0 1 1 0 16A8 8 0 0 1 8 0ZM1.5 8a6.5 6.5 0 1 0 13 0 6.5 6.5 0 0 0-13 0Zm4.879-2.773 4.264 2.559a.25.25 0 0 1 0 .428l-4.264 2.559A.25.25 0 0 1 6 10.559V5.442a.25.25 0 0 1 .379-.215Z"/></svg>
+            <span className="hidden sm:inline">Prompts</span>
+          </button>
+        </div>
 
         {/* Divider */}
         <div className="h-5 w-px bg-[#30363d]" />
