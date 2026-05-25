@@ -9,6 +9,7 @@ import { SetupBanner } from './components/layout/SetupBanner.js';
 import { SetupWizard } from './components/wizard/SetupWizard.js';
 import { SettingsDrawer } from './components/controls/SettingsDrawer.js';
 import { BookmarksPanel } from './components/bookmarks/BookmarksPanel.js';
+import { HighlightsPanel } from './components/bookmarks/HighlightsPanel.js';
 import { AccessLogPanel } from './components/access/AccessLogPanel.js';
 import { DriftBlockDialog } from './components/drift/DriftBlockDialog.js';
 import { ChangelogModal } from './components/shared/ChangelogModal.js';
@@ -173,6 +174,7 @@ export function App() {
   const setFlowchartViewMode = useSessionStore((s) => s.setFlowchartViewMode);
   const dashboardOpen = useSessionStore((s) => s.dashboardOpen);
   const bookmarksOpen = useSessionStore((s) => s.bookmarksOpen);
+  const promptsOpen = useSessionStore((s) => s.promptsOpen);
   const returnToDashboard = useSessionStore((s) => s.returnToDashboard);
   const returnFromDashboardDrilldown = useSessionStore((s) => s.returnFromDashboardDrilldown);
   const setSetupStatus = useSessionStore((s) => s.setSetupStatus);
@@ -226,6 +228,17 @@ export function App() {
       <AppShell onSend={send} onInstall={handleSetupInstall}>
         <div className="flex-1 overflow-hidden">
           <BookmarksPanel onSend={send} />
+        </div>
+      </AppShell>
+    );
+  }
+
+  // Prompts (Highlights) view takes over the entire content area
+  if (promptsOpen) {
+    return (
+      <AppShell onSend={send} onInstall={handleSetupInstall}>
+        <div className="flex-1 overflow-hidden">
+          <HighlightsPanel />
         </div>
       </AppShell>
     );

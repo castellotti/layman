@@ -74,6 +74,27 @@ function applyMigrations(db: Database): void {
 
     CREATE INDEX IF NOT EXISTS idx_recorded_events_type
       ON recorded_events(type);
+
+    CREATE TABLE IF NOT EXISTS highlight_folders (
+      id          TEXT PRIMARY KEY,
+      name        TEXT NOT NULL,
+      sort_order  INTEGER NOT NULL DEFAULT 0,
+      created_at  INTEGER NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS highlights (
+      id                TEXT PRIMARY KEY,
+      folder_id         TEXT REFERENCES highlight_folders(id) ON DELETE SET NULL,
+      session_id        TEXT NOT NULL,
+      prompt_event_id   TEXT NOT NULL,
+      response_event_id TEXT NOT NULL,
+      name              TEXT NOT NULL,
+      sort_order        INTEGER NOT NULL DEFAULT 0,
+      created_at        INTEGER NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_highlights_folder
+      ON highlights(folder_id, sort_order);
   `);
 
   // Migration: add session metadata columns

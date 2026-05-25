@@ -1,6 +1,15 @@
 import { create } from 'zustand';
-import type { TimelineEvent, PendingApprovalDTO, LaymanConfig, SessionStatus, SetupStatus, BookmarkFolder, Bookmark, SessionTimeMetrics, SessionAccessLog, SessionMetrics, DriftState } from '../lib/types.js';
+import type { TimelineEvent, PendingApprovalDTO, LaymanConfig, SessionStatus, SetupStatus, BookmarkFolder, Bookmark, HighlightFolder, Highlight, SessionTimeMetrics, SessionAccessLog, SessionMetrics, DriftState } from '../lib/types.js';
 import type { SessionInfo } from '../lib/ws-protocol.js';
+
+function computeHighlightedEventIds(highlights: Highlight[]): Set<string> {
+  const ids = new Set<string>();
+  for (const h of highlights) {
+    ids.add(h.promptEventId);
+    ids.add(h.responseEventId);
+  }
+  return ids;
+}
 
 interface InvestigationState {
   [eventId: string]: {
@@ -58,6 +67,13 @@ export interface SessionState {
   viewingSessionId: string | null;
   historicalEvents: TimelineEvent[];
   sessionTimeMetrics: SessionTimeMetrics | null;
+  bookmarksScrollToEventId: string | null;
+
+  // Highlights (Prompts view)
+  promptsOpen: boolean;
+  highlightFolders: HighlightFolder[];
+  highlights: Highlight[];
+  highlightedEventIds: Set<string>;
 
   // Flowchart view
   flowchartOpen: boolean;
@@ -126,6 +142,14 @@ export interface SessionState {
   setViewingSession: (sessionId: string | null) => void;
   setHistoricalEvents: (events: TimelineEvent[]) => void;
   setSessionTimeMetrics: (metrics: SessionTimeMetrics | null) => void;
+  setBookmarksScrollToEventId: (eventId: string | null) => void;
+  setPromptsOpen: (open: boolean) => void;
+  setHighlights: (folders: HighlightFolder[], highlights: Highlight[]) => void;
+  upsertHighlightFolder: (folder: HighlightFolder) => void;
+  removeHighlightFolder: (folderId: string) => void;
+  upsertHighlight: (highlight: Highlight) => void;
+  removeHighlight: (highlightId: string) => void;
+  navigateFromPromptsToSession: (sessionId: string, promptEventId: string) => void;
   setFlowchartOpen: (open: boolean) => void;
   setFlowchartViewMode: (mode: 'graph' | 'timeline') => void;
   setDashboardOpen: (open: boolean) => void;
@@ -181,6 +205,12 @@ export const useSessionStore = create<SessionState>((set) => ({
   viewingSessionId: null,
   historicalEvents: [],
   sessionTimeMetrics: null,
+  bookmarksScrollToEventId: null,
+
+  promptsOpen: false,
+  highlightFolders: [],
+  highlights: [],
+  highlightedEventIds: new Set<string>(),
 
   flowchartOpen: false,
   flowchartViewMode: 'graph' as const,
@@ -427,7 +457,7 @@ export const useSessionStore = create<SessionState>((set) => ({
 
   clearEvents: () => set({ events: [], selectedEventId: null }),
 
-  setBookmarksOpen: (open) => set({ bookmarksOpen: open }),
+  setBookmarksOpen: (open) => set({ bookmarksOpen: open, ...(open ? { promptsOpen: false } : {}) }),
 
   setBookmarks: (bookmarkFolders, bookmarks) => set({ bookmarkFolders, bookmarks }),
 
@@ -463,6 +493,62 @@ export const useSessionStore = create<SessionState>((set) => ({
     set((state) => ({
       bookmarks: state.bookmarks.filter((b) => b.id !== bookmarkId),
     })),
+
+  setBookmarksScrollToEventId: (eventId) => set({ bookmarksScrollToEventId: eventId }),
+
+  setPromptsOpen: (open) => set({ promptsOpen: open, ...(open ? { bookmarksOpen: false } : {}) }),
+
+  setHighlights: (highlightFolders, highlights) =>
+    set({ highlightFolders, highlights, highlightedEventIds: computeHighlightedEventIds(highlights) }),
+
+  upsertHighlightFolder: (folder) =>
+    set((state) => {
+      const idx = state.highlightFolders.findIndex((f) => f.id === folder.id);
+      if (idx >= 0) {
+        const updated = [...state.highlightFolders];
+        updated[idx] = folder;
+        return { highlightFolders: updated };
+      }
+      return { highlightFolders: [...state.highlightFolders, folder] };
+    }),
+
+  removeHighlightFolder: (folderId) =>
+    set((state) => {
+      const updated = state.highlights.map((h) =>
+        h.folderId === folderId ? { ...h, folderId: null } : h
+      );
+      return {
+        highlightFolders: state.highlightFolders.filter((f) => f.id !== folderId),
+        highlights: updated,
+        highlightedEventIds: computeHighlightedEventIds(updated),
+      };
+    }),
+
+  upsertHighlight: (highlight) =>
+    set((state) => {
+      const idx = state.highlights.findIndex((h) => h.id === highlight.id);
+      let newHighlights: Highlight[];
+      if (idx >= 0) {
+        newHighlights = [...state.highlights];
+        newHighlights[idx] = highlight;
+      } else {
+        newHighlights = [...state.highlights, highlight];
+      }
+      return { highlights: newHighlights, highlightedEventIds: computeHighlightedEventIds(newHighlights) };
+    }),
+
+  removeHighlight: (highlightId) =>
+    set((state) => {
+      const newHighlights = state.highlights.filter((h) => h.id !== highlightId);
+      return { highlights: newHighlights, highlightedEventIds: computeHighlightedEventIds(newHighlights) };
+    }),
+
+  navigateFromPromptsToSession: (sessionId, promptEventId) => set({
+    promptsOpen: false,
+    bookmarksOpen: true,
+    viewingSessionId: sessionId,
+    bookmarksScrollToEventId: promptEventId,
+  }),
 
   setViewingSession: (viewingSessionId) =>
     set((state) => ({

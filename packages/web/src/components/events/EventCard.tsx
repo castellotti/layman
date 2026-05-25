@@ -73,8 +73,12 @@ function getCommandPreview(toolName: string | undefined, toolInput: Record<strin
 
 export function EventCard({ event, index, isSelected, onClick, onSend, collapseHistory, showAgentBadge }: EventCardProps) {
   const [expandedLocal, setExpandedLocal] = useState(false);
+  const [highlighting, setHighlighting] = useState(false);
   const { approvals } = usePendingApprovals();
   const showFullCommand = useSessionStore((s) => s.config?.showFullCommand ?? false);
+  const highlightedEventIds = useSessionStore((s) => s.highlightedEventIds);
+
+  const isHighlighted = highlightedEventIds.has(event.id);
 
   const isPending = event.type === 'tool_call_pending' || event.type === 'permission_request';
   const isAgentResponse = event.type === 'agent_response';
@@ -100,6 +104,52 @@ export function EventCard({ event, index, isSelected, onClick, onSend, collapseH
         (a) => a.toolName === event.data.toolName && Math.abs(a.timestamp - event.timestamp) < 5000
       )
     : undefined;
+
+  const handleHighlight = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (highlighting) return;
+    setHighlighting(true);
+    try {
+      const { events: liveEvents, historicalEvents, highlights } = useSessionStore.getState();
+      const eventList = historicalEvents.some((ev) => ev.id === event.id) ? historicalEvents : liveEvents;
+      if (isHighlighted) {
+        const existing = highlights.find((h) => h.promptEventId === event.id || h.responseEventId === event.id);
+        if (existing) {
+          await fetch(`/api/highlights/${existing.id}`, { method: 'DELETE' }).catch(() => {});
+        }
+      } else {
+        let promptEventId: string;
+        let responseEventId: string;
+        let promptText = '';
+        const trueIndex = eventList.findIndex((ev) => ev.id === event.id);
+        if (isUserPrompt) {
+          promptEventId = event.id;
+          promptText = event.data.prompt ?? '';
+          const nextResponse = eventList.slice(trueIndex + 1).find((ev) => ev.type === 'agent_response' && ev.sessionId === event.sessionId);
+          responseEventId = nextResponse?.id ?? event.id;
+        } else {
+          responseEventId = event.id;
+          let prevPrompt: typeof eventList[number] | undefined;
+          for (let i = trueIndex - 1; i >= 0; i--) {
+            if (eventList[i].type === 'user_prompt' && eventList[i].sessionId === event.sessionId) {
+              prevPrompt = eventList[i];
+              break;
+            }
+          }
+          promptEventId = prevPrompt?.id ?? event.id;
+          promptText = prevPrompt?.data.prompt ?? '';
+        }
+        const name = promptText.trim().slice(0, 60) || `Highlight ${new Date().toLocaleTimeString()}`;
+        await fetch('/api/highlights', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sessionId: event.sessionId, promptEventId, responseEventId, name }),
+        }).catch(() => {});
+      }
+    } finally {
+      setHighlighting(false);
+    }
+  };
 
   const bgClass = isPending
     ? 'bg-[#1c1a0f] hover:bg-[#1c1a0f]/80'
@@ -333,12 +383,22 @@ export function EventCard({ event, index, isSelected, onClick, onSend, collapseH
               <div className={`rounded-md border border-[#30363d] overflow-hidden`}>
                 <div className="flex items-center justify-between px-3 py-1 bg-[#161b22] border-b border-[#30363d]">
                   <span className="text-[10px] text-[#484f58] font-mono uppercase">{isUserPrompt ? 'Prompt' : 'Response'}</span>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(effectivePrompt!).catch(() => {}); }}
-                    className="text-xs text-[#8b949e] hover:text-[#e6edf3] transition-colors"
-                  >
-                    Copy
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={handleHighlight}
+                      disabled={highlighting}
+                      className={`text-xs transition-colors ${isHighlighted ? 'text-[#bc8cff] opacity-80' : 'text-[#8b949e] hover:text-[#bc8cff]'}`}
+                      title={isHighlighted ? 'Remove highlight' : 'Highlight this prompt–response pair'}
+                    >
+                      {highlighting ? '…' : isHighlighted ? 'Highlighted' : 'Highlight'}
+                    </button>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(effectivePrompt!).catch(() => {}); }}
+                      className="text-xs text-[#8b949e] hover:text-[#e6edf3] transition-colors"
+                    >
+                      Copy
+                    </button>
+                  </div>
                 </div>
                 <div className={`p-3 border-l-2 ${isUserPrompt ? 'border-[#58a6ff]' : 'border-[#3fb950]/50'} ${MARKDOWN_PROSE}`}>
                   <ReactMarkdown remarkPlugins={REMARK_PLUGINS}>{effectivePrompt!}</ReactMarkdown>
