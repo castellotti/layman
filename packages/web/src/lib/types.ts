@@ -81,6 +81,15 @@ export interface PermissionSuggestion {
   [key: string]: unknown;
 }
 
+export interface SubagentTranscriptEntry {
+  role: 'assistant' | 'tool';
+  text?: string;
+  toolName?: string;
+  toolInput?: Record<string, unknown>;
+  toolOutput?: unknown;
+  timestamp?: number;
+}
+
 export interface EventData {
   toolName?: string;
   toolInput?: Record<string, unknown>;
@@ -89,6 +98,8 @@ export interface EventData {
   prompt?: string;
   thinking?: string;
   agentType?: string;
+  subagentId?: string;
+  subagentTranscript?: SubagentTranscriptEntry[];
   notificationType?: string;
   source?: string;
   gapMinutes?: number;

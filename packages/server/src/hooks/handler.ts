@@ -57,6 +57,15 @@ const transcriptWatermarks = new Map<string, string | null>();
 // work history in the dashboard LatestOutput display.
 const suppressNextResponse = new Set<string>();
 
+// Track active sub-agents per session for retroactive event tagging.
+// Keyed by sessionId; value is a stack (LIFO) of active sub-agent records.
+interface ActiveSubagent {
+  agentId: string;
+  agentType: string;
+  startTs: number;
+}
+const activeSubagents = new Map<string, ActiveSubagent[]>();
+
 /** Detect activation command in a Bash call (echo marker or legacy curl) */
 const ACTIVATION_PATTERN = /echo\s+["']?layman:activate["']?|curl\b.*\/api\/activate/;
 
@@ -920,25 +929,154 @@ function handleSubagentStart(
   eventStore: EventStore,
   agentType: string = 'claude-code'
 ): void {
+  // Track for retroactive event tagging when the sub-agent completes.
+  if (input.agent_id) {
+    const stack = activeSubagents.get(input.session_id) ?? [];
+    stack.push({ agentId: input.agent_id, agentType: input.agent_type, startTs: Date.now() });
+    activeSubagents.set(input.session_id, stack);
+  }
+
   eventStore.add('subagent_start', input.session_id, {
     agentType: input.agent_type,
   }, undefined, agentType);
 }
 
-function handleSubagentStop(
+async function handleSubagentStop(
   input: SubagentStopInput,
   eventStore: EventStore,
   agentType: string = 'claude-code'
-): void {
+): Promise<void> {
   // When /layman re-activates, the subagent's "Layman is now monitoring..." message
   // should not be stored — it would displace real work history from the dashboard.
   const prompt = suppressNextResponse.has(input.session_id)
     ? undefined
     : (input.last_assistant_message ?? undefined);
+
+  // Parse the sidechain transcript if available.
+  let subagentTranscript: import('../events/types.js').SubagentTranscriptEntry[] | undefined;
+  if (input.agent_transcript_path) {
+    try {
+      subagentTranscript = await parseSubagentTranscript(input.agent_transcript_path);
+    } catch {
+      // Non-fatal — attach whatever was parsed
+    }
+  }
+
+  // Retroactively tag events in the EventStore that fired via hooks during this
+  // sub-agent's lifetime. Pop the matching entry from the active-subagent stack.
+  const subagentId = input.agent_id;
+  if (subagentId) {
+    const stack = activeSubagents.get(input.session_id);
+    if (stack) {
+      let idx = -1;
+      for (let i = stack.length - 1; i >= 0; i--) {
+        if (stack[i].agentId === subagentId) { idx = i; break; }
+      }
+      if (idx !== -1) {
+        const entry = stack[idx];
+        stack.splice(idx, 1);
+        if (stack.length === 0) activeSubagents.delete(input.session_id);
+
+        // Tag tool-call events that fall within the sub-agent's time window and
+        // belong to this session but have no subagentId yet.
+        const stopTs = Date.now();
+        const allEvents = eventStore.getAll();
+        for (const ev of allEvents) {
+          if (
+            ev.sessionId === input.session_id &&
+            ev.timestamp >= entry.startTs &&
+            ev.timestamp <= stopTs &&
+            !ev.data.subagentId &&
+            (ev.type === 'tool_call_approved' ||
+              ev.type === 'tool_call_completed' ||
+              ev.type === 'tool_call_pending' ||
+              ev.type === 'tool_call_failed' ||
+              ev.type === 'permission_request')
+          ) {
+            eventStore.updateData(ev.id, { subagentId, agentType: input.agent_type });
+          }
+        }
+      }
+    }
+  }
+
   eventStore.add('subagent_stop', input.session_id, {
     agentType: input.agent_type,
     prompt,
+    subagentId,
+    subagentTranscript,
   }, undefined, agentType);
+}
+
+/** Parse a sidechain JSONL transcript file into an ordered list of tool calls and text responses. */
+async function parseSubagentTranscript(
+  transcriptPath: string
+): Promise<import('../events/types.js').SubagentTranscriptEntry[]> {
+  const content = await readTranscriptContent(transcriptPath);
+  if (!content) return [];
+
+  const lines = content.trim().split('\n').filter(Boolean);
+  const entries: import('../events/types.js').SubagentTranscriptEntry[] = [];
+
+  // toolUseId → entry index so we can attach tool_result output back to the call
+  const pendingToolIndexes = new Map<string, number>();
+
+  for (const line of lines) {
+    let obj: Record<string, unknown>;
+    try { obj = JSON.parse(line) as Record<string, unknown>; } catch { continue; }
+
+    const lineType = obj.type as string | undefined;
+    const ts = typeof obj.timestamp === 'string' ? new Date(obj.timestamp).getTime() : undefined;
+    const msg = obj.message as { role?: string; content?: unknown } | undefined;
+    if (!msg) continue;
+
+    if (lineType === 'assistant') {
+      const blocks = Array.isArray(msg.content) ? msg.content as Record<string, unknown>[] : [];
+      const textParts: string[] = [];
+
+      for (const block of blocks) {
+        if (block.type === 'text' && typeof block.text === 'string') {
+          const t = (block.text as string).trim();
+          if (t) textParts.push(t);
+        } else if (block.type === 'tool_use') {
+          const toolUseId = typeof block.id === 'string' ? block.id : null;
+          const toolName = typeof block.name === 'string' ? block.name : 'unknown';
+          const toolInput = (block.input && typeof block.input === 'object')
+            ? block.input as Record<string, unknown> : {};
+          const entryIdx = entries.length;
+          entries.push({ role: 'tool', toolName, toolInput, timestamp: ts });
+          if (toolUseId) pendingToolIndexes.set(toolUseId, entryIdx);
+        }
+      }
+
+      if (textParts.length > 0) {
+        entries.push({ role: 'assistant', text: textParts.join('\n\n'), timestamp: ts });
+      }
+
+    } else if (lineType === 'user') {
+      const content = msg.content;
+      if (!Array.isArray(content)) continue;
+
+      for (const block of content as Record<string, unknown>[]) {
+        if (block.type !== 'tool_result') continue;
+        const toolUseId = typeof block.tool_use_id === 'string' ? block.tool_use_id : null;
+        if (!toolUseId) continue;
+        const idx = pendingToolIndexes.get(toolUseId);
+        if (idx == null) continue;
+
+        let toolOutput: unknown = block.content;
+        if (Array.isArray(block.content)) {
+          toolOutput = (block.content as Array<{ text?: string }>).map(b => b.text ?? '').join('');
+        }
+        if (entries[idx]) {
+          entries[idx] = { ...entries[idx], toolOutput };
+        }
+        pendingToolIndexes.delete(toolUseId);
+      }
+    }
+  }
+
+  return entries;
 }
 
 function handleAgentResponse(
