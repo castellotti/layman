@@ -82,6 +82,7 @@ export interface PermissionSuggestion {
 }
 
 export interface SubagentTranscriptEntry {
+  /** 'assistant' for model text/tool calls, 'tool' for completed tool calls */
   role: 'assistant' | 'tool';
   text?: string;
   toolName?: string;

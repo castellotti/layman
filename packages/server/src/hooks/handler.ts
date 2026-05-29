@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import type { FastifyInstance } from 'fastify';
+import type { SubagentTranscriptEntry } from '../events/types.js';
 import { recoverPreActivationHistory } from './recovery.js';
 import { PendingApprovalManager } from './pending.js';
 import { SessionGate } from './gate.js';
@@ -744,6 +745,7 @@ function handleSessionEnd(
   eventStore.add('session_end', input.session_id, {}, undefined, agentType);
   gate.deactivate(input.session_id);
   transcriptWatermarks.delete(input.transcript_path);
+  activeSubagents.delete(input.session_id);
   if (driftMonitor) driftMonitor.reset(input.session_id);
 }
 
@@ -953,7 +955,7 @@ async function handleSubagentStop(
     : (input.last_assistant_message ?? undefined);
 
   // Parse the sidechain transcript if available.
-  let subagentTranscript: import('../events/types.js').SubagentTranscriptEntry[] | undefined;
+  let subagentTranscript: SubagentTranscriptEntry[] | undefined;
   if (input.agent_transcript_path) {
     try {
       subagentTranscript = await parseSubagentTranscript(input.agent_transcript_path);
@@ -978,10 +980,12 @@ async function handleSubagentStop(
         if (stack.length === 0) activeSubagents.delete(input.session_id);
 
         // Tag tool-call events that fall within the sub-agent's time window and
-        // belong to this session but have no subagentId yet.
+        // belong to this session but have no subagentId yet. Scan the last 500
+        // events — sub-agents run for seconds/minutes, not hours, so recent
+        // events are sufficient and avoids a full 10k-entry walk.
         const stopTs = Date.now();
-        const allEvents = eventStore.getAll();
-        for (const ev of allEvents) {
+        const recentEvents = eventStore.getLast(500);
+        for (const ev of recentEvents) {
           if (
             ev.sessionId === input.session_id &&
             ev.timestamp >= entry.startTs &&
@@ -1008,15 +1012,17 @@ async function handleSubagentStop(
   }, undefined, agentType);
 }
 
+const TRANSCRIPT_OUTPUT_LIMIT = 8 * 1024;
+
 /** Parse a sidechain JSONL transcript file into an ordered list of tool calls and text responses. */
 async function parseSubagentTranscript(
   transcriptPath: string
-): Promise<import('../events/types.js').SubagentTranscriptEntry[]> {
+): Promise<SubagentTranscriptEntry[]> {
   const content = await readTranscriptContent(transcriptPath);
   if (!content) return [];
 
   const lines = content.trim().split('\n').filter(Boolean);
-  const entries: import('../events/types.js').SubagentTranscriptEntry[] = [];
+  const entries: SubagentTranscriptEntry[] = [];
 
   // toolUseId → entry index so we can attach tool_result output back to the call
   const pendingToolIndexes = new Map<string, number>();
@@ -1039,6 +1045,12 @@ async function parseSubagentTranscript(
           const t = (block.text as string).trim();
           if (t) textParts.push(t);
         } else if (block.type === 'tool_use') {
+          // Flush accumulated text before the tool entry so the natural reading
+          // order (rationale → tool call) is preserved in the entries list.
+          if (textParts.length > 0) {
+            entries.push({ role: 'assistant', text: textParts.join('\n\n'), timestamp: ts });
+            textParts.length = 0;
+          }
           const toolUseId = typeof block.id === 'string' ? block.id : null;
           const toolName = typeof block.name === 'string' ? block.name : 'unknown';
           const toolInput = (block.input && typeof block.input === 'object')
@@ -1049,6 +1061,7 @@ async function parseSubagentTranscript(
         }
       }
 
+      // Flush any trailing text (text-only messages, or text after the last tool call)
       if (textParts.length > 0) {
         entries.push({ role: 'assistant', text: textParts.join('\n\n'), timestamp: ts });
       }
@@ -1067,6 +1080,10 @@ async function parseSubagentTranscript(
         let toolOutput: unknown = block.content;
         if (Array.isArray(block.content)) {
           toolOutput = (block.content as Array<{ text?: string }>).map(b => b.text ?? '').join('');
+        }
+        // Cap large outputs (e.g. WebFetch responses) to avoid bloating the event store
+        if (typeof toolOutput === 'string' && toolOutput.length > TRANSCRIPT_OUTPUT_LIMIT) {
+          toolOutput = toolOutput.slice(0, TRANSCRIPT_OUTPUT_LIMIT) + '\n…[truncated]';
         }
         if (entries[idx]) {
           entries[idx] = { ...entries[idx], toolOutput };

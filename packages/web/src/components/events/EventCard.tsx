@@ -94,7 +94,7 @@ export function EventCard({ event, index, isSelected, onClick, onSend, collapseH
   const isUserPrompt = event.type === 'user_prompt';
   const isDriftEvent = event.type === 'drift_alert' || event.type === 'drift_check';
   // When collapseHistory is on, expansion is driven by selection; otherwise use local toggle
-  // agent_response, tool_call_failed, user_prompt, drift, and web_search events are always expanded so content is visible without clicking
+  // agent_response, tool_call_failed, user_prompt, drift, web_search, and subagent_stop events are always expanded so content is visible without clicking
   const expanded = isPending || isAgentResponse || isFailed || isUserPrompt || isDriftEvent || isWebSearch || isSubagentStop || (collapseHistory ? isSelected : expandedLocal);
   const borderColor = BORDER_COLORS[event.type] ?? 'border-l-[#30363d]';
   const icon = EVENT_ICONS[event.type] ?? '·';
@@ -254,7 +254,7 @@ export function EventCard({ event, index, isSelected, onClick, onSend, collapseH
         {event.data.agentType && (
           <span className="text-[11px] text-[#8b949e]">{event.data.agentType}</span>
         )}
-        {event.data.subagentId && !event.data.agentType && (
+        {event.data.subagentId && (
           <span className="text-[10px] text-[#8b949e] bg-[#8b949e]/10 border border-[#8b949e]/20 px-1.5 py-0.5 rounded font-mono">sub</span>
         )}
 
