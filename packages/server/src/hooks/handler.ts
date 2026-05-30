@@ -1048,7 +1048,9 @@ async function parseSubagentTranscript(
           // Flush accumulated text before the tool entry so the natural reading
           // order (rationale → tool call) is preserved in the entries list.
           if (textParts.length > 0) {
-            entries.push({ role: 'assistant', text: textParts.join('\n\n'), timestamp: ts });
+            let text = textParts.join('\n\n');
+            if (text.length > TRANSCRIPT_OUTPUT_LIMIT) text = text.slice(0, TRANSCRIPT_OUTPUT_LIMIT) + '\n…[truncated]';
+            entries.push({ role: 'assistant', text, timestamp: ts });
             textParts.length = 0;
           }
           const toolUseId = typeof block.id === 'string' ? block.id : null;
@@ -1061,9 +1063,10 @@ async function parseSubagentTranscript(
         }
       }
 
-      // Flush any trailing text (text-only messages, or text after the last tool call)
       if (textParts.length > 0) {
-        entries.push({ role: 'assistant', text: textParts.join('\n\n'), timestamp: ts });
+        let text = textParts.join('\n\n');
+        if (text.length > TRANSCRIPT_OUTPUT_LIMIT) text = text.slice(0, TRANSCRIPT_OUTPUT_LIMIT) + '\n…[truncated]';
+        entries.push({ role: 'assistant', text, timestamp: ts });
       }
 
     } else if (lineType === 'user') {
