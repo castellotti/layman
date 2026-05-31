@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.7.0
+
+- Added Prompts view with Highlights - bookmark and browse prompt/response pairs as Highlights, stored in SQLite with full folder/rename/reorder support and a "View in Session" link that navigates to the session and scrolls to the highlighted pair ([#70](https://github.com/castellotti/layman/pull/70))
+- Added Sessions+Prompts grouped nav button with visual dividers; added dividers to the Dashboard/Logs/Flow navigation group ([#70](https://github.com/castellotti/layman/pull/70))
+- Fixed local LLMs using Qwen3/DeepSeek-R1 hybrid thinking models (e.g. llama.cpp with qwen3-thinking) producing no displayed output - falls back to `reasoning_content` when `content` is empty and strips `<think>…</think>` blocks from responses ([#70](https://github.com/castellotti/layman/pull/70))
+- Added sub-agent transcript surfacing - when `SubagentStop` fires, Layman reads the sidechain JSONL at `agent_transcript_path` and renders it as a collapsible "Sub-agent transcript" section with tool calls (inputs/outputs) and inter-call assistant text ([#71](https://github.com/castellotti/layman/pull/71))
+- Added retroactive sub-agent tagging - tool-call events that fired via hooks during a sub-agent's lifetime are tagged with `subagentId` and visually badged in the flat timeline ([#71](https://github.com/castellotti/layman/pull/71))
+
 ## 0.6.1
 
 - Fixed Cline agent responses not captured - handler now emits `agent_response` events from `Notification` hook for `followup`, `plan_mode_respond`, and `act_mode_respond` sources; `task_complete`/`completion_result` used as fallback if `attempt_completion` `PostToolUse` didn't already capture the response; `Notification` events now store message for debugging ([#69](https://github.com/castellotti/layman/pull/69))
