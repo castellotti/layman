@@ -99,7 +99,9 @@ export interface EventData {
   prompt?: string;
   thinking?: string;
   agentType?: string;
+  /** ID of the sub-agent that triggered this tool call event (retroactively tagged). */
   subagentId?: string;
+  /** Ordered tool calls + text responses from the sub-agent's sidechain transcript. */
   subagentTranscript?: SubagentTranscriptEntry[];
   notificationType?: string;
   source?: string;

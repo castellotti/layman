@@ -254,7 +254,7 @@ export function EventCard({ event, index, isSelected, onClick, onSend, collapseH
         {event.data.agentType && (
           <span className="text-[11px] text-[#8b949e]">{event.data.agentType}</span>
         )}
-        {event.data.subagentId && (
+        {event.data.subagentId && event.type !== 'subagent_stop' && (
           <span className="text-[10px] text-[#8b949e] bg-[#8b949e]/10 border border-[#8b949e]/20 px-1.5 py-0.5 rounded font-mono">sub</span>
         )}
 
@@ -531,7 +531,6 @@ export function EventCard({ event, index, isSelected, onClick, onSend, collapseH
             </div>
           )}
 
-          {/* Sub-agent transcript — shown on subagent_stop events */}
           {event.type === 'subagent_stop' && event.data.subagentTranscript && event.data.subagentTranscript.length > 0 && (
             <SubagentTranscriptView entries={event.data.subagentTranscript} />
           )}
@@ -755,6 +754,15 @@ function DriftDetailSection({
   );
 }
 
+function getInputPreview(inp: Record<string, unknown>): string | null {
+  return (inp.command as string | undefined)
+    ?? (inp.file_path as string | undefined)
+    ?? (inp.url as string | undefined)
+    ?? (inp.query as string | undefined)
+    ?? (inp.prompt as string | undefined)
+    ?? null;
+}
+
 function SubagentTranscriptView({ entries }: { entries: SubagentTranscriptEntry[] }) {
   const [expanded, setExpanded] = useState(false);
   const toolCount = entries.filter(e => e.role === 'tool').length;
@@ -783,13 +791,7 @@ function SubagentTranscriptView({ entries }: { entries: SubagentTranscriptEntry[
                   <div className="flex items-center gap-1.5">
                     <span className="text-[10px] text-[#3fb950] font-mono font-semibold">{entry.toolName}</span>
                     {entry.toolInput && (() => {
-                      const inp = entry.toolInput;
-                      const preview = (inp.command as string | undefined)
-                        ?? (inp.file_path as string | undefined)
-                        ?? (inp.url as string | undefined)
-                        ?? (inp.query as string | undefined)
-                        ?? (inp.prompt as string | undefined)
-                        ?? null;
+                      const preview = getInputPreview(entry.toolInput);
                       return preview ? (
                         <span className="text-[11px] text-[#e6edf3] font-mono truncate">{String(preview).slice(0, 80)}</span>
                       ) : null;
