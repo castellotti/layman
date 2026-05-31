@@ -81,6 +81,16 @@ export interface PermissionSuggestion {
   [key: string]: unknown;
 }
 
+export interface SubagentTranscriptEntry {
+  /** 'assistant' for model text/tool calls, 'tool' for completed tool calls */
+  role: 'assistant' | 'tool';
+  text?: string;
+  toolName?: string;
+  toolInput?: Record<string, unknown>;
+  toolOutput?: unknown;
+  timestamp?: number;
+}
+
 export interface EventData {
   toolName?: string;
   toolInput?: Record<string, unknown>;
@@ -89,6 +99,10 @@ export interface EventData {
   prompt?: string;
   thinking?: string;
   agentType?: string;
+  /** ID of the sub-agent that triggered this tool call event (retroactively tagged). */
+  subagentId?: string;
+  /** Ordered tool calls + text responses from the sub-agent's sidechain transcript. */
+  subagentTranscript?: SubagentTranscriptEntry[];
   notificationType?: string;
   source?: string;
   gapMinutes?: number;

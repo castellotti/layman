@@ -74,6 +74,7 @@ export interface UserPromptSubmitInput extends HookInputBase {
 export interface SubagentStartInput extends HookInputBase {
   hook_event_name: 'SubagentStart';
   agent_type: string;
+  agent_id?: string;
 }
 
 export interface SubagentStopInput extends HookInputBase {
