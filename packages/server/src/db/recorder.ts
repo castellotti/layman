@@ -176,4 +176,51 @@ export class SessionRecorder {
       // Non-fatal
     }
   }
+
+  /**
+   * Import a historical session from transcript data.
+   * Uses INSERT OR IGNORE for events (idempotent) and never downgrades
+   * a live session's source to 'imported'.
+   */
+  importSession(
+    sessionId: string,
+    cwd: string,
+    agentType: string,
+    events: TimelineEvent[],
+    source: string
+  ): void {
+    if (events.length === 0) return;
+    const upsertSess = this.db.prepare(`
+      INSERT INTO recorded_sessions (session_id, cwd, agent_type, started_at, last_seen, source)
+      VALUES (?, ?, ?, ?, ?, ?)
+      ON CONFLICT(session_id) DO UPDATE SET
+        last_seen = MAX(last_seen, excluded.last_seen),
+        cwd = CASE WHEN recorded_sessions.cwd = '' THEN excluded.cwd ELSE recorded_sessions.cwd END,
+        source = CASE WHEN recorded_sessions.source = 'live' THEN 'live' ELSE excluded.source END
+    `);
+    const insertEv = this.db.prepare(`
+      INSERT OR IGNORE INTO recorded_events
+        (id, session_id, type, timestamp, agent_type, data_json, analysis_json, laymans_json, risk_level)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    const startedAt = events[0].timestamp;
+    const lastSeen = events[events.length - 1].timestamp;
+    const tx = this.db.transaction(() => {
+      upsertSess.run(sessionId, cwd, agentType, startedAt, lastSeen, source);
+      for (const event of events) {
+        insertEv.run(
+          event.id,
+          event.sessionId,
+          event.type,
+          event.timestamp,
+          event.agentType,
+          JSON.stringify(event.data),
+          event.analysis ? JSON.stringify(event.analysis) : null,
+          event.laymans ? JSON.stringify(event.laymans) : null,
+          event.riskLevel ?? null,
+        );
+      }
+    });
+    tx();
+  }
 }

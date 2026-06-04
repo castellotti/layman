@@ -23,6 +23,7 @@ export interface RecordedSession {
   sessionModel?: string;
   sessionModelDisplayName?: string;
   sessionName?: string;
+  source?: string;
 }
 
 export interface HighlightFolder {

@@ -550,6 +550,26 @@ export function SettingsDrawer({ onSend }: SettingsDrawerProps) {
   const [scanResult, setScanResult] = useState<{ categories: { name: string; key: string; count: number }[]; total: number } | null>(null);
   const [purgeResult, setPurgeResult] = useState<{ redacted: number } | null>(null);
   const [purgeError, setPurgeError] = useState<string | null>(null);
+  const [importDialogOpen, setImportDialogOpen] = useState(false);
+  const [importState, setImportState] = useState<'idle' | 'scanning' | 'done' | 'error'>('idle');
+  const [importResult, setImportResult] = useState<{
+    discovered: number;
+    enriched: number;
+    totalEvents: number;
+    skipped: number;
+    errors: number;
+    sessions: Array<{
+      sessionId: string;
+      cwd: string;
+      startedAt: number;
+      lastSeen: number;
+      eventCount: number;
+      toolCallCount: number;
+      userPromptCount: number;
+      status: 'discovered' | 'enriched' | 'skipped';
+    }>;
+  } | null>(null);
+  const [importError, setImportError] = useState<string | null>(null);
 
   const provider = config?.analysis.provider ?? 'anthropic';
   const providerCfg = PROVIDER_CONFIG[provider];
@@ -732,6 +752,36 @@ export function SettingsDrawer({ onSend }: SettingsDrawerProps) {
               <p className="text-[10px] text-[#484f58] mt-1">
                 On startup, scan recent session transcripts for events missing from the record (e.g. written while Layman was stopped) and fill the gaps.
               </p>
+            </div>
+
+            <div className="mt-3 pt-3 border-t border-[#30363d]/50">
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-[#e6edf3]">Import session history</span>
+                <button
+                  onClick={() => setImportDialogOpen(true)}
+                  className="px-2.5 py-1 text-[11px] font-medium rounded bg-[#21262d] border border-[#30363d] text-[#e6edf3] hover:bg-[#30363d] transition-colors"
+                >
+                  Scan
+                </button>
+              </div>
+              <p className="text-[10px] text-[#484f58] mt-1">
+                Discover Claude Code sessions from transcript files that were not monitored live and import them into the history database.
+              </p>
+              <label className="flex items-center justify-between cursor-pointer mt-2">
+                <span className="text-[11px] text-[#8b949e]">Auto-import on startup</span>
+                <div
+                  onClick={() => updateConfig({ historyImport: !config.historyImport })}
+                  className={`relative w-8 h-4 rounded-full transition-colors cursor-pointer ${
+                    config.historyImport ? 'bg-[#238636]' : 'bg-[#30363d]'
+                  }`}
+                >
+                  <div
+                    className={`absolute top-0.5 w-3 h-3 bg-white rounded-full transition-transform ${
+                      config.historyImport ? 'translate-x-4' : 'translate-x-0.5'
+                    }`}
+                  />
+                </div>
+              </label>
             </div>
 
             <div className="mt-3">
@@ -1657,6 +1707,147 @@ export function SettingsDrawer({ onSend }: SettingsDrawerProps) {
                     className="px-3 py-1.5 text-xs rounded bg-[#21262d] border border-[#30363d] text-[#e6edf3] hover:bg-[#30363d] transition-colors"
                   >
                     Done
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* History import dialog */}
+      {importDialogOpen && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center">
+          <div
+            className="fixed inset-0 bg-black/60"
+            onClick={() => {
+              if (importState !== 'scanning') setImportDialogOpen(false);
+            }}
+          />
+          <div className="relative w-[420px] max-h-[80vh] bg-[#161b22] border border-[#30363d] rounded-lg shadow-2xl p-5 overflow-y-auto">
+            {importState === 'idle' && (
+              <>
+                <h3 className="text-sm font-semibold text-[#e6edf3] mb-2">Import session history</h3>
+                <p className="text-xs text-[#8b949e] mb-4">
+                  Scan Claude Code transcript files for sessions that were not monitored by Layman
+                  and import them into the history database. Existing live-recorded sessions will be
+                  enriched with any missing events without modifying their data.
+                </p>
+                <div className="flex justify-end gap-2">
+                  <button
+                    onClick={() => setImportDialogOpen(false)}
+                    className="px-3 py-1.5 text-xs rounded bg-[#21262d] border border-[#30363d] text-[#8b949e] hover:text-[#e6edf3] hover:bg-[#30363d] transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={async () => {
+                      setImportState('scanning');
+                      setImportError(null);
+                      try {
+                        const res = await fetch('/api/import/history', { method: 'POST' });
+                        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                        const data = await res.json();
+                        setImportResult(data as typeof importResult);
+                        setImportState('done');
+                      } catch (err) {
+                        setImportError(err instanceof Error ? err.message : String(err));
+                        setImportState('error');
+                      }
+                    }}
+                    className="px-3 py-1.5 text-xs rounded bg-[#238636] hover:bg-[#2ea043] text-white transition-colors"
+                  >
+                    Scan now
+                  </button>
+                </div>
+              </>
+            )}
+            {importState === 'scanning' && (
+              <div className="flex items-center gap-3 py-1">
+                <div className="w-4 h-4 border-2 border-[#58a6ff] border-t-transparent rounded-full animate-spin flex-shrink-0" />
+                <p className="text-xs text-[#8b949e]">Scanning transcript files…</p>
+              </div>
+            )}
+            {importState === 'done' && importResult && (
+              <>
+                <h3 className="text-sm font-semibold text-[#e6edf3] mb-2">Import complete</h3>
+                <p className="text-xs text-[#8b949e] mb-3">
+                  {importResult.discovered === 0 && importResult.enriched === 0
+                    ? 'No new sessions found — all available transcripts are already in the database.'
+                    : `Discovered ${importResult.discovered} new session${importResult.discovered === 1 ? '' : 's'}, enriched ${importResult.enriched} existing session${importResult.enriched === 1 ? '' : 's'} (${importResult.totalEvents.toLocaleString()} events total).`}
+                  {importResult.errors > 0 && (
+                    <span className="text-[#f85149]"> {importResult.errors} file{importResult.errors === 1 ? '' : 's'} failed to parse.</span>
+                  )}
+                </p>
+                {importResult.sessions.length > 0 && (
+                  <div className="max-h-48 overflow-y-auto border border-[#30363d] rounded mb-3">
+                    <table className="w-full text-[10px]">
+                      <thead className="sticky top-0 bg-[#161b22]">
+                        <tr className="text-[#8b949e] border-b border-[#30363d]">
+                          <th className="text-left px-2 py-1 font-medium">Project</th>
+                          <th className="text-left px-2 py-1 font-medium">Date</th>
+                          <th className="text-right px-2 py-1 font-medium">Events</th>
+                          <th className="text-right px-2 py-1 font-medium">Tools</th>
+                          <th className="text-center px-2 py-1 font-medium">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {importResult.sessions.map((s) => (
+                          <tr key={s.sessionId} className="border-b border-[#30363d]/50 hover:bg-[#21262d]">
+                            <td className="px-2 py-1 text-[#e6edf3] truncate max-w-[140px]" title={s.cwd}>
+                              {s.cwd.split('/').filter(Boolean).pop() || s.sessionId.slice(0, 8)}
+                            </td>
+                            <td className="px-2 py-1 text-[#8b949e] whitespace-nowrap">
+                              {new Date(s.startedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                            </td>
+                            <td className="px-2 py-1 text-right text-[#8b949e]">{s.eventCount}</td>
+                            <td className="px-2 py-1 text-right text-[#8b949e]">{s.toolCallCount}</td>
+                            <td className="px-2 py-1 text-center">
+                              <span className={`px-1 py-0.5 rounded ${
+                                s.status === 'discovered'
+                                  ? 'text-[#3fb950] bg-[#3fb950]/10'
+                                  : 'text-[#58a6ff] bg-[#58a6ff]/10'
+                              }`}>
+                                {s.status}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+                <p className="text-[10px] text-[#484f58] mb-3">
+                  Imported sessions appear in the Sessions History panel with an &ldquo;imported&rdquo; badge.
+                </p>
+                <div className="flex justify-end">
+                  <button
+                    onClick={() => {
+                      setImportDialogOpen(false);
+                      setImportState('idle');
+                      setImportResult(null);
+                    }}
+                    className="px-3 py-1.5 text-xs rounded bg-[#21262d] border border-[#30363d] text-[#e6edf3] hover:bg-[#30363d] transition-colors"
+                  >
+                    Done
+                  </button>
+                </div>
+              </>
+            )}
+            {importState === 'error' && (
+              <>
+                <h3 className="text-sm font-semibold text-[#f85149] mb-2">Import failed</h3>
+                <p className="text-xs text-[#8b949e] mb-4">{importError}</p>
+                <div className="flex justify-end gap-2">
+                  <button
+                    onClick={() => {
+                      setImportDialogOpen(false);
+                      setImportState('idle');
+                      setImportError(null);
+                    }}
+                    className="px-3 py-1.5 text-xs rounded bg-[#21262d] border border-[#30363d] text-[#e6edf3] hover:bg-[#30363d] transition-colors"
+                  >
+                    Close
                   </button>
                 </div>
               </>
