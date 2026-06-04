@@ -586,6 +586,11 @@ export function BookmarksPanel({ onSend }: BookmarksPanelProps) {
                           </span>
                         </div>
                         <div className="shrink-0 flex items-center gap-1">
+                          {s.source === 'imported' && (
+                            <span className="text-[9px] px-1 py-0.5 rounded bg-[#1c1f2b] text-[#818cf8] border border-[#818cf8]/20" title="Imported from transcript">
+                              imported
+                            </span>
+                          )}
                           {isLive && (
                             <span className="inline-block w-1.5 h-1.5 rounded-full bg-[#3fb950] animate-pulse" title="Active" />
                           )}

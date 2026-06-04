@@ -30,7 +30,7 @@ import { computeTimeMetrics } from './db/time-metrics.js';
 import type { SearchRequest } from './db/search.js';
 import type { LaymanConfig } from './config/schema.js';
 import { VibeSessionWatcher } from './vibe/watcher.js';
-import { recoverSessionGaps } from './hooks/recovery.js';
+import { recoverSessionGaps, importHistoricalSessions } from './hooks/recovery.js';
 import type { ServerMessage, ClientMessage, SessionStatus, SetupStatus } from './types/index.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -219,6 +219,11 @@ export function createServer(config: LaymanConfig): LaymanServer {
     // Recording recovery — on-demand gap fill across all stored sessions
     fastify.post('/api/recovery/scan', async () => {
       return recoverSessionGaps(db, eventStore);
+    });
+
+    // Historical session import — discover and import transcript files
+    fastify.post('/api/import/history', async () => {
+      return importHistoricalSessions(db, eventStore, recorder, { enrichExisting: true });
     });
 
     // PII purge — execute redaction on all SQLite data
@@ -1373,6 +1378,12 @@ export function createServer(config: LaymanConfig): LaymanServer {
       if (getConfig().recordingRecovery && getConfig().sessionRecording) {
         void recoverSessionGaps(db, eventStore).then(({ events, sessions }) => {
           if (events > 0) console.log(`[recovery] Startup scan filled ${events} events across ${sessions} session${sessions === 1 ? '' : 's'}`);
+        });
+      }
+
+      if (getConfig().historyImport) {
+        void importHistoricalSessions(db, eventStore, recorder).then(({ discovered, totalEvents }) => {
+          if (discovered > 0) console.log(`[import] Discovered ${discovered} historical sessions (${totalEvents} events)`);
         });
       }
 

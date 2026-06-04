@@ -1,9 +1,12 @@
 /**
- * Pre-activation transcript recovery for Claude Code sessions.
+ * Pre-activation transcript recovery and historical session import for Claude Code.
  *
- * When /layman is run mid-session, this module reads the Claude Code JSONL
- * transcript up to (but not including) the layman:activate Bash command and
- * injects the prior events into the EventStore.
+ * This module handles three scenarios:
+ *   1. Pre-activation recovery: When /layman is run mid-session, reads the JSONL
+ *      transcript up to the activation command and injects prior events.
+ *   2. Startup gap recovery: Fills events that occurred while Layman was down.
+ *   3. Historical import: Discovers ALL transcript files and imports sessions
+ *      that were never monitored live.
  *
  * Key guarantees:
  *   - No overlap with hooks: Claude Code blocks on PreToolUse while we read,
@@ -16,15 +19,20 @@
  */
 
 import { readFile } from 'fs/promises';
-import { existsSync, readdirSync } from 'fs';
+import { existsSync, readdirSync, statSync } from 'fs';
 import { join } from 'path';
 import { homedir } from 'os';
 import { classifyRisk } from '../events/classifier.js';
 import type { EventStore } from '../events/store.js';
 import type { TimelineEvent } from '../events/types.js';
 import type { Database } from '../db/database.js';
+import type { SessionRecorder } from '../db/recorder.js';
 
 const ACTIVATION_PATTERN = /echo\s+["']?layman:activate["']?|curl\b.*\/api\/activate/;
+
+// ---------------------------------------------------------------------------
+// Shared utilities
+// ---------------------------------------------------------------------------
 
 /** Remap host ~/.claude path to the Docker-mounted container path */
 function remapPath(p: string): string {
@@ -53,26 +61,46 @@ function buildEvent(
   return { id, type, sessionId, agentType, timestamp, data, riskLevel };
 }
 
+// ---------------------------------------------------------------------------
+// Shared transcript parser
+// ---------------------------------------------------------------------------
+
+export interface TranscriptMetadata {
+  cwd: string;
+  gitBranch: string;
+  version: string;
+  firstTimestamp: number;
+  lastTimestamp: number;
+}
+
+interface ParseOptions {
+  stopAtActivation?: boolean;
+  afterTimestamp?: number;
+}
+
 /**
- * Parse and inject all events from the transcript that occurred before the
- * /layman activation command.
- *
- * Returns the total number of events injected (including session_start).
+ * Parse Claude Code JSONL lines into TimelineEvents.
+ * Shared by pre-activation recovery, gap recovery, and full history import.
  */
-export async function recoverPreActivationHistory(
-  transcriptPath: string,
+export function parseTranscriptLines(
+  lines: string[],
   sessionId: string,
   agentType: string,
-  eventStore: EventStore
-): Promise<number> {
-  const content = await readTranscript(transcriptPath);
-  if (!content) return 0;
+  options: ParseOptions = {}
+): { events: TimelineEvent[]; metadata: TranscriptMetadata } {
+  const { stopAtActivation = false, afterTimestamp } = options;
 
-  const lines = content.trim().split('\n').filter(Boolean);
+  const metadata: TranscriptMetadata = {
+    cwd: '',
+    gitBranch: '',
+    version: '',
+    firstTimestamp: 0,
+    lastTimestamp: 0,
+  };
+
   const events: TimelineEvent[] = [];
 
-  // Pending tool calls keyed by tool_call_id, carried forward from assistant
-  // turns until the corresponding tool_result block appears in a user turn.
+  // Pending tool calls keyed by tool_call_id
   const pendingTools = new Map<string, {
     eventId: string;
     name: string;
@@ -80,25 +108,91 @@ export async function recoverPreActivationHistory(
     timestamp: number;
   }>();
 
-  let firstEventTs: number | null = null;
+  // Phase 1 (if afterTimestamp set): pre-scan to collect tool_use blocks before the gap
+  let startIndex = 0;
+  if (afterTimestamp !== undefined) {
+    for (let i = 0; i < lines.length; i++) {
+      let obj: Record<string, unknown>;
+      try { obj = JSON.parse(lines[i]) as Record<string, unknown>; } catch { continue; }
 
-  for (const line of lines) {
-    let obj: Record<string, unknown>;
-    try {
-      obj = JSON.parse(line) as Record<string, unknown>;
-    } catch {
-      continue;
+      const ts = typeof obj.timestamp === 'string'
+        ? new Date(obj.timestamp).getTime() : 0;
+      if (ts > afterTimestamp) { startIndex = i; break; }
+
+      // Collect metadata from any line
+      if (!metadata.cwd && typeof obj.cwd === 'string') metadata.cwd = obj.cwd;
+      if (!metadata.version && typeof obj.version === 'string') metadata.version = obj.version;
+      if (!metadata.gitBranch && typeof obj.gitBranch === 'string') metadata.gitBranch = obj.gitBranch;
+
+      if (obj.type === 'assistant') {
+        const msg = obj.message as { content?: unknown } | undefined;
+        const blocks = Array.isArray(msg?.content) ? msg!.content as Block[] : [];
+        const uuid = typeof obj.uuid === 'string' ? obj.uuid : null;
+
+        for (let bi = 0; bi < blocks.length; bi++) {
+          const block = blocks[bi];
+          if (block.type !== 'tool_use') continue;
+          const toolCallId = typeof block.id === 'string' ? block.id : null;
+          if (!toolCallId || !uuid) continue;
+          pendingTools.set(toolCallId, {
+            eventId: `${uuid}_tc_${bi}`,
+            name: typeof block.name === 'string' ? block.name : 'unknown',
+            input: (block.input && typeof block.input === 'object')
+              ? block.input as Record<string, unknown> : {},
+            timestamp: ts,
+          });
+        }
+      } else if (obj.type === 'user') {
+        const content = (obj.message as { content?: unknown } | undefined)?.content;
+        if (Array.isArray(content)) {
+          for (const block of content as Block[]) {
+            if (block.type === 'tool_result' && typeof block.tool_use_id === 'string') {
+              pendingTools.delete(block.tool_use_id);
+            }
+          }
+        }
+      }
     }
+    // If no gap found (all events <= afterTimestamp), nothing to import
+    if (startIndex === 0 && lines.length > 0) {
+      const lastObj = tryParse(lines[lines.length - 1]);
+      if (lastObj) {
+        const lastTs = typeof lastObj.timestamp === 'string'
+          ? new Date(lastObj.timestamp).getTime() : 0;
+        if (lastTs <= afterTimestamp) return { events, metadata };
+      }
+    }
+  }
+
+  // Phase 2: parse events
+  for (let i = startIndex; i < lines.length; i++) {
+    let obj: Record<string, unknown>;
+    try { obj = JSON.parse(lines[i]) as Record<string, unknown>; } catch { continue; }
 
     const lineType = obj.type as string | undefined;
-    if (lineType !== 'user' && lineType !== 'assistant') continue;
+    if (lineType !== 'user' && lineType !== 'assistant') {
+      // Still extract metadata from non-content lines
+      if (!metadata.cwd && typeof obj.cwd === 'string') metadata.cwd = obj.cwd;
+      if (!metadata.version && typeof obj.version === 'string') metadata.version = obj.version;
+      if (!metadata.gitBranch && typeof obj.gitBranch === 'string') metadata.gitBranch = obj.gitBranch;
+      continue;
+    }
 
     const uuid = typeof obj.uuid === 'string' ? obj.uuid : null;
     const ts = typeof obj.timestamp === 'string'
       ? new Date(obj.timestamp).getTime()
       : Date.now();
 
-    if (firstEventTs === null) firstEventTs = ts;
+    // Extract metadata from first relevant line
+    if (!metadata.cwd && typeof obj.cwd === 'string') metadata.cwd = obj.cwd;
+    if (!metadata.version && typeof obj.version === 'string') metadata.version = obj.version;
+    if (!metadata.gitBranch && typeof obj.gitBranch === 'string') metadata.gitBranch = obj.gitBranch;
+
+    if (metadata.firstTimestamp === 0) metadata.firstTimestamp = ts;
+    metadata.lastTimestamp = ts;
+
+    // Skip events before the gap when afterTimestamp is set
+    if (afterTimestamp !== undefined && ts <= afterTimestamp) continue;
 
     const msg = obj.message as { role?: string; content?: unknown } | undefined;
     if (!msg) continue;
@@ -107,8 +201,8 @@ export async function recoverPreActivationHistory(
       const blocks = Array.isArray(msg.content) ? msg.content as Block[] : [];
       const textParts: string[] = [];
 
-      for (let i = 0; i < blocks.length; i++) {
-        const block = blocks[i];
+      for (let bi = 0; bi < blocks.length; bi++) {
+        const block = blocks[bi];
 
         if (block.type === 'text' && typeof block.text === 'string') {
           const text = (block.text as string).trim();
@@ -121,12 +215,10 @@ export async function recoverPreActivationHistory(
             ? block.input as Record<string, unknown>
             : {};
 
-          // Activation boundary — stop here; everything from this point on
-          // is owned by the live hook pipeline.
-          if (toolName === 'Bash') {
+          // Activation boundary check
+          if (stopAtActivation && toolName === 'Bash') {
             const cmd = (toolInput as { command?: string }).command ?? '';
             if (ACTIVATION_PATTERN.test(cmd)) {
-              // Flush any accumulated text before stopping
               if (textParts.length > 0 && uuid) {
                 events.push(buildEvent(
                   `${uuid}_resp`, 'agent_response',
@@ -134,13 +226,13 @@ export async function recoverPreActivationHistory(
                   { prompt: textParts.join('\n\n') }
                 ));
               }
-              return flush(sessionId, agentType, firstEventTs ?? ts, events, eventStore);
+              return { events, metadata };
             }
           }
 
           if (toolCallId && uuid) {
             pendingTools.set(toolCallId, {
-              eventId: `${uuid}_tc_${i}`,
+              eventId: `${uuid}_tc_${bi}`,
               name: toolName,
               input: toolInput,
               timestamp: ts,
@@ -161,7 +253,6 @@ export async function recoverPreActivationHistory(
       const content = msg.content;
 
       if (typeof content === 'string') {
-        // Plain text user prompt — skip system-injected XML wrappers
         const text = content.trim();
         if (text && !text.startsWith('<') && uuid) {
           events.push(buildEvent(
@@ -181,7 +272,6 @@ export async function recoverPreActivationHistory(
           const toolName = pending?.name ?? 'unknown';
           const toolInput = pending?.input ?? {};
 
-          // tool_result content may be a string, an array of text blocks, or null
           let toolOutput: unknown = block.content;
           if (Array.isArray(block.content)) {
             toolOutput = (block.content as Array<{ text?: string }>)
@@ -192,7 +282,6 @@ export async function recoverPreActivationHistory(
           const eventId = pending?.eventId
             ?? (uuid ? `${uuid}_tr_${toolUseId ?? ''}` : null);
 
-          // Skip if we can't form a stable ID — better to omit than risk duplicates
           if (!eventId) continue;
 
           events.push(buildEvent(
@@ -208,8 +297,36 @@ export async function recoverPreActivationHistory(
     }
   }
 
-  // Reached end of transcript without finding the activation boundary.
-  return flush(sessionId, agentType, firstEventTs ?? Date.now(), events, eventStore);
+  return { events, metadata };
+}
+
+function tryParse(line: string): Record<string, unknown> | null {
+  try { return JSON.parse(line) as Record<string, unknown>; } catch { return null; }
+}
+
+// ---------------------------------------------------------------------------
+// Pre-activation recovery (called mid-session when /layman activates)
+// ---------------------------------------------------------------------------
+
+/**
+ * Parse and inject all events from the transcript that occurred before the
+ * /layman activation command.
+ */
+export async function recoverPreActivationHistory(
+  transcriptPath: string,
+  sessionId: string,
+  agentType: string,
+  eventStore: EventStore
+): Promise<number> {
+  const content = await readTranscript(transcriptPath);
+  if (!content) return 0;
+
+  const lines = content.trim().split('\n').filter(Boolean);
+  const { events } = parseTranscriptLines(lines, sessionId, agentType, {
+    stopAtActivation: true,
+  });
+
+  return flush(sessionId, agentType, events, eventStore);
 }
 
 /**
@@ -220,14 +337,14 @@ export async function recoverPreActivationHistory(
 function flush(
   sessionId: string,
   agentType: string,
-  startTs: number,
   events: TimelineEvent[],
   eventStore: EventStore
 ): number {
   if (events.length === 0) return 0;
 
+  const startTs = events[0].timestamp;
+
   // Deterministic ID: same session always produces the same session_start row.
-  // If recovery runs again (server restart), INSERT OR IGNORE skips the duplicate.
   const sessionStart = buildEvent(
     `${sessionId}_recovered_start`,
     'session_start',
@@ -242,7 +359,7 @@ function flush(
     eventStore.addRaw(event);
   }
 
-  return events.length + 1; // +1 for session_start
+  return events.length + 1;
 }
 
 // ---------------------------------------------------------------------------
@@ -268,13 +385,7 @@ function resolveTranscriptPath(cwd: string, sessionId: string): string | null {
 /**
  * On server startup, scan SQLite for claude-code sessions that have no
  * session_end event and whose JSONL transcript contains events written
- * after the last recorded SQLite timestamp — meaning the server was down
- * while the session continued.
- *
- * Each recovered event gets a deterministic ID, so INSERT OR IGNORE in the
- * recorder silently skips rows already present if recovery is run again.
- * Stops at the next layman:activate boundary to avoid overlapping with
- * events that were subsequently captured by live hooks.
+ * after the last recorded SQLite timestamp.
  */
 export async function recoverSessionGaps(
   db: Database,
@@ -282,7 +393,6 @@ export async function recoverSessionGaps(
 ): Promise<{ events: number; sessions: number }> {
   const cutoff = Date.now() - SEVEN_DAYS_MS;
 
-  // Sessions with no session_end and last activity within 7 days
   type SessionRow = { session_id: string; cwd: string; last_event_ts: number };
   const sessions = db.prepare(`
     SELECT rs.session_id, rs.cwd, MAX(re.timestamp) AS last_event_ts
@@ -306,195 +416,223 @@ export async function recoverSessionGaps(
     const content = await readTranscript(transcriptPath);
     if (!content) continue;
 
-    const injected = await injectGapEvents(
-      content, session_id, 'claude-code', last_event_ts, eventStore
-    );
-    if (injected > 0) {
-      console.log(`[recovery] Filled ${injected}-event gap for session ${session_id.slice(0, 8)}`);
-      totalEvents += injected;
+    const lines = content.trim().split('\n').filter(Boolean);
+    const { events } = parseTranscriptLines(lines, session_id, 'claude-code', {
+      afterTimestamp: last_event_ts,
+    });
+
+    if (events.length > 0) {
+      for (const event of events) {
+        eventStore.addRaw(event);
+      }
+      console.log(`[recovery] Filled ${events.length}-event gap for session ${session_id.slice(0, 8)}`);
+      totalEvents += events.length;
       totalSessions += 1;
     }
   }
   return { events: totalEvents, sessions: totalSessions };
 }
 
-/**
- * Parse JSONL events that fall strictly after `afterTimestamp` and before
- * the next layman:activate boundary, then inject them into the EventStore.
- *
- * Phase 1 (pre-scan): walk lines up to afterTimestamp to build a map of
- * pending tool calls whose results may appear inside the gap.
- * Phase 2 (gap): emit events from afterTimestamp to the activation boundary.
- */
-async function injectGapEvents(
-  content: string,
-  sessionId: string,
-  agentType: string,
-  afterTimestamp: number,
-  eventStore: EventStore
-): Promise<number> {
-  const lines = content.trim().split('\n').filter(Boolean);
+// ---------------------------------------------------------------------------
+// Historical session import
+// ---------------------------------------------------------------------------
 
-  // Phase 1: collect tool_use blocks that started before the gap but whose
-  // tool_result may appear inside it.
-  const pendingTools = new Map<string, {
-    eventId: string;
-    name: string;
-    input: Record<string, unknown>;
-    timestamp: number;
-  }>();
-
-  for (const line of lines) {
-    let obj: Record<string, unknown>;
-    try { obj = JSON.parse(line) as Record<string, unknown>; } catch { continue; }
-
-    const ts = typeof obj.timestamp === 'string'
-      ? new Date(obj.timestamp).getTime() : 0;
-    if (ts > afterTimestamp) break; // reached the gap — stop pre-scan
-
-    if (obj.type === 'assistant') {
-      const msg = obj.message as { content?: unknown } | undefined;
-      const blocks = Array.isArray(msg?.content) ? msg!.content as Block[] : [];
-      const uuid = typeof obj.uuid === 'string' ? obj.uuid : null;
-
-      for (let i = 0; i < blocks.length; i++) {
-        const block = blocks[i];
-        if (block.type !== 'tool_use') continue;
-        const toolCallId = typeof block.id === 'string' ? block.id : null;
-        if (!toolCallId || !uuid) continue;
-        pendingTools.set(toolCallId, {
-          eventId: `${uuid}_tc_${i}`,
-          name: typeof block.name === 'string' ? block.name : 'unknown',
-          input: (block.input && typeof block.input === 'object')
-            ? block.input as Record<string, unknown> : {},
-          timestamp: ts,
-        });
-      }
-    } else if (obj.type === 'user') {
-      // Remove tools resolved before the gap
-      const content = (obj.message as { content?: unknown } | undefined)?.content;
-      if (Array.isArray(content)) {
-        for (const block of content as Block[]) {
-          if (block.type === 'tool_result' && typeof block.tool_use_id === 'string') {
-            pendingTools.delete(block.tool_use_id);
-          }
-        }
-      }
-    }
-  }
-
-  // Phase 2: process the gap itself
-  const events: TimelineEvent[] = [];
-
-  for (const line of lines) {
-    let obj: Record<string, unknown>;
-    try { obj = JSON.parse(line) as Record<string, unknown>; } catch { continue; }
-
-    const lineType = obj.type as string | undefined;
-    if (lineType !== 'user' && lineType !== 'assistant') continue;
-
-    const uuid = typeof obj.uuid === 'string' ? obj.uuid : null;
-    const ts = typeof obj.timestamp === 'string'
-      ? new Date(obj.timestamp).getTime() : 0;
-
-    if (ts <= afterTimestamp) continue; // before the gap
-
-    const msg = obj.message as { role?: string; content?: unknown } | undefined;
-    if (!msg) continue;
-
-    if (lineType === 'assistant') {
-      const blocks = Array.isArray(msg.content) ? msg.content as Block[] : [];
-      const textParts: string[] = [];
-
-      for (let i = 0; i < blocks.length; i++) {
-        const block = blocks[i];
-
-        if (block.type === 'text' && typeof block.text === 'string') {
-          const text = (block.text as string).trim();
-          if (text) textParts.push(text);
-
-        } else if (block.type === 'tool_use') {
-          const toolCallId = typeof block.id === 'string' ? block.id : null;
-          const toolName = typeof block.name === 'string' ? block.name : 'unknown';
-          const toolInput = (block.input && typeof block.input === 'object')
-            ? block.input as Record<string, unknown> : {};
-
-          // Stop at re-activation boundary
-          if (toolName === 'Bash') {
-            const cmd = (toolInput as { command?: string }).command ?? '';
-            if (ACTIVATION_PATTERN.test(cmd)) {
-              if (textParts.length > 0 && uuid) {
-                events.push(buildEvent(`${uuid}_resp_gap`, 'agent_response',
-                  sessionId, agentType, ts, { prompt: textParts.join('\n\n') }));
-              }
-              return injectAll(events, eventStore);
-            }
-          }
-
-          if (toolCallId && uuid) {
-            pendingTools.set(toolCallId, {
-              eventId: `${uuid}_tc_${i}`,
-              name: toolName,
-              input: toolInput,
-              timestamp: ts,
-            });
-          }
-        }
-      }
-
-      if (textParts.length > 0 && uuid) {
-        events.push(buildEvent(`${uuid}_resp_gap`, 'agent_response',
-          sessionId, agentType, ts, { prompt: textParts.join('\n\n') }));
-      }
-
-    } else if (lineType === 'user') {
-      const userContent = msg.content;
-
-      if (typeof userContent === 'string') {
-        const text = userContent.trim();
-        if (text && !text.startsWith('<') && uuid) {
-          events.push(buildEvent(`${uuid}_gap`, 'user_prompt',
-            sessionId, agentType, ts, { prompt: text }));
-        }
-      } else if (Array.isArray(userContent)) {
-        for (const block of userContent as Block[]) {
-          if (block.type !== 'tool_result') continue;
-
-          const toolUseId = typeof block.tool_use_id === 'string' ? block.tool_use_id : null;
-          const pending = toolUseId ? pendingTools.get(toolUseId) : undefined;
-
-          const toolName = pending?.name ?? 'unknown';
-          const toolInput = pending?.input ?? {};
-
-          let toolOutput: unknown = block.content;
-          if (Array.isArray(block.content)) {
-            toolOutput = (block.content as Array<{ text?: string }>)
-              .map(b => b.text ?? '').join('');
-          }
-
-          const eventId = pending?.eventId
-            ?? (uuid ? `${uuid}_tr_gap_${toolUseId ?? ''}` : null);
-          if (!eventId) continue;
-
-          events.push(buildEvent(
-            eventId, 'tool_call_completed',
-            sessionId, agentType, pending?.timestamp ?? ts,
-            { toolName, toolInput, toolOutput, completedAt: ts },
-            classifyRisk(toolName, toolInput)
-          ));
-
-          if (toolUseId) pendingTools.delete(toolUseId);
-        }
-      }
-    }
-  }
-
-  return injectAll(events, eventStore);
+export interface TranscriptFile {
+  path: string;
+  sessionId: string;
+  projectDir: string;
 }
 
-function injectAll(events: TimelineEvent[], eventStore: EventStore): number {
-  for (const event of events) {
-    eventStore.addRaw(event);
+export interface ImportedSessionSummary {
+  sessionId: string;
+  cwd: string;
+  startedAt: number;
+  lastSeen: number;
+  eventCount: number;
+  toolCallCount: number;
+  userPromptCount: number;
+  status: 'discovered' | 'enriched' | 'skipped';
+}
+
+export interface ImportResult {
+  discovered: number;
+  enriched: number;
+  totalEvents: number;
+  skipped: number;
+  errors: number;
+  sessions: ImportedSessionSummary[];
+}
+
+/**
+ * Discover all Claude Code JSONL transcript files from ~/.claude/projects/.
+ * Returns one entry per main transcript file (excludes subagent transcripts).
+ */
+export function discoverTranscriptFiles(): TranscriptFile[] {
+  const results: TranscriptFile[] = [];
+  const basePaths = ['/root/.claude/projects', join(homedir(), '.claude', 'projects')];
+
+  for (const base of basePaths) {
+    if (!existsSync(base)) continue;
+
+    let projectDirs: string[];
+    try { projectDirs = readdirSync(base); } catch { continue; }
+
+    for (const projectDir of projectDirs) {
+      const projectPath = join(base, projectDir);
+      let stat;
+      try { stat = statSync(projectPath); } catch { continue; }
+      if (!stat.isDirectory()) continue;
+
+      let files: string[];
+      try { files = readdirSync(projectPath); } catch { continue; }
+
+      for (const file of files) {
+        if (!file.endsWith('.jsonl')) continue;
+        // Skip non-UUID filenames (e.g. config files)
+        const sessionId = file.replace('.jsonl', '');
+        if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(sessionId)) continue;
+
+        results.push({
+          path: join(projectPath, file),
+          sessionId,
+          projectDir,
+        });
+      }
+    }
+
+    // Only use the first base path that exists (Docker or native)
+    if (results.length > 0) break;
   }
-  return events.length;
+
+  return results;
+}
+
+/**
+ * Import historical sessions from Claude Code transcript files.
+ * Discovers all JSONL files, imports unknown sessions, and optionally
+ * enriches existing sessions with missing events.
+ */
+export async function importHistoricalSessions(
+  db: Database,
+  eventStore: EventStore,
+  recorder: SessionRecorder,
+  options?: { enrichExisting?: boolean }
+): Promise<ImportResult> {
+  const { enrichExisting = false } = options ?? {};
+
+  const result: ImportResult = {
+    discovered: 0,
+    enriched: 0,
+    totalEvents: 0,
+    skipped: 0,
+    errors: 0,
+    sessions: [],
+  };
+
+  const transcriptFiles = discoverTranscriptFiles();
+  if (transcriptFiles.length === 0) return result;
+
+  // Get existing sessions from DB
+  type SessionRow = { session_id: string; source: string | null };
+  const existingRows = db.prepare(
+    'SELECT session_id, source FROM recorded_sessions'
+  ).all() as SessionRow[];
+  const existingSessions = new Map(existingRows.map(r => [r.session_id, r.source]));
+
+  for (const { path, sessionId } of transcriptFiles) {
+    const existingSource = existingSessions.get(sessionId);
+    const isKnown = existingSource !== undefined;
+
+    // If known and we're not enriching, skip
+    if (isKnown && !enrichExisting) {
+      result.skipped++;
+      continue;
+    }
+
+    try {
+      const content = await readTranscript(path);
+      if (!content) {
+        result.skipped++;
+        continue;
+      }
+
+      const lines = content.trim().split('\n').filter(Boolean);
+      if (lines.length === 0) {
+        result.skipped++;
+        continue;
+      }
+
+      if (!isKnown) {
+        // Full import of unknown session
+        const { events, metadata } = parseTranscriptLines(lines, sessionId, 'claude-code');
+
+        if (events.length === 0) {
+          result.skipped++;
+          continue;
+        }
+
+        // Batch insert via recorder
+        recorder.importSession(sessionId, metadata.cwd, 'claude-code', events, 'imported');
+
+        const toolCallCount = events.filter(e => e.type === 'tool_call_completed').length;
+        const userPromptCount = events.filter(e => e.type === 'user_prompt').length;
+
+        result.discovered++;
+        result.totalEvents += events.length;
+        result.sessions.push({
+          sessionId,
+          cwd: metadata.cwd,
+          startedAt: metadata.firstTimestamp,
+          lastSeen: metadata.lastTimestamp,
+          eventCount: events.length,
+          toolCallCount,
+          userPromptCount,
+          status: 'discovered',
+        });
+
+      } else if (enrichExisting) {
+        // Enrich existing session — find events after last recorded timestamp
+        type TsRow = { max_ts: number | null };
+        const tsRow = db.prepare(
+          'SELECT MAX(timestamp) as max_ts FROM recorded_events WHERE session_id = ?'
+        ).get(sessionId) as TsRow | undefined;
+        const lastRecordedTs = tsRow?.max_ts ?? 0;
+
+        const { events, metadata } = parseTranscriptLines(lines, sessionId, 'claude-code', {
+          afterTimestamp: lastRecordedTs,
+        });
+
+        if (events.length === 0) {
+          result.skipped++;
+          continue;
+        }
+
+        // Use addRaw for enrichment — triggers recorder via event:new listener
+        for (const event of events) {
+          eventStore.addRaw(event);
+        }
+
+        const toolCallCount = events.filter(e => e.type === 'tool_call_completed').length;
+        const userPromptCount = events.filter(e => e.type === 'user_prompt').length;
+
+        result.enriched++;
+        result.totalEvents += events.length;
+        result.sessions.push({
+          sessionId,
+          cwd: metadata.cwd || '',
+          startedAt: metadata.firstTimestamp,
+          lastSeen: metadata.lastTimestamp,
+          eventCount: events.length,
+          toolCallCount,
+          userPromptCount,
+          status: 'enriched',
+        });
+      }
+    } catch (err) {
+      console.error(`[import] Failed to parse ${path}:`, err);
+      result.errors++;
+    }
+  }
+
+  return result;
 }

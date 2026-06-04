@@ -28,6 +28,7 @@ interface RawSession {
   session_model: string | null;
   session_model_display_name: string | null;
   session_name: string | null;
+  source: string | null;
 }
 
 interface RawEvent {
@@ -85,6 +86,7 @@ function toSession(row: RawSession): RecordedSession {
     sessionModel: row.session_model ?? undefined,
     sessionModelDisplayName: row.session_model_display_name ?? undefined,
     sessionName: row.session_name ?? undefined,
+    source: row.source ?? undefined,
   };
 }
 
