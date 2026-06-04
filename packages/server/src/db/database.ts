@@ -106,4 +106,6 @@ function applyMigrations(db: Database): void {
     db.exec("ALTER TABLE recorded_sessions ADD COLUMN session_model_display_name TEXT");
   if (!colNames.has('session_name'))
     db.exec("ALTER TABLE recorded_sessions ADD COLUMN session_name TEXT");
+  if (!colNames.has('source'))
+    db.exec("ALTER TABLE recorded_sessions ADD COLUMN source TEXT DEFAULT 'live'");
 }

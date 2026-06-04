@@ -38,6 +38,7 @@ const MOCK_CONFIG: LaymanConfig = {
   laymansPrompt: 'Explain what the AI is doing here in absolute layman\'s terms to someone who has no understanding of technology',
   sessionRecording: false,
   recordingRecovery: false,
+  historyImport: false,
   piiFilter: true,
   showFullCommand: false,
   switchToNewestSession: false,

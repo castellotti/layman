@@ -252,6 +252,7 @@ export interface LaymanConfig {
   laymansPrompt: string;
   sessionRecording: boolean;
   recordingRecovery: boolean;
+  historyImport: boolean;
   piiFilter: boolean;
   showFullCommand: boolean;
   switchToNewestSession: boolean;
@@ -350,6 +351,7 @@ export interface RecordedSession {
   sessionModel?: string;
   sessionModelDisplayName?: string;
   sessionName?: string;
+  source?: string;
 }
 
 export interface QAEntry {
