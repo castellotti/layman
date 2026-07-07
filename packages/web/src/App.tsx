@@ -8,8 +8,8 @@ import { InvestigationPanel } from './components/layout/InvestigationPanel.js';
 import { SetupBanner } from './components/layout/SetupBanner.js';
 import { SetupWizard } from './components/wizard/SetupWizard.js';
 import { SettingsDrawer } from './components/controls/SettingsDrawer.js';
-import { BookmarksPanel } from './components/bookmarks/BookmarksPanel.js';
-import { HighlightsPanel } from './components/bookmarks/HighlightsPanel.js';
+import { SessionsView } from './components/sessions/SessionsView.js';
+import { PromptsView } from './components/sessions/PromptsView.js';
 import { AccessLogPanel } from './components/access/AccessLogPanel.js';
 import { DriftBlockDialog } from './components/drift/DriftBlockDialog.js';
 import { ChangelogModal } from './components/shared/ChangelogModal.js';
@@ -23,10 +23,10 @@ import type { SetupStatus } from './lib/types.js';
 import type { ClientMessage } from './lib/ws-protocol.js';
 
 const WS_STATUS_CONFIG = {
-  connecting:   { dot: 'bg-[#d29922]', pulse: true,  text: 'Connecting',   textColor: 'text-[#d29922]' },
-  connected:    { dot: 'bg-[#3fb950]', pulse: false, text: 'Connected',    textColor: 'text-[#3fb950]' },
-  disconnected: { dot: 'bg-[#8b949e]', pulse: false, text: 'Disconnected', textColor: 'text-[#8b949e]' },
-  error:        { dot: 'bg-[#f85149]', pulse: false, text: 'Error',        textColor: 'text-[#f85149]' },
+  connecting:   { color: 'var(--warn)',  glow: true,  text: 'Connecting'   },
+  connected:    { color: 'var(--ok)',    glow: true,  text: 'Connected'    },
+  disconnected: { color: 'var(--text-faint)', glow: false, text: 'Disconnected' },
+  error:        { color: 'var(--error)', glow: false, text: 'Error'        },
 };
 
 function StatusBar() {
@@ -78,32 +78,57 @@ function StatusBar() {
   const displayName = activeAgentType ? (HARNESS_DISPLAY_NAMES[activeAgentType] ?? activeAgentType) : null;
   const canShowChangelog = activeAgentType !== null && hasChangelog(activeAgentType);
 
-  const { dot, pulse, text: wsText, textColor } = WS_STATUS_CONFIG[wsStatus];
+  const { color: wsColor, glow: wsGlow, text: wsText } = WS_STATUS_CONFIG[wsStatus];
+
+  const dotStyle: React.CSSProperties = {
+    width: 8,
+    height: 8,
+    borderRadius: '50%',
+    background: wsColor,
+    flexShrink: 0,
+    boxShadow: wsGlow ? `0 0 8px ${wsColor}b3` : 'none',
+  };
 
   return (
     <>
-      <div data-print-hide className="flex items-center justify-between px-4 py-1.5 bg-[#161b22] border-t border-[#30363d] text-[10px] text-[#8b949e] shrink-0">
-        <div className="flex items-center gap-3">
+      <div
+        data-print-hide
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          padding: '4px 16px',
+          background: 'var(--bg-raised)',
+          borderTop: '1px solid var(--border)',
+          fontSize: 10,
+          color: 'var(--text-faint)',
+          fontFamily: 'var(--font-mono)',
+          flexShrink: 0,
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           {count > 0 && (
-            <span className="text-[#d29922] font-medium animate-pulse">
+            <span style={{ color: 'var(--warn)', fontWeight: 500 }}>
               ⚡ {count} pending {count === 1 ? 'approval' : 'approvals'}
             </span>
           )}
           <span>{eventCount} events</span>
           {sessionStatus && (
             <>
-              <span>·</span>
+              <span style={{ color: 'var(--border-strong)' }}>·</span>
               <span>Uptime: {sessionStatus.uptime}s</span>
             </>
           )}
         </div>
-        <div className="flex items-center gap-2 text-[#484f58]">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, color: 'var(--text-faint)' }}>
           {displayName && (
             <>
               {canShowChangelog ? (
                 <button
                   onClick={() => setChangelogOpen(activeAgentType)}
-                  className="hover:text-[#8b949e] transition-colors"
+                  style={{ color: 'inherit', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'var(--font-mono)', fontSize: 10, padding: 0 }}
+                  onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--text-muted)')}
+                  onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--text-faint)')}
                   title={`View ${displayName} changelog`}
                 >
                   {displayName}{harnessVersion ? ` v${harnessVersion}` : ''}
@@ -111,26 +136,28 @@ function StatusBar() {
               ) : (
                 <span>{displayName}{harnessVersion ? ` v${harnessVersion}` : ''}</span>
               )}
-              <span className="text-[#30363d]">|</span>
+              <span style={{ color: 'var(--border)' }}>·</span>
             </>
           )}
           {modelName && (
             <>
-              <span className="text-[#6e7681]">{modelName}</span>
-              <span className="text-[#30363d]">|</span>
+              <span style={{ color: 'var(--text-muted)' }}>{modelName}</span>
+              <span style={{ color: 'var(--border)' }}>·</span>
             </>
           )}
           <button
             onClick={() => setChangelogOpen('layman')}
-            className="hover:text-[#8b949e] transition-colors"
+            style={{ color: 'inherit', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'var(--font-mono)', fontSize: 10, padding: 0 }}
+            onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--text-muted)')}
+            onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--text-faint)')}
             title="View Layman release notes"
           >
             Layman {serverVersion ? `v${serverVersion}` : ''}
           </button>
-          <span className="text-[#30363d]">|</span>
-          <div className="flex items-center gap-1.5">
-            <div className={`w-1.5 h-1.5 rounded-full ${dot} ${pulse ? 'animate-pulse' : ''}`} />
-            <span className={textColor}>{wsText}</span>
+          <span style={{ color: 'var(--border)' }}>·</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <div style={dotStyle} />
+            <span style={{ color: wsColor }}>{wsText}</span>
           </div>
         </div>
       </div>
@@ -153,7 +180,7 @@ interface AppShellProps {
 
 function AppShell({ children, onSend, onInstall }: AppShellProps) {
   return (
-    <div className="flex flex-col h-screen bg-[#0d1117] text-[#e6edf3] overflow-hidden">
+    <div className="flex flex-col h-screen overflow-hidden" style={{ background: 'var(--bg)', color: 'var(--text)' }}>
       <Header />
       <SetupBanner onInstall={onInstall} />
       {children}
@@ -227,18 +254,18 @@ export function App() {
     return (
       <AppShell onSend={send} onInstall={handleSetupInstall}>
         <div className="flex-1 overflow-hidden">
-          <BookmarksPanel onSend={send} />
+          <SessionsView onSend={send} />
         </div>
       </AppShell>
     );
   }
 
-  // Prompts (Highlights) view takes over the entire content area
+  // Prompts view takes over the entire content area
   if (promptsOpen) {
     return (
       <AppShell onSend={send} onInstall={handleSetupInstall}>
         <div className="flex-1 overflow-hidden">
-          <HighlightsPanel />
+          <PromptsView />
         </div>
       </AppShell>
     );
@@ -261,15 +288,26 @@ export function App() {
     <AppShell onSend={send} onInstall={handleSetupInstall}>
       {/* Back to Dashboard banner when drilled down from Dashboard */}
       {returnToDashboard && (
-        <div data-print-hide className="flex items-center gap-2 px-4 py-1.5 shrink-0" style={{ background: '#0c1018', borderBottom: '1px solid #1a2535' }}>
+        <div
+          data-print-hide
+          style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 16px', background: 'var(--bg-raised)', borderBottom: '1px solid var(--border)', flexShrink: 0 }}
+        >
           <button
-            className="dash-back-btn"
             onClick={returnFromDashboardDrilldown}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 4,
+              padding: '3px 10px', borderRadius: 4,
+              fontFamily: 'var(--font-mono)', fontSize: 10,
+              color: 'var(--accent)',
+              background: 'rgba(53,201,180,0.08)',
+              border: '1px solid rgba(53,201,180,0.2)',
+              cursor: 'pointer',
+            }}
           >
-            <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M7.78 12.53a.75.75 0 0 1-1.06 0L2.47 8.28a.75.75 0 0 1 0-1.06l4.25-4.25a.75.75 0 0 1 1.06 1.06L4.81 7h7.44a.75.75 0 0 1 0 1.5H4.81l2.97 2.97a.75.75 0 0 1 0 1.06Z"/></svg>
+            <svg width="11" height="11" viewBox="0 0 16 16" fill="currentColor"><path d="M7.78 12.53a.75.75 0 0 1-1.06 0L2.47 8.28a.75.75 0 0 1 0-1.06l4.25-4.25a.75.75 0 0 1 1.06 1.06L4.81 7h7.44a.75.75 0 0 1 0 1.5H4.81l2.97 2.97a.75.75 0 0 1 0 1.06Z"/></svg>
             Back to Dashboard
           </button>
-          <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 9, color: '#5a6a7a' }}>ESC</span>
+          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--text-faint)' }}>ESC</span>
         </div>
       )}
 

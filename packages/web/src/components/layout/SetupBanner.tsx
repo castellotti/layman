@@ -52,29 +52,37 @@ export function SetupBanner({ onInstall }: { onInstall: () => void }) {
   const buttonLabel = installing ? 'Installing...' : 'Update';
 
   return (
-    <div data-print-hide className="flex items-center justify-between px-4 py-2.5 bg-[#1c2128] border-b border-[#30363d] text-sm shrink-0">
-      <div className="flex items-center gap-2 text-[#d29922]">
-        <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <div
+      data-print-hide
+      style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        padding: '8px 16px',
+        background: 'rgba(229,168,59,0.08)',
+        borderBottom: '1px solid rgba(229,168,59,0.2)',
+        fontSize: 12,
+        flexShrink: 0,
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--warn)' }}>
+        <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
         </svg>
-        <span>{message}</span>
+        <span style={{ fontFamily: 'var(--font-ui)' }}>{message}</span>
       </div>
-      <div className="flex items-center gap-2">
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         <button
           onClick={() => void handleInstall()}
           disabled={installing}
-          className="px-3 py-1 text-xs font-medium rounded bg-[#238636] hover:bg-[#2ea043] text-white disabled:opacity-50 transition-colors"
+          style={{ padding: '3px 10px', fontSize: 11, fontFamily: 'var(--font-ui)', fontWeight: 500, borderRadius: 5, background: 'var(--ok)', color: '#0B0E14', border: 'none', cursor: 'pointer', opacity: installing ? 0.5 : 1 }}
         >
           {buttonLabel}
         </button>
         <button
           onClick={dismissSetupBanner}
-          className="p-1 text-[#8b949e] hover:text-[#e6edf3] transition-colors"
+          style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 4, fontSize: 14, lineHeight: 1 }}
           title="Dismiss"
         >
-          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-          </svg>
+          ✕
         </button>
       </div>
     </div>

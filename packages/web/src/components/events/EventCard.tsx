@@ -81,6 +81,8 @@ export function EventCard({ event, index, isSelected, onClick, onSend, collapseH
   const isHighlighted = highlightedEventIds.has(event.id);
 
   const isPending = event.type === 'tool_call_pending' || event.type === 'permission_request';
+  const isPermissionRequest = event.type === 'permission_request';
+  const isError = event.type === 'tool_call_failed' || event.type === 'stop_failure';
   const isAgentResponse = event.type === 'agent_response';
   const isWebSearch = event.type === 'web_search';
   const isSubagentStop = event.type === 'subagent_stop' && !!event.data.subagentTranscript?.length;
@@ -154,11 +156,13 @@ export function EventCard({ event, index, isSelected, onClick, onSend, collapseH
 
   const bgClass = isPending
     ? 'bg-[#1c1a0f] hover:bg-[#1c1a0f]/80'
-    : isSelected
-      ? 'bg-[#1c2128]'
-      : 'bg-[#161b22] hover:bg-[#1c2128]';
+    : isError
+      ? 'bg-[#200c0c] hover:bg-[#261010]'
+      : isSelected
+        ? 'bg-[#1c2128]'
+        : 'bg-[#161b22] hover:bg-[#1c2128]';
 
-  const borderWidth = isPending ? 'border-l-2' : 'border-l';
+  const borderWidth = (isPending || isError) ? 'border-l-2' : 'border-l';
 
   // agent_stop — Claude is done, waiting for user to type in terminal
   if (event.type === 'agent_stop') {
@@ -185,7 +189,7 @@ export function EventCard({ event, index, isSelected, onClick, onSend, collapseH
     <div
       className={`${bgClass} ${borderColor} ${borderWidth} mx-3 mb-1.5 rounded-md overflow-hidden transition-colors cursor-pointer ${
         isPending ? 'ring-1 ring-[#d29922]/30' : ''
-      } ${isSelected ? 'ring-1 ring-[#58a6ff]/30' : ''}`}
+      } ${isError ? 'ring-1 ring-[#f85149]/20' : ''} ${isSelected ? 'ring-1 ring-[#58a6ff]/30' : ''}`}
       onClick={() => {
         onClick();
         if (!collapseHistory) setExpandedLocal((v) => !v);
@@ -278,10 +282,34 @@ export function EventCard({ event, index, isSelected, onClick, onSend, collapseH
           </span>
         )}
 
-        {/* Pending badge */}
-        {isPending && !event.data.decision && (
+        {/* ASK chip for permission requests */}
+        {isPermissionRequest && !event.data.decision && (
+          <span style={{
+            fontSize: 9.5, fontWeight: 600, letterSpacing: '0.06em',
+            textTransform: 'uppercase', fontFamily: 'var(--font-ui)',
+            padding: '2px 6px', borderRadius: 4,
+            background: 'rgba(229,168,59,0.2)', color: '#E5A83B',
+            border: '1px solid rgba(229,168,59,0.4)', flexShrink: 0,
+          }}>
+            ASK
+          </span>
+        )}
+        {/* PENDING badge for tool calls (not permission requests) */}
+        {event.type === 'tool_call_pending' && !event.data.decision && (
           <span className="text-[10px] font-semibold text-[#d29922] animate-pulse">
             PENDING
+          </span>
+        )}
+        {/* END chip for error events */}
+        {isError && (
+          <span style={{
+            fontSize: 9.5, fontWeight: 600, letterSpacing: '0.06em',
+            textTransform: 'uppercase', fontFamily: 'var(--font-ui)',
+            padding: '2px 6px', borderRadius: 4,
+            background: 'rgba(240,86,74,0.18)', color: '#F0564A',
+            border: '1px solid rgba(240,86,74,0.4)', flexShrink: 0,
+          }}>
+            END
           </span>
         )}
 

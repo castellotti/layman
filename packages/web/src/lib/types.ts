@@ -352,6 +352,7 @@ export interface RecordedSession {
   sessionModelDisplayName?: string;
   sessionName?: string;
   source?: string;
+  eventCount?: number;
 }
 
 export interface QAEntry {

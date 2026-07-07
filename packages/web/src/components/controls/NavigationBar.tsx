@@ -1,20 +1,26 @@
 import React, { useState } from 'react';
+import { SearchInput, FilterChip, LiveChip } from '../primitives/index.js';
 
 interface NavigationBarProps {
-  currentIndex: number;
-  total: number;
-  onFirst: () => void;
-  onPrev: () => void;
-  onNext: () => void;
-  onLatest: () => void;
+  // Search
+  searchQuery: string;
+  onSearchChange: (q: string) => void;
+  // Filter chips
   promptsOnly: boolean;
-  responsesOnly: boolean;
+  toolsOnly: boolean;
   requestsOnly: boolean;
+  agentsOnly: boolean;
   riskyOnly: boolean;
   onTogglePromptsOnly: () => void;
-  onToggleResponsesOnly: () => void;
+  onToggleToolsOnly: () => void;
   onToggleRequestsOnly: () => void;
+  onToggleAgentsOnly: () => void;
   onToggleRiskyOnly: () => void;
+  // Live state
+  followLatest: boolean;
+  archived?: boolean;
+  archivedDate?: string;
+  // Actions
   onAccessLog?: () => void;
   onPrint?: () => void;
   onBookmark?: (name: string) => void;
@@ -23,20 +29,21 @@ interface NavigationBarProps {
 }
 
 export function NavigationBar({
-  currentIndex,
-  total,
-  onFirst,
-  onPrev,
-  onNext,
-  onLatest,
+  searchQuery,
+  onSearchChange,
   promptsOnly,
-  responsesOnly,
+  toolsOnly,
   requestsOnly,
+  agentsOnly,
   riskyOnly,
   onTogglePromptsOnly,
-  onToggleResponsesOnly,
+  onToggleToolsOnly,
   onToggleRequestsOnly,
+  onToggleAgentsOnly,
   onToggleRiskyOnly,
+  followLatest,
+  archived = false,
+  archivedDate,
   onAccessLog,
   onPrint,
   onBookmark,
@@ -57,114 +64,66 @@ export function NavigationBar({
     setBookmarkName('');
   };
 
+  const divider = (
+    <div style={{ width: 1, height: 16, background: 'var(--border)', flexShrink: 0 }} />
+  );
+
   return (
-    <div data-print-hide className="flex items-center gap-3 px-4 py-2 bg-[#161b22] border-b border-[#30363d] text-xs flex-wrap">
-      {/* Navigation arrows */}
-      <div className="flex items-center gap-1">
-        <button
-          onClick={onFirst}
-          disabled={currentIndex === 0 || total === 0}
-          title="First event"
-          className="p-1 text-[#8b949e] hover:text-[#e6edf3] disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-        >
-          ⏮
-        </button>
-        <button
-          onClick={onPrev}
-          disabled={currentIndex === 0 || total === 0}
-          title="Previous event"
-          className="p-1 text-[#8b949e] hover:text-[#e6edf3] disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-        >
-          ◀
-        </button>
-        <span className="px-2 text-[#8b949e] tabular-nums">
-          {total === 0 ? 'No events' : `${currentIndex + 1} of ${total}`}
-        </span>
-        <button
-          onClick={onNext}
-          disabled={currentIndex >= total - 1 || total === 0}
-          title="Next event"
-          className="p-1 text-[#8b949e] hover:text-[#e6edf3] disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-        >
-          ▶
-        </button>
-        <button
-          onClick={onLatest}
-          disabled={currentIndex >= total - 1 || total === 0}
-          title="Latest event"
-          className="p-1 text-[#8b949e] hover:text-[#e6edf3] disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-        >
-          ⏭
-        </button>
+    <div
+      data-print-hide
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 8,
+        padding: '5px 12px',
+        background: 'var(--bg-raised)',
+        borderBottom: '1px solid var(--border)',
+        flexShrink: 0,
+        flexWrap: 'wrap',
+      }}
+    >
+      {/* Search */}
+      <SearchInput
+        value={searchQuery}
+        onChange={onSearchChange}
+        width={180}
+        placeholder="Search  +include  −exclude"
+      />
+
+      {divider}
+
+      {/* Filter chips */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+        <FilterChip label="Prompts" active={promptsOnly} onClick={onTogglePromptsOnly} />
+        <FilterChip label="Tools" active={toolsOnly} onClick={onToggleToolsOnly} />
+        <FilterChip label="Permissions" active={requestsOnly} onClick={onToggleRequestsOnly} />
+        <FilterChip label="Agents" active={agentsOnly} onClick={onToggleAgentsOnly} />
+        <FilterChip label="Risk≥med" active={riskyOnly} onClick={onToggleRiskyOnly} riskOutline />
       </div>
 
-      <div className="h-4 w-px bg-[#30363d]" />
+      {/* Spacer */}
+      <div style={{ flex: 1 }} />
 
-      {/* Filter pills */}
-      <div className="flex items-center gap-1.5">
-        <span className="text-[#484f58]">Filters:</span>
-        <button
-          onClick={onTogglePromptsOnly}
-          className={`px-2 py-0.5 text-[10px] rounded-full border transition-colors ${
-            promptsOnly
-              ? 'bg-[#21262d] border-[#58a6ff] text-[#e6edf3]'
-              : 'bg-transparent border-[#30363d] text-[#484f58] hover:text-[#8b949e]'
-          }`}
-          title="Show only prompts & approvals (P)"
-        >
-          Prompts
-        </button>
-
-        <button
-          onClick={onToggleResponsesOnly}
-          className={`px-2 py-0.5 text-[10px] rounded-full border transition-colors ${
-            responsesOnly
-              ? 'bg-[#21262d] border-[#58a6ff] text-[#e6edf3]'
-              : 'bg-transparent border-[#30363d] text-[#484f58] hover:text-[#8b949e]'
-          }`}
-          title="Show only agent responses (O)"
-        >
-          Responses
-        </button>
-
-        <button
-          onClick={onToggleRequestsOnly}
-          className={`px-2 py-0.5 text-[10px] rounded-full border transition-colors ${
-            requestsOnly
-              ? 'bg-[#21262d] border-[#58a6ff] text-[#e6edf3]'
-              : 'bg-transparent border-[#30363d] text-[#484f58] hover:text-[#8b949e]'
-          }`}
-          title="Show only permission requests (Q)"
-        >
-          Requests
-        </button>
-
-        <button
-          onClick={onToggleRiskyOnly}
-          className={`px-2 py-0.5 text-[10px] rounded-full border transition-colors ${
-            riskyOnly
-              ? 'bg-[#21262d] border-[#d29922] text-[#d29922]'
-              : 'bg-transparent border-[#30363d] text-[#484f58] hover:text-[#8b949e]'
-          }`}
-          title="Show only medium/high risk events (R)"
-        >
-          Risk
-        </button>
-      </div>
+      {/* Live chip */}
+      <LiveChip state={archived ? 'archived' : (followLatest ? 'live' : 'paused')} archivedDate={archivedDate} />
 
       {/* Access Log */}
       {onAccessLog && (
         <>
-          <div className="h-4 w-px bg-[#30363d]" />
+          {divider}
           <button
             onClick={onAccessLog}
-            className="flex items-center gap-1 text-[#8b949e] hover:text-[#e6edf3] transition-colors"
+            style={{
+              display: 'flex', alignItems: 'center', gap: 4,
+              background: 'none', border: 'none', cursor: 'pointer',
+              color: 'var(--text-muted)', fontSize: 11, fontFamily: 'var(--font-ui)',
+            }}
             title="Access Log"
           >
-            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <svg width="11" height="11" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
             </svg>
-            Access Log
+            Log
           </button>
         </>
       )}
@@ -172,9 +131,9 @@ export function NavigationBar({
       {/* Bookmark */}
       {onBookmark && !isBookmarked && (
         <>
-          <div className="h-4 w-px bg-[#30363d]" />
+          {divider}
           {showBookmarkInput ? (
-            <div className="flex items-center gap-1">
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
               <input
                 autoFocus
                 type="text"
@@ -184,25 +143,28 @@ export function NavigationBar({
                   if (e.key === 'Enter') handleBookmarkSubmit();
                   if (e.key === 'Escape') { setShowBookmarkInput(false); setBookmarkName(''); }
                 }}
-                placeholder="Bookmark name..."
-                className="text-xs bg-[#0d1117] border border-[#58a6ff] rounded px-2 py-0.5 text-[#e6edf3] placeholder-[#484f58] focus:outline-none w-36"
+                placeholder="Bookmark name…"
+                style={{
+                  fontSize: 11, fontFamily: 'var(--font-ui)',
+                  background: 'var(--bg-card)', border: '1px solid var(--accent)',
+                  borderRadius: 5, padding: '2px 8px', color: 'var(--text)',
+                  outline: 'none', width: 140,
+                }}
               />
-              <button
-                onClick={handleBookmarkSubmit}
-                className="text-xs text-[#3fb950] hover:text-[#56d364] transition-colors"
-              >✓</button>
-              <button
-                onClick={() => { setShowBookmarkInput(false); setBookmarkName(''); }}
-                className="text-xs text-[#484f58] hover:text-[#8b949e] transition-colors"
-              >✕</button>
+              <button onClick={handleBookmarkSubmit} style={{ color: 'var(--ok)', background: 'none', border: 'none', cursor: 'pointer', fontSize: 12 }}>✓</button>
+              <button onClick={() => { setShowBookmarkInput(false); setBookmarkName(''); }} style={{ color: 'var(--text-faint)', background: 'none', border: 'none', cursor: 'pointer', fontSize: 12 }}>✕</button>
             </div>
           ) : (
             <button
               onClick={handleBookmarkClick}
-              className="flex items-center gap-1 text-[#8b949e] hover:text-[#d29922] transition-colors"
+              style={{
+                display: 'flex', alignItems: 'center', gap: 4,
+                background: 'none', border: 'none', cursor: 'pointer',
+                color: 'var(--text-muted)', fontSize: 11, fontFamily: 'var(--font-ui)',
+              }}
               title="Bookmark current session"
             >
-              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+              <svg width="11" height="11" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
                 <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
               </svg>
               Bookmark
@@ -214,13 +176,17 @@ export function NavigationBar({
       {/* Export */}
       {onPrint && (
         <>
-          <div className="h-4 w-px bg-[#30363d]" />
+          {divider}
           <button
             onClick={onPrint}
-            className="flex items-center gap-1 text-[#8b949e] hover:text-[#e6edf3] transition-colors"
+            style={{
+              display: 'flex', alignItems: 'center', gap: 4,
+              background: 'none', border: 'none', cursor: 'pointer',
+              color: 'var(--text-muted)', fontSize: 11, fontFamily: 'var(--font-ui)',
+            }}
             title="Export to PDF"
           >
-            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <svg width="11" height="11" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
             </svg>
             Export
