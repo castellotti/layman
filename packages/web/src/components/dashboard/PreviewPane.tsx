@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 import { StatusDot, Meter, StateChip } from '../primitives/index.js';
 import { useNow } from '../../hooks/useNow.js';
 import type { TimelineEvent, DriftState } from '../../lib/types.js';
@@ -179,15 +179,41 @@ function ActivityStrip({
 
 // ─── RecentTail ───────────────────────────────────────────────────────────────
 
-function RecentTail({ events, onOpenInLogs, sessionId }: {
+// Upper bound purely to protect render performance on very long sessions —
+// the visible count is otherwise governed by the scroll container's height.
+const MAX_TAIL_EVENTS = 500;
+
+function RecentTail({ events, onOpenInLogs, sessionId, scrollRef }: {
   events: TimelineEvent[];
   onOpenInLogs: (sessionId: string, eventId: string) => void;
   sessionId: string;
+  scrollRef: React.RefObject<HTMLDivElement | null>;
 }) {
   const tail = useMemo(() => {
     const meaningful = events.filter(e => e.type !== 'session_metrics' && e.type !== 'notification');
-    return meaningful.slice(-5);
+    return meaningful.slice(-MAX_TAIL_EVENTS);
   }, [events]);
+
+  // Stick to the bottom as new events arrive, unless the user has scrolled up to read history.
+  const followRef = useRef(true);
+  const prevCountRef = useRef(0);
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const handleScroll = () => {
+      followRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 32;
+    };
+    el.addEventListener('scroll', handleScroll);
+    return () => el.removeEventListener('scroll', handleScroll);
+  }, [scrollRef]);
+  useEffect(() => {
+    const grew = tail.length > prevCountRef.current;
+    prevCountRef.current = tail.length;
+    const el = scrollRef.current;
+    if (grew && followRef.current && el) {
+      el.scrollTop = el.scrollHeight;
+    }
+  }, [tail.length, scrollRef]);
 
   if (tail.length === 0) {
     return (
@@ -319,6 +345,7 @@ export const PreviewPane = React.memo(function PreviewPane({
   const ctxPct = metrics?.contextUsedPct ?? 0;
   const model = metrics?.modelDisplayName;
   const cwd = session.cwd;
+  const tailScrollRef = useRef<HTMLDivElement>(null);
 
   return (
     <div
@@ -397,11 +424,12 @@ export const PreviewPane = React.memo(function PreviewPane({
       </div>
 
       {/* Recent tail */}
-      <div style={{ flex: 1, overflowY: 'auto', paddingBottom: 4 }}>
+      <div ref={tailScrollRef} style={{ flex: 1, overflowY: 'auto', paddingBottom: 4 }}>
         <RecentTail
           events={events}
           onOpenInLogs={onOpenEventInLogs}
           sessionId={session.sessionId}
+          scrollRef={tailScrollRef}
         />
       </div>
     </div>
