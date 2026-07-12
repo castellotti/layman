@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.8.0
+
+- Added Layman UI v2 - complete frontend redesign across Dashboard, Logs, Sessions, and Prompts on a token-based dark theme (IBM Plex Sans/Mono served locally, no CDN) with shared primitive components (`StatusDot`, `StateChip`, `Meter`, `RiskTag`, `FilterChip`, `SearchInput`, `LiveChip`, `JumpToLatest`) ([#73](https://github.com/castellotti/layman/pull/73))
+- Redesigned Dashboard - 410px session list with drag-to-reorder and Custom sort mode, multi-pane preview that opens/closes with session lifecycle, permission/error callouts, context meter, and an account limits strip ([#73](https://github.com/castellotti/layman/pull/73))
+- Redesigned Logs - exchange-tree grouping with sub-agent lanes, canvas minimap for click/drag navigation, follow/pause/jump-to-latest controls, `+include -exclude` search tokens, and an investigation panel with placeholder sections ([#73](https://github.com/castellotti/layman/pull/73))
+- Redesigned Sessions and Prompts views - shared 280px sidebar with bookmark folders and keyboard navigation (↑/↓/Enter/Esc), drag-to-reorder bookmarks within folders, and real search over name/cwd/event content with in-session match highlighting ([#73](https://github.com/castellotti/layman/pull/73))
+- Redesigned Flow view - follow-latest camera that auto-centers the newest node with a manual "Fit all" escape hatch, plus a MiniMap; removed the old Timeline view and its shortcuts ([#73](https://github.com/castellotti/layman/pull/73))
+- Refactored Settings into a two-column rail+search drawer split across per-section components, with shared row primitives (`ToggleRow`/`SegmentRow`/`FieldRow`/`ThresholdRow`/`ActionRow`) and a shared `RiskLevelPicker` ([#73](https://github.com/castellotti/layman/pull/73))
+- Removed legacy Dashboard components (`SessionCard`, `SidePanel`, `ActivitySparkline`, `ContextUsagePanel`, `DriftMonitorPanel`, `EventDensityTimeline`, `TokenUsageChart`) and dead bookmarks/search components now superseded by the redesign ([#73](https://github.com/castellotti/layman/pull/73))
+- Added historical session import - discovers and imports past Claude Code sessions from JSONL transcript files (`~/.claude/projects/`) that were never monitored live, with a Settings scan dialog showing per-session results and an optional auto-import-on-startup flag; existing live sessions can be enriched with missing events without downgrading their `live` status ([#72](https://github.com/castellotti/layman/pull/72))
+
 ## 0.7.0
 
 - Added Prompts view with Highlights - bookmark and browse prompt/response pairs as Highlights, stored in SQLite with full folder/rename/reorder support and a "View in Session" link that navigates to the session and scrolls to the highlighted pair ([#70](https://github.com/castellotti/layman/pull/70))
