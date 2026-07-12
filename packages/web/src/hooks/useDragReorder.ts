@@ -1,22 +1,24 @@
 import { useCallback, useState } from 'react';
 
-// Shared index-based drag-to-reorder interaction: tracks which item is being
+// Shared id-based drag-to-reorder interaction: tracks which item is being
 // dragged and which item it's currently over, then hands off the (from, to)
-// index pair on drop so the caller can apply its own persistence (store
-// update, optimistic fetch, etc).
-export function useDragReorder(onReorder: (fromIndex: number, toIndex: number) => void) {
-  const [dragIndex, setDragIndex] = useState<number | null>(null);
-  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+// id pair on drop so the caller can apply its own persistence (store
+// update, optimistic fetch, etc). Ids (not array indices) are used so a
+// drag remains correct even if the underlying list reshuffles mid-drag
+// (e.g. a live-updating session list).
+export function useDragReorder(onReorder: (fromId: string, toId: string) => void) {
+  const [dragId, setDragId] = useState<string | null>(null);
+  const [dragOverId, setDragOverId] = useState<string | null>(null);
 
-  const handleDragStart = useCallback((index: number) => setDragIndex(index), []);
-  const handleDragOver = useCallback((index: number) => setDragOverIndex(index), []);
+  const handleDragStart = useCallback((id: string) => setDragId(id), []);
+  const handleDragOver = useCallback((id: string) => setDragOverId(id), []);
   const handleDragEnd = useCallback(() => {
-    if (dragIndex !== null && dragOverIndex !== null && dragIndex !== dragOverIndex) {
-      onReorder(dragIndex, dragOverIndex);
+    if (dragId !== null && dragOverId !== null && dragId !== dragOverId) {
+      onReorder(dragId, dragOverId);
     }
-    setDragIndex(null);
-    setDragOverIndex(null);
-  }, [dragIndex, dragOverIndex, onReorder]);
+    setDragId(null);
+    setDragOverId(null);
+  }, [dragId, dragOverId, onReorder]);
 
-  return { dragIndex, dragOverIndex, handleDragStart, handleDragOver, handleDragEnd };
+  return { dragId, dragOverId, handleDragStart, handleDragOver, handleDragEnd };
 }

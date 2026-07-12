@@ -4,6 +4,7 @@ import { EventStream } from '../layout/EventStream.js';
 import { InvestigationPanel } from '../layout/InvestigationPanel.js';
 import { SearchInput, SegmentedControl, SECTION_LABEL_STYLE, CollapsibleFolderHeader } from '../primitives/index.js';
 import { useDragReorder } from '../../hooks/useDragReorder.js';
+import { useOptimisticOrder } from '../../hooks/useOptimisticOrder.js';
 import { sessionDisplayName } from '../../lib/session-state.js';
 import type { ClientMessage } from '../../lib/ws-protocol.js';
 import type { RecordedSession, SessionTimeMetrics } from '../../lib/types.js';
@@ -568,38 +569,19 @@ interface SidebarFolderProps {
   onSelect: (id: string) => void;
 }
 
-function SidebarFolder({ folderId, name, items: initialItems, viewingSessionId, liveSessionIds, matchLabel, onSelect }: SidebarFolderProps) {
+function SidebarFolder({ folderId, name, items, viewingSessionId, liveSessionIds, matchLabel, onSelect }: SidebarFolderProps) {
   const [expanded, setExpanded] = useState(true);
-  // Optimistic local order: null = use initialItems as-is (server order)
-  const [localOrderIds, setLocalOrderIds] = useState<string[] | null>(null);
 
-  // Clear local order once initialItems reflects our reorder (server confirmed)
-  useEffect(() => {
-    if (!localOrderIds) return;
-    const serverIds = initialItems.map((i) => i.bookmarkId).join(',');
-    if (serverIds === localOrderIds.join(',')) setLocalOrderIds(null);
-  }, [initialItems, localOrderIds]);
+  const persist = useCallback((ids: string[]) =>
+    fetch('/api/bookmarks/reorder', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ folderId, ids }),
+    }).then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); }),
+  [folderId]);
 
-  // Displayed list: apply local order if pending, else use server order
-  const items = useMemo(() => {
-    if (!localOrderIds) return initialItems;
-    const byId = new Map(initialItems.map((item) => [item.bookmarkId, item]));
-    return localOrderIds.map((id) => byId.get(id)).filter((x): x is NonNullable<typeof x> => Boolean(x));
-  }, [initialItems, localOrderIds]);
-
-  const { dragOverIndex: dragOverIdx, handleDragStart, handleDragOver, handleDragEnd } = useDragReorder(
-    useCallback((fromIndex, toIndex) => {
-      const newItems = [...items];
-      const [moved] = newItems.splice(fromIndex, 1);
-      newItems.splice(toIndex, 0, moved);
-      setLocalOrderIds(newItems.map((item) => item.bookmarkId));
-      fetch('/api/bookmarks/reorder', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ folderId, ids: newItems.map((item) => item.bookmarkId) }),
-      }).catch(() => {});
-    }, [items, folderId])
-  );
+  const { items: orderedItems, reorder } = useOptimisticOrder(items, (i) => i.bookmarkId, persist);
+  const { dragOverId, handleDragStart, handleDragOver, handleDragEnd } = useDragReorder(reorder);
 
   return (
     <div>
@@ -607,9 +589,9 @@ function SidebarFolder({ folderId, name, items: initialItems, viewingSessionId, 
         expanded={expanded}
         onToggle={() => setExpanded((v) => !v)}
         name={name}
-        count={items.length}
+        count={orderedItems.length}
       />
-      {expanded && items.map(({ session }, idx) => (
+      {expanded && orderedItems.map(({ session, bookmarkId }) => (
         <SidebarSessionRow
           key={session.sessionId}
           session={session}
@@ -619,10 +601,10 @@ function SidebarFolder({ folderId, name, items: initialItems, viewingSessionId, 
           isBookmarked
           indent
           matchLabel={matchLabel(session.sessionId)}
-          isDragOver={dragOverIdx === idx}
+          isDragOver={dragOverId === bookmarkId}
           onSelect={onSelect}
-          onDragStart={() => handleDragStart(idx)}
-          onDragOver={() => handleDragOver(idx)}
+          onDragStart={() => handleDragStart(bookmarkId)}
+          onDragOver={() => handleDragOver(bookmarkId)}
           onDragEnd={handleDragEnd}
         />
       ))}

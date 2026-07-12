@@ -25,7 +25,7 @@ import { openDatabase } from './db/database.js';
 import { SessionRecorder } from './db/recorder.js';
 import { BookmarkStore } from './db/bookmarks.js';
 import { HighlightStore } from './db/highlights.js';
-import { searchEvents } from './db/search.js';
+import { searchEvents, parseSearchQuery, matchesSearchTerms } from './db/search.js';
 import { computeTimeMetrics } from './db/time-metrics.js';
 import type { SearchRequest } from './db/search.js';
 import type { LaymanConfig } from './config/schema.js';
@@ -943,10 +943,10 @@ export function createServer(config: LaymanConfig): LaymanServer {
       const eventMatches = searchEvents(db, { query: q, fields: ['allText'], limit: 1 }).sessions;
       const matchCounts = new Map<string, number>(eventMatches.map((s) => [s.sessionId, s.matchCount]));
 
-      const lowerQ = q.toLowerCase();
+      const terms = parseSearchQuery(q);
       for (const session of bookmarkStore.listRecordedSessions()) {
-        const nameMatch = (session.sessionName ?? '').toLowerCase().includes(lowerQ);
-        const cwdMatch = (session.cwd ?? '').toLowerCase().includes(lowerQ);
+        const nameMatch = matchesSearchTerms(session.sessionName ?? '', terms);
+        const cwdMatch = matchesSearchTerms(session.cwd ?? '', terms);
         if (nameMatch || cwdMatch) {
           const bonus = (nameMatch ? 1 : 0) + (cwdMatch ? 1 : 0);
           matchCounts.set(session.sessionId, (matchCounts.get(session.sessionId) ?? 0) + bonus);

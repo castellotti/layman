@@ -131,11 +131,15 @@ export function DashboardView({ onSend }: DashboardViewProps) {
     navigateFromDashboardToLogs(sessionId, eventId);
   }, [navigateFromDashboardToLogs]);
 
-  // Drag handlers
-  const { dragIndex, dragOverIndex, handleDragStart, handleDragOver, handleDragEnd } = useDragReorder(
-    useCallback((fromIndex, toIndex) => {
-      const movedId = orderedSessions[fromIndex].sessionId;
-      const targetId = orderedSessions[toIndex].sessionId;
+  // Drag handlers — keyed by sessionId (not array index) so a session added/removed
+  // by a live WebSocket update mid-drag can't cause the wrong session to be moved.
+  const { dragId, dragOverId, handleDragStart, handleDragOver, handleDragEnd } = useDragReorder(
+    useCallback((movedId, targetId) => {
+      // Resolve relative drag direction from the CURRENT visible order, not a
+      // position captured at drag-start time.
+      const fromIdx = orderedSessions.findIndex(s => s.sessionId === movedId);
+      const toIdx = orderedSessions.findIndex(s => s.sessionId === targetId);
+      if (fromIdx === -1 || toIdx === -1) return;
 
       // Reorder relative to the FULL session order, not just the filtered/visible
       // subset in orderedSessions — otherwise sessions hidden by an active filter
@@ -146,7 +150,7 @@ export function DashboardView({ onSend }: DashboardViewProps) {
 
       const newOrder = baseOrder.filter(id => id !== movedId);
       const targetPos = newOrder.indexOf(targetId);
-      const insertAt = fromIndex < toIndex ? targetPos + 1 : targetPos;
+      const insertAt = fromIdx < toIdx ? targetPos + 1 : targetPos;
       newOrder.splice(insertAt, 0, movedId);
 
       setDashboardSessionOrder(newOrder);
@@ -187,20 +191,19 @@ export function DashboardView({ onSend }: DashboardViewProps) {
           {orderedSessions.length === 0 ? (
             <EmptyState />
           ) : (
-            orderedSessions.map((session, idx) => (
+            orderedSessions.map((session) => (
               <SessionListRow
                 key={session.sessionId}
                 session={session}
                 events={eventsBySession.get(session.sessionId) ?? []}
                 metrics={sessionMetrics.get(session.sessionId)}
                 isOpen={openPanes.has(session.sessionId)}
-                isDragging={dragIndex === idx}
-                isDragOver={dragOverIndex === idx}
-                index={idx}
+                isDragging={dragId === session.sessionId}
+                isDragOver={dragOverId === session.sessionId}
                 onToggle={handleToggle}
                 onOpenInLogs={handleOpenInLogs}
-                onDragStart={handleDragStart}
-                onDragOver={handleDragOver}
+                onDragStart={() => handleDragStart(session.sessionId)}
+                onDragOver={() => handleDragOver(session.sessionId)}
                 onDragEnd={handleDragEnd}
               />
             ))

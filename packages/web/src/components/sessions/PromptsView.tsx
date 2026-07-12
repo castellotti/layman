@@ -6,6 +6,8 @@ import { SearchInput, FilterChip, SECTION_LABEL_STYLE, CollapsibleFolderHeader }
 import { getEffectiveAgentContent } from '../../lib/reasoning.js';
 import { isMarkdown, MARKDOWN_PROSE_COMPACT, REMARK_PLUGINS } from '../../lib/markdown.js';
 import { sessionDisplayName } from '../../lib/session-state.js';
+import { useDragReorder } from '../../hooks/useDragReorder.js';
+import { useOptimisticOrder } from '../../hooks/useOptimisticOrder.js';
 
 interface HighlightEventPair {
   promptEvent: TimelineEvent | null;
@@ -59,13 +61,31 @@ interface SidebarHighlightRowProps {
   isSelected: boolean;
   indent?: boolean;
   sessionLabel?: string;
+  isDragOver?: boolean;
   onSelect: (h: Highlight) => void;
+  onDragStart?: () => void;
+  onDragOver?: () => void;
+  onDragEnd?: () => void;
 }
 
-function SidebarHighlightRow({ highlight, isSelected, indent = false, sessionLabel, onSelect }: SidebarHighlightRowProps) {
+function SidebarHighlightRow({
+  highlight, isSelected, indent = false, sessionLabel, isDragOver = false,
+  onSelect, onDragStart, onDragOver, onDragEnd,
+}: SidebarHighlightRowProps) {
   const [hovered, setHovered] = useState(false);
   const date = new Date(highlight.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+  const draggable = !!onDragStart;
   return (
+    <div
+      draggable={draggable}
+      onDragStart={(e) => { e.dataTransfer.effectAllowed = 'move'; onDragStart?.(); }}
+      onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; onDragOver?.(); }}
+      onDragEnd={onDragEnd}
+      style={{
+        borderTop: isDragOver ? '2px solid var(--info)' : '2px solid transparent',
+        transition: 'border-color 0.1s',
+      }}
+    >
     <button
       onClick={() => onSelect(highlight)}
       onMouseEnter={() => setHovered(true)}
@@ -79,6 +99,14 @@ function SidebarHighlightRow({ highlight, isSelected, indent = false, sessionLab
         transition: 'background 0.1s',
       }}
     >
+      {draggable && (
+        <span style={{
+          fontSize: 11, color: 'var(--text-faint)', cursor: 'grab', flexShrink: 0,
+          opacity: hovered ? 0.7 : 0.25, userSelect: 'none', lineHeight: 1,
+        }}>
+          ⠿
+        </span>
+      )}
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{
           fontSize: 11, fontWeight: 500, color: 'var(--text)', fontFamily: 'var(--font-ui)',
@@ -91,6 +119,7 @@ function SidebarHighlightRow({ highlight, isSelected, indent = false, sessionLab
         </div>
       </div>
     </button>
+    </div>
   );
 }
 
@@ -106,22 +135,38 @@ interface SidebarFolderProps {
 
 function SidebarFolder({ folder, highlights, selectedHighlightId, sessionLabelById, onSelect }: SidebarFolderProps) {
   const [expanded, setExpanded] = useState(true);
+
+  const persist = useCallback((ids: string[]) =>
+    fetch('/api/highlights/reorder', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ folderId: folder.id, ids }),
+    }).then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); }),
+  [folder.id]);
+
+  const { items: orderedHighlights, reorder } = useOptimisticOrder(highlights, (h) => h.id, persist);
+  const { dragOverId, handleDragStart, handleDragOver, handleDragEnd } = useDragReorder(reorder);
+
   return (
     <div>
       <CollapsibleFolderHeader
         expanded={expanded}
         onToggle={() => setExpanded((v) => !v)}
         name={folder.name}
-        count={highlights.length}
+        count={orderedHighlights.length}
       />
-      {expanded && highlights.map((h) => (
+      {expanded && orderedHighlights.map((h) => (
         <SidebarHighlightRow
           key={h.id}
           highlight={h}
           isSelected={selectedHighlightId === h.id}
           indent
           sessionLabel={sessionLabelById.get(h.sessionId)}
+          isDragOver={dragOverId === h.id}
           onSelect={onSelect}
+          onDragStart={() => handleDragStart(h.id)}
+          onDragOver={() => handleDragOver(h.id)}
+          onDragEnd={handleDragEnd}
         />
       ))}
     </div>

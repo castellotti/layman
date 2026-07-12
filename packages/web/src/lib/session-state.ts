@@ -17,6 +17,13 @@ export function getSessionDisplayName(session: SessionInfo): string {
   return sessionDisplayName(session.sessionName, session.cwd, session.sessionId);
 }
 
+/** Color for a context-window-usage percentage, shared by the dashboard row and pane header. */
+export function contextPctColor(pct: number, fallback: string): string {
+  if (pct >= 75) return 'var(--error)';
+  if (pct >= 60) return 'var(--warn)';
+  return fallback;
+}
+
 export function deriveSessionState(events: TimelineEvent[], sessionActive: boolean): {
   dotState: StatusDotState;
   chipVariant: StateChipVariant;

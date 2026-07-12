@@ -4,7 +4,7 @@ import { useNow } from '../../hooks/useNow.js';
 import type { TimelineEvent } from '../../lib/types.js';
 import type { SessionInfo } from '../../lib/ws-protocol.js';
 import type { SessionMetrics } from '../../lib/types.js';
-import { deriveSessionState, getSessionDisplayName } from '../../lib/session-state.js';
+import { deriveSessionState, getSessionDisplayName, contextPctColor } from '../../lib/session-state.js';
 import { cwdBasename } from '../../lib/format.js';
 
 function getTimeSince(timestamp: number, now: number): string {
@@ -32,16 +32,15 @@ interface SessionListRowProps {
   isOpen: boolean;
   isDragging: boolean;
   isDragOver: boolean;
-  index: number;
   onToggle: (sessionId: string) => void;
   onOpenInLogs: (sessionId: string) => void;
-  onDragStart: (index: number) => void;
-  onDragOver: (index: number) => void;
+  onDragStart: () => void;
+  onDragOver: () => void;
   onDragEnd: () => void;
 }
 
 export const SessionListRow = React.memo(function SessionListRow({
-  session, events, metrics, isOpen, isDragging, isDragOver, index,
+  session, events, metrics, isOpen, isDragging, isDragOver,
   onToggle, onOpenInLogs, onDragStart, onDragOver, onDragEnd,
 }: SessionListRowProps) {
   const isActive = session.active !== false;
@@ -51,9 +50,9 @@ export const SessionListRow = React.memo(function SessionListRow({
     [events, isActive]
   );
 
-  const ctxPct = metrics?.contextUsedPct ?? 0;
+  const ctxPct = metrics?.contextUsedPct;
   const model = metrics?.modelDisplayName;
-  const hasMetrics = !!model || ctxPct > 0;
+  const hasMetrics = model !== undefined || ctxPct !== undefined;
   const cwdName = session.cwd ? cwdBasename(session.cwd) : undefined;
 
   return (
@@ -61,12 +60,12 @@ export const SessionListRow = React.memo(function SessionListRow({
       draggable
       onDragStart={(e) => {
         e.dataTransfer.effectAllowed = 'move';
-        onDragStart(index);
+        onDragStart();
       }}
       onDragOver={(e) => {
         e.preventDefault();
         e.dataTransfer.dropEffect = 'move';
-        onDragOver(index);
+        onDragOver();
       }}
       onDragEnd={onDragEnd}
       onClick={() => onToggle(session.sessionId)}
@@ -135,25 +134,25 @@ export const SessionListRow = React.memo(function SessionListRow({
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 3, flexShrink: 0 }}>
         {hasMetrics ? (
           <>
-            {ctxPct > 0 && (
+            {ctxPct !== undefined && (
               <span style={{
                 fontFamily: 'var(--font-mono)',
                 fontSize: 11,
                 fontWeight: 600,
                 fontVariantNumeric: 'tabular-nums',
-                color: ctxPct >= 75 ? 'var(--error)' : ctxPct >= 60 ? 'var(--warn)' : 'var(--text-body)',
+                color: contextPctColor(ctxPct, 'var(--text-body)'),
               }}>
                 ctx {Math.round(ctxPct)}%
               </span>
             )}
-            {(model || ctxPct > 0) && (
+            {(model || ctxPct !== undefined) && (
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                 {model && (
                   <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9.5, color: 'var(--text-faint)', whiteSpace: 'nowrap' }}>
                     {model}
                   </span>
                 )}
-                {ctxPct > 0 && <Meter value={ctxPct} showTick height={5} width={64} />}
+                {ctxPct !== undefined && <Meter value={ctxPct} showTick height={5} width={64} />}
               </div>
             )}
           </>

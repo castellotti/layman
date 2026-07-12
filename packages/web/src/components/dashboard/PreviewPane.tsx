@@ -4,7 +4,7 @@ import { useNow } from '../../hooks/useNow.js';
 import type { TimelineEvent, DriftState } from '../../lib/types.js';
 import type { SessionInfo } from '../../lib/ws-protocol.js';
 import type { SessionMetrics } from '../../lib/types.js';
-import { deriveSessionState, getSessionDisplayName } from '../../lib/session-state.js';
+import { deriveSessionState, getSessionDisplayName, contextPctColor } from '../../lib/session-state.js';
 import { formatTime, formatDuration as formatElapsed, cwdBasename } from '../../lib/format.js';
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
@@ -194,6 +194,14 @@ function RecentTail({ events, onOpenInLogs, sessionId, scrollRef }: {
     return meaningful.slice(-MAX_TAIL_EVENTS);
   }, [events]);
 
+  // Built once per `events` change so each tail row can look up its position in O(1)
+  // instead of `events.indexOf(event)` (O(n) per row, O(n·tail.length) overall).
+  const eventIndexById = useMemo(() => {
+    const map = new Map<string, number>();
+    events.forEach((e, i) => map.set(e.id, i));
+    return map;
+  }, [events]);
+
   // Stick to the bottom as new events arrive, unless the user has scrolled up to read history.
   const followRef = useRef(true);
   const prevCountRef = useRef(0);
@@ -228,7 +236,7 @@ function RecentTail({ events, onOpenInLogs, sessionId, scrollRef }: {
       {tail.map((event, i) => {
         const color = EVENT_KIND_COLOR[event.type] ?? 'var(--text-muted)';
         const detail = eventDetail(event);
-        const globalIdx = events.indexOf(event);
+        const globalIdx = eventIndexById.get(event.id) ?? -1;
         return (
           <div
             key={event.id}
@@ -342,7 +350,7 @@ export const PreviewPane = React.memo(function PreviewPane({
     () => deriveSessionState(events, isActive),
     [events, isActive]
   );
-  const ctxPct = metrics?.contextUsedPct ?? 0;
+  const ctxPct = metrics?.contextUsedPct;
   const model = metrics?.modelDisplayName;
   const cwd = session.cwd;
   const tailScrollRef = useRef<HTMLDivElement>(null);
@@ -391,10 +399,10 @@ export const PreviewPane = React.memo(function PreviewPane({
             {model}
           </span>
         )}
-        {ctxPct > 0 && (
+        {ctxPct !== undefined && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
             <Meter value={ctxPct} showTick height={3} width={48} />
-            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, fontVariantNumeric: 'tabular-nums', color: ctxPct >= 75 ? 'var(--error)' : ctxPct >= 60 ? 'var(--warn)' : 'var(--text-faint)' }}>
+            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, fontVariantNumeric: 'tabular-nums', color: contextPctColor(ctxPct, 'var(--text-faint)') }}>
               {Math.round(ctxPct)}%
             </span>
           </div>
