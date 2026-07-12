@@ -5,6 +5,7 @@ import type { TimelineEvent } from '../../lib/types.js';
 import type { SessionInfo } from '../../lib/ws-protocol.js';
 import type { SessionMetrics } from '../../lib/types.js';
 import { deriveSessionState, getSessionDisplayName } from '../../lib/session-state.js';
+import { cwdBasename } from '../../lib/format.js';
 
 function getTimeSince(timestamp: number, now: number): string {
   const delta = now - timestamp;
@@ -18,7 +19,7 @@ function getTimeSince(timestamp: number, now: number): string {
 function TimeSinceLabel({ timestamp }: { timestamp: number }) {
   const now = useNow(5000);
   return (
-    <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--text-faint)' }}>
+    <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9.5, fontVariantNumeric: 'tabular-nums', color: 'var(--text-faint)' }}>
       {getTimeSince(timestamp, now)}
     </span>
   );
@@ -53,7 +54,7 @@ export const SessionListRow = React.memo(function SessionListRow({
   const ctxPct = metrics?.contextUsedPct ?? 0;
   const model = metrics?.modelDisplayName;
   const hasMetrics = !!model || ctxPct > 0;
-  const cwdName = session.cwd ? (session.cwd.split('/').filter(Boolean).pop() ?? session.cwd) : undefined;
+  const cwdName = session.cwd ? cwdBasename(session.cwd) : undefined;
 
   return (
     <div
@@ -70,6 +71,7 @@ export const SessionListRow = React.memo(function SessionListRow({
       onDragEnd={onDragEnd}
       onClick={() => onToggle(session.sessionId)}
       onDoubleClick={(e) => { e.stopPropagation(); onOpenInLogs(session.sessionId); }}
+      title={session.cwd}
       style={{
         display: 'flex',
         alignItems: 'center',
@@ -129,19 +131,31 @@ export const SessionListRow = React.memo(function SessionListRow({
         )}
       </div>
 
-      {/* model/ctx% (falls back to relative time when no metrics are available yet) */}
+      {/* ctx% on top, model beside the meter below (falls back to relative time when no metrics are available yet) */}
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 3, flexShrink: 0 }}>
         {hasMetrics ? (
           <>
-            <span style={{
-              fontFamily: 'var(--font-mono)',
-              fontSize: 12,
-              fontWeight: 600,
-              color: ctxPct >= 75 ? 'var(--error)' : ctxPct >= 60 ? 'var(--warn)' : 'var(--text-body)',
-            }}>
-              {model ? `${model} · ` : ''}ctx {Math.round(ctxPct)}%
-            </span>
-            <Meter value={ctxPct} showTick height={5} width={64} />
+            {ctxPct > 0 && (
+              <span style={{
+                fontFamily: 'var(--font-mono)',
+                fontSize: 11,
+                fontWeight: 600,
+                fontVariantNumeric: 'tabular-nums',
+                color: ctxPct >= 75 ? 'var(--error)' : ctxPct >= 60 ? 'var(--warn)' : 'var(--text-body)',
+              }}>
+                ctx {Math.round(ctxPct)}%
+              </span>
+            )}
+            {(model || ctxPct > 0) && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                {model && (
+                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9.5, color: 'var(--text-faint)', whiteSpace: 'nowrap' }}>
+                    {model}
+                  </span>
+                )}
+                {ctxPct > 0 && <Meter value={ctxPct} showTick height={5} width={64} />}
+              </div>
+            )}
           </>
         ) : (
           lastMeaningful && <TimeSinceLabel timestamp={lastMeaningful.timestamp} />

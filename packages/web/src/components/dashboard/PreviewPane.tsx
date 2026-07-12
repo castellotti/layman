@@ -5,7 +5,7 @@ import type { TimelineEvent, DriftState } from '../../lib/types.js';
 import type { SessionInfo } from '../../lib/ws-protocol.js';
 import type { SessionMetrics } from '../../lib/types.js';
 import { deriveSessionState, getSessionDisplayName } from '../../lib/session-state.js';
-import { formatTime, formatDuration as formatElapsed } from '../../lib/format.js';
+import { formatTime, formatDuration as formatElapsed, cwdBasename } from '../../lib/format.js';
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
@@ -13,7 +13,7 @@ import { formatTime, formatDuration as formatElapsed } from '../../lib/format.js
 function ElapsedLabel({ since }: { since: number }) {
   const now = useNow(1000);
   return (
-    <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--text-faint)', flexShrink: 0 }}>
+    <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9.5, fontVariantNumeric: 'tabular-nums', color: 'var(--text-faint)', flexShrink: 0 }}>
       {formatElapsed(now - since)}
     </span>
   );
@@ -245,7 +245,7 @@ function RecentTail({ events, onOpenInLogs, sessionId, scrollRef }: {
             onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.background = 'var(--bg-selected)')}
             onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.background = 'transparent')}
           >
-            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--text-faint)', width: 24, textAlign: 'right', flexShrink: 0 }}>
+            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9.5, fontVariantNumeric: 'tabular-nums', color: 'var(--text-faint)', width: 26, textAlign: 'right', flexShrink: 0 }}>
               #{globalIdx + 1}
             </span>
             <span style={{ fontFamily: 'var(--font-ui)', fontSize: 10, fontWeight: 500, color, flexShrink: 0, minWidth: 64 }}>
@@ -254,7 +254,7 @@ function RecentTail({ events, onOpenInLogs, sessionId, scrollRef }: {
             <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-body)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {detail}
             </span>
-            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--text-faint)', flexShrink: 0 }}>
+            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9.5, fontVariantNumeric: 'tabular-nums', color: 'var(--text-faint)', flexShrink: 0 }}>
               {formatTime(event.timestamp)}
             </span>
           </div>
@@ -276,11 +276,11 @@ function DriftMeter({ label, pct, onClick }: { label: string; pct: number; onCli
       title={`${label} drift: ${Math.round(pct)}%`}
       style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer', flex: 1, minWidth: 0 }}
     >
-      <span style={{ fontFamily: 'var(--font-ui)', fontSize: 9, color: 'var(--text-faint)', textTransform: 'uppercase', letterSpacing: '0.05em', flexShrink: 0 }}>
+      <span style={{ fontFamily: 'var(--font-ui)', fontSize: 9.5, color: 'var(--text-faint)', textTransform: 'uppercase', letterSpacing: '0.05em', flexShrink: 0 }}>
         {label}
       </span>
       <Meter value={pct} height={3} />
-      <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: pct >= 75 ? 'var(--error)' : pct >= 60 ? 'var(--warn)' : 'var(--text-faint)', flexShrink: 0 }}>
+      <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9.5, fontVariantNumeric: 'tabular-nums', color: pct >= 75 ? 'var(--error)' : pct >= 60 ? 'var(--warn)' : 'var(--text-faint)', flexShrink: 0 }}>
         {Math.round(pct)}%
       </span>
     </div>
@@ -375,19 +375,26 @@ export const PreviewPane = React.memo(function PreviewPane({
         title="Double-click to open in Logs"
       >
         <StatusDot state={dotState} />
-        <span style={{ fontFamily: 'var(--font-ui)', fontSize: 12.5, fontWeight: 600, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 200 }}>
+        <span style={{ fontFamily: 'var(--font-ui)', fontSize: 12.5, fontWeight: 600, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 0 }}>
           {getSessionDisplayName(session)}
         </span>
-        {(cwd || model) && (
-          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9.5, color: 'var(--text-faint)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
-            {cwd}{model ? ` · ${model}` : ''}
+        {cwd && (
+          <span
+            title={cwd}
+            style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-faint)', flexShrink: 0 }}
+          >
+            {cwdBasename(cwd)}
           </span>
         )}
-        {!cwd && !model && <span style={{ flex: 1 }} />}
+        {model && (
+          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-muted)', flexShrink: 0 }}>
+            {model}
+          </span>
+        )}
         {ctxPct > 0 && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
-            <Meter value={ctxPct} showTick height={3} width={36} />
-            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: ctxPct >= 75 ? 'var(--error)' : ctxPct >= 60 ? 'var(--warn)' : 'var(--text-faint)' }}>
+            <Meter value={ctxPct} showTick height={3} width={48} />
+            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, fontVariantNumeric: 'tabular-nums', color: ctxPct >= 75 ? 'var(--error)' : ctxPct >= 60 ? 'var(--warn)' : 'var(--text-faint)' }}>
               {Math.round(ctxPct)}%
             </span>
           </div>
