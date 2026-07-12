@@ -18,6 +18,10 @@
   --bg-raised:   #0D1119;
   --bg-card:     #11151D;
   --bg-selected: #141B29;
+  --bg-pill:     #161C28;
+
+  /* Text drawn on top of a filled semantic-color badge (--ok/--warn/--error fills) */
+  --text-on-fill: #0B0E14;
 
   /* Borders */
   --border:        #1D2330;

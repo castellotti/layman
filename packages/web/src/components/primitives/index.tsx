@@ -42,8 +42,8 @@ export function StatusDot({ state, size = 8 }: StatusDotProps) {
 export type StateChipVariant = 'permission' | 'running' | 'error' | 'idle' | 'ended' | 'live' | 'paused' | 'archived';
 
 const STATE_CHIP_STYLES: Record<StateChipVariant, { bg: string; color: string; border?: string }> = {
-  permission: { bg: 'rgba(229,168,59,0.18)',  color: '#0B0E14',        border: 'none' },
-  running:    { bg: 'rgba(76,195,138,0.18)',   color: '#0B0E14',        border: 'none' },
+  permission: { bg: 'rgba(229,168,59,0.18)',  color: 'var(--text-on-fill)', border: 'none' },
+  running:    { bg: 'rgba(76,195,138,0.18)',   color: 'var(--text-on-fill)', border: 'none' },
   error:      { bg: 'var(--error)',             color: '#fff',           border: 'none' },
   idle:       { bg: 'var(--border)',            color: 'var(--text-muted)', border: 'none' },
   ended:      { bg: 'var(--border)',            color: 'var(--text-muted)', border: 'none' },
@@ -375,7 +375,7 @@ export function JumpToLatest({ count, onClick }: JumpToLatestProps) {
         display: 'inline-flex', alignItems: 'center', gap: 6,
         padding: '5px 12px', borderRadius: 20,
         fontSize: 11, fontFamily: 'var(--font-ui)', fontWeight: 500,
-        background: '#161C28',
+        background: 'var(--bg-pill)',
         color: 'var(--text)',
         border: '1px solid var(--border-strong)',
         cursor: 'pointer',
@@ -383,7 +383,7 @@ export function JumpToLatest({ count, onClick }: JumpToLatestProps) {
         transition: 'background 0.15s',
       }}
       onMouseEnter={(e) => ((e.currentTarget as HTMLButtonElement).style.background = 'var(--bg-selected)')}
-      onMouseLeave={(e) => ((e.currentTarget as HTMLButtonElement).style.background = '#161C28')}
+      onMouseLeave={(e) => ((e.currentTarget as HTMLButtonElement).style.background = 'var(--bg-pill)')}
     >
       <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--ok)', display: 'inline-block' }} />
       ↓ Jump to latest · {count} new

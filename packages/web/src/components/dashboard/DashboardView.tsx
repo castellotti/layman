@@ -4,6 +4,7 @@ import { SessionListRow } from './SessionListRow.js';
 import { PreviewPane } from './PreviewPane.js';
 import { SearchInput, SegmentedControl } from '../primitives/index.js';
 import { saveAndBookmarkSession } from '../../lib/bookmarks-api.js';
+import { useDragReorder } from '../../hooks/useDragReorder.js';
 import type { ClientMessage } from '../../lib/ws-protocol.js';
 import './dashboard.css';
 
@@ -27,16 +28,18 @@ export function DashboardView({ onSend }: DashboardViewProps) {
     dismissDashboardSession,
     navigateFromDashboardToLogs,
     navigateToLogsForSession,
+    driftState,
+    config,
   } = useSessionStore();
 
   // Which sessions have their preview pane open
   const [openPanes, setOpenPanes] = useState<Set<string>>(new Set());
+  // Sessions we've already auto-opened at least once — prevents reopening a pane
+  // the user explicitly closed when orderedSessions merely reorders (e.g. attention sort).
+  const autoOpenedRef = useRef<Set<string>>(new Set());
   // Sort + filter
   const [sortMode, setSortMode] = useState<SortMode>('recent');
   const [filter, setFilter] = useState('');
-  // Drag state
-  const [dragIndex, setDragIndex] = useState<number | null>(null);
-  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
 
   const panelRef = useRef<HTMLDivElement>(null);
 
@@ -92,18 +95,19 @@ export function DashboardView({ onSend }: DashboardViewProps) {
     return sorted;
   }, [sessions, dashboardSessionOrder, dashboardDismissedSessions, sortMode, filter, eventsBySession]);
 
-  // Auto-open pane for newly detected sessions
+  // Auto-open pane for newly detected sessions (only the first time each session is seen —
+  // reordering orderedSessions, e.g. via attention sort, must not reopen a pane the user closed).
   useEffect(() => {
-    const newSessions = orderedSessions.filter(s => !openPanes.has(s.sessionId));
+    const newSessions = orderedSessions.filter(s => !autoOpenedRef.current.has(s.sessionId));
     if (newSessions.length > 0) {
+      newSessions.forEach(s => autoOpenedRef.current.add(s.sessionId));
       setOpenPanes(prev => {
         const next = new Set(prev);
         newSessions.forEach(s => next.add(s.sessionId));
         return next;
       });
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [orderedSessions.map(s => s.sessionId).join(',')]);
+  }, [orderedSessions]);
 
   // Auto-close panes for ended/dismissed sessions
   useEffect(() => {
@@ -141,19 +145,27 @@ export function DashboardView({ onSend }: DashboardViewProps) {
   }, [navigateFromDashboardToLogs]);
 
   // Drag handlers
-  const handleDragStart = useCallback((index: number) => setDragIndex(index), []);
-  const handleDragOver = useCallback((index: number) => setDragOverIndex(index), []);
-  const handleDragEnd = useCallback(() => {
-    if (dragIndex !== null && dragOverIndex !== null && dragIndex !== dragOverIndex) {
-      const newOrder = orderedSessions.map(s => s.sessionId);
-      const [moved] = newOrder.splice(dragIndex, 1);
-      newOrder.splice(dragOverIndex, 0, moved);
+  const { dragIndex, dragOverIndex, handleDragStart, handleDragOver, handleDragEnd } = useDragReorder(
+    useCallback((fromIndex, toIndex) => {
+      const movedId = orderedSessions[fromIndex].sessionId;
+      const targetId = orderedSessions[toIndex].sessionId;
+
+      // Reorder relative to the FULL session order, not just the filtered/visible
+      // subset in orderedSessions — otherwise sessions hidden by an active filter
+      // would be dropped from dashboardSessionOrder entirely.
+      const allIds = sessions.map(s => s.sessionId);
+      const knownIds = new Set(dashboardSessionOrder);
+      const baseOrder = [...dashboardSessionOrder, ...allIds.filter(id => !knownIds.has(id))];
+
+      const newOrder = baseOrder.filter(id => id !== movedId);
+      const targetPos = newOrder.indexOf(targetId);
+      const insertAt = fromIndex < toIndex ? targetPos + 1 : targetPos;
+      newOrder.splice(insertAt, 0, movedId);
+
       setDashboardSessionOrder(newOrder);
       setSortMode('custom');
-    }
-    setDragIndex(null);
-    setDragOverIndex(null);
-  }, [dragIndex, dragOverIndex, orderedSessions, setDashboardSessionOrder]);
+    }, [orderedSessions, sessions, dashboardSessionOrder, setDashboardSessionOrder])
+  );
 
   // Calculate preview pane heights
   const openSessionIds = orderedSessions.filter(s => openPanes.has(s.sessionId)).map(s => s.sessionId);
@@ -247,6 +259,8 @@ export function DashboardView({ onSend }: DashboardViewProps) {
                 session={session}
                 events={eventsBySession.get(sessionId) ?? []}
                 metrics={sessionMetrics.get(sessionId)}
+                driftState={driftState.get(sessionId)}
+                driftEnabled={!!config?.driftMonitoring?.enabled}
                 onClose={handleClosePane}
                 onOpenInLogs={handleOpenInLogs}
                 onOpenEventInLogs={handleOpenEventInLogs}

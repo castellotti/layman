@@ -26,6 +26,7 @@ export function Minimap({ events, scrollRef }: MinimapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const dragging = useRef(false);
+  const rafRef = useRef<number | null>(null);
 
   const draw = useCallback(() => {
     const canvas = canvasRef.current;
@@ -76,13 +77,22 @@ export function Minimap({ events, scrollRef }: MinimapProps) {
     }
   }, [events, scrollRef]);
 
-  // Redraw on scroll
+  // Redraw on scroll — coalesce bursts of scroll events into one draw per frame
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
-    const handler = () => draw();
+    const handler = () => {
+      if (rafRef.current !== null) return;
+      rafRef.current = requestAnimationFrame(() => {
+        rafRef.current = null;
+        draw();
+      });
+    };
     el.addEventListener('scroll', handler, { passive: true });
-    return () => el.removeEventListener('scroll', handler);
+    return () => {
+      el.removeEventListener('scroll', handler);
+      if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
+    };
   }, [draw, scrollRef]);
 
   // Redraw when events change or container resizes

@@ -1,9 +1,9 @@
 import React, { useMemo } from 'react';
 import { StatusDot, Meter, StateChip } from '../primitives/index.js';
-import type { StatusDotState, StateChipVariant } from '../primitives/index.js';
 import type { TimelineEvent } from '../../lib/types.js';
 import type { SessionInfo } from '../../lib/ws-protocol.js';
 import type { SessionMetrics } from '../../lib/types.js';
+import { deriveSessionState } from '../../lib/session-state.js';
 
 function getTimeSince(timestamp: number): string {
   const delta = Date.now() - timestamp;
@@ -11,32 +11,6 @@ function getTimeSince(timestamp: number): string {
   if (delta < 60_000) return `${Math.floor(delta / 1000)}s`;
   if (delta < 3_600_000) return `${Math.floor(delta / 60_000)}m`;
   return `${Math.floor(delta / 3_600_000)}h`;
-}
-
-function deriveSessionState(events: TimelineEvent[], sessionActive: boolean): {
-  dotState: StatusDotState;
-  chipVariant: StateChipVariant;
-} {
-  if (!sessionActive) return { dotState: 'ended', chipVariant: 'ended' };
-
-  const meaningful = events.filter(e => e.type !== 'session_metrics' && e.type !== 'notification');
-  const last = meaningful[meaningful.length - 1];
-
-  if (!last) return { dotState: 'idle', chipVariant: 'idle' };
-
-  if (last.type === 'stop_failure' || last.type === 'tool_call_failed') {
-    return { dotState: 'error', chipVariant: 'error' };
-  }
-  if (last.type === 'permission_request' && !last.data.decision) {
-    return { dotState: 'permission', chipVariant: 'permission' };
-  }
-  if (last.type === 'tool_call_pending' && !last.data.decision) {
-    return { dotState: 'running', chipVariant: 'running' };
-  }
-  if (last.type === 'agent_stop' || last.type === 'session_end') {
-    return { dotState: 'idle', chipVariant: 'idle' };
-  }
-  return { dotState: 'running', chipVariant: 'running' };
 }
 
 export function getSessionDisplayName(session: SessionInfo): string {

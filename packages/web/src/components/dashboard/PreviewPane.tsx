@@ -1,10 +1,10 @@
-import React, { useMemo, useRef, useEffect } from 'react';
+import React, { useMemo } from 'react';
 import { StatusDot, Meter, StateChip } from '../primitives/index.js';
-import type { StatusDotState, StateChipVariant } from '../primitives/index.js';
-import type { TimelineEvent } from '../../lib/types.js';
+import type { TimelineEvent, DriftState } from '../../lib/types.js';
 import type { SessionInfo } from '../../lib/ws-protocol.js';
 import type { SessionMetrics } from '../../lib/types.js';
 import { getSessionDisplayName } from './SessionListRow.js';
+import { deriveSessionState } from '../../lib/session-state.js';
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
@@ -75,21 +75,6 @@ function eventDetail(event: TimelineEvent): string {
   return '';
 }
 
-function deriveSessionState(events: TimelineEvent[], sessionActive: boolean): {
-  dotState: StatusDotState;
-  chipVariant: StateChipVariant;
-} {
-  if (!sessionActive) return { dotState: 'ended', chipVariant: 'ended' };
-  const meaningful = events.filter(e => e.type !== 'session_metrics' && e.type !== 'notification');
-  const last = meaningful[meaningful.length - 1];
-  if (!last) return { dotState: 'idle', chipVariant: 'idle' };
-  if (last.type === 'stop_failure' || last.type === 'tool_call_failed') return { dotState: 'error', chipVariant: 'error' };
-  if (last.type === 'permission_request' && !last.data.decision) return { dotState: 'permission', chipVariant: 'permission' };
-  if (last.type === 'tool_call_pending' && !last.data.decision) return { dotState: 'running', chipVariant: 'running' };
-  if (last.type === 'agent_stop' || last.type === 'session_end') return { dotState: 'idle', chipVariant: 'idle' };
-  return { dotState: 'running', chipVariant: 'running' };
-}
-
 // ─── ActivityStrip ────────────────────────────────────────────────────────────
 
 function ActivityStrip({
@@ -103,8 +88,10 @@ function ActivityStrip({
   sessionId: string;
   onSendAnalyze?: (eventId: string) => void;
 }) {
-  const meaningful = events.filter(e => e.type !== 'session_metrics' && e.type !== 'notification');
-  const last = meaningful[meaningful.length - 1];
+  const last = useMemo(() => {
+    const meaningful = events.filter(e => e.type !== 'session_metrics' && e.type !== 'notification');
+    return meaningful[meaningful.length - 1];
+  }, [events]);
   if (!last) return null;
 
   // Error callout
@@ -155,7 +142,7 @@ function ActivityStrip({
         </span>
         <button
           onClick={() => onOpenInLogs(sessionId)}
-          style={{ fontSize: 10, color: '#0B0E14', background: 'var(--warn)', border: 'none', borderRadius: 4, padding: '2px 8px', cursor: 'pointer', fontFamily: 'var(--font-ui)', fontWeight: 600, flexShrink: 0 }}
+          style={{ fontSize: 10, color: 'var(--text-on-fill)', background: 'var(--warn)', border: 'none', borderRadius: 4, padding: '2px 8px', cursor: 'pointer', fontFamily: 'var(--font-ui)', fontWeight: 600, flexShrink: 0 }}
         >
           Review
         </button>
@@ -261,12 +248,69 @@ function RecentTail({ events, onOpenInLogs, sessionId }: {
   );
 }
 
+// ─── DriftIndicator ────────────────────────────────────────────────────────────
+// Ambient session-goal / rules drift visibility (restores what DriftMonitorPanel
+// used to show); clicking a meter jumps to the most recent drift event of that
+// type in Logs, same as the legacy panel's bar-click behavior.
+
+function DriftMeter({ label, pct, onClick }: { label: string; pct: number; onClick: () => void }) {
+  return (
+    <div
+      onClick={onClick}
+      title={`${label} drift: ${Math.round(pct)}%`}
+      style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer', flex: 1, minWidth: 0 }}
+    >
+      <span style={{ fontFamily: 'var(--font-ui)', fontSize: 9, color: 'var(--text-faint)', textTransform: 'uppercase', letterSpacing: '0.05em', flexShrink: 0 }}>
+        {label}
+      </span>
+      <Meter value={pct} height={3} />
+      <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: pct >= 75 ? 'var(--error)' : pct >= 60 ? 'var(--warn)' : 'var(--text-faint)', flexShrink: 0 }}>
+        {Math.round(pct)}%
+      </span>
+    </div>
+  );
+}
+
+function DriftIndicator({
+  driftState,
+  events,
+  sessionId,
+  onOpenInLogs,
+  onOpenEventInLogs,
+}: {
+  driftState: DriftState;
+  events: TimelineEvent[];
+  sessionId: string;
+  onOpenInLogs: (sessionId: string) => void;
+  onOpenEventInLogs: (sessionId: string, eventId: string) => void;
+}) {
+  const goToDrift = (driftType: 'session_goal' | 'rules') => {
+    for (let i = events.length - 1; i >= 0; i--) {
+      const e = events[i];
+      if ((e.type === 'drift_check' || e.type === 'drift_alert') && e.data.driftType === driftType) {
+        onOpenEventInLogs(sessionId, e.id);
+        return;
+      }
+    }
+    onOpenInLogs(sessionId);
+  };
+
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 12, margin: '6px 10px 0' }}>
+      <DriftMeter label="Session" pct={driftState.sessionGoalDriftPct} onClick={() => goToDrift('session_goal')} />
+      <DriftMeter label="Rules" pct={driftState.rulesDriftPct} onClick={() => goToDrift('rules')} />
+    </div>
+  );
+}
+
 // ─── PreviewPane ─────────────────────────────────────────────────────────────
 
 interface PreviewPaneProps {
   session: SessionInfo;
   events: TimelineEvent[];
   metrics: SessionMetrics | undefined;
+  driftState?: DriftState;
+  driftEnabled?: boolean;
   onClose: (sessionId: string) => void;
   onOpenInLogs: (sessionId: string) => void;
   onOpenEventInLogs: (sessionId: string, eventId: string) => void;
@@ -275,7 +319,7 @@ interface PreviewPaneProps {
 }
 
 export function PreviewPane({
-  session, events, metrics, onClose, onOpenInLogs, onOpenEventInLogs, onSendAnalyze, minHeight = 240,
+  session, events, metrics, driftState, driftEnabled, onClose, onOpenInLogs, onOpenEventInLogs, onSendAnalyze, minHeight = 240,
 }: PreviewPaneProps) {
   const isActive = session.active !== false;
   const { dotState, chipVariant } = useMemo(
@@ -340,6 +384,17 @@ export function PreviewPane({
           ✕
         </button>
       </div>
+
+      {/* Drift indicator */}
+      {driftEnabled && driftState && (
+        <DriftIndicator
+          driftState={driftState}
+          events={events}
+          sessionId={session.sessionId}
+          onOpenInLogs={onOpenInLogs}
+          onOpenEventInLogs={onOpenEventInLogs}
+        />
+      )}
 
       {/* Activity strip */}
       <div style={{ paddingTop: 6, flexShrink: 0 }}>

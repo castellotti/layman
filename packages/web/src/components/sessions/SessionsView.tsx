@@ -3,6 +3,7 @@ import { useSessionStore } from '../../stores/sessionStore.js';
 import { EventStream } from '../layout/EventStream.js';
 import { InvestigationPanel } from '../layout/InvestigationPanel.js';
 import { SearchInput, SegmentedControl } from '../primitives/index.js';
+import { useDragReorder } from '../../hooks/useDragReorder.js';
 import type { ClientMessage } from '../../lib/ws-protocol.js';
 import type { RecordedSession, SessionTimeMetrics } from '../../lib/types.js';
 
@@ -573,8 +574,6 @@ interface SidebarFolderProps {
 
 function SidebarFolder({ folderId, name, items: initialItems, viewingSessionId, liveSessionIds, matchLabel, onSelect }: SidebarFolderProps) {
   const [expanded, setExpanded] = useState(true);
-  const [dragIdx, setDragIdx] = useState<number | null>(null);
-  const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
   // Optimistic local order: null = use initialItems as-is (server order)
   const [localOrderIds, setLocalOrderIds] = useState<string[] | null>(null);
 
@@ -592,21 +591,19 @@ function SidebarFolder({ folderId, name, items: initialItems, viewingSessionId, 
     return localOrderIds.map((id) => byId.get(id)).filter((x): x is NonNullable<typeof x> => Boolean(x));
   }, [initialItems, localOrderIds]);
 
-  const handleDragEnd = useCallback(() => {
-    if (dragIdx !== null && dragOverIdx !== null && dragIdx !== dragOverIdx) {
+  const { dragOverIndex: dragOverIdx, handleDragStart, handleDragOver, handleDragEnd } = useDragReorder(
+    useCallback((fromIndex, toIndex) => {
       const newItems = [...items];
-      const [moved] = newItems.splice(dragIdx, 1);
-      newItems.splice(dragOverIdx, 0, moved);
+      const [moved] = newItems.splice(fromIndex, 1);
+      newItems.splice(toIndex, 0, moved);
       setLocalOrderIds(newItems.map((item) => item.bookmarkId));
       fetch('/api/bookmarks/reorder', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ folderId, ids: newItems.map((item) => item.bookmarkId) }),
       }).catch(() => {});
-    }
-    setDragIdx(null);
-    setDragOverIdx(null);
-  }, [dragIdx, dragOverIdx, items, folderId]);
+    }, [items, folderId])
+  );
 
   return (
     <div>
@@ -643,8 +640,8 @@ function SidebarFolder({ folderId, name, items: initialItems, viewingSessionId, 
           matchLabel={matchLabel(session.sessionId)}
           isDragOver={dragOverIdx === idx}
           onSelect={onSelect}
-          onDragStart={() => setDragIdx(idx)}
-          onDragOver={() => setDragOverIdx(idx)}
+          onDragStart={() => handleDragStart(idx)}
+          onDragOver={() => handleDragOver(idx)}
           onDragEnd={handleDragEnd}
         />
       ))}
