@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { StatusDot, Meter, StateChip } from '../primitives/index.js';
+import { StatusDot, Meter } from '../primitives/index.js';
 import { useNow } from '../../hooks/useNow.js';
 import type { TimelineEvent } from '../../lib/types.js';
 import type { SessionInfo } from '../../lib/ws-protocol.js';
@@ -45,7 +45,7 @@ export const SessionListRow = React.memo(function SessionListRow({
 }: SessionListRowProps) {
   const isActive = session.active !== false;
 
-  const { dotState, chipVariant, lastEvent: lastMeaningful } = useMemo(
+  const { dotState, lastEvent: lastMeaningful } = useMemo(
     () => deriveSessionState(events, isActive),
     [events, isActive]
   );
@@ -53,6 +53,7 @@ export const SessionListRow = React.memo(function SessionListRow({
   const ctxPct = metrics?.contextUsedPct ?? 0;
   const model = metrics?.modelDisplayName;
   const hasMetrics = !!model || ctxPct > 0;
+  const cwdName = session.cwd ? (session.cwd.split('/').filter(Boolean).pop() ?? session.cwd) : undefined;
 
   return (
     <div
@@ -113,7 +114,7 @@ export const SessionListRow = React.memo(function SessionListRow({
         }}>
           {getSessionDisplayName(session)}
         </div>
-        {session.cwd && (
+        {cwdName && (
           <div style={{
             fontFamily: 'var(--font-mono)',
             fontSize: 10,
@@ -123,44 +124,29 @@ export const SessionListRow = React.memo(function SessionListRow({
             whiteSpace: 'nowrap',
             marginTop: 1,
           }}>
-            {session.cwd}
+            {cwdName}
           </div>
         )}
       </div>
 
-      {/* State chip + model/ctx% (falls back to relative time when no metrics are available yet) */}
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2, flexShrink: 0 }}>
-        <StateChip variant={chipVariant} />
+      {/* model/ctx% (falls back to relative time when no metrics are available yet) */}
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 3, flexShrink: 0 }}>
         {hasMetrics ? (
           <>
             <span style={{
               fontFamily: 'var(--font-mono)',
-              fontSize: 9,
-              color: ctxPct >= 75 ? 'var(--error)' : ctxPct >= 60 ? 'var(--warn)' : 'var(--text-faint)',
+              fontSize: 12,
+              fontWeight: 600,
+              color: ctxPct >= 75 ? 'var(--error)' : ctxPct >= 60 ? 'var(--warn)' : 'var(--text-body)',
             }}>
               {model ? `${model} · ` : ''}ctx {Math.round(ctxPct)}%
             </span>
-            <Meter value={ctxPct} showTick height={3} width={40} />
+            <Meter value={ctxPct} showTick height={5} width={64} />
           </>
         ) : (
           lastMeaningful && <TimeSinceLabel timestamp={lastMeaningful.timestamp} />
         )}
       </div>
-
-      {/* IN VIEW pill */}
-      <span style={{
-        flexShrink: 0,
-        fontSize: 9,
-        fontWeight: 600,
-        letterSpacing: '0.06em',
-        padding: '3px 7px',
-        borderRadius: 4,
-        background: isOpen ? 'var(--bg-card)' : 'transparent',
-        color: isOpen ? 'var(--text-body)' : 'var(--text-faint)',
-        border: isOpen ? '1px solid var(--border-strong)' : '1px solid var(--border)',
-      }}>
-        {isOpen ? 'IN VIEW' : '+ VIEW'}
-      </span>
     </div>
   );
 });

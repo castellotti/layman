@@ -2,7 +2,7 @@ import React, { useMemo, useState, useCallback, useEffect, useRef } from 'react'
 import { useSessionStore } from '../../stores/sessionStore.js';
 import { SessionListRow } from './SessionListRow.js';
 import { PreviewPane } from './PreviewPane.js';
-import { SearchInput, SegmentedControl } from '../primitives/index.js';
+import { SearchInput } from '../primitives/index.js';
 import { saveAndBookmarkSession } from '../../lib/bookmarks-api.js';
 import { useDragReorder } from '../../hooks/useDragReorder.js';
 import type { ClientMessage } from '../../lib/ws-protocol.js';
@@ -11,7 +11,7 @@ import './dashboard.css';
 const SESSION_LIST_WIDTH = 410;
 const MIN_PANE_HEIGHT = 240;
 
-type SortMode = 'attention' | 'recent' | 'name' | 'custom';
+type SortMode = 'recent' | 'custom';
 
 interface DashboardViewProps {
   onSend: (msg: ClientMessage) => void;
@@ -35,7 +35,7 @@ export function DashboardView({ onSend }: DashboardViewProps) {
   // Which sessions have their preview pane open
   const [openPanes, setOpenPanes] = useState<Set<string>>(new Set());
   // Sessions we've already auto-opened at least once — prevents reopening a pane
-  // the user explicitly closed when orderedSessions merely reorders (e.g. attention sort).
+  // the user explicitly closed when orderedSessions merely reorders.
   const autoOpenedRef = useRef<Set<string>>(new Set());
   // Sort + filter
   const [sortMode, setSortMode] = useState<SortMode>('recent');
@@ -76,24 +76,11 @@ export function DashboardView({ onSend }: DashboardViewProps) {
         const bO = orderMap.get(b.sessionId) ?? 999;
         return aO - bO;
       }
-      if (sortMode === 'name') {
-        const an = (a.sessionName ?? a.cwd.split('/').pop() ?? a.sessionId).toLowerCase();
-        const bn = (b.sessionName ?? b.cwd.split('/').pop() ?? b.sessionId).toLowerCase();
-        return an.localeCompare(bn);
-      }
-      if (sortMode === 'attention') {
-        // Permission requests and errors first
-        const aEvents = eventsBySession.get(a.sessionId) ?? [];
-        const bEvents = eventsBySession.get(b.sessionId) ?? [];
-        const aAttn = aEvents.some(e => (e.type === 'permission_request' || e.type === 'tool_call_pending') && !e.data.decision) ? 1 : 0;
-        const bAttn = bEvents.some(e => (e.type === 'permission_request' || e.type === 'tool_call_pending') && !e.data.decision) ? 1 : 0;
-        if (aAttn !== bAttn) return bAttn - aAttn;
-      }
       // Default: most recently active
       return b.lastSeen - a.lastSeen;
     });
     return sorted;
-  }, [sessions, dashboardSessionOrder, dashboardDismissedSessions, sortMode, filter, eventsBySession]);
+  }, [sessions, dashboardSessionOrder, dashboardDismissedSessions, sortMode, filter]);
 
   // Auto-open pane for newly detected sessions (only the first time each session is seen —
   // reordering orderedSessions, e.g. via attention sort, must not reopen a pane the user closed).
@@ -193,14 +180,6 @@ export function DashboardView({ onSend }: DashboardViewProps) {
             placeholder="Filter sessions…"
             width="100%"
           />
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
-            <span style={{ fontFamily: 'var(--font-ui)', fontSize: 10, color: 'var(--text-faint)' }}>Sort</span>
-            <SegmentedControl
-              options={(['attention', 'recent', 'name', 'custom'] as SortMode[]).map(mode => ({ value: mode, label: mode }))}
-              value={sortMode}
-              onChange={setSortMode}
-            />
-          </div>
         </div>
 
         {/* Session rows */}
