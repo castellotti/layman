@@ -82,6 +82,7 @@ export function InvestigationPanel({ onSend, eventId: embeddedEventId, onClose }
   const selectedEventId = embeddedEventId ?? storeSelectedEventId;
 
   const { getEvent } = useEventStore();
+  const [activeTab, setActiveTab] = useState<'explain' | 'chat'>('explain');
   const [isAskingQuestion, setIsAskingQuestion] = useState(false);
   const [askModel, setAskModel] = useState('');
   const [availableModels, setAvailableModels] = useState<string[]>([]);
@@ -152,6 +153,15 @@ export function InvestigationPanel({ onSend, eventId: embeddedEventId, onClose }
     }
   }, [config?.analysis.model]);
 
+  // Auto-fetch the model list once on mount so the header selector is populated without
+  // requiring a manual refresh click.
+  useEffect(() => {
+    if (config && availableModels.length === 0 && !fetchingModels) {
+      void fetchModels();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [config]);
+
   // Reset depth tracking when navigating to a different event
   useEffect(() => {
     setLaymansDepth(null);
@@ -177,20 +187,20 @@ export function InvestigationPanel({ onSend, eventId: embeddedEventId, onClose }
   const handleRequestAnalysis = (depth: 'quick' | 'detailed') => {
     setAnalysisDepth(depth);
     markSessionInvestigated(event.sessionId);
-    onSend({ type: 'analysis:request', eventId: selectedEventId, depth });
+    onSend({ type: 'analysis:request', eventId: selectedEventId, depth, ...(askModel ? { model: askModel } : {}) });
   };
 
   const handleRequestLaymans = (depth: 'quick' | 'detailed') => {
     setLaymansDepth(depth);
     markSessionInvestigated(event.sessionId);
-    onSend({ type: 'laymans:request', eventId: selectedEventId, depth });
+    onSend({ type: 'laymans:request', eventId: selectedEventId, depth, ...(askModel ? { model: askModel } : {}) });
   };
 
   const handleRequestBoth = (depth: 'quick' | 'detailed') => {
     setLaymansDepth(depth);
     setAnalysisDepth(depth);
     markSessionInvestigated(event.sessionId);
-    onSend({ type: 'both:request', eventId: selectedEventId, depth });
+    onSend({ type: 'both:request', eventId: selectedEventId, depth, ...(askModel ? { model: askModel } : {}) });
   };
 
   const handleAskWhyFailed = async (depth: 'quick' | 'detailed') => {
@@ -283,24 +293,34 @@ export function InvestigationPanel({ onSend, eventId: embeddedEventId, onClose }
   };
 
   return (
-    <div className="flex flex-col h-full border-l border-[#30363d] bg-[#0d1117]">
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', borderLeft: '1px solid var(--border)', background: 'var(--bg)' }}>
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-[#30363d] bg-[#161b22] shrink-0">
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => { handleRequestLaymans('quick'); handleRequestAnalysis('detailed'); }}
-            disabled={isBusy}
-            title="Quick Layman's Terms + Detailed Analysis"
-            className="text-sm font-bold text-[#e6edf3] hover:text-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-          >Investigation</button>
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        padding: '10px 14px', borderBottom: '1px solid var(--border)',
+        background: 'var(--bg-raised)', flexShrink: 0,
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ fontFamily: 'var(--font-ui)', fontSize: 12, fontWeight: 600, color: 'var(--text)' }}>
+            Investigation
+          </span>
           {event.riskLevel && <RiskBadge level={event.riskLevel} compact />}
+          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-faint)' }}>
+            {event.type.replace(/_/g, ' ')}
+            {event.data.toolName ? ` · ${event.data.toolName}` : ''}
+          </span>
         </div>
-        <div className="flex items-center gap-2">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           {/* Quick combo button */}
           <button
             onClick={() => handleRequestBoth('quick')}
             disabled={isBusy}
-            className="px-2 py-1 text-[10px] font-medium text-[#e6edf3] bg-[#238636] hover:bg-[#2ea043] disabled:opacity-50 disabled:cursor-not-allowed rounded transition-colors"
+            style={{
+              padding: '3px 9px', fontSize: 10, borderRadius: 4, fontFamily: 'var(--font-ui)',
+              fontWeight: 500, cursor: isBusy ? 'not-allowed' : 'pointer', opacity: isBusy ? 0.5 : 1,
+              background: 'rgba(76,195,138,0.15)', color: 'var(--ok)',
+              border: '1px solid rgba(76,195,138,0.3)',
+            }}
           >
             {isBusy ? '⏳' : '⚡'} Quick
           </button>
@@ -308,28 +328,87 @@ export function InvestigationPanel({ onSend, eventId: embeddedEventId, onClose }
           <button
             onClick={() => handleRequestBoth('detailed')}
             disabled={isBusy}
-            className="px-2 py-1 text-[10px] font-medium text-[#e6edf3] bg-[#1f6feb] hover:bg-[#388bfd] disabled:opacity-50 disabled:cursor-not-allowed rounded transition-colors"
+            style={{
+              padding: '3px 9px', fontSize: 10, borderRadius: 4, fontFamily: 'var(--font-ui)',
+              fontWeight: 500, cursor: isBusy ? 'not-allowed' : 'pointer', opacity: isBusy ? 0.5 : 1,
+              background: 'rgba(90,156,248,0.12)', color: 'var(--info)',
+              border: '1px solid rgba(90,156,248,0.25)',
+            }}
           >
             {isBusy ? '⏳' : '🔍'} Detailed
           </button>
+          {/* Compact model selector — overrides the model for Explain (laymans/analysis) and Chat */}
+          <select
+            value={askModel}
+            onChange={(e) => setAskModel(e.target.value)}
+            title="Analysis model — applies to Explain and Chat"
+            style={{
+              maxWidth: 100, padding: '2px 4px', fontSize: 10,
+              fontFamily: 'var(--font-mono)', background: 'var(--bg-card)',
+              border: '1px solid var(--border-strong)', borderRadius: 4,
+              color: 'var(--text-body)', outline: 'none', cursor: 'pointer',
+            }}
+          >
+            {askModel && !availableModels.includes(askModel) && (
+              <option value={askModel}>{askModel}</option>
+            )}
+            {availableModels.map((m) => (
+              <option key={m} value={m}>{m}</option>
+            ))}
+          </select>
           <button
             onClick={() => { if (onClose) onClose(); else setInvestigationOpen(false); }}
-            className="text-[#8b949e] hover:text-[#e6edf3] transition-colors text-lg leading-none"
+            style={{
+              background: 'none', border: 'none', cursor: 'pointer',
+              color: 'var(--text-muted)', fontSize: 18, lineHeight: 1, padding: '0 2px',
+            }}
+            onMouseEnter={e => (e.currentTarget.style.color = 'var(--text)')}
+            onMouseLeave={e => (e.currentTarget.style.color = 'var(--text-muted)')}
           >
             ×
           </button>
         </div>
       </div>
 
+      {/* Tabs */}
+      <div style={{ display: 'flex', alignItems: 'stretch', gap: 2, padding: '6px 14px 0', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
+        {(['explain', 'chat'] as const).map((tab) => {
+          const active = activeTab === tab;
+          return (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              style={{
+                padding: '7px 12px', fontSize: 11.5, fontFamily: 'var(--font-ui)',
+                border: 'none', borderRadius: '5px 5px 0 0', cursor: 'pointer',
+                background: active ? 'var(--bg-selected)' : 'transparent',
+                color: active ? 'var(--text)' : 'var(--text-muted)',
+                borderBottom: active ? '2px solid var(--accent)' : '2px solid transparent',
+                fontWeight: active ? 600 : 400,
+                textTransform: 'capitalize',
+              }}
+              onMouseEnter={(e) => { if (!active) e.currentTarget.style.color = 'var(--text)'; }}
+              onMouseLeave={(e) => { if (!active) e.currentTarget.style.color = 'var(--text-muted)'; }}
+            >
+              {tab}
+            </button>
+          );
+        })}
+      </div>
+
       {/* Content */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
-        {/* Event detail */}
+      <div style={{ flex: 1, overflowY: 'auto', padding: '14px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+        {/* CONTEXT indicator */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-faint)' }}>
+          <span style={{ color: 'var(--text-muted)', fontWeight: 600, letterSpacing: '0.06em' }}>CONTEXT</span>
+          <span>full session · selected item first</span>
+        </div>
+
+        {activeTab === 'explain' && <>
+        {/* INPUT section */}
         <div>
-          <div className="flex items-center gap-2 mb-2">
-            <span className="text-xs font-mono text-[#8b949e] uppercase">{event.type.replace(/_/g, ' ')}</span>
-            {event.data.toolName && (
-              <span className="text-xs font-semibold text-[#e6edf3]">{event.data.toolName}</span>
-            )}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9.5, fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-faint)' }}>Input</span>
           </div>
 
           {event.data.toolInput && (
@@ -345,25 +424,37 @@ export function InvestigationPanel({ onSend, eventId: embeddedEventId, onClose }
           {event.data.prompt && <AgentResponsePrompt event={event} />}
         </div>
 
-        {/* Layman's Terms section */}
+        {/* LAYMAN'S TERMS section */}
         <div>
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-mono text-white uppercase">
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9.5, fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text)' }}>
               Layman&apos;s Terms
             </span>
-            <div className="flex gap-2">
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <button
                 onClick={() => handleRequestLaymans('quick')}
                 disabled={isLaymansLoading}
-                className={`text-[10px] disabled:opacity-50 disabled:cursor-not-allowed transition-colors ${event.laymans && laymansDepth === 'quick' ? 'text-white font-semibold' : 'text-[#3fb950] hover:text-[#56d364]'}`}
+                style={{
+                  fontSize: 10, background: 'none', border: 'none', cursor: isLaymansLoading ? 'not-allowed' : 'pointer',
+                  opacity: isLaymansLoading ? 0.5 : 1,
+                  color: event.laymans && laymansDepth === 'quick' ? 'var(--text)' : 'var(--ok)',
+                  fontWeight: event.laymans && laymansDepth === 'quick' ? 600 : 400,
+                  fontFamily: 'var(--font-ui)',
+                }}
               >
                 {isLaymansLoading && laymansDepth === 'quick' ? '⏳ Explaining...' : 'Quick'}
               </button>
-              <span className="text-[10px] text-[#484f58]">·</span>
+              <span style={{ color: 'var(--text-faint)', fontSize: 10 }}>·</span>
               <button
                 onClick={() => handleRequestLaymans('detailed')}
                 disabled={isLaymansLoading}
-                className={`text-[10px] disabled:opacity-50 disabled:cursor-not-allowed transition-colors ${event.laymans && laymansDepth === 'detailed' ? 'text-white font-semibold' : 'text-[#58a6ff] hover:text-[#79c0ff]'}`}
+                style={{
+                  fontSize: 10, background: 'none', border: 'none', cursor: isLaymansLoading ? 'not-allowed' : 'pointer',
+                  opacity: isLaymansLoading ? 0.5 : 1,
+                  color: event.laymans && laymansDepth === 'detailed' ? 'var(--text)' : 'var(--info)',
+                  fontWeight: event.laymans && laymansDepth === 'detailed' ? 600 : 400,
+                  fontFamily: 'var(--font-ui)',
+                }}
               >
                 {isLaymansLoading && laymansDepth === 'detailed' ? '⏳ Explaining...' : 'Detailed'}
               </button>
@@ -371,55 +462,92 @@ export function InvestigationPanel({ onSend, eventId: embeddedEventId, onClose }
           </div>
 
           {event.laymans ? (
-            <div className="bg-[#161b22] border border-[#30363d] rounded-md p-3 space-y-2">
+            <div style={{ background: 'var(--bg-raised)', border: '1px solid var(--border)', borderRadius: 8, padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
               <MarkdownOrText text={event.laymans.explanation} />
-              <div className="flex items-center gap-2 text-[10px] text-[#484f58] pt-1 border-t border-[#30363d]">
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, paddingTop: 6, borderTop: '1px solid var(--border)', fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-faint)' }}>
                 {event.laymans.latencyMs !== undefined && <span>{event.laymans.latencyMs}ms</span>}
                 {event.laymans.tokens && (
                   <>
                     <span>·</span>
-                    <span className="text-[#3fb950]/70">↑{event.laymans.tokens.input.toLocaleString()}</span>
-                    <span className="text-[#58a6ff]/70">↓{event.laymans.tokens.output.toLocaleString()}</span>
+                    <span style={{ color: 'rgba(76,195,138,0.7)' }}>↑{event.laymans.tokens.input.toLocaleString()}</span>
+                    <span style={{ color: 'rgba(90,156,248,0.7)' }}>↓{event.laymans.tokens.output.toLocaleString()}</span>
                   </>
                 )}
                 {event.laymans.model && <><span>·</span><span>{event.laymans.model}</span></>}
               </div>
             </div>
           ) : isLaymansLoading ? (
-            <div className="bg-[#161b22] border border-[#30363d] rounded-md p-4 text-center">
-              <span className="text-xs text-[#8b949e] animate-pulse">Explaining in plain language...</span>
+            <div style={{ background: 'var(--bg-raised)', border: '1px solid var(--border)', borderRadius: 8, padding: '16px', textAlign: 'center' }}>
+              <span style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'var(--font-ui)' }}>Explaining in plain language…</span>
             </div>
           ) : laymansError ? (
-            <div className="bg-[#161b22] border border-[#f85149]/40 rounded-md p-3 space-y-1">
-              <span className="text-xs font-semibold text-[#f85149]">Explanation failed</span>
-              <p className="text-[11px] text-[#8b949e] font-mono break-all">{laymansError}</p>
+            <div style={{ background: 'var(--bg-raised)', border: '1px solid rgba(240,86,74,0.4)', borderRadius: 8, padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--error)', fontFamily: 'var(--font-ui)' }}>Explanation failed</span>
+              <p style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', wordBreak: 'break-all', margin: 0 }}>{laymansError}</p>
             </div>
           ) : (
-            <div className="bg-[#161b22] border border-[#30363d] border-dashed rounded-md p-4 text-center">
-              <span className="text-xs text-[#484f58]">No explanation yet. Click Quick or Detailed above.</span>
+            <div style={{
+              background: 'var(--bg-raised)', border: '1px dashed var(--border-strong)', borderRadius: 8,
+              padding: '16px', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10,
+            }}>
+              <span style={{ fontSize: 11, color: 'var(--text-faint)', fontFamily: 'var(--font-ui)', fontStyle: 'italic' }}>
+                Explain this request in plain language
+              </span>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button
+                  onClick={() => handleRequestLaymans('quick')}
+                  disabled={isLaymansLoading}
+                  style={{
+                    padding: '4px 10px', borderRadius: 4, fontSize: 10, fontFamily: 'var(--font-ui)',
+                    background: 'var(--bg-card)', border: '1px solid var(--border-strong)',
+                    color: 'var(--text-muted)', cursor: 'pointer',
+                  }}
+                >⚡ Quick</button>
+                <button
+                  onClick={() => handleRequestLaymans('detailed')}
+                  disabled={isLaymansLoading}
+                  style={{
+                    padding: '4px 10px', borderRadius: 4, fontSize: 10, fontFamily: 'var(--font-ui)',
+                    background: 'var(--bg-card)', border: '1px solid var(--border-strong)',
+                    color: 'var(--text-muted)', cursor: 'pointer',
+                  }}
+                >Detailed</button>
+              </div>
             </div>
           )}
         </div>
 
-        {/* Analysis section */}
+        {/* ANALYSIS section */}
         <div>
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-mono text-white uppercase">
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9.5, fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-faint)' }}>
               Analysis
             </span>
-            <div className="flex gap-2">
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <button
                 onClick={() => handleRequestAnalysis('quick')}
                 disabled={isAnalyzing}
-                className={`text-[10px] disabled:opacity-50 disabled:cursor-not-allowed transition-colors ${event.analysis && analysisDepth === 'quick' ? 'text-white font-semibold' : 'text-[#3fb950] hover:text-[#56d364]'}`}
+                style={{
+                  fontSize: 10, background: 'none', border: 'none', cursor: isAnalyzing ? 'not-allowed' : 'pointer',
+                  opacity: isAnalyzing ? 0.5 : 1,
+                  color: event.analysis && analysisDepth === 'quick' ? 'var(--text)' : 'var(--ok)',
+                  fontWeight: event.analysis && analysisDepth === 'quick' ? 600 : 400,
+                  fontFamily: 'var(--font-ui)',
+                }}
               >
                 {isAnalyzing && analysisDepth === 'quick' ? '⏳ Analyzing...' : 'Quick'}
               </button>
-              <span className="text-[10px] text-[#484f58]">·</span>
+              <span style={{ color: 'var(--text-faint)', fontSize: 10 }}>·</span>
               <button
                 onClick={() => handleRequestAnalysis('detailed')}
                 disabled={isAnalyzing}
-                className={`text-[10px] disabled:opacity-50 disabled:cursor-not-allowed transition-colors ${event.analysis && analysisDepth === 'detailed' ? 'text-white font-semibold' : 'text-[#58a6ff] hover:text-[#79c0ff]'}`}
+                style={{
+                  fontSize: 10, background: 'none', border: 'none', cursor: isAnalyzing ? 'not-allowed' : 'pointer',
+                  opacity: isAnalyzing ? 0.5 : 1,
+                  color: event.analysis && analysisDepth === 'detailed' ? 'var(--text)' : 'var(--info)',
+                  fontWeight: event.analysis && analysisDepth === 'detailed' ? 600 : 400,
+                  fontFamily: 'var(--font-ui)',
+                }}
               >
                 {isAnalyzing && analysisDepth === 'detailed' ? '⏳ Analyzing...' : 'Detailed'}
               </button>
@@ -427,24 +555,49 @@ export function InvestigationPanel({ onSend, eventId: embeddedEventId, onClose }
           </div>
 
           {event.analysis ? (
-            <div className="bg-[#161b22] border border-[#30363d] rounded-md p-3">
+            <div style={{ background: 'var(--bg-raised)', border: '1px solid var(--border)', borderRadius: 8, padding: '10px 12px' }}>
               <AnalysisCard analysis={event.analysis} />
             </div>
           ) : isAnalyzing ? (
-            <div className="bg-[#161b22] border border-[#30363d] rounded-md p-4 text-center">
-              <span className="text-xs text-[#8b949e] animate-pulse">Analyzing with LLM...</span>
+            <div style={{ background: 'var(--bg-raised)', border: '1px solid var(--border)', borderRadius: 8, padding: '16px', textAlign: 'center' }}>
+              <span style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'var(--font-ui)' }}>Analyzing with LLM…</span>
             </div>
           ) : state.analysisError ? (
-            <div className="bg-[#161b22] border border-[#f85149]/40 rounded-md p-3 space-y-1">
-              <span className="text-xs font-semibold text-[#f85149]">Analysis failed</span>
-              <p className="text-[11px] text-[#8b949e] font-mono break-all">{state.analysisError}</p>
-              <p className="text-[10px] text-[#484f58] mt-1">
+            <div style={{ background: 'var(--bg-raised)', border: '1px solid rgba(240,86,74,0.4)', borderRadius: 8, padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--error)', fontFamily: 'var(--font-ui)' }}>Analysis failed</span>
+              <p style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', wordBreak: 'break-all', margin: 0 }}>{state.analysisError}</p>
+              <p style={{ fontSize: 10, color: 'var(--text-faint)', fontFamily: 'var(--font-ui)', margin: '4px 0 0 0' }}>
                 Check Settings → Analysis Model. If using a local model, verify the endpoint is reachable.
               </p>
             </div>
           ) : (
-            <div className="bg-[#161b22] border border-[#30363d] border-dashed rounded-md p-4 text-center">
-              <span className="text-xs text-[#484f58]">No analysis yet. Click Quick or Detailed above.</span>
+            <div style={{
+              background: 'var(--bg-raised)', border: '1px dashed var(--border-strong)', borderRadius: 8,
+              padding: '16px', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10,
+            }}>
+              <span style={{ fontSize: 11, color: 'var(--text-faint)', fontFamily: 'var(--font-ui)' }}>
+                Analyze intent, safety, and risk
+              </span>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button
+                  onClick={() => handleRequestAnalysis('quick')}
+                  disabled={isAnalyzing}
+                  style={{
+                    padding: '4px 10px', borderRadius: 4, fontSize: 10, fontFamily: 'var(--font-ui)',
+                    background: 'var(--bg-card)', border: '1px solid var(--border-strong)',
+                    color: 'var(--text-muted)', cursor: 'pointer',
+                  }}
+                >⚡ Quick</button>
+                <button
+                  onClick={() => handleRequestAnalysis('detailed')}
+                  disabled={isAnalyzing}
+                  style={{
+                    padding: '4px 10px', borderRadius: 4, fontSize: 10, fontFamily: 'var(--font-ui)',
+                    background: 'var(--bg-card)', border: '1px solid var(--border-strong)',
+                    color: 'var(--text-muted)', cursor: 'pointer',
+                  }}
+                >Detailed</button>
+              </div>
             </div>
           )}
         </div>
@@ -452,54 +605,59 @@ export function InvestigationPanel({ onSend, eventId: embeddedEventId, onClose }
         {/* Failure Analysis section — only for tool_call_failed events */}
         {event.type === 'tool_call_failed' && (
           <div>
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-mono text-white uppercase">
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9.5, fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--error)' }}>
                 Failure Analysis
               </span>
-              <div className="flex gap-2">
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <button
                   onClick={() => void handleAskWhyFailed('quick')}
                   disabled={isAskingFailure || isAskingQuestion}
-                  className="text-[10px] text-[#3fb950] hover:text-[#56d364] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  style={{ fontSize: 10, background: 'none', border: 'none', cursor: 'pointer', color: 'var(--ok)', fontFamily: 'var(--font-ui)', opacity: (isAskingFailure || isAskingQuestion) ? 0.5 : 1 }}
                 >
                   {isAskingFailure ? '⏳ Analyzing...' : 'Quick'}
                 </button>
-                <span className="text-[10px] text-[#484f58]">·</span>
+                <span style={{ color: 'var(--text-faint)', fontSize: 10 }}>·</span>
                 <button
                   onClick={() => void handleAskWhyFailed('detailed')}
                   disabled={isAskingFailure || isAskingQuestion}
-                  className="text-[10px] text-[#58a6ff] hover:text-[#79c0ff] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  style={{ fontSize: 10, background: 'none', border: 'none', cursor: 'pointer', color: 'var(--info)', fontFamily: 'var(--font-ui)', opacity: (isAskingFailure || isAskingQuestion) ? 0.5 : 1 }}
                 >
                   Detailed
                 </button>
               </div>
             </div>
-            <div className="bg-[#161b22] border border-[#30363d] border-dashed rounded-md p-4 text-center">
-              <span className="text-xs text-[#484f58]">Ask why this tool call failed. Results appear in Questions below.</span>
+            <div style={{
+              background: 'var(--bg-raised)', border: '1px dashed var(--border-strong)', borderRadius: 8,
+              padding: '12px', textAlign: 'center',
+            }}>
+              <span style={{ fontSize: 11, color: 'var(--text-faint)', fontFamily: 'var(--font-ui)' }}>
+                Ask why this tool call failed. Results appear in Chat.
+              </span>
             </div>
           </div>
         )}
+        </>}
 
+        {activeTab === 'chat' && <>
         {/* Investigation Q&A */}
         {(state.questions.length > 0 || pendingAsk) && (
-          <div className="space-y-3">
-            <span className="text-[10px] text-[#484f58] font-mono uppercase tracking-wider block">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9.5, fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-faint)' }}>
               Questions
             </span>
-            {/* In-flight ask — shown immediately after submission, above prior answers */}
             {pendingAsk && (
-              <div className="space-y-1 border border-[#30363d]/60 rounded-md p-2 bg-[#161b22]/50">
-                <div className="flex gap-2 items-start">
-                  <span className="text-[#58a6ff] text-xs shrink-0">Q:</span>
-                  <span className="text-xs text-[#8b949e] flex-1 min-w-0">{pendingAsk.question}</span>
+              <div style={{ border: '1px solid var(--border)', borderRadius: 6, padding: 8, background: 'var(--bg-raised)', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                  <span style={{ color: 'var(--info)', fontSize: 11, flexShrink: 0, fontFamily: 'var(--font-mono)' }}>Q:</span>
+                  <span style={{ fontSize: 11, color: 'var(--text-muted)', flex: 1, minWidth: 0, fontFamily: 'var(--font-ui)' }}>{pendingAsk.question}</span>
                 </div>
-                <div className="flex gap-2 ml-4 items-center">
-                  <span className="text-[#3fb950] text-xs shrink-0">A:</span>
-                  <span className="text-[11px] text-[#484f58] font-mono animate-pulse">
-                    {/* 800ms threshold: first phase covers network round-trip, second covers LLM inference */}
-                    {pendingAsk.phase === 'connecting' ? 'Connecting...' : 'Waiting for response...'}
+                <div style={{ display: 'flex', gap: 8, marginLeft: 16, alignItems: 'center' }}>
+                  <span style={{ color: 'var(--ok)', fontSize: 11, flexShrink: 0, fontFamily: 'var(--font-mono)' }}>A:</span>
+                  <span style={{ fontSize: 10, color: 'var(--text-faint)', fontFamily: 'var(--font-mono)' }}>
+                    {pendingAsk.phase === 'connecting' ? 'Connecting…' : 'Waiting for response…'}
                   </span>
-                  <span className="text-[10px] text-[#484f58] font-mono tabular-nums ml-1">
+                  <span style={{ fontSize: 10, color: 'var(--text-faint)', fontFamily: 'var(--font-mono)', fontVariantNumeric: 'tabular-nums' }}>
                     {(pendingAsk.elapsedMs / 1000).toFixed(1)}s
                   </span>
                 </div>
@@ -507,27 +665,27 @@ export function InvestigationPanel({ onSend, eventId: embeddedEventId, onClose }
             )}
 
             {state.questions.map((qa, i) => (
-              <div key={i} className="space-y-1">
-                <div className="flex gap-2 items-start">
-                  <span className="text-[#58a6ff] text-xs shrink-0">Q:</span>
-                  <span className="text-xs text-[#8b949e] flex-1 min-w-0">{qa.question}</span>
+              <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                  <span style={{ color: 'var(--info)', fontSize: 11, flexShrink: 0, fontFamily: 'var(--font-mono)' }}>Q:</span>
+                  <span style={{ fontSize: 11, color: 'var(--text-muted)', flex: 1, minWidth: 0, fontFamily: 'var(--font-ui)' }}>{qa.question}</span>
                   <CopyButton text={qa.question} />
                 </div>
-                <div className="flex gap-2 ml-4 items-start">
-                  <span className="text-[#3fb950] text-xs shrink-0">A:</span>
-                  <div className="flex-1 min-w-0">
+                <div style={{ display: 'flex', gap: 8, marginLeft: 16, alignItems: 'flex-start' }}>
+                  <span style={{ color: 'var(--ok)', fontSize: 11, flexShrink: 0, fontFamily: 'var(--font-mono)' }}>A:</span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
                     <MarkdownOrText text={qa.answer} />
                   </div>
                   <CopyButton text={qa.answer} />
                 </div>
                 {(qa.tokens || qa.latencyMs) && (
-                  <div className="ml-4 flex items-center gap-2 text-[10px] text-[#484f58]">
+                  <div style={{ marginLeft: 16, display: 'flex', alignItems: 'center', gap: 6, fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-faint)' }}>
                     {qa.latencyMs !== undefined && <span>{qa.latencyMs}ms</span>}
                     {qa.tokens && (
                       <>
                         <span>·</span>
-                        <span className="text-[#3fb950]/70">↑{qa.tokens.input.toLocaleString()}</span>
-                        <span className="text-[#58a6ff]/70">↓{qa.tokens.output.toLocaleString()}</span>
+                        <span style={{ color: 'rgba(76,195,138,0.7)' }}>↑{qa.tokens.input.toLocaleString()}</span>
+                        <span style={{ color: 'rgba(90,156,248,0.7)' }}>↓{qa.tokens.output.toLocaleString()}</span>
                       </>
                     )}
                     {qa.model && <><span>·</span><span>{qa.model}</span></>}
@@ -541,33 +699,34 @@ export function InvestigationPanel({ onSend, eventId: embeddedEventId, onClose }
         {/* Per-event Access Log */}
         {(event.data.fileAccess?.length || event.data.urlAccess?.length) ? (
           <div>
-            <span className="text-[10px] text-[#484f58] font-mono uppercase tracking-wider block mb-2">
+            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9.5, fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-faint)', display: 'block', marginBottom: 8 }}>
               Access Log
             </span>
             {event.data.fileAccess && event.data.fileAccess.length > 0 && (
-              <div className="space-y-0.5 mb-2">
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginBottom: 6 }}>
                 {event.data.fileAccess.map((fa, i) => (
-                  <div key={i} className="flex items-center gap-2 text-xs">
-                    <span className="font-semibold text-[10px] w-12 shrink-0" style={{
-                      color: fa.operation === 'read' ? '#a78bfa' : fa.operation === 'wrote' ? '#3fb950' : fa.operation === 'edited' ? '#d29922' : '#f85149'
+                  <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{
+                      fontWeight: 600, fontSize: 10, width: 48, flexShrink: 0, fontFamily: 'var(--font-mono)',
+                      color: fa.operation === 'read' ? 'var(--agent)' : fa.operation === 'wrote' ? 'var(--ok)' : fa.operation === 'edited' ? 'var(--warn)' : 'var(--error)',
                     }}>
                       {fa.operation}
                     </span>
-                    <span className="font-mono text-[#8b949e] truncate" title={fa.path}>{fa.path}</span>
+                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={fa.path}>{fa.path}</span>
                   </div>
                 ))}
               </div>
             )}
             {event.data.urlAccess && event.data.urlAccess.length > 0 && (
-              <div className="space-y-0.5">
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                 {event.data.urlAccess.map((ua, i) => (
-                  <div key={i} className="flex items-center gap-2 text-xs">
-                    <span className="font-semibold text-[10px] text-[#58a6ff] w-12 shrink-0">URL</span>
-                    <span className="font-mono text-[#8b949e] truncate" title={ua.url}>
-                      {ua.url.length > 60 ? ua.url.slice(0, 60) + '...' : ua.url}
+                  <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ fontWeight: 600, fontSize: 10, color: 'var(--info)', width: 48, flexShrink: 0, fontFamily: 'var(--font-mono)' }}>URL</span>
+                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 0 }} title={ua.url}>
+                      {ua.url.length > 60 ? ua.url.slice(0, 60) + '…' : ua.url}
                     </span>
                     {ua.bytesIn != null && ua.bytesIn > 0 && (
-                      <span className="text-[10px] text-[#484f58] shrink-0">
+                      <span style={{ fontSize: 10, color: 'var(--text-faint)', flexShrink: 0, fontFamily: 'var(--font-mono)' }}>
                         {ua.bytesIn < 1024 ? `${ua.bytesIn} B` : `${(ua.bytesIn / 1024).toFixed(1)} KB`}
                       </span>
                     )}
@@ -578,44 +737,13 @@ export function InvestigationPanel({ onSend, eventId: embeddedEventId, onClose }
           </div>
         ) : null}
 
-        {/* Ask question input */}
+        {/* ASK A QUESTION section */}
         <div>
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-mono text-white uppercase">
-              Ask a question
-            </span>
-            <button
-              onClick={fetchModels}
-              disabled={fetchingModels}
-              className="text-[10px] text-[#58a6ff] hover:text-[#79c0ff] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-            >
-              {fetchingModels ? 'Fetching...' : '↻ Fetch models'}
-            </button>
-          </div>
-          {availableModels.length > 0 ? (
-            <select
-              value={askModel}
-              onChange={(e) => setAskModel(e.target.value)}
-              className="w-full px-3 py-1.5 text-xs bg-[#0d1117] border border-[#30363d] rounded-md text-[#8b949e] focus:outline-none focus:border-[#58a6ff] mb-2"
-            >
-              {!availableModels.includes(askModel) && askModel && (
-                <option value={askModel}>{askModel}</option>
-              )}
-              {availableModels.map((m) => (
-                <option key={m} value={m}>{m}</option>
-              ))}
-            </select>
-          ) : (
-            <input
-              type="text"
-              value={askModel}
-              onChange={(e) => setAskModel(e.target.value)}
-              placeholder="Model (default from settings)"
-              className="w-full px-3 py-1.5 text-xs bg-[#0d1117] border border-[#30363d] rounded-md text-[#8b949e] placeholder-[#484f58] focus:outline-none focus:border-[#58a6ff] mb-2"
-            />
-          )}
+          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9.5, fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-faint)', display: 'block', marginBottom: 8 }}>
+            Ask a question
+          </span>
           {fetchModelError && (
-            <p className="text-[10px] text-[#f85149] mb-2">{fetchModelError}</p>
+            <p style={{ fontSize: 10, color: 'var(--error)', fontFamily: 'var(--font-ui)', marginBottom: 8, margin: '0 0 8px 0' }}>{fetchModelError}</p>
           )}
           <AskQuestion
             eventId={selectedEventId}
@@ -623,6 +751,7 @@ export function InvestigationPanel({ onSend, eventId: embeddedEventId, onClose }
             isLoading={isAskingQuestion}
           />
         </div>
+        </>}
       </div>
     </div>
   );

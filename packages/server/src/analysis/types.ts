@@ -27,6 +27,9 @@ export interface AnalysisRequest {
   cwd: string;
   depth: 'quick' | 'detailed';
   recentEvents?: Array<{ type: string; summary: string }>;
+  /** Rolling summary of session events older than the recentEvents window */
+  sessionSummary?: string;
+  modelOverride?: string;
 }
 
 export interface AnalysisConfig {
@@ -52,6 +55,8 @@ export interface InvestigationContext {
   failureReason?: string;
   previousQuestions?: Array<{ question: string; answer: string }>;
   recentSessionEvents?: Array<{ type: string; summary: string }>;
+  /** Rolling summary of session events older than the recentSessionEvents window */
+  sessionSummary?: string;
   cwd: string;
   modelOverride?: string;
 }

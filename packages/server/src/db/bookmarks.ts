@@ -29,6 +29,7 @@ interface RawSession {
   session_model_display_name: string | null;
   session_name: string | null;
   source: string | null;
+  event_count?: number;
 }
 
 interface RawEvent {
@@ -87,6 +88,7 @@ function toSession(row: RawSession): RecordedSession {
     sessionModelDisplayName: row.session_model_display_name ?? undefined,
     sessionName: row.session_name ?? undefined,
     source: row.source ?? undefined,
+    eventCount: row.event_count ?? undefined,
   };
 }
 
@@ -210,7 +212,13 @@ export class BookmarkStore {
   // ── Recorded Sessions ──────────────────────────────────────────────────────
 
   listRecordedSessions(): RecordedSession[] {
-    const rows = this.db.prepare('SELECT * FROM recorded_sessions ORDER BY last_seen DESC').all() as RawSession[];
+    const rows = this.db.prepare(`
+      SELECT rs.*, COUNT(re.id) as event_count
+      FROM recorded_sessions rs
+      LEFT JOIN recorded_events re ON re.session_id = rs.session_id
+      GROUP BY rs.session_id
+      ORDER BY rs.last_seen DESC
+    `).all() as RawSession[];
     return rows.map(toSession);
   }
 

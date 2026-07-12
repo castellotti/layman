@@ -1,20 +1,50 @@
+@import '@fontsource/ibm-plex-sans/400.css';
+@import '@fontsource/ibm-plex-sans/500.css';
+@import '@fontsource/ibm-plex-sans/600.css';
+@import '@fontsource/ibm-plex-sans/700.css';
+@import '@fontsource/ibm-plex-mono/400.css';
+@import '@fontsource/ibm-plex-mono/500.css';
+@import '@fontsource/ibm-plex-mono/600.css';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 :root {
-  --bg-primary: #0d1117;
-  --bg-card: #161b22;
-  --bg-pending: #1c1a0f;
-  --border-default: #30363d;
-  --border-pending: #d29922;
-  --text-primary: #e6edf3;
-  --text-secondary: #8b949e;
-  --text-muted: #484f58;
-  --accent-green: #3fb950;
-  --accent-yellow: #d29922;
-  --accent-red: #f85149;
-  --accent-blue: #58a6ff;
+  /* === Layman Design Tokens === */
+
+  /* Backgrounds */
+  --bg:          #0B0E14;
+  --bg-raised:   #0D1119;
+  --bg-card:     #11151D;
+  --bg-selected: #141B29;
+  --bg-pill:     #161C28;
+
+  /* Text drawn on top of a filled semantic-color badge (--ok/--warn/--error fills) */
+  --text-on-fill: #0B0E14;
+
+  /* Borders */
+  --border:        #1D2330;
+  --border-subtle: #171C26;
+  --border-strong: #2A3242;
+
+  /* Text */
+  --text:       #E6EAF2;
+  --text-body:  #B8C0CF;
+  --text-muted: #8A94A6;
+  --text-faint: #5A6478;
+
+  /* Semantic colors */
+  --accent: #5A9CF8;   /* underline / left-edge indicator ONLY — never a fill behind text */
+  --ok:     #4CC38A;   /* running/live, LOW risk */
+  --warn:   #E5A83B;   /* MEDIUM risk, permission pending */
+  --error:  #F0564A;   /* HIGH risk, errors, stopped */
+  --info:   #5A9CF8;   /* user prompts, drop indicators */
+  --agent:  #8B7CF6;   /* agent responses, subagent lanes */
+
+  /* Typography */
+  --font-ui:   'IBM Plex Sans', system-ui, sans-serif;
+  --font-mono: 'IBM Plex Mono', 'SF Mono', 'Fira Code', monospace;
 }
 
 * {
@@ -28,9 +58,10 @@ html, body, #root {
 }
 
 body {
-  background-color: var(--bg-primary);
-  color: var(--text-primary);
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+  background-color: var(--bg);
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 13px;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -42,22 +73,32 @@ body {
 }
 
 ::-webkit-scrollbar-track {
-  background: var(--bg-primary);
+  background: var(--bg);
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #30363d;
+  background: var(--border-strong);
   border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #484f58;
+  background: var(--text-faint);
 }
 
 /* Selection */
 ::selection {
-  background: rgba(88, 166, 255, 0.3);
-  color: var(--text-primary);
+  background: rgba(90, 156, 248, 0.3);
+  color: var(--text);
+}
+
+/* ===== Reduced motion ===== */
+@media (prefers-reduced-motion: reduce) {
+  /* Disable glow transitions while keeping layout animations */
+  *, *::before, *::after {
+    box-shadow: none !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
 }
 
 /* ===== Print / Export to PDF ===== */
@@ -85,10 +126,6 @@ body {
 
   /* --- Historical view print mode (body.layman-print-historical) --- */
 
-  /* Sessions is now an inline view (no fixed overlay). Hide chrome:
-     header, status bar / toolbar ([data-print-hide]), search bar
-     (wrapped in [data-print-hide] in BookmarksPanel), sidebar, and
-     any remaining fixed modals (delete confirm, settings drawer, etc.) */
   body.layman-print-historical header,
   body.layman-print-historical [data-print-hide],
   body.layman-print-historical [data-bookmarks-sidebar],
@@ -98,8 +135,6 @@ body {
 
   /* --- Shared print styles --- */
 
-  /* Release ALL height/overflow constraints up the ancestor chain so
-     content can flow across multiple printed pages. */
   #root,
   #root > div,
   #root > div > div,
@@ -113,18 +148,15 @@ body {
     max-height: none !important;
   }
 
-  /* The app root uses h-screen which pins to viewport — override */
   #root > div {
     min-height: 0 !important;
   }
 
-  /* Flex containers must not shrink content to fit one page */
   .flex-1,
   .flex-col {
     flex: none !important;
   }
 
-  /* EventCard: light theme */
   [data-event-card] {
     break-inside: avoid;
     page-break-inside: avoid;
@@ -137,12 +169,10 @@ body {
     color: #1f2328 !important;
   }
 
-  /* Preserve colored left borders for event type identification */
   [data-event-card] > div[class*="border-l"] {
     border-left-width: 3px !important;
   }
 
-  /* Code blocks: light background */
   pre, code, .font-mono {
     background: #f6f8fa !important;
     color: #1f2328 !important;
@@ -151,37 +181,6 @@ body {
     word-break: break-word !important;
   }
 
-  /* Diff block colors for print */
-  .bg-\[\#0f2a1a\] { background: #dafbe1 !important; }
-  .bg-\[\#2a0f0f\] { background: #ffebe9 !important; }
-  .text-\[\#aff5b4\] { color: #1a7f37 !important; }
-  .text-\[\#ffc0c0\] { color: #cf222e !important; }
-  .text-\[\#3fb950\] { color: #1a7f37 !important; }
-  .text-\[\#f85149\] { color: #cf222e !important; }
-
-  /* Risk/accent colors for print legibility */
-  .text-\[\#d29922\] { color: #9a6700 !important; }
-  .text-\[\#58a6ff\] { color: #0969da !important; }
-  .text-\[\#a371f7\] { color: #8250df !important; }
-
-  /* Muted text: darker for print */
-  .text-\[\#8b949e\] { color: #57606a !important; }
-  .text-\[\#484f58\] { color: #6e7781 !important; }
-  .text-\[\#e6edf3\] { color: #1f2328 !important; }
-
-  /* Background overrides */
-  .bg-\[\#0d1117\],
-  .bg-\[\#161b22\],
-  .bg-\[\#1c2128\],
-  .bg-\[\#1c1a0f\],
-  .bg-\[\#21262d\] {
-    background: white !important;
-  }
-
-  /* Border overrides */
-  .border-\[\#30363d\] { border-color: #d0d7de !important; }
-
-  /* Page setup */
   @page {
     margin: 1cm;
     size: A4;

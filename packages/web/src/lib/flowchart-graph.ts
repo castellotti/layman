@@ -120,6 +120,10 @@ export function buildFlowchartGraph(
       id: event.id,
       type: 'flowchartNode',
       position: { x: 0, y: 0 },
+      // Explicit dimensions so the MiniMap can render node rects immediately, without
+      // waiting on React Flow's async ResizeObserver measurement of the DOM node.
+      width: NODE_WIDTH,
+      height: NODE_HEIGHT,
       data: {
         event,
         isSelected: event.id === selectedEventId,
