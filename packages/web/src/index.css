@@ -31,7 +31,7 @@
   --text-faint: #5A6478;
 
   /* Semantic colors */
-  --accent: #35C9B4;   /* active nav tab + brand accents ONLY */
+  --accent: #5A9CF8;   /* underline / left-edge indicator ONLY — never a fill behind text */
   --ok:     #4CC38A;   /* running/live, LOW risk */
   --warn:   #E5A83B;   /* MEDIUM risk, permission pending */
   --error:  #F0564A;   /* HIGH risk, errors, stopped */

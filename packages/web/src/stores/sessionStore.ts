@@ -11,6 +11,20 @@ function computeHighlightedEventIds(highlights: Highlight[]): Set<string> {
   return ids;
 }
 
+export type ViewMode = 'dashboard' | 'stream' | 'flowchart' | 'sessions' | 'prompts';
+
+// dashboardOpen/flowchartOpen/bookmarksOpen/promptsOpen are derived from viewMode and kept in
+// sync on every state change that touches it, so existing boolean-reading consumers keep working
+// off a single source of truth instead of four independently-settable flags.
+function viewModeFlags(mode: ViewMode) {
+  return {
+    dashboardOpen: mode === 'dashboard',
+    flowchartOpen: mode === 'flowchart',
+    bookmarksOpen: mode === 'sessions',
+    promptsOpen: mode === 'prompts',
+  };
+}
+
 interface InvestigationState {
   [eventId: string]: {
     questions: Array<{ question: string; answer: string; tokens?: { input: number; output: number }; latencyMs?: number; model?: string }>;
@@ -60,6 +74,9 @@ export interface SessionState {
   setupModalDismissed: boolean;
   setupWizardDismissed: boolean;
 
+  // View mode — single source of truth for top-level nav (see viewModeFlags)
+  viewMode: ViewMode;
+
   // Bookmarks
   bookmarksOpen: boolean;
   bookmarkFolders: BookmarkFolder[];
@@ -77,7 +94,6 @@ export interface SessionState {
 
   // Flowchart view
   flowchartOpen: boolean;
-  flowchartViewMode: 'graph' | 'timeline';
 
   // Dashboard view
   dashboardOpen: boolean;
@@ -133,7 +149,7 @@ export interface SessionState {
   markSessionActive: (sessionId: string) => void;
   markSessionInactive: (sessionId: string) => void;
   clearEvents: () => void;
-  setBookmarksOpen: (open: boolean) => void;
+  setViewMode: (mode: ViewMode) => void;
   setBookmarks: (folders: BookmarkFolder[], bookmarks: Bookmark[]) => void;
   upsertFolder: (folder: BookmarkFolder) => void;
   removeFolder: (folderId: string) => void;
@@ -143,16 +159,12 @@ export interface SessionState {
   setHistoricalEvents: (events: TimelineEvent[]) => void;
   setSessionTimeMetrics: (metrics: SessionTimeMetrics | null) => void;
   setBookmarksScrollToEventId: (eventId: string | null) => void;
-  setPromptsOpen: (open: boolean) => void;
   setHighlights: (folders: HighlightFolder[], highlights: Highlight[]) => void;
   upsertHighlightFolder: (folder: HighlightFolder) => void;
   removeHighlightFolder: (folderId: string) => void;
   upsertHighlight: (highlight: Highlight) => void;
   removeHighlight: (highlightId: string) => void;
   navigateFromPromptsToSession: (sessionId: string, promptEventId: string) => void;
-  setFlowchartOpen: (open: boolean) => void;
-  setFlowchartViewMode: (mode: 'graph' | 'timeline') => void;
-  setDashboardOpen: (open: boolean) => void;
   setDashboardFocusedSession: (id: string | null) => void;
   setDashboardSessionOrder: (order: string[]) => void;
   dismissDashboardSession: (sessionId: string) => void;
@@ -199,6 +211,8 @@ export const useSessionStore = create<SessionState>((set) => ({
   setupModalDismissed: false,
   setupWizardDismissed: false,
 
+  viewMode: 'dashboard',
+
   bookmarksOpen: false,
   bookmarkFolders: [],
   bookmarks: [],
@@ -213,7 +227,6 @@ export const useSessionStore = create<SessionState>((set) => ({
   highlightedEventIds: new Set<string>(),
 
   flowchartOpen: false,
-  flowchartViewMode: 'graph' as const,
 
   dashboardOpen: true,
   dashboardFocusedSession: null,
@@ -457,7 +470,11 @@ export const useSessionStore = create<SessionState>((set) => ({
 
   clearEvents: () => set({ events: [], selectedEventId: null }),
 
-  setBookmarksOpen: (open) => set({ bookmarksOpen: open, ...(open ? { promptsOpen: false } : {}) }),
+  setViewMode: (mode) => set({
+    viewMode: mode,
+    ...viewModeFlags(mode),
+    ...(mode !== 'dashboard' ? { returnToDashboard: false } : {}),
+  }),
 
   setBookmarks: (bookmarkFolders, bookmarks) => set({ bookmarkFolders, bookmarks }),
 
@@ -495,8 +512,6 @@ export const useSessionStore = create<SessionState>((set) => ({
     })),
 
   setBookmarksScrollToEventId: (eventId) => set({ bookmarksScrollToEventId: eventId }),
-
-  setPromptsOpen: (open) => set({ promptsOpen: open, ...(open ? { bookmarksOpen: false } : {}) }),
 
   setHighlights: (highlightFolders, highlights) =>
     set({ highlightFolders, highlights, highlightedEventIds: computeHighlightedEventIds(highlights) }),
@@ -544,8 +559,8 @@ export const useSessionStore = create<SessionState>((set) => ({
     }),
 
   navigateFromPromptsToSession: (sessionId, promptEventId) => set({
-    promptsOpen: false,
-    bookmarksOpen: true,
+    viewMode: 'sessions',
+    ...viewModeFlags('sessions'),
     viewingSessionId: sessionId,
     bookmarksScrollToEventId: promptEventId,
   }),
@@ -561,14 +576,6 @@ export const useSessionStore = create<SessionState>((set) => ({
 
   setSessionTimeMetrics: (sessionTimeMetrics) => set({ sessionTimeMetrics }),
 
-  setFlowchartOpen: (open) => set({ flowchartOpen: open }),
-  setFlowchartViewMode: (mode) => set({ flowchartViewMode: mode }),
-
-  setDashboardOpen: (open) => set((state) => ({
-    dashboardOpen: open,
-    // When opening dashboard, close flowchart; when closing, clear return flag
-    ...(open ? { flowchartOpen: false } : { returnToDashboard: false }),
-  })),
   setDashboardFocusedSession: (id) => set({ dashboardFocusedSession: id }),
   setDashboardSessionOrder: (order) => set({ dashboardSessionOrder: order }),
   dismissDashboardSession: (sessionId) =>
@@ -578,27 +585,26 @@ export const useSessionStore = create<SessionState>((set) => ({
       return { dashboardDismissedSessions: newDismissed };
     }),
   navigateFromDashboard: (sessionId, eventId) => set({
-    dashboardOpen: false,
+    viewMode: 'flowchart',
+    ...viewModeFlags('flowchart'),
     returnToDashboard: true,
-    flowchartOpen: true,
-    flowchartViewMode: 'graph',
     activeSessionId: sessionId,
     selectedEventId: eventId,
     investigationOpen: true,
   }),
   navigateFromDashboardToLogs: (sessionId, eventId) => set({
-    dashboardOpen: false,
+    viewMode: 'stream',
+    ...viewModeFlags('stream'),
     returnToDashboard: true,
-    flowchartOpen: false,
     activeSessionId: sessionId,
     selectedEventId: eventId,
     investigationOpen: true,
     scrollToEventId: eventId,
   }),
   navigateToLogsForSession: (sessionId) => set((state) => ({
-    dashboardOpen: false,
+    viewMode: 'stream',
+    ...viewModeFlags('stream'),
     returnToDashboard: state.dashboardOpen,
-    flowchartOpen: false,
     activeSessionId: sessionId,
     selectedEventId: null,
     investigationOpen: false,
@@ -606,9 +612,9 @@ export const useSessionStore = create<SessionState>((set) => ({
   })),
   clearScrollToEvent: () => set({ scrollToEventId: null }),
   returnFromDashboardDrilldown: () => set({
-    dashboardOpen: true,
+    viewMode: 'dashboard',
+    ...viewModeFlags('dashboard'),
     returnToDashboard: false,
-    flowchartOpen: false,
     investigationOpen: false,
     selectedEventId: null,
   }),

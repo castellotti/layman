@@ -2,7 +2,6 @@ import React, { useRef, useState, useCallback, useEffect, Suspense, lazy } from 
 import { Header } from './components/layout/Header.js';
 import { EventStream } from './components/layout/EventStream.js';
 const FlowchartView = lazy(() => import('./components/flowchart/FlowchartView.js').then(m => ({ default: m.FlowchartView })));
-const TimelineView = lazy(() => import('./components/flowchart/TimelineView.js').then(m => ({ default: m.TimelineView })));
 const DashboardView = lazy(() => import('./components/dashboard/DashboardView.js').then(m => ({ default: m.DashboardView })));
 import { InvestigationPanel } from './components/layout/InvestigationPanel.js';
 import { SetupBanner } from './components/layout/SetupBanner.js';
@@ -197,8 +196,6 @@ export function App() {
   const { send } = useWebSocket();
   const investigationOpen = useSessionStore((s) => s.investigationOpen);
   const flowchartOpen = useSessionStore((s) => s.flowchartOpen);
-  const flowchartViewMode = useSessionStore((s) => s.flowchartViewMode);
-  const setFlowchartViewMode = useSessionStore((s) => s.setFlowchartViewMode);
   const dashboardOpen = useSessionStore((s) => s.dashboardOpen);
   const bookmarksOpen = useSessionStore((s) => s.bookmarksOpen);
   const promptsOpen = useSessionStore((s) => s.promptsOpen);
@@ -298,9 +295,9 @@ export function App() {
               display: 'flex', alignItems: 'center', gap: 4,
               padding: '3px 10px', borderRadius: 4,
               fontFamily: 'var(--font-mono)', fontSize: 10,
-              color: 'var(--accent)',
-              background: 'rgba(53,201,180,0.08)',
-              border: '1px solid rgba(53,201,180,0.2)',
+              color: 'var(--text)',
+              background: 'var(--bg-selected)',
+              border: '1px solid var(--border-strong)',
               cursor: 'pointer',
             }}
           >
@@ -318,37 +315,9 @@ export function App() {
           style={{ width: investigationOpen ? `${leftWidthPct}%` : '100%' }}
         >
           {flowchartOpen ? (
-            <div className="flex flex-col h-full">
-              {/* Graph / Timeline tab bar */}
-              <div data-print-hide className="flex items-center gap-1 px-3 py-1.5 bg-[#161b22] border-b border-[#30363d] shrink-0">
-                <button
-                  onClick={() => setFlowchartViewMode('graph')}
-                  className={`text-[10px] font-mono px-2.5 py-1 rounded transition-colors ${
-                    flowchartViewMode === 'graph'
-                      ? 'bg-[#58a6ff]/15 text-[#58a6ff]'
-                      : 'text-[#8b949e] hover:text-[#e6edf3] hover:bg-[#21262d]'
-                  }`}
-                >
-                  Graph
-                </button>
-                <button
-                  onClick={() => setFlowchartViewMode('timeline')}
-                  className={`text-[10px] font-mono px-2.5 py-1 rounded transition-colors ${
-                    flowchartViewMode === 'timeline'
-                      ? 'bg-[#58a6ff]/15 text-[#58a6ff]'
-                      : 'text-[#8b949e] hover:text-[#e6edf3] hover:bg-[#21262d]'
-                  }`}
-                >
-                  Timeline
-                </button>
-                <span className="text-[9px] text-[#484f58] ml-2">G / T</span>
-              </div>
-              <div className="flex-1 min-h-0">
-                <Suspense fallback={<div className="flex items-center justify-center h-full text-[#484f58] text-xs">Loading...</div>}>
-                  {flowchartViewMode === 'graph' ? <FlowchartView /> : <TimelineView />}
-                </Suspense>
-              </div>
-            </div>
+            <Suspense fallback={<div className="flex items-center justify-center h-full text-[#484f58] text-xs">Loading...</div>}>
+              <FlowchartView />
+            </Suspense>
           ) : (
             <EventStream onSend={send} />
           )}

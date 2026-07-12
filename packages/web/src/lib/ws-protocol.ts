@@ -58,9 +58,9 @@ export type ServerMessage =
 
 export type ClientMessage =
   | { type: 'approval:decide'; approvalId: string; decision: ApprovalDecision }
-  | { type: 'analysis:request'; eventId: string; depth: 'quick' | 'detailed' }
-  | { type: 'laymans:request'; eventId: string; depth: 'quick' | 'detailed' }
-  | { type: 'both:request'; eventId: string; depth: 'quick' | 'detailed' }
+  | { type: 'analysis:request'; eventId: string; depth: 'quick' | 'detailed'; model?: string }
+  | { type: 'laymans:request'; eventId: string; depth: 'quick' | 'detailed'; model?: string }
+  | { type: 'both:request'; eventId: string; depth: 'quick' | 'detailed'; model?: string }
   | { type: 'analysis:ask'; eventId: string; question: string }
   | { type: 'config:update'; config: Partial<LaymanConfig> }
   | { type: 'setup:install'; clients?: string[] }

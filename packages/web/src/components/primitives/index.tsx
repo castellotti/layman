@@ -219,6 +219,45 @@ export function FilterChip({ label, active, onClick, riskOutline = false }: Filt
   );
 }
 
+// ─── SegmentedControl ──────────────────────────────────────────────────────
+// Exactly-one-selected control (sort mode, All/Bookmarked, etc). Re-clicking the
+// active segment is a no-op by construction — callers just re-set the same value.
+
+interface SegmentedControlProps<T extends string> {
+  options: { value: T; label: string }[];
+  value: T;
+  onChange: (value: T) => void;
+}
+
+export function SegmentedControl<T extends string>({ options, value, onChange }: SegmentedControlProps<T>) {
+  return (
+    <div style={{ display: 'inline-flex', background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 6, padding: 2, gap: 2 }}>
+      {options.map((opt) => {
+        const active = opt.value === value;
+        return (
+          <button
+            key={opt.value}
+            onClick={() => onChange(opt.value)}
+            style={{
+              fontFamily: 'var(--font-ui)',
+              fontSize: 10.5,
+              padding: '3px 9px',
+              borderRadius: 4,
+              border: 'none',
+              background: active ? 'var(--bg-selected)' : 'transparent',
+              color: active ? 'var(--text)' : 'var(--text-muted)',
+              fontWeight: active ? 600 : 400,
+              cursor: 'pointer',
+            }}
+          >
+            {opt.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 // ─── SearchInput ─────────────────────────────────────────────────────────────
 // Supports +include −exclude tokens visually.
 
@@ -227,19 +266,29 @@ interface SearchInputProps {
   onChange: (value: string) => void;
   placeholder?: string;
   width?: number | string;
+  minWidth?: number | string;
+  maxWidth?: number | string;
+  flex?: number | string;
+  padding?: string;
+  fontSize?: number;
+  inputRef?: React.Ref<HTMLInputElement>;
 }
 
-export function SearchInput({ value, onChange, placeholder = 'Search  +include  −exclude', width = '100%' }: SearchInputProps) {
+export function SearchInput({ value, onChange, placeholder = 'Search  +include  −exclude', width = '100%', minWidth, maxWidth, flex, padding = '5px 10px', fontSize = 11, inputRef }: SearchInputProps) {
   return (
     <input
+      ref={inputRef}
       type="text"
       value={value}
       onChange={(e) => onChange(e.target.value)}
       placeholder={placeholder}
       style={{
         width,
-        padding: '5px 10px',
-        fontSize: 11,
+        minWidth,
+        maxWidth,
+        flex,
+        padding,
+        fontSize,
         fontFamily: 'var(--font-mono)',
         background: 'var(--bg-card)',
         border: '1px solid var(--border-strong)',
@@ -247,6 +296,7 @@ export function SearchInput({ value, onChange, placeholder = 'Search  +include  
         color: 'var(--text)',
         outline: 'none',
         transition: 'border-color 0.15s',
+        boxSizing: 'border-box',
       }}
       onFocus={(e) => (e.currentTarget.style.borderColor = 'var(--text-faint)')}
       onBlur={(e) => (e.currentTarget.style.borderColor = 'var(--border-strong)')}

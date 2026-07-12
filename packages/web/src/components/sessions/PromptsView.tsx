@@ -16,7 +16,7 @@ interface HighlightEventPair {
 function EventBlock({ event, kind }: { event: TimelineEvent; kind: 'prompt' | 'response' }) {
   const { response } = getEffectiveAgentContent(event);
   const text = kind === 'prompt' ? (response.trim() || event.data.prompt || '') : response.trim();
-  const accent = kind === 'prompt' ? 'var(--info)' : 'rgba(76,195,138,0.4)';
+  const accent = kind === 'prompt' ? 'var(--info)' : 'var(--agent)';
 
   return (
     <div style={{ borderRadius: 8, border: '1px solid var(--border)', overflow: 'hidden' }}>
@@ -57,11 +57,13 @@ interface SidebarHighlightRowProps {
   highlight: Highlight;
   isSelected: boolean;
   indent?: boolean;
+  sessionLabel?: string;
   onSelect: (h: Highlight) => void;
 }
 
-function SidebarHighlightRow({ highlight, isSelected, indent = false, onSelect }: SidebarHighlightRowProps) {
+function SidebarHighlightRow({ highlight, isSelected, indent = false, sessionLabel, onSelect }: SidebarHighlightRowProps) {
   const [hovered, setHovered] = useState(false);
+  const date = new Date(highlight.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
   return (
     <button
       onClick={() => onSelect(highlight)}
@@ -84,7 +86,7 @@ function SidebarHighlightRow({ highlight, isSelected, indent = false, onSelect }
           {highlight.name}
         </div>
         <div style={{ fontSize: 10, color: 'var(--text-faint)', fontFamily: 'var(--font-mono)' }}>
-          {new Date(highlight.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+          {sessionLabel ? `${sessionLabel} · ${date}` : date}
         </div>
       </div>
     </button>
@@ -97,10 +99,11 @@ interface SidebarFolderProps {
   folder: HighlightFolder;
   highlights: Highlight[];
   selectedHighlightId: string | null;
+  sessionLabelById: Map<string, string>;
   onSelect: (h: Highlight) => void;
 }
 
-function SidebarFolder({ folder, highlights, selectedHighlightId, onSelect }: SidebarFolderProps) {
+function SidebarFolder({ folder, highlights, selectedHighlightId, sessionLabelById, onSelect }: SidebarFolderProps) {
   const [expanded, setExpanded] = useState(true);
   return (
     <div>
@@ -130,6 +133,7 @@ function SidebarFolder({ folder, highlights, selectedHighlightId, onSelect }: Si
           highlight={h}
           isSelected={selectedHighlightId === h.id}
           indent
+          sessionLabel={sessionLabelById.get(h.sessionId)}
           onSelect={onSelect}
         />
       ))}
@@ -140,12 +144,20 @@ function SidebarFolder({ folder, highlights, selectedHighlightId, onSelect }: Si
 // ─── PromptsView ──────────────────────────────────────────────────────────────
 
 export function PromptsView() {
-  const { highlightFolders, highlights, navigateFromPromptsToSession } = useSessionStore();
+  const { highlightFolders, highlights, sessions, navigateFromPromptsToSession, setSelectedEvent, setInvestigationOpen } = useSessionStore();
 
   const [selectedHighlightId, setSelectedHighlightId] = useState<string | null>(null);
   const [eventPair, setEventPair] = useState<HighlightEventPair>({ promptEvent: null, responseEvent: null });
   const [loadingPair, setLoadingPair] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+
+  const sessionLabelById = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const s of sessions) {
+      map.set(s.sessionId, s.sessionName || (s.cwd ? (s.cwd.split('/').filter(Boolean).pop() ?? s.cwd) : s.sessionId.slice(0, 8)));
+    }
+    return map;
+  }, [sessions]);
 
   const selectedHighlight = highlights.find((h) => h.id === selectedHighlightId) ?? null;
 
@@ -161,7 +173,7 @@ export function PromptsView() {
   );
 
   const unfiledHighlights = useMemo(
-    () => highlights.filter((h) => h.folderId === null).sort((a, b) => a.createdAt - b.createdAt),
+    () => highlights.filter((h) => h.folderId === null).sort((a, b) => b.createdAt - a.createdAt),
     [highlights]
   );
 
@@ -193,6 +205,23 @@ export function PromptsView() {
     if (!selectedHighlight) return;
     navigateFromPromptsToSession(selectedHighlight.sessionId, selectedHighlight.promptEventId);
   }, [selectedHighlight, navigateFromPromptsToSession]);
+
+  const handleInvestigate = useCallback(() => {
+    if (!selectedHighlight) return;
+    const investigateEventId = eventPair.responseEvent?.id ?? eventPair.promptEvent?.id ?? selectedHighlight.responseEventId;
+    setSelectedEvent(investigateEventId);
+    setInvestigationOpen(true);
+    navigateFromPromptsToSession(selectedHighlight.sessionId, selectedHighlight.promptEventId);
+  }, [selectedHighlight, eventPair, navigateFromPromptsToSession, setSelectedEvent, setInvestigationOpen]);
+
+  const handleMoveToFolder = useCallback((folderId: string | null) => {
+    if (!selectedHighlight) return;
+    void fetch(`/api/highlights/${selectedHighlight.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ folderId }),
+    }).catch(() => {});
+  }, [selectedHighlight]);
 
   const sectionLabel: React.CSSProperties = {
     fontSize: 9.5, fontWeight: 600, letterSpacing: '0.08em',
@@ -239,6 +268,7 @@ export function PromptsView() {
                     key={h.id}
                     highlight={h}
                     isSelected={selectedHighlightId === h.id}
+                    sessionLabel={sessionLabelById.get(h.sessionId)}
                     onSelect={handleSelectHighlight}
                   />
                 ))}
@@ -246,6 +276,9 @@ export function PromptsView() {
             )
           ) : (
             <>
+              {sortedFolders.some((f) => folderHighlights(f.id).length > 0) && (
+                <div style={sectionLabel}>Folders</div>
+              )}
               {sortedFolders.map((folder) => {
                 const items = folderHighlights(folder.id);
                 if (items.length === 0) return null;
@@ -255,20 +288,22 @@ export function PromptsView() {
                     folder={folder}
                     highlights={items}
                     selectedHighlightId={selectedHighlightId}
+                    sessionLabelById={sessionLabelById}
                     onSelect={handleSelectHighlight}
                   />
                 );
               })}
               {unfiledHighlights.length > 0 && (
                 <>
-                  {sortedFolders.some((f) => folderHighlights(f.id).length > 0) && (
-                    <div style={sectionLabel}>Unfiled</div>
-                  )}
+                  <div style={{ ...sectionLabel, display: 'flex', alignItems: 'center', gap: 6 }}>
+                    History <span style={{ fontSize: 9, color: 'var(--text-faint)', textTransform: 'none', letterSpacing: 0, fontWeight: 400 }}>newest first</span>
+                  </div>
                   {unfiledHighlights.map((h) => (
                     <SidebarHighlightRow
                       key={h.id}
                       highlight={h}
                       isSelected={selectedHighlightId === h.id}
+                      sessionLabel={sessionLabelById.get(h.sessionId)}
                       onSelect={handleSelectHighlight}
                     />
                   ))}
@@ -329,19 +364,19 @@ export function PromptsView() {
                   flexShrink: 0, marginLeft: 12,
                 }}
                 onMouseEnter={(e) => {
-                  e.currentTarget.style.color = 'var(--accent)';
-                  e.currentTarget.style.borderColor = 'rgba(53,201,180,0.3)';
+                  e.currentTarget.style.color = 'var(--text)';
+                  e.currentTarget.style.borderColor = 'var(--border-strong)';
                 }}
                 onMouseLeave={(e) => {
                   e.currentTarget.style.color = 'var(--text-muted)';
                   e.currentTarget.style.borderColor = 'var(--border)';
                 }}
-                title="View full session with this highlight"
+                title="Open the full session with this highlight"
               >
                 <svg width="11" height="11" viewBox="0 0 16 16" fill="currentColor">
                   <path d="M1 8a7 7 0 1 1 14 0A7 7 0 0 1 1 8Zm7.75-4.25a.75.75 0 0 0-1.5 0V8c0 .414.336.75.75.75h3.25a.75.75 0 0 0 0-1.5h-2.5V3.75Z"/>
                 </svg>
-                View in Session
+                Open session
               </button>
             </div>
 
@@ -371,6 +406,38 @@ export function PromptsView() {
                       </p>
                     </div>
                   )}
+
+                  {/* Actions */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                    <span
+                      role="button"
+                      onClick={handleInvestigate}
+                      style={{ fontSize: 10, color: 'var(--text-faint)', cursor: 'pointer' }}
+                      onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--text)')}
+                      onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--text-faint)')}
+                    >
+                      ⌕ investigate
+                    </span>
+                    {sortedFolders.length > 0 && (
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 10, color: 'var(--text-faint)', cursor: 'pointer' }}>
+                        ▸ move to folder
+                        <select
+                          value={selectedHighlight.folderId ?? ''}
+                          onChange={(e) => handleMoveToFolder(e.target.value || null)}
+                          style={{
+                            fontSize: 10, fontFamily: 'var(--font-mono)', background: 'var(--bg-card)',
+                            border: '1px solid var(--border)', borderRadius: 4, color: 'var(--text-muted)',
+                            padding: '2px 4px', outline: 'none', cursor: 'pointer',
+                          }}
+                        >
+                          <option value="">Unfiled</option>
+                          {sortedFolders.map((f) => (
+                            <option key={f.id} value={f.id}>{f.name}</option>
+                          ))}
+                        </select>
+                      </label>
+                    )}
+                  </div>
                 </>
               )}
             </div>

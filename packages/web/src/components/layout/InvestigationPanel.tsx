@@ -82,6 +82,7 @@ export function InvestigationPanel({ onSend, eventId: embeddedEventId, onClose }
   const selectedEventId = embeddedEventId ?? storeSelectedEventId;
 
   const { getEvent } = useEventStore();
+  const [activeTab, setActiveTab] = useState<'explain' | 'chat'>('explain');
   const [isAskingQuestion, setIsAskingQuestion] = useState(false);
   const [askModel, setAskModel] = useState('');
   const [availableModels, setAvailableModels] = useState<string[]>([]);
@@ -152,6 +153,15 @@ export function InvestigationPanel({ onSend, eventId: embeddedEventId, onClose }
     }
   }, [config?.analysis.model]);
 
+  // Auto-fetch the model list once on mount so the header selector is populated without
+  // requiring a manual refresh click.
+  useEffect(() => {
+    if (config && availableModels.length === 0 && !fetchingModels) {
+      void fetchModels();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [config]);
+
   // Reset depth tracking when navigating to a different event
   useEffect(() => {
     setLaymansDepth(null);
@@ -177,20 +187,20 @@ export function InvestigationPanel({ onSend, eventId: embeddedEventId, onClose }
   const handleRequestAnalysis = (depth: 'quick' | 'detailed') => {
     setAnalysisDepth(depth);
     markSessionInvestigated(event.sessionId);
-    onSend({ type: 'analysis:request', eventId: selectedEventId, depth });
+    onSend({ type: 'analysis:request', eventId: selectedEventId, depth, ...(askModel ? { model: askModel } : {}) });
   };
 
   const handleRequestLaymans = (depth: 'quick' | 'detailed') => {
     setLaymansDepth(depth);
     markSessionInvestigated(event.sessionId);
-    onSend({ type: 'laymans:request', eventId: selectedEventId, depth });
+    onSend({ type: 'laymans:request', eventId: selectedEventId, depth, ...(askModel ? { model: askModel } : {}) });
   };
 
   const handleRequestBoth = (depth: 'quick' | 'detailed') => {
     setLaymansDepth(depth);
     setAnalysisDepth(depth);
     markSessionInvestigated(event.sessionId);
-    onSend({ type: 'both:request', eventId: selectedEventId, depth });
+    onSend({ type: 'both:request', eventId: selectedEventId, depth, ...(askModel ? { model: askModel } : {}) });
   };
 
   const handleAskWhyFailed = async (depth: 'quick' | 'detailed') => {
@@ -327,6 +337,25 @@ export function InvestigationPanel({ onSend, eventId: embeddedEventId, onClose }
           >
             {isBusy ? '⏳' : '🔍'} Detailed
           </button>
+          {/* Compact model selector — overrides the model for Explain (laymans/analysis) and Chat */}
+          <select
+            value={askModel}
+            onChange={(e) => setAskModel(e.target.value)}
+            title="Analysis model — applies to Explain and Chat"
+            style={{
+              maxWidth: 100, padding: '2px 4px', fontSize: 10,
+              fontFamily: 'var(--font-mono)', background: 'var(--bg-card)',
+              border: '1px solid var(--border-strong)', borderRadius: 4,
+              color: 'var(--text-body)', outline: 'none', cursor: 'pointer',
+            }}
+          >
+            {askModel && !availableModels.includes(askModel) && (
+              <option value={askModel}>{askModel}</option>
+            )}
+            {availableModels.map((m) => (
+              <option key={m} value={m}>{m}</option>
+            ))}
+          </select>
           <button
             onClick={() => { if (onClose) onClose(); else setInvestigationOpen(false); }}
             style={{
@@ -341,8 +370,41 @@ export function InvestigationPanel({ onSend, eventId: embeddedEventId, onClose }
         </div>
       </div>
 
+      {/* Tabs */}
+      <div style={{ display: 'flex', alignItems: 'stretch', gap: 2, padding: '6px 14px 0', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
+        {(['explain', 'chat'] as const).map((tab) => {
+          const active = activeTab === tab;
+          return (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              style={{
+                padding: '7px 12px', fontSize: 11.5, fontFamily: 'var(--font-ui)',
+                border: 'none', borderRadius: '5px 5px 0 0', cursor: 'pointer',
+                background: active ? 'var(--bg-selected)' : 'transparent',
+                color: active ? 'var(--text)' : 'var(--text-muted)',
+                borderBottom: active ? '2px solid var(--accent)' : '2px solid transparent',
+                fontWeight: active ? 600 : 400,
+                textTransform: 'capitalize',
+              }}
+              onMouseEnter={(e) => { if (!active) e.currentTarget.style.color = 'var(--text)'; }}
+              onMouseLeave={(e) => { if (!active) e.currentTarget.style.color = 'var(--text-muted)'; }}
+            >
+              {tab}
+            </button>
+          );
+        })}
+      </div>
+
       {/* Content */}
       <div style={{ flex: 1, overflowY: 'auto', padding: '14px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+        {/* CONTEXT indicator */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-faint)' }}>
+          <span style={{ color: 'var(--text-muted)', fontWeight: 600, letterSpacing: '0.06em' }}>CONTEXT</span>
+          <span>full session · selected item first</span>
+        </div>
+
+        {activeTab === 'explain' && <>
         {/* INPUT section */}
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
@@ -365,7 +427,7 @@ export function InvestigationPanel({ onSend, eventId: embeddedEventId, onClose }
         {/* LAYMAN'S TERMS section */}
         <div>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9.5, fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--accent)' }}>
+            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9.5, fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text)' }}>
               Layman&apos;s Terms
             </span>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -570,12 +632,14 @@ export function InvestigationPanel({ onSend, eventId: embeddedEventId, onClose }
               padding: '12px', textAlign: 'center',
             }}>
               <span style={{ fontSize: 11, color: 'var(--text-faint)', fontFamily: 'var(--font-ui)' }}>
-                Ask why this tool call failed. Results appear in Questions below.
+                Ask why this tool call failed. Results appear in Chat.
               </span>
             </div>
           </div>
         )}
+        </>}
 
+        {activeTab === 'chat' && <>
         {/* Investigation Q&A */}
         {(state.questions.length > 0 || pendingAsk) && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -675,52 +739,9 @@ export function InvestigationPanel({ onSend, eventId: embeddedEventId, onClose }
 
         {/* ASK A QUESTION section */}
         <div>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9.5, fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-faint)' }}>
-              Ask a question
-            </span>
-            <button
-              onClick={fetchModels}
-              disabled={fetchingModels}
-              style={{
-                fontSize: 10, background: 'none', border: 'none', cursor: fetchingModels ? 'not-allowed' : 'pointer',
-                color: 'var(--info)', fontFamily: 'var(--font-ui)', opacity: fetchingModels ? 0.5 : 1,
-              }}
-            >
-              {fetchingModels ? 'Fetching…' : '↻ Fetch models'}
-            </button>
-          </div>
-          {availableModels.length > 0 ? (
-            <select
-              value={askModel}
-              onChange={(e) => setAskModel(e.target.value)}
-              style={{
-                width: '100%', padding: '5px 8px', marginBottom: 8, fontSize: 11,
-                background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 5,
-                color: 'var(--text-muted)', fontFamily: 'var(--font-ui)', outline: 'none',
-              }}
-            >
-              {!availableModels.includes(askModel) && askModel && (
-                <option value={askModel}>{askModel}</option>
-              )}
-              {availableModels.map((m) => (
-                <option key={m} value={m}>{m}</option>
-              ))}
-            </select>
-          ) : (
-            <input
-              type="text"
-              value={askModel}
-              onChange={(e) => setAskModel(e.target.value)}
-              placeholder="Model (default from settings)"
-              style={{
-                width: '100%', padding: '5px 8px', marginBottom: 8, fontSize: 11,
-                background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 5,
-                color: 'var(--text-muted)', fontFamily: 'var(--font-ui)', outline: 'none',
-                boxSizing: 'border-box',
-              }}
-            />
-          )}
+          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9.5, fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-faint)', display: 'block', marginBottom: 8 }}>
+            Ask a question
+          </span>
           {fetchModelError && (
             <p style={{ fontSize: 10, color: 'var(--error)', fontFamily: 'var(--font-ui)', marginBottom: 8, margin: '0 0 8px 0' }}>{fetchModelError}</p>
           )}
@@ -730,6 +751,7 @@ export function InvestigationPanel({ onSend, eventId: embeddedEventId, onClose }
             isLoading={isAskingQuestion}
           />
         </div>
+        </>}
       </div>
     </div>
   );

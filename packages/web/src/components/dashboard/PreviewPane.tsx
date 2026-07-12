@@ -275,7 +275,7 @@ interface PreviewPaneProps {
 }
 
 export function PreviewPane({
-  session, events, metrics, onClose, onOpenInLogs, onOpenEventInLogs, onSendAnalyze, minHeight = 200,
+  session, events, metrics, onClose, onOpenInLogs, onOpenEventInLogs, onSendAnalyze, minHeight = 240,
 }: PreviewPaneProps) {
   const isActive = session.active !== false;
   const { dotState, chipVariant } = useMemo(
@@ -291,7 +291,9 @@ export function PreviewPane({
       style={{
         display: 'flex',
         flexDirection: 'column',
+        flex: '1 1 0',
         minHeight,
+        overflow: 'hidden',
         borderBottom: '1px solid var(--border)',
         background: 'var(--bg)',
       }}
@@ -350,7 +352,7 @@ export function PreviewPane({
       </div>
 
       {/* Recent tail */}
-      <div style={{ flex: 1, overflow: 'hidden', paddingBottom: 4 }}>
+      <div style={{ flex: 1, overflowY: 'auto', paddingBottom: 4 }}>
         <RecentTail
           events={events}
           onOpenInLogs={onOpenEventInLogs}

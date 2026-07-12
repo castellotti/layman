@@ -1,5 +1,5 @@
-import React, { useCallback, useEffect } from 'react';
-import { useSessionStore } from '../../stores/sessionStore.js';
+import React, { useEffect } from 'react';
+import { useSessionStore, type ViewMode } from '../../stores/sessionStore.js';
 
 function getSessionName(cwd: string, sessionId: string, agentType?: string, showAgentPrefix?: boolean, sessionName?: string): string {
   const name = sessionName || (cwd ? (cwd.split('/').filter(Boolean).pop() ?? cwd) : sessionId.slice(0, 8));
@@ -10,47 +10,61 @@ function getSessionName(cwd: string, sessionId: string, agentType?: string, show
   return name;
 }
 
-type ViewMode = 'dashboard' | 'stream' | 'flowchart' | 'sessions' | 'prompts';
-
-const VIEW_FLAGS: Record<ViewMode, { dashboard: boolean; flowchart: boolean; bookmarks: boolean; prompts: boolean }> = {
-  dashboard: { dashboard: true,  flowchart: false, bookmarks: false, prompts: false },
-  stream:    { dashboard: false, flowchart: false, bookmarks: false, prompts: false },
-  flowchart: { dashboard: false, flowchart: true,  bookmarks: false, prompts: false },
-  sessions:  { dashboard: false, flowchart: false, bookmarks: true,  prompts: false },
-  prompts:   { dashboard: false, flowchart: false, bookmarks: false, prompts: true  },
-};
-
-const NAV_TABS: { key: ViewMode; label: string; shortcut: string }[] = [
+const NAV_TABS_LIVE: { key: ViewMode; label: string; shortcut: string }[] = [
   { key: 'dashboard', label: 'Dashboard', shortcut: 'D' },
   { key: 'stream',    label: 'Logs',      shortcut: 'S' },
   { key: 'flowchart', label: 'Flow',      shortcut: 'F' },
-  { key: 'sessions',  label: 'Sessions',  shortcut: '' },
-  { key: 'prompts',   label: 'Prompts',   shortcut: '' },
 ];
+
+const NAV_TABS_ARCHIVE: { key: ViewMode; label: string; shortcut: string }[] = [
+  { key: 'sessions', label: 'Sessions', shortcut: '' },
+  { key: 'prompts',  label: 'Prompts',  shortcut: '' },
+];
+
+function NavTabButton({ label, shortcut, isActive, onClick }: { label: string; shortcut: string; isActive: boolean; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      title={shortcut ? `${label} (${shortcut})` : label}
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        padding: '0 14px',
+        fontSize: 12,
+        fontWeight: isActive ? 600 : 400,
+        fontFamily: 'var(--font-ui)',
+        color: isActive ? 'var(--text)' : 'var(--text-muted)',
+        background: isActive ? 'var(--bg-selected)' : 'transparent',
+        border: 'none',
+        borderBottom: isActive ? '2px solid var(--accent)' : '2px solid transparent',
+        cursor: 'pointer',
+        transition: 'color 0.15s, background 0.15s',
+        userSelect: 'none',
+        whiteSpace: 'nowrap',
+      }}
+      onMouseEnter={(e) => {
+        if (!isActive) (e.currentTarget as HTMLButtonElement).style.color = 'var(--text)';
+      }}
+      onMouseLeave={(e) => {
+        if (!isActive) (e.currentTarget as HTMLButtonElement).style.color = 'var(--text-muted)';
+      }}
+    >
+      {label}
+    </button>
+  );
+}
 
 export function Header() {
   const {
-    wsStatus, setSettingsOpen, setBookmarksOpen, bookmarksOpen,
+    wsStatus, setSettingsOpen, bookmarksOpen,
     sessions, activeSessionId, setActiveSession,
-    flowchartOpen, setFlowchartOpen,
-    flowchartViewMode, setFlowchartViewMode,
-    dashboardOpen, setDashboardOpen,
+    viewMode, setViewMode,
     dashboardFocusedSession, setDashboardFocusedSession,
     returnToDashboard, returnFromDashboardDrilldown,
     sessionMetrics,
     investigatedSessions,
-    promptsOpen, setPromptsOpen,
+    promptsOpen,
   } = useSessionStore();
-
-  const currentView: ViewMode = dashboardOpen ? 'dashboard' : bookmarksOpen ? 'sessions' : promptsOpen ? 'prompts' : flowchartOpen ? 'flowchart' : 'stream';
-
-  const setView = useCallback((view: ViewMode) => {
-    const flags = VIEW_FLAGS[view];
-    setDashboardOpen(flags.dashboard);
-    setFlowchartOpen(flags.flowchart);
-    setBookmarksOpen(flags.bookmarks);
-    setPromptsOpen(flags.prompts);
-  }, [setDashboardOpen, setFlowchartOpen, setBookmarksOpen, setPromptsOpen]);
 
   // Global keyboard shortcuts
   useEffect(() => {
@@ -58,29 +72,23 @@ export function Header() {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLSelectElement) return;
       if (e.ctrlKey || e.metaKey || e.altKey) return;
       switch (e.key.toLowerCase()) {
-        case 'd': setView('dashboard'); break;
-        case 's': setView('stream'); break;
-        case 'f': setView('flowchart'); break;
-        case 'g':
-          if (flowchartOpen && !dashboardOpen) setFlowchartViewMode('graph');
-          break;
-        case 't':
-          if (flowchartOpen && !dashboardOpen) setFlowchartViewMode('timeline');
-          break;
+        case 'd': setViewMode('dashboard'); break;
+        case 's': setViewMode('stream'); break;
+        case 'f': setViewMode('flowchart'); break;
         case 'escape':
           if (returnToDashboard) {
             returnFromDashboardDrilldown();
           } else if (bookmarksOpen || promptsOpen) {
-            setView('stream');
+            setViewMode('stream');
           }
           break;
       }
     };
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
-  }, [setView, flowchartOpen, dashboardOpen, bookmarksOpen, promptsOpen, returnToDashboard, setFlowchartViewMode, returnFromDashboardDrilldown]);
+  }, [setViewMode, bookmarksOpen, promptsOpen, returnToDashboard, returnFromDashboardDrilldown]);
 
-  const isDashboard = currentView === 'dashboard';
+  const isDashboard = viewMode === 'dashboard';
 
   return (
     <header
@@ -106,7 +114,7 @@ export function Header() {
           fontWeight: 700,
           fontSize: 13,
           letterSpacing: '0.08em',
-          color: 'var(--accent)',
+          color: 'var(--text)',
           textDecoration: 'none',
           marginRight: 20,
           flexShrink: 0,
@@ -117,42 +125,21 @@ export function Header() {
         LAYMAN
       </a>
 
-      {/* Nav tabs */}
+      {/* Nav tabs — live monitoring */}
       <nav style={{ display: 'flex', alignItems: 'stretch', height: '100%', gap: 0 }}>
-        {NAV_TABS.map(({ key, label, shortcut }) => {
-          const isActive = currentView === key;
-          return (
-            <button
-              key={key}
-              onClick={() => setView(key)}
-              title={shortcut ? `${label} (${shortcut})` : label}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                padding: '0 14px',
-                fontSize: 12,
-                fontWeight: isActive ? 600 : 400,
-                fontFamily: 'var(--font-ui)',
-                color: isActive ? '#0B0E14' : 'var(--text-muted)',
-                background: isActive ? 'var(--accent)' : 'transparent',
-                border: 'none',
-                borderBottom: isActive ? '2px solid var(--accent)' : '2px solid transparent',
-                cursor: 'pointer',
-                transition: 'color 0.15s, background 0.15s',
-                userSelect: 'none',
-                whiteSpace: 'nowrap',
-              }}
-              onMouseEnter={(e) => {
-                if (!isActive) (e.currentTarget as HTMLButtonElement).style.color = 'var(--text)';
-              }}
-              onMouseLeave={(e) => {
-                if (!isActive) (e.currentTarget as HTMLButtonElement).style.color = 'var(--text-muted)';
-              }}
-            >
-              {label}
-            </button>
-          );
-        })}
+        {NAV_TABS_LIVE.map(({ key, label, shortcut }) => (
+          <NavTabButton key={key} label={label} shortcut={shortcut} isActive={viewMode === key} onClick={() => setViewMode(key)} />
+        ))}
+      </nav>
+
+      {/* Live / archive divider */}
+      <div style={{ alignSelf: 'center', width: 1, height: 16, background: 'var(--border-strong)', margin: '0 12px' }} />
+
+      {/* Nav tabs — archived lookup */}
+      <nav style={{ display: 'flex', alignItems: 'stretch', height: '100%', gap: 0 }}>
+        {NAV_TABS_ARCHIVE.map(({ key, label, shortcut }) => (
+          <NavTabButton key={key} label={label} shortcut={shortcut} isActive={viewMode === key} onClick={() => setViewMode(key)} />
+        ))}
       </nav>
 
       {/* Spacer */}

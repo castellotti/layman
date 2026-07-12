@@ -79,6 +79,8 @@ export function SessionListRow({
   }, [events]);
 
   const ctxPct = metrics?.contextUsedPct ?? 0;
+  const model = metrics?.modelDisplayName;
+  const hasMetrics = !!model || ctxPct > 0;
 
   return (
     <div
@@ -154,34 +156,42 @@ export function SessionListRow({
         )}
       </div>
 
-      {/* Ctx meter */}
-      {ctxPct > 0 && (
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2, flexShrink: 0 }}>
-          <Meter value={ctxPct} showTick height={3} width={40} />
-          <span style={{
-            fontFamily: 'var(--font-mono)',
-            fontSize: 9,
-            color: ctxPct >= 75 ? 'var(--error)' : ctxPct >= 60 ? 'var(--warn)' : 'var(--text-faint)',
-            lineHeight: 1,
-          }}>
-            {Math.round(ctxPct)}%
-          </span>
-        </div>
-      )}
-
-      {/* State chip + age */}
+      {/* State chip + model/ctx% (falls back to relative time when no metrics are available yet) */}
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2, flexShrink: 0 }}>
         <StateChip variant={chipVariant} />
-        {lastMeaningful && (
-          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--text-faint)' }}>
-            {getTimeSince(lastMeaningful.timestamp)}
-          </span>
+        {hasMetrics ? (
+          <>
+            <span style={{
+              fontFamily: 'var(--font-mono)',
+              fontSize: 9,
+              color: ctxPct >= 75 ? 'var(--error)' : ctxPct >= 60 ? 'var(--warn)' : 'var(--text-faint)',
+            }}>
+              {model ? `${model} · ` : ''}ctx {Math.round(ctxPct)}%
+            </span>
+            <Meter value={ctxPct} showTick height={3} width={40} />
+          </>
+        ) : (
+          lastMeaningful && (
+            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--text-faint)' }}>
+              {getTimeSince(lastMeaningful.timestamp)}
+            </span>
+          )
         )}
       </div>
 
-      {/* Open-pane indicator */}
-      <span style={{ fontSize: 12, color: isOpen ? 'var(--accent)' : 'var(--border-strong)', flexShrink: 0 }}>
-        {isOpen ? '◉' : '○'}
+      {/* IN VIEW pill */}
+      <span style={{
+        flexShrink: 0,
+        fontSize: 9,
+        fontWeight: 600,
+        letterSpacing: '0.06em',
+        padding: '3px 7px',
+        borderRadius: 4,
+        background: isOpen ? 'var(--bg-card)' : 'transparent',
+        color: isOpen ? 'var(--text-body)' : 'var(--text-faint)',
+        border: isOpen ? '1px solid var(--border-strong)' : '1px solid var(--border)',
+      }}>
+        {isOpen ? 'IN VIEW' : '+ VIEW'}
       </span>
     </div>
   );

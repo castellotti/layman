@@ -526,6 +526,7 @@ export function EventStream({ onSend, archived = false, archivedDate }: EventStr
   const [toolsOnly, setToolsOnly] = useState(false);
   const [agentsOnly, setAgentsOnly] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [matchIndex, setMatchIndex] = useState(0);
   const [selectedIndex, setSelectedIndex] = useState(-1);
   const [followLatest, setFollowLatest] = useState(true);
   const [expandedExchangeIds, setExpandedExchangeIds] = useState<Set<string>>(new Set());
@@ -584,12 +585,18 @@ export function EventStream({ onSend, archived = false, archivedDate }: EventStr
     });
   }, [showExchangeTree, exchanges.length]);
 
-  // Auto-scroll to bottom when new events arrive and following (live only)
+  // Auto-scroll to bottom when new events actually arrive and following (live only).
+  // Keyed on sessionEvents.length growth (not the filtered `events.length`) so that clearing
+  // a search query — which changes the filtered count without any new event arriving — never
+  // moves the scroll position.
+  const prevSessionEventCountRef = useRef(sessionEvents.length);
   useEffect(() => {
-    if (!archived && autoScroll && followLatest && scrollRef.current) {
+    const grew = sessionEvents.length > prevSessionEventCountRef.current;
+    prevSessionEventCountRef.current = sessionEvents.length;
+    if (!archived && autoScroll && followLatest && grew && scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [events.length, sessionEvents.length, autoScroll, followLatest, archived]);
+  }, [sessionEvents.length, autoScroll, followLatest, archived]);
 
   // Update selected index to latest when following (live only)
   useEffect(() => {
@@ -687,6 +694,40 @@ export function EventStream({ onSend, archived = false, archivedDate }: EventStr
     window.addEventListener('afterprint', cleanup);
     window.print();
   }, []);
+
+  // Search match navigation — resets to the first match on every new query
+  useEffect(() => {
+    setMatchIndex(0);
+  }, [searchQuery]);
+
+  const hasSearchQuery = searchQuery.trim().length > 0;
+  const matchCount = hasSearchQuery ? events.length : 0;
+
+  const scrollToMatch = useCallback((idx: number) => {
+    const container = scrollRef.current;
+    if (!container) return;
+    const cards = container.querySelectorAll('[data-event-card]');
+    const card = cards[idx] as HTMLElement | undefined;
+    if (!card) return;
+    const containerRect = container.getBoundingClientRect();
+    const cardRect = card.getBoundingClientRect();
+    const delta = (cardRect.top - containerRect.top) - (container.clientHeight / 2 - cardRect.height / 2);
+    container.scrollTo({ top: container.scrollTop + delta, behavior: 'smooth' });
+  }, []);
+
+  const goToPrevMatch = useCallback(() => {
+    if (matchCount === 0) return;
+    const idx = (matchIndex - 1 + matchCount) % matchCount;
+    setMatchIndex(idx);
+    scrollToMatch(idx);
+  }, [matchIndex, matchCount, scrollToMatch]);
+
+  const goToNextMatch = useCallback(() => {
+    if (matchCount === 0) return;
+    const idx = (matchIndex + 1) % matchCount;
+    setMatchIndex(idx);
+    scrollToMatch(idx);
+  }, [matchIndex, matchCount, scrollToMatch]);
 
   const goToIndex = useCallback((idx: number) => {
     const clamped = Math.max(0, Math.min(idx, events.length - 1));
@@ -804,6 +845,13 @@ export function EventStream({ onSend, archived = false, archivedDate }: EventStr
         onToggleRequestsOnly={() => setRequestsOnly(v => !v)}
         onToggleAgentsOnly={() => setAgentsOnly(v => !v)}
         onToggleRiskyOnly={() => setRiskyOnly(v => !v)}
+        onClearFilters={() => {
+          setPromptsOnly(false);
+          setToolsOnly(false);
+          setRequestsOnly(false);
+          setAgentsOnly(false);
+          setRiskyOnly(false);
+        }}
         followLatest={followLatest}
         archived={archived}
         archivedDate={archivedDate}
@@ -815,6 +863,47 @@ export function EventStream({ onSend, archived = false, archivedDate }: EventStr
       />
 
       {!archived && <SessionMetricsBar />}
+
+      {/* Search match navigation bar */}
+      {hasSearchQuery && (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 10,
+          padding: '6px 14px', background: 'var(--bg-selected)',
+          borderBottom: '1px solid var(--border)', flexShrink: 0,
+        }}>
+          <span style={{ fontSize: 11, color: 'var(--text)', fontFamily: 'var(--font-mono)' }}>
+            {matchCount === 0 ? 'No matches' : `${matchCount} match${matchCount === 1 ? '' : 'es'} · ${matchIndex + 1}/${matchCount}`}
+          </span>
+          <button
+            onClick={goToPrevMatch}
+            disabled={matchCount === 0}
+            style={{
+              padding: '1px 8px', fontSize: 11, fontFamily: 'inherit',
+              background: 'transparent', color: 'var(--text-muted)',
+              border: '1px solid var(--border-strong)', borderRadius: 4,
+              cursor: matchCount === 0 ? 'default' : 'pointer',
+            }}
+          >
+            ‹
+          </button>
+          <button
+            onClick={goToNextMatch}
+            disabled={matchCount === 0}
+            style={{
+              padding: '1px 8px', fontSize: 11, fontFamily: 'inherit',
+              background: 'transparent', color: 'var(--text-muted)',
+              border: '1px solid var(--border-strong)', borderRadius: 4,
+              cursor: matchCount === 0 ? 'default' : 'pointer',
+            }}
+          >
+            ›
+          </button>
+          <div style={{ flex: 1 }} />
+          <span style={{ fontSize: 10, color: 'var(--text-faint)', fontFamily: 'var(--font-mono)' }}>
+            clearing the search keeps this position
+          </span>
+        </div>
+      )}
 
       {/* Content area: minimap + scroll area */}
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden', position: 'relative' }}>

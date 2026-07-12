@@ -2,15 +2,12 @@ import React, { useState, useCallback, useEffect, useRef, useMemo, Suspense, laz
 import { useSessionStore } from '../../stores/sessionStore.js';
 import { EventStream } from '../layout/EventStream.js';
 import { InvestigationPanel } from '../layout/InvestigationPanel.js';
-import { SearchInput, FilterChip } from '../primitives/index.js';
+import { SearchInput, SegmentedControl } from '../primitives/index.js';
 import type { ClientMessage } from '../../lib/ws-protocol.js';
 import type { RecordedSession, SessionTimeMetrics } from '../../lib/types.js';
 
 const FlowchartView = lazy(() =>
   import('../flowchart/FlowchartView.js').then((m) => ({ default: m.FlowchartView }))
-);
-const TimelineView = lazy(() =>
-  import('../flowchart/TimelineView.js').then((m) => ({ default: m.TimelineView }))
 );
 
 interface SessionsViewProps {
@@ -51,7 +48,6 @@ export function SessionsView({ onSend }: SessionsViewProps) {
   const [leftWidthPct, setLeftWidthPct] = useState(60);
   const [focusedIndex, setFocusedIndex] = useState<number>(-1);
   const [showFlowchart, setShowFlowchart] = useState(false);
-  const [flowchartViewMode, setFlowchartViewMode] = useState<'graph' | 'timeline'>('graph');
   const rightPanelRef = useRef<HTMLDivElement>(null);
   const sidebarRef = useRef<HTMLDivElement>(null);
   const dividerDragging = useRef(false);
@@ -94,6 +90,29 @@ export function SessionsView({ onSend }: SessionsViewProps) {
     const interval = setInterval(refreshRecordedSessions, 15_000);
     return () => clearInterval(interval);
   }, [refreshRecordedSessions]);
+
+  // Per-session match counts for the current sidebar search query (session name/cwd + event content)
+  const [searchMatchCounts, setSearchMatchCounts] = useState<Map<string, number> | null>(null);
+  useEffect(() => {
+    const q = sidebarSearch.trim();
+    if (!q) {
+      setSearchMatchCounts(null);
+      return;
+    }
+    let cancelled = false;
+    const t = setTimeout(() => {
+      void fetch(`/api/bookmarks/search?q=${encodeURIComponent(q)}`)
+        .then((r) => r.json())
+        .then((d: { results?: { sessionId: string; matchCount: number }[] }) => {
+          if (cancelled) return;
+          setSearchMatchCounts(new Map((d.results ?? []).map((r) => [r.sessionId, r.matchCount])));
+        })
+        .catch(() => {
+          if (!cancelled) setSearchMatchCounts(new Map());
+        });
+    }, 200);
+    return () => { cancelled = true; clearTimeout(t); };
+  }, [sidebarSearch]);
 
   const handleSelectSession = useCallback(async (sessionId: string) => {
     if (viewingSessionId === sessionId) return;
@@ -147,22 +166,40 @@ export function SessionsView({ onSend }: SessionsViewProps) {
     }).catch(() => {});
   }, [recordedSessions]);
 
+  const hasSidebarSearch = sidebarSearch.trim().length > 0;
+
+  // While the server round-trip for match counts is pending, fall back to a local name/cwd
+  // substring match so the list doesn't flash to "no results" during the debounce window.
+  const matchesLocally = useCallback((s: RecordedSession) => {
+    const q = sidebarSearch.toLowerCase();
+    return (s.sessionName ?? '').toLowerCase().includes(q) ||
+      (s.cwd ?? '').toLowerCase().includes(q) ||
+      s.sessionId.toLowerCase().includes(q);
+  }, [sidebarSearch]);
+
+  const sessionMatches = useCallback((s: RecordedSession) => {
+    if (!hasSidebarSearch) return true;
+    if (searchMatchCounts) return searchMatchCounts.has(s.sessionId);
+    return matchesLocally(s);
+  }, [hasSidebarSearch, searchMatchCounts, matchesLocally]);
+
+  const matchLabel = useCallback((sessionId: string): string | null => {
+    if (!hasSidebarSearch || !searchMatchCounts) return null;
+    const count = searchMatchCounts.get(sessionId) ?? 0;
+    return `${count} ${count === 1 ? 'match' : 'matches'}`;
+  }, [hasSidebarSearch, searchMatchCounts]);
+
   // Filtered sessions for sidebar
   const filteredSessions = useMemo(() => {
     let list = recordedSessions;
     if (filter === 'bookmarked') {
       list = list.filter((s) => bookmarkedSessionIds.has(s.sessionId));
     }
-    if (sidebarSearch.trim()) {
-      const q = sidebarSearch.toLowerCase();
-      list = list.filter((s) =>
-        (s.sessionName ?? '').toLowerCase().includes(q) ||
-        (s.cwd ?? '').toLowerCase().includes(q) ||
-        s.sessionId.toLowerCase().includes(q)
-      );
+    if (hasSidebarSearch) {
+      list = list.filter(sessionMatches);
     }
     return list;
-  }, [recordedSessions, filter, bookmarkedSessionIds, sidebarSearch]);
+  }, [recordedSessions, filter, bookmarkedSessionIds, hasSidebarSearch, sessionMatches]);
 
   // Sessions in each folder (bookmarks → recorded session), with bookmark id for reordering
   const folderSessions = useCallback((folderId: string) => {
@@ -173,16 +210,18 @@ export function SessionsView({ onSend }: SessionsViewProps) {
         const session = recordedSessions.find((s) => s.sessionId === b.sessionId);
         return session ? { session, bookmarkId: b.id } : null;
       })
-      .filter((item): item is { session: RecordedSession; bookmarkId: string } => item !== null);
-  }, [bookmarks, recordedSessions]);
+      .filter((item): item is { session: RecordedSession; bookmarkId: string } => item !== null)
+      .filter((item) => sessionMatches(item.session));
+  }, [bookmarks, recordedSessions, sessionMatches]);
 
   const unfiledBookmarkedSessions = useMemo(() => {
     return bookmarks
       .filter((b) => b.folderId === null)
       .sort((a, b) => a.sortOrder - b.sortOrder)
       .map((b) => recordedSessions.find((s) => s.sessionId === b.sessionId))
-      .filter((s): s is RecordedSession => s !== undefined);
-  }, [bookmarks, recordedSessions]);
+      .filter((s): s is RecordedSession => s !== undefined)
+      .filter(sessionMatches);
+  }, [bookmarks, recordedSessions, sessionMatches]);
 
   // Keyboard navigation for the HISTORY list
   useEffect(() => {
@@ -282,21 +321,29 @@ export function SessionsView({ onSend }: SessionsViewProps) {
         }}
       >
         {/* Search */}
-        <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
+        <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--border)', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
           <SearchInput
             value={sidebarSearch}
             onChange={setSidebarSearch}
-            placeholder="Search sessions…"
+            placeholder="Search all sessions + content…"
           />
+          {hasSidebarSearch && searchMatchCounts && (
+            <span style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: 'var(--warn)' }}>
+              {Array.from(searchMatchCounts.values()).reduce((a, b) => a + b, 0)} matches · {searchMatchCounts.size} session{searchMatchCounts.size === 1 ? '' : 's'}
+            </span>
+          )}
         </div>
 
         {/* All / Bookmarked filter */}
         <div style={{
-          display: 'flex', gap: 4, padding: '6px 12px',
+          display: 'flex', padding: '6px 12px',
           borderBottom: '1px solid var(--border)', flexShrink: 0,
         }}>
-          <FilterChip label="All" active={filter === 'all'} onClick={() => setFilter('all')} />
-          <FilterChip label="Bookmarked" active={filter === 'bookmarked'} onClick={() => setFilter('bookmarked')} />
+          <SegmentedControl
+            options={[{ value: 'all', label: 'All' }, { value: 'bookmarked', label: 'Bookmarked' }]}
+            value={filter}
+            onChange={setFilter}
+          />
         </div>
 
         {/* Session list */}
@@ -316,6 +363,7 @@ export function SessionsView({ onSend }: SessionsViewProps) {
                     items={items}
                     viewingSessionId={viewingSessionId}
                     liveSessionIds={liveSessionIds}
+                    matchLabel={matchLabel}
                     onSelect={handleSelectSession}
                   />
                 );
@@ -333,6 +381,7 @@ export function SessionsView({ onSend }: SessionsViewProps) {
                       isFocused={false}
                       isLive={liveSessionIds.has(s.sessionId)}
                       isBookmarked
+                      matchLabel={matchLabel(s.sessionId)}
                       onSelect={handleSelectSession}
                       onDelete={() => setDeleteConfirmSessionId(s.sessionId)}
                     />
@@ -354,6 +403,7 @@ export function SessionsView({ onSend }: SessionsViewProps) {
                   isFocused={focusedIndex === idx}
                   isLive={liveSessionIds.has(s.sessionId)}
                   isBookmarked={bookmarkedSessionIds.has(s.sessionId)}
+                  matchLabel={matchLabel(s.sessionId)}
                   onSelect={handleSelectSession}
                   onBookmark={() => void handleQuickBookmark(s.sessionId)}
                   onDelete={() => setDeleteConfirmSessionId(s.sessionId)}
@@ -412,18 +462,15 @@ export function SessionsView({ onSend }: SessionsViewProps) {
                 {/* Flowchart button */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
                   <button
-                    onClick={() => {
-                      setShowFlowchart((v) => !v);
-                      setFlowchartViewMode('graph');
-                    }}
+                    onClick={() => setShowFlowchart((v) => !v)}
                     title={showFlowchart ? 'Show event log' : 'Show flowchart'}
                     style={{
                       display: 'flex', alignItems: 'center', gap: 4,
                       padding: '3px 8px', fontSize: 10, borderRadius: 4,
                       fontFamily: 'var(--font-mono)',
-                      color: showFlowchart ? 'var(--accent)' : 'var(--text-faint)',
-                      background: showFlowchart ? 'rgba(53,201,180,0.08)' : 'transparent',
-                      border: showFlowchart ? '1px solid rgba(53,201,180,0.2)' : '1px solid var(--border)',
+                      color: showFlowchart ? 'var(--text)' : 'var(--text-faint)',
+                      background: showFlowchart ? 'var(--bg-selected)' : 'transparent',
+                      border: showFlowchart ? '1px solid var(--border-strong)' : '1px solid var(--border)',
                       cursor: 'pointer',
                       transition: 'color 0.1s, background 0.1s, border-color 0.1s',
                     }}
@@ -458,41 +505,14 @@ export function SessionsView({ onSend }: SessionsViewProps) {
 
               {/* Content: flowchart or event stream */}
               {showFlowchart ? (
-                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-                  {/* Graph / Timeline tab bar */}
-                  <div style={{
-                    display: 'flex', alignItems: 'center', gap: 4,
-                    padding: '6px 12px', background: 'var(--bg-raised)',
-                    borderBottom: '1px solid var(--border)', flexShrink: 0,
-                  }}>
-                    {(['graph', 'timeline'] as const).map((mode) => (
-                      <button
-                        key={mode}
-                        onClick={() => setFlowchartViewMode(mode)}
-                        style={{
-                          padding: '3px 10px', fontSize: 10, borderRadius: 4,
-                          fontFamily: 'var(--font-mono)', cursor: 'pointer', border: 'none',
-                          background: flowchartViewMode === mode ? 'rgba(53,201,180,0.1)' : 'transparent',
-                          color: flowchartViewMode === mode ? 'var(--accent)' : 'var(--text-muted)',
-                          transition: 'background 0.1s, color 0.1s',
-                        }}
-                      >
-                        {mode === 'graph' ? 'Graph' : 'Timeline'}
-                      </button>
-                    ))}
-                  </div>
-                  <div style={{ flex: 1, minHeight: 0 }}>
-                    <Suspense fallback={
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--text-faint)', fontSize: 11 }}>
-                        Loading…
-                      </div>
-                    }>
-                      {flowchartViewMode === 'graph'
-                        ? <FlowchartView events={historicalEvents} />
-                        : <TimelineView events={historicalEvents} />
-                      }
-                    </Suspense>
-                  </div>
+                <div style={{ flex: 1, minHeight: 0 }}>
+                  <Suspense fallback={
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--text-faint)', fontSize: 11 }}>
+                      Loading…
+                    </div>
+                  }>
+                    <FlowchartView events={historicalEvents} />
+                  </Suspense>
                 </div>
               ) : (
                 <EventStream onSend={onSend} archived archivedDate={archivedDate} />
@@ -547,10 +567,11 @@ interface SidebarFolderProps {
   items: { session: RecordedSession; bookmarkId: string }[];
   viewingSessionId: string | null;
   liveSessionIds: Set<string>;
+  matchLabel: (sessionId: string) => string | null;
   onSelect: (id: string) => void;
 }
 
-function SidebarFolder({ folderId, name, items: initialItems, viewingSessionId, liveSessionIds, onSelect }: SidebarFolderProps) {
+function SidebarFolder({ folderId, name, items: initialItems, viewingSessionId, liveSessionIds, matchLabel, onSelect }: SidebarFolderProps) {
   const [expanded, setExpanded] = useState(true);
   const [dragIdx, setDragIdx] = useState<number | null>(null);
   const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
@@ -619,6 +640,7 @@ function SidebarFolder({ folderId, name, items: initialItems, viewingSessionId, 
           isLive={liveSessionIds.has(session.sessionId)}
           isBookmarked
           indent
+          matchLabel={matchLabel(session.sessionId)}
           isDragOver={dragOverIdx === idx}
           onSelect={onSelect}
           onDragStart={() => setDragIdx(idx)}
@@ -640,6 +662,7 @@ interface SidebarSessionRowProps {
   isBookmarked: boolean;
   indent?: boolean;
   isDragOver?: boolean;
+  matchLabel?: string | null;
   onSelect: (id: string) => void;
   onBookmark?: () => void;
   onDelete?: () => void;
@@ -650,7 +673,7 @@ interface SidebarSessionRowProps {
 
 function SidebarSessionRow({
   session, isSelected, isFocused, isLive, isBookmarked, indent = false,
-  isDragOver = false, onSelect, onBookmark, onDelete,
+  isDragOver = false, matchLabel, onSelect, onBookmark, onDelete,
   onDragStart, onDragOver, onDragEnd,
 }: SidebarSessionRowProps) {
   const [hovered, setHovered] = useState(false);
@@ -724,6 +747,13 @@ function SidebarSessionRow({
           )}
         </div>
       </div>
+
+      {/* Match count (visible while a search query is active) */}
+      {matchLabel && (
+        <span style={{ fontSize: 9.5, fontFamily: 'var(--font-mono)', color: 'var(--warn)', flexShrink: 0 }}>
+          {matchLabel}
+        </span>
+      )}
 
       {/* Actions (visible on hover) */}
       <div style={{ display: 'flex', gap: 3, flexShrink: 0, opacity: hovered ? 1 : 0, transition: 'opacity 0.1s' }}>

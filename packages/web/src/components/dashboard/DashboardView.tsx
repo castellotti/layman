@@ -2,15 +2,15 @@ import React, { useMemo, useState, useCallback, useEffect, useRef } from 'react'
 import { useSessionStore } from '../../stores/sessionStore.js';
 import { SessionListRow } from './SessionListRow.js';
 import { PreviewPane } from './PreviewPane.js';
-import { SearchInput } from '../primitives/index.js';
+import { SearchInput, SegmentedControl } from '../primitives/index.js';
 import { saveAndBookmarkSession } from '../../lib/bookmarks-api.js';
 import type { ClientMessage } from '../../lib/ws-protocol.js';
 import './dashboard.css';
 
 const SESSION_LIST_WIDTH = 410;
-const MIN_PANE_HEIGHT = 200;
+const MIN_PANE_HEIGHT = 240;
 
-type SortMode = 'attention' | 'activity' | 'name' | 'custom';
+type SortMode = 'attention' | 'recent' | 'name' | 'custom';
 
 interface DashboardViewProps {
   onSend: (msg: ClientMessage) => void;
@@ -32,7 +32,7 @@ export function DashboardView({ onSend }: DashboardViewProps) {
   // Which sessions have their preview pane open
   const [openPanes, setOpenPanes] = useState<Set<string>>(new Set());
   // Sort + filter
-  const [sortMode, setSortMode] = useState<SortMode>('activity');
+  const [sortMode, setSortMode] = useState<SortMode>('recent');
   const [filter, setFilter] = useState('');
   // Drag state
   const [dragIndex, setDragIndex] = useState<number | null>(null);
@@ -188,26 +188,13 @@ export function DashboardView({ onSend }: DashboardViewProps) {
             placeholder="Filter sessions…"
             width="100%"
           />
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8 }}>
-            <span style={{ fontFamily: 'var(--font-ui)', fontSize: 10, color: 'var(--text-faint)', marginRight: 4 }}>Sort:</span>
-            {(['attention', 'activity', 'name', 'custom'] as SortMode[]).map(mode => (
-              <button
-                key={mode}
-                onClick={() => setSortMode(mode)}
-                style={{
-                  fontFamily: 'var(--font-ui)',
-                  fontSize: 10,
-                  padding: '2px 7px',
-                  borderRadius: 4,
-                  background: sortMode === mode ? 'var(--bg-selected)' : 'transparent',
-                  color: sortMode === mode ? 'var(--text)' : 'var(--text-muted)',
-                  border: sortMode === mode ? '1px solid var(--border-strong)' : '1px solid transparent',
-                  cursor: 'pointer',
-                }}
-              >
-                {mode}
-              </button>
-            ))}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
+            <span style={{ fontFamily: 'var(--font-ui)', fontSize: 10, color: 'var(--text-faint)' }}>Sort</span>
+            <SegmentedControl
+              options={(['attention', 'recent', 'name', 'custom'] as SortMode[]).map(mode => ({ value: mode, label: mode }))}
+              value={sortMode}
+              onChange={setSortMode}
+            />
           </div>
         </div>
 

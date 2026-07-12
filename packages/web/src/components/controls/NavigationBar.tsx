@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { SearchInput, FilterChip, LiveChip } from '../primitives/index.js';
 
 interface NavigationBarProps {
@@ -16,6 +16,7 @@ interface NavigationBarProps {
   onToggleRequestsOnly: () => void;
   onToggleAgentsOnly: () => void;
   onToggleRiskyOnly: () => void;
+  onClearFilters: () => void;
   // Live state
   followLatest: boolean;
   archived?: boolean;
@@ -41,6 +42,7 @@ export function NavigationBar({
   onToggleRequestsOnly,
   onToggleAgentsOnly,
   onToggleRiskyOnly,
+  onClearFilters,
   followLatest,
   archived = false,
   archivedDate,
@@ -52,6 +54,21 @@ export function NavigationBar({
 }: NavigationBarProps) {
   const [showBookmarkInput, setShowBookmarkInput] = useState(false);
   const [bookmarkName, setBookmarkName] = useState('');
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
+  // Global ⌘K / Ctrl+K focuses the search field
+  useEffect(() => {
+    const handleKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+      }
+    };
+    window.addEventListener('keydown', handleKey);
+    return () => window.removeEventListener('keydown', handleKey);
+  }, []);
+
+  const anyFilterActive = promptsOnly || toolsOnly || requestsOnly || agentsOnly || riskyOnly;
 
   const handleBookmarkClick = () => {
     setBookmarkName(defaultBookmarkName);
@@ -84,21 +101,46 @@ export function NavigationBar({
     >
       {/* Search */}
       <SearchInput
+        inputRef={searchInputRef}
         value={searchQuery}
         onChange={onSearchChange}
-        width={180}
-        placeholder="Search  +include  −exclude"
+        flex={1}
+        minWidth={240}
+        maxWidth={560}
+        padding="8px 12px"
+        fontSize={12.5}
+        placeholder="Search events   +include   −exclude"
       />
 
       {divider}
 
       {/* Filter chips */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 3, flexWrap: 'wrap' }}>
         <FilterChip label="Prompts" active={promptsOnly} onClick={onTogglePromptsOnly} />
         <FilterChip label="Tools" active={toolsOnly} onClick={onToggleToolsOnly} />
         <FilterChip label="Permissions" active={requestsOnly} onClick={onToggleRequestsOnly} />
         <FilterChip label="Agents" active={agentsOnly} onClick={onToggleAgentsOnly} />
         <FilterChip label="Risk≥med" active={riskyOnly} onClick={onToggleRiskyOnly} riskOutline />
+        {anyFilterActive && (
+          <button
+            onClick={onClearFilters}
+            style={{
+              padding: '4px 8px',
+              fontSize: 10.5,
+              fontFamily: 'var(--font-ui)',
+              border: 'none',
+              borderRadius: 5,
+              cursor: 'pointer',
+              background: 'transparent',
+              color: 'var(--text-faint)',
+              textDecoration: 'underline',
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--text)'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-faint)'; }}
+          >
+            clear
+          </button>
+        )}
       </div>
 
       {/* Spacer */}

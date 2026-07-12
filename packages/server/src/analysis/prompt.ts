@@ -91,6 +91,10 @@ export function formatAnalysisUserMessage(request: AnalysisRequest): string {
     }
   }
 
+  if (request.sessionSummary) {
+    parts.push(`Rolling summary of the rest of the session: ${request.sessionSummary}`);
+  }
+
   return parts.join('\n');
 }
 
@@ -103,7 +107,8 @@ export function formatInvestigationUserMessage(
   laymansTerms?: string,
   failureReason?: string,
   previousQuestions?: Array<{ question: string; answer: string }>,
-  recentSessionEvents?: Array<{ type: string; summary: string }>
+  recentSessionEvents?: Array<{ type: string; summary: string }>,
+  sessionSummary?: string
 ): string {
   const parts = [
     `Tool: ${toolName}`,
@@ -139,6 +144,10 @@ export function formatInvestigationUserMessage(
     for (const ev of recentSessionEvents) {
       parts.push(`  - ${ev.type}: ${ev.summary}`);
     }
+  }
+
+  if (sessionSummary) {
+    parts.push(`Rolling summary of the rest of the session: ${sessionSummary}`);
   }
 
   parts.push(`\nUser question: ${question}`);
