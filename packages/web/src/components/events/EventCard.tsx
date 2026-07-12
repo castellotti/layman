@@ -288,7 +288,7 @@ export function EventCard({ event, index, isSelected, onClick, onSend, collapseH
             fontSize: 9.5, fontWeight: 600, letterSpacing: '0.06em',
             textTransform: 'uppercase', fontFamily: 'var(--font-ui)',
             padding: '2px 6px', borderRadius: 4,
-            background: 'rgba(229,168,59,0.2)', color: '#E5A83B',
+            background: 'rgba(229,168,59,0.2)', color: 'var(--warn)',
             border: '1px solid rgba(229,168,59,0.4)', flexShrink: 0,
           }}>
             ASK
@@ -306,7 +306,7 @@ export function EventCard({ event, index, isSelected, onClick, onSend, collapseH
             fontSize: 9.5, fontWeight: 600, letterSpacing: '0.06em',
             textTransform: 'uppercase', fontFamily: 'var(--font-ui)',
             padding: '2px 6px', borderRadius: 4,
-            background: 'rgba(240,86,74,0.18)', color: '#F0564A',
+            background: 'rgba(240,86,74,0.18)', color: 'var(--error)',
             border: '1px solid rgba(240,86,74,0.4)', flexShrink: 0,
           }}>
             END

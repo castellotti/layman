@@ -1,24 +1,27 @@
 import React, { useMemo } from 'react';
 import { StatusDot, Meter, StateChip } from '../primitives/index.js';
+import { useNow } from '../../hooks/useNow.js';
 import type { TimelineEvent } from '../../lib/types.js';
 import type { SessionInfo } from '../../lib/ws-protocol.js';
 import type { SessionMetrics } from '../../lib/types.js';
-import { deriveSessionState } from '../../lib/session-state.js';
+import { deriveSessionState, getSessionDisplayName } from '../../lib/session-state.js';
 
-function getTimeSince(timestamp: number): string {
-  const delta = Date.now() - timestamp;
+function getTimeSince(timestamp: number, now: number): string {
+  const delta = now - timestamp;
   if (delta < 5000) return 'now';
   if (delta < 60_000) return `${Math.floor(delta / 1000)}s`;
   if (delta < 3_600_000) return `${Math.floor(delta / 60_000)}m`;
   return `${Math.floor(delta / 3_600_000)}h`;
 }
 
-export function getSessionDisplayName(session: SessionInfo): string {
-  if (session.sessionName) return session.sessionName;
-  if (session.cwd) {
-    return session.cwd.split('/').filter(Boolean).pop() ?? session.cwd;
-  }
-  return session.sessionId.slice(0, 8);
+// Isolates the 5s ticking re-render to just this label instead of the whole row.
+function TimeSinceLabel({ timestamp }: { timestamp: number }) {
+  const now = useNow(5000);
+  return (
+    <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--text-faint)' }}>
+      {getTimeSince(timestamp, now)}
+    </span>
+  );
 }
 
 interface SessionListRowProps {
@@ -36,21 +39,16 @@ interface SessionListRowProps {
   onDragEnd: () => void;
 }
 
-export function SessionListRow({
+export const SessionListRow = React.memo(function SessionListRow({
   session, events, metrics, isOpen, isDragging, isDragOver, index,
   onToggle, onOpenInLogs, onDragStart, onDragOver, onDragEnd,
 }: SessionListRowProps) {
   const isActive = session.active !== false;
 
-  const { dotState, chipVariant } = useMemo(
+  const { dotState, chipVariant, lastEvent: lastMeaningful } = useMemo(
     () => deriveSessionState(events, isActive),
     [events, isActive]
   );
-
-  const lastMeaningful = useMemo(() => {
-    const meaningful = events.filter(e => e.type !== 'session_metrics' && e.type !== 'notification');
-    return meaningful[meaningful.length - 1];
-  }, [events]);
 
   const ctxPct = metrics?.contextUsedPct ?? 0;
   const model = metrics?.modelDisplayName;
@@ -145,11 +143,7 @@ export function SessionListRow({
             <Meter value={ctxPct} showTick height={3} width={40} />
           </>
         ) : (
-          lastMeaningful && (
-            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--text-faint)' }}>
-              {getTimeSince(lastMeaningful.timestamp)}
-            </span>
-          )
+          lastMeaningful && <TimeSinceLabel timestamp={lastMeaningful.timestamp} />
         )}
       </div>
 
@@ -169,4 +163,4 @@ export function SessionListRow({
       </span>
     </div>
   );
-}
+});

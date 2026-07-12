@@ -1,5 +1,16 @@
 import React from 'react';
 
+// ─── SectionLabel style ────────────────────────────────────────────────────────
+// Shared uppercase small-caps label used for sidebar section headers (Sessions,
+// Prompts, etc). Spread into a wrapping div's style, adding overrides as needed.
+
+export const SECTION_LABEL_STYLE: React.CSSProperties = {
+  fontSize: 9.5, fontWeight: 600, letterSpacing: '0.08em',
+  textTransform: 'uppercase', color: 'var(--text-muted)',
+  fontFamily: 'var(--font-ui)', padding: '8px 12px 4px',
+  display: 'flex', alignItems: 'center', gap: 6,
+};
+
 // ─── StatusDot ───────────────────────────────────────────────────────────────
 // 8px colored dot, steady glow when live/attention. No blinking/flashing.
 
@@ -91,6 +102,45 @@ export function StateChip({ variant, label }: StateChipProps) {
     >
       {label ?? STATE_CHIP_LABELS[variant]}
     </span>
+  );
+}
+
+// ─── CollapsibleFolderHeader ────────────────────────────────────────────────
+// Shared expand/collapse header (name + item count badge) for sidebar folder
+// sections in Sessions and Prompts views. Item ordering/persistence stays
+// with the caller since it differs per domain (reorderable bookmarks vs.
+// read-only highlights).
+
+interface CollapsibleFolderHeaderProps {
+  expanded: boolean;
+  onToggle: () => void;
+  name: string;
+  count: number;
+}
+
+export function CollapsibleFolderHeader({ expanded, onToggle, name, count }: CollapsibleFolderHeaderProps) {
+  return (
+    <button
+      onClick={onToggle}
+      style={{
+        width: '100%', display: 'flex', alignItems: 'center', gap: 6,
+        padding: '5px 12px', background: 'none', border: 'none', cursor: 'pointer',
+        color: 'var(--text-muted)', fontFamily: 'var(--font-ui)', fontSize: 11,
+        textAlign: 'left',
+      }}
+      onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--text)')}
+      onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--text-muted)')}
+    >
+      <span style={{ fontSize: 9, color: 'var(--text-faint)' }}>{expanded ? '▼' : '▶'}</span>
+      <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</span>
+      <span style={{
+        fontSize: 9.5, fontFamily: 'var(--font-mono)', color: 'var(--text-faint)',
+        background: 'var(--bg-card)', border: '1px solid var(--border)',
+        borderRadius: 10, padding: '0 5px',
+      }}>
+        {count}
+      </span>
+    </button>
   );
 }
 

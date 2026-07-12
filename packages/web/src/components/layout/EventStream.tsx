@@ -9,6 +9,7 @@ import { Minimap } from '../logs/Minimap.js';
 import { JumpToLatest, StateChip } from '../primitives/index.js';
 import { saveAndBookmarkSession } from '../../lib/bookmarks-api.js';
 import { formatDuration, formatTime } from '../../lib/format.js';
+import { sessionDisplayName } from '../../lib/session-state.js';
 import type { ClientMessage } from '../../lib/ws-protocol.js';
 import type { TimelineEvent } from '../../lib/types.js';
 
@@ -796,7 +797,7 @@ export function EventStream({ onSend, archived = false, archivedDate }: EventStr
   const defaultBookmarkName = useMemo(() => {
     if (!activeSession) return activeSessionId?.slice(0, 8) ?? '';
     const { cwd, sessionId, sessionName } = activeSession;
-    return sessionName || (cwd ? (cwd.split('/').filter(Boolean).pop() ?? cwd) : sessionId.slice(0, 8));
+    return sessionDisplayName(sessionName, cwd, sessionId);
   }, [activeSession, activeSessionId]);
 
   const handleBookmark = useCallback((name: string) => {

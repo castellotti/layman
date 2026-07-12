@@ -1,29 +1,22 @@
 import React, { useMemo } from 'react';
 import { StatusDot, Meter, StateChip } from '../primitives/index.js';
+import { useNow } from '../../hooks/useNow.js';
 import type { TimelineEvent, DriftState } from '../../lib/types.js';
 import type { SessionInfo } from '../../lib/ws-protocol.js';
 import type { SessionMetrics } from '../../lib/types.js';
-import { getSessionDisplayName } from './SessionListRow.js';
-import { deriveSessionState } from '../../lib/session-state.js';
+import { deriveSessionState, getSessionDisplayName } from '../../lib/session-state.js';
+import { formatTime, formatDuration as formatElapsed } from '../../lib/format.js';
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
-function formatElapsed(ms: number): string {
-  if (ms < 1000) return `${ms}ms`;
-  if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`;
-  return `${Math.floor(ms / 60000)}m${Math.floor((ms % 60000) / 1000)}s`;
-}
-
-function getTimeSince(timestamp: number): string {
-  const delta = Date.now() - timestamp;
-  if (delta < 5000) return 'now';
-  if (delta < 60_000) return `${Math.floor(delta / 1000)}s ago`;
-  if (delta < 3_600_000) return `${Math.floor(delta / 60_000)}m ago`;
-  return `${Math.floor(delta / 3_600_000)}h ago`;
-}
-
-function formatTime(ts: number): string {
-  return new Date(ts).toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+// Isolates the 1s ticking re-render to just this label instead of the whole pane.
+function ElapsedLabel({ since }: { since: number }) {
+  const now = useNow(1000);
+  return (
+    <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--text-faint)', flexShrink: 0 }}>
+      {formatElapsed(now - since)}
+    </span>
+  );
 }
 
 const EVENT_KIND_COLOR: Record<string, string> = {
@@ -152,7 +145,6 @@ function ActivityStrip({
 
   // Running NOW strip
   if (last.type === 'tool_call_pending' && !last.data.decision) {
-    const elapsed = Date.now() - last.timestamp;
     const detail = eventDetail(last);
     return (
       <div style={{
@@ -169,9 +161,7 @@ function ActivityStrip({
         <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-body)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {detail}
         </span>
-        <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--text-faint)', flexShrink: 0 }}>
-          {formatElapsed(elapsed)}
-        </span>
+        <ElapsedLabel since={last.timestamp} />
         {onSendAnalyze && (
           <button
             onClick={() => onSendAnalyze(last.id)}
@@ -318,7 +308,7 @@ interface PreviewPaneProps {
   minHeight?: number;
 }
 
-export function PreviewPane({
+export const PreviewPane = React.memo(function PreviewPane({
   session, events, metrics, driftState, driftEnabled, onClose, onOpenInLogs, onOpenEventInLogs, onSendAnalyze, minHeight = 240,
 }: PreviewPaneProps) {
   const isActive = session.active !== false;
@@ -416,4 +406,4 @@ export function PreviewPane({
       </div>
     </div>
   );
-}
+});

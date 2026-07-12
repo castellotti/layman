@@ -2,9 +2,10 @@ import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { useSessionStore } from '../../stores/sessionStore.js';
 import type { Highlight, HighlightFolder, TimelineEvent } from '../../lib/types.js';
-import { SearchInput, FilterChip } from '../primitives/index.js';
+import { SearchInput, FilterChip, SECTION_LABEL_STYLE, CollapsibleFolderHeader } from '../primitives/index.js';
 import { getEffectiveAgentContent } from '../../lib/reasoning.js';
 import { isMarkdown, MARKDOWN_PROSE_COMPACT, REMARK_PLUGINS } from '../../lib/markdown.js';
+import { sessionDisplayName } from '../../lib/session-state.js';
 
 interface HighlightEventPair {
   promptEvent: TimelineEvent | null;
@@ -107,26 +108,12 @@ function SidebarFolder({ folder, highlights, selectedHighlightId, sessionLabelBy
   const [expanded, setExpanded] = useState(true);
   return (
     <div>
-      <button
-        onClick={() => setExpanded((v) => !v)}
-        style={{
-          width: '100%', display: 'flex', alignItems: 'center', gap: 6,
-          padding: '5px 12px', background: 'none', border: 'none', cursor: 'pointer',
-          color: 'var(--text-muted)', fontFamily: 'var(--font-ui)', fontSize: 11, textAlign: 'left',
-        }}
-        onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--text)')}
-        onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--text-muted)')}
-      >
-        <span style={{ fontSize: 9, color: 'var(--text-faint)' }}>{expanded ? '▼' : '▶'}</span>
-        <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{folder.name}</span>
-        <span style={{
-          fontSize: 9.5, fontFamily: 'var(--font-mono)', color: 'var(--text-faint)',
-          background: 'var(--bg-card)', border: '1px solid var(--border)',
-          borderRadius: 10, padding: '0 5px',
-        }}>
-          {highlights.length}
-        </span>
-      </button>
+      <CollapsibleFolderHeader
+        expanded={expanded}
+        onToggle={() => setExpanded((v) => !v)}
+        name={folder.name}
+        count={highlights.length}
+      />
       {expanded && highlights.map((h) => (
         <SidebarHighlightRow
           key={h.id}
@@ -154,7 +141,7 @@ export function PromptsView() {
   const sessionLabelById = useMemo(() => {
     const map = new Map<string, string>();
     for (const s of sessions) {
-      map.set(s.sessionId, s.sessionName || (s.cwd ? (s.cwd.split('/').filter(Boolean).pop() ?? s.cwd) : s.sessionId.slice(0, 8)));
+      map.set(s.sessionId, sessionDisplayName(s.sessionName, s.cwd, s.sessionId));
     }
     return map;
   }, [sessions]);
@@ -166,11 +153,15 @@ export function PromptsView() {
     [highlightFolders]
   );
 
-  const folderHighlights = useCallback(
-    (folderId: string) =>
-      highlights.filter((h) => h.folderId === folderId).sort((a, b) => a.sortOrder - b.sortOrder),
-    [highlights]
-  );
+  // Computed once per folder (not per render call site) since it's looked up from
+  // both a `.some` check and a `.map` below.
+  const folderHighlightsMap = useMemo(() => {
+    const map = new Map<string, Highlight[]>();
+    for (const folder of sortedFolders) {
+      map.set(folder.id, highlights.filter((h) => h.folderId === folder.id).sort((a, b) => a.sortOrder - b.sortOrder));
+    }
+    return map;
+  }, [sortedFolders, highlights]);
 
   const unfiledHighlights = useMemo(
     () => highlights.filter((h) => h.folderId === null).sort((a, b) => b.createdAt - a.createdAt),
@@ -223,11 +214,7 @@ export function PromptsView() {
     }).catch(() => {});
   }, [selectedHighlight]);
 
-  const sectionLabel: React.CSSProperties = {
-    fontSize: 9.5, fontWeight: 600, letterSpacing: '0.08em',
-    textTransform: 'uppercase', color: 'var(--text-muted)',
-    fontFamily: 'var(--font-ui)', padding: '8px 12px 4px',
-  };
+  const sectionLabel = SECTION_LABEL_STYLE;
 
   return (
     <div style={{ display: 'flex', height: '100%', background: 'var(--bg)' }}>
@@ -276,11 +263,11 @@ export function PromptsView() {
             )
           ) : (
             <>
-              {sortedFolders.some((f) => folderHighlights(f.id).length > 0) && (
+              {sortedFolders.some((f) => (folderHighlightsMap.get(f.id) ?? []).length > 0) && (
                 <div style={sectionLabel}>Folders</div>
               )}
               {sortedFolders.map((folder) => {
-                const items = folderHighlights(folder.id);
+                const items = folderHighlightsMap.get(folder.id) ?? [];
                 if (items.length === 0) return null;
                 return (
                   <SidebarFolder
@@ -295,7 +282,7 @@ export function PromptsView() {
               })}
               {unfiledHighlights.length > 0 && (
                 <>
-                  <div style={{ ...sectionLabel, display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <div style={sectionLabel}>
                     History <span style={{ fontSize: 9, color: 'var(--text-faint)', textTransform: 'none', letterSpacing: 0, fontWeight: 400 }}>newest first</span>
                   </div>
                   {unfiledHighlights.map((h) => (

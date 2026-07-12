@@ -4,6 +4,7 @@ import { SetupWizardManual } from '../wizard/SetupWizard.js';
 import type { ClientMessage } from '../../lib/ws-protocol.js';
 import type { LaymanConfig, AnalysisProvider, SetupStatus, OptionalClientStatus } from '../../lib/types.js';
 import { PROVIDER_LABELS } from '../../lib/types.js';
+import { sessionDisplayName } from '../../lib/session-state.js';
 
 const PROVIDER_OPTIONS: AnalysisProvider[] = ['anthropic', 'openai', 'openai-compatible', 'litellm'];
 
@@ -1795,7 +1796,7 @@ export function SettingsDrawer({ onSend }: SettingsDrawerProps) {
                         {importResult.sessions.map((s) => (
                           <tr key={s.sessionId} className="border-b border-[#30363d]/50 hover:bg-[#21262d]">
                             <td className="px-2 py-1 text-[#e6edf3] truncate max-w-[140px]" title={s.cwd}>
-                              {s.cwd.split('/').filter(Boolean).pop() || s.sessionId.slice(0, 8)}
+                              {sessionDisplayName(undefined, s.cwd, s.sessionId)}
                             </td>
                             <td className="px-2 py-1 text-[#8b949e] whitespace-nowrap">
                               {new Date(s.startedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}

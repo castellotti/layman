@@ -171,13 +171,6 @@ export function DashboardView({ onSend }: DashboardViewProps) {
   const openSessionIds = orderedSessions.filter(s => openPanes.has(s.sessionId)).map(s => s.sessionId);
   const openCount = openSessionIds.length;
 
-  // Auto-update timer for "time since" displays
-  const [, setTick] = useState(0);
-  useEffect(() => {
-    const interval = setInterval(() => setTick(t => t + 1), 5000);
-    return () => clearInterval(interval);
-  }, []);
-
   return (
     <div className="dashboard-root" style={{ display: 'flex', height: '100%' }}>
       {/* ── Left: session list ── */}

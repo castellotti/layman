@@ -2,8 +2,9 @@ import React, { useState, useCallback, useEffect, useRef, useMemo, Suspense, laz
 import { useSessionStore } from '../../stores/sessionStore.js';
 import { EventStream } from '../layout/EventStream.js';
 import { InvestigationPanel } from '../layout/InvestigationPanel.js';
-import { SearchInput, SegmentedControl } from '../primitives/index.js';
+import { SearchInput, SegmentedControl, SECTION_LABEL_STYLE, CollapsibleFolderHeader } from '../primitives/index.js';
 import { useDragReorder } from '../../hooks/useDragReorder.js';
+import { sessionDisplayName } from '../../lib/session-state.js';
 import type { ClientMessage } from '../../lib/ws-protocol.js';
 import type { RecordedSession, SessionTimeMetrics } from '../../lib/types.js';
 
@@ -13,11 +14,6 @@ const FlowchartView = lazy(() =>
 
 interface SessionsViewProps {
   onSend: (msg: ClientMessage) => void;
-}
-
-function getSessionLabel(cwd: string, sessionId: string): string {
-  if (cwd) return cwd.split('/').filter(Boolean).pop() ?? cwd;
-  return sessionId.slice(0, 8);
 }
 
 function formatDateShort(ts: number): string {
@@ -159,7 +155,7 @@ export function SessionsView({ onSend }: SessionsViewProps) {
 
   const handleQuickBookmark = useCallback(async (sessionId: string) => {
     const session = recordedSessions.find((s) => s.sessionId === sessionId);
-    const name = session?.sessionName || getSessionLabel(session?.cwd ?? '', sessionId);
+    const name = sessionDisplayName(session?.sessionName, session?.cwd, sessionId);
     await fetch('/api/bookmarks', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -202,18 +198,24 @@ export function SessionsView({ onSend }: SessionsViewProps) {
     return list;
   }, [recordedSessions, filter, bookmarkedSessionIds, hasSidebarSearch, sessionMatches]);
 
-  // Sessions in each folder (bookmarks → recorded session), with bookmark id for reordering
-  const folderSessions = useCallback((folderId: string) => {
-    return bookmarks
-      .filter((b) => b.folderId === folderId)
-      .sort((a, b) => a.sortOrder - b.sortOrder)
-      .map((b) => {
-        const session = recordedSessions.find((s) => s.sessionId === b.sessionId);
-        return session ? { session, bookmarkId: b.id } : null;
-      })
-      .filter((item): item is { session: RecordedSession; bookmarkId: string } => item !== null)
-      .filter((item) => sessionMatches(item.session));
-  }, [bookmarks, recordedSessions, sessionMatches]);
+  // Sessions in each folder (bookmarks → recorded session), with bookmark id for reordering.
+  // Computed once per folder (not per render call site) since it's looked up from
+  // both a `.map` and a `.some` check below.
+  const folderSessionsMap = useMemo(() => {
+    const map = new Map<string, { session: RecordedSession; bookmarkId: string }[]>();
+    for (const folder of sortedFolders) {
+      map.set(folder.id, bookmarks
+        .filter((b) => b.folderId === folder.id)
+        .sort((a, b) => a.sortOrder - b.sortOrder)
+        .map((b) => {
+          const session = recordedSessions.find((s) => s.sessionId === b.sessionId);
+          return session ? { session, bookmarkId: b.id } : null;
+        })
+        .filter((item): item is { session: RecordedSession; bookmarkId: string } => item !== null)
+        .filter((item) => sessionMatches(item.session)));
+    }
+    return map;
+  }, [sortedFolders, bookmarks, recordedSessions, sessionMatches]);
 
   const unfiledBookmarkedSessions = useMemo(() => {
     return bookmarks
@@ -258,12 +260,7 @@ export function SessionsView({ onSend }: SessionsViewProps) {
   const viewingSession = recordedSessions.find((s) => s.sessionId === viewingSessionId);
   const archivedDate = viewingSession ? formatDateShort(viewingSession.lastSeen) : undefined;
 
-  const sectionLabel: React.CSSProperties = {
-    fontSize: 9.5, fontWeight: 600, letterSpacing: '0.08em',
-    textTransform: 'uppercase', color: 'var(--text-muted)',
-    fontFamily: 'var(--font-ui)', padding: '8px 12px 4px',
-    display: 'flex', alignItems: 'center', gap: 6,
-  };
+  const sectionLabel = SECTION_LABEL_STYLE;
 
   return (
     <div style={{ display: 'flex', height: '100%', background: 'var(--bg)' }}>
@@ -354,7 +351,7 @@ export function SessionsView({ onSend }: SessionsViewProps) {
             <>
               <div style={sectionLabel}>Bookmarked</div>
               {sortedFolders.map((folder) => {
-                const items = folderSessions(folder.id);
+                const items = folderSessionsMap.get(folder.id) ?? [];
                 if (items.length === 0) return null;
                 return (
                   <SidebarFolder
@@ -371,7 +368,7 @@ export function SessionsView({ onSend }: SessionsViewProps) {
               })}
               {unfiledBookmarkedSessions.length > 0 && (
                 <>
-                  {sortedFolders.some((f) => folderSessions(f.id).length > 0) && (
+                  {sortedFolders.some((f) => (folderSessionsMap.get(f.id) ?? []).length > 0) && (
                     <div style={{ ...sectionLabel, paddingTop: 4 }}>Unfiled</div>
                   )}
                   {unfiledBookmarkedSessions.map((s) => (
@@ -447,8 +444,7 @@ export function SessionsView({ onSend }: SessionsViewProps) {
                     overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                   }}>
                     {bookmarks.find((b) => b.sessionId === viewingSessionId)?.name
-                      ?? viewingSession?.sessionName
-                      ?? getSessionLabel(viewingSession?.cwd ?? '', viewingSessionId)}
+                      ?? sessionDisplayName(viewingSession?.sessionName, viewingSession?.cwd, viewingSessionId)}
                   </span>
                   {viewingSession?.cwd && (
                     <span style={{
@@ -607,27 +603,12 @@ function SidebarFolder({ folderId, name, items: initialItems, viewingSessionId, 
 
   return (
     <div>
-      <button
-        onClick={() => setExpanded((v) => !v)}
-        style={{
-          width: '100%', display: 'flex', alignItems: 'center', gap: 6,
-          padding: '5px 12px', background: 'none', border: 'none', cursor: 'pointer',
-          color: 'var(--text-muted)', fontFamily: 'var(--font-ui)', fontSize: 11,
-          textAlign: 'left',
-        }}
-        onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--text)')}
-        onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--text-muted)')}
-      >
-        <span style={{ fontSize: 9, color: 'var(--text-faint)' }}>{expanded ? '▼' : '▶'}</span>
-        <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</span>
-        <span style={{
-          fontSize: 9.5, fontFamily: 'var(--font-mono)', color: 'var(--text-faint)',
-          background: 'var(--bg-card)', border: '1px solid var(--border)',
-          borderRadius: 10, padding: '0 5px',
-        }}>
-          {items.length}
-        </span>
-      </button>
+      <CollapsibleFolderHeader
+        expanded={expanded}
+        onToggle={() => setExpanded((v) => !v)}
+        name={name}
+        count={items.length}
+      />
       {expanded && items.map(({ session }, idx) => (
         <SidebarSessionRow
           key={session.sessionId}
@@ -674,7 +655,7 @@ function SidebarSessionRow({
   onDragStart, onDragOver, onDragEnd,
 }: SidebarSessionRowProps) {
   const [hovered, setHovered] = useState(false);
-  const label = session.sessionName || getSessionLabel(session.cwd, session.sessionId);
+  const label = sessionDisplayName(session.sessionName, session.cwd, session.sessionId);
   const draggable = !!onDragStart;
 
   return (

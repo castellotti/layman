@@ -4,7 +4,6 @@ import type { TimelineEvent, EventType } from '../lib/types.js';
 
 export interface EventFilters {
   promptsOnly?: boolean;
-  responsesOnly?: boolean;
   requestsOnly?: boolean;
   riskyOnly?: boolean;
   toolsOnly?: boolean;
@@ -68,9 +67,6 @@ export function useEventStore(filters?: EventFilters, sourceOverride?: TimelineE
     if (filters?.promptsOnly) {
       result = result.filter((e) => e.type === 'user_prompt');
     }
-    if (filters?.responsesOnly) {
-      result = result.filter((e) => e.type === 'agent_response');
-    }
     if (filters?.requestsOnly) {
       result = result.filter((e) => e.type === 'permission_request');
     }
@@ -96,7 +92,7 @@ export function useEventStore(filters?: EventFilters, sourceOverride?: TimelineE
     return result;
   }, [
     sessionEvents,
-    filters?.promptsOnly, filters?.responsesOnly, filters?.requestsOnly,
+    filters?.promptsOnly, filters?.requestsOnly,
     filters?.toolsOnly, filters?.agentsOnly, filters?.riskyOnly,
     filters?.searchQuery, filters?.types, filters?.agentTypes,
   ]);
