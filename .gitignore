@@ -2,7 +2,10 @@ node_modules/
 dist/
 web-dist/
 *.log
-.env
-.DS_Store
-.idea/
 .claude/layman.json
+.DS_Store
+.env
+.idea/
+.playwright-mcp/
+.vscode/
+

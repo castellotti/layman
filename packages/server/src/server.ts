@@ -25,7 +25,7 @@ import { openDatabase } from './db/database.js';
 import { SessionRecorder } from './db/recorder.js';
 import { BookmarkStore } from './db/bookmarks.js';
 import { HighlightStore } from './db/highlights.js';
-import { searchEvents } from './db/search.js';
+import { searchEvents, parseSearchQuery, matchesSearchTerms } from './db/search.js';
 import { computeTimeMetrics } from './db/time-metrics.js';
 import type { SearchRequest } from './db/search.js';
 import type { LaymanConfig } from './config/schema.js';
@@ -114,6 +114,49 @@ export function createServer(config: LaymanConfig): LaymanServer {
   // Build sessions list annotated with active flag from the gate
   function buildSessionsList() {
     return eventStore.getSessions().map(s => ({ ...s, active: gate.isActive(s.sessionId) }));
+  }
+
+  // ─── Full-session investigation context ───────────────────────────────────
+  // Context assembly priority for analyze/laymans/ask: (1) the selected event verbatim
+  // (handled by callers), (2) a window of surrounding events, (3) a rolling summary of
+  // everything older than that window. The summary is cached per session and refreshed
+  // in the background — it never blocks the caller, so the first investigation in a long
+  // session simply lacks it until the background summarization completes.
+  const RECENT_EVENTS_WINDOW = 20;
+  const sessionSummaryCache = new Map<string, { summary: string; eventCount: number }>();
+
+  function summarizeEventForContext(e: import('./events/types.js').TimelineEvent): { type: string; summary: string } {
+    return {
+      type: e.type,
+      summary: e.data.toolName
+        ? `${e.data.toolName}: ${JSON.stringify(e.data.toolInput ?? {}).slice(0, 120)}`
+        : (e.data.prompt as string | undefined)?.slice(0, 120) ?? e.type,
+    };
+  }
+
+  function getSessionEventsForContext(sessionId: string): import('./events/types.js').TimelineEvent[] {
+    const live = eventStore.getAll().filter((e) => e.sessionId === sessionId);
+    return live.length > 0 ? live : bookmarkStore.getEventsForSession(sessionId);
+  }
+
+  function buildSessionContext(sessionId: string, excludeEventId: string, modelOverride?: string): {
+    recentEvents: Array<{ type: string; summary: string }>;
+    sessionSummary?: string;
+  } {
+    const others = getSessionEventsForContext(sessionId).filter((e) => e.id !== excludeEventId);
+    const recentEvents = others.slice(-RECENT_EVENTS_WINDOW).map(summarizeEventForContext);
+    const older = others.slice(0, -RECENT_EVENTS_WINDOW);
+
+    if (older.length === 0) return { recentEvents };
+
+    const cached = sessionSummaryCache.get(sessionId);
+    if (!cached || cached.eventCount !== older.length) {
+      void analysisEngine.summarizeSession(older.map(summarizeEventForContext), process.cwd(), modelOverride)
+        .then((result) => sessionSummaryCache.set(sessionId, { summary: result.summary, eventCount: older.length }))
+        .catch(() => {});
+    }
+
+    return { recentEvents, sessionSummary: cached?.summary };
   }
 
   // Forward store events to WebSocket
@@ -378,17 +421,7 @@ export function createServer(config: LaymanConfig): LaymanServer {
       const event = eventStore.get(request.params.eventId) ?? bookmarkStore.getEventById(request.params.eventId);
       if (!event) return reply.status(404).send({ error: 'Event not found' });
 
-      // Build recent session context from event store
-      const allEvents = eventStore.getAll();
-      const sessionEvents = allEvents
-        .filter((e) => e.sessionId === event.sessionId && e.id !== event.id)
-        .slice(-20)
-        .map((e) => ({
-          type: e.type,
-          summary: e.data.toolName
-            ? `${e.data.toolName}: ${JSON.stringify(e.data.toolInput ?? {}).slice(0, 120)}`
-            : (e.data.prompt as string | undefined)?.slice(0, 120) ?? e.type,
-        }));
+      const ctx = buildSessionContext(event.sessionId, event.id, request.body.model);
 
       try {
         const result = await analysisEngine.ask(request.body.question, {
@@ -399,7 +432,8 @@ export function createServer(config: LaymanConfig): LaymanServer {
           laymansTerms: request.body.laymansTerms ?? event.laymans?.explanation,
           failureReason: request.body.failureReason ?? (event.data.error as string | undefined),
           previousQuestions: request.body.previousQuestions,
-          recentSessionEvents: sessionEvents,
+          recentSessionEvents: ctx.recentEvents,
+          sessionSummary: ctx.sessionSummary,
           cwd: process.cwd(),
           modelOverride: request.body.model,
         }, 'high');
@@ -900,6 +934,29 @@ export function createServer(config: LaymanConfig): LaymanServer {
       return searchEvents(db, request.body);
     });
 
+    // Lightweight per-session match counts for the Sessions sidebar search — matches session
+    // name, cwd, AND recorded event content (reuses the same LIKE-based search as /api/search).
+    fastify.get<{ Querystring: { q?: string } }>('/api/bookmarks/search', async (request) => {
+      const q = (request.query.q ?? '').trim();
+      if (!q) return { results: [] };
+
+      const eventMatches = searchEvents(db, { query: q, fields: ['allText'], limit: 1 }).sessions;
+      const matchCounts = new Map<string, number>(eventMatches.map((s) => [s.sessionId, s.matchCount]));
+
+      const terms = parseSearchQuery(q);
+      for (const session of bookmarkStore.listRecordedSessions()) {
+        const nameMatch = matchesSearchTerms(session.sessionName ?? '', terms);
+        const cwdMatch = matchesSearchTerms(session.cwd ?? '', terms);
+        if (nameMatch || cwdMatch) {
+          const bonus = (nameMatch ? 1 : 0) + (cwdMatch ? 1 : 0);
+          matchCounts.set(session.sessionId, (matchCounts.get(session.sessionId) ?? 0) + bonus);
+        }
+      }
+
+      const results = Array.from(matchCounts.entries()).map(([sessionId, matchCount]) => ({ sessionId, matchCount }));
+      return { results };
+    });
+
     // Import events from a saved JSON file (e.g. from /api/events export)
     fastify.post<{ Body: { events: unknown[] } }>('/api/bookmarks/sessions/import', async (request, reply) => {
       const { events } = request.body;
@@ -1174,6 +1231,7 @@ export function createServer(config: LaymanConfig): LaymanServer {
         const event = eventStore.get(message.eventId) ?? bookmarkStore.getEventById(message.eventId);
         if (!event) break;
 
+        const ctx = buildSessionContext(event.sessionId, event.id, message.model);
         void (async () => {
           try {
             broadcast({ type: 'analysis:start', eventId: message.eventId });
@@ -1183,6 +1241,9 @@ export function createServer(config: LaymanConfig): LaymanServer {
               toolOutput: event.data.toolOutput,
               cwd: process.cwd(),
               depth: message.depth,
+              recentEvents: ctx.recentEvents,
+              sessionSummary: ctx.sessionSummary,
+              modelOverride: message.model,
             }, 'high');
             eventStore.attachAnalysis(message.eventId, result);
             broadcast({ type: 'analysis:result', eventId: message.eventId, result });
@@ -1197,6 +1258,7 @@ export function createServer(config: LaymanConfig): LaymanServer {
         const event = eventStore.get(message.eventId) ?? bookmarkStore.getEventById(message.eventId);
         if (!event) break;
 
+        const ctx = buildSessionContext(event.sessionId, event.id, message.model);
         void (async () => {
           try {
             broadcast({ type: 'laymans:start', eventId: message.eventId });
@@ -1207,6 +1269,9 @@ export function createServer(config: LaymanConfig): LaymanServer {
                 toolOutput: event.data.toolOutput,
                 cwd: process.cwd(),
                 depth: message.depth,
+                recentEvents: ctx.recentEvents,
+                sessionSummary: ctx.sessionSummary,
+                modelOverride: message.model,
               },
               activeConfig.laymansPrompt,
               'high',
@@ -1224,12 +1289,16 @@ export function createServer(config: LaymanConfig): LaymanServer {
         const event = eventStore.get(message.eventId) ?? bookmarkStore.getEventById(message.eventId);
         if (!event) break;
 
+        const ctx = buildSessionContext(event.sessionId, event.id, message.model);
         const req = {
           toolName: event.data.toolName ?? 'Unknown',
           toolInput: event.data.toolInput ?? {},
           toolOutput: event.data.toolOutput,
           cwd: process.cwd(),
           depth: message.depth,
+          recentEvents: ctx.recentEvents,
+          sessionSummary: ctx.sessionSummary,
+          modelOverride: message.model,
         };
 
         // Run both in parallel — the engine's concurrency limit + pacer handle rate limiting

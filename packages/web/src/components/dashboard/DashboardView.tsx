@@ -1,10 +1,17 @@
-import React, { useMemo, useState, useCallback, useEffect } from 'react';
+import React, { useMemo, useState, useCallback, useEffect, useRef } from 'react';
 import { useSessionStore } from '../../stores/sessionStore.js';
-import { SessionCard } from './SessionCard.js';
-import { SidePanel } from './SidePanel.js';
+import { SessionListRow } from './SessionListRow.js';
+import { PreviewPane } from './PreviewPane.js';
+import { SearchInput } from '../primitives/index.js';
 import { saveAndBookmarkSession } from '../../lib/bookmarks-api.js';
+import { useDragReorder } from '../../hooks/useDragReorder.js';
 import type { ClientMessage } from '../../lib/ws-protocol.js';
 import './dashboard.css';
+
+const SESSION_LIST_WIDTH = 410;
+const MIN_PANE_HEIGHT = 240;
+
+type SortMode = 'recent' | 'custom';
 
 interface DashboardViewProps {
   onSend: (msg: ClientMessage) => void;
@@ -14,42 +21,27 @@ export function DashboardView({ onSend }: DashboardViewProps) {
   const {
     sessions,
     events: allEvents,
-    bookmarks,
-    dashboardFocusedSession,
-    setDashboardFocusedSession,
+    sessionMetrics,
     dashboardSessionOrder,
     setDashboardSessionOrder,
     dashboardDismissedSessions,
     dismissDashboardSession,
-    navigateFromDashboard,
     navigateFromDashboardToLogs,
     navigateToLogsForSession,
+    driftState,
+    config,
   } = useSessionStore();
 
-  const bookmarkedSessionIds = useMemo(
-    () => new Set(bookmarks.map((b) => b.sessionId)),
-    [bookmarks]
-  );
+  // Which sessions have their preview pane open
+  const [openPanes, setOpenPanes] = useState<Set<string>>(new Set());
+  // Sessions we've already auto-opened at least once — prevents reopening a pane
+  // the user explicitly closed when orderedSessions merely reorders.
+  const autoOpenedRef = useRef<Set<string>>(new Set());
+  // Sort + filter
+  const [sortMode, setSortMode] = useState<SortMode>('recent');
+  const [filter, setFilter] = useState('');
 
-  // Drag state
-  const [dragIndex, setDragIndex] = useState<number | null>(null);
-  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
-
-  const orderedSessions = useMemo(() => {
-    // Only show active, non-dismissed sessions in the dashboard — ended sessions are visible in Logs
-    const activeSessions = sessions.filter(s => s.active !== false && !dashboardDismissedSessions.has(s.sessionId));
-    const sorted = [...activeSessions].sort((a, b) => {
-      // Respect custom drag order
-      const orderMap = new Map(dashboardSessionOrder.map((id, i) => [id, i]));
-      const aOrder = orderMap.get(a.sessionId) ?? 999;
-      const bOrder = orderMap.get(b.sessionId) ?? 999;
-      if (aOrder !== bOrder) return aOrder - bOrder;
-
-      // Fall back to most recently seen
-      return b.lastSeen - a.lastSeen;
-    });
-    return sorted;
-  }, [sessions, dashboardSessionOrder, dashboardDismissedSessions]);
+  const panelRef = useRef<HTMLDivElement>(null);
 
   // Events grouped by session
   const eventsBySession = useMemo(() => {
@@ -61,234 +53,197 @@ export function DashboardView({ onSend }: DashboardViewProps) {
     return map;
   }, [allEvents]);
 
-  // Focus toggle
-  const handleFocus = useCallback((sessionId: string) => {
-    setDashboardFocusedSession(
-      dashboardFocusedSession === sessionId ? null : sessionId
+  // Filtered + sorted session list
+  const orderedSessions = useMemo(() => {
+    const activeSessions = sessions.filter(
+      s => s.active !== false && !dashboardDismissedSessions.has(s.sessionId)
     );
-  }, [dashboardFocusedSession, setDashboardFocusedSession]);
 
-  // Close a session card: deactivate server-side (so it leaves TOKEN USAGE too), then dismiss locally
-  const handleDismiss = useCallback((sessionId: string) => {
-    const session = sessions.find(s => s.sessionId === sessionId);
-    if (session?.active !== false) {
-      // Session is still active — deactivate it on the server so the gate stops processing it
-      // and it is removed from TOKEN USAGE. The server will broadcast session:deactivated,
-      // which marks it inactive client-side. We also dismiss locally for immediate UI feedback.
-      fetch('/api/deactivate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ session_id: sessionId }),
-      }).catch(() => {/* ignore network errors */});
+    let filtered = activeSessions;
+    if (filter.trim()) {
+      const q = filter.toLowerCase();
+      filtered = activeSessions.filter(s =>
+        (s.sessionName ?? '').toLowerCase().includes(q) ||
+        s.cwd.toLowerCase().includes(q) ||
+        s.sessionId.toLowerCase().includes(q)
+      );
     }
-    dismissDashboardSession(sessionId);
-    if (dashboardFocusedSession === sessionId) setDashboardFocusedSession(null);
-  }, [sessions, dismissDashboardSession, dashboardFocusedSession, setDashboardFocusedSession]);
 
-  // Drill-down to flowchart + investigation
-  const handleDrilldown = useCallback((sessionId: string, eventId: string) => {
-    navigateFromDashboard(sessionId, eventId);
-  }, [navigateFromDashboard]);
+    const sorted = [...filtered].sort((a, b) => {
+      if (sortMode === 'custom') {
+        const orderMap = new Map(dashboardSessionOrder.map((id, i) => [id, i]));
+        const aO = orderMap.get(a.sessionId) ?? 999;
+        const bO = orderMap.get(b.sessionId) ?? 999;
+        return aO - bO;
+      }
+      // Default: most recently active
+      return b.lastSeen - a.lastSeen;
+    });
+    return sorted;
+  }, [sessions, dashboardSessionOrder, dashboardDismissedSessions, sortMode, filter]);
 
-  // Drill-down to Logs (for prompt/response clicks)
-  const handleDrilldownToLogs = useCallback((sessionId: string, eventId: string) => {
+  // Auto-open pane for newly detected sessions (only the first time each session is seen —
+  // reordering orderedSessions, e.g. via attention sort, must not reopen a pane the user closed).
+  useEffect(() => {
+    const newSessions = orderedSessions.filter(s => !autoOpenedRef.current.has(s.sessionId));
+    if (newSessions.length > 0) {
+      newSessions.forEach(s => autoOpenedRef.current.add(s.sessionId));
+      setOpenPanes(prev => {
+        const next = new Set(prev);
+        newSessions.forEach(s => next.add(s.sessionId));
+        return next;
+      });
+    }
+  }, [orderedSessions]);
+
+  // Auto-close panes for ended/dismissed sessions
+  useEffect(() => {
+    const activeIds = new Set(orderedSessions.map(s => s.sessionId));
+    setOpenPanes(prev => {
+      const next = new Set<string>();
+      prev.forEach(id => { if (activeIds.has(id)) next.add(id); });
+      return next.size === prev.size ? prev : next;
+    });
+  }, [orderedSessions]);
+
+  const handleToggle = useCallback((sessionId: string) => {
+    setOpenPanes(prev => {
+      const next = new Set(prev);
+      if (next.has(sessionId)) next.delete(sessionId);
+      else next.add(sessionId);
+      return next;
+    });
+  }, []);
+
+  const handleClosePane = useCallback((sessionId: string) => {
+    setOpenPanes(prev => {
+      const next = new Set(prev);
+      next.delete(sessionId);
+      return next;
+    });
+  }, []);
+
+  const handleOpenInLogs = useCallback((sessionId: string) => {
+    navigateToLogsForSession(sessionId);
+  }, [navigateToLogsForSession]);
+
+  const handleOpenEventInLogs = useCallback((sessionId: string, eventId: string) => {
     navigateFromDashboardToLogs(sessionId, eventId);
   }, [navigateFromDashboardToLogs]);
 
-  // Drag handlers
-  const handleDragStart = useCallback((index: number) => {
-    setDragIndex(index);
-  }, []);
+  // Drag handlers — keyed by sessionId (not array index) so a session added/removed
+  // by a live WebSocket update mid-drag can't cause the wrong session to be moved.
+  const { dragId, dragOverId, handleDragStart, handleDragOver, handleDragEnd } = useDragReorder(
+    useCallback((movedId, targetId) => {
+      // Resolve relative drag direction from the CURRENT visible order, not a
+      // position captured at drag-start time.
+      const fromIdx = orderedSessions.findIndex(s => s.sessionId === movedId);
+      const toIdx = orderedSessions.findIndex(s => s.sessionId === targetId);
+      if (fromIdx === -1 || toIdx === -1) return;
 
-  const handleDragOver = useCallback((index: number) => {
-    setDragOverIndex(index);
-  }, []);
+      // Reorder relative to the FULL session order, not just the filtered/visible
+      // subset in orderedSessions — otherwise sessions hidden by an active filter
+      // would be dropped from dashboardSessionOrder entirely.
+      const allIds = sessions.map(s => s.sessionId);
+      const knownIds = new Set(dashboardSessionOrder);
+      const baseOrder = [...dashboardSessionOrder, ...allIds.filter(id => !knownIds.has(id))];
 
-  const handleDragEnd = useCallback(() => {
-    if (dragIndex !== null && dragOverIndex !== null && dragIndex !== dragOverIndex) {
-      const newOrder = orderedSessions.map(s => s.sessionId);
-      const [moved] = newOrder.splice(dragIndex, 1);
-      newOrder.splice(dragOverIndex, 0, moved);
+      const newOrder = baseOrder.filter(id => id !== movedId);
+      const targetPos = newOrder.indexOf(targetId);
+      const insertAt = fromIdx < toIdx ? targetPos + 1 : targetPos;
+      newOrder.splice(insertAt, 0, movedId);
+
       setDashboardSessionOrder(newOrder);
-    }
-    setDragIndex(null);
-    setDragOverIndex(null);
-  }, [dragIndex, dragOverIndex, orderedSessions, setDashboardSessionOrder]);
-
-  // Count total (all known) sessions vs displayed (active only)
-  const totalSessionCount = sessions.length;
-  const inactiveCount = useMemo(
-    () => sessions.filter(s => s.active === false).length,
-    [sessions]
+      setSortMode('custom');
+    }, [orderedSessions, sessions, dashboardSessionOrder, setDashboardSessionOrder])
   );
 
-  // Auto-update timer for "time since" displays
-  const [, setTick] = useState(0);
-  useEffect(() => {
-    const interval = setInterval(() => setTick(t => t + 1), 5000);
-    return () => clearInterval(interval);
-  }, []);
+  // Calculate preview pane heights
+  const openSessionIds = orderedSessions.filter(s => openPanes.has(s.sessionId)).map(s => s.sessionId);
+  const openCount = openSessionIds.length;
 
   return (
-    <div className="dashboard-root flex flex-col h-full relative">
-      {/* Scanline overlay */}
-      <div className="dash-scanline" />
-
-      <div className="flex flex-1 min-h-0 relative z-10">
-        {/* Main area: Session cards grid */}
-        <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-          {/* Dashboard header bar */}
-          <div className="flex items-center gap-3 px-5 py-3 shrink-0" style={{ borderBottom: '1px solid var(--dash-border-subtle)' }}>
-            <span style={{
-              fontFamily: 'var(--dash-font-display)',
-              fontSize: 14,
-              fontWeight: 600,
-              color: 'var(--dash-accent)',
-              letterSpacing: '0.5px',
-            }}>
-              DASHBOARD
-            </span>
-            <span style={{
-              fontFamily: 'var(--dash-font-data)',
-              fontSize: 10,
-              color: 'var(--dash-text-muted)',
-            }}>
-              {orderedSessions.length} active
-              {inactiveCount > 0 && (
-                <span style={{ color: 'var(--dash-text-muted)', marginLeft: 6 }}>
-                  · {totalSessionCount} total
-                </span>
-              )}
-            </span>
-
-            {dashboardFocusedSession && (
-              <>
-                <span style={{ color: 'var(--dash-text-muted)', fontSize: 10 }}>{'\u00b7'}</span>
-                <span style={{
-                  fontFamily: 'var(--dash-font-data)',
-                  fontSize: 10,
-                  color: 'var(--dash-accent)',
-                }}>
-                  Focused: {(() => { const fs = orderedSessions.find(s => s.sessionId === dashboardFocusedSession); return fs?.sessionName || fs?.cwd?.split('/').pop() || dashboardFocusedSession.slice(0, 8); })()}
-                </span>
-                <button
-                  onClick={() => setDashboardFocusedSession(null)}
-                  style={{
-                    fontFamily: 'var(--dash-font-data)',
-                    fontSize: 9,
-                    color: 'var(--dash-text-secondary)',
-                    background: 'var(--dash-bg)',
-                    border: '1px solid var(--dash-border-subtle)',
-                    padding: '2px 6px',
-                    borderRadius: 3,
-                    cursor: 'pointer',
-                  }}
-                >
-                  Clear
-                </button>
-              </>
-            )}
-          </div>
-
-          {/* Cards grid */}
-          {(() => {
-            const count = orderedSessions.length;
-            const isFew = count > 0 && count <= 2;
-            const isThree = count === 3;
-
-            // For 3 sessions: reorder so the featured (focused or first) is at index 0
-            const featuredId = isThree
-              ? (dashboardFocusedSession && orderedSessions.some(s => s.sessionId === dashboardFocusedSession)
-                  ? dashboardFocusedSession
-                  : orderedSessions[0]?.sessionId)
-              : null;
-            const displaySessions = isThree && featuredId
-              ? [
-                  orderedSessions.find(s => s.sessionId === featuredId)!,
-                  ...orderedSessions.filter(s => s.sessionId !== featuredId),
-                ]
-              : orderedSessions;
-
-            let gridTemplateColumns: string;
-            let gridTemplateRows: string;
-            let overflow: string;
-
-            if (count === 1) {
-              gridTemplateColumns = '1fr';
-              gridTemplateRows = '1fr';
-              overflow = 'hidden';
-            } else if (count === 2) {
-              gridTemplateColumns = 'repeat(2, 1fr)';
-              gridTemplateRows = '1fr';
-              overflow = 'hidden';
-            } else if (isThree) {
-              gridTemplateColumns = 'repeat(2, 1fr)';
-              gridTemplateRows = 'repeat(2, 1fr)';
-              overflow = 'hidden';
-            } else {
-              gridTemplateColumns = 'repeat(auto-fill, minmax(380px, 1fr))';
-              gridTemplateRows = 'auto';
-              overflow = 'auto';
-            }
-
-            return (
-            <div
-              className="flex-1 min-h-0 p-4 flex flex-col"
-              style={{ overflow }}
-            >
-            {count === 0 ? (
-              <EmptyState />
-            ) : (
-              <div
-                className="grid gap-4 flex-1 min-h-0"
-                style={{
-                  gridTemplateColumns,
-                  gridTemplateRows,
-                  height: isFew || isThree ? '100%' : 'auto',
-                  maxWidth: '100%',
-                }}
-                onClick={() => setDashboardFocusedSession(null)}
-              >
-                {displaySessions.map((session, displayIndex) => {
-                  const orderIndex = orderedSessions.indexOf(session);
-                  return (
-                  <SessionCard
-                    key={session.sessionId}
-                    session={session}
-                    events={eventsBySession.get(session.sessionId) ?? []}
-                    isFocused={dashboardFocusedSession === session.sessionId}
-                    onFocus={handleFocus}
-                    onDismiss={handleDismiss}
-                    onDrilldown={handleDrilldown}
-                    onDrilldownToLogs={handleDrilldownToLogs}
-                    onOpenInLogs={navigateToLogsForSession}
-                    onBookmark={bookmarkedSessionIds.has(session.sessionId) ? undefined : saveAndBookmarkSession}
-                    onSend={onSend}
-                    index={orderIndex}
-                    onDragStart={handleDragStart}
-                    onDragOver={handleDragOver}
-                    onDragEnd={handleDragEnd}
-                    isDragging={dragIndex === orderIndex}
-                    isDragOver={dragOverIndex === orderIndex}
-                    totalCards={count}
-                    isSpanning={isThree && displayIndex === 0}
-                  />
-                  );
-                })}
-              </div>
-            )}
-            </div>
-            );
-          })()}
-        </div>
-
-        {/* Right side panel */}
-        <div className="w-64 shrink-0 flex flex-col min-h-0">
-          <SidePanel
-            events={allEvents}
-            focusedSessionId={dashboardFocusedSession}
+    <div className="dashboard-root" style={{ display: 'flex', height: '100%' }}>
+      {/* ── Left: session list ── */}
+      <div
+        style={{
+          width: SESSION_LIST_WIDTH,
+          flexShrink: 0,
+          display: 'flex',
+          flexDirection: 'column',
+          borderRight: '1px solid var(--border)',
+          background: 'var(--bg-raised)',
+          overflow: 'hidden',
+        }}
+      >
+        {/* List header */}
+        <div style={{ padding: '10px 12px 8px', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
+          <SearchInput
+            value={filter}
+            onChange={setFilter}
+            placeholder="Filter sessions…"
+            width="100%"
           />
         </div>
+
+        {/* Session rows */}
+        <div style={{ flex: 1, overflowY: 'auto' }}>
+          {orderedSessions.length === 0 ? (
+            <EmptyState />
+          ) : (
+            orderedSessions.map((session) => (
+              <SessionListRow
+                key={session.sessionId}
+                session={session}
+                events={eventsBySession.get(session.sessionId) ?? []}
+                metrics={sessionMetrics.get(session.sessionId)}
+                isOpen={openPanes.has(session.sessionId)}
+                isDragging={dragId === session.sessionId}
+                isDragOver={dragOverId === session.sessionId}
+                onToggle={handleToggle}
+                onOpenInLogs={handleOpenInLogs}
+                onDragStart={() => handleDragStart(session.sessionId)}
+                onDragOver={() => handleDragOver(session.sessionId)}
+                onDragEnd={handleDragEnd}
+              />
+            ))
+          )}
+        </div>
+      </div>
+
+      {/* ── Right: preview panes ── */}
+      <div
+        ref={panelRef}
+        style={{
+          flex: 1,
+          display: 'flex',
+          flexDirection: 'column',
+          overflow: 'auto',
+          background: 'var(--bg)',
+        }}
+      >
+        {openCount === 0 ? (
+          <PreviewEmpty />
+        ) : (
+          openSessionIds.map(sessionId => {
+            const session = orderedSessions.find(s => s.sessionId === sessionId);
+            if (!session) return null;
+            return (
+              <PreviewPane
+                key={sessionId}
+                session={session}
+                events={eventsBySession.get(sessionId) ?? []}
+                metrics={sessionMetrics.get(sessionId)}
+                driftState={driftState.get(sessionId)}
+                driftEnabled={!!config?.driftMonitoring?.enabled}
+                onClose={handleClosePane}
+                onOpenInLogs={handleOpenInLogs}
+                onOpenEventInLogs={handleOpenEventInLogs}
+                minHeight={MIN_PANE_HEIGHT}
+              />
+            );
+          })
+        )}
       </div>
     </div>
   );
@@ -296,39 +251,28 @@ export function DashboardView({ onSend }: DashboardViewProps) {
 
 function EmptyState() {
   return (
-    <div className="flex flex-col items-center justify-center h-full gap-4">
-      <svg
-        width="56"
-        height="56"
-        viewBox="0 0 56 56"
-        fill="none"
-        style={{ opacity: 0.15, color: 'var(--dash-accent)' }}
-        aria-hidden="true"
-      >
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: 12, padding: 24 }}>
+      <svg width="40" height="40" viewBox="0 0 56 56" fill="none" style={{ opacity: 0.12, color: 'var(--accent)' }}>
         <circle cx="28" cy="28" r="24" stroke="currentColor" strokeWidth="1.5"/>
         <circle cx="28" cy="28" r="15" stroke="currentColor" strokeWidth="1"/>
         <circle cx="28" cy="28" r="5" stroke="currentColor" strokeWidth="1"/>
         <line x1="28" y1="4" x2="28" y2="52" stroke="currentColor" strokeWidth="0.5"/>
         <line x1="4" y1="28" x2="52" y2="28" stroke="currentColor" strokeWidth="0.5"/>
       </svg>
-      <div style={{
-        fontFamily: 'var(--dash-font-display)',
-        fontSize: 14,
-        color: 'var(--dash-text-muted)',
-        textAlign: 'center',
-      }}>
-        No active sessions
-      </div>
-      <div style={{
-        fontFamily: 'var(--dash-font-data)',
-        fontSize: 11,
-        color: 'var(--dash-text-muted)',
-        textAlign: 'center',
-        maxWidth: 280,
-        lineHeight: 1.6,
-      }}>
-        Sessions will appear here when agents connect. Start a Claude Code, Codex, or other supported harness session.
-      </div>
+      <span style={{ fontFamily: 'var(--font-ui)', fontSize: 12, color: 'var(--text-faint)' }}>No active sessions</span>
+      <span style={{ fontFamily: 'var(--font-ui)', fontSize: 11, color: 'var(--text-faint)', textAlign: 'center', maxWidth: 220, lineHeight: 1.6 }}>
+        Sessions will appear here when agents connect.
+      </span>
+    </div>
+  );
+}
+
+function PreviewEmpty() {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
+      <span style={{ fontFamily: 'var(--font-ui)', fontSize: 11, color: 'var(--text-faint)' }}>
+        Click a session to open its preview
+      </span>
     </div>
   );
 }

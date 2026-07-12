@@ -4,7 +4,7 @@ import type { AnalysisResult, LaymansResult } from '../analysis/types.js';
 
 // --- Query Parser ---
 
-interface ParsedTerm {
+export interface ParsedTerm {
   text: string;
   exclude: boolean;
 }
@@ -31,6 +31,19 @@ export function parseSearchQuery(raw: string): ParsedTerm[] {
 
     return { text: text.toLowerCase(), exclude };
   }).filter((t) => t.text.length > 0);
+}
+
+// Applies the same +include/-exclude term grammar as searchEvents() to a single
+// plain-text field (e.g. session name or cwd), so all search entry points share
+// one query language.
+export function matchesSearchTerms(text: string, terms: ParsedTerm[]): boolean {
+  if (terms.length === 0) return false;
+  const lower = text.toLowerCase();
+  for (const term of terms) {
+    const found = lower.includes(term.text);
+    if (term.exclude ? found : !found) return false;
+  }
+  return true;
 }
 
 // --- Search Types ---

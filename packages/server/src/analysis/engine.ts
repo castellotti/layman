@@ -75,12 +75,15 @@ export class AnalysisEngine {
   }
 
   async analyze(request: AnalysisRequest, priority: 'high' | 'normal' = 'normal'): Promise<AnalysisResult> {
-    // Check cache first
-    const cached = this.cache.get(request.toolName, request.toolInput, request.depth);
-    if (cached) return cached;
+    // Check cache first (model overrides bypass the cache — they're explicit user choices)
+    if (!request.modelOverride) {
+      const cached = this.cache.get(request.toolName, request.toolInput, request.depth);
+      if (cached) return cached;
+    }
 
     const effectiveConfig = {
       ...this.config,
+      ...(request.modelOverride ? { model: request.modelOverride } : {}),
       maxTokens: request.depth === 'detailed' ? 1200 : 400,
     };
 
@@ -95,7 +98,9 @@ export class AnalysisEngine {
       return parsed;
     }, priority);
 
-    this.cache.set(request.toolName, request.toolInput, request.depth, result);
+    if (!request.modelOverride) {
+      this.cache.set(request.toolName, request.toolInput, request.depth, result);
+    }
     return result;
   }
 
@@ -113,7 +118,8 @@ export class AnalysisEngine {
       context.laymansTerms,
       context.failureReason,
       context.previousQuestions,
-      context.recentSessionEvents
+      context.recentSessionEvents,
+      context.sessionSummary
     );
 
     return this.callRaw(INVESTIGATION_SYSTEM_PROMPT, userMessage, {
@@ -160,6 +166,7 @@ export class AnalysisEngine {
     const systemPrompt = buildLaymansSystemPrompt(prompt, request.depth);
     const userMessage = formatAnalysisUserMessage(request);
     const raw = await this.callRaw(systemPrompt, userMessage, {
+      ...(request.modelOverride ? { model: request.modelOverride } : {}),
       maxTokens: request.depth === 'detailed' ? 800 : 300,
     }, priority);
     return { explanation: raw.text, model: raw.model, latencyMs: raw.latencyMs, tokens: raw.tokens };
