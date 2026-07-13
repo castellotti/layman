@@ -149,6 +149,26 @@ describe('redactString', () => {
     });
   });
 
+  describe('user home directory paths', () => {
+    it('replaces macOS home path prefix with ~', () => {
+      expect(redactString('/Users/sc/development/castellotti/layman/README.md'))
+        .toBe('~/development/castellotti/layman/README.md');
+    });
+    it('replaces Linux home path prefix with ~', () => {
+      expect(redactString('/home/alice/projects/app')).toBe('~/projects/app');
+    });
+    it('replaces bare home directory with ~', () => {
+      expect(redactString('/Users/sc')).toBe('~');
+    });
+    it('replaces Windows home path prefix with ~', () => {
+      expect(redactString('C:\\Users\\alice\\project\\file.txt')).toBe('~\\project\\file.txt');
+    });
+    it('preserves unrelated absolute paths', () => {
+      const text = 'The file was read successfully from /tmp/foo.ts';
+      expect(redactString(text)).toBe(text);
+    });
+  });
+
   describe('no false positives for normal text', () => {
     it('preserves normal sentences', () => {
       const text = 'The file was read successfully from /tmp/foo.ts';
