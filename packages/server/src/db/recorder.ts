@@ -22,6 +22,7 @@ export class SessionRecorder {
   constructor(
     private db: Database,
     private getRecordingEnabled: () => boolean,
+    private getCwdFilter: () => (cwd: string) => string = () => (cwd) => cwd,
   ) {
     this.upsertSession = db.prepare(`
       INSERT INTO recorded_sessions (session_id, cwd, agent_type, started_at, last_seen)
@@ -116,9 +117,10 @@ export class SessionRecorder {
     store.on('sessions:changed', (sessions: Array<{ sessionId: string; cwd: string; agentType: string; lastSeen: number }>) => {
       if (!this.getRecordingEnabled()) return;
       try {
+        const filterCwd = this.getCwdFilter();
         for (const s of sessions) {
           if (s.cwd) {
-            this.updateSessionCwd.run(s.cwd, s.agentType, s.lastSeen, s.sessionId);
+            this.updateSessionCwd.run(filterCwd(s.cwd), s.agentType, s.lastSeen, s.sessionId);
           }
         }
       } catch {
@@ -205,8 +207,9 @@ export class SessionRecorder {
     `);
     const startedAt = events[0].timestamp;
     const lastSeen = events[events.length - 1].timestamp;
+    const filteredCwd = this.getCwdFilter()(cwd);
     const tx = this.db.transaction(() => {
-      upsertSess.run(sessionId, cwd, agentType, startedAt, lastSeen, source);
+      upsertSess.run(sessionId, filteredCwd, agentType, startedAt, lastSeen, source);
       for (const event of events) {
         insertEv.run(
           event.id,

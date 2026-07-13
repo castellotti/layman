@@ -113,6 +113,13 @@ export const PII_CATEGORIES: PiiCategory[] = [
     group: 'direct',
     detected: true,
   },
+  {
+    id: 'user_path',
+    label: 'User / home directory paths',
+    description: 'Local filesystem paths that reveal the OS username (e.g. /Users/alice, C:\\Users\\alice) — replaced with ~',
+    group: 'direct',
+    detected: true,
+  },
 
   // --- Indirect identifiers (reference only, not regex-detectable) ---
   {

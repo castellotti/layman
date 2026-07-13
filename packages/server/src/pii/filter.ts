@@ -6,6 +6,8 @@ const REDACTED = '[REDACTED]';
 interface PiiPattern {
   id: string;
   regex: RegExp;
+  /** Replacement text for matches; defaults to REDACTED */
+  replacement?: string;
 }
 
 /**
@@ -43,6 +45,18 @@ export const PII_PATTERNS: PiiPattern[] = [
   {
     id: 'access_token',
     regex: /\bgh[pousr]_[A-Za-z0-9]{20,}\b/g,
+  },
+  // User home directory paths (macOS/Linux) — e.g. /Users/alice, /home/alice
+  {
+    id: 'user_path',
+    regex: /\/(?:Users|home)\/[^/\s"'<>|]+/g,
+    replacement: '~',
+  },
+  // User home directory paths (Windows) — e.g. C:\Users\alice
+  {
+    id: 'user_path',
+    regex: /[A-Za-z]:\\Users\\[^\\\s"'<>|]+/g,
+    replacement: '~',
   },
   // Apple iOS UDID (legacy 40-char hex lowercase)
   {
@@ -170,12 +184,12 @@ export function countPiiMatches(input: string): number {
  */
 export function redactString(input: string): string {
   let result = input;
-  for (const { regex } of PII_PATTERNS) {
+  for (const { regex, replacement } of PII_PATTERNS) {
     // Reset lastIndex for global regexes
     regex.lastIndex = 0;
     result = result.replace(regex, (match) => {
       if (ALLOWLIST.has(match)) return match;
-      return REDACTED;
+      return replacement ?? REDACTED;
     });
   }
   return result;
