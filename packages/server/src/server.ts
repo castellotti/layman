@@ -17,7 +17,7 @@ import { registerOpenWebUIHookHandler } from './openwebui/handler.js';
 import { AnalysisEngine } from './analysis/engine.js';
 import { DriftMonitor } from './drift/monitor.js';
 import { resolveEndpoint } from './analysis/providers/openai-compat.js';
-import { filterPii, redactValue } from './pii/filter.js';
+import { filterPii, redactValue, redactString } from './pii/filter.js';
 import { PII_CATEGORIES, PII_GROUPS } from './pii/categories.js';
 import { scanPii, executePurge } from './pii/purge.js';
 import { updateConfig, saveConfig } from './config/config.js';
@@ -93,7 +93,11 @@ export function createServer(config: LaymanConfig): LaymanServer {
   const db = openDatabase();
   const bookmarkStore = new BookmarkStore(db);
   const highlightStore = new HighlightStore(db);
-  const recorder = new SessionRecorder(db, () => getConfig().sessionRecording);
+  const recorder = new SessionRecorder(
+    db,
+    () => getConfig().sessionRecording,
+    () => (cwd: string) => getConfig().piiFilter ? redactString(cwd) : cwd,
+  );
   recorder.attach(eventStore);
 
   // Track connected WebSocket clients (@fastify/websocket v10: handler arg is the socket directly)
@@ -113,7 +117,12 @@ export function createServer(config: LaymanConfig): LaymanServer {
 
   // Build sessions list annotated with active flag from the gate
   function buildSessionsList() {
-    return eventStore.getSessions().map(s => ({ ...s, active: gate.isActive(s.sessionId) }));
+    const piiFilter = getConfig().piiFilter;
+    return eventStore.getSessions().map(s => ({
+      ...s,
+      cwd: piiFilter ? redactString(s.cwd) : s.cwd,
+      active: gate.isActive(s.sessionId),
+    }));
   }
 
   // ─── Full-session investigation context ───────────────────────────────────
@@ -1035,9 +1044,10 @@ export function createServer(config: LaymanConfig): LaymanServer {
       const updateSession = db.prepare(
         'UPDATE recorded_sessions SET cwd = ?, agent_type = ?, last_seen = ? WHERE session_id = ?'
       );
+      const piiFilter = getConfig().piiFilter;
       for (const s of eventStore.getSessions()) {
         if (!sessionId || s.sessionId === sessionId) {
-          updateSession.run(s.cwd, s.agentType, s.lastSeen, s.sessionId);
+          updateSession.run(piiFilter ? redactString(s.cwd) : s.cwd, s.agentType, s.lastSeen, s.sessionId);
         }
       }
       const savedSessionIds = [...new Set(toSave.map((e) => e.sessionId))];

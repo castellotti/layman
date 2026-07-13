@@ -27,6 +27,7 @@ const PII_CATEGORIES: PiiCategory[] = [
   { id: 'access_token', label: 'Access tokens', description: 'GitHub tokens (ghp_, github_pat_, gho_, ghu_, ghs_, ghr_) and other bearer tokens', group: 'direct', detected: true },
   { id: 'device_id', label: 'Device identifiers', description: 'Apple iOS UDIDs, IDFAs, Android device IDs, and advertising IDs', group: 'direct', detected: true },
   { id: 'secret', label: 'Passwords / secrets / private keys', description: 'Credentials, passwords, private keys, and JWTs', group: 'direct', detected: true },
+  { id: 'user_path', label: 'User / home directory paths', description: 'Local filesystem paths that reveal the OS username (e.g. /Users/alice, C:\\Users\\alice) — replaced with ~', group: 'direct', detected: true },
   { id: 'name', label: 'Personal names', description: 'First name, last name, full name of natural persons', group: 'indirect', detected: false },
   { id: 'postal_address', label: 'Postal addresses', description: 'Street addresses, ZIP/postal codes, city, country', group: 'indirect', detected: false },
   { id: 'user_id', label: 'User / customer / supplier IDs', description: 'System-specific identifiers that map to a natural person', group: 'indirect', detected: false },

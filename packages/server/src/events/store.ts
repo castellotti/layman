@@ -55,13 +55,14 @@ export class EventStore extends EventEmitter {
   }
 
   addRaw(event: TimelineEvent): void {
+    const filteredEvent = this.dataFilter ? { ...event, data: this.dataFilter(event.data) } : event;
     if (this.events.length >= this.maxEvents) {
       const evicted = this.events.shift()!;
       this.eventById.delete(evicted.id);
     }
-    this.events.push(event);
-    this.eventById.set(event.id, event);
-    this.emit('event:new', event);
+    this.events.push(filteredEvent);
+    this.eventById.set(filteredEvent.id, filteredEvent);
+    this.emit('event:new', filteredEvent);
   }
 
   get(id: string): TimelineEvent | undefined {
