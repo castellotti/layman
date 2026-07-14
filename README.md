@@ -2,7 +2,6 @@
 
 # layman
 
-[![Release](https://img.shields.io/github/v/release/castellotti/layman)](https://github.com/castellotti/layman/releases)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Node ≥22](https://img.shields.io/badge/node-%E2%89%A522-339933?logo=node.js&logoColor=white)](Dockerfile)
 [![ghcr.io](https://img.shields.io/badge/ghcr.io-castellotti%2Flayman-2496ED?logo=docker&logoColor=white)](https://github.com/castellotti/layman/pkgs/container/layman)
