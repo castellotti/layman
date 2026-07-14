@@ -81,6 +81,12 @@ export function createServer(config: LaymanConfig): LaymanServer {
 
   let activeConfig = config;
   const getConfig = (): LaymanConfig => activeConfig;
+  // Redacts a session's cwd for anything leaving the process (client display,
+  // persisted storage, or LLM prompts) when the PII filter is enabled. Kept
+  // separate from EventStore's own dataFilter because some internal-only
+  // consumers (e.g. the OpenCode prompt relay) need the literal filesystem
+  // path to function and must not be redacted.
+  const filterCwd = (cwd: string): string => getConfig().piiFilter ? redactString(cwd) : cwd;
   const makeInstaller = (): HookInstaller =>
     new HookInstaller({
       serverUrl: activeConfig.hookUrl ?? `http://${activeConfig.host}:${activeConfig.port}`,
@@ -96,7 +102,7 @@ export function createServer(config: LaymanConfig): LaymanServer {
   const recorder = new SessionRecorder(
     db,
     () => getConfig().sessionRecording,
-    () => (cwd: string) => getConfig().piiFilter ? redactString(cwd) : cwd,
+    () => getConfig().piiFilter,
   );
   recorder.attach(eventStore);
 
@@ -117,10 +123,9 @@ export function createServer(config: LaymanConfig): LaymanServer {
 
   // Build sessions list annotated with active flag from the gate
   function buildSessionsList() {
-    const piiFilter = getConfig().piiFilter;
     return eventStore.getSessions().map(s => ({
       ...s,
-      cwd: piiFilter ? redactString(s.cwd) : s.cwd,
+      cwd: filterCwd(s.cwd),
       active: gate.isActive(s.sessionId),
     }));
   }
@@ -489,10 +494,11 @@ export function createServer(config: LaymanConfig): LaymanServer {
         toolName: e.data.toolName as string | undefined,
       }));
 
-      // Try live sessions first, then recorded sessions for cwd
+      // Try live sessions first, then recorded sessions for cwd. Filtered
+      // before use since it's embedded verbatim in the LLM prompt below.
       const liveCwd = eventStore.getSessions().find((s) => !sessionId || s.sessionId === sessionId)?.cwd;
       const dbCwd = sessionId ? bookmarkStore.getRecordedSession(sessionId)?.cwd : undefined;
-      const cwd = liveCwd ?? dbCwd ?? process.cwd();
+      const cwd = filterCwd(liveCwd ?? dbCwd ?? process.cwd());
 
       try {
         const result = await analysisEngine.summarizeSession(eventSummaries, cwd, model, 'high');
@@ -728,6 +734,10 @@ export function createServer(config: LaymanConfig): LaymanServer {
       }
 
       // Try OpenCode HTTP API first (only works when started with --port).
+      // session.cwd is intentionally NOT passed through filterCwd here: this
+      // is a same-host request to the local OpenCode process, which needs
+      // the literal filesystem path to route the prompt — a redacted "~/..."
+      // value would not resolve correctly. Never log or surface this URL.
       if (session.opencodeUrl) {
         try {
           const res = await fetch(
@@ -1044,10 +1054,9 @@ export function createServer(config: LaymanConfig): LaymanServer {
       const updateSession = db.prepare(
         'UPDATE recorded_sessions SET cwd = ?, agent_type = ?, last_seen = ? WHERE session_id = ?'
       );
-      const piiFilter = getConfig().piiFilter;
       for (const s of eventStore.getSessions()) {
         if (!sessionId || s.sessionId === sessionId) {
-          updateSession.run(piiFilter ? redactString(s.cwd) : s.cwd, s.agentType, s.lastSeen, s.sessionId);
+          updateSession.run(filterCwd(s.cwd), s.agentType, s.lastSeen, s.sessionId);
         }
       }
       const savedSessionIds = [...new Set(toSave.map((e) => e.sessionId))];
