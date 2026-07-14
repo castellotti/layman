@@ -2,6 +2,7 @@ import type BetterSqlite3 from 'better-sqlite3';
 import type { Database } from './database.js';
 import type { TimelineEvent } from '../events/types.js';
 import type { EventStore } from '../events/store.js';
+import { redactString } from '../pii/filter.js';
 
 export interface QARecord {
   question: string;
@@ -22,7 +23,7 @@ export class SessionRecorder {
   constructor(
     private db: Database,
     private getRecordingEnabled: () => boolean,
-    private getCwdFilter: () => (cwd: string) => string = () => (cwd) => cwd,
+    private getPiiFilterEnabled: () => boolean = () => false,
   ) {
     this.upsertSession = db.prepare(`
       INSERT INTO recorded_sessions (session_id, cwd, agent_type, started_at, last_seen)
@@ -117,10 +118,10 @@ export class SessionRecorder {
     store.on('sessions:changed', (sessions: Array<{ sessionId: string; cwd: string; agentType: string; lastSeen: number }>) => {
       if (!this.getRecordingEnabled()) return;
       try {
-        const filterCwd = this.getCwdFilter();
+        const piiFilter = this.getPiiFilterEnabled();
         for (const s of sessions) {
           if (s.cwd) {
-            this.updateSessionCwd.run(filterCwd(s.cwd), s.agentType, s.lastSeen, s.sessionId);
+            this.updateSessionCwd.run(piiFilter ? redactString(s.cwd) : s.cwd, s.agentType, s.lastSeen, s.sessionId);
           }
         }
       } catch {
@@ -207,7 +208,7 @@ export class SessionRecorder {
     `);
     const startedAt = events[0].timestamp;
     const lastSeen = events[events.length - 1].timestamp;
-    const filteredCwd = this.getCwdFilter()(cwd);
+    const filteredCwd = this.getPiiFilterEnabled() ? redactString(cwd) : cwd;
     const tx = this.db.transaction(() => {
       upsertSess.run(sessionId, filteredCwd, agentType, startedAt, lastSeen, source);
       for (const event of events) {

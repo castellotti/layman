@@ -46,16 +46,20 @@ export const PII_PATTERNS: PiiPattern[] = [
     id: 'access_token',
     regex: /\bgh[pousr]_[A-Za-z0-9]{20,}\b/g,
   },
-  // User home directory paths (macOS/Linux) — e.g. /Users/alice, /home/alice
+  // User home directory paths (macOS/Linux, and forward-slash Windows paths
+  // like C:/Users/alice) — e.g. /Users/alice, /home/alice. Lazily matches up
+  // to the first real path/whitespace boundary so trailing sentence
+  // punctuation (comma, period, closing paren, ...) is left in place rather
+  // than swallowed into the redaction.
   {
     id: 'user_path',
-    regex: /\/(?:Users|home)\/[^/\s"'<>|]+/g,
+    regex: /(?:[A-Za-z]:)?\/(?:Users|home)\/[^/\s"'<>|]+?(?=[.,;:!?)\]}]*(?:[/\s]|$))/g,
     replacement: '~',
   },
-  // User home directory paths (Windows) — e.g. C:\Users\alice
+  // User home directory paths (Windows, backslash form) — e.g. C:\Users\alice
   {
     id: 'user_path',
-    regex: /[A-Za-z]:\\Users\\[^\\\s"'<>|]+/g,
+    regex: /[A-Za-z]:\\Users\\[^\\\s"'<>|]+?(?=[.,;:!?)\]}]*(?:[\\\s]|$))/g,
     replacement: '~',
   },
   // Apple iOS UDID (legacy 40-char hex lowercase)

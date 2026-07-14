@@ -167,6 +167,20 @@ describe('redactString', () => {
       const text = 'The file was read successfully from /tmp/foo.ts';
       expect(redactString(text)).toBe(text);
     });
+    it('does not swallow trailing sentence punctuation', () => {
+      expect(redactString('Path: /Users/alice, please review')).toBe('Path: ~, please review');
+      expect(redactString('(/Users/alice)')).toBe('(~)');
+      expect(redactString('in /Users/alice.')).toBe('in ~.');
+    });
+    it('does not swallow trailing punctuation on Windows paths', () => {
+      expect(redactString('See C:\\Users\\alice, then run')).toBe('See ~, then run');
+    });
+    it('preserves dots inside a username', () => {
+      expect(redactString('/Users/john.doe/project/file.txt')).toBe('~/project/file.txt');
+    });
+    it('fully redacts forward-slash Windows paths, not just the /Users/ suffix', () => {
+      expect(redactString('C:/Users/alice/project')).toBe('~/project');
+    });
   });
 
   describe('no false positives for normal text', () => {
