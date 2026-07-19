@@ -106,8 +106,9 @@ function StatusBar() {
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           {count > 0 && (
-            <span style={{ color: 'var(--warn)', fontWeight: 500 }}>
-              ⚡ {count} pending {count === 1 ? 'approval' : 'approvals'}
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: 'var(--warn)', fontWeight: 500 }}>
+              <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor"><path d="M9.5 1 3 9h4l-1.5 6L12 7H8l1.5-6Z" /></svg>
+              {count} pending {count === 1 ? 'approval' : 'approvals'}
             </span>
           )}
           <span>{eventCount} events</span>

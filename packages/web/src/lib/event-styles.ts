@@ -98,32 +98,6 @@ export const EVENT_ICONS: Record<string, string> = {
   web_search: '🔎',
 };
 
-export const BORDER_COLORS: Record<string, string> = {
-  tool_call_pending: 'border-l-[#d29922]',
-  tool_call_approved: 'border-l-[#3fb950]',
-  tool_call_denied: 'border-l-[#f85149]',
-  tool_call_delegated: 'border-l-[#8b949e]',
-  tool_call_completed: 'border-l-[#3fb950]/50',
-  tool_call_failed: 'border-l-[#f85149]',
-  permission_request: 'border-l-[#d29922]',
-  user_prompt: 'border-l-[#58a6ff]',
-  agent_response: 'border-l-[#3fb950]/50',
-  agent_stop: 'border-l-[#30363d]',
-  session_start: 'border-l-[#3fb950]',
-  session_end: 'border-l-[#30363d]',
-  notification: 'border-l-[#58a6ff]',
-  subagent_start: 'border-l-[#58a6ff]',
-  subagent_stop: 'border-l-[#8b949e]',
-  stop_failure: 'border-l-[#f85149]',
-  pre_compact: 'border-l-[#8b949e]',
-  post_compact: 'border-l-[#8b949e]',
-  elicitation: 'border-l-[#58a6ff]',
-  elicitation_result: 'border-l-[#58a6ff]',
-  analysis_result: 'border-l-[#8b949e]',
-  drift_check: 'border-l-[#d29922]',
-  drift_alert: 'border-l-[#f85149]',
-  web_search: 'border-l-[#79c0ff]',
-};
 
 /** Raw hex colors for flowchart node borders (same palette as BORDER_COLORS but as hex values) */
 export const NODE_BORDER_COLORS: Record<string, string> = {

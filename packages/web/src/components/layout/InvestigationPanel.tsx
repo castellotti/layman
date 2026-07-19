@@ -21,11 +21,11 @@ function AgentResponsePrompt({ event }: { event: TimelineEvent }) {
     <>
       {thinking && <div className="mb-2"><ThinkingBlock thinking={thinking} /></div>}
       {response && (
-        <div className="bg-[#0d1117] border border-[#30363d] rounded-md overflow-hidden">
-          <div className="flex items-center justify-end px-3 py-1 border-b border-[#30363d]">
+        <div className="bg-[var(--bg)] border border-[var(--border-strong)] rounded-md overflow-hidden">
+          <div className="flex items-center justify-end px-3 py-1 border-b border-[var(--border-strong)]">
             <CopyButton text={response} />
           </div>
-          <div className="px-3 py-2 border-l-2 border-[#58a6ff]">
+          <div className="px-3 py-2 border-l-2 border-[var(--accent)]">
             <MarkdownOrText text={response} />
           </div>
         </div>
@@ -38,7 +38,7 @@ function MarkdownOrText({ text, className }: { text: string; className?: string 
   if (isMarkdown(text)) {
     return <div className={className ?? MARKDOWN_PROSE}><ReactMarkdown remarkPlugins={REMARK_PLUGINS}>{text}</ReactMarkdown></div>;
   }
-  return <p className={className ?? 'text-xs text-[#e6edf3] leading-relaxed whitespace-pre-wrap'}>{text}</p>;
+  return <p className={className ?? 'text-xs text-[var(--text)] leading-relaxed whitespace-pre-wrap'}>{text}</p>;
 }
 
 function CopyButton({ text }: { text: string }) {
@@ -51,7 +51,7 @@ function CopyButton({ text }: { text: string }) {
         setCopied(true);
         setTimeout(() => setCopied(false), 1500);
       }}
-      className="text-[10px] text-[#8b949e] hover:text-[#e6edf3] transition-colors shrink-0"
+      className="text-[10px] text-[var(--text-muted)] hover:text-[var(--text)] transition-colors shrink-0"
     >
       {copied ? '✓ Copied' : 'Copy'}
     </button>
