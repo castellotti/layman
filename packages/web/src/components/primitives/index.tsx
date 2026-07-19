@@ -1,5 +1,74 @@
 import React from 'react';
 
+// ─── QuickButton / DetailedButton ──────────────────────────────────────────
+// Shared colored icon buttons for the two analysis depths (Investigation
+// panel's LAYMAN'S TERMS / ANALYSIS / Failure Analysis section headers and
+// empty states). Quick = green bolt (--ok tint), Detailed = blue magnifier
+// (--info tint).
+
+function BoltIcon() {
+  return (
+    <svg width="9" height="9" viewBox="0 0 16 16" fill="currentColor">
+      <path d="M9.5 1 3 9h4l-1.5 6L12 7H8l1.5-6Z" />
+    </svg>
+  );
+}
+
+function MagnifierIcon() {
+  return (
+    <svg width="9" height="9" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8">
+      <circle cx="7" cy="7" r="4.5" /><line x1="10.5" y1="10.5" x2="14" y2="14" />
+    </svg>
+  );
+}
+
+interface DepthButtonProps {
+  onClick: () => void;
+  disabled?: boolean;
+  loading?: boolean;
+  loadingLabel?: string;
+}
+
+export function QuickButton({ onClick, disabled, loading, loadingLabel = 'Working…' }: DepthButtonProps) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      style={{
+        display: 'flex', alignItems: 'center', gap: 4, padding: '3px 9px', fontSize: 10, borderRadius: 4,
+        fontWeight: 500, fontFamily: 'var(--font-ui)', cursor: disabled ? 'not-allowed' : 'pointer',
+        opacity: disabled ? 0.6 : 1, background: 'rgba(76,195,138,0.12)', color: 'var(--ok)',
+        border: '1px solid rgba(76,195,138,0.3)', transition: 'background 0.15s',
+      }}
+      onMouseEnter={(e) => { if (!disabled) e.currentTarget.style.background = 'rgba(76,195,138,0.2)'; }}
+      onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(76,195,138,0.12)'; }}
+    >
+      <BoltIcon />
+      {loading ? loadingLabel : 'Quick'}
+    </button>
+  );
+}
+
+export function DetailedButton({ onClick, disabled, loading, loadingLabel = 'Working…' }: DepthButtonProps) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      style={{
+        display: 'flex', alignItems: 'center', gap: 4, padding: '3px 9px', fontSize: 10, borderRadius: 4,
+        fontWeight: 500, fontFamily: 'var(--font-ui)', cursor: disabled ? 'not-allowed' : 'pointer',
+        opacity: disabled ? 0.6 : 1, background: 'rgba(90,156,248,0.12)', color: 'var(--info)',
+        border: '1px solid rgba(90,156,248,0.25)', transition: 'background 0.15s',
+      }}
+      onMouseEnter={(e) => { if (!disabled) e.currentTarget.style.background = 'rgba(90,156,248,0.2)'; }}
+      onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(90,156,248,0.12)'; }}
+    >
+      <MagnifierIcon />
+      {loading ? loadingLabel : 'Detailed'}
+    </button>
+  );
+}
+
 // ─── SectionLabel style ────────────────────────────────────────────────────────
 // Shared uppercase small-caps label used for sidebar section headers (Sessions,
 // Prompts, etc). Spread into a wrapping div's style, adding overrides as needed.

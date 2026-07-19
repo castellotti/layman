@@ -14,6 +14,12 @@ export const HYSTERESIS = 50;
 
 const SAMPLE_TIMESTAMP = '22:46:32';
 const ROW_MONO_FONT = '10px "IBM Plex Mono", monospace';
+// agent_response/user_prompt rows can be arbitrarily long prose (unlike tool commands
+// or file paths); measuring their full length would make the docking threshold
+// unreachable in practice. Cap what's *measured* for threshold purposes only — the
+// row still renders and copies its full, untruncated text (§1.1: never bake '…' into
+// the summary string itself).
+const MAX_MEASURED_CHARS = 220;
 
 export interface MeasuredWidths {
   maxText: number;
@@ -165,7 +171,7 @@ export function measureRowWidths(events: TimelineEvent[]): MeasuredWidths {
   ctx.font = ROW_MONO_FONT;
   let maxText = 0;
   for (const event of events) {
-    const w = ctx.measureText(eventDetail(event)).width;
+    const w = ctx.measureText(eventDetail(event).slice(0, MAX_MEASURED_CHARS)).width;
     if (w > maxText) maxText = w;
   }
   const timeW = ctx.measureText(SAMPLE_TIMESTAMP).width;
