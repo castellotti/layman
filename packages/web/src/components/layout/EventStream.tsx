@@ -281,7 +281,7 @@ export function EventStream({ onSend, archived = false, archivedDate }: EventStr
   const bufferedCount = totalCount - events.length;
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full w-full min-w-0">
       <NavigationBar
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}

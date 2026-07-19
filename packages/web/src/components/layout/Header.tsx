@@ -224,11 +224,10 @@ export function Header() {
         </div>
       )}
 
-      {/* Settings — the gear opens the drawer only when the Settings dock isn't
-          already visible (§2.9); otherwise the dock itself is the settings surface. */}
+      {/* Settings — always opens the drawer (floating panel only, not docked). */}
       <button
-        onClick={() => { if (!panelLayout.showSettings) setSettingsOpen(true); }}
-        title={panelLayout.showSettings ? 'Settings (docked)' : 'Settings'}
+        onClick={() => setSettingsOpen(true)}
+        title="Settings"
         style={{
           display: 'flex',
           alignItems: 'center',
@@ -236,20 +235,18 @@ export function Header() {
           padding: '5px 10px',
           fontSize: 11,
           fontFamily: 'var(--font-ui)',
-          color: panelLayout.showSettings ? 'var(--text)' : 'var(--text-muted)',
-          background: panelLayout.showSettings ? 'var(--bg-selected)' : 'transparent',
-          border: `1px solid ${panelLayout.showSettings ? 'var(--accent)' : 'var(--border-strong)'}`,
+          color: 'var(--text-muted)',
+          background: 'transparent',
+          border: '1px solid var(--border-strong)',
           borderRadius: 5,
-          cursor: panelLayout.showSettings ? 'default' : 'pointer',
+          cursor: 'pointer',
           transition: 'color 0.15s, border-color 0.15s',
         }}
         onMouseEnter={(e) => {
-          if (panelLayout.showSettings) return;
           (e.currentTarget as HTMLButtonElement).style.color = 'var(--text)';
           (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--text-faint)';
         }}
         onMouseLeave={(e) => {
-          if (panelLayout.showSettings) return;
           (e.currentTarget as HTMLButtonElement).style.color = 'var(--text-muted)';
           (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--border-strong)';
         }}

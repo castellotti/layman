@@ -27,7 +27,6 @@ export interface PanelLayout {
   showDashboard: boolean;
   showLogs: boolean;
   showInvestigation: boolean;
-  showSettings: boolean;
   investigationPresentation: 'docked' | 'drawer';
   dashboardWidth: number;
   sessionListWidth: number;
@@ -40,7 +39,6 @@ const DEFAULT_PANEL_LAYOUT: PanelLayout = {
   showDashboard: true,
   showLogs: false,
   showInvestigation: false,
-  showSettings: false,
   investigationPresentation: 'drawer',
   dashboardWidth: 0,
   sessionListWidth: 0,

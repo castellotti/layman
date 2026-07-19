@@ -7,7 +7,6 @@ import type { TimelineEvent } from '../lib/types.js';
 
 export const LOGS_MIN = 640;
 export const INVEST_W = 480;
-export const SETTINGS_W = 360;
 export const TIMESTAMP_MARGIN_FACTOR = 2;
 /** Total dead-zone width around each threshold; half is applied on each side. */
 export const HYSTERESIS = 50;
@@ -32,7 +31,6 @@ export interface PanelVisibility {
   showDashboard: boolean;
   showLogs: boolean;
   showInvestigation: boolean;
-  showSettings: boolean;
 }
 
 export interface PanelThresholds {
@@ -40,7 +38,6 @@ export interface PanelThresholds {
   dashNeeded: number;
   logsAt: number;
   investAt: number;
-  settingsAt: number;
 }
 
 export interface PanelLayout extends PanelVisibility {
@@ -56,7 +53,6 @@ export const DEFAULT_PANEL_VISIBILITY: PanelVisibility = {
   showDashboard: true,
   showLogs: false,
   showInvestigation: false,
-  showSettings: false,
 };
 
 // ─── Pure, unit-testable core ───────────────────────────────────────────────
@@ -74,8 +70,7 @@ export function computeThresholds(measured: MeasuredWidths, viewportWidth: numbe
   const dashNeeded = sessionDefault + 6 + previewNeed;
   const logsAt = dashNeeded + LOGS_MIN;
   const investAt = logsAt + INVEST_W + 420;
-  const settingsAt = investAt + SETTINGS_W + 280;
-  return { sessionDefault, dashNeeded, logsAt, investAt, settingsAt };
+  return { sessionDefault, dashNeeded, logsAt, investAt };
 }
 
 function withHysteresis(raw: boolean, prev: boolean, width: number, threshold: number, band: number): boolean {
@@ -86,10 +81,9 @@ function withHysteresis(raw: boolean, prev: boolean, width: number, threshold: n
 
 /**
  * Computes panel visibility for a given viewport width. Honors pinnedView
- * (pinning a single view hides everything else, including Investigation/
- * Settings docks — Investigate then opens as a drawer) and applies hysteresis
- * around each threshold so panels don't flicker when the width sits near a
- * boundary.
+ * (pinning a single view hides everything else, including the Investigation
+ * dock — Investigate then opens as a drawer) and applies hysteresis around
+ * each threshold so panels don't flicker when the width sits near a boundary.
  */
 export function computePanelVisibility(
   width: number,
@@ -123,15 +117,11 @@ export function computePanelVisibility(
         hysteresisBand
       );
 
-  const showSettings = pinnedView
-    ? false
-    : withHysteresis(width >= thresholds.settingsAt, prev.showSettings, width, thresholds.settingsAt, hysteresisBand);
-
-  return { visibility: { showDashboard, showLogs, showInvestigation, showSettings }, thresholds };
+  return { visibility: { showDashboard, showLogs, showInvestigation }, thresholds };
 }
 
 export function panelSetKey(v: PanelVisibility): string {
-  return `${v.showDashboard ? 1 : 0}${v.showLogs ? 1 : 0}${v.showInvestigation ? 1 : 0}${v.showSettings ? 1 : 0}`;
+  return `${v.showDashboard ? 1 : 0}${v.showLogs ? 1 : 0}${v.showInvestigation ? 1 : 0}`;
 }
 
 export function buildPanelLayout(
@@ -249,7 +239,7 @@ export function useExpandingLayout(
       useSessionStore.getState().resetSplitOverrides();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visibility.showDashboard, visibility.showLogs, visibility.showInvestigation, visibility.showSettings]);
+  }, [visibility.showDashboard, visibility.showLogs, visibility.showInvestigation]);
 
   useEffect(() => {
     useSessionStore.getState().setPanelLayout(layout);

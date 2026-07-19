@@ -172,7 +172,7 @@ export function DashboardView({ onSend, sessionListWidth, onResizeSessionList }:
   const listWidth = sessionListWidth ?? SESSION_LIST_WIDTH_DEFAULT;
 
   return (
-    <div className="dashboard-root" style={{ display: 'flex', height: '100%' }}>
+    <div className="dashboard-root" style={{ display: 'flex', height: '100%', width: '100%', minWidth: 0 }}>
       {/* ── Left: session list ── */}
       <div
         style={{

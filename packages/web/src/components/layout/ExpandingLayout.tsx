@@ -4,7 +4,6 @@ import { useExpandingLayout, LOGS_MIN } from '../../hooks/useExpandingLayout.js'
 import { DashboardView } from '../dashboard/DashboardView.js';
 import { EventStream } from './EventStream.js';
 import { InvestigationPanel } from './InvestigationPanel.js';
-import { SettingsDock } from '../controls/SettingsDock.js';
 import { PanelDivider } from './PanelDivider.js';
 import type { ClientMessage } from '../../lib/ws-protocol.js';
 
@@ -92,12 +91,6 @@ export function ExpandingLayout({ onSend }: ExpandingLayoutProps) {
           }}
         >
           <InvestigationPanel onSend={onSend} presentation="docked" />
-        </div>
-      )}
-
-      {layout.showSettings && (
-        <div style={{ animation: 'panelIn 0.25s ease' }}>
-          <SettingsDock onSend={onSend} />
         </div>
       )}
 

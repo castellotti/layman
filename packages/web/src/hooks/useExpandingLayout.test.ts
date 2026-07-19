@@ -7,7 +7,6 @@ import {
   DEFAULT_PANEL_VISIBILITY,
   LOGS_MIN,
   INVEST_W,
-  SETTINGS_W,
   type MeasuredWidths,
 } from './useExpandingLayout.js';
 
@@ -15,14 +14,12 @@ import {
 const MEASURED: MeasuredWidths = { maxText: 480, timeW: 48 };
 
 describe('computeThresholds', () => {
-  it('derives LOGS_AT/INVEST_AT/SETTINGS_AT strictly increasing and content-driven', () => {
+  it('derives LOGS_AT/INVEST_AT strictly increasing and content-driven', () => {
     const t = computeThresholds(MEASURED, 1280);
     expect(t.logsAt).toBe(t.dashNeeded + LOGS_MIN);
     expect(t.investAt).toBe(t.logsAt + INVEST_W + 420);
-    expect(t.settingsAt).toBe(t.investAt + SETTINGS_W + 280);
     expect(t.logsAt).toBeGreaterThan(t.dashNeeded);
     expect(t.investAt).toBeGreaterThan(t.logsAt);
-    expect(t.settingsAt).toBeGreaterThan(t.investAt);
   });
 
   it('clamps sessionDefault between 250 and 360 regardless of viewport width', () => {
@@ -55,32 +52,29 @@ describe('computePanelVisibility — panel sets across representative viewports'
       if (!visibility.showLogs) {
         expect(visibility.showInvestigation).toBe(false);
       }
-      if (visibility.showSettings) {
-        expect(width).toBeGreaterThanOrEqual(thresholds.settingsAt - 25);
-      }
     });
   }
 
   it('a narrow 1280px laptop shows Dashboard only', () => {
     const { visibility } = computePanelVisibility(1280, MEASURED, null, DEFAULT_PANEL_VISIBILITY);
-    expect(visibility).toEqual({ showDashboard: true, showLogs: false, showInvestigation: false, showSettings: false });
+    expect(visibility).toEqual({ showDashboard: true, showLogs: false, showInvestigation: false });
   });
 
-  it('a very wide 5120px viewport shows all four panels', () => {
+  it('a very wide 5120px viewport shows Dashboard, Logs, and Investigation', () => {
     const { visibility } = computePanelVisibility(5120, MEASURED, null, DEFAULT_PANEL_VISIBILITY);
-    expect(visibility).toEqual({ showDashboard: true, showLogs: true, showInvestigation: true, showSettings: true });
+    expect(visibility).toEqual({ showDashboard: true, showLogs: true, showInvestigation: true });
   });
 });
 
 describe('computePanelVisibility — pinning', () => {
   it('pinning dashboard hides everything else regardless of width', () => {
     const { visibility } = computePanelVisibility(5120, MEASURED, 'dashboard', DEFAULT_PANEL_VISIBILITY);
-    expect(visibility).toEqual({ showDashboard: true, showLogs: false, showInvestigation: false, showSettings: false });
+    expect(visibility).toEqual({ showDashboard: true, showLogs: false, showInvestigation: false });
   });
 
-  it('pinning stream (Logs) hides Dashboard, Investigation, and Settings', () => {
+  it('pinning stream (Logs) hides Dashboard and Investigation', () => {
     const { visibility } = computePanelVisibility(5120, MEASURED, 'stream', DEFAULT_PANEL_VISIBILITY);
-    expect(visibility).toEqual({ showDashboard: false, showLogs: true, showInvestigation: false, showSettings: false });
+    expect(visibility).toEqual({ showDashboard: false, showLogs: true, showInvestigation: false });
   });
 });
 
@@ -115,8 +109,8 @@ describe('computePanelVisibility — hysteresis', () => {
 
 describe('panelSetKey', () => {
   it('produces a stable, distinguishing key per visibility combination', () => {
-    expect(panelSetKey({ showDashboard: true, showLogs: false, showInvestigation: false, showSettings: false })).toBe('1000');
-    expect(panelSetKey({ showDashboard: true, showLogs: true, showInvestigation: true, showSettings: true })).toBe('1111');
+    expect(panelSetKey({ showDashboard: true, showLogs: false, showInvestigation: false })).toBe('100');
+    expect(panelSetKey({ showDashboard: true, showLogs: true, showInvestigation: true })).toBe('111');
   });
 });
 
