@@ -13,6 +13,65 @@ function computeHighlightedEventIds(highlights: Highlight[]): Set<string> {
 
 export type ViewMode = 'dashboard' | 'stream' | 'flowchart' | 'sessions' | 'prompts';
 
+// ─── Expanding-interface layout state ──────────────────────────────────────
+
+export type PinnedView = 'dashboard' | 'stream' | null;
+
+export interface SplitOverrides {
+  session?: number;
+  dashboard?: number;
+  investigation?: number;
+}
+
+export interface PanelLayout {
+  showDashboard: boolean;
+  showLogs: boolean;
+  showInvestigation: boolean;
+  showSettings: boolean;
+  investigationPresentation: 'docked' | 'drawer';
+  dashboardWidth: number;
+  sessionListWidth: number;
+  investigationWidth: number;
+  logsDockThreshold: number;
+  viewportWidth: number;
+}
+
+const DEFAULT_PANEL_LAYOUT: PanelLayout = {
+  showDashboard: true,
+  showLogs: false,
+  showInvestigation: false,
+  showSettings: false,
+  investigationPresentation: 'drawer',
+  dashboardWidth: 0,
+  sessionListWidth: 0,
+  investigationWidth: 480,
+  logsDockThreshold: 0,
+  viewportWidth: 0,
+};
+
+const LOG_HIGHLIGHTS_STORAGE_KEY = 'layman.logHighlightedEventIds';
+
+function loadLogHighlights(): Set<string> {
+  if (typeof localStorage === 'undefined') return new Set();
+  try {
+    const raw = localStorage.getItem(LOG_HIGHLIGHTS_STORAGE_KEY);
+    if (!raw) return new Set();
+    const parsed = JSON.parse(raw) as unknown;
+    return Array.isArray(parsed) ? new Set(parsed.filter((x): x is string => typeof x === 'string')) : new Set();
+  } catch {
+    return new Set();
+  }
+}
+
+function saveLogHighlights(ids: Set<string>): void {
+  if (typeof localStorage === 'undefined') return;
+  try {
+    localStorage.setItem(LOG_HIGHLIGHTS_STORAGE_KEY, JSON.stringify([...ids]));
+  } catch {
+    // Storage may be unavailable (private browsing quota, etc.) — non-fatal.
+  }
+}
+
 // dashboardOpen/flowchartOpen/bookmarksOpen/promptsOpen are derived from viewMode and kept in
 // sync on every state change that touches it, so existing boolean-reading consumers keep working
 // off a single source of truth instead of four independently-settable flags.
@@ -116,6 +175,18 @@ export interface SessionState {
   // Sessions that have had user-initiated investigation interactions
   investigatedSessions: Set<string>;
 
+  // Expanding-interface layout: pin a single live view full-width, or let width drive it
+  pinnedView: PinnedView;
+  splitOverrides: SplitOverrides;
+  panelLayout: PanelLayout;
+
+  // Logs detail-card highlight (local, persisted to localStorage — distinct from the
+  // server-backed Highlights/Prompts folder feature above)
+  logHighlightedEventIds: Set<string>;
+
+  // Logs expand/collapse state — 'all' means every row with a detail payload is expanded
+  expandedLogEventIds: Set<string> | 'all';
+
   // Session summary
   sessionSummary: string | null;
   sessionSummaryHistory: Array<{ summary: string; generatedAt: number; sessionId: string | null }>;
@@ -181,6 +252,14 @@ export interface SessionState {
   clearSessionSummaryError: () => void;
   setDriftState: (sessionId: string, state: DriftState) => void;
   markSessionInvestigated: (sessionId: string) => void;
+
+  togglePinnedView: (view: 'dashboard' | 'stream') => void;
+  setSplitOverride: (key: keyof SplitOverrides, value: number) => void;
+  resetSplitOverrides: () => void;
+  setPanelLayout: (layout: PanelLayout) => void;
+  toggleLogHighlight: (eventId: string) => void;
+  setExpandedLogEventIds: (ids: Set<string> | 'all') => void;
+  toggleExpandAllLogs: (detailEventIds: string[]) => void;
 }
 
 export const useSessionStore = create<SessionState>((set) => ({
@@ -243,6 +322,14 @@ export const useSessionStore = create<SessionState>((set) => ({
   driftState: new Map(),
 
   investigatedSessions: new Set<string>(),
+
+  pinnedView: null,
+  splitOverrides: {},
+  panelLayout: DEFAULT_PANEL_LAYOUT,
+
+  logHighlightedEventIds: loadLogHighlights(),
+
+  expandedLogEventIds: 'all',
 
   sessionSummary: null,
   sessionSummaryHistory: [],
@@ -675,5 +762,42 @@ export const useSessionStore = create<SessionState>((set) => ({
       const newSet = new Set(prev.investigatedSessions);
       newSet.add(sessionId);
       return { investigatedSessions: newSet };
+    }),
+
+  // Clicking a pinned Dashboard/Logs tab (or its D/S shortcut) again unpins and
+  // returns to width-driven auto-expand. Pinning always clears divider overrides
+  // since the visible panel set is about to change.
+  togglePinnedView: (view) =>
+    set((state) => ({
+      pinnedView: state.pinnedView === view ? null : view,
+      splitOverrides: {},
+    })),
+
+  setSplitOverride: (key, value) =>
+    set((state) => ({ splitOverrides: { ...state.splitOverrides, [key]: value } })),
+
+  resetSplitOverrides: () => set({ splitOverrides: {} }),
+
+  setPanelLayout: (panelLayout) => set({ panelLayout }),
+
+  toggleLogHighlight: (eventId) =>
+    set((state) => {
+      const next = new Set(state.logHighlightedEventIds);
+      if (next.has(eventId)) next.delete(eventId);
+      else next.add(eventId);
+      saveLogHighlights(next);
+      return { logHighlightedEventIds: next };
+    }),
+
+  setExpandedLogEventIds: (expandedLogEventIds) => set({ expandedLogEventIds }),
+
+  // Flips the whole Logs list between fully expanded and fully collapsed, based on
+  // whether every row with a detail payload is currently expanded.
+  toggleExpandAllLogs: (detailEventIds) =>
+    set((state) => {
+      const effective =
+        state.expandedLogEventIds === 'all' ? new Set(detailEventIds) : state.expandedLogEventIds;
+      const allExpanded = detailEventIds.length > 0 && detailEventIds.every((id) => effective.has(id));
+      return { expandedLogEventIds: allExpanded ? new Set<string>() : 'all' };
     }),
 }));

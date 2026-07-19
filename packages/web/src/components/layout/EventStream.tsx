@@ -534,7 +534,7 @@ export function EventStream({ onSend, archived = false, archivedDate }: EventStr
   const [expandedSubagentIds, setExpandedSubagentIds] = useState<Set<string>>(new Set());
 
   const scrollRef = useRef<HTMLDivElement>(null);
-  const { setSelectedEvent, sessions, activeSessionId, config, fetchAccessLog, scrollToEventId, clearScrollToEvent, bookmarks } = useSessionStore();
+  const { setSelectedEvent, sessions, activeSessionId, config, fetchAccessLog, scrollToEventId, clearScrollToEvent, bookmarks, logHighlightedEventIds } = useSessionStore();
   const historicalEventsFromStore = useSessionStore((s) => s.historicalEvents);
 
   const collapseHistory = config?.collapseHistory ?? true;
@@ -910,7 +910,7 @@ export function EventStream({ onSend, archived = false, archivedDate }: EventStr
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden', position: 'relative' }}>
         {/* Minimap */}
         {hasEvents && (
-          <Minimap events={sessionEvents} scrollRef={scrollRef} />
+          <Minimap events={sessionEvents} scrollRef={scrollRef} highlightedEventIds={logHighlightedEventIds} />
         )}
 
         {/* Scroll area */}

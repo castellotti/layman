@@ -63,9 +63,12 @@ interface InvestigationPanelProps {
   eventId?: string;
   /** Called when user closes the embedded panel */
   onClose?: () => void;
+  /** 'docked' renders inline as a panel column; 'drawer' renders as a right slide-over
+   *  (used when the expanding layout doesn't have room to dock Investigation — §1.5). */
+  presentation?: 'docked' | 'drawer';
 }
 
-export function InvestigationPanel({ onSend, eventId: embeddedEventId, onClose }: InvestigationPanelProps) {
+export function InvestigationPanel({ onSend, eventId: embeddedEventId, onClose, presentation = 'docked' }: InvestigationPanelProps) {
   const {
     selectedEventId: storeSelectedEventId,
     investigationOpen,
@@ -170,6 +173,18 @@ export function InvestigationPanel({ onSend, eventId: embeddedEventId, onClose }
 
   // Cancel the tick timer when the panel unmounts
   useEffect(() => () => clearPendingTimer(), [clearPendingTimer]);
+
+  // ESC closes the drawer (before any other ESC-bound behavior elsewhere in the app)
+  useEffect(() => {
+    if (presentation !== 'drawer') return;
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      e.stopPropagation();
+      if (onClose) onClose(); else setInvestigationOpen(false);
+    };
+    window.addEventListener('keydown', handleKey, true);
+    return () => window.removeEventListener('keydown', handleKey, true);
+  }, [presentation, onClose, setInvestigationOpen]);
 
   const isEmbedded = !!embeddedEventId;
   if (!isEmbedded && (!investigationOpen || !selectedEventId)) return null;
@@ -292,8 +307,10 @@ export function InvestigationPanel({ onSend, eventId: embeddedEventId, onClose }
     return JSON.stringify(input, null, 2);
   };
 
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', borderLeft: '1px solid var(--border)', background: 'var(--bg)' }}>
+  const closeDrawer = () => { if (onClose) onClose(); else setInvestigationOpen(false); };
+
+  const panelContent = (
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', borderLeft: presentation === 'docked' ? '1px solid var(--border)' : 'none', background: 'var(--bg)' }}>
       {/* Header */}
       <div style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
@@ -755,4 +772,31 @@ export function InvestigationPanel({ onSend, eventId: embeddedEventId, onClose }
       </div>
     </div>
   );
+
+  if (presentation === 'drawer') {
+    return (
+      <div style={{ position: 'fixed', inset: 0, zIndex: 45, display: 'flex', justifyContent: 'flex-end' }}>
+        <div
+          onClick={closeDrawer}
+          style={{ position: 'absolute', inset: 0, background: 'rgba(4,6,10,0.55)', animation: 'fadeIn 0.2s ease' }}
+        />
+        <div
+          style={{
+            position: 'relative',
+            width: 480,
+            maxWidth: '90vw',
+            height: '100%',
+            background: 'var(--bg)',
+            borderLeft: '1px solid var(--border-strong)',
+            boxShadow: '-16px 0 40px rgba(0,0,0,0.5)',
+            animation: 'drawerIn 0.22s ease',
+          }}
+        >
+          {panelContent}
+        </div>
+      </div>
+    );
+  }
+
+  return panelContent;
 }

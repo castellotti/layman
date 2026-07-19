@@ -11,12 +11,6 @@ function getSessionName(cwd: string, sessionId: string, agentType?: string, show
   return name;
 }
 
-const NAV_TABS_LIVE: { key: ViewMode; label: string; shortcut: string }[] = [
-  { key: 'dashboard', label: 'Dashboard', shortcut: 'D' },
-  { key: 'stream',    label: 'Logs',      shortcut: 'S' },
-  { key: 'flowchart', label: 'Flow',      shortcut: 'F' },
-];
-
 const NAV_TABS_ARCHIVE: { key: ViewMode; label: string; shortcut: string }[] = [
   { key: 'sessions', label: 'Sessions', shortcut: '' },
   { key: 'prompts',  label: 'Prompts',  shortcut: '' },
@@ -65,7 +59,15 @@ export function Header() {
     sessionMetrics,
     investigatedSessions,
     promptsOpen,
+    panelLayout,
+    pinnedView,
+    togglePinnedView,
   } = useSessionStore();
+
+  const pinAndFocus = (view: 'dashboard' | 'stream') => {
+    togglePinnedView(view);
+    setViewMode(view);
+  };
 
   // Global keyboard shortcuts
   useEffect(() => {
@@ -73,8 +75,8 @@ export function Header() {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLSelectElement) return;
       if (e.ctrlKey || e.metaKey || e.altKey) return;
       switch (e.key.toLowerCase()) {
-        case 'd': setViewMode('dashboard'); break;
-        case 's': setViewMode('stream'); break;
+        case 'd': pinAndFocus('dashboard'); break;
+        case 's': pinAndFocus('stream'); break;
         case 'f': setViewMode('flowchart'); break;
         case 'escape':
           if (returnToDashboard) {
@@ -87,7 +89,8 @@ export function Header() {
     };
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
-  }, [setViewMode, bookmarksOpen, promptsOpen, returnToDashboard, returnFromDashboardDrilldown]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [setViewMode, bookmarksOpen, promptsOpen, returnToDashboard, returnFromDashboardDrilldown, togglePinnedView]);
 
   const isDashboard = viewMode === 'dashboard';
 
@@ -126,11 +129,27 @@ export function Header() {
         LAYMAN
       </a>
 
-      {/* Nav tabs — live monitoring */}
+      {/* Nav tabs — live monitoring. When Dashboard and Logs are both visible, both
+          read as active — one continuous highlighted region (§1.1). */}
       <nav style={{ display: 'flex', alignItems: 'stretch', height: '100%', gap: 0 }}>
-        {NAV_TABS_LIVE.map(({ key, label, shortcut }) => (
-          <NavTabButton key={key} label={label} shortcut={shortcut} isActive={viewMode === key} onClick={() => setViewMode(key)} />
-        ))}
+        <NavTabButton
+          label="Dashboard"
+          shortcut={pinnedView === 'dashboard' ? 'D · pinned' : 'D'}
+          isActive={panelLayout.showDashboard}
+          onClick={() => pinAndFocus('dashboard')}
+        />
+        <NavTabButton
+          label="Logs"
+          shortcut={pinnedView === 'stream' ? 'S · pinned' : 'S'}
+          isActive={panelLayout.showLogs}
+          onClick={() => pinAndFocus('stream')}
+        />
+        <NavTabButton
+          label="Flow"
+          shortcut="F"
+          isActive={viewMode === 'flowchart'}
+          onClick={() => setViewMode('flowchart')}
+        />
       </nav>
 
       {/* Live / archive divider */}
@@ -205,10 +224,11 @@ export function Header() {
         </div>
       )}
 
-      {/* Settings */}
+      {/* Settings — the gear opens the drawer only when the Settings dock isn't
+          already visible (§2.9); otherwise the dock itself is the settings surface. */}
       <button
-        onClick={() => setSettingsOpen(true)}
-        title="Settings"
+        onClick={() => { if (!panelLayout.showSettings) setSettingsOpen(true); }}
+        title={panelLayout.showSettings ? 'Settings (docked)' : 'Settings'}
         style={{
           display: 'flex',
           alignItems: 'center',
@@ -216,18 +236,20 @@ export function Header() {
           padding: '5px 10px',
           fontSize: 11,
           fontFamily: 'var(--font-ui)',
-          color: 'var(--text-muted)',
-          background: 'transparent',
-          border: '1px solid var(--border-strong)',
+          color: panelLayout.showSettings ? 'var(--text)' : 'var(--text-muted)',
+          background: panelLayout.showSettings ? 'var(--bg-selected)' : 'transparent',
+          border: `1px solid ${panelLayout.showSettings ? 'var(--accent)' : 'var(--border-strong)'}`,
           borderRadius: 5,
-          cursor: 'pointer',
+          cursor: panelLayout.showSettings ? 'default' : 'pointer',
           transition: 'color 0.15s, border-color 0.15s',
         }}
         onMouseEnter={(e) => {
+          if (panelLayout.showSettings) return;
           (e.currentTarget as HTMLButtonElement).style.color = 'var(--text)';
           (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--text-faint)';
         }}
         onMouseLeave={(e) => {
+          if (panelLayout.showSettings) return;
           (e.currentTarget as HTMLButtonElement).style.color = 'var(--text-muted)';
           (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--border-strong)';
         }}

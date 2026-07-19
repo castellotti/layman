@@ -1,3 +1,61 @@
+import type { TimelineEvent } from './types.js';
+
+/** Kind color for Dashboard tail rows and Logs single-line rows (shared vocabulary). */
+export const EVENT_KIND_COLOR: Record<string, string> = {
+  tool_call_pending:   'var(--warn)',
+  tool_call_approved:  'var(--ok)',
+  tool_call_denied:    'var(--error)',
+  tool_call_completed: 'var(--ok)',
+  tool_call_failed:    'var(--error)',
+  permission_request:  'var(--warn)',
+  user_prompt:         'var(--info)',
+  agent_response:      'var(--ok)',
+  subagent_start:      'var(--agent)',
+  subagent_stop:       'var(--agent)',
+  session_start:       'var(--ok)',
+  session_end:         'var(--text-faint)',
+  stop_failure:        'var(--error)',
+};
+
+const KIND_LABELS: Record<string, string> = {
+  tool_call_pending:   'pending',
+  tool_call_approved:  'approved',
+  tool_call_denied:    'denied',
+  tool_call_completed: 'completed',
+  tool_call_failed:    'failed',
+  permission_request:  'permission',
+  user_prompt:         'prompt',
+  agent_response:      'response',
+  subagent_start:      'agent↓',
+  subagent_stop:       'agent↑',
+  session_start:       'start',
+  session_end:         'end',
+  agent_stop:          'stop',
+  stop_failure:        'stop-fail',
+  pre_compact:         'compact',
+  post_compact:        'compacted',
+};
+
+export function kindLabel(type: string): string {
+  return KIND_LABELS[type] ?? type.replace(/_/g, ' ');
+}
+
+/**
+ * Full one-line summary for an event row. Never truncates with '…' — CSS
+ * text-overflow:ellipsis handles narrow panels so the raw string stays measurable
+ * (canvas measureText) and copyable in full.
+ */
+export function eventDetail(event: TimelineEvent): string {
+  if (event.data.toolName) {
+    const input = event.data.toolInput as Record<string, unknown> | undefined;
+    if (input?.command) return `${event.data.toolName} — ${String(input.command)}`;
+    if (input?.file_path) return `${event.data.toolName} — ${String(input.file_path)}`;
+    return event.data.toolName;
+  }
+  if (event.data.prompt) return String(event.data.prompt);
+  return '';
+}
+
 export const AGENT_BADGES: Record<string, { label: string; color: string }> = {
   'claude-code':   { label: 'CC', color: 'text-[#a371f7] bg-[#a371f7]/10 border-[#a371f7]/20' },
   'codex':         { label: 'CX', color: 'text-[#10a37f] bg-[#10a37f]/10 border-[#10a37f]/20' },

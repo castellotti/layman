@@ -6,6 +6,7 @@ import type { SessionInfo } from '../../lib/ws-protocol.js';
 import type { SessionMetrics } from '../../lib/types.js';
 import { deriveSessionState, getSessionDisplayName, contextPctColor } from '../../lib/session-state.js';
 import { formatTime, formatDuration as formatElapsed, cwdBasename } from '../../lib/format.js';
+import { EVENT_KIND_COLOR, kindLabel, eventDetail } from '../../lib/event-styles.js';
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
@@ -17,55 +18,6 @@ function ElapsedLabel({ since }: { since: number }) {
       {formatElapsed(now - since)}
     </span>
   );
-}
-
-const EVENT_KIND_COLOR: Record<string, string> = {
-  tool_call_pending:   'var(--warn)',
-  tool_call_approved:  'var(--ok)',
-  tool_call_denied:    'var(--error)',
-  tool_call_completed: 'var(--ok)',
-  tool_call_failed:    'var(--error)',
-  permission_request:  'var(--warn)',
-  user_prompt:         'var(--info)',
-  agent_response:      'var(--ok)',
-  subagent_start:      'var(--agent)',
-  subagent_stop:       'var(--agent)',
-  session_start:       'var(--ok)',
-  session_end:         'var(--text-faint)',
-  stop_failure:        'var(--error)',
-};
-
-function kindLabel(type: string): string {
-  const labels: Record<string, string> = {
-    tool_call_pending:   'pending',
-    tool_call_approved:  'approved',
-    tool_call_denied:    'denied',
-    tool_call_completed: 'completed',
-    tool_call_failed:    'failed',
-    permission_request:  'permission',
-    user_prompt:         'prompt',
-    agent_response:      'response',
-    subagent_start:      'agent↓',
-    subagent_stop:       'agent↑',
-    session_start:       'start',
-    session_end:         'end',
-    agent_stop:          'stop',
-    stop_failure:        'stop-fail',
-    pre_compact:         'compact',
-    post_compact:        'compacted',
-  };
-  return labels[type] ?? type.replace(/_/g, ' ');
-}
-
-function eventDetail(event: TimelineEvent): string {
-  if (event.data.toolName) {
-    const input = event.data.toolInput as Record<string, unknown> | undefined;
-    if (input?.command) return `${event.data.toolName} — ${String(input.command).slice(0, 60)}`;
-    if (input?.file_path) return `${event.data.toolName} — ${String(input.file_path)}`;
-    return event.data.toolName;
-  }
-  if (event.data.prompt) return String(event.data.prompt).slice(0, 80);
-  return '';
 }
 
 // ─── ActivityStrip ────────────────────────────────────────────────────────────
