@@ -1,4 +1,7 @@
 import React, { useState } from 'react';
+import { CommandBlock } from './CommandBlock.js';
+
+const SHELL_LANGUAGES = new Set(['bash', 'shell', 'sh']);
 
 interface CodeBlockProps {
   code: string;
@@ -10,6 +13,13 @@ interface CodeBlockProps {
 }
 
 export function CodeBlock({ code, language = 'text', maxLines, className = '', showWrapToggle = false, defaultWrapped = false }: CodeBlockProps) {
+  if (SHELL_LANGUAGES.has(language)) {
+    return <CommandBlock code={code} className={className} />;
+  }
+  return <CodeBlockInner code={code} language={language} maxLines={maxLines} className={className} showWrapToggle={showWrapToggle} defaultWrapped={defaultWrapped} />;
+}
+
+function CodeBlockInner({ code, language = 'text', maxLines, className = '', showWrapToggle = false, defaultWrapped = false }: CodeBlockProps) {
   const [expanded, setExpanded] = useState(false);
   const [wrapped, setWrapped] = useState(defaultWrapped);
   const [copied, setCopied] = useState(false);

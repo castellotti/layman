@@ -80,7 +80,7 @@ export function ExpandingLayout({ onSend }: ExpandingLayoutProps) {
         />
       )}
 
-      {layout.showInvestigation && selectedEventId !== null && (
+      {layout.showInvestigation && (
         <div
           style={{
             display: 'flex',

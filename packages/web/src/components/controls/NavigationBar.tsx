@@ -27,6 +27,9 @@ interface NavigationBarProps {
   onBookmark?: (name: string) => void;
   isBookmarked?: boolean;
   defaultBookmarkName?: string;
+  // Expand/collapse-all toggle for the Logs single-line rows (§1.4)
+  expandToggleLabel?: string;
+  onExpandToggle?: () => void;
 }
 
 export function NavigationBar({
@@ -51,6 +54,8 @@ export function NavigationBar({
   onBookmark,
   isBookmarked,
   defaultBookmarkName = '',
+  expandToggleLabel,
+  onExpandToggle,
 }: NavigationBarProps) {
   const [showBookmarkInput, setShowBookmarkInput] = useState(false);
   const [bookmarkName, setBookmarkName] = useState('');
@@ -145,6 +150,23 @@ export function NavigationBar({
 
       {/* Spacer */}
       <div style={{ flex: 1 }} />
+
+      {/* Expand/collapse all */}
+      {onExpandToggle && (
+        <button
+          onClick={onExpandToggle}
+          title="Toggle expand/collapse for all rows (E)"
+          style={{
+            fontFamily: 'var(--font-mono)', fontSize: 9.5, color: 'var(--text-muted)',
+            background: 'transparent', border: '1px solid var(--border-strong)', borderRadius: 4,
+            padding: '2px 8px', cursor: 'pointer', flexShrink: 0, whiteSpace: 'nowrap',
+          }}
+          onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--text)'; e.currentTarget.style.borderColor = 'var(--text-faint)'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-muted)'; e.currentTarget.style.borderColor = 'var(--border-strong)'; }}
+        >
+          {expandToggleLabel}
+        </button>
+      )}
 
       {/* Live chip */}
       <LiveChip state={archived ? 'archived' : (followLatest ? 'live' : 'paused')} archivedDate={archivedDate} />

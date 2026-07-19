@@ -187,8 +187,23 @@ export function InvestigationPanel({ onSend, eventId: embeddedEventId, onClose, 
   }, [presentation, onClose, setInvestigationOpen]);
 
   const isEmbedded = !!embeddedEventId;
-  if (!isEmbedded && (!investigationOpen || !selectedEventId)) return null;
-  if (!selectedEventId) return null;
+  if (presentation === 'drawer' && !isEmbedded && (!investigationOpen || !selectedEventId)) return null;
+  if (!selectedEventId) {
+    // Docked with nothing selected yet — hold the reserved layout space with a
+    // placeholder rather than collapsing (which would leave a dangling divider).
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', height: '100%', borderLeft: '1px solid var(--border)', background: 'var(--bg)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', padding: '10px 14px', borderBottom: '1px solid var(--border)', background: 'var(--bg-raised)', flexShrink: 0 }}>
+          <span style={{ fontFamily: 'var(--font-ui)', fontSize: 12, fontWeight: 600, color: 'var(--text)' }}>Investigation</span>
+        </div>
+        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+          <span style={{ fontFamily: 'var(--font-ui)', fontSize: 11, color: 'var(--text-faint)', textAlign: 'center' }}>
+            Select an event's Investigate button to explain or analyze it here
+          </span>
+        </div>
+      </div>
+    );
+  }
 
   const event = getEvent(selectedEventId);
   if (!event) return null;

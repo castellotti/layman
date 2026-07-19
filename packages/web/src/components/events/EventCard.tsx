@@ -2,31 +2,18 @@ import React, { useState, useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import type { TimelineEvent, SubagentTranscriptEntry } from '../../lib/types.js';
 import type { ClientMessage } from '../../lib/ws-protocol.js';
-import { RiskBadge } from '../shared/RiskBadge.js';
-import { ThinkingBlock } from '../shared/ThinkingBlock.js';
 import { ApprovalBar } from '../controls/ApprovalBar.js';
 import { AnalysisCard } from '../analysis/AnalysisCard.js';
 import { CodeBlock } from '../shared/CodeBlock.js';
 import { DiffBlock } from '../shared/DiffBlock.js';
 import { usePendingApprovals } from '../../hooks/usePendingApprovals.js';
 import { useSessionStore } from '../../stores/sessionStore.js';
-import { AGENT_BADGES, EVENT_ICONS, BORDER_COLORS, DRIFT_COLORS } from '../../lib/event-styles.js';
+import { DRIFT_COLORS } from '../../lib/event-styles.js';
 import { MARKDOWN_PROSE, REMARK_PLUGINS } from '../../lib/markdown.js';
-import { formatTime, formatDuration } from '../../lib/format.js';
 import { getEffectiveAgentContent } from '../../lib/reasoning.js';
 
 export { ThinkingBlock } from '../shared/ThinkingBlock.js';
-
-interface EventCardProps {
-  event: TimelineEvent;
-  index: number;
-  isSelected: boolean;
-  onClick: () => void;
-  onSend: (msg: ClientMessage) => void;
-  collapseHistory: boolean;
-  showAgentBadge?: boolean;
-}
-
+import { ThinkingBlock } from '../shared/ThinkingBlock.js';
 
 function formatToolInput(toolInput: Record<string, unknown>): string {
   // Special handling for Bash command
@@ -60,46 +47,35 @@ function formatToolInput(toolInput: Record<string, unknown>): string {
   return JSON.stringify(toolInput, null, 2).slice(0, 500);
 }
 
-function getCommandPreview(toolName: string | undefined, toolInput: Record<string, unknown> | undefined): string | null {
-  if (!toolInput || !toolName) return null;
-  if ('command' in toolInput) return String(toolInput.command);
-  if ('file_path' in toolInput) return String(toolInput.file_path);
-  if ('pattern' in toolInput) return String(toolInput.pattern);
-  if ('query' in toolInput) return String(toolInput.query);
-  if ('url' in toolInput) return String(toolInput.url);
-  if ('prompt' in toolInput) return String(toolInput.prompt).slice(0, 120);
-  return null;
+interface EventDetailBodyProps {
+  event: TimelineEvent;
+  onSend: (msg: ClientMessage) => void;
 }
 
-export function EventCard({ event, index, isSelected, onClick, onSend, collapseHistory, showAgentBadge }: EventCardProps) {
-  const [expandedLocal, setExpandedLocal] = useState(false);
+/**
+ * The expanded detail content for a single event — tool input/output, diffs,
+ * prompt/response, drift detail + approval controls, analysis, subagent
+ * transcript. Extracted from the former EventCard's exchange-tree row so the
+ * flat Logs single-line rows (LogRow) can reuse the exact same rich, per-type
+ * rendering (including live Approve/Deny controls) inside the new card chrome.
+ */
+export function EventDetailBody({ event, onSend }: EventDetailBodyProps) {
   const [highlighting, setHighlighting] = useState(false);
   const { approvals } = usePendingApprovals();
-  const showFullCommand = useSessionStore((s) => s.config?.showFullCommand ?? false);
   const highlightedEventIds = useSessionStore((s) => s.highlightedEventIds);
 
   const isHighlighted = highlightedEventIds.has(event.id);
 
   const isPending = event.type === 'tool_call_pending' || event.type === 'permission_request';
-  const isPermissionRequest = event.type === 'permission_request';
-  const isError = event.type === 'tool_call_failed' || event.type === 'stop_failure';
   const isAgentResponse = event.type === 'agent_response';
   const isWebSearch = event.type === 'web_search';
-  const isSubagentStop = event.type === 'subagent_stop' && !!event.data.subagentTranscript?.length;
 
   const { thinking: effectiveThinking, response: agentResponse } = useMemo(
     () => getEffectiveAgentContent(event),
     [event.type, event.data.thinking, event.data.prompt]
   );
   const effectivePrompt = agentResponse.trim() ? agentResponse : undefined;
-  const isFailed = event.type === 'tool_call_failed';
   const isUserPrompt = event.type === 'user_prompt';
-  const isDriftEvent = event.type === 'drift_alert' || event.type === 'drift_check';
-  // When collapseHistory is on, expansion is driven by selection; otherwise use local toggle
-  // agent_response, tool_call_failed, user_prompt, drift, web_search, and subagent_stop events are always expanded so content is visible without clicking
-  const expanded = isPending || isAgentResponse || isFailed || isUserPrompt || isDriftEvent || isWebSearch || isSubagentStop || (collapseHistory ? isSelected : expandedLocal);
-  const borderColor = BORDER_COLORS[event.type] ?? 'border-l-[#30363d]';
-  const icon = EVENT_ICONS[event.type] ?? '·';
 
   // Find matching pending approval
   const pendingApproval = isPending
@@ -154,192 +130,9 @@ export function EventCard({ event, index, isSelected, onClick, onSend, collapseH
     }
   };
 
-  const bgClass = isPending
-    ? 'bg-[#1c1a0f] hover:bg-[#1c1a0f]/80'
-    : isError
-      ? 'bg-[#200c0c] hover:bg-[#261010]'
-      : isSelected
-        ? 'bg-[#1c2128]'
-        : 'bg-[#161b22] hover:bg-[#1c2128]';
-
-  const borderWidth = (isPending || isError) ? 'border-l-2' : 'border-l';
-
-  // agent_stop — Claude is done, waiting for user to type in terminal
-  if (event.type === 'agent_stop') {
-    return (
-      <div
-        className={`mx-3 mb-1.5 rounded-md border ${isSelected ? 'border-[#58a6ff]/40 bg-[#1c2128]' : 'border-[#30363d]/60 bg-[#161b22]'} cursor-pointer transition-colors`}
-        onClick={onClick}
-      >
-        <div className="flex items-center gap-2 px-3 py-2">
-          <span className="text-[10px] text-[#484f58] font-mono tabular-nums shrink-0 w-6 text-right">{index + 1}</span>
-          <span className="text-[#484f58]">—</span>
-          <span className="text-[11px] text-[#484f58] font-mono">agent stop</span>
-          <div className="flex-1" />
-          <span className="text-[10px] text-[#58a6ff] bg-[#58a6ff]/10 border border-[#58a6ff]/20 px-1.5 py-0.5 rounded font-medium">
-            awaiting your reply in terminal
-          </span>
-          <span className="text-[10px] text-[#484f58] font-mono tabular-nums shrink-0">{formatTime(event.timestamp)}</span>
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <div
-      className={`${bgClass} ${borderColor} ${borderWidth} mx-3 mb-1.5 rounded-md overflow-hidden transition-colors cursor-pointer ${
-        isPending ? 'ring-1 ring-[#d29922]/30' : ''
-      } ${isError ? 'ring-1 ring-[#f85149]/20' : ''} ${isSelected ? 'ring-1 ring-[#58a6ff]/30' : ''}`}
-      onClick={() => {
-        onClick();
-        if (!collapseHistory) setExpandedLocal((v) => !v);
-      }}
-    >
-      {/* Header row */}
-      <div className="flex items-center gap-2 px-3 py-2">
-        {/* Sequence number */}
-        <span className="text-[10px] text-[#484f58] font-mono tabular-nums shrink-0 w-6 text-right">
-          {index + 1}
-        </span>
-
-        {/* Icon */}
-        <span className="text-sm shrink-0">{icon}</span>
-
-        {/* Type label */}
-        <span className="text-[11px] text-[#8b949e] font-mono shrink-0">
-          {event.type.replace(/_/g, ' ')}{(event.type === 'drift_check' || event.type === 'drift_alert') && event.data.driftType ? ` - ${event.data.driftType === 'rules' ? 'rules' : 'session'}` : ''}
-        </span>
-
-        {/* Tool name if present */}
-        {event.data.toolName && (
-          <>
-            <span className="text-[11px] text-[#484f58]">·</span>
-            <span className="text-[11px] font-semibold text-[#e6edf3] shrink-0">
-              {event.data.toolName}
-            </span>
-            {showFullCommand && (() => {
-              const preview = getCommandPreview(event.data.toolName, event.data.toolInput);
-              return preview ? (
-                <span className="text-[11px] text-[#484f58] font-mono truncate min-w-0">
-                  {preview}
-                </span>
-              ) : null;
-            })()}
-          </>
-        )}
-
-        {/* Prompt text if present */}
-        {effectivePrompt && !event.data.toolName && !isWebSearch && (
-          <span className="text-xs text-[#58a6ff] truncate italic">
-            {effectivePrompt.slice(0, 60)}
-          </span>
-        )}
-
-        {/* Web search summary in header */}
-        {isWebSearch && (() => {
-          const sourceCount = event.data.webSearchSources?.length ?? 0;
-          const queryCount = event.data.webSearchQueries?.length ?? 0;
-          return (
-            <span className="text-[11px] text-[#79c0ff] truncate">
-              {queryCount > 0 && `${queryCount} ${queryCount === 1 ? 'query' : 'queries'}`}
-              {queryCount > 0 && sourceCount > 0 && ' · '}
-              {sourceCount > 0 && `${sourceCount} ${sourceCount === 1 ? 'source' : 'sources'} retrieved`}
-            </span>
-          );
-        })()}
-
-        {/* Session/notification labels */}
-        {event.data.source && (
-          <span className="text-[11px] text-[#8b949e]">{event.data.source}</span>
-        )}
-        {event.data.notificationType && (
-          <span className="text-[11px] text-[#8b949e]">{event.data.notificationType}</span>
-        )}
-        {event.data.agentType && (
-          <span className="text-[11px] text-[#8b949e]">{event.data.agentType}</span>
-        )}
-        {event.data.subagentId && event.type !== 'subagent_stop' && (
-          <span className="text-[10px] text-[#8b949e] bg-[#8b949e]/10 border border-[#8b949e]/20 px-1.5 py-0.5 rounded font-mono">sub</span>
-        )}
-
-        <div className="flex-1" />
-
-        {/* Risk badge */}
-        {event.riskLevel && event.riskLevel !== 'low' && (
-          <RiskBadge level={event.riskLevel} compact />
-        )}
-
-        {/* Decision badge */}
-        {event.data.decision && (
-          <span className={`text-[10px] font-medium ${
-            event.data.decision.decision === 'allow'
-              ? 'text-[#3fb950]'
-              : event.data.decision.decision === 'deny'
-                ? 'text-[#f85149]'
-                : 'text-[#8b949e]'
-          }`}>
-            {event.data.decision.decision.toUpperCase()}
-          </span>
-        )}
-
-        {/* ASK chip for permission requests */}
-        {isPermissionRequest && !event.data.decision && (
-          <span style={{
-            fontSize: 9.5, fontWeight: 600, letterSpacing: '0.06em',
-            textTransform: 'uppercase', fontFamily: 'var(--font-ui)',
-            padding: '2px 6px', borderRadius: 4,
-            background: 'rgba(229,168,59,0.2)', color: 'var(--warn)',
-            border: '1px solid rgba(229,168,59,0.4)', flexShrink: 0,
-          }}>
-            ASK
-          </span>
-        )}
-        {/* PENDING badge for tool calls (not permission requests) */}
-        {event.type === 'tool_call_pending' && !event.data.decision && (
-          <span className="text-[10px] font-semibold text-[#d29922] animate-pulse">
-            PENDING
-          </span>
-        )}
-        {/* END chip for error events */}
-        {isError && (
-          <span style={{
-            fontSize: 9.5, fontWeight: 600, letterSpacing: '0.06em',
-            textTransform: 'uppercase', fontFamily: 'var(--font-ui)',
-            padding: '2px 6px', borderRadius: 4,
-            background: 'rgba(240,86,74,0.18)', color: 'var(--error)',
-            border: '1px solid rgba(240,86,74,0.4)', flexShrink: 0,
-          }}>
-            END
-          </span>
-        )}
-
-        {/* Duration for completed tool calls */}
-        {event.data.completedAt && (
-          <span className="text-[10px] text-[#484f58] font-mono tabular-nums shrink-0">
-            {formatDuration(event.data.completedAt - event.timestamp)}
-          </span>
-        )}
-
-        {/* Timestamp */}
-        <span className="text-[10px] text-[#484f58] font-mono tabular-nums shrink-0">
-          {formatTime(event.timestamp)}
-        </span>
-
-        {/* Agent badge — only shown when multiple agent types are active */}
-        {showAgentBadge && (() => {
-          const badge = AGENT_BADGES[event.agentType] ?? { label: event.agentType.slice(0, 2).toUpperCase(), color: 'text-[#8b949e] bg-[#8b949e]/10 border-[#8b949e]/20' };
-          return (
-            <span className={`text-[9px] font-semibold px-1 py-0.5 rounded border ${badge.color} shrink-0`}>
-              {badge.label}
-            </span>
-          );
-        })()}
-      </div>
-
-      {/* Expanded content */}
-      {expanded && (
-        <div className="px-3 pb-3 space-y-2 border-t border-[#30363d]/50 pt-2">
-          {/* Tool input — diff view for Edit/Write, code for everything else */}
+        <div className="px-3 py-3 space-y-2">
+          {/* Tool input — diff view for Edit/Write, code (or CommandBlock for shell) otherwise */}
           {event.data.toolInput && (() => {
             const input = event.data.toolInput;
             const tool = event.data.toolName;
@@ -365,12 +158,13 @@ export function EventCard({ event, index, isSelected, onClick, onSend, collapseH
               );
             }
 
+            const isShell = tool === 'Bash';
             return (
               <div>
-                <p className="text-[10px] text-[#484f58] mb-1 font-mono uppercase">Input</p>
+                {!isShell && <p className="text-[10px] text-[#484f58] mb-1 font-mono uppercase">Input</p>}
                 <CodeBlock
                   code={formatToolInput(input)}
-                  language={tool === 'Bash' ? 'bash' : 'text'}
+                  language={isShell ? 'bash' : 'text'}
                   maxLines={10}
                   showWrapToggle
                 />
@@ -463,7 +257,7 @@ export function EventCard({ event, index, isSelected, onClick, onSend, collapseH
           )}
 
           {/* Tool output (for completed events) */}
-          {event.data.toolOutput !== undefined && expanded && (
+          {event.data.toolOutput !== undefined && (
             <div>
               <p className="text-[10px] text-[#484f58] mb-1 font-mono uppercase">Output</p>
               <CodeBlock
@@ -582,8 +376,6 @@ export function EventCard({ event, index, isSelected, onClick, onSend, collapseH
             </div>
           )}
         </div>
-      )}
-    </div>
   );
 }
 
