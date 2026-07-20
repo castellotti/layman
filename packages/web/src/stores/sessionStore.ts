@@ -15,8 +15,6 @@ export type ViewMode = 'dashboard' | 'stream' | 'flowchart' | 'sessions' | 'prom
 
 // ─── Expanding-interface layout state ──────────────────────────────────────
 
-export type PinnedView = 'dashboard' | 'stream' | null;
-
 export interface SplitOverrides {
   session?: number;
   dashboard?: number;
@@ -173,8 +171,11 @@ export interface SessionState {
   // Sessions that have had user-initiated investigation interactions
   investigatedSessions: Set<string>;
 
-  // Expanding-interface layout: pin a single live view full-width, or let width drive it
-  pinnedView: PinnedView;
+  // Expanding-interface layout: each independently defaults to width-driven
+  // auto-disclosure (null), or can be explicitly forced on/off by the user
+  // (clicking the Dashboard/Logs tab, or jumping from a Dashboard row into Logs).
+  dashboardOverride: boolean | null;
+  logsOverride: boolean | null;
   splitOverrides: SplitOverrides;
   panelLayout: PanelLayout;
 
@@ -251,7 +252,9 @@ export interface SessionState {
   setDriftState: (sessionId: string, state: DriftState) => void;
   markSessionInvestigated: (sessionId: string) => void;
 
-  togglePinnedView: (view: 'dashboard' | 'stream') => void;
+  toggleDashboardVisible: () => void;
+  toggleLogsVisible: () => void;
+  activateOnlyLiveTab: (tab: 'dashboard' | 'stream') => void;
   setSplitOverride: (key: keyof SplitOverrides, value: number) => void;
   resetSplitOverrides: () => void;
   setPanelLayout: (layout: PanelLayout) => void;
@@ -321,7 +324,8 @@ export const useSessionStore = create<SessionState>((set) => ({
 
   investigatedSessions: new Set<string>(),
 
-  pinnedView: null,
+  dashboardOverride: null,
+  logsOverride: null,
   splitOverrides: {},
   panelLayout: DEFAULT_PANEL_LAYOUT,
 
@@ -677,24 +681,40 @@ export const useSessionStore = create<SessionState>((set) => ({
     selectedEventId: eventId,
     investigationOpen: true,
   }),
-  navigateFromDashboardToLogs: (sessionId, eventId) => set({
-    viewMode: 'stream',
-    ...viewModeFlags('stream'),
-    returnToDashboard: true,
-    activeSessionId: sessionId,
-    selectedEventId: eventId,
-    investigationOpen: true,
-    scrollToEventId: eventId,
-  }),
-  navigateToLogsForSession: (sessionId) => set((state) => ({
-    viewMode: 'stream',
-    ...viewModeFlags('stream'),
-    returnToDashboard: state.dashboardOpen,
-    activeSessionId: sessionId,
-    selectedEventId: null,
-    investigationOpen: false,
-    scrollToEventId: null,
-  })),
+  // Clicking a Dashboard row opens that entry in Logs (not Investigation — the
+  // user opens Investigation explicitly via the row's Investigate button).
+  // Keeps Dashboard visible alongside Logs if there's room for both; otherwise
+  // switches to a Logs-only view so the entry is never obscured.
+  navigateFromDashboardToLogs: (sessionId, eventId) =>
+    set((state) => {
+      const bothFit = state.panelLayout.viewportWidth >= state.panelLayout.logsDockThreshold;
+      return {
+        viewMode: 'stream',
+        ...viewModeFlags('stream'),
+        returnToDashboard: !bothFit,
+        activeSessionId: sessionId,
+        scrollToEventId: eventId,
+        dashboardOverride: bothFit,
+        logsOverride: true,
+        splitOverrides: {},
+      };
+    }),
+  navigateToLogsForSession: (sessionId) =>
+    set((state) => {
+      const bothFit = state.panelLayout.viewportWidth >= state.panelLayout.logsDockThreshold;
+      return {
+        viewMode: 'stream',
+        ...viewModeFlags('stream'),
+        returnToDashboard: !bothFit,
+        activeSessionId: sessionId,
+        selectedEventId: null,
+        investigationOpen: false,
+        scrollToEventId: null,
+        dashboardOverride: bothFit,
+        logsOverride: true,
+        splitOverrides: {},
+      };
+    }),
   clearScrollToEvent: () => set({ scrollToEventId: null }),
   returnFromDashboardDrilldown: () => set({
     viewMode: 'dashboard',
@@ -702,6 +722,9 @@ export const useSessionStore = create<SessionState>((set) => ({
     returnToDashboard: false,
     investigationOpen: false,
     selectedEventId: null,
+    dashboardOverride: true,
+    logsOverride: false,
+    splitOverrides: {},
   }),
   setAccessLogOpen: (open) => set({ accessLogOpen: open }),
   setAccessLogData: (data) => set({ accessLogData: data }),
@@ -762,14 +785,50 @@ export const useSessionStore = create<SessionState>((set) => ({
       return { investigatedSessions: newSet };
     }),
 
-  // Clicking a pinned Dashboard/Logs tab (or its D/S shortcut) again unpins and
-  // returns to width-driven auto-expand. Pinning always clears divider overrides
-  // since the visible panel set is about to change.
-  togglePinnedView: (view) =>
-    set((state) => ({
-      pinnedView: state.pinnedView === view ? null : view,
+  // Clicking Dashboard or Logs toggles that panel's visibility independently —
+  // both can be shown at once (if there's room), or just one. Guards against
+  // turning off the only visible panel (swaps to the other instead), and when
+  // turning a panel on while the other is already shown without room for both,
+  // hides the other to make room for the one just requested.
+  toggleDashboardVisible: () =>
+    set((state) => {
+      const { showDashboard, showLogs, logsDockThreshold, viewportWidth } = state.panelLayout;
+      if (showDashboard) {
+        if (!showLogs) return { dashboardOverride: false, logsOverride: true, splitOverrides: {} };
+        return { dashboardOverride: false, splitOverrides: {} };
+      }
+      const bothFit = viewportWidth >= logsDockThreshold;
+      return {
+        dashboardOverride: true,
+        ...(showLogs && !bothFit ? { logsOverride: false } : {}),
+        splitOverrides: {},
+      };
+    }),
+
+  toggleLogsVisible: () =>
+    set((state) => {
+      const { showDashboard, showLogs, logsDockThreshold, viewportWidth } = state.panelLayout;
+      if (showLogs) {
+        if (!showDashboard) return { logsOverride: false, dashboardOverride: true, splitOverrides: {} };
+        return { logsOverride: false, splitOverrides: {} };
+      }
+      const bothFit = viewportWidth >= logsDockThreshold;
+      return {
+        logsOverride: true,
+        ...(showDashboard && !bothFit ? { dashboardOverride: false } : {}),
+        splitOverrides: {},
+      };
+    }),
+
+  // Used when arriving at the live Dashboard/Logs view from an exclusive
+  // full-page view (Flow, Sessions, Prompts) — shows only the clicked tab,
+  // regardless of whatever visibility state was in effect before navigating away.
+  activateOnlyLiveTab: (tab) =>
+    set({
+      dashboardOverride: tab === 'dashboard',
+      logsOverride: tab === 'stream',
       splitOverrides: {},
-    })),
+    }),
 
   setSplitOverride: (key, value) =>
     set((state) => ({ splitOverrides: { ...state.splitOverrides, [key]: value } })),

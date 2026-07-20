@@ -7,15 +7,11 @@ interface NavigationBarProps {
   onSearchChange: (q: string) => void;
   // Filter chips
   promptsOnly: boolean;
-  toolsOnly: boolean;
   requestsOnly: boolean;
-  agentsOnly: boolean;
-  riskyOnly: boolean;
+  responsesOnly: boolean;
   onTogglePromptsOnly: () => void;
-  onToggleToolsOnly: () => void;
   onToggleRequestsOnly: () => void;
-  onToggleAgentsOnly: () => void;
-  onToggleRiskyOnly: () => void;
+  onToggleResponsesOnly: () => void;
   onClearFilters: () => void;
   // Live state
   followLatest: boolean;
@@ -36,15 +32,11 @@ export function NavigationBar({
   searchQuery,
   onSearchChange,
   promptsOnly,
-  toolsOnly,
   requestsOnly,
-  agentsOnly,
-  riskyOnly,
+  responsesOnly,
   onTogglePromptsOnly,
-  onToggleToolsOnly,
   onToggleRequestsOnly,
-  onToggleAgentsOnly,
-  onToggleRiskyOnly,
+  onToggleResponsesOnly,
   onClearFilters,
   followLatest,
   archived = false,
@@ -73,7 +65,7 @@ export function NavigationBar({
     return () => window.removeEventListener('keydown', handleKey);
   }, []);
 
-  const anyFilterActive = promptsOnly || toolsOnly || requestsOnly || agentsOnly || riskyOnly;
+  const anyFilterActive = promptsOnly || requestsOnly || responsesOnly;
 
   const handleBookmarkClick = () => {
     setBookmarkName(defaultBookmarkName);
@@ -122,10 +114,8 @@ export function NavigationBar({
       {/* Filter chips */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 3, flexWrap: 'wrap' }}>
         <FilterChip label="Prompts" active={promptsOnly} onClick={onTogglePromptsOnly} />
-        <FilterChip label="Tools" active={toolsOnly} onClick={onToggleToolsOnly} />
+        <FilterChip label="Responses" active={responsesOnly} onClick={onToggleResponsesOnly} />
         <FilterChip label="Permissions" active={requestsOnly} onClick={onToggleRequestsOnly} />
-        <FilterChip label="Agents" active={agentsOnly} onClick={onToggleAgentsOnly} />
-        <FilterChip label="Risk≥med" active={riskyOnly} onClick={onToggleRiskyOnly} riskOutline />
         {anyFilterActive && (
           <button
             onClick={onClearFilters}

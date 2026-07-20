@@ -21,9 +21,7 @@ interface EventStreamProps {
 export function EventStream({ onSend, archived = false, archivedDate }: EventStreamProps) {
   const [promptsOnly, setPromptsOnly] = useState(false);
   const [requestsOnly, setRequestsOnly] = useState(false);
-  const [riskyOnly, setRiskyOnly] = useState(false);
-  const [toolsOnly, setToolsOnly] = useState(false);
-  const [agentsOnly, setAgentsOnly] = useState(false);
+  const [responsesOnly, setResponsesOnly] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [matchIndex, setMatchIndex] = useState(0);
   const [selectedIndex, setSelectedIndex] = useState(-1);
@@ -44,9 +42,7 @@ export function EventStream({ onSend, archived = false, archivedDate }: EventStr
   const { events, sessionEvents, totalCount } = useEventStore({
     promptsOnly,
     requestsOnly,
-    riskyOnly,
-    toolsOnly,
-    agentsOnly,
+    responsesOnly,
     searchQuery,
   }, sourceOverride);
 
@@ -238,7 +234,7 @@ export function EventStream({ onSend, archived = false, archivedDate }: EventStr
           break;
         case 'r':
         case 'R':
-          setRiskyOnly(v => !v);
+          setResponsesOnly(v => !v);
           break;
         case 'e':
         case 'E':
@@ -286,21 +282,15 @@ export function EventStream({ onSend, archived = false, archivedDate }: EventStr
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
         promptsOnly={promptsOnly}
-        toolsOnly={toolsOnly}
         requestsOnly={requestsOnly}
-        agentsOnly={agentsOnly}
-        riskyOnly={riskyOnly}
+        responsesOnly={responsesOnly}
         onTogglePromptsOnly={() => setPromptsOnly(v => !v)}
-        onToggleToolsOnly={() => setToolsOnly(v => !v)}
         onToggleRequestsOnly={() => setRequestsOnly(v => !v)}
-        onToggleAgentsOnly={() => setAgentsOnly(v => !v)}
-        onToggleRiskyOnly={() => setRiskyOnly(v => !v)}
+        onToggleResponsesOnly={() => setResponsesOnly(v => !v)}
         onClearFilters={() => {
           setPromptsOnly(false);
-          setToolsOnly(false);
           setRequestsOnly(false);
-          setAgentsOnly(false);
-          setRiskyOnly(false);
+          setResponsesOnly(false);
         }}
         followLatest={followLatest}
         archived={archived}

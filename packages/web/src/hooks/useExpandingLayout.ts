@@ -1,7 +1,19 @@
 import { useEffect, useMemo, useRef, useState, type RefObject } from 'react';
-import { useSessionStore, type PinnedView, type SplitOverrides } from '../stores/sessionStore.js';
+import { useSessionStore, type SplitOverrides } from '../stores/sessionStore.js';
 import { eventDetail } from '../lib/event-styles.js';
 import type { TimelineEvent } from '../lib/types.js';
+
+/**
+ * Per-panel visibility override: `null` means "let width decide" (auto/
+ * progressive-disclosure); `true`/`false` force the panel on/off regardless of
+ * width. Set by explicit user actions (clicking the Dashboard/Logs tab,
+ * clicking a Dashboard row to jump into Logs) — see sessionStore's
+ * toggleDashboardVisible/toggleLogsVisible/activateOnlyLiveTab.
+ */
+export interface PanelOverrides {
+  dashboard: boolean | null;
+  logs: boolean | null;
+}
 
 // ─── Constants (§1.1 / §2.2) ────────────────────────────────────────────────
 
@@ -80,42 +92,40 @@ function withHysteresis(raw: boolean, prev: boolean, width: number, threshold: n
 }
 
 /**
- * Computes panel visibility for a given viewport width. Honors pinnedView
- * (pinning a single view hides everything else, including the Investigation
- * dock — Investigate then opens as a drawer) and applies hysteresis around
- * each threshold so panels don't flicker when the width sits near a boundary.
+ * Computes panel visibility for a given viewport width. Dashboard/Logs each
+ * independently default to width-driven auto-disclosure (`overrides.* ===
+ * null`), or can be explicitly forced on/off. Applies hysteresis around each
+ * threshold (in auto mode) so panels don't flicker when the width sits near a
+ * boundary.
  */
 export function computePanelVisibility(
   width: number,
   measured: MeasuredWidths,
-  pinnedView: PinnedView,
+  overrides: PanelOverrides,
   prev: PanelVisibility,
   hysteresisBand: number = HYSTERESIS / 2
 ): { visibility: PanelVisibility; thresholds: PanelThresholds } {
   const thresholds = computeThresholds(measured, width);
 
-  let showDashboard: boolean;
+  const showDashboard = overrides.dashboard ?? true;
+
   let showLogs: boolean;
-  if (pinnedView === 'dashboard') {
-    showDashboard = true;
-    showLogs = false;
-  } else if (pinnedView === 'stream') {
-    showDashboard = false;
+  if (overrides.logs !== null) {
+    showLogs = overrides.logs;
+  } else if (!showDashboard) {
+    // Nothing competing for space — Logs alone just needs its own minimum.
     showLogs = true;
   } else {
-    showDashboard = true;
     showLogs = withHysteresis(width >= thresholds.logsAt, prev.showLogs, width, thresholds.logsAt, hysteresisBand);
   }
 
-  const showInvestigation = pinnedView
-    ? false
-    : withHysteresis(
-        showLogs && width >= thresholds.investAt,
-        prev.showInvestigation,
-        width,
-        thresholds.investAt,
-        hysteresisBand
-      );
+  const showInvestigation = withHysteresis(
+    showLogs && width >= thresholds.investAt,
+    prev.showInvestigation,
+    width,
+    thresholds.investAt,
+    hysteresisBand
+  );
 
   return { visibility: { showDashboard, showLogs, showInvestigation }, thresholds };
 }
@@ -181,7 +191,12 @@ export function useExpandingLayout(
   containerRef: RefObject<HTMLElement | null>,
   events: TimelineEvent[]
 ): PanelLayout {
-  const pinnedView = useSessionStore((s) => s.pinnedView);
+  const dashboardOverride = useSessionStore((s) => s.dashboardOverride);
+  const logsOverride = useSessionStore((s) => s.logsOverride);
+  const overrides = useMemo<PanelOverrides>(
+    () => ({ dashboard: dashboardOverride, logs: logsOverride }),
+    [dashboardOverride, logsOverride]
+  );
   const splitOverrides = useSessionStore((s) => s.splitOverrides);
 
   const [width, setWidth] = useState(0);
@@ -219,8 +234,8 @@ export function useExpandingLayout(
   }, []);
 
   const { visibility, thresholds } = useMemo(
-    () => computePanelVisibility(width, measured, pinnedView, visibilityRef.current),
-    [width, measured, pinnedView]
+    () => computePanelVisibility(width, measured, overrides, visibilityRef.current),
+    [width, measured, overrides]
   );
   visibilityRef.current = visibility;
 
