@@ -203,6 +203,7 @@ export function useExpandingLayout(
   const [measured, setMeasured] = useState<MeasuredWidths>(FALLBACK_MEASURED);
   const visibilityRef = useRef<PanelVisibility>(DEFAULT_PANEL_VISIBILITY);
   const prevSetKeyRef = useRef<string | null>(null);
+  const prevShowLogsRef = useRef<boolean | null>(null);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -255,6 +256,18 @@ export function useExpandingLayout(
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visibility.showDashboard, visibility.showLogs, visibility.showInvestigation]);
+
+  // Expand all Logs rows by default every time the Logs panel newly appears
+  // (not just on first load) — whatever expand/collapse state was left over
+  // from before it was hidden shouldn't carry forward. Guarded to a no-op
+  // write so it can never itself be a render-loop amplifier.
+  useEffect(() => {
+    const appeared = prevShowLogsRef.current === false && visibility.showLogs;
+    prevShowLogsRef.current = visibility.showLogs;
+    if (appeared && useSessionStore.getState().expandedLogEventIds !== 'all') {
+      useSessionStore.getState().setExpandedLogEventIds('all');
+    }
+  }, [visibility.showLogs]);
 
   useEffect(() => {
     useSessionStore.getState().setPanelLayout(layout);
