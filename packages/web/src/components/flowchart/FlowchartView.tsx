@@ -38,7 +38,6 @@ function FlowchartInner({ externalEvents, onSelectEvent, externalSelectedEventId
   const { events: liveEvents } = useEventStore({
     promptsOnly: false,
     requestsOnly: false,
-    riskyOnly: false,
   });
 
   const events = externalEvents ?? liveEvents;

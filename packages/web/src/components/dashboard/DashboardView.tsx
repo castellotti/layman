@@ -3,21 +3,28 @@ import { useSessionStore } from '../../stores/sessionStore.js';
 import { SessionListRow } from './SessionListRow.js';
 import { PreviewPane } from './PreviewPane.js';
 import { SearchInput } from '../primitives/index.js';
+import { PanelDivider } from '../layout/PanelDivider.js';
 import { saveAndBookmarkSession } from '../../lib/bookmarks-api.js';
 import { useDragReorder } from '../../hooks/useDragReorder.js';
 import type { ClientMessage } from '../../lib/ws-protocol.js';
 import './dashboard.css';
 
-const SESSION_LIST_WIDTH = 410;
+const SESSION_LIST_WIDTH_DEFAULT = 410;
+const SESSION_LIST_MIN = 220;
+const SESSION_LIST_MAX = 480;
 const MIN_PANE_HEIGHT = 240;
 
 type SortMode = 'recent' | 'custom';
 
 interface DashboardViewProps {
   onSend: (msg: ClientMessage) => void;
+  /** Adjustable session-list ↔ preview divider (§1.2 item 1). Falls back to a fixed
+   *  default when Dashboard is used outside the expanding layout (e.g. embedded). */
+  sessionListWidth?: number;
+  onResizeSessionList?: (width: number) => void;
 }
 
-export function DashboardView({ onSend }: DashboardViewProps) {
+export function DashboardView({ onSend, sessionListWidth, onResizeSessionList }: DashboardViewProps) {
   const {
     sessions,
     events: allEvents,
@@ -162,16 +169,18 @@ export function DashboardView({ onSend }: DashboardViewProps) {
   const openSessionIds = orderedSessions.filter(s => openPanes.has(s.sessionId)).map(s => s.sessionId);
   const openCount = openSessionIds.length;
 
+  const listWidth = sessionListWidth ?? SESSION_LIST_WIDTH_DEFAULT;
+
   return (
-    <div className="dashboard-root" style={{ display: 'flex', height: '100%' }}>
+    <div className="dashboard-root" style={{ display: 'flex', height: '100%', width: '100%', minWidth: 0 }}>
       {/* ── Left: session list ── */}
       <div
         style={{
-          width: SESSION_LIST_WIDTH,
+          width: listWidth,
           flexShrink: 0,
           display: 'flex',
           flexDirection: 'column',
-          borderRight: '1px solid var(--border)',
+          borderRight: onResizeSessionList ? undefined : '1px solid var(--border)',
           background: 'var(--bg-raised)',
           overflow: 'hidden',
         }}
@@ -210,6 +219,17 @@ export function DashboardView({ onSend }: DashboardViewProps) {
           )}
         </div>
       </div>
+
+      {onResizeSessionList && (
+        <PanelDivider
+          value={listWidth}
+          min={SESSION_LIST_MIN}
+          max={SESSION_LIST_MAX}
+          direction={1}
+          onChange={onResizeSessionList}
+          title="Drag to resize · resets to default when Dashboard is re-shown"
+        />
+      )}
 
       {/* ── Right: preview panes ── */}
       <div

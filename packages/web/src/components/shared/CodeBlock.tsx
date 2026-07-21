@@ -1,4 +1,7 @@
 import React, { useState } from 'react';
+import { CommandBlock } from './CommandBlock.js';
+
+const SHELL_LANGUAGES = new Set(['bash', 'shell', 'sh']);
 
 interface CodeBlockProps {
   code: string;
@@ -10,6 +13,13 @@ interface CodeBlockProps {
 }
 
 export function CodeBlock({ code, language = 'text', maxLines, className = '', showWrapToggle = false, defaultWrapped = false }: CodeBlockProps) {
+  if (SHELL_LANGUAGES.has(language)) {
+    return <CommandBlock code={code} className={className} />;
+  }
+  return <CodeBlockInner code={code} language={language} maxLines={maxLines} className={className} showWrapToggle={showWrapToggle} defaultWrapped={defaultWrapped} />;
+}
+
+function CodeBlockInner({ code, language = 'text', maxLines, className = '', showWrapToggle = false, defaultWrapped = false }: CodeBlockProps) {
   const [expanded, setExpanded] = useState(false);
   const [wrapped, setWrapped] = useState(defaultWrapped);
   const [copied, setCopied] = useState(false);
@@ -26,15 +36,15 @@ export function CodeBlock({ code, language = 'text', maxLines, className = '', s
   };
 
   return (
-    <div className={`relative rounded-md bg-[#0d1117] border border-[#30363d] overflow-hidden ${className}`}>
+    <div className={`relative rounded-md bg-[var(--bg)] border border-[var(--border-strong)] overflow-hidden ${className}`}>
       {(language !== 'text' || showWrapToggle) && (
-        <div className="flex items-center justify-between px-3 py-1 bg-[#161b22] border-b border-[#30363d]">
-          <span className="text-xs text-[#8b949e] font-mono">{language !== 'text' ? language : ''}</span>
+        <div className="flex items-center justify-between px-3 py-1 bg-[var(--bg-card)] border-b border-[var(--border-strong)]">
+          <span className="text-xs text-[var(--text-muted)] font-mono">{language !== 'text' ? language : ''}</span>
           <div className="flex items-center gap-2">
             {showWrapToggle && (
               <button
                 onClick={(e) => { e.stopPropagation(); setWrapped((v) => !v); }}
-                className={`text-xs transition-colors ${wrapped ? 'text-[#58a6ff]' : 'text-[#8b949e] hover:text-[#e6edf3]'}`}
+                className={`text-xs transition-colors ${wrapped ? 'text-[var(--accent)]' : 'text-[var(--text-muted)] hover:text-[var(--text)]'}`}
                 title={wrapped ? 'Disable line wrap' : 'Enable line wrap'}
               >
                 ↵
@@ -42,7 +52,7 @@ export function CodeBlock({ code, language = 'text', maxLines, className = '', s
             )}
             <button
               onClick={handleCopy}
-              className="text-xs text-[#8b949e] hover:text-[#e6edf3] transition-colors"
+              className="text-xs text-[var(--text-muted)] hover:text-[var(--text)] transition-colors"
               title="Copy to clipboard"
             >
               {copied ? '✓' : 'Copy'}
@@ -50,13 +60,13 @@ export function CodeBlock({ code, language = 'text', maxLines, className = '', s
           </div>
         </div>
       )}
-      <pre className={`p-3 text-xs font-mono text-[#e6edf3] leading-relaxed ${wrapped ? 'whitespace-pre-wrap break-words' : 'overflow-x-auto'}`}>
+      <pre className={`p-3 text-xs font-mono text-[var(--text)] leading-relaxed ${wrapped ? 'whitespace-pre-wrap break-words' : 'overflow-x-auto'}`}>
         <code>{displayCode}</code>
       </pre>
       {isLong && (
         <button
           onClick={() => setExpanded(!expanded)}
-          className="w-full py-1.5 text-xs text-[#58a6ff] hover:text-[#79c0ff] bg-[#161b22] border-t border-[#30363d] transition-colors"
+          className="w-full py-1.5 text-xs text-[var(--accent)] hover:opacity-80 bg-[var(--bg-card)] border-t border-[var(--border-strong)] transition-colors"
         >
           {expanded ? 'Show less' : `Show ${lines.length - maxLines!} more lines`}
         </button>

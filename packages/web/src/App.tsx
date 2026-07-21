@@ -1,8 +1,7 @@
 import React, { useRef, useState, useCallback, useEffect, Suspense, lazy } from 'react';
 import { Header } from './components/layout/Header.js';
-import { EventStream } from './components/layout/EventStream.js';
+import { ExpandingLayout } from './components/layout/ExpandingLayout.js';
 const FlowchartView = lazy(() => import('./components/flowchart/FlowchartView.js').then(m => ({ default: m.FlowchartView })));
-const DashboardView = lazy(() => import('./components/dashboard/DashboardView.js').then(m => ({ default: m.DashboardView })));
 import { InvestigationPanel } from './components/layout/InvestigationPanel.js';
 import { SetupBanner } from './components/layout/SetupBanner.js';
 import { SetupWizard } from './components/wizard/SetupWizard.js';
@@ -12,6 +11,7 @@ import { PromptsView } from './components/sessions/PromptsView.js';
 import { AccessLogPanel } from './components/access/AccessLogPanel.js';
 import { DriftBlockDialog } from './components/drift/DriftBlockDialog.js';
 import { ChangelogModal } from './components/shared/ChangelogModal.js';
+import { BoltIcon } from './components/primitives/index.js';
 import { useSessionStore } from './stores/sessionStore.js';
 import type { SessionState } from './stores/sessionStore.js';
 import { useWebSocket } from './hooks/useWebSocket.js';
@@ -107,8 +107,9 @@ function StatusBar() {
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           {count > 0 && (
-            <span style={{ color: 'var(--warn)', fontWeight: 500 }}>
-              ⚡ {count} pending {count === 1 ? 'approval' : 'approvals'}
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: 'var(--warn)', fontWeight: 500 }}>
+              <BoltIcon size={10} />
+              {count} pending {count === 1 ? 'approval' : 'approvals'}
             </span>
           )}
           <span>{eventCount} events</span>
@@ -196,7 +197,6 @@ export function App() {
   const { send } = useWebSocket();
   const investigationOpen = useSessionStore((s) => s.investigationOpen);
   const flowchartOpen = useSessionStore((s) => s.flowchartOpen);
-  const dashboardOpen = useSessionStore((s) => s.dashboardOpen);
   const bookmarksOpen = useSessionStore((s) => s.bookmarksOpen);
   const promptsOpen = useSessionStore((s) => s.promptsOpen);
   const returnToDashboard = useSessionStore((s) => s.returnToDashboard);
@@ -268,14 +268,60 @@ export function App() {
     );
   }
 
-  // Dashboard view takes over the entire content area
-  if (dashboardOpen) {
+  // Back to Dashboard banner when drilled down from Dashboard
+  const backBanner = returnToDashboard && (
+    <div
+      data-print-hide
+      style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 16px', background: 'var(--bg-raised)', borderBottom: '1px solid var(--border)', flexShrink: 0 }}
+    >
+      <button
+        onClick={returnFromDashboardDrilldown}
+        style={{
+          display: 'flex', alignItems: 'center', gap: 4,
+          padding: '3px 10px', borderRadius: 4,
+          fontFamily: 'var(--font-mono)', fontSize: 10,
+          color: 'var(--text)',
+          background: 'var(--bg-selected)',
+          border: '1px solid var(--border-strong)',
+          cursor: 'pointer',
+        }}
+      >
+        <svg width="11" height="11" viewBox="0 0 16 16" fill="currentColor"><path d="M7.78 12.53a.75.75 0 0 1-1.06 0L2.47 8.28a.75.75 0 0 1 0-1.06l4.25-4.25a.75.75 0 0 1 1.06 1.06L4.81 7h7.44a.75.75 0 0 1 0 1.5H4.81l2.97 2.97a.75.75 0 0 1 0 1.06Z"/></svg>
+        Back to Dashboard
+      </button>
+      <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--text-faint)' }}>ESC</span>
+    </div>
+  );
+
+  // Flow view takes over the entire content area (unrelated to the expanding
+  // Dashboard/Logs/Investigation/Settings layout — keeps its own simple split)
+  if (flowchartOpen) {
     return (
       <AppShell onSend={send} onInstall={handleSetupInstall}>
-        <div className="flex-1 overflow-hidden">
-          <Suspense fallback={<div className="flex items-center justify-center h-full text-[#484f58] text-xs">Loading dashboard...</div>}>
-            <DashboardView onSend={send} />
-          </Suspense>
+        {backBanner}
+        <div ref={containerRef} className="flex flex-1 overflow-hidden">
+          <div
+            className="flex flex-col min-w-0 overflow-hidden"
+            style={{ width: investigationOpen ? `${leftWidthPct}%` : '100%' }}
+          >
+            <Suspense fallback={<div className="flex items-center justify-center h-full text-[#484f58] text-xs">Loading...</div>}>
+              <FlowchartView />
+            </Suspense>
+          </div>
+
+          {investigationOpen && (
+            <div
+              data-print-hide
+              className="w-1 shrink-0 bg-[#30363d] hover:bg-[#58a6ff]/50 active:bg-[#58a6ff] cursor-col-resize transition-colors select-none"
+              onMouseDown={onDividerMouseDown}
+            />
+          )}
+
+          {investigationOpen && (
+            <div data-print-hide className="flex flex-col flex-1 min-w-0 overflow-hidden">
+              <InvestigationPanel onSend={send} />
+            </div>
+          )}
         </div>
       </AppShell>
     );
@@ -283,62 +329,8 @@ export function App() {
 
   return (
     <AppShell onSend={send} onInstall={handleSetupInstall}>
-      {/* Back to Dashboard banner when drilled down from Dashboard */}
-      {returnToDashboard && (
-        <div
-          data-print-hide
-          style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 16px', background: 'var(--bg-raised)', borderBottom: '1px solid var(--border)', flexShrink: 0 }}
-        >
-          <button
-            onClick={returnFromDashboardDrilldown}
-            style={{
-              display: 'flex', alignItems: 'center', gap: 4,
-              padding: '3px 10px', borderRadius: 4,
-              fontFamily: 'var(--font-mono)', fontSize: 10,
-              color: 'var(--text)',
-              background: 'var(--bg-selected)',
-              border: '1px solid var(--border-strong)',
-              cursor: 'pointer',
-            }}
-          >
-            <svg width="11" height="11" viewBox="0 0 16 16" fill="currentColor"><path d="M7.78 12.53a.75.75 0 0 1-1.06 0L2.47 8.28a.75.75 0 0 1 0-1.06l4.25-4.25a.75.75 0 0 1 1.06 1.06L4.81 7h7.44a.75.75 0 0 1 0 1.5H4.81l2.97 2.97a.75.75 0 0 1 0 1.06Z"/></svg>
-            Back to Dashboard
-          </button>
-          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--text-faint)' }}>ESC</span>
-        </div>
-      )}
-
-      <div ref={containerRef} className="flex flex-1 overflow-hidden">
-        {/* Left panel: Event timeline or Flowchart */}
-        <div
-          className="flex flex-col min-w-0 overflow-hidden"
-          style={{ width: investigationOpen ? `${leftWidthPct}%` : '100%' }}
-        >
-          {flowchartOpen ? (
-            <Suspense fallback={<div className="flex items-center justify-center h-full text-[#484f58] text-xs">Loading...</div>}>
-              <FlowchartView />
-            </Suspense>
-          ) : (
-            <EventStream onSend={send} />
-          )}
-        </div>
-
-        {/* Drag handle */}
-        {investigationOpen && (
-          <div
-            data-print-hide
-            className="w-1 shrink-0 bg-[#30363d] hover:bg-[#58a6ff]/50 active:bg-[#58a6ff] cursor-col-resize transition-colors select-none"
-            onMouseDown={onDividerMouseDown}
-          />
-        )}
-
-        {/* Right panel: Investigation */}
-        {investigationOpen && (
-          <div data-print-hide className="flex flex-col flex-1 min-w-0 overflow-hidden">
-            <InvestigationPanel onSend={send} />
-          </div>
-        )}
-      </div>
+      {backBanner}
+      <ExpandingLayout onSend={send} />
     </AppShell>
   );
 }

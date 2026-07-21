@@ -7,15 +7,11 @@ interface NavigationBarProps {
   onSearchChange: (q: string) => void;
   // Filter chips
   promptsOnly: boolean;
-  toolsOnly: boolean;
   requestsOnly: boolean;
-  agentsOnly: boolean;
-  riskyOnly: boolean;
+  responsesOnly: boolean;
   onTogglePromptsOnly: () => void;
-  onToggleToolsOnly: () => void;
   onToggleRequestsOnly: () => void;
-  onToggleAgentsOnly: () => void;
-  onToggleRiskyOnly: () => void;
+  onToggleResponsesOnly: () => void;
   onClearFilters: () => void;
   // Live state
   followLatest: boolean;
@@ -27,21 +23,20 @@ interface NavigationBarProps {
   onBookmark?: (name: string) => void;
   isBookmarked?: boolean;
   defaultBookmarkName?: string;
+  // Expand/collapse-all toggle for the Logs single-line rows (§1.4)
+  expandToggleLabel?: string;
+  onExpandToggle?: () => void;
 }
 
 export function NavigationBar({
   searchQuery,
   onSearchChange,
   promptsOnly,
-  toolsOnly,
   requestsOnly,
-  agentsOnly,
-  riskyOnly,
+  responsesOnly,
   onTogglePromptsOnly,
-  onToggleToolsOnly,
   onToggleRequestsOnly,
-  onToggleAgentsOnly,
-  onToggleRiskyOnly,
+  onToggleResponsesOnly,
   onClearFilters,
   followLatest,
   archived = false,
@@ -51,6 +46,8 @@ export function NavigationBar({
   onBookmark,
   isBookmarked,
   defaultBookmarkName = '',
+  expandToggleLabel,
+  onExpandToggle,
 }: NavigationBarProps) {
   const [showBookmarkInput, setShowBookmarkInput] = useState(false);
   const [bookmarkName, setBookmarkName] = useState('');
@@ -68,7 +65,7 @@ export function NavigationBar({
     return () => window.removeEventListener('keydown', handleKey);
   }, []);
 
-  const anyFilterActive = promptsOnly || toolsOnly || requestsOnly || agentsOnly || riskyOnly;
+  const anyFilterActive = promptsOnly || requestsOnly || responsesOnly;
 
   const handleBookmarkClick = () => {
     setBookmarkName(defaultBookmarkName);
@@ -117,10 +114,8 @@ export function NavigationBar({
       {/* Filter chips */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 3, flexWrap: 'wrap' }}>
         <FilterChip label="Prompts" active={promptsOnly} onClick={onTogglePromptsOnly} />
-        <FilterChip label="Tools" active={toolsOnly} onClick={onToggleToolsOnly} />
+        <FilterChip label="Responses" active={responsesOnly} onClick={onToggleResponsesOnly} />
         <FilterChip label="Permissions" active={requestsOnly} onClick={onToggleRequestsOnly} />
-        <FilterChip label="Agents" active={agentsOnly} onClick={onToggleAgentsOnly} />
-        <FilterChip label="Risk≥med" active={riskyOnly} onClick={onToggleRiskyOnly} riskOutline />
         {anyFilterActive && (
           <button
             onClick={onClearFilters}
@@ -145,6 +140,23 @@ export function NavigationBar({
 
       {/* Spacer */}
       <div style={{ flex: 1 }} />
+
+      {/* Expand/collapse all */}
+      {onExpandToggle && (
+        <button
+          onClick={onExpandToggle}
+          title="Toggle expand/collapse for all rows (E)"
+          style={{
+            fontFamily: 'var(--font-mono)', fontSize: 9.5, color: 'var(--text-muted)',
+            background: 'transparent', border: '1px solid var(--border-strong)', borderRadius: 4,
+            padding: '2px 8px', cursor: 'pointer', flexShrink: 0, whiteSpace: 'nowrap',
+          }}
+          onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--text)'; e.currentTarget.style.borderColor = 'var(--text-faint)'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-muted)'; e.currentTarget.style.borderColor = 'var(--border-strong)'; }}
+        >
+          {expandToggleLabel}
+        </button>
+      )}
 
       {/* Live chip */}
       <LiveChip state={archived ? 'archived' : (followLatest ? 'live' : 'paused')} archivedDate={archivedDate} />

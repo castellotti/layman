@@ -11,12 +11,6 @@ function getSessionName(cwd: string, sessionId: string, agentType?: string, show
   return name;
 }
 
-const NAV_TABS_LIVE: { key: ViewMode; label: string; shortcut: string }[] = [
-  { key: 'dashboard', label: 'Dashboard', shortcut: 'D' },
-  { key: 'stream',    label: 'Logs',      shortcut: 'S' },
-  { key: 'flowchart', label: 'Flow',      shortcut: 'F' },
-];
-
 const NAV_TABS_ARCHIVE: { key: ViewMode; label: string; shortcut: string }[] = [
   { key: 'sessions', label: 'Sessions', shortcut: '' },
   { key: 'prompts',  label: 'Prompts',  shortcut: '' },
@@ -65,7 +59,31 @@ export function Header() {
     sessionMetrics,
     investigatedSessions,
     promptsOpen,
+    panelLayout,
+    toggleDashboardVisible,
+    toggleLogsVisible,
+    activateOnlyLiveTab,
   } = useSessionStore();
+
+  // Dashboard/Logs are only meaningfully "active" while the live (non-exclusive)
+  // view is showing — Flow/Sessions/Prompts take over the whole content area, and
+  // panelLayout otherwise keeps its last-computed value since the layout hook that
+  // updates it unmounts along with the panels themselves.
+  const inLiveMode = viewMode !== 'flowchart' && viewMode !== 'sessions' && viewMode !== 'prompts';
+
+  // Clicking Dashboard/Logs (or D/S) while already in live mode toggles that
+  // panel's visibility independently; arriving from Flow/Sessions/Prompts shows
+  // only the clicked tab, closing whatever exclusive view was active.
+  const activateLiveTab = (tab: 'dashboard' | 'stream') => {
+    if (!inLiveMode) {
+      setViewMode(tab);
+      activateOnlyLiveTab(tab);
+    } else if (tab === 'dashboard') {
+      toggleDashboardVisible();
+    } else {
+      toggleLogsVisible();
+    }
+  };
 
   // Global keyboard shortcuts
   useEffect(() => {
@@ -73,8 +91,8 @@ export function Header() {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLSelectElement) return;
       if (e.ctrlKey || e.metaKey || e.altKey) return;
       switch (e.key.toLowerCase()) {
-        case 'd': setViewMode('dashboard'); break;
-        case 's': setViewMode('stream'); break;
+        case 'd': activateLiveTab('dashboard'); break;
+        case 's': activateLiveTab('stream'); break;
         case 'f': setViewMode('flowchart'); break;
         case 'escape':
           if (returnToDashboard) {
@@ -87,9 +105,11 @@ export function Header() {
     };
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
-  }, [setViewMode, bookmarksOpen, promptsOpen, returnToDashboard, returnFromDashboardDrilldown]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [setViewMode, bookmarksOpen, promptsOpen, returnToDashboard, returnFromDashboardDrilldown, inLiveMode, toggleDashboardVisible, toggleLogsVisible, activateOnlyLiveTab]);
 
-  const isDashboard = viewMode === 'dashboard';
+  // Session picker only makes sense once Logs (a single-session view) is showing.
+  const isDashboard = inLiveMode && !panelLayout.showLogs;
 
   return (
     <header
@@ -126,11 +146,29 @@ export function Header() {
         LAYMAN
       </a>
 
-      {/* Nav tabs — live monitoring */}
+      {/* Nav tabs — live monitoring. When Dashboard and Logs are both visible, both
+          read as active — one continuous highlighted region (§1.1). Clicking either
+          toggles its visibility independently; clicking from Flow/Sessions/Prompts
+          closes that exclusive view and shows only the clicked tab. */}
       <nav style={{ display: 'flex', alignItems: 'stretch', height: '100%', gap: 0 }}>
-        {NAV_TABS_LIVE.map(({ key, label, shortcut }) => (
-          <NavTabButton key={key} label={label} shortcut={shortcut} isActive={viewMode === key} onClick={() => setViewMode(key)} />
-        ))}
+        <NavTabButton
+          label="Dashboard"
+          shortcut="D"
+          isActive={inLiveMode && panelLayout.showDashboard}
+          onClick={() => activateLiveTab('dashboard')}
+        />
+        <NavTabButton
+          label="Logs"
+          shortcut="S"
+          isActive={inLiveMode && panelLayout.showLogs}
+          onClick={() => activateLiveTab('stream')}
+        />
+        <NavTabButton
+          label="Flow"
+          shortcut="F"
+          isActive={viewMode === 'flowchart'}
+          onClick={() => setViewMode('flowchart')}
+        />
       </nav>
 
       {/* Live / archive divider */}
@@ -205,7 +243,7 @@ export function Header() {
         </div>
       )}
 
-      {/* Settings */}
+      {/* Settings — always opens the drawer (floating panel only, not docked). */}
       <button
         onClick={() => setSettingsOpen(true)}
         title="Settings"

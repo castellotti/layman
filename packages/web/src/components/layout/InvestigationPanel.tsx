@@ -6,6 +6,7 @@ import { AnalysisCard } from '../analysis/AnalysisCard.js';
 import { AskQuestion } from '../analysis/AskQuestion.js';
 import { RiskBadge } from '../shared/RiskBadge.js';
 import { CodeBlock } from '../shared/CodeBlock.js';
+import { DepthButton } from '../primitives/index.js';
 import { isMarkdown, MARKDOWN_PROSE, REMARK_PLUGINS } from '../../lib/markdown.js';
 import { getEffectiveAgentContent } from '../../lib/reasoning.js';
 import type { ClientMessage } from '../../lib/ws-protocol.js';
@@ -20,11 +21,11 @@ function AgentResponsePrompt({ event }: { event: TimelineEvent }) {
     <>
       {thinking && <div className="mb-2"><ThinkingBlock thinking={thinking} /></div>}
       {response && (
-        <div className="bg-[#0d1117] border border-[#30363d] rounded-md overflow-hidden">
-          <div className="flex items-center justify-end px-3 py-1 border-b border-[#30363d]">
+        <div className="bg-[var(--bg)] border border-[var(--border-strong)] rounded-md overflow-hidden">
+          <div className="flex items-center justify-end px-3 py-1 border-b border-[var(--border-strong)]">
             <CopyButton text={response} />
           </div>
-          <div className="px-3 py-2 border-l-2 border-[#58a6ff]">
+          <div className="px-3 py-2 border-l-2 border-[var(--accent)]">
             <MarkdownOrText text={response} />
           </div>
         </div>
@@ -37,7 +38,7 @@ function MarkdownOrText({ text, className }: { text: string; className?: string 
   if (isMarkdown(text)) {
     return <div className={className ?? MARKDOWN_PROSE}><ReactMarkdown remarkPlugins={REMARK_PLUGINS}>{text}</ReactMarkdown></div>;
   }
-  return <p className={className ?? 'text-xs text-[#e6edf3] leading-relaxed whitespace-pre-wrap'}>{text}</p>;
+  return <p className={className ?? 'text-xs text-[var(--text)] leading-relaxed whitespace-pre-wrap'}>{text}</p>;
 }
 
 function CopyButton({ text }: { text: string }) {
@@ -50,7 +51,7 @@ function CopyButton({ text }: { text: string }) {
         setCopied(true);
         setTimeout(() => setCopied(false), 1500);
       }}
-      className="text-[10px] text-[#8b949e] hover:text-[#e6edf3] transition-colors shrink-0"
+      className="text-[10px] text-[var(--text-muted)] hover:text-[var(--text)] transition-colors shrink-0"
     >
       {copied ? '✓ Copied' : 'Copy'}
     </button>
@@ -63,9 +64,12 @@ interface InvestigationPanelProps {
   eventId?: string;
   /** Called when user closes the embedded panel */
   onClose?: () => void;
+  /** 'docked' renders inline as a panel column; 'drawer' renders as a right slide-over
+   *  (used when the expanding layout doesn't have room to dock Investigation — §1.5). */
+  presentation?: 'docked' | 'drawer';
 }
 
-export function InvestigationPanel({ onSend, eventId: embeddedEventId, onClose }: InvestigationPanelProps) {
+export function InvestigationPanel({ onSend, eventId: embeddedEventId, onClose, presentation = 'docked' }: InvestigationPanelProps) {
   const {
     selectedEventId: storeSelectedEventId,
     investigationOpen,
@@ -136,7 +140,14 @@ export function InvestigationPanel({ onSend, eventId: embeddedEventId, onClose }
       } else {
         const models = data.models ?? [];
         setAvailableModels(models);
-        if (models.length && !askModel) setAskModel(models[0]);
+        // Functional update so this always resolves against the *current* live
+        // askModel — not the value captured when this async call started — so it
+        // can never race with (and override) the "sync from config" effect below,
+        // regardless of which one happens to settle first.
+        if (models.length) {
+          const configModel = config.analysis.model;
+          setAskModel((prev) => prev || configModel || models[0]);
+        }
       }
     } catch (err) {
       setFetchModelError(err instanceof Error ? err.message : String(err));
@@ -144,7 +155,7 @@ export function InvestigationPanel({ onSend, eventId: embeddedEventId, onClose }
     } finally {
       setFetchingModels(false);
     }
-  }, [config?.analysis.provider, config?.analysis.endpoint, askModel]);
+  }, [config?.analysis.provider, config?.analysis.endpoint, config?.analysis.model]);
 
   // Sync askModel default from config when config loads
   useEffect(() => {
@@ -171,9 +182,36 @@ export function InvestigationPanel({ onSend, eventId: embeddedEventId, onClose }
   // Cancel the tick timer when the panel unmounts
   useEffect(() => () => clearPendingTimer(), [clearPendingTimer]);
 
+  // ESC closes the drawer (before any other ESC-bound behavior elsewhere in the app)
+  useEffect(() => {
+    if (presentation !== 'drawer') return;
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      e.stopPropagation();
+      if (onClose) onClose(); else setInvestigationOpen(false);
+    };
+    window.addEventListener('keydown', handleKey, true);
+    return () => window.removeEventListener('keydown', handleKey, true);
+  }, [presentation, onClose, setInvestigationOpen]);
+
   const isEmbedded = !!embeddedEventId;
-  if (!isEmbedded && (!investigationOpen || !selectedEventId)) return null;
-  if (!selectedEventId) return null;
+  if (presentation === 'drawer' && !isEmbedded && (!investigationOpen || !selectedEventId)) return null;
+  if (!selectedEventId) {
+    // Docked with nothing selected yet — hold the reserved layout space with a
+    // placeholder rather than collapsing (which would leave a dangling divider).
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', height: '100%', borderLeft: '1px solid var(--border)', background: 'var(--bg)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', padding: '10px 14px', borderBottom: '1px solid var(--border)', background: 'var(--bg-raised)', flexShrink: 0 }}>
+          <span style={{ fontFamily: 'var(--font-ui)', fontSize: 12, fontWeight: 600, color: 'var(--text)' }}>Investigation</span>
+        </div>
+        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+          <span style={{ fontFamily: 'var(--font-ui)', fontSize: 11, color: 'var(--text-faint)', textAlign: 'center' }}>
+            Select an event's Investigate button to explain or analyze it here
+          </span>
+        </div>
+      </div>
+    );
+  }
 
   const event = getEvent(selectedEventId);
   if (!event) return null;
@@ -182,7 +220,6 @@ export function InvestigationPanel({ onSend, eventId: embeddedEventId, onClose }
   const isAnalyzing = analyzingEventIds.has(selectedEventId);
   const isLaymansLoading = laymansEventIds.has(selectedEventId);
   const laymansError = laymansErrors[selectedEventId];
-  const isBusy = isAnalyzing || isLaymansLoading;
 
   const handleRequestAnalysis = (depth: 'quick' | 'detailed') => {
     setAnalysisDepth(depth);
@@ -194,13 +231,6 @@ export function InvestigationPanel({ onSend, eventId: embeddedEventId, onClose }
     setLaymansDepth(depth);
     markSessionInvestigated(event.sessionId);
     onSend({ type: 'laymans:request', eventId: selectedEventId, depth, ...(askModel ? { model: askModel } : {}) });
-  };
-
-  const handleRequestBoth = (depth: 'quick' | 'detailed') => {
-    setLaymansDepth(depth);
-    setAnalysisDepth(depth);
-    markSessionInvestigated(event.sessionId);
-    onSend({ type: 'both:request', eventId: selectedEventId, depth, ...(askModel ? { model: askModel } : {}) });
   };
 
   const handleAskWhyFailed = async (depth: 'quick' | 'detailed') => {
@@ -292,8 +322,10 @@ export function InvestigationPanel({ onSend, eventId: embeddedEventId, onClose }
     return JSON.stringify(input, null, 2);
   };
 
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', borderLeft: '1px solid var(--border)', background: 'var(--bg)' }}>
+  const closeDrawer = () => { if (onClose) onClose(); else setInvestigationOpen(false); };
+
+  const panelContent = (
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', borderLeft: presentation === 'docked' ? '1px solid var(--border)' : 'none', background: 'var(--bg)' }}>
       {/* Header */}
       <div style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
@@ -305,38 +337,8 @@ export function InvestigationPanel({ onSend, eventId: embeddedEventId, onClose }
             Investigation
           </span>
           {event.riskLevel && <RiskBadge level={event.riskLevel} compact />}
-          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-faint)' }}>
-            {event.type.replace(/_/g, ' ')}
-            {event.data.toolName ? ` · ${event.data.toolName}` : ''}
-          </span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          {/* Quick combo button */}
-          <button
-            onClick={() => handleRequestBoth('quick')}
-            disabled={isBusy}
-            style={{
-              padding: '3px 9px', fontSize: 10, borderRadius: 4, fontFamily: 'var(--font-ui)',
-              fontWeight: 500, cursor: isBusy ? 'not-allowed' : 'pointer', opacity: isBusy ? 0.5 : 1,
-              background: 'rgba(76,195,138,0.15)', color: 'var(--ok)',
-              border: '1px solid rgba(76,195,138,0.3)',
-            }}
-          >
-            {isBusy ? '⏳' : '⚡'} Quick
-          </button>
-          {/* Detailed combo button */}
-          <button
-            onClick={() => handleRequestBoth('detailed')}
-            disabled={isBusy}
-            style={{
-              padding: '3px 9px', fontSize: 10, borderRadius: 4, fontFamily: 'var(--font-ui)',
-              fontWeight: 500, cursor: isBusy ? 'not-allowed' : 'pointer', opacity: isBusy ? 0.5 : 1,
-              background: 'rgba(90,156,248,0.12)', color: 'var(--info)',
-              border: '1px solid rgba(90,156,248,0.25)',
-            }}
-          >
-            {isBusy ? '⏳' : '🔍'} Detailed
-          </button>
           {/* Compact model selector — overrides the model for Explain (laymans/analysis) and Chat */}
           <select
             value={askModel}
@@ -430,34 +432,21 @@ export function InvestigationPanel({ onSend, eventId: embeddedEventId, onClose }
             <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9.5, fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text)' }}>
               Layman&apos;s Terms
             </span>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <button
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <DepthButton
+                depth="quick"
                 onClick={() => handleRequestLaymans('quick')}
                 disabled={isLaymansLoading}
-                style={{
-                  fontSize: 10, background: 'none', border: 'none', cursor: isLaymansLoading ? 'not-allowed' : 'pointer',
-                  opacity: isLaymansLoading ? 0.5 : 1,
-                  color: event.laymans && laymansDepth === 'quick' ? 'var(--text)' : 'var(--ok)',
-                  fontWeight: event.laymans && laymansDepth === 'quick' ? 600 : 400,
-                  fontFamily: 'var(--font-ui)',
-                }}
-              >
-                {isLaymansLoading && laymansDepth === 'quick' ? '⏳ Explaining...' : 'Quick'}
-              </button>
-              <span style={{ color: 'var(--text-faint)', fontSize: 10 }}>·</span>
-              <button
+                loading={isLaymansLoading && laymansDepth === 'quick'}
+                loadingLabel="Explaining…"
+              />
+              <DepthButton
+                depth="detailed"
                 onClick={() => handleRequestLaymans('detailed')}
                 disabled={isLaymansLoading}
-                style={{
-                  fontSize: 10, background: 'none', border: 'none', cursor: isLaymansLoading ? 'not-allowed' : 'pointer',
-                  opacity: isLaymansLoading ? 0.5 : 1,
-                  color: event.laymans && laymansDepth === 'detailed' ? 'var(--text)' : 'var(--info)',
-                  fontWeight: event.laymans && laymansDepth === 'detailed' ? 600 : 400,
-                  fontFamily: 'var(--font-ui)',
-                }}
-              >
-                {isLaymansLoading && laymansDepth === 'detailed' ? '⏳ Explaining...' : 'Detailed'}
-              </button>
+                loading={isLaymansLoading && laymansDepth === 'detailed'}
+                loadingLabel="Explaining…"
+              />
             </div>
           </div>
 
@@ -488,31 +477,11 @@ export function InvestigationPanel({ onSend, eventId: embeddedEventId, onClose }
           ) : (
             <div style={{
               background: 'var(--bg-raised)', border: '1px dashed var(--border-strong)', borderRadius: 8,
-              padding: '16px', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10,
+              padding: '16px', textAlign: 'center',
             }}>
               <span style={{ fontSize: 11, color: 'var(--text-faint)', fontFamily: 'var(--font-ui)', fontStyle: 'italic' }}>
                 Explain this request in plain language
               </span>
-              <div style={{ display: 'flex', gap: 8 }}>
-                <button
-                  onClick={() => handleRequestLaymans('quick')}
-                  disabled={isLaymansLoading}
-                  style={{
-                    padding: '4px 10px', borderRadius: 4, fontSize: 10, fontFamily: 'var(--font-ui)',
-                    background: 'var(--bg-card)', border: '1px solid var(--border-strong)',
-                    color: 'var(--text-muted)', cursor: 'pointer',
-                  }}
-                >⚡ Quick</button>
-                <button
-                  onClick={() => handleRequestLaymans('detailed')}
-                  disabled={isLaymansLoading}
-                  style={{
-                    padding: '4px 10px', borderRadius: 4, fontSize: 10, fontFamily: 'var(--font-ui)',
-                    background: 'var(--bg-card)', border: '1px solid var(--border-strong)',
-                    color: 'var(--text-muted)', cursor: 'pointer',
-                  }}
-                >Detailed</button>
-              </div>
             </div>
           )}
         </div>
@@ -523,34 +492,21 @@ export function InvestigationPanel({ onSend, eventId: embeddedEventId, onClose }
             <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9.5, fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-faint)' }}>
               Analysis
             </span>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <button
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <DepthButton
+                depth="quick"
                 onClick={() => handleRequestAnalysis('quick')}
                 disabled={isAnalyzing}
-                style={{
-                  fontSize: 10, background: 'none', border: 'none', cursor: isAnalyzing ? 'not-allowed' : 'pointer',
-                  opacity: isAnalyzing ? 0.5 : 1,
-                  color: event.analysis && analysisDepth === 'quick' ? 'var(--text)' : 'var(--ok)',
-                  fontWeight: event.analysis && analysisDepth === 'quick' ? 600 : 400,
-                  fontFamily: 'var(--font-ui)',
-                }}
-              >
-                {isAnalyzing && analysisDepth === 'quick' ? '⏳ Analyzing...' : 'Quick'}
-              </button>
-              <span style={{ color: 'var(--text-faint)', fontSize: 10 }}>·</span>
-              <button
+                loading={isAnalyzing && analysisDepth === 'quick'}
+                loadingLabel="Analyzing…"
+              />
+              <DepthButton
+                depth="detailed"
                 onClick={() => handleRequestAnalysis('detailed')}
                 disabled={isAnalyzing}
-                style={{
-                  fontSize: 10, background: 'none', border: 'none', cursor: isAnalyzing ? 'not-allowed' : 'pointer',
-                  opacity: isAnalyzing ? 0.5 : 1,
-                  color: event.analysis && analysisDepth === 'detailed' ? 'var(--text)' : 'var(--info)',
-                  fontWeight: event.analysis && analysisDepth === 'detailed' ? 600 : 400,
-                  fontFamily: 'var(--font-ui)',
-                }}
-              >
-                {isAnalyzing && analysisDepth === 'detailed' ? '⏳ Analyzing...' : 'Detailed'}
-              </button>
+                loading={isAnalyzing && analysisDepth === 'detailed'}
+                loadingLabel="Analyzing…"
+              />
             </div>
           </div>
 
@@ -573,31 +529,11 @@ export function InvestigationPanel({ onSend, eventId: embeddedEventId, onClose }
           ) : (
             <div style={{
               background: 'var(--bg-raised)', border: '1px dashed var(--border-strong)', borderRadius: 8,
-              padding: '16px', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10,
+              padding: '16px', textAlign: 'center',
             }}>
               <span style={{ fontSize: 11, color: 'var(--text-faint)', fontFamily: 'var(--font-ui)' }}>
                 Analyze intent, safety, and risk
               </span>
-              <div style={{ display: 'flex', gap: 8 }}>
-                <button
-                  onClick={() => handleRequestAnalysis('quick')}
-                  disabled={isAnalyzing}
-                  style={{
-                    padding: '4px 10px', borderRadius: 4, fontSize: 10, fontFamily: 'var(--font-ui)',
-                    background: 'var(--bg-card)', border: '1px solid var(--border-strong)',
-                    color: 'var(--text-muted)', cursor: 'pointer',
-                  }}
-                >⚡ Quick</button>
-                <button
-                  onClick={() => handleRequestAnalysis('detailed')}
-                  disabled={isAnalyzing}
-                  style={{
-                    padding: '4px 10px', borderRadius: 4, fontSize: 10, fontFamily: 'var(--font-ui)',
-                    background: 'var(--bg-card)', border: '1px solid var(--border-strong)',
-                    color: 'var(--text-muted)', cursor: 'pointer',
-                  }}
-                >Detailed</button>
-              </div>
             </div>
           )}
         </div>
@@ -609,22 +545,19 @@ export function InvestigationPanel({ onSend, eventId: embeddedEventId, onClose }
               <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9.5, fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--error)' }}>
                 Failure Analysis
               </span>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <button
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <DepthButton
+                  depth="quick"
                   onClick={() => void handleAskWhyFailed('quick')}
                   disabled={isAskingFailure || isAskingQuestion}
-                  style={{ fontSize: 10, background: 'none', border: 'none', cursor: 'pointer', color: 'var(--ok)', fontFamily: 'var(--font-ui)', opacity: (isAskingFailure || isAskingQuestion) ? 0.5 : 1 }}
-                >
-                  {isAskingFailure ? '⏳ Analyzing...' : 'Quick'}
-                </button>
-                <span style={{ color: 'var(--text-faint)', fontSize: 10 }}>·</span>
-                <button
+                  loading={isAskingFailure}
+                  loadingLabel="Analyzing…"
+                />
+                <DepthButton
+                  depth="detailed"
                   onClick={() => void handleAskWhyFailed('detailed')}
                   disabled={isAskingFailure || isAskingQuestion}
-                  style={{ fontSize: 10, background: 'none', border: 'none', cursor: 'pointer', color: 'var(--info)', fontFamily: 'var(--font-ui)', opacity: (isAskingFailure || isAskingQuestion) ? 0.5 : 1 }}
-                >
-                  Detailed
-                </button>
+                />
               </div>
             </div>
             <div style={{
@@ -755,4 +688,31 @@ export function InvestigationPanel({ onSend, eventId: embeddedEventId, onClose }
       </div>
     </div>
   );
+
+  if (presentation === 'drawer') {
+    return (
+      <div style={{ position: 'fixed', inset: 0, zIndex: 45, display: 'flex', justifyContent: 'flex-end' }}>
+        <div
+          onClick={closeDrawer}
+          style={{ position: 'absolute', inset: 0, background: 'rgba(4,6,10,0.55)', animation: 'fadeIn 0.2s ease' }}
+        />
+        <div
+          style={{
+            position: 'relative',
+            width: 480,
+            maxWidth: '90vw',
+            height: '100%',
+            background: 'var(--bg)',
+            borderLeft: '1px solid var(--border-strong)',
+            boxShadow: '-16px 0 40px rgba(0,0,0,0.5)',
+            animation: 'drawerIn 0.22s ease',
+          }}
+        >
+          {panelContent}
+        </div>
+      </div>
+    );
+  }
+
+  return panelContent;
 }

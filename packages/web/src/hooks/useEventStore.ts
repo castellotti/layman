@@ -5,22 +5,11 @@ import type { TimelineEvent, EventType } from '../lib/types.js';
 export interface EventFilters {
   promptsOnly?: boolean;
   requestsOnly?: boolean;
-  riskyOnly?: boolean;
-  toolsOnly?: boolean;
-  agentsOnly?: boolean;
+  responsesOnly?: boolean;
   searchQuery?: string;
   types?: EventType[];
   agentTypes?: string[];
 }
-
-const TOOL_EVENT_TYPES: EventType[] = [
-  'tool_call_pending', 'tool_call_approved', 'tool_call_denied',
-  'tool_call_delegated', 'tool_call_completed', 'tool_call_failed',
-];
-
-const AGENT_EVENT_TYPES: EventType[] = [
-  'agent_response', 'subagent_start', 'subagent_stop', 'agent_stop',
-];
 
 function matchesSearch(event: TimelineEvent, query: string): boolean {
   const text = [
@@ -70,14 +59,8 @@ export function useEventStore(filters?: EventFilters, sourceOverride?: TimelineE
     if (filters?.requestsOnly) {
       result = result.filter((e) => e.type === 'permission_request');
     }
-    if (filters?.toolsOnly) {
-      result = result.filter((e) => (TOOL_EVENT_TYPES as string[]).includes(e.type));
-    }
-    if (filters?.agentsOnly) {
-      result = result.filter((e) => (AGENT_EVENT_TYPES as string[]).includes(e.type));
-    }
-    if (filters?.riskyOnly) {
-      result = result.filter((e) => e.riskLevel === 'medium' || e.riskLevel === 'high');
+    if (filters?.responsesOnly) {
+      result = result.filter((e) => e.type === 'agent_response');
     }
     if (filters?.searchQuery && filters.searchQuery.trim()) {
       result = result.filter((e) => matchesSearch(e, filters.searchQuery!));
@@ -92,8 +75,7 @@ export function useEventStore(filters?: EventFilters, sourceOverride?: TimelineE
     return result;
   }, [
     sessionEvents,
-    filters?.promptsOnly, filters?.requestsOnly,
-    filters?.toolsOnly, filters?.agentsOnly, filters?.riskyOnly,
+    filters?.promptsOnly, filters?.requestsOnly, filters?.responsesOnly,
     filters?.searchQuery, filters?.types, filters?.agentTypes,
   ]);
 
