@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.8.1
+
+- Added expanding interface - progressive panel disclosure for Dashboard/Logs/Investigation driven by content-measured thresholds, with drag-to-resize dividers, independent Dashboard/Logs tab toggling, and a restored kind-colored Minimap; Logs rows now use the Dashboard's flat single-line vocabulary (expand/collapse, Highlight/Copy/Investigate) instead of exchange-tree grouping ([#77](https://github.com/castellotti/layman/pull/77))
+- Fixed PII filter regressions found in review of #74 - home-directory redaction no longer swallows trailing punctuation or the dots in usernames, forward-slash Windows paths (`C:/Users/alice`) are fully redacted instead of leaving a dangling prefix, and a raw, unfiltered `cwd` was no longer embedded in the session-summarize prompt sent to the external LLM ([#76](https://github.com/castellotti/layman/pull/76))
+- Added home directory path redaction to the PII filter - `/Users/<name>` and `C:\Users\<name>` prefixes are replaced with `~` instead of a generic `[REDACTED]` marker; extended coverage to session `cwd` (broadcast to clients and recorded to SQLite) and to transcript-recovered events, which previously bypassed the filter entirely ([#74](https://github.com/castellotti/layman/pull/74))
+
 ## 0.8.0
 
 - Added Layman UI v2 - complete frontend redesign across Dashboard, Logs, Sessions, and Prompts on a token-based dark theme (IBM Plex Sans/Mono served locally, no CDN) with shared primitive components (`StatusDot`, `StateChip`, `Meter`, `RiskTag`, `FilterChip`, `SearchInput`, `LiveChip`, `JumpToLatest`) ([#73](https://github.com/castellotti/layman/pull/73))
