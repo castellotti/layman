@@ -140,7 +140,14 @@ export function InvestigationPanel({ onSend, eventId: embeddedEventId, onClose, 
       } else {
         const models = data.models ?? [];
         setAvailableModels(models);
-        if (models.length && !askModel) setAskModel(models[0]);
+        // Functional update so this always resolves against the *current* live
+        // askModel — not the value captured when this async call started — so it
+        // can never race with (and override) the "sync from config" effect below,
+        // regardless of which one happens to settle first.
+        if (models.length) {
+          const configModel = config.analysis.model;
+          setAskModel((prev) => prev || configModel || models[0]);
+        }
       }
     } catch (err) {
       setFetchModelError(err instanceof Error ? err.message : String(err));
@@ -148,7 +155,7 @@ export function InvestigationPanel({ onSend, eventId: embeddedEventId, onClose, 
     } finally {
       setFetchingModels(false);
     }
-  }, [config?.analysis.provider, config?.analysis.endpoint, askModel]);
+  }, [config?.analysis.provider, config?.analysis.endpoint, config?.analysis.model]);
 
   // Sync askModel default from config when config loads
   useEffect(() => {
@@ -468,15 +475,11 @@ export function InvestigationPanel({ onSend, eventId: embeddedEventId, onClose, 
           ) : (
             <div style={{
               background: 'var(--bg-raised)', border: '1px dashed var(--border-strong)', borderRadius: 8,
-              padding: '16px', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10,
+              padding: '16px', textAlign: 'center',
             }}>
               <span style={{ fontSize: 11, color: 'var(--text-faint)', fontFamily: 'var(--font-ui)', fontStyle: 'italic' }}>
                 Explain this request in plain language
               </span>
-              <div style={{ display: 'flex', gap: 8 }}>
-                <QuickButton onClick={() => handleRequestLaymans('quick')} disabled={isLaymansLoading} />
-                <DetailedButton onClick={() => handleRequestLaymans('detailed')} disabled={isLaymansLoading} />
-              </div>
             </div>
           )}
         </div>
@@ -522,15 +525,11 @@ export function InvestigationPanel({ onSend, eventId: embeddedEventId, onClose, 
           ) : (
             <div style={{
               background: 'var(--bg-raised)', border: '1px dashed var(--border-strong)', borderRadius: 8,
-              padding: '16px', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10,
+              padding: '16px', textAlign: 'center',
             }}>
               <span style={{ fontSize: 11, color: 'var(--text-faint)', fontFamily: 'var(--font-ui)' }}>
                 Analyze intent, safety, and risk
               </span>
-              <div style={{ display: 'flex', gap: 8 }}>
-                <QuickButton onClick={() => handleRequestAnalysis('quick')} disabled={isAnalyzing} />
-                <DetailedButton onClick={() => handleRequestAnalysis('detailed')} disabled={isAnalyzing} />
-              </div>
             </div>
           )}
         </div>

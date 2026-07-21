@@ -4,6 +4,7 @@ import { EVENT_KIND_COLOR, kindLabel, eventDetail } from '../../lib/event-styles
 import { formatTime } from '../../lib/format.js';
 import { getEffectiveAgentContent } from '../../lib/reasoning.js';
 import { EventDetailBody } from '../events/EventCard.js';
+import { RiskBadge } from '../shared/RiskBadge.js';
 import type { TimelineEvent } from '../../lib/types.js';
 import type { ClientMessage } from '../../lib/ws-protocol.js';
 
@@ -32,12 +33,13 @@ interface LogRowProps {
   index: number;
   hasDetail: boolean;
   isExpanded: boolean;
+  isSelected?: boolean;
   onSelect: (eventId: string) => void;
   onCaretToggle: (eventId: string) => void;
   onSend: (msg: ClientMessage) => void;
 }
 
-export const LogRow = React.memo(function LogRow({ event, index, hasDetail, isExpanded, onSelect, onCaretToggle, onSend }: LogRowProps) {
+export const LogRow = React.memo(function LogRow({ event, index, hasDetail, isExpanded, isSelected, onSelect, onCaretToggle, onSend }: LogRowProps) {
   const [copied, setCopied] = useState(false);
   const highlighted = useSessionStore((s) => s.logHighlightedEventIds.has(event.id));
   const toggleLogHighlight = useSessionStore((s) => s.toggleLogHighlight);
@@ -61,6 +63,7 @@ export const LogRow = React.memo(function LogRow({ event, index, hasDetail, isEx
           display: 'flex', alignItems: 'center', gap: 6, padding: '3px 8px', margin: '0 8px',
           borderRadius: 4, cursor: hasDetail ? 'pointer' : 'default',
           background: expanded ? 'var(--bg-selected)' : 'transparent',
+          boxShadow: isSelected ? 'inset 0 0 0 1px var(--accent)' : 'none',
         }}
         onMouseEnter={(e) => { if (!expanded) (e.currentTarget as HTMLElement).style.background = 'var(--bg-card)'; }}
         onMouseLeave={(e) => { if (!expanded) (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
@@ -120,6 +123,7 @@ export const LogRow = React.memo(function LogRow({ event, index, hasDetail, isEx
             >
               {copied ? '✓ Copied' : 'Copy'}
             </button>
+            {event.riskLevel && event.riskLevel !== 'low' && <RiskBadge level={event.riskLevel} compact />}
             <button
               onClick={(e) => { e.stopPropagation(); setSelectedEvent(event.id); }}
               style={{

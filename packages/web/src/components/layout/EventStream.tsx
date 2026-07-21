@@ -63,10 +63,16 @@ export function EventStream({ onSend, archived = false, archivedDate }: EventStr
   const allExpanded = detailEventIds.length > 0 && detailEventIds.every((id) => effectiveExpanded.has(id));
   const expandToggleLabel = allExpanded ? '⊟ Collapse all' : '⊞ Expand all';
 
-  // Row line click — select-to-focus: expand this row + its pair, collapse the rest
+  // Row line click — select-to-focus: expand this row + its pair, collapse the rest.
+  // Also moves the keyboard-navigation cursor here so arrow-key nav continues from the click.
   const handleSelectRow = useCallback((eventId: string) => {
     setExpandedLogEventIds(new Set(pairFor(eventId, sessionEvents)));
-  }, [sessionEvents, setExpandedLogEventIds]);
+    const idx = events.findIndex((e) => e.id === eventId);
+    if (idx >= 0) {
+      setSelectedIndex(idx);
+      if (idx < events.length - 1) setFollowLatest(false);
+    }
+  }, [sessionEvents, events, setExpandedLogEventIds]);
 
   // Caret click — manual toggle of just this row
   const handleCaretToggle = useCallback((eventId: string) => {
@@ -384,13 +390,14 @@ export function EventStream({ onSend, archived = false, archivedDate }: EventStr
               </div>
             </div>
           ) : (
-            events.map((event) => (
+            events.map((event, i) => (
               <LogRow
                 key={event.id}
                 event={event}
                 index={eventIndexMap.get(event.id) ?? 0}
                 hasDetail={hasLogDetail(event)}
                 isExpanded={effectiveExpanded.has(event.id)}
+                isSelected={i === selectedIndex}
                 onSelect={handleSelectRow}
                 onCaretToggle={handleCaretToggle}
                 onSend={onSend}

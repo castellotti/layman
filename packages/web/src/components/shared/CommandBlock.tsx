@@ -70,7 +70,7 @@ export function CommandBlock({ code, className = '' }: CommandBlockProps) {
           >
             <span style={{
               fontFamily: 'var(--font-mono)', fontSize: 11, lineHeight: 1.8, color: 'var(--info)',
-              flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+              flex: 1, minWidth: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-all',
             }}>
               {line}
             </span>

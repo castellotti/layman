@@ -260,11 +260,18 @@ export function useExpandingLayout(
   // Expand all Logs rows by default every time the Logs panel newly appears
   // (not just on first load) — whatever expand/collapse state was left over
   // from before it was hidden shouldn't carry forward. Guarded to a no-op
-  // write so it can never itself be a render-loop amplifier.
+  // write so it can never itself be a render-loop amplifier. Skipped when a
+  // scrollToEventId is pending — that means a specific row (e.g. a clicked
+  // Dashboard entry) asked to be select-to-focused, and that "just this pair"
+  // request must win over the blanket expand-all, regardless of effect order.
   useEffect(() => {
     const appeared = prevShowLogsRef.current === false && visibility.showLogs;
     prevShowLogsRef.current = visibility.showLogs;
-    if (appeared && useSessionStore.getState().expandedLogEventIds !== 'all') {
+    if (
+      appeared &&
+      !useSessionStore.getState().scrollToEventId &&
+      useSessionStore.getState().expandedLogEventIds !== 'all'
+    ) {
       useSessionStore.getState().setExpandedLogEventIds('all');
     }
   }, [visibility.showLogs]);
