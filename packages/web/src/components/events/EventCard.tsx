@@ -2,31 +2,18 @@ import React, { useState, useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import type { TimelineEvent, SubagentTranscriptEntry } from '../../lib/types.js';
 import type { ClientMessage } from '../../lib/ws-protocol.js';
-import { RiskBadge } from '../shared/RiskBadge.js';
-import { ThinkingBlock } from '../shared/ThinkingBlock.js';
 import { ApprovalBar } from '../controls/ApprovalBar.js';
 import { AnalysisCard } from '../analysis/AnalysisCard.js';
 import { CodeBlock } from '../shared/CodeBlock.js';
 import { DiffBlock } from '../shared/DiffBlock.js';
 import { usePendingApprovals } from '../../hooks/usePendingApprovals.js';
 import { useSessionStore } from '../../stores/sessionStore.js';
-import { AGENT_BADGES, EVENT_ICONS, BORDER_COLORS, DRIFT_COLORS } from '../../lib/event-styles.js';
+import { DRIFT_COLORS } from '../../lib/event-styles.js';
 import { MARKDOWN_PROSE, REMARK_PLUGINS } from '../../lib/markdown.js';
-import { formatTime, formatDuration } from '../../lib/format.js';
 import { getEffectiveAgentContent } from '../../lib/reasoning.js';
 
 export { ThinkingBlock } from '../shared/ThinkingBlock.js';
-
-interface EventCardProps {
-  event: TimelineEvent;
-  index: number;
-  isSelected: boolean;
-  onClick: () => void;
-  onSend: (msg: ClientMessage) => void;
-  collapseHistory: boolean;
-  showAgentBadge?: boolean;
-}
-
+import { ThinkingBlock } from '../shared/ThinkingBlock.js';
 
 function formatToolInput(toolInput: Record<string, unknown>): string {
   // Special handling for Bash command
@@ -60,46 +47,35 @@ function formatToolInput(toolInput: Record<string, unknown>): string {
   return JSON.stringify(toolInput, null, 2).slice(0, 500);
 }
 
-function getCommandPreview(toolName: string | undefined, toolInput: Record<string, unknown> | undefined): string | null {
-  if (!toolInput || !toolName) return null;
-  if ('command' in toolInput) return String(toolInput.command);
-  if ('file_path' in toolInput) return String(toolInput.file_path);
-  if ('pattern' in toolInput) return String(toolInput.pattern);
-  if ('query' in toolInput) return String(toolInput.query);
-  if ('url' in toolInput) return String(toolInput.url);
-  if ('prompt' in toolInput) return String(toolInput.prompt).slice(0, 120);
-  return null;
+interface EventDetailBodyProps {
+  event: TimelineEvent;
+  onSend: (msg: ClientMessage) => void;
 }
 
-export function EventCard({ event, index, isSelected, onClick, onSend, collapseHistory, showAgentBadge }: EventCardProps) {
-  const [expandedLocal, setExpandedLocal] = useState(false);
+/**
+ * The expanded detail content for a single event — tool input/output, diffs,
+ * prompt/response, drift detail + approval controls, analysis, subagent
+ * transcript. Extracted from the former EventCard's exchange-tree row so the
+ * flat Logs single-line rows (LogRow) can reuse the exact same rich, per-type
+ * rendering (including live Approve/Deny controls) inside the new card chrome.
+ */
+export function EventDetailBody({ event, onSend }: EventDetailBodyProps) {
   const [highlighting, setHighlighting] = useState(false);
   const { approvals } = usePendingApprovals();
-  const showFullCommand = useSessionStore((s) => s.config?.showFullCommand ?? false);
   const highlightedEventIds = useSessionStore((s) => s.highlightedEventIds);
 
   const isHighlighted = highlightedEventIds.has(event.id);
 
   const isPending = event.type === 'tool_call_pending' || event.type === 'permission_request';
-  const isPermissionRequest = event.type === 'permission_request';
-  const isError = event.type === 'tool_call_failed' || event.type === 'stop_failure';
   const isAgentResponse = event.type === 'agent_response';
   const isWebSearch = event.type === 'web_search';
-  const isSubagentStop = event.type === 'subagent_stop' && !!event.data.subagentTranscript?.length;
 
   const { thinking: effectiveThinking, response: agentResponse } = useMemo(
     () => getEffectiveAgentContent(event),
     [event.type, event.data.thinking, event.data.prompt]
   );
   const effectivePrompt = agentResponse.trim() ? agentResponse : undefined;
-  const isFailed = event.type === 'tool_call_failed';
   const isUserPrompt = event.type === 'user_prompt';
-  const isDriftEvent = event.type === 'drift_alert' || event.type === 'drift_check';
-  // When collapseHistory is on, expansion is driven by selection; otherwise use local toggle
-  // agent_response, tool_call_failed, user_prompt, drift, web_search, and subagent_stop events are always expanded so content is visible without clicking
-  const expanded = isPending || isAgentResponse || isFailed || isUserPrompt || isDriftEvent || isWebSearch || isSubagentStop || (collapseHistory ? isSelected : expandedLocal);
-  const borderColor = BORDER_COLORS[event.type] ?? 'border-l-[#30363d]';
-  const icon = EVENT_ICONS[event.type] ?? '·';
 
   // Find matching pending approval
   const pendingApproval = isPending
@@ -154,192 +130,9 @@ export function EventCard({ event, index, isSelected, onClick, onSend, collapseH
     }
   };
 
-  const bgClass = isPending
-    ? 'bg-[#1c1a0f] hover:bg-[#1c1a0f]/80'
-    : isError
-      ? 'bg-[#200c0c] hover:bg-[#261010]'
-      : isSelected
-        ? 'bg-[#1c2128]'
-        : 'bg-[#161b22] hover:bg-[#1c2128]';
-
-  const borderWidth = (isPending || isError) ? 'border-l-2' : 'border-l';
-
-  // agent_stop — Claude is done, waiting for user to type in terminal
-  if (event.type === 'agent_stop') {
-    return (
-      <div
-        className={`mx-3 mb-1.5 rounded-md border ${isSelected ? 'border-[#58a6ff]/40 bg-[#1c2128]' : 'border-[#30363d]/60 bg-[#161b22]'} cursor-pointer transition-colors`}
-        onClick={onClick}
-      >
-        <div className="flex items-center gap-2 px-3 py-2">
-          <span className="text-[10px] text-[#484f58] font-mono tabular-nums shrink-0 w-6 text-right">{index + 1}</span>
-          <span className="text-[#484f58]">—</span>
-          <span className="text-[11px] text-[#484f58] font-mono">agent stop</span>
-          <div className="flex-1" />
-          <span className="text-[10px] text-[#58a6ff] bg-[#58a6ff]/10 border border-[#58a6ff]/20 px-1.5 py-0.5 rounded font-medium">
-            awaiting your reply in terminal
-          </span>
-          <span className="text-[10px] text-[#484f58] font-mono tabular-nums shrink-0">{formatTime(event.timestamp)}</span>
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <div
-      className={`${bgClass} ${borderColor} ${borderWidth} mx-3 mb-1.5 rounded-md overflow-hidden transition-colors cursor-pointer ${
-        isPending ? 'ring-1 ring-[#d29922]/30' : ''
-      } ${isError ? 'ring-1 ring-[#f85149]/20' : ''} ${isSelected ? 'ring-1 ring-[#58a6ff]/30' : ''}`}
-      onClick={() => {
-        onClick();
-        if (!collapseHistory) setExpandedLocal((v) => !v);
-      }}
-    >
-      {/* Header row */}
-      <div className="flex items-center gap-2 px-3 py-2">
-        {/* Sequence number */}
-        <span className="text-[10px] text-[#484f58] font-mono tabular-nums shrink-0 w-6 text-right">
-          {index + 1}
-        </span>
-
-        {/* Icon */}
-        <span className="text-sm shrink-0">{icon}</span>
-
-        {/* Type label */}
-        <span className="text-[11px] text-[#8b949e] font-mono shrink-0">
-          {event.type.replace(/_/g, ' ')}{(event.type === 'drift_check' || event.type === 'drift_alert') && event.data.driftType ? ` - ${event.data.driftType === 'rules' ? 'rules' : 'session'}` : ''}
-        </span>
-
-        {/* Tool name if present */}
-        {event.data.toolName && (
-          <>
-            <span className="text-[11px] text-[#484f58]">·</span>
-            <span className="text-[11px] font-semibold text-[#e6edf3] shrink-0">
-              {event.data.toolName}
-            </span>
-            {showFullCommand && (() => {
-              const preview = getCommandPreview(event.data.toolName, event.data.toolInput);
-              return preview ? (
-                <span className="text-[11px] text-[#484f58] font-mono truncate min-w-0">
-                  {preview}
-                </span>
-              ) : null;
-            })()}
-          </>
-        )}
-
-        {/* Prompt text if present */}
-        {effectivePrompt && !event.data.toolName && !isWebSearch && (
-          <span className="text-xs text-[#58a6ff] truncate italic">
-            {effectivePrompt.slice(0, 60)}
-          </span>
-        )}
-
-        {/* Web search summary in header */}
-        {isWebSearch && (() => {
-          const sourceCount = event.data.webSearchSources?.length ?? 0;
-          const queryCount = event.data.webSearchQueries?.length ?? 0;
-          return (
-            <span className="text-[11px] text-[#79c0ff] truncate">
-              {queryCount > 0 && `${queryCount} ${queryCount === 1 ? 'query' : 'queries'}`}
-              {queryCount > 0 && sourceCount > 0 && ' · '}
-              {sourceCount > 0 && `${sourceCount} ${sourceCount === 1 ? 'source' : 'sources'} retrieved`}
-            </span>
-          );
-        })()}
-
-        {/* Session/notification labels */}
-        {event.data.source && (
-          <span className="text-[11px] text-[#8b949e]">{event.data.source}</span>
-        )}
-        {event.data.notificationType && (
-          <span className="text-[11px] text-[#8b949e]">{event.data.notificationType}</span>
-        )}
-        {event.data.agentType && (
-          <span className="text-[11px] text-[#8b949e]">{event.data.agentType}</span>
-        )}
-        {event.data.subagentId && event.type !== 'subagent_stop' && (
-          <span className="text-[10px] text-[#8b949e] bg-[#8b949e]/10 border border-[#8b949e]/20 px-1.5 py-0.5 rounded font-mono">sub</span>
-        )}
-
-        <div className="flex-1" />
-
-        {/* Risk badge */}
-        {event.riskLevel && event.riskLevel !== 'low' && (
-          <RiskBadge level={event.riskLevel} compact />
-        )}
-
-        {/* Decision badge */}
-        {event.data.decision && (
-          <span className={`text-[10px] font-medium ${
-            event.data.decision.decision === 'allow'
-              ? 'text-[#3fb950]'
-              : event.data.decision.decision === 'deny'
-                ? 'text-[#f85149]'
-                : 'text-[#8b949e]'
-          }`}>
-            {event.data.decision.decision.toUpperCase()}
-          </span>
-        )}
-
-        {/* ASK chip for permission requests */}
-        {isPermissionRequest && !event.data.decision && (
-          <span style={{
-            fontSize: 9.5, fontWeight: 600, letterSpacing: '0.06em',
-            textTransform: 'uppercase', fontFamily: 'var(--font-ui)',
-            padding: '2px 6px', borderRadius: 4,
-            background: 'rgba(229,168,59,0.2)', color: 'var(--warn)',
-            border: '1px solid rgba(229,168,59,0.4)', flexShrink: 0,
-          }}>
-            ASK
-          </span>
-        )}
-        {/* PENDING badge for tool calls (not permission requests) */}
-        {event.type === 'tool_call_pending' && !event.data.decision && (
-          <span className="text-[10px] font-semibold text-[#d29922] animate-pulse">
-            PENDING
-          </span>
-        )}
-        {/* END chip for error events */}
-        {isError && (
-          <span style={{
-            fontSize: 9.5, fontWeight: 600, letterSpacing: '0.06em',
-            textTransform: 'uppercase', fontFamily: 'var(--font-ui)',
-            padding: '2px 6px', borderRadius: 4,
-            background: 'rgba(240,86,74,0.18)', color: 'var(--error)',
-            border: '1px solid rgba(240,86,74,0.4)', flexShrink: 0,
-          }}>
-            END
-          </span>
-        )}
-
-        {/* Duration for completed tool calls */}
-        {event.data.completedAt && (
-          <span className="text-[10px] text-[#484f58] font-mono tabular-nums shrink-0">
-            {formatDuration(event.data.completedAt - event.timestamp)}
-          </span>
-        )}
-
-        {/* Timestamp */}
-        <span className="text-[10px] text-[#484f58] font-mono tabular-nums shrink-0">
-          {formatTime(event.timestamp)}
-        </span>
-
-        {/* Agent badge — only shown when multiple agent types are active */}
-        {showAgentBadge && (() => {
-          const badge = AGENT_BADGES[event.agentType] ?? { label: event.agentType.slice(0, 2).toUpperCase(), color: 'text-[#8b949e] bg-[#8b949e]/10 border-[#8b949e]/20' };
-          return (
-            <span className={`text-[9px] font-semibold px-1 py-0.5 rounded border ${badge.color} shrink-0`}>
-              {badge.label}
-            </span>
-          );
-        })()}
-      </div>
-
-      {/* Expanded content */}
-      {expanded && (
-        <div className="px-3 pb-3 space-y-2 border-t border-[#30363d]/50 pt-2">
-          {/* Tool input — diff view for Edit/Write, code for everything else */}
+        <div className="px-3 py-3 space-y-2">
+          {/* Tool input — diff view for Edit/Write, code (or CommandBlock for shell) otherwise */}
           {event.data.toolInput && (() => {
             const input = event.data.toolInput;
             const tool = event.data.toolName;
@@ -365,12 +158,13 @@ export function EventCard({ event, index, isSelected, onClick, onSend, collapseH
               );
             }
 
+            const isShell = tool === 'Bash';
             return (
               <div>
-                <p className="text-[10px] text-[#484f58] mb-1 font-mono uppercase">Input</p>
+                {!isShell && <p className="text-[10px] text-[var(--text-faint)] mb-1 font-mono uppercase">Input</p>}
                 <CodeBlock
                   code={formatToolInput(input)}
-                  language={tool === 'Bash' ? 'bash' : 'text'}
+                  language={isShell ? 'bash' : 'text'}
                   maxLines={10}
                   showWrapToggle
                 />
@@ -383,18 +177,18 @@ export function EventCard({ event, index, isSelected, onClick, onSend, collapseH
             <div className="space-y-1.5">
               {event.data.permissionRequestType && (
                 <div className="flex items-center gap-2">
-                  <span className="text-[10px] text-[#484f58] font-mono uppercase">Permission type</span>
-                  <span className="text-[10px] font-medium text-[#d29922] bg-[#d29922]/10 border border-[#d29922]/20 px-1.5 py-0.5 rounded">
+                  <span className="text-[10px] text-[var(--text-faint)] font-mono uppercase">Permission type</span>
+                  <span className="text-[10px] font-medium text-[var(--warn)] bg-[var(--warn)]/10 border border-[var(--warn)]/20 px-1.5 py-0.5 rounded">
                     {event.data.permissionRequestType === 'tool_use' ? 'Tool Use' : 'Execution Mode'}
                   </span>
                 </div>
               )}
               {event.data.permissionSuggestions && event.data.permissionSuggestions.length > 0 && (
                 <div>
-                  <p className="text-[10px] text-[#484f58] mb-1 font-mono uppercase">Allow suggestions</p>
+                  <p className="text-[10px] text-[var(--text-faint)] mb-1 font-mono uppercase">Allow suggestions</p>
                   <div className="space-y-1">
                     {(event.data.permissionSuggestions as Array<Record<string, unknown>>).map((s, i) => (
-                      <div key={i} className="text-[11px] text-[#8b949e] bg-[#0d1117] rounded px-2 py-1 font-mono">
+                      <div key={i} className="text-[11px] text-[var(--text-muted)] bg-[var(--bg)] rounded px-2 py-1 font-mono">
                         {s.description ? String(s.description) : s.command ? String(s.command) : JSON.stringify(s)}
                       </div>
                     ))}
@@ -412,42 +206,42 @@ export function EventCard({ event, index, isSelected, onClick, onSend, collapseH
           {/* Prompt text — user_prompt and agent_response: markdown; others: plain */}
           {effectivePrompt && (
             (isAgentResponse || isUserPrompt) ? (
-              <div className={`rounded-md border border-[#30363d] overflow-hidden`}>
-                <div className="flex items-center justify-between px-3 py-1 bg-[#161b22] border-b border-[#30363d]">
-                  <span className="text-[10px] text-[#484f58] font-mono uppercase">{isUserPrompt ? 'Prompt' : 'Response'}</span>
+              <div className={`rounded-md border border-[var(--border-strong)] overflow-hidden`}>
+                <div className="flex items-center justify-between px-3 py-1 bg-[var(--bg-card)] border-b border-[var(--border-strong)]">
+                  <span className="text-[10px] text-[var(--text-faint)] font-mono uppercase">{isUserPrompt ? 'Prompt' : 'Response'}</span>
                   <div className="flex items-center gap-2">
                     <button
                       onClick={handleHighlight}
                       disabled={highlighting}
-                      className={`text-xs transition-colors ${isHighlighted ? 'text-[#bc8cff] opacity-80' : 'text-[#8b949e] hover:text-[#bc8cff]'}`}
+                      className={`text-xs transition-colors ${isHighlighted ? 'text-[var(--agent)] opacity-80' : 'text-[var(--text-muted)] hover:text-[var(--agent)]'}`}
                       title={isHighlighted ? 'Remove highlight' : 'Highlight this prompt–response pair'}
                     >
                       {highlighting ? '…' : isHighlighted ? 'Highlighted' : 'Highlight'}
                     </button>
                     <button
                       onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(effectivePrompt!).catch(() => {}); }}
-                      className="text-xs text-[#8b949e] hover:text-[#e6edf3] transition-colors"
+                      className="text-xs text-[var(--text-muted)] hover:text-[var(--text)] transition-colors"
                     >
                       Copy
                     </button>
                   </div>
                 </div>
-                <div className={`p-3 border-l-2 ${isUserPrompt ? 'border-[#58a6ff]' : 'border-[#3fb950]/50'} ${MARKDOWN_PROSE}`}>
+                <div className={`p-3 border-l-2 ${isUserPrompt ? 'border-[var(--accent)]' : 'border-[var(--ok)]/50'} ${MARKDOWN_PROSE}`}>
                   <ReactMarkdown remarkPlugins={REMARK_PLUGINS}>{effectivePrompt!}</ReactMarkdown>
                 </div>
               </div>
             ) : (
-              <div className="rounded-md border border-[#30363d] overflow-hidden">
-                <div className="flex items-center justify-between px-3 py-1 bg-[#161b22] border-b border-[#30363d]">
-                  <span className="text-[10px] text-[#484f58] font-mono uppercase">Prompt</span>
+              <div className="rounded-md border border-[var(--border-strong)] overflow-hidden">
+                <div className="flex items-center justify-between px-3 py-1 bg-[var(--bg-card)] border-b border-[var(--border-strong)]">
+                  <span className="text-[10px] text-[var(--text-faint)] font-mono uppercase">Prompt</span>
                   <button
                     onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(effectivePrompt!).catch(() => {}); }}
-                    className="text-xs text-[#8b949e] hover:text-[#e6edf3] transition-colors"
+                    className="text-xs text-[var(--text-muted)] hover:text-[var(--text)] transition-colors"
                   >
                     Copy
                   </button>
                 </div>
-                <pre className="p-3 text-xs text-[#e6edf3] leading-relaxed whitespace-pre-wrap break-words font-sans border-l-2 border-[#58a6ff]">
+                <pre className="p-3 text-xs text-[var(--text)] leading-relaxed whitespace-pre-wrap break-words font-sans border-l-2 border-[var(--accent)]">
                   {effectivePrompt!}
                 </pre>
               </div>
@@ -457,15 +251,15 @@ export function EventCard({ event, index, isSelected, onClick, onSend, collapseH
           {/* Error */}
           {event.data.error && (
             <div>
-              <p className="text-[10px] text-[#f85149] mb-1 font-mono uppercase">Error</p>
-              <CodeBlock code={event.data.error} maxLines={15} className="border-[#f85149]/30" />
+              <p className="text-[10px] text-[var(--error)] mb-1 font-mono uppercase">Error</p>
+              <CodeBlock code={event.data.error} maxLines={15} className="border-[var(--error)]/30" />
             </div>
           )}
 
           {/* Tool output (for completed events) */}
-          {event.data.toolOutput !== undefined && expanded && (
+          {event.data.toolOutput !== undefined && (
             <div>
-              <p className="text-[10px] text-[#484f58] mb-1 font-mono uppercase">Output</p>
+              <p className="text-[10px] text-[var(--text-faint)] mb-1 font-mono uppercase">Output</p>
               <CodeBlock
                 code={
                   typeof event.data.toolOutput === 'string'
@@ -479,7 +273,7 @@ export function EventCard({ event, index, isSelected, onClick, onSend, collapseH
 
           {/* Denial reason */}
           {event.data.decision?.reason && (
-            <p className="text-xs text-[#f85149]">
+            <p className="text-xs text-[var(--error)]">
               Reason: {event.data.decision.reason}
             </p>
           )}
@@ -507,12 +301,12 @@ export function EventCard({ event, index, isSelected, onClick, onSend, collapseH
             <div className="space-y-2">
               {event.data.webSearchQueries && event.data.webSearchQueries.length > 0 && (
                 <div>
-                  <p className="text-[10px] text-[#484f58] mb-1.5 font-mono uppercase">Queries</p>
+                  <p className="text-[10px] text-[var(--text-faint)] mb-1.5 font-mono uppercase">Queries</p>
                   <div className="flex flex-wrap gap-1.5">
                     {event.data.webSearchQueries.map((q, i) => (
                       <span
                         key={i}
-                        className="text-[11px] text-[#79c0ff] bg-[#79c0ff]/10 border border-[#79c0ff]/20 px-2 py-0.5 rounded font-mono"
+                        className="text-[11px] text-[var(--accent)] bg-[var(--accent)]/10 border border-[var(--accent)]/20 px-2 py-0.5 rounded font-mono"
                       >
                         {q}
                       </span>
@@ -522,7 +316,7 @@ export function EventCard({ event, index, isSelected, onClick, onSend, collapseH
               )}
               {event.data.webSearchSources && event.data.webSearchSources.length > 0 && (
                 <div>
-                  <p className="text-[10px] text-[#484f58] mb-1.5 font-mono uppercase">
+                  <p className="text-[10px] text-[var(--text-faint)] mb-1.5 font-mono uppercase">
                     Retrieved sources
                   </p>
                   <div className="space-y-1.5">
@@ -533,21 +327,21 @@ export function EventCard({ event, index, isSelected, onClick, onSend, collapseH
                         target="_blank"
                         rel="noopener noreferrer"
                         onClick={(e) => e.stopPropagation()}
-                        className="flex flex-col gap-0.5 rounded-md border border-[#30363d] bg-[#0d1117] px-3 py-2 hover:border-[#79c0ff]/40 hover:bg-[#79c0ff]/5 transition-colors group"
+                        className="flex flex-col gap-0.5 rounded-md border border-[var(--border-strong)] bg-[var(--bg)] px-3 py-2 hover:border-[var(--accent)]/40 hover:bg-[var(--accent)]/5 transition-colors group"
                       >
                         <div className="flex items-center gap-2">
-                          <span className="text-[10px] text-[#79c0ff] bg-[#79c0ff]/10 border border-[#79c0ff]/20 px-1.5 py-0.5 rounded font-mono shrink-0">
+                          <span className="text-[10px] text-[var(--accent)] bg-[var(--accent)]/10 border border-[var(--accent)]/20 px-1.5 py-0.5 rounded font-mono shrink-0">
                             {src.hostname}
                           </span>
-                          <span className="text-[11px] text-[#e6edf3] font-medium truncate group-hover:text-[#79c0ff] transition-colors">
+                          <span className="text-[11px] text-[var(--text)] font-medium truncate group-hover:text-[var(--accent)] transition-colors">
                             {src.title}
                           </span>
                         </div>
-                        <span className="text-[10px] text-[#484f58] font-mono truncate pl-0.5">
+                        <span className="text-[10px] text-[var(--text-faint)] font-mono truncate pl-0.5">
                           {src.url}
                         </span>
                         {src.content && (
-                          <p className="text-[11px] text-[#8b949e] mt-0.5 line-clamp-2 leading-relaxed">
+                          <p className="text-[11px] text-[var(--text-muted)] mt-0.5 line-clamp-2 leading-relaxed">
                             {src.content}
                           </p>
                         )}
@@ -565,8 +359,8 @@ export function EventCard({ event, index, isSelected, onClick, onSend, collapseH
 
           {/* Analysis card */}
           {event.analysis && (
-            <div className="bg-[#0d1117] border border-[#30363d] rounded-md p-3">
-              <p className="text-[10px] text-[#484f58] font-mono uppercase mb-2">Analysis</p>
+            <div className="bg-[var(--bg)] border border-[var(--border-strong)] rounded-md p-3">
+              <p className="text-[10px] text-[var(--text-faint)] font-mono uppercase mb-2">Analysis</p>
               <AnalysisCard analysis={event.analysis} compact />
             </div>
           )}
@@ -582,8 +376,6 @@ export function EventCard({ event, index, isSelected, onClick, onSend, collapseH
             </div>
           )}
         </div>
-      )}
-    </div>
   );
 }
 
@@ -599,7 +391,7 @@ function DriftApprovalBar({
   const [decided, setDecided] = useState(false);
 
   if (decided) {
-    return <div className="text-xs text-[#8b949e] italic pt-1">Decision sent — waiting for agent to continue...</div>;
+    return <div className="text-xs text-[var(--text-muted)] italic pt-1">Decision sent — waiting for agent to continue...</div>;
   }
 
   const handleContinue = () => {
@@ -622,7 +414,7 @@ function DriftApprovalBar({
       <div className="flex gap-2">
         <button
           onClick={handleContinue}
-          className="flex-1 px-3 py-2 text-xs font-semibold rounded-md bg-[#238636] hover:bg-[#2ea043] text-white transition-colors border border-[#3fb950]/30"
+          className="flex-1 px-3 py-2 text-xs font-semibold rounded-md bg-[var(--ok)] hover:bg-[var(--ok)] text-white transition-colors border border-[var(--ok)]/30"
         >
           Continue
         </button>
@@ -632,14 +424,14 @@ function DriftApprovalBar({
           style={{
             background: 'rgba(210, 153, 34, 0.15)',
             borderColor: 'rgba(210, 153, 34, 0.3)',
-            color: '#d29922',
+            color: 'var(--warn)',
           }}
         >
           Dismiss as False Positive
         </button>
         <button
           onClick={handleDeny}
-          className="flex-1 px-3 py-2 text-xs font-semibold rounded-md bg-[#da3633]/20 hover:bg-[#da3633]/30 text-[#f85149] transition-colors border border-[#f85149]/30"
+          className="flex-1 px-3 py-2 text-xs font-semibold rounded-md bg-[var(--error)]/20 hover:bg-[var(--error)]/30 text-[var(--error)] transition-colors border border-[var(--error)]/30"
         >
           Deny
         </button>
@@ -661,7 +453,7 @@ function DismissItemButton({
 }) {
   return (
     <button
-      className="ml-auto text-[#484f58] hover:text-[#8b949e] text-[10px] shrink-0 px-1"
+      className="ml-auto text-[var(--text-faint)] hover:text-[var(--text-muted)] text-[10px] shrink-0 px-1"
       onClick={(e) => {
         e.stopPropagation();
         onSend({ type: 'drift:dismiss-item', sessionId, category, value });
@@ -687,8 +479,8 @@ function DriftDetailSection({
       <div className="flex items-center gap-3">
         <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${
           event.data.driftType === 'rules'
-            ? 'bg-[#58a6ff]/10 text-[#58a6ff] border border-[#58a6ff]/20'
-            : 'bg-[#d29922]/10 text-[#d29922] border border-[#d29922]/20'
+            ? 'bg-[var(--accent)]/10 text-[var(--accent)] border border-[var(--accent)]/20'
+            : 'bg-[var(--warn)]/10 text-[var(--warn)] border border-[var(--warn)]/20'
         }`}>
           {event.data.driftType === 'rules' ? 'RULES DRIFT' : 'SESSION DRIFT'}
         </span>
@@ -696,23 +488,23 @@ function DriftDetailSection({
           {Math.round(event.data.driftPct ?? 0)}%
         </span>
         {event.data.driftPreviousLevel && event.data.driftPreviousLevel !== event.data.driftLevel && (
-          <span className="text-[10px] text-[#8b949e]">
+          <span className="text-[10px] text-[var(--text-muted)]">
             {event.data.driftPreviousLevel} → {event.data.driftLevel}
           </span>
         )}
       </div>
       {event.data.driftSummary && (
-        <p className="text-xs text-[#e6edf3] leading-relaxed">{event.data.driftSummary}</p>
+        <p className="text-xs text-[var(--text)] leading-relaxed">{event.data.driftSummary}</p>
       )}
       {event.data.driftIndicators && event.data.driftIndicators.length > 0 && (
         <div>
-          <p className="text-[10px] text-[#484f58] font-mono uppercase mb-1">Indicators</p>
+          <p className="text-[10px] text-[var(--text-faint)] font-mono uppercase mb-1">Indicators</p>
           <ul className="space-y-0.5">
             {event.data.driftIndicators.map((ind, i) => {
               const isDismissed = dismissed?.indicators?.includes(ind);
               return (
-                <li key={i} className={`text-[11px] flex items-start gap-1.5 ${isDismissed ? 'line-through opacity-40' : 'text-[#8b949e]'}`}>
-                  <span className="text-[#d29922] mt-0.5 shrink-0">&#8226;</span>
+                <li key={i} className={`text-[11px] flex items-start gap-1.5 ${isDismissed ? 'line-through opacity-40' : 'text-[var(--text-muted)]'}`}>
+                  <span className="text-[var(--warn)] mt-0.5 shrink-0">&#8226;</span>
                   <span className="flex-1">{ind}</span>
                   {!isDismissed && <DismissItemButton sessionId={event.sessionId} category="indicator" value={ind} onSend={onSend} />}
                 </li>
@@ -723,20 +515,20 @@ function DriftDetailSection({
       )}
       {event.data.driftViolations && event.data.driftViolations.length > 0 && (
         <div>
-          <p className="text-[10px] text-[#484f58] font-mono uppercase mb-1">Violations</p>
+          <p className="text-[10px] text-[var(--text-faint)] font-mono uppercase mb-1">Violations</p>
           <div className="space-y-1">
             {event.data.driftViolations.map((v, i) => {
               const isDismissed = dismissed?.violations?.includes(v.rule);
               return (
-                <div key={i} className={`text-[11px] bg-[#0d1117] rounded px-2 py-1 border border-[#30363d] flex items-center ${isDismissed ? 'line-through opacity-40' : ''}`}>
+                <div key={i} className={`text-[11px] bg-[var(--bg)] rounded px-2 py-1 border border-[var(--border-strong)] flex items-center ${isDismissed ? 'line-through opacity-40' : ''}`}>
                   <span className="flex-1">
                     <span className={`font-medium ${
-                      v.severity === 'critical' ? 'text-[#f85149]' : v.severity === 'major' ? 'text-[#ff9100]' : 'text-[#ffb300]'
+                      v.severity === 'critical' ? 'text-[var(--error)]' : v.severity === 'major' ? 'text-[#ff9100]' : 'text-[#ffb300]'
                     }`}>{v.severity}</span>
-                    <span className="text-[#484f58] mx-1">|</span>
-                    <span className="text-[#8b949e]">{v.rule}</span>
-                    <span className="text-[#484f58] mx-1">&rarr;</span>
-                    <span className="text-[#e6edf3]">{v.action}</span>
+                    <span className="text-[var(--text-faint)] mx-1">|</span>
+                    <span className="text-[var(--text-muted)]">{v.rule}</span>
+                    <span className="text-[var(--text-faint)] mx-1">&rarr;</span>
+                    <span className="text-[var(--text)]">{v.action}</span>
                   </span>
                   {!isDismissed && <DismissItemButton sessionId={event.sessionId} category="violation" value={v.rule} onSend={onSend} />}
                 </div>
@@ -747,12 +539,12 @@ function DriftDetailSection({
       )}
       {event.data.driftPhantomRefs && event.data.driftPhantomRefs.length > 0 && (
         <div>
-          <p className="text-[10px] text-[#484f58] font-mono uppercase mb-1">Phantom references</p>
+          <p className="text-[10px] text-[var(--text-faint)] font-mono uppercase mb-1">Phantom references</p>
           <ul className="space-y-0.5">
             {event.data.driftPhantomRefs.map((ref, i) => {
               const isDismissed = dismissed?.phantomReferences?.includes(ref);
               return (
-                <li key={i} className={`text-[11px] font-mono flex items-start gap-1.5 ${isDismissed ? 'line-through opacity-40' : 'text-[#f85149]'}`}>
+                <li key={i} className={`text-[11px] font-mono flex items-start gap-1.5 ${isDismissed ? 'line-through opacity-40' : 'text-[var(--error)]'}`}>
                   <span className="flex-1">{ref}</span>
                   {!isDismissed && <DismissItemButton sessionId={event.sessionId} category="phantomReference" value={ref} onSend={onSend} />}
                 </li>
@@ -763,12 +555,12 @@ function DriftDetailSection({
       )}
       {event.data.driftPatternBreaks && event.data.driftPatternBreaks.length > 0 && (
         <div>
-          <p className="text-[10px] text-[#484f58] font-mono uppercase mb-1">Pattern breaks</p>
+          <p className="text-[10px] text-[var(--text-faint)] font-mono uppercase mb-1">Pattern breaks</p>
           <ul className="space-y-0.5">
             {event.data.driftPatternBreaks.map((pb, i) => {
               const isDismissed = dismissed?.patternBreaks?.includes(pb);
               return (
-                <li key={i} className={`text-[11px] flex items-start gap-1.5 ${isDismissed ? 'line-through opacity-40' : 'text-[#8b949e]'}`}>
+                <li key={i} className={`text-[11px] flex items-start gap-1.5 ${isDismissed ? 'line-through opacity-40' : 'text-[var(--text-muted)]'}`}>
                   <span className="text-[#ff9100] mt-0.5 shrink-0">&#8226;</span>
                   <span className="flex-1">{pb}</span>
                   {!isDismissed && <DismissItemButton sessionId={event.sessionId} category="patternBreak" value={pb} onSend={onSend} />}
@@ -796,32 +588,32 @@ function SubagentTranscriptView({ entries }: { entries: SubagentTranscriptEntry[
   const toolCount = entries.filter(e => e.role === 'tool').length;
 
   return (
-    <div className="rounded-md border border-[#30363d] overflow-hidden">
+    <div className="rounded-md border border-[var(--border-strong)] overflow-hidden">
       <button
-        className="w-full flex items-center gap-2 px-3 py-1.5 bg-[#161b22] hover:bg-[#1c2128] transition-colors text-left"
+        className="w-full flex items-center gap-2 px-3 py-1.5 bg-[var(--bg-card)] hover:bg-[var(--bg-selected)] transition-colors text-left"
         onClick={(e) => { e.stopPropagation(); setExpanded(v => !v); }}
       >
-        <span className="text-[10px] text-[#484f58] font-mono uppercase">Sub-agent transcript</span>
-        <span className="text-[10px] text-[#58a6ff] bg-[#58a6ff]/10 border border-[#58a6ff]/20 px-1.5 py-0.5 rounded font-mono">
+        <span className="text-[10px] text-[var(--text-faint)] font-mono uppercase">Sub-agent transcript</span>
+        <span className="text-[10px] text-[var(--accent)] bg-[var(--accent)]/10 border border-[var(--accent)]/20 px-1.5 py-0.5 rounded font-mono">
           {toolCount} {toolCount === 1 ? 'call' : 'calls'}
         </span>
-        <span className="ml-auto text-[#484f58] text-[10px]">{expanded ? '▲' : '▼'}</span>
+        <span className="ml-auto text-[var(--text-faint)] text-[10px]">{expanded ? '▲' : '▼'}</span>
       </button>
       {expanded && (
-        <div className="divide-y divide-[#30363d]/50 bg-[#0d1117]">
+        <div className="divide-y divide-[var(--border-strong)]/50 bg-[var(--bg)]">
           {entries.map((entry, i) => (
             <div key={i} className="px-3 py-2 space-y-1">
               {entry.role === 'assistant' && entry.text && (
-                <p className="text-[11px] text-[#8b949e] italic leading-relaxed">{entry.text}</p>
+                <p className="text-[11px] text-[var(--text-muted)] italic leading-relaxed">{entry.text}</p>
               )}
               {entry.role === 'tool' && entry.toolName && (
                 <div className="space-y-1">
                   <div className="flex items-center gap-1.5">
-                    <span className="text-[10px] text-[#3fb950] font-mono font-semibold">{entry.toolName}</span>
+                    <span className="text-[10px] text-[var(--ok)] font-mono font-semibold">{entry.toolName}</span>
                     {entry.toolInput && (() => {
                       const preview = getInputPreview(entry.toolInput);
                       return preview ? (
-                        <span className="text-[11px] text-[#e6edf3] font-mono truncate">{String(preview).slice(0, 80)}</span>
+                        <span className="text-[11px] text-[var(--text)] font-mono truncate">{String(preview).slice(0, 80)}</span>
                       ) : null;
                     })()}
                   </div>
