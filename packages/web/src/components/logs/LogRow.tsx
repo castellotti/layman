@@ -5,6 +5,7 @@ import { formatTime } from '../../lib/format.js';
 import { getEffectiveAgentContent } from '../../lib/reasoning.js';
 import { EventDetailBody } from '../events/EventCard.js';
 import { RiskBadge } from '../shared/RiskBadge.js';
+import { MagnifierIcon } from '../primitives/index.js';
 import type { TimelineEvent } from '../../lib/types.js';
 import type { ClientMessage } from '../../lib/ws-protocol.js';
 
@@ -134,9 +135,7 @@ export const LogRow = React.memo(function LogRow({ event, index, hasDetail, isEx
               onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(90,156,248,0.18)')}
               onMouseLeave={(e) => (e.currentTarget.style.background = 'rgba(90,156,248,0.1)')}
             >
-              <svg width="9" height="9" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6">
-                <circle cx="7" cy="7" r="4.5" /><line x1="10.5" y1="10.5" x2="14" y2="14" />
-              </svg>
+              <MagnifierIcon strokeWidth={1.6} />
               Investigate
             </button>
           </div>

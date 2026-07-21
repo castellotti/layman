@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { splitCommandLines, hasSudoLine, copyAllPayload, copyLinePayload } from '../../lib/command-lines.js';
 
 interface CommandBlockProps {
@@ -21,11 +21,11 @@ function CopyIcon() {
  * detected. Lines are copied verbatim (source text), never the rendered DOM.
  */
 export function CommandBlock({ code, className = '' }: CommandBlockProps) {
-  const lines = splitCommandLines(code);
+  const lines = useMemo(() => splitCommandLines(code), [code]);
   const [copiedAll, setCopiedAll] = useState(false);
   const [copiedLine, setCopiedLine] = useState<number | null>(null);
   const [hoveredLine, setHoveredLine] = useState<number | null>(null);
-  const hasSudo = hasSudoLine(lines);
+  const hasSudo = useMemo(() => hasSudoLine(lines), [lines]);
 
   const copyAll = (e: React.MouseEvent) => {
     e.stopPropagation();

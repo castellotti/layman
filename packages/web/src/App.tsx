@@ -11,6 +11,7 @@ import { PromptsView } from './components/sessions/PromptsView.js';
 import { AccessLogPanel } from './components/access/AccessLogPanel.js';
 import { DriftBlockDialog } from './components/drift/DriftBlockDialog.js';
 import { ChangelogModal } from './components/shared/ChangelogModal.js';
+import { BoltIcon } from './components/primitives/index.js';
 import { useSessionStore } from './stores/sessionStore.js';
 import type { SessionState } from './stores/sessionStore.js';
 import { useWebSocket } from './hooks/useWebSocket.js';
@@ -107,7 +108,7 @@ function StatusBar() {
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           {count > 0 && (
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: 'var(--warn)', fontWeight: 500 }}>
-              <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor"><path d="M9.5 1 3 9h4l-1.5 6L12 7H8l1.5-6Z" /></svg>
+              <BoltIcon size={10} />
               {count} pending {count === 1 ? 'approval' : 'approvals'}
             </span>
           )}

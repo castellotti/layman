@@ -29,13 +29,23 @@ export function PanelDivider({ value, min, max, direction, onChange, title }: Pa
       dragState.current = { startX: e.clientX, startValue: value };
       document.body.style.userSelect = 'none';
 
+      let rafId: number | null = null;
+      let latestX = e.clientX;
+
       const onMouseMove = (moveEvent: MouseEvent) => {
         if (!dragState.current) return;
-        const delta = (moveEvent.clientX - dragState.current.startX) * direction;
-        onChange(clamp(dragState.current.startValue + delta));
+        latestX = moveEvent.clientX;
+        if (rafId !== null) return;
+        rafId = requestAnimationFrame(() => {
+          rafId = null;
+          if (!dragState.current) return;
+          const delta = (latestX - dragState.current.startX) * direction;
+          onChange(clamp(dragState.current.startValue + delta));
+        });
       };
       const onMouseUp = () => {
         dragState.current = null;
+        if (rafId !== null) cancelAnimationFrame(rafId);
         document.body.style.userSelect = '';
         window.removeEventListener('mousemove', onMouseMove);
         window.removeEventListener('mouseup', onMouseUp);

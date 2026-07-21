@@ -137,7 +137,8 @@ export function panelSetKey(v: PanelVisibility): string {
 export function buildPanelLayout(
   visibility: PanelVisibility,
   thresholds: PanelThresholds,
-  splitOverrides: SplitOverrides
+  splitOverrides: SplitOverrides,
+  viewportWidth = 0
 ): PanelLayout {
   const sessionListWidth = splitOverrides.session ?? thresholds.sessionDefault;
   const dashboardWidth =
@@ -151,7 +152,7 @@ export function buildPanelLayout(
     sessionListWidth,
     investigationWidth,
     logsDockThreshold: thresholds.logsAt,
-    viewportWidth: 0,
+    viewportWidth,
   };
 }
 
@@ -241,7 +242,7 @@ export function useExpandingLayout(
   visibilityRef.current = visibility;
 
   const layout = useMemo(
-    () => ({ ...buildPanelLayout(visibility, thresholds, splitOverrides), viewportWidth: width }),
+    () => buildPanelLayout(visibility, thresholds, splitOverrides, width),
     [visibility, thresholds, splitOverrides, width]
   );
 

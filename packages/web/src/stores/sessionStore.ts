@@ -68,12 +68,11 @@ function saveLogHighlights(ids: Set<string>): void {
   }
 }
 
-// dashboardOpen/flowchartOpen/bookmarksOpen/promptsOpen are derived from viewMode and kept in
+// flowchartOpen/bookmarksOpen/promptsOpen are derived from viewMode and kept in
 // sync on every state change that touches it, so existing boolean-reading consumers keep working
-// off a single source of truth instead of four independently-settable flags.
+// off a single source of truth instead of three independently-settable flags.
 function viewModeFlags(mode: ViewMode) {
   return {
-    dashboardOpen: mode === 'dashboard',
     flowchartOpen: mode === 'flowchart',
     bookmarksOpen: mode === 'sessions',
     promptsOpen: mode === 'prompts',
@@ -151,7 +150,6 @@ export interface SessionState {
   flowchartOpen: boolean;
 
   // Dashboard view
-  dashboardOpen: boolean;
   dashboardFocusedSession: string | null;
   dashboardSessionOrder: string[];
   dashboardDismissedSessions: Set<string>;
@@ -308,7 +306,6 @@ export const useSessionStore = create<SessionState>((set) => ({
 
   flowchartOpen: false,
 
-  dashboardOpen: true,
   dashboardFocusedSession: null,
   dashboardSessionOrder: [],
   dashboardDismissedSessions: new Set<string>(),

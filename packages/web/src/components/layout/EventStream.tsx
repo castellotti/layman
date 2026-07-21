@@ -56,6 +56,7 @@ export function EventStream({ onSend, archived = false, archivedDate }: EventStr
   // Rows with an expandable detail card — computed against the full (unfiltered)
   // per-session event list so pairing/expand-all always operates on real exchanges.
   const detailEventIds = useMemo(() => sessionEvents.filter(hasLogDetail).map((e) => e.id), [sessionEvents]);
+  const detailEventIdSet = useMemo(() => new Set(detailEventIds), [detailEventIds]);
   const effectiveExpanded = useMemo(
     () => (expandedLogEventIds === 'all' ? new Set(detailEventIds) : expandedLogEventIds),
     [expandedLogEventIds, detailEventIds]
@@ -395,7 +396,7 @@ export function EventStream({ onSend, archived = false, archivedDate }: EventStr
                 key={event.id}
                 event={event}
                 index={eventIndexMap.get(event.id) ?? 0}
-                hasDetail={hasLogDetail(event)}
+                hasDetail={detailEventIdSet.has(event.id)}
                 isExpanded={effectiveExpanded.has(event.id)}
                 isSelected={i === selectedIndex}
                 onSelect={handleSelectRow}

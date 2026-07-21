@@ -6,7 +6,7 @@ import { AnalysisCard } from '../analysis/AnalysisCard.js';
 import { AskQuestion } from '../analysis/AskQuestion.js';
 import { RiskBadge } from '../shared/RiskBadge.js';
 import { CodeBlock } from '../shared/CodeBlock.js';
-import { QuickButton, DetailedButton } from '../primitives/index.js';
+import { DepthButton } from '../primitives/index.js';
 import { isMarkdown, MARKDOWN_PROSE, REMARK_PLUGINS } from '../../lib/markdown.js';
 import { getEffectiveAgentContent } from '../../lib/reasoning.js';
 import type { ClientMessage } from '../../lib/ws-protocol.js';
@@ -433,13 +433,15 @@ export function InvestigationPanel({ onSend, eventId: embeddedEventId, onClose, 
               Layman&apos;s Terms
             </span>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <QuickButton
+              <DepthButton
+                depth="quick"
                 onClick={() => handleRequestLaymans('quick')}
                 disabled={isLaymansLoading}
                 loading={isLaymansLoading && laymansDepth === 'quick'}
                 loadingLabel="Explaining…"
               />
-              <DetailedButton
+              <DepthButton
+                depth="detailed"
                 onClick={() => handleRequestLaymans('detailed')}
                 disabled={isLaymansLoading}
                 loading={isLaymansLoading && laymansDepth === 'detailed'}
@@ -491,13 +493,15 @@ export function InvestigationPanel({ onSend, eventId: embeddedEventId, onClose, 
               Analysis
             </span>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <QuickButton
+              <DepthButton
+                depth="quick"
                 onClick={() => handleRequestAnalysis('quick')}
                 disabled={isAnalyzing}
                 loading={isAnalyzing && analysisDepth === 'quick'}
                 loadingLabel="Analyzing…"
               />
-              <DetailedButton
+              <DepthButton
+                depth="detailed"
                 onClick={() => handleRequestAnalysis('detailed')}
                 disabled={isAnalyzing}
                 loading={isAnalyzing && analysisDepth === 'detailed'}
@@ -542,13 +546,15 @@ export function InvestigationPanel({ onSend, eventId: embeddedEventId, onClose, 
                 Failure Analysis
               </span>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <QuickButton
+                <DepthButton
+                  depth="quick"
                   onClick={() => void handleAskWhyFailed('quick')}
                   disabled={isAskingFailure || isAskingQuestion}
                   loading={isAskingFailure}
                   loadingLabel="Analyzing…"
                 />
-                <DetailedButton
+                <DepthButton
+                  depth="detailed"
                   onClick={() => void handleAskWhyFailed('detailed')}
                   disabled={isAskingFailure || isAskingQuestion}
                 />
