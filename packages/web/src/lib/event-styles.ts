@@ -1,10 +1,60 @@
-export const AGENT_BADGES: Record<string, { label: string; color: string }> = {
-  'claude-code':   { label: 'CC', color: 'text-[#a371f7] bg-[#a371f7]/10 border-[#a371f7]/20' },
-  'codex':         { label: 'CX', color: 'text-[#10a37f] bg-[#10a37f]/10 border-[#10a37f]/20' },
-  'opencode':      { label: 'OC', color: 'text-[#f0883e] bg-[#f0883e]/10 border-[#f0883e]/20' },
-  'mistral-vibe':  { label: 'MV', color: 'text-[#ff6f3c] bg-[#ff6f3c]/10 border-[#ff6f3c]/20' },
-  'cline':         { label: 'CL', color: 'text-[#79c0ff] bg-[#79c0ff]/10 border-[#79c0ff]/20' },
+import type { TimelineEvent } from './types.js';
+
+/** Kind color for Dashboard tail rows and Logs single-line rows (shared vocabulary). */
+export const EVENT_KIND_COLOR: Record<string, string> = {
+  tool_call_pending:   'var(--warn)',
+  tool_call_approved:  'var(--ok)',
+  tool_call_denied:    'var(--error)',
+  tool_call_completed: 'var(--ok)',
+  tool_call_failed:    'var(--error)',
+  permission_request:  'var(--warn)',
+  user_prompt:         'var(--info)',
+  agent_response:      'var(--ok)',
+  subagent_start:      'var(--agent)',
+  subagent_stop:       'var(--agent)',
+  session_start:       'var(--ok)',
+  session_end:         'var(--text-faint)',
+  stop_failure:        'var(--error)',
 };
+
+const KIND_LABELS: Record<string, string> = {
+  tool_call_pending:   'pending',
+  tool_call_approved:  'approved',
+  tool_call_denied:    'denied',
+  tool_call_completed: 'completed',
+  tool_call_failed:    'failed',
+  permission_request:  'permission',
+  user_prompt:         'prompt',
+  agent_response:      'response',
+  subagent_start:      'agent↓',
+  subagent_stop:       'agent↑',
+  session_start:       'start',
+  session_end:         'end',
+  agent_stop:          'stop',
+  stop_failure:        'stop-fail',
+  pre_compact:         'compact',
+  post_compact:        'compacted',
+};
+
+export function kindLabel(type: string): string {
+  return KIND_LABELS[type] ?? type.replace(/_/g, ' ');
+}
+
+/**
+ * Full one-line summary for an event row. Never truncates with '…' — CSS
+ * text-overflow:ellipsis handles narrow panels so the raw string stays measurable
+ * (canvas measureText) and copyable in full.
+ */
+export function eventDetail(event: TimelineEvent): string {
+  if (event.data.toolName) {
+    const input = event.data.toolInput as Record<string, unknown> | undefined;
+    if (input?.command) return `${event.data.toolName} — ${String(input.command)}`;
+    if (input?.file_path) return `${event.data.toolName} — ${String(input.file_path)}`;
+    return event.data.toolName;
+  }
+  if (event.data.prompt) return String(event.data.prompt);
+  return '';
+}
 
 export const DRIFT_COLORS: Record<string, string> = {
   green: '#00e676',
@@ -40,32 +90,6 @@ export const EVENT_ICONS: Record<string, string> = {
   web_search: '🔎',
 };
 
-export const BORDER_COLORS: Record<string, string> = {
-  tool_call_pending: 'border-l-[#d29922]',
-  tool_call_approved: 'border-l-[#3fb950]',
-  tool_call_denied: 'border-l-[#f85149]',
-  tool_call_delegated: 'border-l-[#8b949e]',
-  tool_call_completed: 'border-l-[#3fb950]/50',
-  tool_call_failed: 'border-l-[#f85149]',
-  permission_request: 'border-l-[#d29922]',
-  user_prompt: 'border-l-[#58a6ff]',
-  agent_response: 'border-l-[#3fb950]/50',
-  agent_stop: 'border-l-[#30363d]',
-  session_start: 'border-l-[#3fb950]',
-  session_end: 'border-l-[#30363d]',
-  notification: 'border-l-[#58a6ff]',
-  subagent_start: 'border-l-[#58a6ff]',
-  subagent_stop: 'border-l-[#8b949e]',
-  stop_failure: 'border-l-[#f85149]',
-  pre_compact: 'border-l-[#8b949e]',
-  post_compact: 'border-l-[#8b949e]',
-  elicitation: 'border-l-[#58a6ff]',
-  elicitation_result: 'border-l-[#58a6ff]',
-  analysis_result: 'border-l-[#8b949e]',
-  drift_check: 'border-l-[#d29922]',
-  drift_alert: 'border-l-[#f85149]',
-  web_search: 'border-l-[#79c0ff]',
-};
 
 /** Raw hex colors for flowchart node borders (same palette as BORDER_COLORS but as hex values) */
 export const NODE_BORDER_COLORS: Record<string, string> = {

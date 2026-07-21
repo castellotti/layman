@@ -1,28 +1,22 @@
 import React, { useRef, useCallback, useEffect } from 'react';
 import type { TimelineEvent } from '../../lib/types.js';
+import { EVENT_KIND_COLOR } from '../../lib/event-styles.js';
 
-const CANVAS_W = 56;
+const CANVAS_W = 12;
 const TICK_H = 4;
 
-function tickColor(type: string): string {
-  switch (type) {
-    case 'user_prompt': return '#5A9CF8';
-    case 'agent_response': return '#8B7CF6';
-    case 'subagent_start':
-    case 'subagent_stop': return '#8B7CF6';
-    case 'permission_request': return '#E5A83B';
-    case 'tool_call_failed':
-    case 'stop_failure': return '#F0564A';
-    default: return '#2A3242';
-  }
+function tickColor(type: string, highlighted: boolean): string {
+  if (highlighted) return '#E5A83B';
+  return EVENT_KIND_COLOR[type] ?? '#2A3242';
 }
 
 interface MinimapProps {
   events: TimelineEvent[];
   scrollRef: React.RefObject<HTMLDivElement>;
+  highlightedEventIds?: Set<string>;
 }
 
-export function Minimap({ events, scrollRef }: MinimapProps) {
+export function Minimap({ events, scrollRef, highlightedEventIds }: MinimapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const dragging = useRef(false);
@@ -58,8 +52,10 @@ export function Minimap({ events, scrollRef }: MinimapProps) {
 
       for (let i = 0; i < n; i += bucket) {
         const y = Math.floor((i / n) * h);
-        ctx.fillStyle = tickColor(events[i].type);
-        ctx.fillRect(12, y, CANVAS_W - 24, TICK_H);
+        const slice = events.slice(i, i + bucket);
+        const highlighted = !!highlightedEventIds && slice.some((e) => highlightedEventIds.has(e.id));
+        ctx.fillStyle = tickColor(events[i].type, highlighted);
+        ctx.fillRect(2, y, CANVAS_W - 4, TICK_H);
       }
     }
 
@@ -70,12 +66,12 @@ export function Minimap({ events, scrollRef }: MinimapProps) {
       const vpTop = (scrollTop / scrollHeight) * h;
       const vpH = Math.max(12, (clientHeight / scrollHeight) * h);
       ctx.fillStyle = 'rgba(90,156,248,0.08)';
-      ctx.fillRect(4, vpTop, CANVAS_W - 8, vpH);
+      ctx.fillRect(1, vpTop, CANVAS_W - 2, vpH);
       ctx.strokeStyle = 'rgba(90,156,248,0.4)';
       ctx.lineWidth = 1;
-      ctx.strokeRect(4.5, vpTop + 0.5, CANVAS_W - 9, Math.max(11, vpH - 1));
+      ctx.strokeRect(1.5, vpTop + 0.5, CANVAS_W - 3, Math.max(11, vpH - 1));
     }
-  }, [events, scrollRef]);
+  }, [events, scrollRef, highlightedEventIds]);
 
   // Redraw on scroll — coalesce bursts of scroll events into one draw per frame
   useEffect(() => {

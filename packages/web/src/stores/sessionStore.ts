@@ -13,12 +13,66 @@ function computeHighlightedEventIds(highlights: Highlight[]): Set<string> {
 
 export type ViewMode = 'dashboard' | 'stream' | 'flowchart' | 'sessions' | 'prompts';
 
-// dashboardOpen/flowchartOpen/bookmarksOpen/promptsOpen are derived from viewMode and kept in
+// ─── Expanding-interface layout state ──────────────────────────────────────
+
+export interface SplitOverrides {
+  session?: number;
+  dashboard?: number;
+  investigation?: number;
+}
+
+export interface PanelLayout {
+  showDashboard: boolean;
+  showLogs: boolean;
+  showInvestigation: boolean;
+  investigationPresentation: 'docked' | 'drawer';
+  dashboardWidth: number;
+  sessionListWidth: number;
+  investigationWidth: number;
+  logsDockThreshold: number;
+  viewportWidth: number;
+}
+
+const DEFAULT_PANEL_LAYOUT: PanelLayout = {
+  showDashboard: true,
+  showLogs: false,
+  showInvestigation: false,
+  investigationPresentation: 'drawer',
+  dashboardWidth: 0,
+  sessionListWidth: 0,
+  investigationWidth: 480,
+  logsDockThreshold: 0,
+  viewportWidth: 0,
+};
+
+const LOG_HIGHLIGHTS_STORAGE_KEY = 'layman.logHighlightedEventIds';
+
+function loadLogHighlights(): Set<string> {
+  if (typeof localStorage === 'undefined') return new Set();
+  try {
+    const raw = localStorage.getItem(LOG_HIGHLIGHTS_STORAGE_KEY);
+    if (!raw) return new Set();
+    const parsed = JSON.parse(raw) as unknown;
+    return Array.isArray(parsed) ? new Set(parsed.filter((x): x is string => typeof x === 'string')) : new Set();
+  } catch {
+    return new Set();
+  }
+}
+
+function saveLogHighlights(ids: Set<string>): void {
+  if (typeof localStorage === 'undefined') return;
+  try {
+    localStorage.setItem(LOG_HIGHLIGHTS_STORAGE_KEY, JSON.stringify([...ids]));
+  } catch {
+    // Storage may be unavailable (private browsing quota, etc.) — non-fatal.
+  }
+}
+
+// flowchartOpen/bookmarksOpen/promptsOpen are derived from viewMode and kept in
 // sync on every state change that touches it, so existing boolean-reading consumers keep working
-// off a single source of truth instead of four independently-settable flags.
+// off a single source of truth instead of three independently-settable flags.
 function viewModeFlags(mode: ViewMode) {
   return {
-    dashboardOpen: mode === 'dashboard',
     flowchartOpen: mode === 'flowchart',
     bookmarksOpen: mode === 'sessions',
     promptsOpen: mode === 'prompts',
@@ -96,7 +150,6 @@ export interface SessionState {
   flowchartOpen: boolean;
 
   // Dashboard view
-  dashboardOpen: boolean;
   dashboardFocusedSession: string | null;
   dashboardSessionOrder: string[];
   dashboardDismissedSessions: Set<string>;
@@ -115,6 +168,21 @@ export interface SessionState {
 
   // Sessions that have had user-initiated investigation interactions
   investigatedSessions: Set<string>;
+
+  // Expanding-interface layout: each independently defaults to width-driven
+  // auto-disclosure (null), or can be explicitly forced on/off by the user
+  // (clicking the Dashboard/Logs tab, or jumping from a Dashboard row into Logs).
+  dashboardOverride: boolean | null;
+  logsOverride: boolean | null;
+  splitOverrides: SplitOverrides;
+  panelLayout: PanelLayout;
+
+  // Logs detail-card highlight (local, persisted to localStorage — distinct from the
+  // server-backed Highlights/Prompts folder feature above)
+  logHighlightedEventIds: Set<string>;
+
+  // Logs expand/collapse state — 'all' means every row with a detail payload is expanded
+  expandedLogEventIds: Set<string> | 'all';
 
   // Session summary
   sessionSummary: string | null;
@@ -181,6 +249,16 @@ export interface SessionState {
   clearSessionSummaryError: () => void;
   setDriftState: (sessionId: string, state: DriftState) => void;
   markSessionInvestigated: (sessionId: string) => void;
+
+  toggleDashboardVisible: () => void;
+  toggleLogsVisible: () => void;
+  activateOnlyLiveTab: (tab: 'dashboard' | 'stream') => void;
+  setSplitOverride: (key: keyof SplitOverrides, value: number) => void;
+  resetSplitOverrides: () => void;
+  setPanelLayout: (layout: PanelLayout) => void;
+  toggleLogHighlight: (eventId: string) => void;
+  setExpandedLogEventIds: (ids: Set<string> | 'all') => void;
+  toggleExpandAllLogs: (detailEventIds: string[]) => void;
 }
 
 export const useSessionStore = create<SessionState>((set) => ({
@@ -228,7 +306,6 @@ export const useSessionStore = create<SessionState>((set) => ({
 
   flowchartOpen: false,
 
-  dashboardOpen: true,
   dashboardFocusedSession: null,
   dashboardSessionOrder: [],
   dashboardDismissedSessions: new Set<string>(),
@@ -243,6 +320,15 @@ export const useSessionStore = create<SessionState>((set) => ({
   driftState: new Map(),
 
   investigatedSessions: new Set<string>(),
+
+  dashboardOverride: null,
+  logsOverride: null,
+  splitOverrides: {},
+  panelLayout: DEFAULT_PANEL_LAYOUT,
+
+  logHighlightedEventIds: loadLogHighlights(),
+
+  expandedLogEventIds: 'all',
 
   sessionSummary: null,
   sessionSummaryHistory: [],
@@ -592,24 +678,40 @@ export const useSessionStore = create<SessionState>((set) => ({
     selectedEventId: eventId,
     investigationOpen: true,
   }),
-  navigateFromDashboardToLogs: (sessionId, eventId) => set({
-    viewMode: 'stream',
-    ...viewModeFlags('stream'),
-    returnToDashboard: true,
-    activeSessionId: sessionId,
-    selectedEventId: eventId,
-    investigationOpen: true,
-    scrollToEventId: eventId,
-  }),
-  navigateToLogsForSession: (sessionId) => set((state) => ({
-    viewMode: 'stream',
-    ...viewModeFlags('stream'),
-    returnToDashboard: state.dashboardOpen,
-    activeSessionId: sessionId,
-    selectedEventId: null,
-    investigationOpen: false,
-    scrollToEventId: null,
-  })),
+  // Clicking a Dashboard row opens that entry in Logs (not Investigation — the
+  // user opens Investigation explicitly via the row's Investigate button).
+  // Keeps Dashboard visible alongside Logs if there's room for both; otherwise
+  // switches to a Logs-only view so the entry is never obscured.
+  navigateFromDashboardToLogs: (sessionId, eventId) =>
+    set((state) => {
+      const bothFit = state.panelLayout.viewportWidth >= state.panelLayout.logsDockThreshold;
+      return {
+        viewMode: 'stream',
+        ...viewModeFlags('stream'),
+        returnToDashboard: !bothFit,
+        activeSessionId: sessionId,
+        scrollToEventId: eventId,
+        dashboardOverride: bothFit,
+        logsOverride: true,
+        splitOverrides: {},
+      };
+    }),
+  navigateToLogsForSession: (sessionId) =>
+    set((state) => {
+      const bothFit = state.panelLayout.viewportWidth >= state.panelLayout.logsDockThreshold;
+      return {
+        viewMode: 'stream',
+        ...viewModeFlags('stream'),
+        returnToDashboard: !bothFit,
+        activeSessionId: sessionId,
+        selectedEventId: null,
+        investigationOpen: false,
+        scrollToEventId: null,
+        dashboardOverride: bothFit,
+        logsOverride: true,
+        splitOverrides: {},
+      };
+    }),
   clearScrollToEvent: () => set({ scrollToEventId: null }),
   returnFromDashboardDrilldown: () => set({
     viewMode: 'dashboard',
@@ -617,6 +719,9 @@ export const useSessionStore = create<SessionState>((set) => ({
     returnToDashboard: false,
     investigationOpen: false,
     selectedEventId: null,
+    dashboardOverride: true,
+    logsOverride: false,
+    splitOverrides: {},
   }),
   setAccessLogOpen: (open) => set({ accessLogOpen: open }),
   setAccessLogData: (data) => set({ accessLogData: data }),
@@ -675,5 +780,78 @@ export const useSessionStore = create<SessionState>((set) => ({
       const newSet = new Set(prev.investigatedSessions);
       newSet.add(sessionId);
       return { investigatedSessions: newSet };
+    }),
+
+  // Clicking Dashboard or Logs toggles that panel's visibility independently —
+  // both can be shown at once (if there's room), or just one. Guards against
+  // turning off the only visible panel (swaps to the other instead), and when
+  // turning a panel on while the other is already shown without room for both,
+  // hides the other to make room for the one just requested.
+  toggleDashboardVisible: () =>
+    set((state) => {
+      const { showDashboard, showLogs, logsDockThreshold, viewportWidth } = state.panelLayout;
+      if (showDashboard) {
+        if (!showLogs) return { dashboardOverride: false, logsOverride: true, splitOverrides: {} };
+        return { dashboardOverride: false, splitOverrides: {} };
+      }
+      const bothFit = viewportWidth >= logsDockThreshold;
+      return {
+        dashboardOverride: true,
+        ...(showLogs && !bothFit ? { logsOverride: false } : {}),
+        splitOverrides: {},
+      };
+    }),
+
+  toggleLogsVisible: () =>
+    set((state) => {
+      const { showDashboard, showLogs, logsDockThreshold, viewportWidth } = state.panelLayout;
+      if (showLogs) {
+        if (!showDashboard) return { logsOverride: false, dashboardOverride: true, splitOverrides: {} };
+        return { logsOverride: false, splitOverrides: {} };
+      }
+      const bothFit = viewportWidth >= logsDockThreshold;
+      return {
+        logsOverride: true,
+        ...(showDashboard && !bothFit ? { dashboardOverride: false } : {}),
+        splitOverrides: {},
+      };
+    }),
+
+  // Used when arriving at the live Dashboard/Logs view from an exclusive
+  // full-page view (Flow, Sessions, Prompts) — shows only the clicked tab,
+  // regardless of whatever visibility state was in effect before navigating away.
+  activateOnlyLiveTab: (tab) =>
+    set({
+      dashboardOverride: tab === 'dashboard',
+      logsOverride: tab === 'stream',
+      splitOverrides: {},
+    }),
+
+  setSplitOverride: (key, value) =>
+    set((state) => ({ splitOverrides: { ...state.splitOverrides, [key]: value } })),
+
+  resetSplitOverrides: () => set({ splitOverrides: {} }),
+
+  setPanelLayout: (panelLayout) => set({ panelLayout }),
+
+  toggleLogHighlight: (eventId) =>
+    set((state) => {
+      const next = new Set(state.logHighlightedEventIds);
+      if (next.has(eventId)) next.delete(eventId);
+      else next.add(eventId);
+      saveLogHighlights(next);
+      return { logHighlightedEventIds: next };
+    }),
+
+  setExpandedLogEventIds: (expandedLogEventIds) => set({ expandedLogEventIds }),
+
+  // Flips the whole Logs list between fully expanded and fully collapsed, based on
+  // whether every row with a detail payload is currently expanded.
+  toggleExpandAllLogs: (detailEventIds) =>
+    set((state) => {
+      const effective =
+        state.expandedLogEventIds === 'all' ? new Set(detailEventIds) : state.expandedLogEventIds;
+      const allExpanded = detailEventIds.length > 0 && detailEventIds.every((id) => effective.has(id));
+      return { expandedLogEventIds: allExpanded ? new Set<string>() : 'all' };
     }),
 }));
