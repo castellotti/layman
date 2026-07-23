@@ -782,39 +782,25 @@ export const useSessionStore = create<SessionState>((set) => ({
       return { investigatedSessions: newSet };
     }),
 
-  // Clicking Dashboard or Logs toggles that panel's visibility independently —
-  // both can be shown at once (if there's room), or just one. Guards against
-  // turning off the only visible panel (swaps to the other instead), and when
-  // turning a panel on while the other is already shown without room for both,
-  // hides the other to make room for the one just requested.
+  // Clicking Dashboard or Logs while it's already the active tab expands/collapses
+  // the *other* panel (active → both shown, both shown → back to just this one).
+  // Clicking the inactive tab always activates it exclusively, closing the other.
   toggleDashboardVisible: () =>
     set((state) => {
-      const { showDashboard, showLogs, logsDockThreshold, viewportWidth } = state.panelLayout;
+      const { showDashboard, showLogs } = state.panelLayout;
       if (showDashboard) {
-        if (!showLogs) return { dashboardOverride: false, logsOverride: true, splitOverrides: {} };
-        return { dashboardOverride: false, splitOverrides: {} };
+        return { dashboardOverride: true, logsOverride: !showLogs, splitOverrides: {} };
       }
-      const bothFit = viewportWidth >= logsDockThreshold;
-      return {
-        dashboardOverride: true,
-        ...(showLogs && !bothFit ? { logsOverride: false } : {}),
-        splitOverrides: {},
-      };
+      return { dashboardOverride: true, logsOverride: false, splitOverrides: {} };
     }),
 
   toggleLogsVisible: () =>
     set((state) => {
-      const { showDashboard, showLogs, logsDockThreshold, viewportWidth } = state.panelLayout;
+      const { showDashboard, showLogs } = state.panelLayout;
       if (showLogs) {
-        if (!showDashboard) return { logsOverride: false, dashboardOverride: true, splitOverrides: {} };
-        return { logsOverride: false, splitOverrides: {} };
+        return { logsOverride: true, dashboardOverride: !showDashboard, splitOverrides: {} };
       }
-      const bothFit = viewportWidth >= logsDockThreshold;
-      return {
-        logsOverride: true,
-        ...(showDashboard && !bothFit ? { dashboardOverride: false } : {}),
-        splitOverrides: {},
-      };
+      return { logsOverride: true, dashboardOverride: false, splitOverrides: {} };
     }),
 
   // Used when arriving at the live Dashboard/Logs view from an exclusive

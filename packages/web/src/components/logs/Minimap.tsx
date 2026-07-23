@@ -5,9 +5,30 @@ import { EVENT_KIND_COLOR } from '../../lib/event-styles.js';
 const CANVAS_W = 12;
 const TICK_H = 4;
 
+// Canvas 2D's fillStyle can't parse `var(--x)` — passing one is a silent no-op
+// that leaves fillStyle at whatever it was last set to, which is why every
+// tick used to render as the same stale fallback color. Resolve custom
+// properties to their computed literal value once and cache the result —
+// this app has a single static theme, so the value never changes at runtime.
+const resolvedColorCache = new Map<string, string>();
+
+function resolveColor(cssValue: string): string {
+  const match = /^var\((--[\w-]+)\)$/.exec(cssValue);
+  if (!match) return cssValue;
+  const varName = match[1];
+  const cached = resolvedColorCache.get(varName);
+  if (cached) return cached;
+  const resolved = typeof document !== 'undefined'
+    ? getComputedStyle(document.documentElement).getPropertyValue(varName).trim()
+    : '';
+  const value = resolved || '#2A3242';
+  resolvedColorCache.set(varName, value);
+  return value;
+}
+
 function tickColor(type: string, highlighted: boolean): string {
   if (highlighted) return '#E5A83B';
-  return EVENT_KIND_COLOR[type] ?? '#2A3242';
+  return resolveColor(EVENT_KIND_COLOR[type] ?? '#2A3242');
 }
 
 interface MinimapProps {
