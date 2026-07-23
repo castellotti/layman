@@ -35,7 +35,7 @@ export function useFolderDrag(onDrop: (source: FolderDragSource, target: FolderD
   }, []);
 
   const handleDragEnd = useCallback(() => {
-    if (source && target && target.containerId !== 'history') {
+    if (source && target && target.containerId !== 'history' && target.beforeId !== source.id) {
       onDrop(source, target);
     }
     setSource(null);

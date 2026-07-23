@@ -850,14 +850,10 @@ export function createServer(config: LaymanConfig): LaymanServer {
 
     fastify.delete<{ Params: { id: string } }>('/api/bookmarks/folders/:id', async (request) => {
       bookmarkStore.deleteFolder(request.params.id);
-      broadcast({ type: 'bookmarks:folder:deleted', folderId: request.params.id });
       // Bookmarks that were inside this folder are now unfiled (folder_id set to
-      // NULL server-side via ON DELETE SET NULL) — broadcast the updated rows so
-      // connected clients drop their now-stale folderId instead of losing the
-      // bookmark from view until their next full reload.
-      for (const bookmark of bookmarkStore.listAllBookmarks()) {
-        broadcast({ type: 'bookmarks:updated', bookmark });
-      }
+      // NULL server-side via ON DELETE SET NULL). Clients reassign folderId
+      // locally off this single event — see removeFolder in sessionStore.ts.
+      broadcast({ type: 'bookmarks:folder:deleted', folderId: request.params.id });
       return { ok: true };
     });
 
@@ -1095,12 +1091,10 @@ export function createServer(config: LaymanConfig): LaymanServer {
 
     fastify.delete<{ Params: { id: string } }>('/api/highlights/folders/:id', async (request) => {
       highlightStore.deleteFolder(request.params.id);
-      broadcast({ type: 'highlights:folder:deleted', folderId: request.params.id });
       // Same as bookmarks: highlights that were inside this folder are now
-      // unfiled via ON DELETE SET NULL — broadcast so clients don't go stale.
-      for (const highlight of highlightStore.listAllHighlights()) {
-        broadcast({ type: 'highlights:updated', highlight });
-      }
+      // unfiled via ON DELETE SET NULL. Clients already reassign folderId
+      // locally off this event — see removeHighlightFolder in sessionStore.ts.
+      broadcast({ type: 'highlights:folder:deleted', folderId: request.params.id });
       return { ok: true };
     });
 

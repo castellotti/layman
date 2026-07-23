@@ -576,10 +576,15 @@ export const useSessionStore = create<SessionState>((set) => ({
     }),
 
   removeFolder: (folderId) =>
-    set((state) => ({
-      bookmarkFolders: state.bookmarkFolders.filter((f) => f.id !== folderId),
-      // Orphaned bookmarks become unfiled (their folderId will be null server-side via ON DELETE SET NULL)
-    })),
+    set((state) => {
+      const updated = state.bookmarks.map((b) =>
+        b.folderId === folderId ? { ...b, folderId: null } : b
+      );
+      return {
+        bookmarkFolders: state.bookmarkFolders.filter((f) => f.id !== folderId),
+        bookmarks: updated,
+      };
+    }),
 
   upsertBookmark: (bookmark) =>
     set((state) => {
