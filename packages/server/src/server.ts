@@ -58,6 +58,9 @@ export function createServer(config: LaymanConfig): LaymanServer {
     logger: {
       level: 'warn',
     },
+    // Default 1MB body limit is too small for PostToolUse payloads, which
+    // embed full tool output (large file reads, command stdout, etc.).
+    bodyLimit: 10 * 1024 * 1024,
   });
 
   const eventStore = new EventStore();
