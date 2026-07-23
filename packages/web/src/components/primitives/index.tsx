@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useInlineEdit } from '../../hooks/useInlineEdit.js';
 
 // ─── DepthButton ────────────────────────────────────────────────────────────
 // Shared colored icon button for the two analysis depths (Investigation
@@ -163,9 +164,8 @@ export function StateChip({ variant, label }: StateChipProps) {
 // ─── CollapsibleFolderHeader ────────────────────────────────────────────────
 // Shared expand/collapse header (name + item count badge) for sidebar folder
 // sections in Sessions and Prompts views. Item ordering/persistence stays
-// with the caller since it differs per domain (reorderable bookmarks vs.
-// read-only highlights). Rename/delete/drag props are optional so read-only
-// call sites can omit them.
+// with the caller since it differs per domain. Rename/delete/drag props are
+// optional in case a future read-only call site needs to omit them.
 
 interface CollapsibleFolderHeaderProps {
   expanded: boolean;
@@ -186,18 +186,12 @@ export function CollapsibleFolderHeader({
   draggable = false, isDragOver = false, onDragStart, onDragOver, onDragEnd,
 }: CollapsibleFolderHeaderProps) {
   const [hovered, setHovered] = useState(false);
-  const [editing, setEditing] = useState(false);
-  const [draftName, setDraftName] = useState(name);
+  const { editing, setEditing, editName, setEditName, commitRename, handleKeyDown, inputRef } =
+    useInlineEdit(name, (next) => onRename?.(next));
 
   const startEditing = () => {
-    setDraftName(name);
+    setEditName(name);
     setEditing(true);
-  };
-
-  const commitEdit = () => {
-    setEditing(false);
-    const trimmed = draftName.trim();
-    if (trimmed && trimmed !== name) onRename?.(trimmed);
   };
 
   return (
@@ -228,16 +222,12 @@ export function CollapsibleFolderHeader({
         <span style={{ fontSize: 9, color: 'var(--text-faint)', flexShrink: 0 }}>{expanded ? '▼' : '▶'}</span>
         {editing ? (
           <input
-            autoFocus
-            value={draftName}
+            ref={inputRef}
+            value={editName}
             onClick={(e) => e.stopPropagation()}
-            onChange={(e) => setDraftName(e.target.value)}
-            onBlur={commitEdit}
-            onKeyDown={(e) => {
-              e.stopPropagation();
-              if (e.key === 'Enter') commitEdit();
-              else if (e.key === 'Escape') { setEditing(false); setDraftName(name); }
-            }}
+            onChange={(e) => setEditName(e.target.value)}
+            onBlur={commitRename}
+            onKeyDown={(e) => { e.stopPropagation(); handleKeyDown(e); }}
             style={{
               flex: 1, minWidth: 0, fontSize: 11, fontFamily: 'var(--font-ui)',
               background: 'var(--bg-card)', border: '1px solid var(--border-strong)',
@@ -304,15 +294,8 @@ interface NewFolderRowProps {
 }
 
 export function NewFolderRow({ onCreate }: NewFolderRowProps) {
-  const [editing, setEditing] = useState(false);
-  const [value, setValue] = useState('');
-
-  const commit = () => {
-    const trimmed = value.trim();
-    if (trimmed) onCreate(trimmed);
-    setEditing(false);
-    setValue('');
-  };
+  const { editing, setEditing, editName: value, setEditName: setValue, commitRename: commit, handleKeyDown, inputRef } =
+    useInlineEdit('', onCreate);
 
   if (!editing) {
     return (
@@ -334,15 +317,12 @@ export function NewFolderRow({ onCreate }: NewFolderRowProps) {
   return (
     <div style={{ padding: '4px 12px' }}>
       <input
-        autoFocus
+        ref={inputRef}
         value={value}
         placeholder="Folder name…"
         onChange={(e) => setValue(e.target.value)}
         onBlur={commit}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter') commit();
-          else if (e.key === 'Escape') { setEditing(false); setValue(''); }
-        }}
+        onKeyDown={handleKeyDown}
         style={{
           width: '100%', fontSize: 11, fontFamily: 'var(--font-ui)',
           background: 'var(--bg-card)', border: '1px solid var(--border-strong)',
@@ -350,6 +330,61 @@ export function NewFolderRow({ onCreate }: NewFolderRowProps) {
           boxSizing: 'border-box',
         }}
       />
+    </div>
+  );
+}
+
+// ─── ConfirmDialog ───────────────────────────────────────────────────────────
+// Centered modal overlay for destructive confirmations (delete session,
+// delete folder, etc). Shared across Sessions and Prompts views.
+
+interface ConfirmDialogProps {
+  title: string;
+  body: string;
+  confirmLabel?: string;
+  onCancel: () => void;
+  onConfirm: () => void;
+}
+
+export function ConfirmDialog({ title, body, confirmLabel = 'Delete', onCancel, onConfirm }: ConfirmDialogProps) {
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, zIndex: 50,
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      background: 'rgba(0,0,0,0.6)',
+    }}>
+      <div style={{
+        background: 'var(--bg-card)', border: '1px solid var(--border)',
+        borderRadius: 10, padding: 24, maxWidth: 360, width: '100%', margin: '0 16px',
+        boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
+      }}>
+        <h3 style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', margin: '0 0 8px' }}>{title}</h3>
+        <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: '0 0 20px', lineHeight: 1.5 }}>
+          {body}
+        </p>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+          <button
+            onClick={onCancel}
+            style={{
+              padding: '5px 12px', fontSize: 11, borderRadius: 5,
+              background: 'var(--bg-raised)', border: '1px solid var(--border)',
+              color: 'var(--text-muted)', cursor: 'pointer',
+            }}
+          >
+            Cancel
+          </button>
+          <button
+            onClick={onConfirm}
+            style={{
+              padding: '5px 12px', fontSize: 11, borderRadius: 5,
+              background: 'var(--error)', border: '1px solid var(--error)',
+              color: '#fff', cursor: 'pointer',
+            }}
+          >
+            {confirmLabel}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

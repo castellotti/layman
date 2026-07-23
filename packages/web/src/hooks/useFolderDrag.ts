@@ -15,6 +15,19 @@ export interface FolderDropTarget {
 }
 
 /**
+ * Same-container reorder: remove sourceId from currentIds and reinsert it
+ * before beforeId (or at the end if beforeId is null/not found). Shared by
+ * every handleFolderDrop same-container branch (Sessions bookmarks, Prompts
+ * highlights).
+ */
+export function reorderIds(currentIds: string[], sourceId: string, beforeId: string | null): string[] {
+  const ids = currentIds.filter((id) => id !== sourceId);
+  const insertAt = beforeId ? ids.indexOf(beforeId) : ids.length;
+  ids.splice(insertAt < 0 ? ids.length : insertAt, 0, sourceId);
+  return ids;
+}
+
+/**
  * Cross-container drag for the Sessions/Prompts bookmark sidebars. Unlike
  * useDragReorder (single flat list), state here is shared across every
  * folder + the Unfiled/History buckets, so a drag started in one container
@@ -35,6 +48,8 @@ export function useFolderDrag(onDrop: (source: FolderDragSource, target: FolderD
   }, []);
 
   const handleDragEnd = useCallback(() => {
+    // History rows never wire onDragOver, so target.containerId realistically
+    // never is 'history' — this guard is a safety net in case that changes.
     if (source && target && target.containerId !== 'history' && target.beforeId !== source.id) {
       onDrop(source, target);
     }

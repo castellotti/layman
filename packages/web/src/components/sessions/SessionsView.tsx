@@ -2,10 +2,11 @@ import React, { useState, useCallback, useEffect, useRef, useMemo, Suspense, laz
 import { useSessionStore } from '../../stores/sessionStore.js';
 import { EventStream } from '../layout/EventStream.js';
 import { InvestigationPanel } from '../layout/InvestigationPanel.js';
-import { SearchInput, SegmentedControl, SECTION_LABEL_STYLE, CollapsibleFolderHeader, NewFolderRow } from '../primitives/index.js';
+import { SearchInput, SegmentedControl, SECTION_LABEL_STYLE, CollapsibleFolderHeader, NewFolderRow, ConfirmDialog } from '../primitives/index.js';
 import { useDragReorder } from '../../hooks/useDragReorder.js';
 import { useOptimisticOrder } from '../../hooks/useOptimisticOrder.js';
-import { useFolderDrag, type FolderDragSource, type FolderDropTarget } from '../../hooks/useFolderDrag.js';
+import { useFolderDrag, reorderIds, type FolderDragSource, type FolderDropTarget } from '../../hooks/useFolderDrag.js';
+import { useFolderCrud } from '../../hooks/useFolderCrud.js';
 import { sessionDisplayName } from '../../lib/session-state.js';
 import type { ClientMessage } from '../../lib/ws-protocol.js';
 import type { RecordedSession, SessionTimeMetrics } from '../../lib/types.js';
@@ -239,37 +240,8 @@ export function SessionsView({ onSend }: SessionsViewProps) {
 
   // Folder CRUD — the server already supports all of this (create/rename/delete/
   // reorder), it was just never wired up in the UI.
-  const handleCreateFolder = useCallback((name: string) => {
-    void fetch('/api/bookmarks/folders', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name }),
-    }).catch(() => {});
-  }, []);
-
-  const handleRenameFolder = useCallback((folderId: string, name: string) => {
-    void fetch(`/api/bookmarks/folders/${folderId}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name }),
-    }).catch(() => {});
-  }, []);
-
-  const handleDeleteFolder = useCallback((folderId: string) => {
-    void fetch(`/api/bookmarks/folders/${folderId}`, { method: 'DELETE' })
-      .catch(() => {})
-      .finally(() => setDeleteConfirmFolderId(null));
-  }, []);
-
-  // Folder-order reordering — a flat list of folder ids, same shape as the
-  // Dashboard's existing session-card reordering.
-  const persistFolderOrder = useCallback((ids: string[]) =>
-    fetch('/api/bookmarks/folders/reorder', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ids }),
-    }).then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); }),
-  []);
+  const { handleCreateFolder, handleRenameFolder, handleDeleteFolder, persistFolderOrder } =
+    useFolderCrud('/api/bookmarks/folders');
   const { items: orderedFolders, reorder: reorderFolders } = useOptimisticOrder(sortedFolders, (f) => f.id, persistFolderOrder);
   const {
     dragOverId: folderDragOverId,
@@ -295,16 +267,14 @@ export function SessionsView({ onSend }: SessionsViewProps) {
     }
 
     if (source.containerId === target.containerId) {
-      const currentIds = (target.containerId === 'unfiled'
+      const currentIds = target.containerId === 'unfiled'
         ? unfiledBookmarkedSessions.map((item) => item.bookmarkId)
-        : (folderSessionsMap.get(target.containerId) ?? []).map((item) => item.bookmarkId)
-      ).filter((id) => id !== source.id);
-      const insertAt = target.beforeId ? currentIds.indexOf(target.beforeId) : currentIds.length;
-      currentIds.splice(insertAt < 0 ? currentIds.length : insertAt, 0, source.id);
+        : (folderSessionsMap.get(target.containerId) ?? []).map((item) => item.bookmarkId);
+      const newIds = reorderIds(currentIds, source.id, target.beforeId);
       void fetch('/api/bookmarks/reorder', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ folderId: targetFolderId, ids: currentIds }),
+        body: JSON.stringify({ folderId: targetFolderId, ids: newIds }),
       }).catch(() => {});
     } else {
       void fetch(`/api/bookmarks/${source.id}`, {
@@ -360,86 +330,22 @@ export function SessionsView({ onSend }: SessionsViewProps) {
     <div style={{ display: 'flex', height: '100%', background: 'var(--bg)' }}>
       {/* Delete confirmation */}
       {deleteConfirmSessionId && (
-        <div style={{
-          position: 'fixed', inset: 0, zIndex: 50,
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          background: 'rgba(0,0,0,0.6)',
-        }}>
-          <div style={{
-            background: 'var(--bg-card)', border: '1px solid var(--border)',
-            borderRadius: 10, padding: 24, maxWidth: 360, width: '100%', margin: '0 16px',
-            boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
-          }}>
-            <h3 style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', margin: '0 0 8px' }}>Delete session?</h3>
-            <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: '0 0 20px', lineHeight: 1.5 }}>
-              This will permanently delete all events for this session from history. This cannot be undone.
-            </p>
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-              <button
-                onClick={() => setDeleteConfirmSessionId(null)}
-                style={{
-                  padding: '5px 12px', fontSize: 11, borderRadius: 5,
-                  background: 'var(--bg-raised)', border: '1px solid var(--border)',
-                  color: 'var(--text-muted)', cursor: 'pointer',
-                }}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={() => void handleDeleteSession(deleteConfirmSessionId)}
-                style={{
-                  padding: '5px 12px', fontSize: 11, borderRadius: 5,
-                  background: 'var(--error)', border: '1px solid var(--error)',
-                  color: '#fff', cursor: 'pointer',
-                }}
-              >
-                Delete
-              </button>
-            </div>
-          </div>
-        </div>
+        <ConfirmDialog
+          title="Delete session?"
+          body="This will permanently delete all events for this session from history. This cannot be undone."
+          onCancel={() => setDeleteConfirmSessionId(null)}
+          onConfirm={() => void handleDeleteSession(deleteConfirmSessionId)}
+        />
       )}
 
       {/* Delete folder confirmation */}
       {deleteConfirmFolderId && (
-        <div style={{
-          position: 'fixed', inset: 0, zIndex: 50,
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          background: 'rgba(0,0,0,0.6)',
-        }}>
-          <div style={{
-            background: 'var(--bg-card)', border: '1px solid var(--border)',
-            borderRadius: 10, padding: 24, maxWidth: 360, width: '100%', margin: '0 16px',
-            boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
-          }}>
-            <h3 style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', margin: '0 0 8px' }}>Delete folder?</h3>
-            <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: '0 0 20px', lineHeight: 1.5 }}>
-              Bookmarks inside this folder become Unfiled — they aren't deleted.
-            </p>
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-              <button
-                onClick={() => setDeleteConfirmFolderId(null)}
-                style={{
-                  padding: '5px 12px', fontSize: 11, borderRadius: 5,
-                  background: 'var(--bg-raised)', border: '1px solid var(--border)',
-                  color: 'var(--text-muted)', cursor: 'pointer',
-                }}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={() => handleDeleteFolder(deleteConfirmFolderId)}
-                style={{
-                  padding: '5px 12px', fontSize: 11, borderRadius: 5,
-                  background: 'var(--error)', border: '1px solid var(--error)',
-                  color: '#fff', cursor: 'pointer',
-                }}
-              >
-                Delete
-              </button>
-            </div>
-          </div>
-        </div>
+        <ConfirmDialog
+          title="Delete folder?"
+          body="Bookmarks inside this folder become Unfiled — they aren't deleted."
+          onCancel={() => setDeleteConfirmFolderId(null)}
+          onConfirm={() => handleDeleteFolder(deleteConfirmFolderId, () => setDeleteConfirmFolderId(null))}
+        />
       )}
 
       {/* Left sidebar */}
