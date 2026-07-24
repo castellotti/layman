@@ -460,41 +460,46 @@ export function SessionsView({ onSend }: SessionsViewProps) {
             </>
           )}
 
-          {/* History */}
-          {filteredSessions.length > 0 && (
-            <>
-              <div style={sectionLabel}>History</div>
-              {filteredSessions.map((s, idx) => (
-                <SidebarSessionRow
-                  key={s.sessionId}
-                  session={s}
-                  isSelected={viewingSessionId === s.sessionId}
-                  isFocused={focusedIndex === idx}
-                  isLive={liveSessionIds.has(s.sessionId)}
-                  isBookmarked={bookmarkedSessionIds.has(s.sessionId)}
-                  matchLabel={matchLabel(s.sessionId)}
-                  onSelect={handleSelectSession}
-                  onBookmark={() => void handleQuickBookmark(s.sessionId)}
-                  onDelete={() => setDeleteConfirmSessionId(s.sessionId)}
-                  onDragStart={() => handleItemDragStart({
-                    id: bookmarkIdForSession(s.sessionId) ?? s.sessionId,
-                    containerId: 'history',
-                    bookmarked: bookmarkedSessionIds.has(s.sessionId),
-                  })}
-                  onDragEnd={handleItemDragEnd}
-                />
-              ))}
-            </>
-          )}
+          {/* History — not a drop target (dropping a bookmark/folder drag here should
+              no-op, not silently apply whatever folder/Unfiled was last hovered before
+              the pointer crossed into this section). Claiming 'history' here reuses the
+              same-named guard in useFolderDrag.handleDragEnd. */}
+          <div onDragOver={(e) => { e.preventDefault(); handleDragOverContainer('history'); }}>
+            {filteredSessions.length > 0 && (
+              <>
+                <div style={sectionLabel}>History</div>
+                {filteredSessions.map((s, idx) => (
+                  <SidebarSessionRow
+                    key={s.sessionId}
+                    session={s}
+                    isSelected={viewingSessionId === s.sessionId}
+                    isFocused={focusedIndex === idx}
+                    isLive={liveSessionIds.has(s.sessionId)}
+                    isBookmarked={bookmarkedSessionIds.has(s.sessionId)}
+                    matchLabel={matchLabel(s.sessionId)}
+                    onSelect={handleSelectSession}
+                    onBookmark={() => void handleQuickBookmark(s.sessionId)}
+                    onDelete={() => setDeleteConfirmSessionId(s.sessionId)}
+                    onDragStart={() => handleItemDragStart({
+                      id: bookmarkIdForSession(s.sessionId) ?? s.sessionId,
+                      containerId: 'history',
+                      bookmarked: bookmarkedSessionIds.has(s.sessionId),
+                    })}
+                    onDragEnd={handleItemDragEnd}
+                  />
+                ))}
+              </>
+            )}
 
-          {filteredSessions.length === 0 && (
-            <div style={{
-              padding: '32px 16px', textAlign: 'center',
-              fontSize: 11, color: 'var(--text-faint)', fontFamily: 'var(--font-ui)',
-            }}>
-              {sidebarSearch ? 'No sessions match your search.' : 'No recorded sessions yet.'}
-            </div>
-          )}
+            {filteredSessions.length === 0 && (
+              <div style={{
+                padding: '32px 16px', textAlign: 'center',
+                fontSize: 11, color: 'var(--text-faint)', fontFamily: 'var(--font-ui)',
+              }}>
+                {sidebarSearch ? 'No sessions match your search.' : 'No recorded sessions yet.'}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
