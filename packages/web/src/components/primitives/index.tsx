@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useState } from 'react';
+import { useInlineEdit } from '../../hooks/useInlineEdit.js';
 
 // ─── DepthButton ────────────────────────────────────────────────────────────
 // Shared colored icon button for the two analysis depths (Investigation
@@ -163,39 +164,228 @@ export function StateChip({ variant, label }: StateChipProps) {
 // ─── CollapsibleFolderHeader ────────────────────────────────────────────────
 // Shared expand/collapse header (name + item count badge) for sidebar folder
 // sections in Sessions and Prompts views. Item ordering/persistence stays
-// with the caller since it differs per domain (reorderable bookmarks vs.
-// read-only highlights).
+// with the caller since it differs per domain. Rename/delete/drag props are
+// optional in case a future read-only call site needs to omit them.
 
 interface CollapsibleFolderHeaderProps {
   expanded: boolean;
   onToggle: () => void;
   name: string;
   count: number;
+  onRename?: (name: string) => void;
+  onDelete?: () => void;
+  draggable?: boolean;
+  isDragOver?: boolean;
+  onDragStart?: () => void;
+  onDragOver?: () => void;
+  onDragEnd?: () => void;
 }
 
-export function CollapsibleFolderHeader({ expanded, onToggle, name, count }: CollapsibleFolderHeaderProps) {
+export function CollapsibleFolderHeader({
+  expanded, onToggle, name, count, onRename, onDelete,
+  draggable = false, isDragOver = false, onDragStart, onDragOver, onDragEnd,
+}: CollapsibleFolderHeaderProps) {
+  const [hovered, setHovered] = useState(false);
+  const { editing, setEditing, editName, setEditName, commitRename, handleKeyDown, inputRef } =
+    useInlineEdit(name, (next) => onRename?.(next));
+
+  const startEditing = () => {
+    setEditName(name);
+    setEditing(true);
+  };
+
   return (
-    <button
-      onClick={onToggle}
+    <div
+      draggable={draggable && !editing}
+      onDragStart={(e) => { e.dataTransfer.effectAllowed = 'move'; onDragStart?.(); }}
+      onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; onDragOver?.(); }}
+      onDragEnd={onDragEnd}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
       style={{
-        width: '100%', display: 'flex', alignItems: 'center', gap: 6,
-        padding: '5px 12px', background: 'none', border: 'none', cursor: 'pointer',
-        color: 'var(--text-muted)', fontFamily: 'var(--font-ui)', fontSize: 11,
-        textAlign: 'left',
+        display: 'flex', alignItems: 'center', gap: 6,
+        padding: '5px 12px', color: 'var(--text-muted)', fontFamily: 'var(--font-ui)', fontSize: 11,
+        background: isDragOver ? 'var(--bg-selected)' : 'transparent',
+        outline: isDragOver ? '1px dashed var(--info)' : 'none',
+        outlineOffset: -1,
+        transition: 'background 0.1s',
       }}
-      onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--text)')}
-      onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--text-muted)')}
     >
-      <span style={{ fontSize: 9, color: 'var(--text-faint)' }}>{expanded ? '▼' : '▶'}</span>
-      <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</span>
-      <span style={{
-        fontSize: 9.5, fontFamily: 'var(--font-mono)', color: 'var(--text-faint)',
+      <button
+        onClick={onToggle}
+        style={{
+          flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 6,
+          background: 'none', border: 'none', cursor: 'pointer', padding: 0,
+          color: 'inherit', font: 'inherit', textAlign: 'left',
+        }}
+      >
+        <span style={{ fontSize: 9, color: 'var(--text-faint)', flexShrink: 0 }}>{expanded ? '▼' : '▶'}</span>
+        {editing ? (
+          <input
+            ref={inputRef}
+            value={editName}
+            onClick={(e) => e.stopPropagation()}
+            onChange={(e) => setEditName(e.target.value)}
+            onBlur={commitRename}
+            onKeyDown={(e) => { e.stopPropagation(); handleKeyDown(e); }}
+            style={{
+              flex: 1, minWidth: 0, fontSize: 11, fontFamily: 'var(--font-ui)',
+              background: 'var(--bg-card)', border: '1px solid var(--border-strong)',
+              borderRadius: 3, color: 'var(--text)', padding: '1px 4px', outline: 'none',
+            }}
+          />
+        ) : (
+          <span
+            onDoubleClick={(e) => { if (onRename) { e.stopPropagation(); startEditing(); } }}
+            style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+          >
+            {name}
+          </span>
+        )}
+        {!editing && (
+          <span style={{
+            fontSize: 9.5, fontFamily: 'var(--font-mono)', color: 'var(--text-faint)',
+            background: 'var(--bg-card)', border: '1px solid var(--border)',
+            borderRadius: 10, padding: '0 5px', flexShrink: 0,
+          }}>
+            {count}
+          </span>
+        )}
+      </button>
+
+      {!editing && (onRename || onDelete) && (
+        <div style={{ display: 'flex', gap: 2, flexShrink: 0, opacity: hovered ? 1 : 0, transition: 'opacity 0.1s' }}>
+          {onRename && (
+            <span
+              role="button"
+              onClick={(e) => { e.stopPropagation(); startEditing(); }}
+              title="Rename folder"
+              style={{ fontSize: 10, color: 'var(--text-faint)', cursor: 'pointer', padding: '1px 3px' }}
+              onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--text)')}
+              onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--text-faint)')}
+            >
+              ✎
+            </span>
+          )}
+          {onDelete && (
+            <span
+              role="button"
+              onClick={(e) => { e.stopPropagation(); onDelete(); }}
+              title="Delete folder"
+              style={{ fontSize: 10, color: 'var(--text-faint)', cursor: 'pointer', padding: '1px 3px' }}
+              onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--error)')}
+              onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--text-faint)')}
+            >
+              ✕
+            </span>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── NewFolderRow ────────────────────────────────────────────────────────────
+// "+ New folder" affordance shared by the Sessions and Prompts sidebars —
+// collapses to a single button, expands to a name input on click.
+
+interface NewFolderRowProps {
+  onCreate: (name: string) => void;
+}
+
+export function NewFolderRow({ onCreate }: NewFolderRowProps) {
+  const { editing, setEditing, editName: value, setEditName: setValue, commitRename: commit, handleKeyDown, inputRef } =
+    useInlineEdit('', onCreate);
+
+  if (!editing) {
+    return (
+      <button
+        onClick={() => setEditing(true)}
+        style={{
+          width: '100%', display: 'flex', alignItems: 'center', gap: 6,
+          padding: '5px 12px', background: 'none', border: 'none', cursor: 'pointer',
+          color: 'var(--text-faint)', fontFamily: 'var(--font-ui)', fontSize: 11, textAlign: 'left',
+        }}
+        onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--text-muted)')}
+        onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--text-faint)')}
+      >
+        <span style={{ fontSize: 11 }}>+</span> New folder
+      </button>
+    );
+  }
+
+  return (
+    <div style={{ padding: '4px 12px' }}>
+      <input
+        ref={inputRef}
+        value={value}
+        placeholder="Folder name…"
+        onChange={(e) => setValue(e.target.value)}
+        onBlur={commit}
+        onKeyDown={handleKeyDown}
+        style={{
+          width: '100%', fontSize: 11, fontFamily: 'var(--font-ui)',
+          background: 'var(--bg-card)', border: '1px solid var(--border-strong)',
+          borderRadius: 4, color: 'var(--text)', padding: '3px 6px', outline: 'none',
+          boxSizing: 'border-box',
+        }}
+      />
+    </div>
+  );
+}
+
+// ─── ConfirmDialog ───────────────────────────────────────────────────────────
+// Centered modal overlay for destructive confirmations (delete session,
+// delete folder, etc). Shared across Sessions and Prompts views.
+
+interface ConfirmDialogProps {
+  title: string;
+  body: string;
+  confirmLabel?: string;
+  onCancel: () => void;
+  onConfirm: () => void;
+}
+
+export function ConfirmDialog({ title, body, confirmLabel = 'Delete', onCancel, onConfirm }: ConfirmDialogProps) {
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, zIndex: 50,
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      background: 'rgba(0,0,0,0.6)',
+    }}>
+      <div style={{
         background: 'var(--bg-card)', border: '1px solid var(--border)',
-        borderRadius: 10, padding: '0 5px',
+        borderRadius: 10, padding: 24, maxWidth: 360, width: '100%', margin: '0 16px',
+        boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
       }}>
-        {count}
-      </span>
-    </button>
+        <h3 style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', margin: '0 0 8px' }}>{title}</h3>
+        <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: '0 0 20px', lineHeight: 1.5 }}>
+          {body}
+        </p>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+          <button
+            onClick={onCancel}
+            style={{
+              padding: '5px 12px', fontSize: 11, borderRadius: 5,
+              background: 'var(--bg-raised)', border: '1px solid var(--border)',
+              color: 'var(--text-muted)', cursor: 'pointer',
+            }}
+          >
+            Cancel
+          </button>
+          <button
+            onClick={onConfirm}
+            style={{
+              padding: '5px 12px', fontSize: 11, borderRadius: 5,
+              background: 'var(--error)', border: '1px solid var(--error)',
+              color: '#fff', cursor: 'pointer',
+            }}
+          >
+            {confirmLabel}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 
