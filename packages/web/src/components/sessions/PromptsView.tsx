@@ -2,12 +2,14 @@ import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { useSessionStore } from '../../stores/sessionStore.js';
 import type { Highlight, HighlightFolder, TimelineEvent } from '../../lib/types.js';
-import { SearchInput, FilterChip, SECTION_LABEL_STYLE, CollapsibleFolderHeader } from '../primitives/index.js';
+import { SearchInput, FilterChip, SECTION_LABEL_STYLE, CollapsibleFolderHeader, NewFolderRow, ConfirmDialog } from '../primitives/index.js';
 import { getEffectiveAgentContent } from '../../lib/reasoning.js';
 import { isMarkdown, MARKDOWN_PROSE_COMPACT, REMARK_PLUGINS } from '../../lib/markdown.js';
 import { sessionDisplayName } from '../../lib/session-state.js';
 import { useDragReorder } from '../../hooks/useDragReorder.js';
 import { useOptimisticOrder } from '../../hooks/useOptimisticOrder.js';
+import { useFolderDrag, reorderIds, type FolderDragSource, type FolderDropTarget } from '../../hooks/useFolderDrag.js';
+import { useFolderCrud } from '../../hooks/useFolderCrud.js';
 
 interface HighlightEventPair {
   promptEvent: TimelineEvent | null;
@@ -131,21 +133,29 @@ interface SidebarFolderProps {
   selectedHighlightId: string | null;
   sessionLabelById: Map<string, string>;
   onSelect: (h: Highlight) => void;
+  onRename: (name: string) => void;
+  onDelete: () => void;
+  draggedItemId: string | null;
+  dragOverContainerId: string | null;
+  dragOverItemId: string | null;
+  onItemDragStart: (source: FolderDragSource) => void;
+  onItemDragOverItem: (containerId: string, itemId: string) => void;
+  onItemDragOverContainer: (containerId: string) => void;
+  onItemDragEnd: () => void;
+  isFolderDragOver: boolean;
+  onFolderDragStart: () => void;
+  onFolderDragOver: () => void;
+  onFolderDragEnd: () => void;
 }
 
-function SidebarFolder({ folder, highlights, selectedHighlightId, sessionLabelById, onSelect }: SidebarFolderProps) {
+function SidebarFolder({
+  folder, highlights, selectedHighlightId, sessionLabelById, onSelect,
+  onRename, onDelete,
+  draggedItemId, dragOverContainerId, dragOverItemId,
+  onItemDragStart, onItemDragOverItem, onItemDragOverContainer, onItemDragEnd,
+  isFolderDragOver, onFolderDragStart, onFolderDragOver, onFolderDragEnd,
+}: SidebarFolderProps) {
   const [expanded, setExpanded] = useState(true);
-
-  const persist = useCallback((ids: string[]) =>
-    fetch('/api/highlights/reorder', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ folderId: folder.id, ids }),
-    }).then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); }),
-  [folder.id]);
-
-  const { items: orderedHighlights, reorder } = useOptimisticOrder(highlights, (h) => h.id, persist);
-  const { dragOverId, handleDragStart, handleDragOver, handleDragEnd } = useDragReorder(reorder);
 
   return (
     <div>
@@ -153,20 +163,35 @@ function SidebarFolder({ folder, highlights, selectedHighlightId, sessionLabelBy
         expanded={expanded}
         onToggle={() => setExpanded((v) => !v)}
         name={folder.name}
-        count={orderedHighlights.length}
+        count={highlights.length}
+        onRename={onRename}
+        onDelete={onDelete}
+        draggable
+        isDragOver={isFolderDragOver || (dragOverContainerId === folder.id && dragOverItemId === null)}
+        onDragStart={onFolderDragStart}
+        onDragOver={() => { onFolderDragOver(); onItemDragOverContainer(folder.id); }}
+        onDragEnd={onFolderDragEnd}
       />
-      {expanded && orderedHighlights.map((h) => (
+      {expanded && highlights.length === 0 && (
+        <div
+          onDragOver={(e) => { e.preventDefault(); onItemDragOverContainer(folder.id); }}
+          style={{ padding: '4px 24px', fontSize: 10, color: 'var(--text-faint)', fontStyle: 'italic' }}
+        >
+          Drop highlights here
+        </div>
+      )}
+      {expanded && highlights.map((h) => (
         <SidebarHighlightRow
           key={h.id}
           highlight={h}
           isSelected={selectedHighlightId === h.id}
           indent
           sessionLabel={sessionLabelById.get(h.sessionId)}
-          isDragOver={dragOverId === h.id}
+          isDragOver={draggedItemId !== h.id && dragOverContainerId === folder.id && dragOverItemId === h.id}
           onSelect={onSelect}
-          onDragStart={() => handleDragStart(h.id)}
-          onDragOver={() => handleDragOver(h.id)}
-          onDragEnd={handleDragEnd}
+          onDragStart={() => onItemDragStart({ id: h.id, containerId: folder.id, bookmarked: true })}
+          onDragOver={() => onItemDragOverItem(folder.id, h.id)}
+          onDragEnd={onItemDragEnd}
         />
       ))}
     </div>
@@ -182,6 +207,7 @@ export function PromptsView() {
   const [eventPair, setEventPair] = useState<HighlightEventPair>({ promptEvent: null, responseEvent: null });
   const [loadingPair, setLoadingPair] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [deleteConfirmFolderId, setDeleteConfirmFolderId] = useState<string | null>(null);
 
   const sessionLabelById = useMemo(() => {
     const map = new Map<string, string>();
@@ -259,10 +285,59 @@ export function PromptsView() {
     }).catch(() => {});
   }, [selectedHighlight]);
 
+  // Folder CRUD — same backend as Sessions' bookmark folders, previously unwired.
+  const { handleCreateFolder, handleRenameFolder, handleDeleteFolder, persistFolderOrder } =
+    useFolderCrud('/api/highlights/folders');
+  const { items: orderedFolders, reorder: reorderFolders } = useOptimisticOrder(sortedFolders, (f) => f.id, persistFolderOrder);
+  const {
+    dragOverId: folderDragOverId,
+    handleDragStart: handleFolderDragStart, handleDragOver: handleFolderDragOver, handleDragEnd: handleFolderDragEnd,
+  } = useDragReorder(reorderFolders);
+
+  // Cross-container item drag (highlights ↔ folders/History). Every draggable
+  // row here is already a highlight (unlike Sessions, there's no "not yet
+  // bookmarked" source list), so this only ever reorders or moves.
+  const handleFolderDrop = useCallback((source: FolderDragSource, target: FolderDropTarget) => {
+    const targetFolderId = target.containerId === 'unfiled' ? null : target.containerId;
+
+    if (source.containerId === target.containerId) {
+      const currentIds = target.containerId === 'unfiled'
+        ? unfiledHighlights.map((h) => h.id)
+        : (folderHighlightsMap.get(target.containerId) ?? []).map((h) => h.id);
+      const newIds = reorderIds(currentIds, source.id, target.beforeId);
+      void fetch('/api/highlights/reorder', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ folderId: targetFolderId, ids: newIds }),
+      }).catch(() => {});
+    } else {
+      void fetch(`/api/highlights/${source.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ folderId: targetFolderId }),
+      }).catch(() => {});
+    }
+  }, [unfiledHighlights, folderHighlightsMap]);
+
+  const {
+    draggedId: draggedItemId, dragOverContainerId, dragOverItemId,
+    handleDragStart: handleItemDragStart, handleDragOverItem, handleDragOverContainer, handleDragEnd: handleItemDragEnd,
+  } = useFolderDrag(handleFolderDrop);
+
   const sectionLabel = SECTION_LABEL_STYLE;
 
   return (
     <div style={{ display: 'flex', height: '100%', background: 'var(--bg)' }}>
+      {/* Delete folder confirmation */}
+      {deleteConfirmFolderId && (
+        <ConfirmDialog
+          title="Delete folder?"
+          body="Highlights inside this folder move to History — they aren't deleted."
+          onCancel={() => setDeleteConfirmFolderId(null)}
+          onConfirm={() => handleDeleteFolder(deleteConfirmFolderId, () => setDeleteConfirmFolderId(null))}
+        />
+      )}
+
       {/* Left sidebar */}
       <div style={{
         width: 280, flexShrink: 0,
@@ -308,12 +383,9 @@ export function PromptsView() {
             )
           ) : (
             <>
-              {sortedFolders.some((f) => (folderHighlightsMap.get(f.id) ?? []).length > 0) && (
-                <div style={sectionLabel}>Folders</div>
-              )}
-              {sortedFolders.map((folder) => {
+              <div style={sectionLabel}>Folders</div>
+              {orderedFolders.map((folder) => {
                 const items = folderHighlightsMap.get(folder.id) ?? [];
-                if (items.length === 0) return null;
                 return (
                   <SidebarFolder
                     key={folder.id}
@@ -322,25 +394,55 @@ export function PromptsView() {
                     selectedHighlightId={selectedHighlightId}
                     sessionLabelById={sessionLabelById}
                     onSelect={handleSelectHighlight}
+                    onRename={(name) => handleRenameFolder(folder.id, name)}
+                    onDelete={() => setDeleteConfirmFolderId(folder.id)}
+                    draggedItemId={draggedItemId}
+                    dragOverContainerId={dragOverContainerId}
+                    dragOverItemId={dragOverItemId}
+                    onItemDragStart={handleItemDragStart}
+                    onItemDragOverItem={handleDragOverItem}
+                    onItemDragOverContainer={handleDragOverContainer}
+                    onItemDragEnd={handleItemDragEnd}
+                    isFolderDragOver={folderDragOverId === folder.id}
+                    onFolderDragStart={() => handleFolderDragStart(folder.id)}
+                    onFolderDragOver={() => handleFolderDragOver(folder.id)}
+                    onFolderDragEnd={handleFolderDragEnd}
                   />
                 );
               })}
-              {unfiledHighlights.length > 0 && (
-                <>
-                  <div style={sectionLabel}>
-                    History <span style={{ fontSize: 9, color: 'var(--text-faint)', textTransform: 'none', letterSpacing: 0, fontWeight: 400 }}>newest first</span>
-                  </div>
-                  {unfiledHighlights.map((h) => (
-                    <SidebarHighlightRow
-                      key={h.id}
-                      highlight={h}
-                      isSelected={selectedHighlightId === h.id}
-                      sessionLabel={sessionLabelById.get(h.sessionId)}
-                      onSelect={handleSelectHighlight}
-                    />
-                  ))}
-                </>
+
+              <div
+                onDragOver={(e) => { e.preventDefault(); handleDragOverContainer('unfiled'); }}
+                style={{
+                  ...sectionLabel, paddingTop: 4,
+                  background: dragOverContainerId === 'unfiled' && dragOverItemId === null ? 'var(--bg-selected)' : undefined,
+                }}
+              >
+                History <span style={{ fontSize: 9, color: 'var(--text-faint)', textTransform: 'none', letterSpacing: 0, fontWeight: 400 }}>newest first</span>
+              </div>
+              {unfiledHighlights.length === 0 && (
+                <div
+                  onDragOver={(e) => { e.preventDefault(); handleDragOverContainer('unfiled'); }}
+                  style={{ padding: '4px 12px', fontSize: 10, color: 'var(--text-faint)', fontStyle: 'italic' }}
+                >
+                  Drop highlights here
+                </div>
               )}
+              {unfiledHighlights.map((h) => (
+                <SidebarHighlightRow
+                  key={h.id}
+                  highlight={h}
+                  isSelected={selectedHighlightId === h.id}
+                  sessionLabel={sessionLabelById.get(h.sessionId)}
+                  isDragOver={draggedItemId !== h.id && dragOverContainerId === 'unfiled' && dragOverItemId === h.id}
+                  onSelect={handleSelectHighlight}
+                  onDragStart={() => handleItemDragStart({ id: h.id, containerId: 'unfiled', bookmarked: true })}
+                  onDragOver={() => handleDragOverItem('unfiled', h.id)}
+                  onDragEnd={handleItemDragEnd}
+                />
+              ))}
+
+              <NewFolderRow onCreate={handleCreateFolder} />
             </>
           )}
         </div>

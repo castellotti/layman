@@ -2,9 +2,11 @@ import React, { useState, useCallback, useEffect, useRef, useMemo, Suspense, laz
 import { useSessionStore } from '../../stores/sessionStore.js';
 import { EventStream } from '../layout/EventStream.js';
 import { InvestigationPanel } from '../layout/InvestigationPanel.js';
-import { SearchInput, SegmentedControl, SECTION_LABEL_STYLE, CollapsibleFolderHeader } from '../primitives/index.js';
+import { SearchInput, SegmentedControl, SECTION_LABEL_STYLE, CollapsibleFolderHeader, NewFolderRow, ConfirmDialog } from '../primitives/index.js';
 import { useDragReorder } from '../../hooks/useDragReorder.js';
 import { useOptimisticOrder } from '../../hooks/useOptimisticOrder.js';
+import { useFolderDrag, reorderIds, type FolderDragSource, type FolderDropTarget } from '../../hooks/useFolderDrag.js';
+import { useFolderCrud } from '../../hooks/useFolderCrud.js';
 import { sessionDisplayName } from '../../lib/session-state.js';
 import type { ClientMessage } from '../../lib/ws-protocol.js';
 import type { RecordedSession, SessionTimeMetrics } from '../../lib/types.js';
@@ -43,6 +45,7 @@ export function SessionsView({ onSend }: SessionsViewProps) {
   const [filter, setFilter] = useState<'all' | 'bookmarked'>('all');
   const [sidebarSearch, setSidebarSearch] = useState('');
   const [deleteConfirmSessionId, setDeleteConfirmSessionId] = useState<string | null>(null);
+  const [deleteConfirmFolderId, setDeleteConfirmFolderId] = useState<string | null>(null);
   const [leftWidthPct, setLeftWidthPct] = useState(60);
   const [focusedIndex, setFocusedIndex] = useState<number>(-1);
   const [showFlowchart, setShowFlowchart] = useState(false);
@@ -52,6 +55,11 @@ export function SessionsView({ onSend }: SessionsViewProps) {
 
   const liveSessionIds = useMemo(() => new Set(sessions.map((s) => s.sessionId)), [sessions]);
   const bookmarkedSessionIds = useMemo(() => new Set(bookmarks.map((b) => b.sessionId)), [bookmarks]);
+  const bookmarkIdBySessionId = useMemo(() => new Map(bookmarks.map((b) => [b.sessionId, b.id])), [bookmarks]);
+  const bookmarkIdForSession = useCallback(
+    (sessionId: string) => bookmarkIdBySessionId.get(sessionId) ?? null,
+    [bookmarkIdBySessionId]
+  );
   const sortedFolders = useMemo(
     () => [...bookmarkFolders].sort((a, b) => a.sortOrder - b.sortOrder),
     [bookmarkFolders]
@@ -222,10 +230,65 @@ export function SessionsView({ onSend }: SessionsViewProps) {
     return bookmarks
       .filter((b) => b.folderId === null)
       .sort((a, b) => a.sortOrder - b.sortOrder)
-      .map((b) => recordedSessions.find((s) => s.sessionId === b.sessionId))
-      .filter((s): s is RecordedSession => s !== undefined)
-      .filter(sessionMatches);
+      .map((b) => {
+        const session = recordedSessions.find((s) => s.sessionId === b.sessionId);
+        return session ? { session, bookmarkId: b.id } : null;
+      })
+      .filter((item): item is { session: RecordedSession; bookmarkId: string } => item !== null)
+      .filter((item) => sessionMatches(item.session));
   }, [bookmarks, recordedSessions, sessionMatches]);
+
+  // Folder CRUD — the server already supports all of this (create/rename/delete/
+  // reorder), it was just never wired up in the UI.
+  const { handleCreateFolder, handleRenameFolder, handleDeleteFolder, persistFolderOrder } =
+    useFolderCrud('/api/bookmarks/folders');
+  const { items: orderedFolders, reorder: reorderFolders } = useOptimisticOrder(sortedFolders, (f) => f.id, persistFolderOrder);
+  const {
+    dragOverId: folderDragOverId,
+    handleDragStart: handleFolderDragStart, handleDragOver: handleFolderDragOver, handleDragEnd: handleFolderDragEnd,
+  } = useDragReorder(reorderFolders);
+
+  // Cross-container item drag (sessions ↔ folders/Unfiled/History). Dropping an
+  // unbookmarked History row onto a folder or Unfiled creates the bookmark
+  // there directly; dropping an already-bookmarked row moves it; dropping
+  // within its own container reorders it.
+  const handleFolderDrop = useCallback((source: FolderDragSource, target: FolderDropTarget) => {
+    const targetFolderId = target.containerId === 'unfiled' ? null : target.containerId;
+
+    if (!source.bookmarked) {
+      const session = recordedSessions.find((s) => s.sessionId === source.id);
+      const name = sessionDisplayName(session?.sessionName, session?.cwd, source.id);
+      void fetch('/api/bookmarks', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId: source.id, name, folderId: targetFolderId }),
+      }).catch(() => {});
+      return;
+    }
+
+    if (source.containerId === target.containerId) {
+      const currentIds = target.containerId === 'unfiled'
+        ? unfiledBookmarkedSessions.map((item) => item.bookmarkId)
+        : (folderSessionsMap.get(target.containerId) ?? []).map((item) => item.bookmarkId);
+      const newIds = reorderIds(currentIds, source.id, target.beforeId);
+      void fetch('/api/bookmarks/reorder', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ folderId: targetFolderId, ids: newIds }),
+      }).catch(() => {});
+    } else {
+      void fetch(`/api/bookmarks/${source.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ folderId: targetFolderId }),
+      }).catch(() => {});
+    }
+  }, [recordedSessions, unfiledBookmarkedSessions, folderSessionsMap]);
+
+  const {
+    draggedId: draggedItemId, dragOverContainerId, dragOverItemId,
+    handleDragStart: handleItemDragStart, handleDragOverItem, handleDragOverContainer, handleDragEnd: handleItemDragEnd,
+  } = useFolderDrag(handleFolderDrop);
 
   // Keyboard navigation for the HISTORY list
   useEffect(() => {
@@ -267,44 +330,22 @@ export function SessionsView({ onSend }: SessionsViewProps) {
     <div style={{ display: 'flex', height: '100%', background: 'var(--bg)' }}>
       {/* Delete confirmation */}
       {deleteConfirmSessionId && (
-        <div style={{
-          position: 'fixed', inset: 0, zIndex: 50,
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          background: 'rgba(0,0,0,0.6)',
-        }}>
-          <div style={{
-            background: 'var(--bg-card)', border: '1px solid var(--border)',
-            borderRadius: 10, padding: 24, maxWidth: 360, width: '100%', margin: '0 16px',
-            boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
-          }}>
-            <h3 style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', margin: '0 0 8px' }}>Delete session?</h3>
-            <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: '0 0 20px', lineHeight: 1.5 }}>
-              This will permanently delete all events for this session from history. This cannot be undone.
-            </p>
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-              <button
-                onClick={() => setDeleteConfirmSessionId(null)}
-                style={{
-                  padding: '5px 12px', fontSize: 11, borderRadius: 5,
-                  background: 'var(--bg-raised)', border: '1px solid var(--border)',
-                  color: 'var(--text-muted)', cursor: 'pointer',
-                }}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={() => void handleDeleteSession(deleteConfirmSessionId)}
-                style={{
-                  padding: '5px 12px', fontSize: 11, borderRadius: 5,
-                  background: 'var(--error)', border: '1px solid var(--error)',
-                  color: '#fff', cursor: 'pointer',
-                }}
-              >
-                Delete
-              </button>
-            </div>
-          </div>
-        </div>
+        <ConfirmDialog
+          title="Delete session?"
+          body="This will permanently delete all events for this session from history. This cannot be undone."
+          onCancel={() => setDeleteConfirmSessionId(null)}
+          onConfirm={() => void handleDeleteSession(deleteConfirmSessionId)}
+        />
+      )}
+
+      {/* Delete folder confirmation */}
+      {deleteConfirmFolderId && (
+        <ConfirmDialog
+          title="Delete folder?"
+          body="Bookmarks inside this folder become Unfiled — they aren't deleted."
+          onCancel={() => setDeleteConfirmFolderId(null)}
+          onConfirm={() => handleDeleteFolder(deleteConfirmFolderId, () => setDeleteConfirmFolderId(null))}
+        />
       )}
 
       {/* Left sidebar */}
@@ -347,13 +388,12 @@ export function SessionsView({ onSend }: SessionsViewProps) {
 
         {/* Session list */}
         <div style={{ flex: 1, overflowY: 'auto', paddingBottom: 8 }}>
-          {/* Bookmark folders (show when filter=all and there are folders with bookmarks) */}
-          {filter === 'all' && sortedFolders.length > 0 && (
+          {/* Bookmark folders (create/rename/delete/reorder + drag sessions in) */}
+          {filter === 'all' && (
             <>
               <div style={sectionLabel}>Bookmarked</div>
-              {sortedFolders.map((folder) => {
+              {orderedFolders.map((folder) => {
                 const items = folderSessionsMap.get(folder.id) ?? [];
-                if (items.length === 0) return null;
                 return (
                   <SidebarFolder
                     key={folder.id}
@@ -364,61 +404,102 @@ export function SessionsView({ onSend }: SessionsViewProps) {
                     liveSessionIds={liveSessionIds}
                     matchLabel={matchLabel}
                     onSelect={handleSelectSession}
+                    onRename={(name) => handleRenameFolder(folder.id, name)}
+                    onDelete={() => setDeleteConfirmFolderId(folder.id)}
+                    draggedItemId={draggedItemId}
+                    dragOverContainerId={dragOverContainerId}
+                    dragOverItemId={dragOverItemId}
+                    onItemDragStart={handleItemDragStart}
+                    onItemDragOverItem={handleDragOverItem}
+                    onItemDragOverContainer={handleDragOverContainer}
+                    onItemDragEnd={handleItemDragEnd}
+                    isFolderDragOver={folderDragOverId === folder.id}
+                    onFolderDragStart={() => handleFolderDragStart(folder.id)}
+                    onFolderDragOver={() => handleFolderDragOver(folder.id)}
+                    onFolderDragEnd={handleFolderDragEnd}
                   />
                 );
               })}
-              {unfiledBookmarkedSessions.length > 0 && (
-                <>
-                  {sortedFolders.some((f) => (folderSessionsMap.get(f.id) ?? []).length > 0) && (
-                    <div style={{ ...sectionLabel, paddingTop: 4 }}>Unfiled</div>
-                  )}
-                  {unfiledBookmarkedSessions.map((s) => (
-                    <SidebarSessionRow
-                      key={s.sessionId}
-                      session={s}
-                      isSelected={viewingSessionId === s.sessionId}
-                      isFocused={false}
-                      isLive={liveSessionIds.has(s.sessionId)}
-                      isBookmarked
-                      matchLabel={matchLabel(s.sessionId)}
-                      onSelect={handleSelectSession}
-                      onDelete={() => setDeleteConfirmSessionId(s.sessionId)}
-                    />
-                  ))}
-                </>
-              )}
-            </>
-          )}
 
-          {/* History */}
-          {filteredSessions.length > 0 && (
-            <>
-              <div style={sectionLabel}>History</div>
-              {filteredSessions.map((s, idx) => (
+              <div
+                onDragOver={(e) => { e.preventDefault(); handleDragOverContainer('unfiled'); }}
+                style={{
+                  ...sectionLabel, paddingTop: 4,
+                  background: dragOverContainerId === 'unfiled' && dragOverItemId === null ? 'var(--bg-selected)' : undefined,
+                }}
+              >
+                Unfiled
+              </div>
+              {unfiledBookmarkedSessions.length === 0 && (
+                <div
+                  onDragOver={(e) => { e.preventDefault(); handleDragOverContainer('unfiled'); }}
+                  style={{ padding: '4px 12px', fontSize: 10, color: 'var(--text-faint)', fontStyle: 'italic' }}
+                >
+                  Drop sessions here
+                </div>
+              )}
+              {unfiledBookmarkedSessions.map(({ session, bookmarkId }) => (
                 <SidebarSessionRow
-                  key={s.sessionId}
-                  session={s}
-                  isSelected={viewingSessionId === s.sessionId}
-                  isFocused={focusedIndex === idx}
-                  isLive={liveSessionIds.has(s.sessionId)}
-                  isBookmarked={bookmarkedSessionIds.has(s.sessionId)}
-                  matchLabel={matchLabel(s.sessionId)}
+                  key={session.sessionId}
+                  session={session}
+                  isSelected={viewingSessionId === session.sessionId}
+                  isFocused={false}
+                  isLive={liveSessionIds.has(session.sessionId)}
+                  isBookmarked
+                  matchLabel={matchLabel(session.sessionId)}
+                  isDragOver={draggedItemId !== bookmarkId && dragOverContainerId === 'unfiled' && dragOverItemId === bookmarkId}
                   onSelect={handleSelectSession}
-                  onBookmark={() => void handleQuickBookmark(s.sessionId)}
-                  onDelete={() => setDeleteConfirmSessionId(s.sessionId)}
+                  onDelete={() => setDeleteConfirmSessionId(session.sessionId)}
+                  onDragStart={() => handleItemDragStart({ id: bookmarkId, containerId: 'unfiled', bookmarked: true })}
+                  onDragOver={() => handleDragOverItem('unfiled', bookmarkId)}
+                  onDragEnd={handleItemDragEnd}
                 />
               ))}
+
+              <NewFolderRow onCreate={handleCreateFolder} />
             </>
           )}
 
-          {filteredSessions.length === 0 && (
-            <div style={{
-              padding: '32px 16px', textAlign: 'center',
-              fontSize: 11, color: 'var(--text-faint)', fontFamily: 'var(--font-ui)',
-            }}>
-              {sidebarSearch ? 'No sessions match your search.' : 'No recorded sessions yet.'}
-            </div>
-          )}
+          {/* History — not a drop target (dropping a bookmark/folder drag here should
+              no-op, not silently apply whatever folder/Unfiled was last hovered before
+              the pointer crossed into this section). Claiming 'history' here reuses the
+              same-named guard in useFolderDrag.handleDragEnd. */}
+          <div onDragOver={(e) => { e.preventDefault(); handleDragOverContainer('history'); }}>
+            {filteredSessions.length > 0 && (
+              <>
+                <div style={sectionLabel}>History</div>
+                {filteredSessions.map((s, idx) => (
+                  <SidebarSessionRow
+                    key={s.sessionId}
+                    session={s}
+                    isSelected={viewingSessionId === s.sessionId}
+                    isFocused={focusedIndex === idx}
+                    isLive={liveSessionIds.has(s.sessionId)}
+                    isBookmarked={bookmarkedSessionIds.has(s.sessionId)}
+                    matchLabel={matchLabel(s.sessionId)}
+                    onSelect={handleSelectSession}
+                    onBookmark={() => void handleQuickBookmark(s.sessionId)}
+                    onDelete={() => setDeleteConfirmSessionId(s.sessionId)}
+                    onDragStart={() => handleItemDragStart({
+                      id: bookmarkIdForSession(s.sessionId) ?? s.sessionId,
+                      containerId: 'history',
+                      bookmarked: bookmarkedSessionIds.has(s.sessionId),
+                    })}
+                    onDragEnd={handleItemDragEnd}
+                  />
+                ))}
+              </>
+            )}
+
+            {filteredSessions.length === 0 && (
+              <div style={{
+                padding: '32px 16px', textAlign: 'center',
+                fontSize: 11, color: 'var(--text-faint)', fontFamily: 'var(--font-ui)',
+              }}>
+                {sidebarSearch ? 'No sessions match your search.' : 'No recorded sessions yet.'}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -567,21 +648,29 @@ interface SidebarFolderProps {
   liveSessionIds: Set<string>;
   matchLabel: (sessionId: string) => string | null;
   onSelect: (id: string) => void;
+  onRename: (name: string) => void;
+  onDelete: () => void;
+  draggedItemId: string | null;
+  dragOverContainerId: string | null;
+  dragOverItemId: string | null;
+  onItemDragStart: (source: FolderDragSource) => void;
+  onItemDragOverItem: (containerId: string, itemId: string) => void;
+  onItemDragOverContainer: (containerId: string) => void;
+  onItemDragEnd: () => void;
+  isFolderDragOver: boolean;
+  onFolderDragStart: () => void;
+  onFolderDragOver: () => void;
+  onFolderDragEnd: () => void;
 }
 
-function SidebarFolder({ folderId, name, items, viewingSessionId, liveSessionIds, matchLabel, onSelect }: SidebarFolderProps) {
+function SidebarFolder({
+  folderId, name, items, viewingSessionId, liveSessionIds, matchLabel, onSelect,
+  onRename, onDelete,
+  draggedItemId, dragOverContainerId, dragOverItemId,
+  onItemDragStart, onItemDragOverItem, onItemDragOverContainer, onItemDragEnd,
+  isFolderDragOver, onFolderDragStart, onFolderDragOver, onFolderDragEnd,
+}: SidebarFolderProps) {
   const [expanded, setExpanded] = useState(true);
-
-  const persist = useCallback((ids: string[]) =>
-    fetch('/api/bookmarks/reorder', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ folderId, ids }),
-    }).then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); }),
-  [folderId]);
-
-  const { items: orderedItems, reorder } = useOptimisticOrder(items, (i) => i.bookmarkId, persist);
-  const { dragOverId, handleDragStart, handleDragOver, handleDragEnd } = useDragReorder(reorder);
 
   return (
     <div>
@@ -589,9 +678,24 @@ function SidebarFolder({ folderId, name, items, viewingSessionId, liveSessionIds
         expanded={expanded}
         onToggle={() => setExpanded((v) => !v)}
         name={name}
-        count={orderedItems.length}
+        count={items.length}
+        onRename={onRename}
+        onDelete={onDelete}
+        draggable
+        isDragOver={isFolderDragOver || (dragOverContainerId === folderId && dragOverItemId === null)}
+        onDragStart={onFolderDragStart}
+        onDragOver={() => { onFolderDragOver(); onItemDragOverContainer(folderId); }}
+        onDragEnd={onFolderDragEnd}
       />
-      {expanded && orderedItems.map(({ session, bookmarkId }) => (
+      {expanded && items.length === 0 && (
+        <div
+          onDragOver={(e) => { e.preventDefault(); onItemDragOverContainer(folderId); }}
+          style={{ padding: '4px 20px', fontSize: 10, color: 'var(--text-faint)', fontStyle: 'italic' }}
+        >
+          Drop sessions here
+        </div>
+      )}
+      {expanded && items.map(({ session, bookmarkId }) => (
         <SidebarSessionRow
           key={session.sessionId}
           session={session}
@@ -601,11 +705,11 @@ function SidebarFolder({ folderId, name, items, viewingSessionId, liveSessionIds
           isBookmarked
           indent
           matchLabel={matchLabel(session.sessionId)}
-          isDragOver={dragOverId === bookmarkId}
+          isDragOver={draggedItemId !== bookmarkId && dragOverContainerId === folderId && dragOverItemId === bookmarkId}
           onSelect={onSelect}
-          onDragStart={() => handleDragStart(bookmarkId)}
-          onDragOver={() => handleDragOver(bookmarkId)}
-          onDragEnd={handleDragEnd}
+          onDragStart={() => onItemDragStart({ id: bookmarkId, containerId: folderId, bookmarked: true })}
+          onDragOver={() => onItemDragOverItem(folderId, bookmarkId)}
+          onDragEnd={onItemDragEnd}
         />
       ))}
     </div>
