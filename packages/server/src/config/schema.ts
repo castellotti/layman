@@ -60,6 +60,12 @@ export const LaymanConfigSchema = z.object({
   ]).default('medium'), // 'all'=approve everything, 'medium'=approve low+medium, 'low'=approve only low, 'none'=always prompt
   laymansPrompt: z.string().default(DEFAULT_LAYMANS_PROMPT),
   hookUrl: z.string().optional(),
+  /**
+   * Base URL used when generating outbound links (copy-link buttons, markdown
+   * exports).  Persisted, unlike hookUrl — it is a user preference, not an
+   * invocation detail.  Empty falls back to hookUrl, then host:port.
+   */
+  publicUrl: z.string().default(''),
   sessionRecording: z.boolean().default(false),
   recordingRecovery: z.boolean().default(false),
   historyImport: z.boolean().default(false),

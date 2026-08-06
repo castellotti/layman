@@ -1,6 +1,9 @@
 import { create } from 'zustand';
-import type { TimelineEvent, PendingApprovalDTO, LaymanConfig, SessionStatus, SetupStatus, BookmarkFolder, Bookmark, HighlightFolder, Highlight, SessionTimeMetrics, SessionAccessLog, SessionMetrics, DriftState } from '../lib/types.js';
+import type { TimelineEvent, PendingApprovalDTO, LaymanConfig, SessionStatus, SetupStatus, BookmarkFolder, Bookmark, HighlightFolder, Highlight, SessionTimeMetrics, SessionAccessLog, SessionMetrics, DriftState, ResolvedId } from '../lib/types.js';
 import type { SessionInfo } from '../lib/ws-protocol.js';
+import type { LaymanRoute, RouteOptions, ViewName } from '../lib/layman-url.js';
+import { extractTurn } from '../lib/turns.js';
+import { pairFor } from '../lib/event-pairing.js';
 
 function computeHighlightedEventIds(highlights: Highlight[]): Set<string> {
   const ids = new Set<string>();
@@ -79,6 +82,72 @@ function viewModeFlags(mode: ViewMode) {
   };
 }
 
+// ─── URL ↔ view mode ───────────────────────────────────────────────────────
+// The URL grammar's `?view=` names are user-facing and stable; ViewMode is
+// internal and predates them. These two maps are the only place they meet.
+
+const VIEW_NAME_BY_MODE: Record<ViewMode, ViewName> = {
+  dashboard: 'dashboard',
+  stream: 'logs',
+  flowchart: 'flow',
+  sessions: 'sessions',
+  prompts: 'prompts',
+};
+
+const MODE_BY_VIEW_NAME: Record<ViewName, ViewMode> = {
+  dashboard: 'dashboard',
+  logs: 'stream',
+  flow: 'flowchart',
+  sessions: 'sessions',
+  prompts: 'prompts',
+};
+
+export function viewNameForMode(mode: ViewMode): ViewName {
+  return VIEW_NAME_BY_MODE[mode];
+}
+
+export function viewModeForName(name: ViewName): ViewMode {
+  return MODE_BY_VIEW_NAME[name];
+}
+
+/** The base URL this instance advertises for links it generates. */
+export function instanceUrlOf(config: LaymanConfig | null): string {
+  const configured = config?.publicUrl?.trim();
+  if (configured) return configured.replace(/\/+$/, '');
+  // Correct for the common single-machine case, and for a hub browsed over the LAN.
+  return typeof window !== 'undefined' ? window.location.origin : '';
+}
+
+/**
+ * A session's events, preferring the recorded copy. Falls back to whatever the
+ * live store holds, which is the only source when sessionRecording is off.
+ */
+async function fetchSessionEvents(
+  sessionId: string,
+): Promise<{ events: TimelineEvent[]; metrics: SessionTimeMetrics | null }> {
+  try {
+    const [evRes, metricsRes] = await Promise.all([
+      fetch(`/api/bookmarks/sessions/${encodeURIComponent(sessionId)}/events`),
+      fetch(`/api/bookmarks/sessions/${encodeURIComponent(sessionId)}/time-metrics`),
+    ]);
+    const evData = await evRes.json() as { events?: TimelineEvent[] };
+    const metrics = metricsRes.ok ? await metricsRes.json() as SessionTimeMetrics : null;
+    return { events: evData.events ?? [], metrics };
+  } catch {
+    return { events: [], metrics: null };
+  }
+}
+
+async function resolveRouteId(id: string): Promise<ResolvedId | null> {
+  try {
+    const res = await fetch(`/api/resolve?id=${encodeURIComponent(id)}`);
+    if (!res.ok) return null;
+    return await res.json() as ResolvedId;
+  } catch {
+    return null;
+  }
+}
+
 interface InvestigationState {
   [eventId: string]: {
     questions: Array<{ question: string; answer: string; tokens?: { input: number; output: number }; latencyMs?: number; model?: string }>;
@@ -145,6 +214,17 @@ export interface SessionState {
   highlightFolders: HighlightFolder[];
   highlights: Highlight[];
   highlightedEventIds: Set<string>;
+  selectedHighlightId: string | null;
+
+  // Addressable-URL state (see lib/layman-url.ts and hooks/useLaymanRoute.ts).
+  // selectedTurnPromptEventId is what lets the outbound URL keep saying /t/<id>
+  // after a deep link has been hydrated, instead of decaying to /s/<id>.
+  selectedTurnPromptEventId: string | null;
+  routeFolderId: string | null;
+  routeHydrating: boolean;
+  routeError: { message: string; instanceUrl: string } | null;
+  /** Seeds the Sessions sidebar search — set by the route-error panel's search box. */
+  sessionsSearchSeed: string | null;
 
   // Flowchart view
   flowchartOpen: boolean;
@@ -233,6 +313,11 @@ export interface SessionState {
   upsertHighlight: (highlight: Highlight) => void;
   removeHighlight: (highlightId: string) => void;
   navigateFromPromptsToSession: (sessionId: string, promptEventId: string) => void;
+  setSelectedHighlight: (highlightId: string | null) => void;
+  selectTurn: (sessionId: string, promptEventId: string | null) => void;
+  hydrateFromRoute: (route: LaymanRoute, opts: RouteOptions) => Promise<void>;
+  clearRouteError: () => void;
+  setSessionsSearchSeed: (query: string | null) => void;
   setDashboardFocusedSession: (id: string | null) => void;
   setDashboardSessionOrder: (order: string[]) => void;
   dismissDashboardSession: (sessionId: string) => void;
@@ -261,7 +346,7 @@ export interface SessionState {
   toggleExpandAllLogs: (detailEventIds: string[]) => void;
 }
 
-export const useSessionStore = create<SessionState>((set) => ({
+export const useSessionStore = create<SessionState>((set, get) => ({
   connected: false,
   serverVersion: '',
   wsStatus: 'connecting',
@@ -303,6 +388,13 @@ export const useSessionStore = create<SessionState>((set) => ({
   highlightFolders: [],
   highlights: [],
   highlightedEventIds: new Set<string>(),
+  selectedHighlightId: null,
+
+  selectedTurnPromptEventId: null,
+  routeFolderId: null,
+  routeHydrating: false,
+  routeError: null,
+  sessionsSearchSeed: null,
 
   flowchartOpen: false,
 
@@ -654,13 +746,189 @@ export const useSessionStore = create<SessionState>((set) => ({
     ...viewModeFlags('sessions'),
     viewingSessionId: sessionId,
     bookmarksScrollToEventId: promptEventId,
+    selectedTurnPromptEventId: promptEventId,
   }),
+
+  setSelectedHighlight: (selectedHighlightId) => set({ selectedHighlightId }),
+
+  // An explicit user navigation to one turn — the URL becomes /s/<sid>/t/<pid>.
+  selectTurn: (sessionId, promptEventId) => set({
+    viewMode: 'sessions',
+    ...viewModeFlags('sessions'),
+    viewingSessionId: sessionId,
+    selectedTurnPromptEventId: promptEventId,
+    ...(promptEventId ? { bookmarksScrollToEventId: promptEventId } : {}),
+  }),
+
+  clearRouteError: () => set({ routeError: null }),
+
+  setSessionsSearchSeed: (sessionsSearchSeed) => set({ sessionsSearchSeed }),
+
+  /**
+   * Applies a parsed URL to the store — the inbound half of useLaymanRoute.
+   *
+   * Deliberately the only place a route turns into view state: the outbound half
+   * derives a URL from these same fields, so anything set here must also be
+   * readable back out or a deep link decays on the first re-render.
+   */
+  hydrateFromRoute: async (route, opts) => {
+    const instanceUrl = instanceUrlOf(get().config);
+    const fail = (message: string) =>
+      set({ routeError: { message, instanceUrl }, routeHydrating: false });
+    const done = (patch: Partial<SessionState>) =>
+      set({ ...patch, routeHydrating: false, routeError: null });
+
+    set({ routeHydrating: true, routeError: null });
+
+    /** Opens a session's transcript, optionally focused on one turn or event. */
+    const openSession = async (
+      sessionId: string,
+      focus: { promptEventId?: string; eventId?: string },
+    ): Promise<void> => {
+      const { events: recorded, metrics } = await fetchSessionEvents(sessionId);
+      // A live session with sessionRecording off exists only in memory.
+      const events = recorded.length > 0
+        ? recorded
+        : get().events.filter((e) => e.sessionId === sessionId);
+
+      if (events.length === 0) {
+        fail(`No session ${sessionId.slice(0, 8)} on this instance.`);
+        return;
+      }
+
+      const mode = opts.view ? viewModeForName(opts.view) : 'sessions';
+      const base: Partial<SessionState> = {
+        historicalEvents: events,
+        sessionTimeMetrics: metrics,
+        activeSessionId: sessionId,
+      };
+
+      // Logs and Flow render the live store keyed by activeSessionId; only the
+      // Sessions transcript reads historicalEvents.
+      if (mode === 'stream' || mode === 'flowchart') {
+        done({
+          ...base,
+          viewMode: mode,
+          ...viewModeFlags(mode),
+          viewingSessionId: null,
+          scrollToEventId: focus.eventId ?? focus.promptEventId ?? null,
+          ...(mode === 'stream'
+            ? { logsOverride: true, dashboardOverride: false, splitOverrides: {} }
+            : {}),
+        });
+        return;
+      }
+
+      let turnPromptEventId: string | null = null;
+      let expanded = get().expandedLogEventIds;
+
+      if (focus.promptEventId) {
+        const turn = extractTurn(events, focus.promptEventId);
+        if (!turn) {
+          fail(`Turn ${focus.promptEventId.slice(0, 8)} is not in session ${sessionId.slice(0, 8)}.`);
+          return;
+        }
+        // The addressed id may be a collapsed duplicate; the turn names the survivor.
+        turnPromptEventId = turn.promptEventId;
+        if (expanded !== 'all') {
+          expanded = new Set([...expanded, ...pairFor(turn.promptEventId, events)]);
+        }
+      } else if (focus.eventId && !events.some((e) => e.id === focus.eventId)) {
+        fail(`Event ${focus.eventId.slice(0, 8)} is not in session ${sessionId.slice(0, 8)}.`);
+        return;
+      }
+
+      done({
+        ...base,
+        viewMode: 'sessions',
+        ...viewModeFlags('sessions'),
+        viewingSessionId: sessionId,
+        selectedTurnPromptEventId: turnPromptEventId,
+        bookmarksScrollToEventId: focus.eventId ?? turnPromptEventId,
+        expandedLogEventIds: expanded,
+      });
+    };
+
+    switch (route.kind) {
+      case 'dashboard': {
+        const mode = opts.view ? viewModeForName(opts.view) : 'dashboard';
+        done({
+          viewMode: mode,
+          ...viewModeFlags(mode),
+          ...(mode === 'dashboard' ? { dashboardOverride: true, logsOverride: false, splitOverrides: {} } : {}),
+          ...(mode === 'stream' ? { logsOverride: true, dashboardOverride: false, splitOverrides: {} } : {}),
+        });
+        return;
+      }
+
+      case 'session':
+        await openSession(route.sessionId, {});
+        return;
+
+      case 'turn':
+        await openSession(route.sessionId, { promptEventId: route.promptEventId });
+        return;
+
+      case 'event':
+        await openSession(route.sessionId, { eventId: route.eventId });
+        return;
+
+      case 'highlight': {
+        const resolved = await resolveRouteId(route.highlightId);
+        if (!resolved || resolved.kind !== 'highlight') {
+          fail(`No highlight ${route.highlightId.slice(0, 8)} on this instance.`);
+          return;
+        }
+        // An explicit non-Prompts ?view opens the underlying turn instead of the card.
+        if (opts.view && opts.view !== 'prompts' && resolved.sessionId) {
+          await openSession(resolved.sessionId, { promptEventId: resolved.promptEventId });
+          return;
+        }
+        done({
+          viewMode: 'prompts',
+          ...viewModeFlags('prompts'),
+          selectedHighlightId: resolved.id,
+        });
+        return;
+      }
+
+      case 'bookmark': {
+        const resolved = await resolveRouteId(route.bookmarkId);
+        if (!resolved || resolved.kind !== 'bookmark' || !resolved.sessionId) {
+          fail(`No bookmark ${route.bookmarkId.slice(0, 8)} on this instance.`);
+          return;
+        }
+        await openSession(resolved.sessionId, {});
+        return;
+      }
+
+      case 'folder': {
+        const resolved = await resolveRouteId(route.folderId);
+        if (!resolved || (resolved.kind !== 'folder' && resolved.kind !== 'highlight_folder')) {
+          fail(`No folder ${route.folderId.slice(0, 8)} on this instance.`);
+          return;
+        }
+        // Both folder kinds share the /f/ prefix; the resolver says which view owns it.
+        const mode = resolved.kind === 'highlight_folder' ? 'prompts' : 'sessions';
+        done({
+          viewMode: mode,
+          ...viewModeFlags(mode),
+          routeFolderId: resolved.id,
+          viewingSessionId: null,
+        });
+        return;
+      }
+    }
+  },
 
   setViewingSession: (viewingSessionId) =>
     set((state) => ({
       viewingSessionId,
       historicalEvents: viewingSessionId === null ? [] : state.historicalEvents,
       sessionTimeMetrics: viewingSessionId === null ? null : state.sessionTimeMetrics,
+      // A turn address only means something within the session it came from.
+      selectedTurnPromptEventId:
+        viewingSessionId === state.viewingSessionId ? state.selectedTurnPromptEventId : null,
     })),
 
   setHistoricalEvents: (historicalEvents) => set({ historicalEvents }),

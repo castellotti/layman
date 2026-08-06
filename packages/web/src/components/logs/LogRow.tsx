@@ -5,7 +5,7 @@ import { formatTime } from '../../lib/format.js';
 import { getEffectiveAgentContent } from '../../lib/reasoning.js';
 import { EventDetailBody } from '../events/EventCard.js';
 import { RiskBadge } from '../shared/RiskBadge.js';
-import { MagnifierIcon } from '../primitives/index.js';
+import { MagnifierIcon, CopyLinkButton } from '../primitives/index.js';
 import type { TimelineEvent } from '../../lib/types.js';
 import type { ClientMessage } from '../../lib/ws-protocol.js';
 
@@ -124,6 +124,11 @@ export const LogRow = React.memo(function LogRow({ event, index, hasDetail, isEx
             >
               {copied ? '✓ Copied' : 'Copy'}
             </button>
+            <CopyLinkButton
+              route={{ kind: 'event', sessionId: event.sessionId, eventId: event.id }}
+              title="Copy link to this event"
+              label="Link"
+            />
             {event.riskLevel && event.riskLevel !== 'low' && <RiskBadge level={event.riskLevel} compact />}
             <button
               onClick={(e) => { e.stopPropagation(); setSelectedEvent(event.id); }}

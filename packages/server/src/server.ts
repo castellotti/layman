@@ -26,6 +26,8 @@ import { openDatabase } from './db/database.js';
 import { SessionRecorder } from './db/recorder.js';
 import { BookmarkStore } from './db/bookmarks.js';
 import { HighlightStore } from './db/highlights.js';
+import { TurnStore } from './turns/store.js';
+import { registerTurnRoutes } from './routes/turns.js';
 import { searchEvents, parseSearchQuery, matchesSearchTerms } from './db/search.js';
 import { computeTimeMetrics } from './db/time-metrics.js';
 import type { SearchRequest } from './db/search.js';
@@ -136,6 +138,7 @@ export function createServer(config: LaymanConfig): LaymanServer {
   const db = openDatabase();
   const bookmarkStore = new BookmarkStore(db);
   const highlightStore = new HighlightStore(db);
+  const turnStore = new TurnStore(db, eventStore, bookmarkStore);
   const recorder = new SessionRecorder(
     db,
     () => getConfig().sessionRecording,
@@ -292,10 +295,28 @@ export function createServer(config: LaymanConfig): LaymanServer {
         prefix: '/',
         decorateReply: true,
       });
+
+      // SPA fallback: deep links like /s/<id>/t/<id> are client-side routes, so
+      // any unmatched GET that isn't an API/hook/ws path serves index.html and
+      // lets the app resolve it. Without this, reloading a deep link 404s.
+      fastify.setNotFoundHandler((request, reply) => {
+        const path = request.url.split('?')[0];
+        const isAppRoute =
+          request.method === 'GET' &&
+          !path.startsWith('/api/') &&
+          !path.startsWith('/hooks/') &&
+          path !== '/ws';
+
+        if (isAppRoute) return reply.sendFile('index.html');
+        return reply.status(404).send({ error: 'Not found' });
+      });
     }
   }
 
   function registerRoutes(): void {
+    // Turn model + data egress (see docs: addressable URLs)
+    registerTurnRoutes(fastify, { turnStore, bookmarkStore, getConfig });
+
     // Health check
     fastify.get('/api/health', async () => ({ status: 'ok', version: SERVER_VERSION }));
 

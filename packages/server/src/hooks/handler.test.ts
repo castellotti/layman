@@ -59,6 +59,7 @@ const MOCK_CONFIG: LaymanConfig = {
   setupWizardComplete: false,
   openWebUiUrl: '',
   openWebUiApiKey: '',
+  publicUrl: '',
 };
 
 describe('PendingApprovalManager', () => {

@@ -11,10 +11,12 @@ import { PromptsView } from './components/sessions/PromptsView.js';
 import { AccessLogPanel } from './components/access/AccessLogPanel.js';
 import { DriftBlockDialog } from './components/drift/DriftBlockDialog.js';
 import { ChangelogModal } from './components/shared/ChangelogModal.js';
+import { RouteErrorPanel } from './components/layout/RouteErrorPanel.js';
 import { BoltIcon } from './components/primitives/index.js';
 import { useSessionStore } from './stores/sessionStore.js';
 import type { SessionState } from './stores/sessionStore.js';
 import { useWebSocket } from './hooks/useWebSocket.js';
+import { useLaymanRoute } from './hooks/useLaymanRoute.js';
 import { usePendingApprovals } from './hooks/usePendingApprovals.js';
 import { hasChangelog, HARNESS_DISPLAY_NAMES } from './hooks/useChangelog.js';
 import { shallow } from 'zustand/shallow';
@@ -189,12 +191,15 @@ function AppShell({ children, onSend, onInstall }: AppShellProps) {
       <AccessLogPanel />
       <SetupWizard onSend={onSend} />
       <DriftBlockDialog onSend={onSend} />
+      <RouteErrorPanel />
     </div>
   );
 }
 
 export function App() {
   const { send } = useWebSocket();
+  // Binds the address bar to the store in both directions (see useLaymanRoute).
+  useLaymanRoute();
   const investigationOpen = useSessionStore((s) => s.investigationOpen);
   const flowchartOpen = useSessionStore((s) => s.flowchartOpen);
   const bookmarksOpen = useSessionStore((s) => s.bookmarksOpen);

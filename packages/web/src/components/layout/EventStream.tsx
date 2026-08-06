@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { useEventStore } from '../../hooks/useEventStore.js';
 import { useSessionStore } from '../../stores/sessionStore.js';
 import { LogRow } from '../logs/LogRow.js';
+import { TurnHeader } from '../logs/TurnHeader.js';
 import { NavigationBar } from '../controls/NavigationBar.js';
 import { SessionMetricsBar } from '../controls/SessionMetricsBar.js';
 import { PromptInput } from '../controls/PromptInput.js';
@@ -9,6 +10,7 @@ import { Minimap } from '../logs/Minimap.js';
 import { JumpToLatest } from '../primitives/index.js';
 import { saveAndBookmarkSession } from '../../lib/bookmarks-api.js';
 import { pairFor, hasLogDetail } from '../../lib/event-pairing.js';
+import { extractTurns } from '../../lib/turns.js';
 import { sessionDisplayName } from '../../lib/session-state.js';
 import type { ClientMessage } from '../../lib/ws-protocol.js';
 
@@ -16,9 +18,14 @@ interface EventStreamProps {
   onSend: (msg: ClientMessage) => void;
   archived?: boolean;
   archivedDate?: string;
+  /**
+   * Group the list under one collapsible header per turn. Opt-in so the live
+   * Logs view keeps its current density; the archived transcript turns it on.
+   */
+  turnRuler?: boolean;
 }
 
-export function EventStream({ onSend, archived = false, archivedDate }: EventStreamProps) {
+export function EventStream({ onSend, archived = false, archivedDate, turnRuler = false }: EventStreamProps) {
   const [promptsOnly, setPromptsOnly] = useState(false);
   const [requestsOnly, setRequestsOnly] = useState(false);
   const [responsesOnly, setResponsesOnly] = useState(false);
@@ -31,6 +38,7 @@ export function EventStream({ onSend, archived = false, archivedDate }: EventStr
   const {
     sessions, activeSessionId, config, fetchAccessLog, scrollToEventId, clearScrollToEvent, bookmarks,
     logHighlightedEventIds, expandedLogEventIds, setExpandedLogEventIds, toggleExpandAllLogs,
+    bookmarksScrollToEventId, setBookmarksScrollToEventId,
   } = useSessionStore();
   const historicalEventsFromStore = useSessionStore((s) => s.historicalEvents);
 
@@ -63,6 +71,38 @@ export function EventStream({ onSend, archived = false, archivedDate }: EventStr
   );
   const allExpanded = detailEventIds.length > 0 && detailEventIds.every((id) => effectiveExpanded.has(id));
   const expandToggleLabel = allExpanded ? '⊟ Collapse all' : '⊞ Expand all';
+
+  // ─── Turn ruler ───────────────────────────────────────────────────────────
+  // Turns come from the unfiltered per-session list so numbering and ownership
+  // match the server's; a filtered-out prompt simply shows no header.
+  const [collapsedTurns, setCollapsedTurns] = useState<Set<string>>(new Set());
+  const selectedTurnPromptEventId = useSessionStore((s) => s.selectedTurnPromptEventId);
+  const selectTurn = useSessionStore((s) => s.selectTurn);
+
+  const turns = useMemo(
+    () => (turnRuler ? extractTurns(sessionEvents) : []),
+    [turnRuler, sessionEvents]
+  );
+  const turnByPromptId = useMemo(() => new Map(turns.map((t) => [t.promptEventId, t])), [turns]);
+  /** Events hidden because the turn owning them is collapsed. */
+  const hiddenByCollapse = useMemo(() => {
+    if (collapsedTurns.size === 0) return new Set<string>();
+    const hidden = new Set<string>();
+    for (const turn of turns) {
+      if (!collapsedTurns.has(turn.promptEventId)) continue;
+      for (const id of turn.eventIds) hidden.add(id);
+    }
+    return hidden;
+  }, [turns, collapsedTurns]);
+
+  const toggleTurnCollapsed = useCallback((promptEventId: string) => {
+    setCollapsedTurns((prev) => {
+      const next = new Set(prev);
+      if (next.has(promptEventId)) next.delete(promptEventId);
+      else next.add(promptEventId);
+      return next;
+    });
+  }, []);
 
   // Row line click — select-to-focus: expand this row + its pair, collapse the rest.
   // Also moves the keyboard-navigation cursor here so arrow-key nav continues from the click.
@@ -103,26 +143,34 @@ export function EventStream({ onSend, archived = false, archivedDate }: EventStr
     }
   }, [events.length, autoScroll, followLatest, archived]);
 
-  // Scroll to a specific event when navigating from Dashboard to Logs — select its
-  // pair (so context is visible) and scroll the row into view.
+  // Scroll to a specific event — select its pair (so context is visible) and scroll
+  // the row into view. Live Logs is driven by scrollToEventId (Dashboard drilldown);
+  // the archived transcript by bookmarksScrollToEventId, which is what a /t/ or /e/
+  // deep link and the Prompts view's "Open session" both set.
+  const pendingScrollEventId = archived ? bookmarksScrollToEventId : scrollToEventId;
+  const clearPendingScroll = useCallback(() => {
+    if (archived) setBookmarksScrollToEventId(null);
+    else clearScrollToEvent();
+  }, [archived, setBookmarksScrollToEventId, clearScrollToEvent]);
+
   useEffect(() => {
-    if (!scrollToEventId) return;
+    if (!pendingScrollEventId) return;
 
-    setExpandedLogEventIds(new Set(pairFor(scrollToEventId, sessionEvents)));
+    setExpandedLogEventIds(new Set(pairFor(pendingScrollEventId, sessionEvents)));
 
-    const idx = events.findIndex((e) => e.id === scrollToEventId);
+    const idx = events.findIndex((e) => e.id === pendingScrollEventId);
     if (idx >= 0) setSelectedIndex(idx);
     setFollowLatest(false);
-    clearScrollToEvent();
+    clearPendingScroll();
 
     requestAnimationFrame(() => {
       const cards = scrollRef.current?.querySelectorAll('[data-event-card]');
       if (cards) {
-        const target = Array.from(cards).find((c) => c.getAttribute('data-event-id') === scrollToEventId);
+        const target = Array.from(cards).find((c) => c.getAttribute('data-event-id') === pendingScrollEventId);
         if (target) target.scrollIntoView({ behavior: 'smooth', block: 'center' });
       }
     });
-  }, [scrollToEventId, events, sessionEvents, clearScrollToEvent, setExpandedLogEventIds]);
+  }, [pendingScrollEventId, events, sessionEvents, clearPendingScroll, setExpandedLogEventIds]);
 
   // When tab becomes visible again, re-sync scroll position if following (live only)
   useEffect(() => {
@@ -391,19 +439,37 @@ export function EventStream({ onSend, archived = false, archivedDate }: EventStr
               </div>
             </div>
           ) : (
-            events.map((event, i) => (
-              <LogRow
-                key={event.id}
-                event={event}
-                index={eventIndexMap.get(event.id) ?? 0}
-                hasDetail={detailEventIdSet.has(event.id)}
-                isExpanded={effectiveExpanded.has(event.id)}
-                isSelected={i === selectedIndex}
-                onSelect={handleSelectRow}
-                onCaretToggle={handleCaretToggle}
-                onSend={onSend}
-              />
-            ))
+            events.map((event, i) => {
+              const turn = turnByPromptId.get(event.id);
+              const hidden = hiddenByCollapse.has(event.id);
+              if (hidden && !turn) return null;
+
+              return (
+                <React.Fragment key={event.id}>
+                  {turn && (
+                    <TurnHeader
+                      turn={turn}
+                      collapsed={collapsedTurns.has(turn.promptEventId)}
+                      addressed={selectedTurnPromptEventId === turn.promptEventId}
+                      onToggle={() => toggleTurnCollapsed(turn.promptEventId)}
+                      onSelect={() => selectTurn(turn.sessionId, turn.promptEventId)}
+                    />
+                  )}
+                  {!hidden && (
+                    <LogRow
+                      event={event}
+                      index={eventIndexMap.get(event.id) ?? 0}
+                      hasDetail={detailEventIdSet.has(event.id)}
+                      isExpanded={effectiveExpanded.has(event.id)}
+                      isSelected={i === selectedIndex}
+                      onSelect={handleSelectRow}
+                      onCaretToggle={handleCaretToggle}
+                      onSend={onSend}
+                    />
+                  )}
+                </React.Fragment>
+              );
+            })
           )}
         </div>
 
