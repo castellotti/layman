@@ -264,11 +264,83 @@ function buildLaymanHooks(serverUrl: string, hookTimeout: number): SettingsHooks
   };
 }
 
+/**
+ * Layman hook URLs are always `{origin}/hooks/{EventName}`.
+ * Capturing the event name lets us recognise our own hooks structurally.
+ */
+const LAYMAN_HOOK_URL_PATTERN = /^https?:\/\/[^/]+\/hooks\/([A-Za-z]+)\/?$/;
+
+let laymanEventNames: Set<string> | null = null;
+
+/** Event names Layman registers, plus names it has registered historically. */
+function getLaymanEventNames(): Set<string> {
+  if (!laymanEventNames) {
+    laymanEventNames = new Set(Object.keys(buildLaymanHooks('http://placeholder', 10)));
+    // Not currently registered (needs claude-code >= 2.1.89) but may exist in an
+    // older settings file — recognise it so cleanup still removes it.
+    laymanEventNames.add('PermissionDenied');
+  }
+  return laymanEventNames;
+}
+
+/**
+ * Whether a hook entry belongs to Layman.
+ *
+ * Identity is *structural* (the URL shape), not tag-based: claude-code strips
+ * unknown keys such as `_layman` when it rewrites settings.json, so the tag
+ * cannot be relied on to survive. Matching on `serverUrl` alone is not enough
+ * either — when the URL changes (port change, --hook-url, localhost vs
+ * host.docker.internal) the old entries stop matching and a *duplicate* set
+ * gets appended, which is exactly how double-registration happens.
+ *
+ * Matching any `{origin}/hooks/{KnownLaymanEvent}` makes install idempotent
+ * across URL changes, and makes stale entries removable.
+ */
 function isLaymanHook(hook: HookEntry, serverUrl?: string): boolean {
   if (hook._layman === true) return true;
-  // Legacy: detect hooks installed before the _layman tag was added, matched by URL
-  if (serverUrl && typeof hook.url === 'string' && hook.url.startsWith(`${serverUrl}/hooks/`)) return true;
+  if (hook.type !== 'http' || typeof hook.url !== 'string') return false;
+
+  const match = LAYMAN_HOOK_URL_PATTERN.exec(hook.url.trim());
+  if (match && getLaymanEventNames().has(match[1])) return true;
+
+  // Fallback for URLs the pattern cannot parse but which point at this server.
+  if (serverUrl && hook.url.startsWith(`${serverUrl}/hooks/`)) return true;
   return false;
+}
+
+/**
+ * Removes Layman's hooks from a settings hook map, leaving everything else
+ * untouched.
+ *
+ * Filters *within* each matcher rather than dropping whole matchers: a matcher
+ * that contains both a Layman hook and someone else's would otherwise take the
+ * foreign hook down with it.
+ *
+ * Returns the number of hook entries removed.
+ */
+function stripLaymanHooks(
+  hooks: SettingsHooks,
+  eventNames: string[],
+  serverUrl?: string,
+): number {
+  let removed = 0;
+
+  for (const eventName of eventNames) {
+    const matchers = hooks[eventName];
+    if (!matchers) continue;
+
+    hooks[eventName] = matchers
+      .map((matcher) => {
+        const kept = matcher.hooks.filter((h) => !isLaymanHook(h as HookEntry, serverUrl));
+        removed += matcher.hooks.length - kept.length;
+        return { ...matcher, hooks: kept };
+      })
+      // Drop matchers we emptied, but keep ones that were already empty and
+      // ones still holding foreign hooks.
+      .filter((matcher) => matcher.hooks.length > 0);
+  }
+
+  return removed;
 }
 
 /** Hash of the expected command file content, used to detect staleness */
@@ -335,6 +407,100 @@ function getClineWorkflowContent(): string {
   ].join('\n');
 }
 
+/** Project-level settings files claude-code reads, in precedence order. */
+const PROJECT_SETTINGS_FILES = ['settings.json', 'settings.local.json'];
+
+export interface OrphanedHooksReport {
+  /** Absolute path of the settings file holding the orphans. */
+  path: string;
+  /** Hook event names that contain Layman hooks. */
+  events: string[];
+  /** Total number of Layman hook entries found. */
+  hookCount: number;
+  /** Events registered more than once — the cause of duplicate deliveries. */
+  duplicatedEvents: string[];
+}
+
+/**
+ * Finds Layman hooks left behind in a *project's* settings.
+ *
+ * Layman has installed globally (~/.claude/settings.json) since the
+ * multi-project change; any Layman hook in a project settings file is a
+ * leftover from before that, and claude-code merges it with the global set, so
+ * every event fires twice.
+ *
+ * Read-only. Scoped strictly to the directory passed in — it never scans the
+ * filesystem for other projects.
+ */
+export function findOrphanedProjectHooks(projectDir: string, serverUrl?: string): OrphanedHooksReport[] {
+  const reports: OrphanedHooksReport[] = [];
+
+  for (const fileName of PROJECT_SETTINGS_FILES) {
+    const path = join(projectDir, '.claude', fileName);
+    if (!existsSync(path)) continue;
+
+    let settings: Settings;
+    try {
+      settings = readSettings(path);
+    } catch {
+      continue; // Unreadable or malformed — leave it alone.
+    }
+    if (!settings.hooks) continue;
+
+    const events: string[] = [];
+    const duplicatedEvents: string[] = [];
+    let hookCount = 0;
+
+    for (const [eventName, matchers] of Object.entries(settings.hooks)) {
+      const laymanHooks = matchers.flatMap((m) =>
+        m.hooks.filter((h) => isLaymanHook(h as HookEntry, serverUrl)),
+      );
+      if (laymanHooks.length === 0) continue;
+
+      events.push(eventName);
+      hookCount += laymanHooks.length;
+      if (laymanHooks.length > 1) duplicatedEvents.push(eventName);
+    }
+
+    if (events.length > 0) reports.push({ path, events, hookCount, duplicatedEvents });
+  }
+
+  return reports;
+}
+
+/**
+ * Removes orphaned Layman hooks from a project's settings files.
+ *
+ * Safety properties, all of which matter because this file is the user's, not
+ * ours:
+ *  - only entries matching Layman's own URL shape are removed;
+ *  - foreign hooks are preserved, including ones sharing a matcher with ours;
+ *  - every other key (`permissions`, etc.) is written back untouched;
+ *  - the file is never deleted, even if it ends up with no hooks;
+ *  - only the directory passed in is touched.
+ *
+ * Returns what was removed (before removal), for reporting.
+ */
+export function repairOrphanedProjectHooks(projectDir: string, serverUrl?: string): OrphanedHooksReport[] {
+  const reports = findOrphanedProjectHooks(projectDir, serverUrl);
+
+  for (const report of reports) {
+    const settings = readSettings(report.path);
+    if (!settings.hooks) continue;
+
+    stripLaymanHooks(settings.hooks, Object.keys(settings.hooks), serverUrl);
+
+    for (const eventName of Object.keys(settings.hooks)) {
+      if (settings.hooks[eventName].length === 0) delete settings.hooks[eventName];
+    }
+    if (Object.keys(settings.hooks).length === 0) delete settings.hooks;
+
+    writeSettings(report.path, settings);
+  }
+
+  return reports;
+}
+
 export class HookInstaller {
   constructor(private options: HookInstallerOptions) {}
 
@@ -346,18 +512,15 @@ export class HookInstaller {
       settings.hooks = {};
     }
 
-    // Merge: for each event, remove existing Layman hooks and add new ones
+    // Merge: for each event, remove every existing Layman hook — at any URL, so
+    // a changed port or --hook-url replaces rather than duplicates — then add
+    // exactly one matcher back. This makes install idempotent and self-healing.
+    stripLaymanHooks(settings.hooks, Object.keys(laymanHooks), this.options.serverUrl);
+
     for (const [eventName, matchers] of Object.entries(laymanHooks)) {
       if (!settings.hooks[eventName]) {
         settings.hooks[eventName] = [];
       }
-
-      // Remove existing Layman hooks for this event (by tag or by URL, to handle legacy installs)
-      settings.hooks[eventName] = settings.hooks[eventName].filter(
-        (m) => !m.hooks.some((h) => isLaymanHook(h as HookEntry, this.options.serverUrl))
-      );
-
-      // Add new Layman hooks
       settings.hooks[eventName].push(...matchers);
     }
 
@@ -374,12 +537,10 @@ export class HookInstaller {
     const settings = readSettings(GLOBAL_SETTINGS_PATH);
     if (!settings.hooks) return;
 
-    // Remove all Layman hooks (by tag or by URL, to handle legacy installs)
-    for (const eventName of Object.keys(settings.hooks)) {
-      settings.hooks[eventName] = settings.hooks[eventName].filter(
-        (m) => !m.hooks.some((h) => isLaymanHook(h as HookEntry, this.options.serverUrl))
-      );
+    // Remove all Layman hooks, preserving any foreign hooks sharing a matcher
+    stripLaymanHooks(settings.hooks, Object.keys(settings.hooks), this.options.serverUrl);
 
+    for (const eventName of Object.keys(settings.hooks)) {
       // Remove empty event arrays
       if (settings.hooks[eventName].length === 0) {
         delete settings.hooks[eventName];
