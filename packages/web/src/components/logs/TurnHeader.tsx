@@ -1,5 +1,6 @@
 import React from 'react';
 import { CopyLinkButton } from '../primitives/index.js';
+import { SpeakButton } from '../tts/SpeakButton.js';
 import { formatTime, formatDuration } from '../../lib/format.js';
 import type { Turn } from '../../lib/types.js';
 
@@ -75,6 +76,14 @@ export const TurnHeader = React.memo(function TurnHeader({
         )}
         {turn.responseEventId === null && <span style={{ color: 'var(--warn)' }}>· no response</span>}
       </span>
+
+      {turn.responseEventId && (
+        <SpeakButton
+          id={turn.responseEventId}
+          text={turn.responseText}
+          title="Speak this turn's response"
+        />
+      )}
 
       <CopyLinkButton
         route={{ kind: 'turn', sessionId: turn.sessionId, promptEventId: turn.promptEventId }}

@@ -3,7 +3,7 @@ import { PendingApprovalManager } from './pending.js';
 import { EventStore } from '../events/store.js';
 import { AnalysisEngine } from '../analysis/engine.js';
 import type { PreToolUseInput, PermissionRequestInput } from './types.js';
-import type { LaymanConfig } from '../config/schema.js';
+import { TtsConfigSchema, type LaymanConfig } from '../config/schema.js';
 
 const BASE_INPUT: Omit<PreToolUseInput, 'tool_name' | 'tool_input'> = {
   session_id: 'sess-1',
@@ -56,6 +56,7 @@ const MOCK_CONFIG: LaymanConfig = {
     blockOnRed: true,
     remindOnOrange: true,
   },
+  tts: TtsConfigSchema.parse({}),
   setupWizardComplete: false,
   openWebUiUrl: '',
   openWebUiApiKey: '',

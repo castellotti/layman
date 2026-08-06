@@ -10,6 +10,7 @@ import { useDragReorder } from '../../hooks/useDragReorder.js';
 import { useOptimisticOrder } from '../../hooks/useOptimisticOrder.js';
 import { useFolderDrag, reorderIds, type FolderDragSource, type FolderDropTarget } from '../../hooks/useFolderDrag.js';
 import { useFolderCrud } from '../../hooks/useFolderCrud.js';
+import { SpeakButton } from '../tts/SpeakButton.js';
 
 interface HighlightEventPair {
   promptEvent: TimelineEvent | null;
@@ -489,6 +490,14 @@ export function PromptsView() {
                   })}
                 </p>
               </div>
+              {eventPair.responseEvent && (
+                <SpeakButton
+                  id={eventPair.responseEvent.id}
+                  text={getEffectiveAgentContent(eventPair.responseEvent).response}
+                  title="Speak this highlight's response"
+                  size={13}
+                />
+              )}
               <CopyLinkButton
                 route={{ kind: 'highlight', highlightId: selectedHighlight.id }}
                 title="Copy link to this highlight"

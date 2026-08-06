@@ -3,6 +3,9 @@ import { useSessionStore, viewNameForMode, instanceUrlOf } from '../stores/sessi
 import type { SessionState } from '../stores/sessionStore.js';
 import { buildPath, parsePath } from '../lib/layman-url.js';
 import type { LaymanRoute, RouteOptions } from '../lib/layman-url.js';
+import { ttsPlayer, speechOptionsFrom } from '../lib/tts.js';
+import { toSpeakableText } from '../lib/tts-text.js';
+import type { Turn } from '../lib/types.js';
 
 /**
  * Binds the address bar to the store, in two deliberately asymmetric directions:
@@ -60,6 +63,99 @@ export function routeForState(state: SessionState): { route: LaymanRoute; opts: 
   return { route: { kind: 'dashboard' }, opts: view === 'dashboard' ? {} : { view } };
 }
 
+/** How long a `?play=1` arrival waits for config before giving up. */
+const CONFIG_WAIT_MS = 10_000;
+
+/**
+ * Config arrives over the WebSocket, which on a cold page load has usually not
+ * connected by the time the inbound route is applied. Reading it directly would
+ * find `null` and silently decide speech was disabled — so wait for it.
+ */
+function waitForConfig(): Promise<SessionState['config']> {
+  const immediate = useSessionStore.getState().config;
+  if (immediate) return Promise.resolve(immediate);
+
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => { unsubscribe(); resolve(null); }, CONFIG_WAIT_MS);
+    const unsubscribe = useSessionStore.subscribe(() => {
+      const config = useSessionStore.getState().config;
+      if (!config) return;
+      clearTimeout(timer);
+      unsubscribe();
+      resolve(config);
+    });
+  });
+}
+
+/**
+ * The turn a `?play=1` arrival should read aloud, or null if the address does
+ * not name one.
+ *
+ * Deliberately asks the server for the turn rather than reading the events
+ * hydration happened to load: `/h/<id>?play=1` lands in the Prompts view, which
+ * never populates `historicalEvents` at all, and a link minted before a
+ * duplicate-prompt collapse names an id the client would have to re-resolve
+ * anyway. One request answers both cases.
+ */
+async function turnToPlay(route: LaymanRoute): Promise<Turn | null> {
+  let sessionId: string | undefined;
+  let promptEventId: string | undefined;
+
+  if (route.kind === 'turn') {
+    ({ sessionId, promptEventId } = route);
+  } else if (route.kind === 'highlight') {
+    try {
+      const res = await fetch(`/api/resolve?id=${encodeURIComponent(route.highlightId)}`);
+      if (!res.ok) return null;
+      const resolved = await res.json() as { sessionId?: string; promptEventId?: string };
+      sessionId = resolved.sessionId;
+      promptEventId = resolved.promptEventId;
+    } catch {
+      return null;
+    }
+  }
+
+  if (!sessionId || !promptEventId) return null;
+
+  try {
+    const res = await fetch(
+      `/api/turns/${encodeURIComponent(sessionId)}/${encodeURIComponent(promptEventId)}`,
+    );
+    if (!res.ok) return null;
+    return (await res.json() as { turn?: Turn }).turn ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Speak the addressed turn on arrival.
+ *
+ * A fresh tab has had no user gesture, so `play()` will usually be refused —
+ * that is handled, not avoided: the player keeps the utterance queued and the
+ * TTS bar offers "Enable audio", which is one click away from speech.
+ */
+async function playAddressedTurn(route: LaymanRoute): Promise<void> {
+  const config = await waitForConfig();
+  if (!config?.tts.enabled) return;
+
+  const turn = await turnToPlay(route);
+  if (!turn?.responseEventId) return;
+
+  const text = toSpeakableText(turn.responseText, {
+    codeBlocks: config.tts.codeBlocks,
+    maxChars: config.tts.maxChars,
+  });
+  if (!text) return;
+
+  ttsPlayer.enqueue({
+    id: turn.responseEventId,
+    text,
+    label: text.length > 60 ? `${text.slice(0, 59)}…` : text,
+    opts: speechOptionsFrom(config.tts),
+  });
+}
+
 export function useLaymanRoute(): void {
   const syncRef = useRef<(() => void) | null>(null);
 
@@ -87,6 +183,14 @@ export function useLaymanRoute(): void {
       // Hydration can canonicalise the address (a collapsed duplicate prompt id
       // resolves to the surviving turn), so push the settled state back out.
       syncRef.current?.();
+
+      // `?play=1` is consumed here and nowhere else. It runs after the sync
+      // above, so the URL has already shed the parameter — speech is an arrival
+      // effect, and re-emitting it would re-trigger on every later re-render.
+      // Not awaited: hydration is done, and speech must not gate the UI.
+      if (parsed.opts.play && !useSessionStore.getState().routeError) {
+        void playAddressedTurn(parsed.route);
+      }
     };
 
     void apply();

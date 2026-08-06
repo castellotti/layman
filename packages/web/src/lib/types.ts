@@ -225,6 +225,29 @@ export const PROVIDER_LABELS: Record<AnalysisProvider, string> = {
   litellm: 'LiteLLM',
 };
 
+/**
+ * Mirror of TtsConfigSchema in packages/server/src/config/schema.ts.
+ *
+ * `speed` and `playbackRate` are both here on purpose: speaches has no pitch
+ * parameter, so `speed` changes tempo upstream with pitch preserved, while
+ * `playbackRate` (with `preservePitch` off) pitch-shifts in the browser.
+ */
+export interface TtsConfig {
+  enabled: boolean;
+  endpoint: string;
+  apiKey: string;
+  direct: boolean;
+  model: string;
+  voice: string;
+  speed: number;
+  playbackRate: number;
+  preservePitch: boolean;
+  autoSpeak: 'none' | 'final' | 'all';
+  speakLaymans: boolean;
+  codeBlocks: 'skip' | 'announce';
+  maxChars: number;
+}
+
 export interface LaymanConfig {
   port: number;
   host: string;
@@ -261,6 +284,7 @@ export interface LaymanConfig {
   idleThresholdMinutes: number;
   autoActivateClients: string[];
   driftMonitoring: DriftMonitoringConfig;
+  tts: TtsConfig;
   setupWizardComplete: boolean;
   openWebUiUrl: string;
   openWebUiApiKey: string;

@@ -28,6 +28,7 @@ import { BookmarkStore } from './db/bookmarks.js';
 import { HighlightStore } from './db/highlights.js';
 import { TurnStore } from './turns/store.js';
 import { registerTurnRoutes } from './routes/turns.js';
+import { registerTtsRoutes } from './routes/tts.js';
 import { searchEvents, parseSearchQuery, matchesSearchTerms } from './db/search.js';
 import { computeTimeMetrics } from './db/time-metrics.js';
 import type { SearchRequest } from './db/search.js';
@@ -316,6 +317,9 @@ export function createServer(config: LaymanConfig): LaymanServer {
   function registerRoutes(): void {
     // Turn model + data egress (see docs: addressable URLs)
     registerTurnRoutes(fastify, { turnStore, bookmarkStore, getConfig });
+
+    // Text-to-speech pass-through to speaches (speaches has CORS off by default)
+    registerTtsRoutes(fastify, { getConfig });
 
     // Health check
     fastify.get('/api/health', async () => ({ status: 'ok', version: SERVER_VERSION }));
