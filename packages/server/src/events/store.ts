@@ -20,9 +20,15 @@ export class EventStore extends EventEmitter {
   private sessions: Map<string, { cwd: string; lastSeen: number; agentType: string; opencodeUrl?: string; sessionName?: string }> = new Map();
   private accessLogs: Map<string, { files: FileAccess[]; urls: UrlAccess[] }> = new Map();
   private dataFilter?: (data: EventData) => EventData;
+  private stringFilter?: (text: string) => string;
 
   setDataFilter(filter: (data: EventData) => EventData): void {
     this.dataFilter = filter;
+  }
+
+  /** Applied to freeform text that bypasses EventData, e.g. layman's-terms explanations. */
+  setStringFilter(filter: (text: string) => string): void {
+    this.stringFilter = filter;
   }
 
   add(
@@ -106,7 +112,8 @@ export class EventStore extends EventEmitter {
   attachLaymans(eventId: string, laymans: LaymansResult): TimelineEvent | undefined {
     const event = this.get(eventId);
     if (event) {
-      event.laymans = laymans;
+      const explanation = this.stringFilter ? this.stringFilter(laymans.explanation) : laymans.explanation;
+      event.laymans = { ...laymans, explanation };
       this.emit('event:update', event);
     }
     return event;

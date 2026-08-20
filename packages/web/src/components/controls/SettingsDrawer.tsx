@@ -11,6 +11,7 @@ import { AutoApproveSection } from './settings/AutoApproveSection.js';
 import { DriftMonitoringSection } from './settings/DriftMonitoringSection.js';
 import { RecordingSection } from './settings/RecordingSection.js';
 import { StreamSection } from './settings/StreamSection.js';
+import { TTSSection } from './settings/TTSSection.js';
 
 export { HarnessSetupSection } from './settings/HarnessSection.js';
 export { PROVIDER_CONFIG } from './settings/AnalysisModelSection.js';
@@ -65,6 +66,11 @@ const SECTIONS: SectionDef[] = [
     key: 'recording', group: 'Data', label: 'Recording & import',
     searchTerms: ['recording', 'recovery', 'import', 'PII', 'purge'],
     render: (config, onSend) => <RecordingSection config={config} onSend={onSend} />,
+  },
+  {
+    key: 'tts', group: 'Data', label: 'Text to speech',
+    searchTerms: ['speech', 'TTS', 'speaches', 'voice', 'speak', 'audio', 'Kokoro', 'auto-speak', 'pitch', 'playback rate'],
+    render: (config, onSend) => <TTSSection config={config} onSend={onSend} />,
   },
   {
     key: 'stream', group: 'Stream', label: 'Stream behavior',

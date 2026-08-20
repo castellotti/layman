@@ -1,0 +1,403 @@
+/**
+ * Speech synthesis and playback — one voice, one utterance at a time.
+ *
+ * A module-level singleton rather than store state, for two reasons: there is
+ * exactly one pair of speakers, and speech has to survive the components that
+ * started it (navigating away from a turn mid-sentence should not cut it off).
+ *
+ * Three things here are load-bearing and easy to undo by accident:
+ *
+ *  - **Strictly serial playback.** Two overlapping voices are not "twice the
+ *    information", they are zero. Everything queues.
+ *  - **Autoplay is a hard browser policy, not an error.** `play()` rejects until
+ *    the user has interacted with the page, which is exactly the state a
+ *    `?play=1` link opened in a fresh tab arrives in. That rejection is caught
+ *    and turned into `blocked`, with the utterance *kept at the head of the
+ *    queue*, so one click on "Enable audio" starts it. Failing silently here is
+ *    the single most likely way this feature reads as broken.
+ *  - **The audio layer is injected.** Tests run in node with no `Audio` and no
+ *    `URL.createObjectURL`, and the queue semantics are the part worth testing.
+ */
+
+export interface SpeechOptions {
+  model: string;
+  voice: string;
+  speed: number;
+  playbackRate: number;
+  preservePitch: boolean;
+  /** Call speaches directly; only works if it was started with allow_origins. */
+  direct: boolean;
+  endpoint: string;
+  apiKey: string;
+}
+
+export interface QueueItem {
+  /** The event id. Doubles as the dedupe key so a re-render never double-queues. */
+  id: string;
+  text: string;
+  /** Short human label for the transport bar. */
+  label: string;
+  opts: SpeechOptions;
+}
+
+export interface TtsState {
+  status: 'idle' | 'loading' | 'playing';
+  current: { id: string; label: string } | null;
+  queueDepth: number;
+  /** Autoplay was refused; the queue is intact and waiting for a user gesture. */
+  blocked: boolean;
+  muted: boolean;
+  error: string | null;
+}
+
+/** The slice of HTMLAudioElement the player uses. */
+export interface TtsAudio {
+  src: string;
+  playbackRate: number;
+  preservesPitch: boolean;
+  play(): Promise<void>;
+  pause(): void;
+  onended: (() => void) | null;
+  onerror: (() => void) | null;
+}
+
+export interface TtsRuntime {
+  synthesize(text: string, opts: SpeechOptions): Promise<Blob>;
+  createAudio(): TtsAudio;
+  createObjectUrl(blob: Blob): string;
+  revokeObjectUrl(url: string): void;
+}
+
+/** Rejected because the browser has not seen a user gesture yet. */
+function isAutoplayBlock(err: unknown): boolean {
+  return err instanceof Error && (err.name === 'NotAllowedError' || /user (didn't|did not) interact|gesture/i.test(err.message));
+}
+
+// ── Synthesis ───────────────────────────────────────────────────────────────
+
+/**
+ * POST to the Layman proxy by default. Direct mode exists for users who have
+ * configured speaches' `allow_origins`; it is not the default because speaches
+ * ships with CORS off, so a direct call fails out of the box.
+ */
+export async function synthesize(text: string, opts: SpeechOptions): Promise<Blob> {
+  const body = {
+    model: opts.model,
+    voice: opts.voice,
+    speed: opts.speed,
+  };
+
+  const res = opts.direct
+    ? await fetch(`${opts.endpoint.replace(/\/+$/, '')}/v1/audio/speech`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(opts.apiKey ? { Authorization: `Bearer ${opts.apiKey}` } : {}),
+        },
+        body: JSON.stringify({ ...body, input: text, response_format: 'mp3' }),
+      })
+    : await fetch('/api/tts/speech', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...body, text, format: 'mp3' }),
+      });
+
+  if (!res.ok) {
+    const detail = await res.text().catch(() => '');
+    let message = detail;
+    try {
+      const parsed = JSON.parse(detail) as { error?: string };
+      if (parsed.error) message = parsed.error;
+    } catch { /* not JSON — use the raw body */ }
+    throw new Error(message || `Speech synthesis failed (HTTP ${res.status})`);
+  }
+
+  return res.blob();
+}
+
+// ── Blob cache ──────────────────────────────────────────────────────────────
+
+/**
+ * Re-speaking a turn you just heard must not re-synthesise it.
+ *
+ * Keyed on the full text rather than a hash of it: a hash collision would play
+ * the wrong audio, and 20 entries of at most `maxChars` each is not enough
+ * memory to be worth that risk.
+ */
+export class BlobCache {
+  private entries = new Map<string, Blob>();
+
+  constructor(private readonly limit = 20) {}
+
+  private static key(text: string, opts: SpeechOptions): string {
+    return `${opts.model}|${opts.voice}|${opts.speed}|${text}`;
+  }
+
+  get(text: string, opts: SpeechOptions): Blob | undefined {
+    const key = BlobCache.key(text, opts);
+    const hit = this.entries.get(key);
+    if (hit) {
+      // Re-insert to move to the most-recent end.
+      this.entries.delete(key);
+      this.entries.set(key, hit);
+    }
+    return hit;
+  }
+
+  set(text: string, opts: SpeechOptions, blob: Blob): void {
+    const key = BlobCache.key(text, opts);
+    this.entries.delete(key);
+    this.entries.set(key, blob);
+    while (this.entries.size > this.limit) {
+      const oldest = this.entries.keys().next().value as string | undefined;
+      if (oldest === undefined) break;
+      this.entries.delete(oldest);
+    }
+  }
+
+  get size(): number { return this.entries.size; }
+  clear(): void { this.entries.clear(); }
+}
+
+// ── The player ──────────────────────────────────────────────────────────────
+
+const IDLE_STATE: TtsState = {
+  status: 'idle', current: null, queueDepth: 0, blocked: false, muted: false, error: null,
+};
+
+export class TtsPlayer {
+  private queue: QueueItem[] = [];
+  private audio: TtsAudio | null = null;
+  private objectUrl: string | null = null;
+  private listeners = new Set<() => void>();
+  private state: TtsState = IDLE_STATE;
+  private cache = new BlobCache();
+  /**
+   * Bumped by stop/skip. A synthesis already in flight checks it before
+   * playing, so cancelling mid-fetch does not produce a delayed utterance.
+   */
+  private generation = 0;
+
+  constructor(private runtime: TtsRuntime) {}
+
+  // -- subscription (useSyncExternalStore) --
+
+  subscribe = (listener: () => void): (() => void) => {
+    this.listeners.add(listener);
+    return () => { this.listeners.delete(listener); };
+  };
+
+  getState = (): TtsState => this.state;
+
+  /** Replaces the state object identity so useSyncExternalStore sees a change. */
+  private patch(updates: Partial<TtsState>): void {
+    this.state = { ...this.state, ...updates, queueDepth: updates.queueDepth ?? this.queue.length };
+    for (const listener of this.listeners) listener();
+  }
+
+  // -- queue control --
+
+  isActive(id: string): boolean {
+    return this.state.current?.id === id || this.queue.some((q) => q.id === id);
+  }
+
+  enqueue(item: QueueItem): void {
+    if (this.state.muted || !item.text.trim()) return;
+    if (this.isActive(item.id)) return;   // dedupe: a re-render must not double-queue
+    this.queue.push(item);
+    this.patch({});
+    void this.pump();
+  }
+
+  /** Speak this now, dropping anything queued behind it. */
+  replaceWith(item: QueueItem): void {
+    // Via stop(), not clear(): the status has to return to idle or the enqueue
+    // below finds the player still "playing" and pump() declines to start.
+    this.stop();
+    this.enqueue(item);
+  }
+
+  /** Abandon the current utterance and move to the next. */
+  skip(): void {
+    this.generation++;
+    this.stopCurrent();
+    // The head is only shifted by onended/onerror, neither of which fires for an
+    // utterance we cut off — without this, pump() re-plays the item we skipped.
+    this.queue.shift();
+    this.patch({ status: 'idle', current: null, blocked: false, error: null });
+    void this.pump();
+  }
+
+  /** Silence everything and empty the queue. */
+  stop(): void {
+    this.generation++;
+    this.queue = [];
+    this.stopCurrent();
+    this.patch({ status: 'idle', current: null, blocked: false, error: null });
+  }
+
+  /** Empty the queue but let the current utterance finish. */
+  clear(): void {
+    this.queue = [];
+    this.patch({});
+  }
+
+  /** Dismiss a reported failure without touching playback. */
+  clearError(): void {
+    if (this.state.error !== null) this.patch({ error: null });
+  }
+
+  setMuted(muted: boolean): void {
+    if (muted) {
+      this.stop();
+      this.patch({ muted: true });
+    } else {
+      this.patch({ muted: false });
+    }
+  }
+
+  /**
+   * Retry after an autoplay refusal. Must be called from a user gesture — that
+   * is the whole point; the queued utterance is still at the head.
+   */
+  resume(): void {
+    if (!this.state.blocked) return;
+    this.patch({ blocked: false, error: null });
+    void this.pump();
+  }
+
+  // -- internals --
+
+  private stopCurrent(): void {
+    if (this.audio) {
+      this.audio.onended = null;
+      this.audio.onerror = null;
+      try { this.audio.pause(); } catch { /* already torn down */ }
+    }
+    this.releaseUrl();
+  }
+
+  private releaseUrl(): void {
+    if (this.objectUrl) {
+      this.runtime.revokeObjectUrl(this.objectUrl);
+      this.objectUrl = null;
+    }
+  }
+
+  private async pump(): Promise<void> {
+    if (this.state.status !== 'idle' || this.state.blocked || this.state.muted) return;
+
+    const item = this.queue[0];
+    if (!item) return;
+
+    const generation = this.generation;
+    // The previous item's error is deliberately *not* cleared here. Starting the
+    // next utterance would otherwise erase the only report of why the last one
+    // failed, usually before it had been on screen long enough to read.
+    this.patch({ status: 'loading', current: { id: item.id, label: item.label } });
+
+    let blob: Blob;
+    try {
+      const cached = this.cache.get(item.text, item.opts);
+      if (cached) {
+        blob = cached;
+      } else {
+        blob = await this.runtime.synthesize(item.text, item.opts);
+        this.cache.set(item.text, item.opts, blob);
+      }
+    } catch (err) {
+      if (generation !== this.generation) return;
+      this.queue.shift();
+      this.patch({
+        status: 'idle',
+        current: null,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      void this.pump();
+      return;
+    }
+
+    // stop()/skip() landed while we were synthesising.
+    if (generation !== this.generation) return;
+
+    const audio = this.audio ?? (this.audio = this.runtime.createAudio());
+    this.releaseUrl();
+    this.objectUrl = this.runtime.createObjectUrl(blob);
+    audio.src = this.objectUrl;
+    audio.playbackRate = item.opts.playbackRate;
+    // false gives the pitch-shifted "sped-up tape" effect; true keeps the voice
+    // and only changes tempo. speaches has no pitch parameter, so this is the
+    // only place pitch can be altered at all.
+    audio.preservesPitch = item.opts.preservePitch;
+
+    audio.onended = () => {
+      if (generation !== this.generation) return;
+      this.releaseUrl();
+      this.queue.shift();
+      this.patch({ status: 'idle', current: null });
+      void this.pump();
+    };
+    audio.onerror = () => {
+      if (generation !== this.generation) return;
+      this.releaseUrl();
+      this.queue.shift();
+      this.patch({ status: 'idle', current: null, error: 'Audio playback failed' });
+      void this.pump();
+    };
+
+    try {
+      await audio.play();
+      if (generation !== this.generation) return;
+      this.patch({ status: 'playing' });
+    } catch (err) {
+      if (generation !== this.generation) return;
+      if (isAutoplayBlock(err)) {
+        // Keep the item queued — resume() from a click will play it.
+        this.releaseUrl();
+        this.patch({
+          status: 'idle',
+          current: null,
+          blocked: true,
+          error: null,
+        });
+        return;
+      }
+      this.releaseUrl();
+      this.queue.shift();
+      this.patch({
+        status: 'idle',
+        current: null,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      void this.pump();
+    }
+  }
+}
+
+// ── Browser runtime + singleton ─────────────────────────────────────────────
+
+export const browserRuntime: TtsRuntime = {
+  synthesize,
+  createAudio: () => new Audio() as unknown as TtsAudio,
+  createObjectUrl: (blob) => URL.createObjectURL(blob),
+  revokeObjectUrl: (url) => URL.revokeObjectURL(url),
+};
+
+export const ttsPlayer = new TtsPlayer(browserRuntime);
+
+/** Build the per-request options from config. */
+export function speechOptionsFrom(tts: {
+  model: string; voice: string; speed: number; playbackRate: number;
+  preservePitch: boolean; direct: boolean; endpoint: string; apiKey: string;
+}): SpeechOptions {
+  return {
+    model: tts.model,
+    voice: tts.voice,
+    speed: tts.speed,
+    playbackRate: tts.playbackRate,
+    preservePitch: tts.preservePitch,
+    direct: tts.direct,
+    endpoint: tts.endpoint,
+    apiKey: tts.apiKey,
+  };
+}

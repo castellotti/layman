@@ -47,8 +47,13 @@ export function useEventStore(filters?: EventFilters, sourceOverride?: TimelineE
   const sessionEvents = useMemo(() => {
     if (sourceOverride !== undefined) return sourceOverride;
     if (!activeSessionId) return events;
-    return events.filter((e) => e.sessionId === activeSessionId);
-  }, [events, activeSessionId, sourceOverride]);
+    const live = events.filter((e) => e.sessionId === activeSessionId);
+    if (live.length > 0) return live;
+    // Not in the live WebSocket-fed store (server restarted, or a long-ended
+    // session addressed by a deep link) — fall back to whatever hydrateFromRoute
+    // fetched into historicalEvents instead of rendering blank.
+    return historicalEvents.filter((e) => e.sessionId === activeSessionId);
+  }, [events, activeSessionId, historicalEvents, sourceOverride]);
 
   const filteredEvents = useMemo(() => {
     let result = sessionEvents;

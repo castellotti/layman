@@ -7,7 +7,7 @@ import { fileURLToPath } from 'url';
 import { tmpdir } from 'os';
 
 import { createServer } from './server.js';
-import { HookInstaller } from './hooks/installer.js';
+import { HookInstaller, findOrphanedProjectHooks, repairOrphanedProjectHooks } from './hooks/installer.js';
 import { loadConfig, setConfig } from './config/config.js';
 import type { LaymanConfig } from './config/schema.js';
 
@@ -261,5 +261,50 @@ async function openBrowser(url: string): Promise<void> {
     // Browser open failed — not critical
   }
 }
+
+// ── layman repair-hooks ───────────────────────────────────────────────────────
+// Lives on the CLI rather than the HTTP API because the Docker container only
+// mounts ~/.claude and friends — it cannot see a project's .claude directory,
+// which is exactly where these orphans live.
+program
+  .command('repair-hooks [dir]')
+  .description("Remove orphaned project-level Layman hooks that duplicate the global ones")
+  .option('--dry-run', 'Report what would be removed without writing')
+  .action(async (dir: string | undefined, options: { dryRun?: boolean }) => {
+    const projectDir = resolve(dir ?? process.cwd());
+    const config = await loadConfig({});
+    const serverUrl = config.hookUrl ?? `http://${config.host}:${config.port}`;
+
+    const reports = options.dryRun
+      ? findOrphanedProjectHooks(projectDir, serverUrl)
+      : repairOrphanedProjectHooks(projectDir, serverUrl);
+
+    if (reports.length === 0) {
+      console.log(`No orphaned Layman hooks found in ${projectDir}`);
+      return;
+    }
+
+    const total = reports.reduce((n, r) => n + r.hookCount, 0);
+    console.log(
+      options.dryRun
+        ? `Would remove ${total} orphaned Layman hook(s):`
+        : `Removed ${total} orphaned Layman hook(s):`,
+    );
+
+    for (const report of reports) {
+      console.log(`\n  ${report.path}`);
+      console.log(`    events: ${report.events.join(', ')}`);
+      if (report.duplicatedEvents.length > 0) {
+        console.log(`    duplicated: ${report.duplicatedEvents.join(', ')}`);
+      }
+    }
+
+    console.log(
+      options.dryRun
+        ? '\nRe-run without --dry-run to apply.'
+        : '\nLayman installs hooks globally in ~/.claude/settings.json; these project-level\n' +
+          'copies were merged on top of them, so every hook fired twice.',
+    );
+  });
 
 program.parse(process.argv);

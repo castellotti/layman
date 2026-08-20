@@ -9,3 +9,12 @@ web-dist/
 .playwright-mcp/
 .vscode/
 
+docs/plans/
+
+# Recorded-session database. Lives at ~/.claude/layman.db, but a stray copy or a
+# backup pulled into the repo must never be committed — it contains full session
+# transcripts, and the -wal/-shm siblings are meaningless without it.
+*.db
+*.db-wal
+*.db-shm
+layman-backup-*/

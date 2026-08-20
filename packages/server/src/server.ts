@@ -4,13 +4,14 @@ import staticPlugin from '@fastify/static';
 import websocket from '@fastify/websocket';
 import { existsSync, readFileSync } from 'fs';
 import { join, dirname, resolve } from 'path';
+import { homedir } from 'os';
 import { fileURLToPath } from 'url';
 
 import { PendingApprovalManager } from './hooks/pending.js';
 import { EventStore } from './events/store.js';
 import type { FileAccess, UrlAccess } from './events/types.js';
 import { SessionGate } from './hooks/gate.js';
-import { HookInstaller } from './hooks/installer.js';
+import { HookInstaller, findOrphanedProjectHooks, repairOrphanedProjectHooks } from './hooks/installer.js';
 import { registerHookHandler } from './hooks/handler.js';
 import { registerClineHookHandler } from './cline/handler.js';
 import { registerOpenWebUIHookHandler } from './openwebui/handler.js';
@@ -25,6 +26,9 @@ import { openDatabase } from './db/database.js';
 import { SessionRecorder } from './db/recorder.js';
 import { BookmarkStore } from './db/bookmarks.js';
 import { HighlightStore } from './db/highlights.js';
+import { TurnStore } from './turns/store.js';
+import { registerTurnRoutes } from './routes/turns.js';
+import { registerTtsRoutes } from './routes/tts.js';
 import { searchEvents, parseSearchQuery, matchesSearchTerms } from './db/search.js';
 import { computeTimeMetrics } from './db/time-metrics.js';
 import type { SearchRequest } from './db/search.js';
@@ -77,6 +81,9 @@ export function createServer(config: LaymanConfig): LaymanServer {
     if (getConfig().piiFilter) return filterPii(data);
     return data;
   });
+  // Layman's-terms explanations bypass EventData entirely (attachLaymans), so they need
+  // their own filter hook to get the same redaction as everything else leaving the store.
+  eventStore.setStringFilter((text) => (getConfig().piiFilter ? redactString(text) : text));
 
   // In-memory queue of prompts to be relayed to OpenCode by the plugin.
   interface PendingPrompt { id: string; sessionId: string; prompt: string; queuedAt: number }
@@ -90,11 +97,50 @@ export function createServer(config: LaymanConfig): LaymanServer {
   // consumers (e.g. the OpenCode prompt relay) need the literal filesystem
   // path to function and must not be redacted.
   const filterCwd = (cwd: string): string => getConfig().piiFilter ? redactString(cwd) : cwd;
+  const resolvedServerUrl = (): string =>
+    activeConfig.hookUrl ?? `http://${activeConfig.host}:${activeConfig.port}`;
+
   const makeInstaller = (): HookInstaller =>
     new HookInstaller({
-      serverUrl: activeConfig.hookUrl ?? `http://${activeConfig.host}:${activeConfig.port}`,
+      serverUrl: resolvedServerUrl(),
       hookTimeout: activeConfig.hookTimeout,
     });
+
+  /**
+   * Session cwds are stored PII-redacted, so `~` has to be expanded back.
+   * The PII filter redacts a cwd that is exactly the home directory to the
+   * bare string `~` (no trailing slash), so that case is handled alongside `~/`.
+   */
+  const expandHome = (dir: string): string => {
+    if (dir === '~') return homedir();
+    return dir.startsWith('~/') ? join(homedir(), dir.slice(2)) : dir;
+  };
+
+  /**
+   * Directories Layman is tracking, as absolute paths that exist.
+   * Hook-repair routes are restricted to these so they cannot be used to
+   * rewrite settings files at an arbitrary path on disk.
+   */
+  const trackedCwds = (): string[] => {
+    const raw = [
+      ...eventStore.getSessions().map((s) => s.cwd),
+      ...bookmarkStore.listRecordedSessions().map((s) => s.cwd),
+    ];
+    const dirs = new Set(raw.filter(Boolean).map(expandHome));
+    return [...dirs].filter((dir) => existsSync(dir));
+  };
+
+  /**
+   * Resolves the `cwd` parameter against the tracked set.
+   * Returns every tracked directory when omitted, or null when the requested
+   * directory is not one Layman knows about.
+   */
+  const resolveTrackedCwds = (cwd?: string): string[] | null => {
+    const tracked = trackedCwds();
+    if (!cwd) return tracked;
+    const target = resolve(expandHome(cwd));
+    return tracked.some((dir) => resolve(dir) === target) ? [target] : null;
+  };
 
   const vibeWatcher = new VibeSessionWatcher(eventStore, gate, getConfig);
 
@@ -102,6 +148,7 @@ export function createServer(config: LaymanConfig): LaymanServer {
   const db = openDatabase();
   const bookmarkStore = new BookmarkStore(db);
   const highlightStore = new HighlightStore(db);
+  const turnStore = new TurnStore(db, eventStore, bookmarkStore);
   const recorder = new SessionRecorder(
     db,
     () => getConfig().sessionRecording,
@@ -258,10 +305,31 @@ export function createServer(config: LaymanConfig): LaymanServer {
         prefix: '/',
         decorateReply: true,
       });
+
+      // SPA fallback: deep links like /s/<id>/t/<id> are client-side routes, so
+      // any unmatched GET that isn't an API/hook/ws path serves index.html and
+      // lets the app resolve it. Without this, reloading a deep link 404s.
+      fastify.setNotFoundHandler((request, reply) => {
+        const path = request.url.split('?')[0];
+        const isAppRoute =
+          request.method === 'GET' &&
+          !path.startsWith('/api/') &&
+          !path.startsWith('/hooks/') &&
+          path !== '/ws';
+
+        if (isAppRoute) return reply.sendFile('index.html');
+        return reply.status(404).send({ error: 'Not found' });
+      });
     }
   }
 
   function registerRoutes(): void {
+    // Turn model + data egress (see docs: addressable URLs)
+    registerTurnRoutes(fastify, { turnStore, bookmarkStore, getConfig });
+
+    // Text-to-speech pass-through to speaches (speaches has CORS off by default)
+    registerTtsRoutes(fastify, { getConfig });
+
     // Health check
     fastify.get('/api/health', async () => ({ status: 'ok', version: SERVER_VERSION }));
 
@@ -583,6 +651,35 @@ export function createServer(config: LaymanConfig): LaymanServer {
     fastify.get('/api/setup/status', async () => {
       const installer = makeInstaller();
       return mergeDeclined(installer.getStatus(), activeConfig.declinedClients ?? [], activeConfig.openWebUiUrl);
+    });
+
+    // Orphaned project-level hooks — leftovers from before Layman installed
+    // globally. claude-code merges them with the global set, so every hook
+    // fires twice. Read-only.
+    fastify.get<{ Querystring: { cwd?: string } }>('/api/setup/orphaned-hooks', async (request, reply) => {
+      const dirs = resolveTrackedCwds(request.query.cwd);
+      if (dirs === null) {
+        return reply.status(400).send({ error: 'cwd is not a directory Layman is tracking' });
+      }
+      const reports = dirs.flatMap((dir) => findOrphanedProjectHooks(dir, resolvedServerUrl()));
+      return { reports };
+    });
+
+    // Repair — removes only Layman's own hook entries, preserving foreign hooks
+    // and every other key. Restricted to tracked session directories so the
+    // route cannot be used to rewrite settings anywhere on disk.
+    fastify.post<{ Body?: { cwd?: string } }>('/api/setup/repair-hooks', async (request, reply) => {
+      const dirs = resolveTrackedCwds(request.body?.cwd);
+      if (dirs === null) {
+        return reply.status(400).send({ error: 'cwd is not a directory Layman is tracking' });
+      }
+      const repaired = dirs.flatMap((dir) => repairOrphanedProjectHooks(dir, resolvedServerUrl()));
+      if (repaired.length > 0) {
+        fastify.log.info(
+          `Removed ${repaired.reduce((n, r) => n + r.hookCount, 0)} orphaned Layman hook(s) from ${repaired.length} file(s)`,
+        );
+      }
+      return { repaired };
     });
 
     // Setup install — install selected clients (by id array) or all if omitted

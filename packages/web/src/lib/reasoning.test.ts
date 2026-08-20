@@ -55,6 +55,13 @@ describe('extractReasoning', () => {
     expect(result.response).toBe('Answer.');
   });
 
+  it('decodes a double-escaped entity exactly one level, not two', () => {
+    // "&amp;lt;" is the literal text "&lt;" escaped once more. A naive chain of
+    // sequential replaces decodes it twice, producing "<" instead of "&lt;".
+    const result = extractReasoning('<think>&amp;lt;</think>Answer.');
+    expect(result.thinking).toBe('&lt;');
+  });
+
   it('handles multiple reasoning blocks by joining with double newline', () => {
     const result = extractReasoning('<think>First thought</think>\n<think>Second thought</think>\nFinal.');
     expect(result.thinking).toBe('First thought\n\nSecond thought');

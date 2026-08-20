@@ -64,6 +64,17 @@ describe('pairFor', () => {
   it('an unknown id falls back to itself', () => {
     expect(pairFor('missing', [ev('e1', 'user_prompt')])).toEqual(['missing']);
   });
+
+  it('a collapsed duplicate prompt pairs with itself, not the canonical prompt id', () => {
+    const events = [
+      ev('e1', 'user_prompt', { prompt: 'do thing' }),
+      ev('e1b', 'user_prompt', { prompt: 'do thing' }), // duplicate, absorbed into e1's turn
+      ev('e2', 'tool_call_completed', { toolName: 'Bash' }),
+      ev('e3', 'agent_response', { prompt: 'final answer' }),
+    ];
+    expect(pairFor('e1b', events)).toEqual(['e1b', 'e3']);
+    expect(pairFor('e1', events)).toEqual(['e1', 'e3']);
+  });
 });
 
 describe('hasLogDetail', () => {

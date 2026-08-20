@@ -39,6 +39,32 @@ export const DriftMonitoringConfigSchema = z.object({
   remindOnOrange: z.boolean().default(true),
 });
 
+/**
+ * Text-to-speech via a speaches server (OpenAI-compatible /v1/audio/speech).
+ *
+ * Two speed controls, not one, because speaches accepts no pitch parameter:
+ * `speed` goes upstream and changes tempo with pitch preserved, while
+ * `playbackRate` is applied to the audio element in the browser and — with
+ * `preservePitch` off — gives the pitch-shifted "sped-up tape" effect instead.
+ */
+export const TtsConfigSchema = z.object({
+  enabled: z.boolean().default(false),
+  endpoint: z.string().default('http://localhost:8000'),
+  apiKey: z.string().default(''),
+  /** Bypass the Layman proxy. Only works if speaches was started with allow_origins. */
+  direct: z.boolean().default(false),
+  model: z.string().default('speaches-ai/Kokoro-82M-v1.0-ONNX'),
+  voice: z.string().default('af_heart'),
+  speed: z.number().min(0.25).max(4).default(1.0),
+  playbackRate: z.number().min(0.5).max(3).default(1.0),
+  preservePitch: z.boolean().default(true),
+  autoSpeak: z.enum(['none', 'final', 'all']).default('none'),
+  /** Speak the layman's explanation instead of the raw response. Needs autoExplain. */
+  speakLaymans: z.boolean().default(false),
+  codeBlocks: z.enum(['skip', 'announce']).default('announce'),
+  maxChars: z.number().int().min(200).max(20000).default(4000),
+});
+
 export const LaymanConfigSchema = z.object({
   port: z.number().int().min(1).max(65535).default(8880),
   host: z.string().default('localhost'),
@@ -60,6 +86,12 @@ export const LaymanConfigSchema = z.object({
   ]).default('medium'), // 'all'=approve everything, 'medium'=approve low+medium, 'low'=approve only low, 'none'=always prompt
   laymansPrompt: z.string().default(DEFAULT_LAYMANS_PROMPT),
   hookUrl: z.string().optional(),
+  /**
+   * Base URL used when generating outbound links (copy-link buttons, markdown
+   * exports).  Persisted, unlike hookUrl — it is a user preference, not an
+   * invocation detail.  Empty falls back to hookUrl, then host:port.
+   */
+  publicUrl: z.string().default(''),
   sessionRecording: z.boolean().default(false),
   recordingRecovery: z.boolean().default(false),
   historyImport: z.boolean().default(false),
@@ -72,6 +104,7 @@ export const LaymanConfigSchema = z.object({
   idleThresholdMinutes: z.number().int().min(1).max(60).default(5),
   autoActivateClients: z.array(z.string()).default([]),
   driftMonitoring: DriftMonitoringConfigSchema.default({}),
+  tts: TtsConfigSchema.default({}),
   setupWizardComplete: z.boolean().default(false),
   openWebUiUrl: z.string().default(''),
   openWebUiApiKey: z.string().default(''),
@@ -79,4 +112,5 @@ export const LaymanConfigSchema = z.object({
 
 export type LaymanConfig = z.infer<typeof LaymanConfigSchema>;
 export type AnalysisConfigType = z.infer<typeof AnalysisConfigSchema>;
+export type TtsConfig = z.infer<typeof TtsConfigSchema>;
 export type AutoAllowRules = z.infer<typeof AutoAllowRulesSchema>;

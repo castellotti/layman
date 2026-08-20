@@ -225,6 +225,29 @@ export const PROVIDER_LABELS: Record<AnalysisProvider, string> = {
   litellm: 'LiteLLM',
 };
 
+/**
+ * Mirror of TtsConfigSchema in packages/server/src/config/schema.ts.
+ *
+ * `speed` and `playbackRate` are both here on purpose: speaches has no pitch
+ * parameter, so `speed` changes tempo upstream with pitch preserved, while
+ * `playbackRate` (with `preservePitch` off) pitch-shifts in the browser.
+ */
+export interface TtsConfig {
+  enabled: boolean;
+  endpoint: string;
+  apiKey: string;
+  direct: boolean;
+  model: string;
+  voice: string;
+  speed: number;
+  playbackRate: number;
+  preservePitch: boolean;
+  autoSpeak: 'none' | 'final' | 'all';
+  speakLaymans: boolean;
+  codeBlocks: 'skip' | 'announce';
+  maxChars: number;
+}
+
 export interface LaymanConfig {
   port: number;
   host: string;
@@ -261,9 +284,12 @@ export interface LaymanConfig {
   idleThresholdMinutes: number;
   autoActivateClients: string[];
   driftMonitoring: DriftMonitoringConfig;
+  tts: TtsConfig;
   setupWizardComplete: boolean;
   openWebUiUrl: string;
   openWebUiApiKey: string;
+  /** Base URL for generated links; empty falls back to window.location.origin. */
+  publicUrl: string;
 }
 
 // Drift monitoring types
@@ -447,4 +473,42 @@ export interface SessionMetrics {
   sessionName?: string;
   claudeCodeVersion?: string;
   timestamp: number;
+}
+
+// ─── Turns ────────────────────────────────────────────────────────────────────
+// Mirrors packages/server/src/turns/types.ts — see CLAUDE.md "Type duplication".
+
+/** Minimal addressable reference to a turn. */
+export interface TurnRef {
+  sessionId: string;
+  promptEventId: string;
+  /** null when the turn produced no agent_response (still in flight, or aborted). */
+  responseEventId: string | null;
+}
+
+/**
+ * One user prompt plus everything the agent did in response to it, up to (but
+ * not including) the next user prompt.
+ */
+export interface Turn extends TurnRef {
+  index: number;
+  promptText: string;
+  responseText: string;
+  thinkingText: string | null;
+  startedAt: number;
+  endedAt: number | null;
+  eventIds: string[];
+  toolCallCount: number;
+  riskLevels: Record<string, number>;
+  agentType: string;
+}
+
+/** What `GET /api/resolve?id=` returns — mirrors ResolvedId in turns/store.ts. */
+export interface ResolvedId {
+  kind: 'session' | 'event' | 'highlight' | 'bookmark' | 'folder' | 'highlight_folder';
+  id: string;
+  /** Present for events, bookmarks and highlights. */
+  sessionId?: string;
+  /** Present for highlights — the turn they name. */
+  promptEventId?: string;
 }
