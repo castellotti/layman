@@ -1,15 +1,15 @@
 import React, { useState, useCallback, useEffect, useRef, useMemo, Suspense, lazy } from 'react';
-import { useSessionStore } from '../../stores/sessionStore.js';
+import { useSessionStore, fetchSessionEvents } from '../../stores/sessionStore.js';
 import { EventStream } from '../layout/EventStream.js';
 import { InvestigationPanel } from '../layout/InvestigationPanel.js';
-import { SearchInput, SegmentedControl, SECTION_LABEL_STYLE, CollapsibleFolderHeader, NewFolderRow, ConfirmDialog } from '../primitives/index.js';
+import { SearchInput, SegmentedControl, SECTION_LABEL_STYLE, CollapsibleFolderHeader, NewFolderRow, ConfirmDialog, CopyLinkButton } from '../primitives/index.js';
 import { useDragReorder } from '../../hooks/useDragReorder.js';
 import { useOptimisticOrder } from '../../hooks/useOptimisticOrder.js';
 import { useFolderDrag, reorderIds, type FolderDragSource, type FolderDropTarget } from '../../hooks/useFolderDrag.js';
 import { useFolderCrud } from '../../hooks/useFolderCrud.js';
 import { sessionDisplayName } from '../../lib/session-state.js';
 import type { ClientMessage } from '../../lib/ws-protocol.js';
-import type { RecordedSession, SessionTimeMetrics } from '../../lib/types.js';
+import type { RecordedSession } from '../../lib/types.js';
 
 const FlowchartView = lazy(() =>
   import('../flowchart/FlowchartView.js').then((m) => ({ default: m.FlowchartView }))
@@ -39,6 +39,8 @@ export function SessionsView({ onSend }: SessionsViewProps) {
     setInvestigationOpen,
     setSelectedEvent,
     sessions,
+    sessionsSearchSeed,
+    setSessionsSearchSeed,
   } = useSessionStore();
 
   const [recordedSessions, setRecordedSessions] = useState<RecordedSession[]>([]);
@@ -126,19 +128,16 @@ export function SessionsView({ onSend }: SessionsViewProps) {
     setViewingSession(sessionId);
     setHistoricalEvents([]);
     setShowFlowchart(false);
-    try {
-      const [evRes, metricsRes] = await Promise.all([
-        fetch(`/api/bookmarks/sessions/${sessionId}/events`),
-        fetch(`/api/bookmarks/sessions/${sessionId}/time-metrics`),
-      ]);
-      const evData = await evRes.json() as { events?: Parameters<typeof setHistoricalEvents>[0] };
-      const metricsData = metricsRes.ok ? await metricsRes.json() as SessionTimeMetrics : null;
-      setHistoricalEvents(evData.events ?? []);
-      setSessionTimeMetrics(metricsData);
-    } catch {
-      setHistoricalEvents([]);
-      setSessionTimeMetrics(null);
-    }
+    // Same fetch+fallback as route hydration's openSession() (sessionStore.ts):
+    // a live session with sessionRecording off exists only in memory, so an
+    // empty recorded-events response falls back to the live store rather than
+    // showing nothing.
+    const { events: recorded, metrics } = await fetchSessionEvents(sessionId);
+    const resolvedEvents = recorded.length > 0
+      ? recorded
+      : useSessionStore.getState().events.filter((e) => e.sessionId === sessionId);
+    setHistoricalEvents(resolvedEvents);
+    setSessionTimeMetrics(metrics);
   }, [viewingSessionId, setViewingSession, setHistoricalEvents, setSessionTimeMetrics, setSelectedEvent]);
 
   const handleCloseSession = useCallback(() => {
@@ -320,6 +319,14 @@ export function SessionsView({ onSend }: SessionsViewProps) {
   useEffect(() => {
     setFocusedIndex(-1);
   }, [filter, sidebarSearch]);
+
+  // A search handed over from the route-error panel ("not found on this instance").
+  useEffect(() => {
+    if (sessionsSearchSeed === null) return;
+    setSidebarSearch(sessionsSearchSeed);
+    setFilter('all');
+    setSessionsSearchSeed(null);
+  }, [sessionsSearchSeed, setSessionsSearchSeed]);
 
   const viewingSession = recordedSessions.find((s) => s.sessionId === viewingSessionId);
   const archivedDate = viewingSession ? formatDateShort(viewingSession.lastSeen) : undefined;
@@ -538,8 +545,12 @@ export function SessionsView({ onSend }: SessionsViewProps) {
                   )}
                 </div>
 
-                {/* Flowchart button */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+                {/* Copy link + Flowchart button */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+                  <CopyLinkButton
+                    route={{ kind: 'session', sessionId: viewingSessionId }}
+                    title="Copy link to this session"
+                  />
                   <button
                     onClick={() => setShowFlowchart((v) => !v)}
                     title={showFlowchart ? 'Show event log' : 'Show flowchart'}
@@ -594,7 +605,7 @@ export function SessionsView({ onSend }: SessionsViewProps) {
                   </Suspense>
                 </div>
               ) : (
-                <EventStream onSend={onSend} archived archivedDate={archivedDate} />
+                <EventStream onSend={onSend} archived archivedDate={archivedDate} turnRuler />
               )}
             </div>
 

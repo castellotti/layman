@@ -1,5 +1,8 @@
 import React, { useState } from 'react';
 import { useInlineEdit } from '../../hooks/useInlineEdit.js';
+import { useSessionStore, instanceUrlOf } from '../../stores/sessionStore.js';
+import { buildUrl } from '../../lib/layman-url.js';
+import type { LaymanRoute, RouteOptions } from '../../lib/layman-url.js';
 
 // ─── DepthButton ────────────────────────────────────────────────────────────
 // Shared colored icon button for the two analysis depths (Investigation
@@ -682,6 +685,79 @@ export function JumpToLatest({ count, onClick }: JumpToLatestProps) {
     >
       <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--ok)', display: 'inline-block' }} />
       ↓ Jump to latest · {count} new
+    </button>
+  );
+}
+
+// ─── CopyLinkButton ─────────────────────────────────────────────────────────
+// Copies an addressable Layman URL (see lib/layman-url.ts). The feature is
+// worthless if the user cannot get the URL out of the UI, so this sits on every
+// surface that has an address: session headers, turn headers, highlight details,
+// log rows and dashboard session cards.
+
+export function CopyLinkButton({
+  route,
+  opts,
+  title = 'Copy link',
+  size = 11,
+  label,
+}: {
+  route: LaymanRoute;
+  opts?: RouteOptions;
+  title?: string;
+  size?: number;
+  /** Optional text beside the icon; icon-only when omitted. */
+  label?: string;
+}) {
+  const [copied, setCopied] = useState(false);
+  const config = useSessionStore((s) => s.config);
+
+  const handleCopy = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    const url = buildUrl(instanceUrlOf(config), route, opts);
+    // clipboard is unavailable over plain HTTP on a non-loopback origin, which
+    // is exactly how a hub gets browsed — fall back to a prompt-free selection.
+    navigator.clipboard?.writeText(url).catch(() => {
+      const field = document.createElement('textarea');
+      field.value = url;
+      field.style.position = 'fixed';
+      field.style.opacity = '0';
+      document.body.appendChild(field);
+      field.select();
+      try { document.execCommand('copy'); } catch { /* nothing more to try */ }
+      document.body.removeChild(field);
+    });
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  };
+
+  return (
+    <button
+      onClick={handleCopy}
+      title={copied ? 'Copied' : title}
+      aria-label={title}
+      style={{
+        display: 'inline-flex', alignItems: 'center', gap: 4,
+        background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+        fontFamily: 'var(--font-mono)', fontSize: 10, lineHeight: 1,
+        color: copied ? 'var(--ok)' : 'var(--text-faint)',
+        transition: 'color 0.1s',
+        flexShrink: 0,
+      }}
+      onMouseEnter={(e) => { if (!copied) e.currentTarget.style.color = 'var(--text)'; }}
+      onMouseLeave={(e) => { if (!copied) e.currentTarget.style.color = 'var(--text-faint)'; }}
+    >
+      {copied ? (
+        <svg width={size} height={size} viewBox="0 0 16 16" fill="currentColor">
+          <path d="M13.78 4.22a.75.75 0 0 1 0 1.06l-6.5 6.5a.75.75 0 0 1-1.06 0l-3.5-3.5a.75.75 0 0 1 1.06-1.06L6.75 10.19l5.97-5.97a.75.75 0 0 1 1.06 0Z"/>
+        </svg>
+      ) : (
+        <svg width={size} height={size} viewBox="0 0 16 16" fill="currentColor">
+          <path d="M7.775 3.275a.75.75 0 0 0 1.06 1.06l1.25-1.25a2 2 0 1 1 2.83 2.83l-2.5 2.5a2 2 0 0 1-2.83 0 .75.75 0 0 0-1.06 1.06 3.5 3.5 0 0 0 4.95 0l2.5-2.5a3.5 3.5 0 0 0-4.95-4.95l-1.25 1.25Zm-4.69 9.64a2 2 0 0 1 0-2.83l2.5-2.5a2 2 0 0 1 2.83 0 .75.75 0 0 0 1.06-1.06 3.5 3.5 0 0 0-4.95 0l-2.5 2.5a3.5 3.5 0 0 0 4.95 4.95l1.25-1.25a.75.75 0 0 0-1.06-1.06l-1.25 1.25a2 2 0 0 1-2.83 0Z"/>
+        </svg>
+      )}
+      {(label || copied) && <span>{copied ? 'Copied' : label}</span>}
     </button>
   );
 }

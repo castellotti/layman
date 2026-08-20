@@ -66,6 +66,92 @@ Layman runs in Docker but needs read/write access to several directories on your
 
 Layman only writes inside these directories when you explicitly click **Install** in Settings. Nothing is written automatically on startup.
 
+Note that your **project directories are not mounted**. The container can reach `~/.claude` but not `<your-project>/.claude`, which is why the repair command below runs on the host rather than through the web UI.
+
+## Troubleshooting: every event recorded twice
+
+If sessions show each prompt, tool call, and response twice, you likely have Layman hooks in a project-level settings file as well as the global one. Claude Code merges `<project>/.claude/settings.local.json` **on top of** `~/.claude/settings.json`, so both copies fire.
+
+This affects installs that predate Layman moving to a global-only install; the project-level file was left behind and nothing has cleaned it up since.
+
+Check and fix from the project directory, on the host (not inside the container):
+
+```bash
+layman repair-hooks --dry-run   # report what would be removed
+layman repair-hooks             # remove them
+```
+
+The repair only removes hook entries that match Layman's own URL shape (`{origin}/hooks/{EventName}`). Your `permissions` and any other settings are written back untouched, hooks belonging to other tools are preserved - including ones sharing a matcher with a Layman hook - and the settings file is never deleted. Pass a directory to check a different project: `layman repair-hooks ~/code/other-project`.
+
+Recent Layman versions also prevent this from recurring: installing hooks now replaces any existing Layman hooks regardless of the URL they point at, so changing the port or `--hook-url` no longer appends a second set.
+
+Already-recorded duplicate events stay in the database; the fix stops new ones. You should not see the effects of the old ones any more: Layman treats two identical prompts recorded within a second of each other as one prompt when it builds a session's turns, so historical sessions no longer show empty duplicate exchanges that appear to have stolen the previous answer. A genuine re-send of the same text - typing it again a minute later - is still two separate turns.
+
+## Sharing a link to a session, a turn, or an event
+
+Every session, turn, event and highlight has its own URL, and the link buttons next to them copy it:
+
+```
+http://localhost:8880/s/{sessionId}                        a session transcript
+http://localhost:8880/s/{sessionId}/t/{promptEventId}       one prompt and its answer
+http://localhost:8880/s/{sessionId}/e/{eventId}             one event
+http://localhost:8880/h/{highlightId}                       a saved highlight
+```
+
+Opening one restores that exact view. Add `?view=logs` (or `dashboard`, `prompts`, `flow`, `sessions`) to open it in a different surface. Ids can be shortened to any unambiguous prefix of 8 or more characters, which keeps links readable when you paste them into notes.
+
+If a link opens on **"Not found on this instance"**, the id is not in this Layman's database. Usually that means the link came from a different machine, or the session was deleted or purged here. The panel names the instance it checked and offers a search box so you can look for the session by name or content.
+
+Links are built from the `publicUrl` setting when you set one, and otherwise from whatever address you are browsing. Set `publicUrl` in `~/.claude/layman.json` if you want copied links to use a hostname other people can reach - otherwise a link copied from `localhost` only works on your own machine.
+
+## Reading responses aloud (optional)
+
+Layman can speak the agent's replies through [speaches](https://github.com/speaches-ai/speaches), a
+local text-to-speech server. Nothing is sent to a cloud service and no audio is stored.
+
+**1. Start speaches and download a voice model.** Models are not bundled, and until one is installed
+nothing can speak:
+
+```bash
+git clone https://github.com/speaches-ai/speaches && cd speaches
+docker compose -f compose.cpu.yaml up -d
+curl -X POST http://localhost:8000/v1/models/speaches-ai/Kokoro-82M-v1.0-ONNX
+```
+
+**2. Turn it on** in Layman under **Settings → Data → Text to speech**, then click **Test
+connection**. On success it reports the synthesis time; on failure it shows what speaches said.
+
+You then get a speaker button on every turn, every agent response and every highlight. **Auto-speak**
+reads replies as they arrive: *Final only* waits for a two-second pause so you hear the answer rather
+than every progress message, and *Every message* reads all of them in order. Speech never overlaps -
+it queues, and the status bar shows what is playing with skip, stop and mute.
+
+**Speed vs playback rate.** These are different knobs. *Speed* is applied by speaches and changes
+tempo while keeping the voice sounding the same. *Playback rate* is applied afterwards in the
+browser, and if you also turn off *Preserve pitch* it raises the pitch too - the sped-up-tape sound.
+
+### If speech does not work
+
+| Symptom | Cause |
+|---|---|
+| **"Enable audio" appears in the status bar** | Not a fault. Browsers refuse to play audio until you have clicked something on the page. Click it once and the queued response plays; it will not ask again for that tab. This is common when you open a `?play=1` link in a new tab. |
+| **Speaker buttons are missing** | Speech is off. Settings → Data → Text to speech → Enable speech. |
+| **"speaches has no models installed"** | Run the `curl -X POST …/v1/models/…` command above. |
+| **Test connection fails with a connection error** | speaches is not running, or not on port 8000. Check with `curl http://localhost:8000/v1/models`. |
+| **Nothing happens for 30-60 seconds after clicking a speaker** | A long reply is several minutes of audio and takes real time to synthesise. The status bar shows `◌` while it works. Lower *Max characters* if you want it to start sooner. |
+| **"Speed must be between 0.5 and 2.0"** | Only reachable by hand-editing `~/.claude/layman.json`; the slider is already limited to what speaches accepts. |
+
+If Layman runs in Docker and speaches runs on your machine, leave the endpoint as
+`http://localhost:8000` - Layman rewrites it to reach the host automatically.
+
+### Sharing a link that speaks itself
+
+Add `?play=1` to a turn link and it reads the answer aloud on arrival:
+
+```
+http://localhost:8880/s/{sessionId}/t/{promptEventId}?play=1
+```
+
 ## Port binding
 
 The default config binds to `127.0.0.1:8880`, so the dashboard is only reachable from your local machine. Do not change this to `0.0.0.0` unless you have a specific reason and understand the implications - Layman has no authentication.
