@@ -24,6 +24,11 @@ export interface AmbiguousId {
 /** Minimum prefix length accepted by resolveId — short enough to be readable, long enough to be near-unique. */
 export const MIN_ID_PREFIX = 8;
 
+/** Exclusive upper bound for a `col >= prefix AND col < upperBound` range scan over `prefix`. */
+function prefixUpperBound(prefix: string): string {
+  return prefix.slice(0, -1) + String.fromCharCode(prefix.charCodeAt(prefix.length - 1) + 1);
+}
+
 /**
  * `extra` columns ride along in the SELECT so a resolved id carries everything
  * needed to build a URL for it — a bookmark or highlight is useless to a client
@@ -56,8 +61,13 @@ export class TurnStore {
    * Events for a session, preferring the recorded (SQLite) copy because the
    * in-memory EventStore caps at 10,000 events and a long session exceeds it.
    * Falls back to the live store for sessions not yet recorded.
+   *
+   * Public because callers building on top of a resolved Turn (e.g. the
+   * single-turn markdown export route) need the same fallback `getTurn()`
+   * already applies internally — going straight to BookmarkStore there would
+   * silently return no events for a live, not-yet-persisted session.
    */
-  private eventsFor(sessionId: string): TimelineEvent[] {
+  eventsFor(sessionId: string): TimelineEvent[] {
     const recorded = this.bookmarkStore.getEventsForSession(sessionId);
     if (recorded.length > 0) return recorded;
     return this.eventStore.getAll().filter((e) => e.sessionId === sessionId);
@@ -123,17 +133,18 @@ export class TurnStore {
 
     for (const { table, column, kind, extra } of RESOLVE_TABLES) {
       const columns = [`${column} AS id`, ...(extra ?? [])].join(', ');
-      const sql = exact
-        ? `SELECT ${columns} FROM ${table} WHERE ${column} = ? LIMIT 5`
-        : `SELECT ${columns} FROM ${table} WHERE ${column} LIKE ? LIMIT 5`;
-
-      // LIKE wildcards in the user-supplied value would broaden the match, so escape them.
-      const param = exact ? value : `${value.replace(/[%_\\]/g, '\\$&')}%`;
+      // Prefix matching uses a plain BINARY range (`>= prefix AND < successor`)
+      // rather than `LIKE 'prefix%'`. SQLite's LIKE-to-index-range-scan optimization
+      // is disabled by default whenever the pattern contains letters under the
+      // default case-insensitive LIKE semantics, which turns every prefix lookup
+      // into a full table scan of recorded_events — the largest, unbounded table.
+      // A direct range comparison is index-eligible unconditionally.
       const stmt = exact
-        ? this.db.prepare(sql)
-        : this.db.prepare(`${sql.replace(' LIMIT 5', '')} ESCAPE '\\' LIMIT 5`);
+        ? this.db.prepare(`SELECT ${columns} FROM ${table} WHERE ${column} = ? LIMIT 5`)
+        : this.db.prepare(`SELECT ${columns} FROM ${table} WHERE ${column} >= ? AND ${column} < ? LIMIT 5`);
 
-      const rows = stmt.all(param) as Array<{ id: string; session_id?: string; prompt_event_id?: string }>;
+      const rows = (exact ? stmt.all(value) : stmt.all(value, prefixUpperBound(value))) as
+        Array<{ id: string; session_id?: string; prompt_event_id?: string }>;
       for (const row of rows) {
         results.push({
           kind,

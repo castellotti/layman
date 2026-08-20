@@ -138,14 +138,30 @@ async function fetchSessionEvents(
   }
 }
 
-async function resolveRouteId(id: string): Promise<ResolvedId | null> {
+interface ResolveOutcome {
+  resolved: ResolvedId | null;
+  /** Populated when the server returned 409 — the prefix names more than one entity. */
+  candidates?: ResolvedId[];
+}
+
+async function resolveRouteId(id: string): Promise<ResolveOutcome> {
   try {
     const res = await fetch(`/api/resolve?id=${encodeURIComponent(id)}`);
-    if (!res.ok) return null;
-    return await res.json() as ResolvedId;
+    if (res.status === 409) {
+      const body = await res.json() as { candidates?: ResolvedId[] };
+      return { resolved: null, candidates: body.candidates ?? [] };
+    }
+    if (!res.ok) return { resolved: null };
+    return { resolved: await res.json() as ResolvedId };
   } catch {
-    return null;
+    return { resolved: null };
   }
+}
+
+/** Message for a 409 — distinct from "not found" since the entity does exist. */
+function ambiguousIdMessage(id: string, candidates: ResolvedId[]): string {
+  const kinds = [...new Set(candidates.map((c) => c.kind))].join(', ');
+  return `"${id.slice(0, 8)}" matches more than one item on this instance (${kinds}) — use a longer id.`;
 }
 
 interface InvestigationState {
@@ -803,8 +819,10 @@ export const useSessionStore = create<SessionState>((set, get) => ({
         activeSessionId: sessionId,
       };
 
-      // Logs and Flow render the live store keyed by activeSessionId; only the
-      // Sessions transcript reads historicalEvents.
+      // Logs and Flow render the live store keyed by activeSessionId; historicalEvents
+      // is still set above as a fallback source (see useEventStore.ts) for sessions
+      // that aren't present in the live WebSocket-fed store, e.g. a deep link opened
+      // after the server restarted or long after the session ended.
       if (mode === 'stream' || mode === 'flowchart') {
         done({
           ...base,
@@ -874,9 +892,11 @@ export const useSessionStore = create<SessionState>((set, get) => ({
         return;
 
       case 'highlight': {
-        const resolved = await resolveRouteId(route.highlightId);
+        const { resolved, candidates } = await resolveRouteId(route.highlightId);
         if (!resolved || resolved.kind !== 'highlight') {
-          fail(`No highlight ${route.highlightId.slice(0, 8)} on this instance.`);
+          fail(candidates
+            ? ambiguousIdMessage(route.highlightId, candidates)
+            : `No highlight ${route.highlightId.slice(0, 8)} on this instance.`);
           return;
         }
         // An explicit non-Prompts ?view opens the underlying turn instead of the card.
@@ -893,9 +913,11 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       }
 
       case 'bookmark': {
-        const resolved = await resolveRouteId(route.bookmarkId);
+        const { resolved, candidates } = await resolveRouteId(route.bookmarkId);
         if (!resolved || resolved.kind !== 'bookmark' || !resolved.sessionId) {
-          fail(`No bookmark ${route.bookmarkId.slice(0, 8)} on this instance.`);
+          fail(candidates
+            ? ambiguousIdMessage(route.bookmarkId, candidates)
+            : `No bookmark ${route.bookmarkId.slice(0, 8)} on this instance.`);
           return;
         }
         await openSession(resolved.sessionId, {});
@@ -903,9 +925,11 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       }
 
       case 'folder': {
-        const resolved = await resolveRouteId(route.folderId);
+        const { resolved, candidates } = await resolveRouteId(route.folderId);
         if (!resolved || (resolved.kind !== 'folder' && resolved.kind !== 'highlight_folder')) {
-          fail(`No folder ${route.folderId.slice(0, 8)} on this instance.`);
+          fail(candidates
+            ? ambiguousIdMessage(route.folderId, candidates)
+            : `No folder ${route.folderId.slice(0, 8)} on this instance.`);
           return;
         }
         // Both folder kinds share the /f/ prefix; the resolver says which view owns it.

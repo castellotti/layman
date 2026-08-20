@@ -19,7 +19,7 @@ import type { Turn } from './types.js';
  * (`EventStore.updateType`), so counting events with these types counts calls,
  * not lifecycle transitions.
  */
-const TOOL_CALL_TYPES: ReadonlySet<EventType> = new Set<EventType>([
+export const TOOL_CALL_TYPES: ReadonlySet<EventType> = new Set<EventType>([
   'tool_call_pending',
   'tool_call_approved',
   'tool_call_denied',

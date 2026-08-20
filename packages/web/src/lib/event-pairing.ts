@@ -24,7 +24,10 @@ export function pairFor(eventId: string, events: TimelineEvent[]): string[] {
   if (!turn) return [event.id];
 
   if (event.type === 'user_prompt') {
-    return turn.responseEventId ? [turn.promptEventId, turn.responseEventId] : [turn.promptEventId];
+    // Use the clicked event's own id, not turn.promptEventId — for a collapsed
+    // duplicate prompt those differ, and pairing on the canonical id would expand
+    // a different (unclicked) row instead of the one the user selected.
+    return turn.responseEventId ? [event.id, turn.responseEventId] : [event.id];
   }
 
   // An agent_response pairs with its originating prompt — including interstitial

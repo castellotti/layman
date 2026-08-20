@@ -70,7 +70,10 @@ export function registerTurnRoutes(fastify: FastifyInstance, deps: TurnRouteDeps
     if (!turn) return reply.status(404).send(notFound('Turn'));
 
     if (request.query.format === 'md') {
-      const events = bookmarkStore.getEventsForSession(sessionId);
+      // Same fallback getTurn() used internally to find the turn — going straight
+      // to bookmarkStore here would silently return [] for a live session that
+      // hasn't been persisted to SQLite yet, dropping tool-call/explanation sections.
+      const events = turnStore.eventsFor(sessionId);
       const owned = new Set(turn.eventIds);
       const markdown = turnToMarkdown(
         turn,

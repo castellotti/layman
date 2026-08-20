@@ -9,8 +9,9 @@ import type { TimelineEvent, EventType } from '../events/types.js';
  * better-sqlite3 is a native module with no prebuild for this Node ABI, so the
  * whole suite avoids touching a real database (no existing test does either).
  * This fake implements only the two query shapes TurnStore.resolveId issues —
- * `WHERE col = ?` and `WHERE col LIKE ? ESCAPE '\'` — with faithful LIKE
- * semantics, so prefix matching and wildcard escaping are genuinely covered.
+ * `WHERE col = ?` and `WHERE col >= ? AND col < ?` — with plain JS string
+ * comparison, which orders ASCII test fixtures the same way SQLite's BINARY
+ * collation does, so prefix matching is genuinely covered.
  */
 class FakeDb {
   constructor(private tables: Record<string, Array<Record<string, string>>>) {}
@@ -18,7 +19,7 @@ class FakeDb {
   prepare(sql: string) {
     const table = /FROM (\w+)/.exec(sql)?.[1] ?? '';
     const column = /WHERE (\w+)/.exec(sql)?.[1] ?? '';
-    const isLike = sql.includes('LIKE');
+    const isRange = sql.includes('>=');
     // Extra columns are whatever follows `<col> AS id, ` in the SELECT list. The
     // session query selects `session_id AS id`, which is the key, not an extra.
     const extra = (/SELECT \w+ AS id, ([\w, ]+) FROM/.exec(sql)?.[1] ?? '')
@@ -28,11 +29,15 @@ class FakeDb {
     const rows = this.tables[table] ?? [];
 
     return {
-      all: (param: string) => {
+      all: (...params: string[]) => {
         const matches = rows.filter((row) => {
           const value = row[column];
           if (value === undefined) return false;
-          return isLike ? likeMatch(value, param) : value === param;
+          if (isRange) {
+            const [lower, upper] = params;
+            return value >= lower && value < upper;
+          }
+          return value === params[0];
         });
         return matches.map((row) => {
           const out: Record<string, string> = { id: row[column] };
@@ -44,25 +49,6 @@ class FakeDb {
       },
     };
   }
-}
-
-/** SQL LIKE with `\` as the escape character; only `%` and `_` are special. */
-function likeMatch(value: string, pattern: string): boolean {
-  let regex = '';
-  for (let i = 0; i < pattern.length; i++) {
-    const char = pattern[i];
-    if (char === '\\') {
-      const next = pattern[++i];
-      if (next !== undefined) regex += next.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    } else if (char === '%') {
-      regex += '.*';
-    } else if (char === '_') {
-      regex += '.';
-    } else {
-      regex += char.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    }
-  }
-  return new RegExp(`^${regex}$`).test(value);
 }
 
 function makeStore(
@@ -222,8 +208,8 @@ describe('TurnStore.resolveId', () => {
     expect((result as { candidates: unknown[] }).candidates).toHaveLength(2);
   });
 
-  it('does not let LIKE wildcards in the input broaden the match', () => {
-    // Unescaped, '%' would match every row in every table.
+  it('treats % and _ as literal characters, not wildcards', () => {
+    // Prefix matching is a plain range scan, not LIKE, so these have no special meaning.
     expect(store.resolveId('%')).toBeNull();
     expect(store.resolveId('abcdef%h')).toBeNull();
     expect(store.resolveId('abcdefg_')).toBeNull();

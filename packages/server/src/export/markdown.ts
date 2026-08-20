@@ -8,6 +8,7 @@
 import type { TimelineEvent } from '../events/types.js';
 import type { RecordedSession } from '../db/types.js';
 import type { Turn } from '../turns/types.js';
+import { TOOL_CALL_TYPES } from '../turns/extract.js';
 import { buildUrl } from './urls.js';
 
 export interface MarkdownOpts {
@@ -22,15 +23,6 @@ export interface MarkdownOpts {
 }
 
 const DEFAULT_OPTS = { headingLevel: 2, blockAnchors: false } as const;
-
-const TOOL_CALL_TYPES = new Set([
-  'tool_call_pending',
-  'tool_call_approved',
-  'tool_call_denied',
-  'tool_call_delegated',
-  'tool_call_completed',
-  'tool_call_failed',
-]);
 
 /** First line of a string, trimmed and length-capped — for headings and summaries. */
 export function firstLine(text: string, max = 80): string {
@@ -73,7 +65,10 @@ function formatDuration(startedAt: number, endedAt: number | null): string {
  */
 export function describeToolCall(event: TimelineEvent, max = 120): string {
   const input = event.data.toolInput ?? {};
-  const candidates = ['command', 'file_path', 'path', 'pattern', 'url', 'query', 'prompt'];
+  // Order matches formatToolInput() in packages/web/src/components/events/EventCard.tsx —
+  // keep them identical or an export and the live dashboard will summarize the same
+  // tool call input differently.
+  const candidates = ['command', 'file_path', 'pattern', 'query', 'url', 'prompt'];
 
   for (const key of candidates) {
     const value = input[key];

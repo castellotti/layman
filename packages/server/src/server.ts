@@ -81,6 +81,9 @@ export function createServer(config: LaymanConfig): LaymanServer {
     if (getConfig().piiFilter) return filterPii(data);
     return data;
   });
+  // Layman's-terms explanations bypass EventData entirely (attachLaymans), so they need
+  // their own filter hook to get the same redaction as everything else leaving the store.
+  eventStore.setStringFilter((text) => (getConfig().piiFilter ? redactString(text) : text));
 
   // In-memory queue of prompts to be relayed to OpenCode by the plugin.
   interface PendingPrompt { id: string; sessionId: string; prompt: string; queuedAt: number }
@@ -103,9 +106,15 @@ export function createServer(config: LaymanConfig): LaymanServer {
       hookTimeout: activeConfig.hookTimeout,
     });
 
-  /** Session cwds are stored PII-redacted, so `~` has to be expanded back. */
-  const expandHome = (dir: string): string =>
-    dir.startsWith('~/') ? join(homedir(), dir.slice(2)) : dir;
+  /**
+   * Session cwds are stored PII-redacted, so `~` has to be expanded back.
+   * The PII filter redacts a cwd that is exactly the home directory to the
+   * bare string `~` (no trailing slash), so that case is handled alongside `~/`.
+   */
+  const expandHome = (dir: string): string => {
+    if (dir === '~') return homedir();
+    return dir.startsWith('~/') ? join(homedir(), dir.slice(2)) : dir;
+  };
 
   /**
    * Directories Layman is tracking, as absolute paths that exist.
