@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect, useRef, useMemo, Suspense, lazy } from 'react';
-import { useSessionStore } from '../../stores/sessionStore.js';
+import { useSessionStore, fetchSessionEvents } from '../../stores/sessionStore.js';
 import { EventStream } from '../layout/EventStream.js';
 import { InvestigationPanel } from '../layout/InvestigationPanel.js';
 import { SearchInput, SegmentedControl, SECTION_LABEL_STYLE, CollapsibleFolderHeader, NewFolderRow, ConfirmDialog, CopyLinkButton } from '../primitives/index.js';
@@ -9,7 +9,7 @@ import { useFolderDrag, reorderIds, type FolderDragSource, type FolderDropTarget
 import { useFolderCrud } from '../../hooks/useFolderCrud.js';
 import { sessionDisplayName } from '../../lib/session-state.js';
 import type { ClientMessage } from '../../lib/ws-protocol.js';
-import type { RecordedSession, SessionTimeMetrics } from '../../lib/types.js';
+import type { RecordedSession } from '../../lib/types.js';
 
 const FlowchartView = lazy(() =>
   import('../flowchart/FlowchartView.js').then((m) => ({ default: m.FlowchartView }))
@@ -128,19 +128,16 @@ export function SessionsView({ onSend }: SessionsViewProps) {
     setViewingSession(sessionId);
     setHistoricalEvents([]);
     setShowFlowchart(false);
-    try {
-      const [evRes, metricsRes] = await Promise.all([
-        fetch(`/api/bookmarks/sessions/${sessionId}/events`),
-        fetch(`/api/bookmarks/sessions/${sessionId}/time-metrics`),
-      ]);
-      const evData = await evRes.json() as { events?: Parameters<typeof setHistoricalEvents>[0] };
-      const metricsData = metricsRes.ok ? await metricsRes.json() as SessionTimeMetrics : null;
-      setHistoricalEvents(evData.events ?? []);
-      setSessionTimeMetrics(metricsData);
-    } catch {
-      setHistoricalEvents([]);
-      setSessionTimeMetrics(null);
-    }
+    // Same fetch+fallback as route hydration's openSession() (sessionStore.ts):
+    // a live session with sessionRecording off exists only in memory, so an
+    // empty recorded-events response falls back to the live store rather than
+    // showing nothing.
+    const { events: recorded, metrics } = await fetchSessionEvents(sessionId);
+    const resolvedEvents = recorded.length > 0
+      ? recorded
+      : useSessionStore.getState().events.filter((e) => e.sessionId === sessionId);
+    setHistoricalEvents(resolvedEvents);
+    setSessionTimeMetrics(metrics);
   }, [viewingSessionId, setViewingSession, setHistoricalEvents, setSessionTimeMetrics, setSelectedEvent]);
 
   const handleCloseSession = useCallback(() => {

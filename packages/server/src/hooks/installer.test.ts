@@ -115,6 +115,37 @@ describe('findOrphanedProjectHooks', () => {
     expect(() => findOrphanedProjectHooks(dir)).not.toThrow();
   });
 
+  it('tolerates valid JSON with a malformed hooks field rather than throwing', () => {
+    // Valid JSON, but `hooks` isn't the Record<string, HookMatcher[]> shape
+    // TypeScript assumes — a real-world file could have this from manual editing
+    // or a tool writing a different schema.
+    writeProjectSettings('settings.local.json', { hooks: 'oops' });
+    expect(() => findOrphanedProjectHooks(dir)).not.toThrow();
+    expect(findOrphanedProjectHooks(dir)).toEqual([]);
+
+    writeProjectSettings('settings.local.json', { hooks: ['oops'] });
+    expect(() => findOrphanedProjectHooks(dir)).not.toThrow();
+
+    writeProjectSettings('settings.local.json', { hooks: { Stop: 'oops' } });
+    expect(() => findOrphanedProjectHooks(dir)).not.toThrow();
+
+    writeProjectSettings('settings.local.json', { hooks: { Stop: [{ matcher: '', hooks: 'oops' }] } });
+    expect(() => findOrphanedProjectHooks(dir)).not.toThrow();
+  });
+
+  it('recognises a Layman hook regardless of its type field', () => {
+    // claude-code also writes type: 'command' hooks, and a settings file isn't
+    // guaranteed to match Layman's own HookEntry shape exactly — matching must
+    // key off the URL, not the type, or these entries survive dedup/repair.
+    writeProjectSettings('settings.local.json', {
+      hooks: {
+        Stop: [{ matcher: '', hooks: [{ type: 'command', url: 'http://localhost:8880/hooks/Stop', timeout: 5 }] }],
+      },
+    });
+
+    expect(findOrphanedProjectHooks(dir)[0].hookCount).toBe(1);
+  });
+
   it('checks both settings.json and settings.local.json', () => {
     writeProjectSettings('settings.json', {
       hooks: { Stop: [{ matcher: '', hooks: [laymanHook('Stop')] }] },

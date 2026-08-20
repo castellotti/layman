@@ -19,8 +19,15 @@ import type { Turn } from '../lib/types.js';
  * applying, a half-hydrated store would overwrite the URL that is still being
  * read — hence `applyingRoute`, which is module-level rather than a ref because
  * there is exactly one address bar per document.
+ *
+ * `routeGeneration` guards the async gap the same way `TtsPlayer` does: a rapid
+ * popstate (mashing Back/Forward) can start a second `apply()` before the first
+ * one's `await hydrateFromRoute(...)` resolves. Without it, the stale call's
+ * continuation could still win — clearing `applyingRoute` out from under the
+ * newer call, or pushing its now-superseded route to the address bar.
  */
 let applyingRoute = false;
+let routeGeneration = 0;
 
 /**
  * The addressed entity, ignoring view/query options. Two paths with the same
@@ -48,11 +55,22 @@ function entityKey(route: LaymanRoute): string {
  * every unrelated state change.
  */
 export function routeForState(state: SessionState): { route: LaymanRoute; opts: RouteOptions } {
+  if (state.routeFolderId) {
+    return { route: { kind: 'folder', folderId: state.routeFolderId }, opts: {} };
+  }
+
   if (state.viewMode === 'sessions' && state.viewingSessionId) {
     const sessionId = state.viewingSessionId;
     return state.selectedTurnPromptEventId
       ? { route: { kind: 'turn', sessionId, promptEventId: state.selectedTurnPromptEventId }, opts: {} }
       : { route: { kind: 'session', sessionId }, opts: {} };
+  }
+
+  if ((state.viewMode === 'stream' || state.viewMode === 'flowchart') && state.activeSessionId) {
+    return {
+      route: { kind: 'session', sessionId: state.activeSessionId },
+      opts: { view: viewNameForMode(state.viewMode) },
+    };
   }
 
   if (state.viewMode === 'prompts' && state.selectedHighlightId) {
@@ -162,6 +180,7 @@ export function useLaymanRoute(): void {
   // ── Inbound ───────────────────────────────────────────────────────────────
   useEffect(() => {
     const apply = async (): Promise<void> => {
+      const myGeneration = ++routeGeneration;
       const parsed = parsePath(window.location.pathname, window.location.search);
       applyingRoute = true;
       try {
@@ -178,8 +197,16 @@ export function useLaymanRoute(): void {
         }
         await useSessionStore.getState().hydrateFromRoute(parsed.route, parsed.opts);
       } finally {
-        applyingRoute = false;
+        // Only the latest call may release the guard — an older call finishing
+        // late must not clear it out from under a newer one still in flight.
+        if (myGeneration === routeGeneration) applyingRoute = false;
       }
+
+      // A newer apply() has since started (another popstate arrived while this
+      // one awaited hydration); its own result is authoritative, so this call's
+      // continuation must not sync or speak on its behalf.
+      if (myGeneration !== routeGeneration) return;
+
       // Hydration can canonicalise the address (a collapsed duplicate prompt id
       // resolves to the surviving turn), so push the settled state back out.
       syncRef.current?.();
@@ -206,6 +233,9 @@ export function useLaymanRoute(): void {
       if (applyingRoute) return;
       const state = useSessionStore.getState();
       if (state.routeHydrating) return;
+      // A broken URL is left alone so RouteErrorPanel's message can be read (or
+      // copied) against the address that actually failed, rather than '/'.
+      if (state.routeError) return;
 
       const { route, opts } = routeForState(state);
       const next = buildPath(route, opts);

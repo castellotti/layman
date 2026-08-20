@@ -121,8 +121,12 @@ export function instanceUrlOf(config: LaymanConfig | null): string {
 /**
  * A session's events, preferring the recorded copy. Falls back to whatever the
  * live store holds, which is the only source when sessionRecording is off.
+ *
+ * Exported so every session-opening path (route hydration, the sidebar's
+ * `handleSelectSession`) shares one fetch+fallback instead of keeping
+ * independent copies that can silently diverge.
  */
-async function fetchSessionEvents(
+export async function fetchSessionEvents(
   sessionId: string,
 ): Promise<{ events: TimelineEvent[]; metrics: SessionTimeMetrics | null }> {
   try {
@@ -763,9 +767,11 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     viewingSessionId: sessionId,
     bookmarksScrollToEventId: promptEventId,
     selectedTurnPromptEventId: promptEventId,
+    routeFolderId: null,
   }),
 
-  setSelectedHighlight: (selectedHighlightId) => set({ selectedHighlightId }),
+  setSelectedHighlight: (selectedHighlightId) =>
+    set({ selectedHighlightId, ...(selectedHighlightId ? { routeFolderId: null } : {}) }),
 
   // An explicit user navigation to one turn — the URL becomes /s/<sid>/t/<pid>.
   selectTurn: (sessionId, promptEventId) => set({
@@ -773,6 +779,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     ...viewModeFlags('sessions'),
     viewingSessionId: sessionId,
     selectedTurnPromptEventId: promptEventId,
+    routeFolderId: null,
     ...(promptEventId ? { bookmarksScrollToEventId: promptEventId } : {}),
   }),
 
@@ -808,7 +815,10 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       return resolved;
     };
 
-    set({ routeHydrating: true, routeError: null });
+    // Cleared up front so every branch but 'folder' starts from a clean slate —
+    // otherwise a stale id from a previously visited folder keeps winning in
+    // routeForState() after the user has navigated somewhere else entirely.
+    set({ routeHydrating: true, routeError: null, routeFolderId: null });
 
     /** Opens a session's transcript, optionally focused on one turn or event. */
     const openSession = async (
@@ -887,6 +897,9 @@ export const useSessionStore = create<SessionState>((set, get) => ({
         done({
           viewMode: mode,
           ...viewModeFlags(mode),
+          viewingSessionId: null,
+          selectedTurnPromptEventId: null,
+          selectedHighlightId: null,
           ...(mode === 'dashboard' ? { dashboardOverride: true, logsOverride: false, splitOverrides: {} } : {}),
           ...(mode === 'stream' ? { logsOverride: true, dashboardOverride: false, splitOverrides: {} } : {}),
         });
@@ -960,6 +973,9 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       // A turn address only means something within the session it came from.
       selectedTurnPromptEventId:
         viewingSessionId === state.viewingSessionId ? state.selectedTurnPromptEventId : null,
+      // Selecting a session explicitly means the URL should address it, not a
+      // folder from an earlier deep link (routeForState() prefers routeFolderId).
+      routeFolderId: viewingSessionId === null ? state.routeFolderId : null,
     })),
 
   setHistoricalEvents: (historicalEvents) => set({ historicalEvents }),

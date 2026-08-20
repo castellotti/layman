@@ -65,6 +65,7 @@ beforeEach(() => {
     bookmarksOpen: false,
     promptsOpen: false,
     viewingSessionId: null,
+    activeSessionId: null,
     historicalEvents: [],
     events: [],
     selectedTurnPromptEventId: null,
@@ -299,6 +300,22 @@ describe('routeForState', () => {
     expect(buildPath(dashboard.route, dashboard.opts)).toBe('/');
   });
 
+  it('addresses the session when Logs/Flow are showing one', () => {
+    useSessionStore.setState({ viewMode: 'stream', activeSessionId: 'sess-1' });
+    const logs = routeForState(useSessionStore.getState());
+    expect(buildPath(logs.route, logs.opts)).toBe('/s/sess-1?view=logs');
+
+    useSessionStore.setState({ viewMode: 'flowchart', activeSessionId: 'sess-1' });
+    const flow = routeForState(useSessionStore.getState());
+    expect(buildPath(flow.route, flow.opts)).toBe('/s/sess-1?view=flow');
+  });
+
+  it('emits the folder address while a folder is open', () => {
+    useSessionStore.setState({ viewMode: 'sessions', routeFolderId: 'f1' });
+    expect(routeForState(useSessionStore.getState()).route)
+      .toEqual({ kind: 'folder', folderId: 'f1' });
+  });
+
   it('never re-emits arrival-only options', () => {
     // ?play=1 must not be re-broadcast on unrelated state changes or a deep link
     // would re-trigger speech every render.
@@ -317,5 +334,41 @@ describe('hydrate → read back', () => {
 
     const { route, opts } = routeForState(useSessionStore.getState());
     expect(buildPath(route, opts)).toBe(path);
+  });
+
+  it('a hydrated Logs deep link rebuilds the same path', async () => {
+    stubFetch({ events: TURN_EVENTS });
+    const path = '/s/sess-1?view=logs';
+
+    const parsed = parsePath(path);
+    await useSessionStore.getState().hydrateFromRoute(parsed!.route, parsed!.opts);
+
+    const { route, opts } = routeForState(useSessionStore.getState());
+    expect(buildPath(route, opts)).toBe(path);
+  });
+
+  it('a hydrated folder deep link rebuilds the same path', async () => {
+    stubFetch({ resolve: { kind: 'folder', id: 'f1' } });
+    const path = '/f/f1';
+
+    const parsed = parsePath(path);
+    await useSessionStore.getState().hydrateFromRoute(parsed!.route, parsed!.opts);
+
+    const { route, opts } = routeForState(useSessionStore.getState());
+    expect(buildPath(route, opts)).toBe(path);
+  });
+
+  it('leaving a session for the dashboard drops the stale folder/turn state', async () => {
+    stubFetch({ resolve: { kind: 'folder', id: 'f1' } });
+    await useSessionStore.getState().hydrateFromRoute({ kind: 'folder', folderId: 'f1' }, {});
+    expect(useSessionStore.getState().routeFolderId).toBe('f1');
+
+    await useSessionStore.getState().hydrateFromRoute({ kind: 'dashboard' }, {});
+
+    const state = useSessionStore.getState();
+    expect(state.routeFolderId).toBeNull();
+    expect(state.viewingSessionId).toBeNull();
+    const { route, opts } = routeForState(state);
+    expect(buildPath(route, opts)).toBe('/');
   });
 });

@@ -298,7 +298,12 @@ function getLaymanEventNames(): Set<string> {
  */
 function isLaymanHook(hook: HookEntry, serverUrl?: string): boolean {
   if (hook._layman === true) return true;
-  if (hook.type !== 'http' || typeof hook.url !== 'string') return false;
+  // Not gated on hook.type: real settings.json entries aren't guaranteed to
+  // match the HookEntry shape (e.g. claude-code also writes type: 'command'
+  // hooks), and the pre-existing legacy fallback below matched on URL alone —
+  // requiring 'http' here silently stopped recognising (and thus deduping or
+  // removing) any Layman hook whose type field isn't exactly that.
+  if (typeof hook.url !== 'string') return false;
 
   const match = LAYMAN_HOOK_URL_PATTERN.exec(hook.url.trim());
   if (match && getLaymanEventNames().has(match[1])) return true;
@@ -410,6 +415,23 @@ function getClineWorkflowContent(): string {
 /** Project-level settings files claude-code reads, in precedence order. */
 const PROJECT_SETTINGS_FILES = ['settings.json', 'settings.local.json'];
 
+/**
+ * `Settings.hooks` is typed as `SettingsHooks`, but that's a cast over parsed
+ * JSON from a file we don't control — a user's settings.json can have `hooks`
+ * be a string, array, or anything else valid JSON allows. Validating the shape
+ * here (down to each matcher's `hooks` array) means a malformed file is
+ * skipped like an unreadable one, rather than throwing out of Object.entries
+ * or .flatMap partway through.
+ */
+function isValidSettingsHooks(hooks: unknown): hooks is SettingsHooks {
+  if (typeof hooks !== 'object' || hooks === null || Array.isArray(hooks)) return false;
+  return Object.values(hooks).every((matchers) =>
+    Array.isArray(matchers) && matchers.every((m) =>
+      typeof m === 'object' && m !== null && Array.isArray((m as HookMatcher).hooks),
+    ),
+  );
+}
+
 export interface OrphanedHooksReport {
   /** Absolute path of the settings file holding the orphans. */
   path: string;
@@ -445,7 +467,7 @@ export function findOrphanedProjectHooks(projectDir: string, serverUrl?: string)
     } catch {
       continue; // Unreadable or malformed — leave it alone.
     }
-    if (!settings.hooks) continue;
+    if (!settings.hooks || !isValidSettingsHooks(settings.hooks)) continue;
 
     const events: string[] = [];
     const duplicatedEvents: string[] = [];
@@ -486,7 +508,7 @@ export function repairOrphanedProjectHooks(projectDir: string, serverUrl?: strin
 
   for (const report of reports) {
     const settings = readSettings(report.path);
-    if (!settings.hooks) continue;
+    if (!settings.hooks || !isValidSettingsHooks(settings.hooks)) continue;
 
     stripLaymanHooks(settings.hooks, Object.keys(settings.hooks), serverUrl);
 
