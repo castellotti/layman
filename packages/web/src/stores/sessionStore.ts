@@ -794,6 +794,20 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     const done = (patch: Partial<SessionState>) =>
       set({ ...patch, routeHydrating: false, routeError: null });
 
+    /** Resolves an id, reporting a 409 candidate list or a "not found" message via fail(). */
+    const resolveOrFail = async (
+      id: string,
+      isValid: (r: ResolvedId) => boolean,
+      label: string,
+    ): Promise<ResolvedId | null> => {
+      const { resolved, candidates } = await resolveRouteId(id);
+      if (!resolved || !isValid(resolved)) {
+        fail(candidates ? ambiguousIdMessage(id, candidates) : `No ${label} ${id.slice(0, 8)} on this instance.`);
+        return null;
+      }
+      return resolved;
+    };
+
     set({ routeHydrating: true, routeError: null });
 
     /** Opens a session's transcript, optionally focused on one turn or event. */
@@ -892,13 +906,8 @@ export const useSessionStore = create<SessionState>((set, get) => ({
         return;
 
       case 'highlight': {
-        const { resolved, candidates } = await resolveRouteId(route.highlightId);
-        if (!resolved || resolved.kind !== 'highlight') {
-          fail(candidates
-            ? ambiguousIdMessage(route.highlightId, candidates)
-            : `No highlight ${route.highlightId.slice(0, 8)} on this instance.`);
-          return;
-        }
+        const resolved = await resolveOrFail(route.highlightId, (r) => r.kind === 'highlight', 'highlight');
+        if (!resolved) return;
         // An explicit non-Prompts ?view opens the underlying turn instead of the card.
         if (opts.view && opts.view !== 'prompts' && resolved.sessionId) {
           await openSession(resolved.sessionId, { promptEventId: resolved.promptEventId });
@@ -913,25 +922,23 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       }
 
       case 'bookmark': {
-        const { resolved, candidates } = await resolveRouteId(route.bookmarkId);
-        if (!resolved || resolved.kind !== 'bookmark' || !resolved.sessionId) {
-          fail(candidates
-            ? ambiguousIdMessage(route.bookmarkId, candidates)
-            : `No bookmark ${route.bookmarkId.slice(0, 8)} on this instance.`);
-          return;
-        }
-        await openSession(resolved.sessionId, {});
+        const resolved = await resolveOrFail(
+          route.bookmarkId,
+          (r) => r.kind === 'bookmark' && !!r.sessionId,
+          'bookmark',
+        );
+        if (!resolved) return;
+        await openSession(resolved.sessionId!, {});
         return;
       }
 
       case 'folder': {
-        const { resolved, candidates } = await resolveRouteId(route.folderId);
-        if (!resolved || (resolved.kind !== 'folder' && resolved.kind !== 'highlight_folder')) {
-          fail(candidates
-            ? ambiguousIdMessage(route.folderId, candidates)
-            : `No folder ${route.folderId.slice(0, 8)} on this instance.`);
-          return;
-        }
+        const resolved = await resolveOrFail(
+          route.folderId,
+          (r) => r.kind === 'folder' || r.kind === 'highlight_folder',
+          'folder',
+        );
+        if (!resolved) return;
         // Both folder kinds share the /f/ prefix; the resolver says which view owns it.
         const mode = resolved.kind === 'highlight_folder' ? 'prompts' : 'sessions';
         done({

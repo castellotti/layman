@@ -73,8 +73,8 @@ export class TurnStore {
     return this.eventStore.getAll().filter((e) => e.sessionId === sessionId);
   }
 
-  listTurns(sessionId: string): Turn[] {
-    const events = this.eventsFor(sessionId);
+  /** Turns for an already-fetched event list — the cached part of listTurns(), factored out so getTurnWithEvents() can share one eventsFor() call instead of fetching twice. */
+  private turnsFor(sessionId: string, events: TimelineEvent[]): Turn[] {
     if (events.length === 0) return [];
 
     const lastTimestamp = events[events.length - 1].timestamp;
@@ -88,19 +88,33 @@ export class TurnStore {
     return turns;
   }
 
+  listTurns(sessionId: string): Turn[] {
+    return this.turnsFor(sessionId, this.eventsFor(sessionId));
+  }
+
   getTurn(sessionId: string, promptEventId: string): Turn | null {
-    const turns = this.listTurns(sessionId);
+    return this.getTurnWithEvents(sessionId, promptEventId)?.turn ?? null;
+  }
+
+  /**
+   * Like getTurn(), but also returns the session's full event list — for callers
+   * (e.g. the single-turn markdown export route) that need both and would
+   * otherwise call eventsFor() a second time to get them.
+   */
+  getTurnWithEvents(sessionId: string, promptEventId: string): { turn: Turn; events: TimelineEvent[] } | null {
+    const events = this.eventsFor(sessionId);
+    const turns = this.turnsFor(sessionId, events);
+
     const exact = turns.find((t) => t.promptEventId === promptEventId);
-    if (exact) return exact;
+    if (exact) return { turn: exact, events };
 
     // A duplicate prompt collapsed by extractTurns is no longer any turn's
     // promptEventId, but links minted before the collapse still name it. Only
     // prompts get this fallback — an arbitrary owned event id is not a turn address.
-    const isPrompt = this.eventsFor(sessionId).some(
-      (e) => e.id === promptEventId && e.type === 'user_prompt',
-    );
+    const isPrompt = events.some((e) => e.id === promptEventId && e.type === 'user_prompt');
     if (!isPrompt) return null;
-    return turns.find((t) => t.eventIds.includes(promptEventId)) ?? null;
+    const turn = turns.find((t) => t.eventIds.includes(promptEventId));
+    return turn ? { turn, events } : null;
   }
 
   /** The turn that owns an arbitrary event, so any event id can be addressed as a turn. */

@@ -66,14 +66,14 @@ export function registerTurnRoutes(fastify: FastifyInstance, deps: TurnRouteDeps
     Querystring: { format?: string; toolCalls?: string; analysis?: string };
   }>('/api/turns/:sessionId/:promptEventId', async (request, reply) => {
     const { sessionId, promptEventId } = request.params;
-    const turn = turnStore.getTurn(sessionId, promptEventId);
-    if (!turn) return reply.status(404).send(notFound('Turn'));
+    // getTurnWithEvents() returns both from one eventsFor() fetch — calling getTurn()
+    // then eventsFor() separately would fetch the session's events twice, which for a
+    // live, not-yet-persisted session means scanning the whole in-memory EventStore twice.
+    const found = turnStore.getTurnWithEvents(sessionId, promptEventId);
+    if (!found) return reply.status(404).send(notFound('Turn'));
+    const { turn, events } = found;
 
     if (request.query.format === 'md') {
-      // Same fallback getTurn() used internally to find the turn — going straight
-      // to bookmarkStore here would silently return [] for a live session that
-      // hasn't been persisted to SQLite yet, dropping tool-call/explanation sections.
-      const events = turnStore.eventsFor(sessionId);
       const owned = new Set(turn.eventIds);
       const markdown = turnToMarkdown(
         turn,
