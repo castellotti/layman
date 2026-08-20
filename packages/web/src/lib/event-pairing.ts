@@ -1,4 +1,5 @@
 import type { TimelineEvent } from './types.js';
+import { extractTurns } from './turns.js';
 
 /**
  * Returns the ids that should be expanded together when a Logs row is
@@ -8,35 +9,30 @@ import type { TimelineEvent } from './types.js';
  * - selecting an `agent_response` expands that response + its *originating*
  *   prompt (the closest preceding `user_prompt`).
  * - any other kind expands alone.
- * A prompt "owns" every event up to (but not including) the next prompt.
+ *
+ * Delegates to the shared turn rule (`turns.ts`) rather than reimplementing the
+ * ownership semantics, so the UI and the export/API paths cannot diverge.
  */
 export function pairFor(eventId: string, events: TimelineEvent[]): string[] {
-  const idx = events.findIndex((e) => e.id === eventId);
-  if (idx === -1) return [eventId];
-  const event = events[idx];
+  const event = events.find((e) => e.id === eventId);
+  if (!event) return [eventId];
+  if (event.type !== 'user_prompt' && event.type !== 'agent_response') return [event.id];
+
+  // Matching on eventIds rather than promptEventId also covers a collapsed
+  // duplicate prompt (see turns.ts), which is owned by a turn it does not name.
+  const turn = extractTurns(events).find((t) => t.eventIds.includes(event.id));
+  if (!turn) return [event.id];
 
   if (event.type === 'user_prompt') {
-    let exchangeEnd = events.length;
-    for (let i = idx + 1; i < events.length; i++) {
-      if (events[i].type === 'user_prompt') {
-        exchangeEnd = i;
-        break;
-      }
-    }
-    for (let i = exchangeEnd - 1; i > idx; i--) {
-      if (events[i].type === 'agent_response') return [event.id, events[i].id];
-    }
-    return [event.id];
+    // Use the clicked event's own id, not turn.promptEventId — for a collapsed
+    // duplicate prompt those differ, and pairing on the canonical id would expand
+    // a different (unclicked) row instead of the one the user selected.
+    return turn.responseEventId ? [event.id, turn.responseEventId] : [event.id];
   }
 
-  if (event.type === 'agent_response') {
-    for (let i = idx - 1; i >= 0; i--) {
-      if (events[i].type === 'user_prompt') return [events[i].id, event.id];
-    }
-    return [event.id];
-  }
-
-  return [event.id];
+  // An agent_response pairs with its originating prompt — including interstitial
+  // responses, which are not the turn's final response.
+  return [turn.promptEventId, event.id];
 }
 
 /** Whether a Logs row has an expandable detail card at all. */

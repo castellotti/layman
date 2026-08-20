@@ -2,7 +2,7 @@ import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { useSessionStore } from '../../stores/sessionStore.js';
 import type { Highlight, HighlightFolder, TimelineEvent } from '../../lib/types.js';
-import { SearchInput, FilterChip, SECTION_LABEL_STYLE, CollapsibleFolderHeader, NewFolderRow, ConfirmDialog } from '../primitives/index.js';
+import { SearchInput, FilterChip, SECTION_LABEL_STYLE, CollapsibleFolderHeader, NewFolderRow, ConfirmDialog, CopyLinkButton } from '../primitives/index.js';
 import { getEffectiveAgentContent } from '../../lib/reasoning.js';
 import { isMarkdown, MARKDOWN_PROSE_COMPACT, REMARK_PLUGINS } from '../../lib/markdown.js';
 import { sessionDisplayName } from '../../lib/session-state.js';
@@ -10,6 +10,7 @@ import { useDragReorder } from '../../hooks/useDragReorder.js';
 import { useOptimisticOrder } from '../../hooks/useOptimisticOrder.js';
 import { useFolderDrag, reorderIds, type FolderDragSource, type FolderDropTarget } from '../../hooks/useFolderDrag.js';
 import { useFolderCrud } from '../../hooks/useFolderCrud.js';
+import { SpeakButton } from '../tts/SpeakButton.js';
 
 interface HighlightEventPair {
   promptEvent: TimelineEvent | null;
@@ -203,7 +204,10 @@ function SidebarFolder({
 export function PromptsView() {
   const { highlightFolders, highlights, sessions, navigateFromPromptsToSession, setSelectedEvent, setInvestigationOpen } = useSessionStore();
 
-  const [selectedHighlightId, setSelectedHighlightId] = useState<string | null>(null);
+  // Selection lives in the store, not locally, because it is addressable: /h/<id>
+  // hydrates it and the outbound URL sync reads it back (see useLaymanRoute).
+  const selectedHighlightId = useSessionStore((s) => s.selectedHighlightId);
+  const setSelectedHighlightId = useSessionStore((s) => s.setSelectedHighlight);
   const [eventPair, setEventPair] = useState<HighlightEventPair>({ promptEvent: null, responseEvent: null });
   const [loadingPair, setLoadingPair] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -261,7 +265,7 @@ export function PromptsView() {
       .finally(() => setLoadingPair(false));
   }, [selectedHighlightId]);
 
-  const handleSelectHighlight = useCallback((h: Highlight) => setSelectedHighlightId(h.id), []);
+  const handleSelectHighlight = useCallback((h: Highlight) => setSelectedHighlightId(h.id), [setSelectedHighlightId]);
 
   const handleViewInSession = useCallback(() => {
     if (!selectedHighlight) return;
@@ -486,6 +490,18 @@ export function PromptsView() {
                   })}
                 </p>
               </div>
+              {eventPair.responseEvent && (
+                <SpeakButton
+                  id={eventPair.responseEvent.id}
+                  text={getEffectiveAgentContent(eventPair.responseEvent).response}
+                  title="Speak this highlight's response"
+                  size={13}
+                />
+              )}
+              <CopyLinkButton
+                route={{ kind: 'highlight', highlightId: selectedHighlight.id }}
+                title="Copy link to this highlight"
+              />
               <button
                 onClick={handleViewInSession}
                 style={{

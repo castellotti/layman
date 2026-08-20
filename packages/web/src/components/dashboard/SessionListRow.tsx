@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { StatusDot, Meter } from '../primitives/index.js';
+import { StatusDot, Meter, CopyLinkButton } from '../primitives/index.js';
 import { useNow } from '../../hooks/useNow.js';
 import type { TimelineEvent } from '../../lib/types.js';
 import type { SessionInfo } from '../../lib/ws-protocol.js';
@@ -129,6 +129,11 @@ export const SessionListRow = React.memo(function SessionListRow({
           </div>
         )}
       </div>
+
+      <CopyLinkButton
+        route={{ kind: 'session', sessionId: session.sessionId }}
+        title="Copy link to this session"
+      />
 
       {/* ctx% on top, model beside the meter below (falls back to relative time when no metrics are available yet) */}
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 3, flexShrink: 0 }}>
