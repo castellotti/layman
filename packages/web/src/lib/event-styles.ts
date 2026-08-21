@@ -1,5 +1,6 @@
 import type { TimelineEvent } from './types.js';
 import { toolPathWithRange } from './tool-input.js';
+import { getEffectiveAgentContent } from './reasoning.js';
 
 /** Kind color for Dashboard tail rows and Logs single-line rows (shared vocabulary). */
 export const EVENT_KIND_COLOR: Record<string, string> = {
@@ -103,6 +104,49 @@ export function thinkingRowFor(
     analysis: undefined,
     laymans: undefined,
   };
+}
+
+/**
+ * The real event id behind a row id, stripping the derived-thinking suffix.
+ *
+ * Anything that looks an id up against the *real* event list — turn ownership,
+ * row numbering, "open this in Logs" — has to go through this, or a thinking
+ * row silently misses: no turn, `#0` for its number, a dead link.
+ */
+export function baseEventId(rowId: string): string {
+  return rowId.endsWith(THINKING_ROW_SUFFIX)
+    ? rowId.slice(0, -THINKING_ROW_SUFFIX.length)
+    : rowId;
+}
+
+/** True for a row derived by `thinkingRowFor`, not a real recorded event. */
+export function isThinkingRow(event: TimelineEvent): boolean {
+  return event.type === 'agent_thinking';
+}
+
+/**
+ * A display list with each response's reasoning lifted out into its own row
+ * immediately before it.
+ *
+ * Every surface that renders rows *and* indexes into them — the Logs list and
+ * its keyboard cursor, the minimap, the dashboard tail — must derive from the
+ * same list. Rendering the extra row without adding it here is what desynced
+ * keyboard navigation: `goToIndex` scrolls to `querySelectorAll('[data-event-card]')[n]`,
+ * which counts rendered rows, so every thinking row above the cursor shifted
+ * the target by one.
+ */
+export function withThinkingRows(events: TimelineEvent[]): TimelineEvent[] {
+  // Cheap bail-out: sessions from harnesses that report no reasoning (and every
+  // list with no responses in it) skip the allocation entirely.
+  if (!events.some((e) => e.type === 'agent_response')) return events;
+
+  const out: TimelineEvent[] = [];
+  for (const event of events) {
+    const row = thinkingRowFor(event, getEffectiveAgentContent(event).thinking);
+    if (row) out.push(row);
+    out.push(event);
+  }
+  return out;
 }
 
 export const DRIFT_COLORS: Record<string, string> = {

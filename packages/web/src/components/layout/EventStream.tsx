@@ -8,8 +8,7 @@ import { SessionMetricsBar } from '../controls/SessionMetricsBar.js';
 import { PromptInput } from '../controls/PromptInput.js';
 import { Minimap } from '../logs/Minimap.js';
 import { LiveStreamRow } from '../logs/LiveStreamRow.js';
-import { thinkingRowFor } from '../../lib/event-styles.js';
-import { getEffectiveAgentContent } from '../../lib/reasoning.js';
+import { withThinkingRows, baseEventId, isThinkingRow } from '../../lib/event-styles.js';
 import { JumpToLatest } from '../primitives/index.js';
 import { saveAndBookmarkSession } from '../../lib/bookmarks-api.js';
 import { pairFor, hasLogDetail } from '../../lib/event-pairing.js';
@@ -57,12 +56,25 @@ export function EventStream({ onSend, archived = false, archivedDate, turnRuler 
     searchQuery,
   }, sourceOverride);
 
+  // ─── Display rows ─────────────────────────────────────────────────────────
+  // Reasoning is lifted out of each response into a row of its own. Everything
+  // that renders rows *or* indexes into them works off these lists, so the
+  // keyboard cursor, the minimap and the rendered order cannot drift apart.
+  const displayEvents = useMemo(() => withThinkingRows(events), [events]);
+  const displaySessionEvents = useMemo(() => withThinkingRows(sessionEvents), [sessionEvents]);
+
   // Index map: event ID → position in sessionEvents (stable "#n" row numbers)
   const eventIndexMap = useMemo(() => {
     const map = new Map<string, number>();
     sessionEvents.forEach((e, i) => map.set(e.id, i));
     return map;
   }, [sessionEvents]);
+
+  /** Row number for a display row — a thinking row borrows its response's. */
+  const rowNumber = useCallback(
+    (rowId: string) => eventIndexMap.get(baseEventId(rowId)) ?? 0,
+    [eventIndexMap]
+  );
 
   // Rows with an expandable detail card — computed against the full (unfiltered)
   // per-session event list so pairing/expand-all always operates on real exchanges.
@@ -110,13 +122,19 @@ export function EventStream({ onSend, archived = false, archivedDate, turnRuler 
   // Row line click — select-to-focus: expand this row + its pair, collapse the rest.
   // Also moves the keyboard-navigation cursor here so arrow-key nav continues from the click.
   const handleSelectRow = useCallback((eventId: string) => {
-    setExpandedLogEventIds(new Set(pairFor(eventId, sessionEvents)));
-    const idx = events.findIndex((e) => e.id === eventId);
+    // A thinking row has no paired event for select-to-focus to open, so it
+    // toggles only itself; pairing is resolved against the real event list.
+    setExpandedLogEventIds(
+      eventId === baseEventId(eventId)
+        ? new Set(pairFor(eventId, sessionEvents))
+        : new Set([eventId])
+    );
+    const idx = displayEvents.findIndex((e) => e.id === eventId);
     if (idx >= 0) {
       setSelectedIndex(idx);
-      if (idx < events.length - 1) setFollowLatest(false);
+      if (idx < displayEvents.length - 1) setFollowLatest(false);
     }
-  }, [sessionEvents, events, setExpandedLogEventIds]);
+  }, [sessionEvents, displayEvents, setExpandedLogEventIds]);
 
   // Caret click — manual toggle of just this row
   const handleCaretToggle = useCallback((eventId: string) => {
@@ -141,10 +159,10 @@ export function EventStream({ onSend, archived = false, archivedDate, turnRuler 
   }, [sessionEvents.length, autoScroll, followLatest, archived]);
 
   useEffect(() => {
-    if (!archived && autoScroll && followLatest && events.length > 0) {
-      setSelectedIndex(events.length - 1);
+    if (!archived && autoScroll && followLatest && displayEvents.length > 0) {
+      setSelectedIndex(displayEvents.length - 1);
     }
-  }, [events.length, autoScroll, followLatest, archived]);
+  }, [displayEvents.length, autoScroll, followLatest, archived]);
 
   // Scroll to a specific event — select its pair (so context is visible) and scroll
   // the row into view. Live Logs is driven by scrollToEventId (Dashboard drilldown);
@@ -161,7 +179,7 @@ export function EventStream({ onSend, archived = false, archivedDate, turnRuler 
 
     setExpandedLogEventIds(new Set(pairFor(pendingScrollEventId, sessionEvents)));
 
-    const idx = events.findIndex((e) => e.id === pendingScrollEventId);
+    const idx = displayEvents.findIndex((e) => e.id === pendingScrollEventId);
     if (idx >= 0) setSelectedIndex(idx);
     setFollowLatest(false);
     clearPendingScroll();
@@ -198,13 +216,13 @@ export function EventStream({ onSend, archived = false, archivedDate, turnRuler 
   }, [autoScroll, archived]);
 
   const jumpToLatest = useCallback(() => {
-    const idx = events.length - 1;
+    const idx = displayEvents.length - 1;
     setSelectedIndex(idx);
     setFollowLatest(true);
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [events]);
+  }, [displayEvents]);
 
   const handlePrint = useCallback(() => {
     document.body.classList.add('layman-print-live');
@@ -222,7 +240,7 @@ export function EventStream({ onSend, archived = false, archivedDate, turnRuler 
   }, [searchQuery]);
 
   const hasSearchQuery = searchQuery.trim().length > 0;
-  const matchCount = hasSearchQuery ? events.length : 0;
+  const matchCount = hasSearchQuery ? displayEvents.length : 0;
 
   const scrollToMatch = useCallback((idx: number) => {
     const container = scrollRef.current;
@@ -251,13 +269,13 @@ export function EventStream({ onSend, archived = false, archivedDate, turnRuler 
   }, [matchIndex, matchCount, scrollToMatch]);
 
   const goToIndex = useCallback((idx: number) => {
-    const clamped = Math.max(0, Math.min(idx, events.length - 1));
+    const clamped = Math.max(0, Math.min(idx, displayEvents.length - 1));
     setSelectedIndex(clamped);
     const cards = scrollRef.current?.querySelectorAll('[data-event-card]');
     if (cards && cards[clamped]) {
       cards[clamped].scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
-  }, [events]);
+  }, [displayEvents]);
 
   // Keyboard navigation + expand/collapse-all (E)
   useEffect(() => {
@@ -279,7 +297,7 @@ export function EventStream({ onSend, archived = false, archivedDate, turnRuler 
           break;
         case 'End':
           e.preventDefault();
-          goToIndex(events.length - 1);
+          goToIndex(displayEvents.length - 1);
           setFollowLatest(true);
           break;
         case 'p':
@@ -303,7 +321,7 @@ export function EventStream({ onSend, archived = false, archivedDate, turnRuler 
 
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
-  }, [selectedIndex, events.length, goToIndex, handleExpandToggle]);
+  }, [selectedIndex, displayEvents.length, goToIndex, handleExpandToggle]);
 
   const bookmarkedSessionIds = useMemo(
     () => new Set(bookmarks.map((b) => b.sessionId)),
@@ -413,7 +431,7 @@ export function EventStream({ onSend, archived = false, archivedDate, turnRuler 
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden', position: 'relative' }}>
         {/* Minimap */}
         {hasEvents && (
-          <Minimap events={sessionEvents} scrollRef={scrollRef} highlightedEventIds={logHighlightedEventIds} />
+          <Minimap events={displaySessionEvents} scrollRef={scrollRef} highlightedEventIds={logHighlightedEventIds} />
         )}
 
         {/* Scroll area */}
@@ -446,9 +464,12 @@ export function EventStream({ onSend, archived = false, archivedDate, turnRuler 
               </div>
             </div>
           ) : (
-            events.map((event, i) => {
+            displayEvents.map((event, i) => {
               const turn = turnByPromptId.get(event.id);
-              const hidden = hiddenByCollapse.has(event.id);
+              // Turn ownership and collapse are keyed on real event ids, so a
+              // derived thinking row resolves through its response's id and
+              // hides and shows with the turn it belongs to.
+              const hidden = hiddenByCollapse.has(baseEventId(event.id));
               if (hidden && !turn) return null;
 
               return (
@@ -462,30 +483,14 @@ export function EventStream({ onSend, archived = false, archivedDate, turnRuler 
                       onSelect={() => selectTurn(turn.sessionId, turn.promptEventId)}
                     />
                   )}
-                  {/* Reasoning as its own row, immediately before the answer it
-                      preceded. Shares the response's number because it is the
-                      same message; clicking it toggles only itself, since it has
-                      no paired event for select-to-focus to expand. */}
-                  {!hidden && (() => {
-                    const thinkingRow = thinkingRowFor(event, getEffectiveAgentContent(event).thinking);
-                    if (!thinkingRow) return null;
-                    return (
-                      <LogRow
-                        event={thinkingRow}
-                        index={eventIndexMap.get(event.id) ?? 0}
-                        hasDetail
-                        isExpanded={effectiveExpanded.has(thinkingRow.id)}
-                        onSelect={handleCaretToggle}
-                        onCaretToggle={handleCaretToggle}
-                        onSend={onSend}
-                      />
-                    );
-                  })()}
                   {!hidden && (
                     <LogRow
                       event={event}
-                      index={eventIndexMap.get(event.id) ?? 0}
-                      hasDetail={detailEventIdSet.has(event.id)}
+                      index={rowNumber(event.id)}
+                      // A thinking row is always expandable — its whole content
+                      // is the detail, and it is absent from detailEventIdSet,
+                      // which is built from real events only.
+                      hasDetail={isThinkingRow(event) || detailEventIdSet.has(event.id)}
                       isExpanded={effectiveExpanded.has(event.id)}
                       isSelected={i === selectedIndex}
                       onSelect={handleSelectRow}

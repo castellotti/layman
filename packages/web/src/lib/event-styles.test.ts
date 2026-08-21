@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { thinkingRowFor, eventDetail, kindLabel, THINKING_ROW_SUFFIX } from './event-styles.js';
+import {
+  thinkingRowFor, eventDetail, kindLabel, withThinkingRows, baseEventId, isThinkingRow,
+  THINKING_ROW_SUFFIX,
+} from './event-styles.js';
 import type { TimelineEvent } from './types.js';
 
 function ev(overrides: Partial<TimelineEvent> = {}): TimelineEvent {
@@ -97,5 +100,80 @@ describe('eventDetail', () => {
       data: { toolName: 'Bash', toolInput: { command: 'ls -la', path: '/tmp' } },
     }));
     expect(detail).toBe('Bash — ls -la');
+  });
+});
+
+describe('withThinkingRows', () => {
+  const prompt = ev({ id: 'p1', type: 'user_prompt', data: { prompt: 'go' } });
+  const tool = ev({ id: 't1', type: 'tool_call_completed', data: { toolName: 'Read' } });
+  const withThinking = ev({ id: 'r1', data: { prompt: 'answer', thinking: 'reasoning' } });
+  const withoutThinking = ev({ id: 'r2', data: { prompt: 'answer' } });
+
+  it('inserts the thinking row immediately before its response', () => {
+    const rows = withThinkingRows([prompt, tool, withThinking]);
+    expect(rows.map((r) => r.id)).toEqual(['p1', 't1', `r1${THINKING_ROW_SUFFIX}`, 'r1']);
+  });
+
+  it('leaves a response with no reasoning alone', () => {
+    const rows = withThinkingRows([prompt, withoutThinking]);
+    expect(rows.map((r) => r.id)).toEqual(['p1', 'r2']);
+  });
+
+  it('returns the same array when nothing can have reasoning', () => {
+    // The cheap bail-out: harnesses that report no reasoning must not pay an
+    // allocation per render.
+    const input = [prompt, tool];
+    expect(withThinkingRows(input)).toBe(input);
+  });
+
+  it('handles several responses in one list', () => {
+    const second = ev({ id: 'r3', data: { prompt: 'more', thinking: 'more reasoning' } });
+    const rows = withThinkingRows([withThinking, tool, second]);
+    expect(rows.map((r) => r.id)).toEqual([
+      `r1${THINKING_ROW_SUFFIX}`, 'r1', 't1', `r3${THINKING_ROW_SUFFIX}`, 'r3',
+    ]);
+  });
+
+  it('splits reasoning that was inline in the response text', () => {
+    // Claude Code delivers reasoning as <think> tags inside the response rather
+    // than pre-split, so deriving on the client covers it retroactively too.
+    const inline = ev({ id: 'r4', data: { prompt: '<think>deliberation</think>the answer' } });
+    const rows = withThinkingRows([inline]);
+    expect(rows).toHaveLength(2);
+    expect(rows[0].type).toBe('agent_thinking');
+    expect(rows[0].data.prompt).toBe('deliberation');
+  });
+
+  it('produces a list whose length matches the rendered row count', () => {
+    // Keyboard navigation scrolls to querySelectorAll('[data-event-card]')[n],
+    // which counts rendered rows — so the list it indexes must include the
+    // derived rows or the cursor lands one row short per thinking row above it.
+    const rows = withThinkingRows([prompt, withThinking, tool, withoutThinking]);
+    expect(rows).toHaveLength(5);
+  });
+});
+
+describe('baseEventId', () => {
+  it('strips the derived suffix', () => {
+    expect(baseEventId(`abc${THINKING_ROW_SUFFIX}`)).toBe('abc');
+  });
+
+  it('leaves a real event id untouched', () => {
+    expect(baseEventId('abc')).toBe('abc');
+  });
+
+  it('round-trips a derived row back to its response', () => {
+    const row = thinkingRowFor(ev({ id: 'r9' }), 'reasoning')!;
+    expect(baseEventId(row.id)).toBe('r9');
+  });
+});
+
+describe('isThinkingRow', () => {
+  it('identifies a derived row', () => {
+    expect(isThinkingRow(thinkingRowFor(ev(), 'reasoning')!)).toBe(true);
+  });
+
+  it('rejects a real response', () => {
+    expect(isThinkingRow(ev())).toBe(false);
   });
 });
