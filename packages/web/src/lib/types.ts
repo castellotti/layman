@@ -16,6 +16,15 @@ export type EventType =
   | 'subagent_start'
   | 'subagent_stop'
   | 'agent_response'
+  /**
+   * Display-only. The server never sends this and it is never recorded: the
+   * Logs list derives it from an `agent_response` that carries reasoning, so
+   * thinking reads as its own row rather than as a block nested inside the
+   * answer. Deriving it on the client rather than emitting a real event means
+   * it applies retroactively to every already-recorded session, including
+   * Claude Code's, whose reasoning is parsed out of the response text.
+   */
+  | 'agent_thinking'
   | 'stop_failure'
   | 'pre_compact'
   | 'post_compact'

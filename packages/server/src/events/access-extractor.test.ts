@@ -19,6 +19,21 @@ describe('extractAccess', () => {
       });
     });
 
+    it("tracks a pi Read, whose path argument is `path` not `file_path`", () => {
+      // Before the shared toolFilePath() helper, every pi file read and write
+      // was silently absent from access tracking — no error, just no rows.
+      const result = extractAccess('Read', { path: '/src/app.ts', offset: 320, limit: 100 }, undefined, eventId, timestamp);
+      expect(result.files).toHaveLength(1);
+      expect(result.files[0].path).toBe('/src/app.ts');
+      expect(result.files[0].operation).toBe('read');
+    });
+
+    it('tracks a pi Write', () => {
+      const result = extractAccess('Write', { path: '/tmp/out.txt', content: 'hello' }, undefined, eventId, timestamp);
+      expect(result.files).toHaveLength(1);
+      expect(result.files[0].operation).toBe('wrote');
+    });
+
     it('extracts Write as wrote operation', () => {
       const result = extractAccess('Write', { file_path: '/tmp/out.txt', content: 'hello' }, undefined, eventId, timestamp);
       expect(result.files).toHaveLength(1);

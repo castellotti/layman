@@ -8,6 +8,8 @@ import { SessionMetricsBar } from '../controls/SessionMetricsBar.js';
 import { PromptInput } from '../controls/PromptInput.js';
 import { Minimap } from '../logs/Minimap.js';
 import { LiveStreamRow } from '../logs/LiveStreamRow.js';
+import { thinkingRowFor } from '../../lib/event-styles.js';
+import { getEffectiveAgentContent } from '../../lib/reasoning.js';
 import { JumpToLatest } from '../primitives/index.js';
 import { saveAndBookmarkSession } from '../../lib/bookmarks-api.js';
 import { pairFor, hasLogDetail } from '../../lib/event-pairing.js';
@@ -460,6 +462,25 @@ export function EventStream({ onSend, archived = false, archivedDate, turnRuler 
                       onSelect={() => selectTurn(turn.sessionId, turn.promptEventId)}
                     />
                   )}
+                  {/* Reasoning as its own row, immediately before the answer it
+                      preceded. Shares the response's number because it is the
+                      same message; clicking it toggles only itself, since it has
+                      no paired event for select-to-focus to expand. */}
+                  {!hidden && (() => {
+                    const thinkingRow = thinkingRowFor(event, getEffectiveAgentContent(event).thinking);
+                    if (!thinkingRow) return null;
+                    return (
+                      <LogRow
+                        event={thinkingRow}
+                        index={eventIndexMap.get(event.id) ?? 0}
+                        hasDetail
+                        isExpanded={effectiveExpanded.has(thinkingRow.id)}
+                        onSelect={handleCaretToggle}
+                        onCaretToggle={handleCaretToggle}
+                        onSend={onSend}
+                      />
+                    );
+                  })()}
                   {!hidden && (
                     <LogRow
                       event={event}

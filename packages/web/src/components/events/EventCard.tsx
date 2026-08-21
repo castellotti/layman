@@ -9,6 +9,7 @@ import { DiffBlock } from '../shared/DiffBlock.js';
 import { usePendingApprovals } from '../../hooks/usePendingApprovals.js';
 import { useSessionStore } from '../../stores/sessionStore.js';
 import { DRIFT_COLORS } from '../../lib/event-styles.js';
+import { toolFilePath, toolLineRange } from '../../lib/tool-input.js';
 import { MARKDOWN_PROSE, REMARK_PLUGINS } from '../../lib/markdown.js';
 import { getEffectiveAgentContent } from '../../lib/reasoning.js';
 
@@ -20,9 +21,11 @@ function formatToolInput(toolInput: Record<string, unknown>): string {
   if ('command' in toolInput) {
     return String(toolInput.command);
   }
-  // File path tools
-  if ('file_path' in toolInput) {
-    const path = String(toolInput.file_path);
+  // File path tools. The path key differs per harness (pi uses `path`), and a
+  // windowed read carries offset/limit that say which part of the file was read.
+  const filePath = toolFilePath(toolInput);
+  if (filePath) {
+    const path = `${filePath}${toolLineRange(toolInput)}`;
     if ('content' in toolInput) {
       return `${path}\n${String(toolInput.content).slice(0, 500)}`;
     }
@@ -76,6 +79,9 @@ export function EventDetailBody({ event, onSend }: EventDetailBodyProps) {
   );
   const effectivePrompt = agentResponse.trim() ? agentResponse : undefined;
   const isUserPrompt = event.type === 'user_prompt';
+  // The derived reasoning row (see thinkingRowFor). Renders as prose like a
+  // response does — reasoning is markdown, not a tool payload.
+  const isAgentThinking = event.type === 'agent_thinking';
 
   // Find matching pending approval
   const pendingApproval = isPending
@@ -140,7 +146,7 @@ export function EventDetailBody({ event, onSend }: EventDetailBodyProps) {
             if ((tool === 'Edit' || tool === 'MultiEdit') && 'old_string' in input) {
               return (
                 <DiffBlock
-                  filePath={String(input.file_path ?? '')}
+                  filePath={toolFilePath(input) ?? ''}
                   oldText={String(input.old_string ?? '')}
                   newText={String(input.new_string ?? '')}
                   maxLines={30}
@@ -151,7 +157,7 @@ export function EventDetailBody({ event, onSend }: EventDetailBodyProps) {
             if (tool === 'Write' && 'content' in input) {
               return (
                 <DiffBlock
-                  filePath={String(input.file_path ?? '')}
+                  filePath={toolFilePath(input) ?? ''}
                   addedText={String(input.content ?? '')}
                   maxLines={30}
                 />
@@ -198,17 +204,17 @@ export function EventDetailBody({ event, onSend }: EventDetailBodyProps) {
             </div>
           )}
 
-          {/* Thinking blocks — agent_response only, collapsible */}
-          {isAgentResponse && effectiveThinking && (
-            <ThinkingBlock thinking={effectiveThinking} />
-          )}
+          {/* Reasoning is not rendered here. It is lifted out into its own
+              top-level Logs row by thinkingRowFor(), so showing it nested inside
+              the response as well would duplicate it. ThinkingBlock is still
+              exported for surfaces that have no row list of their own. */}
 
           {/* Prompt text — user_prompt and agent_response: markdown; others: plain */}
           {effectivePrompt && (
-            (isAgentResponse || isUserPrompt) ? (
+            (isAgentResponse || isUserPrompt || isAgentThinking) ? (
               <div className={`rounded-md border border-[var(--border-strong)] overflow-hidden`}>
                 <div className="flex items-center justify-between px-3 py-1 bg-[var(--bg-card)] border-b border-[var(--border-strong)]">
-                  <span className="text-[10px] text-[var(--text-faint)] font-mono uppercase">{isUserPrompt ? 'Prompt' : 'Response'}</span>
+                  <span className="text-[10px] text-[var(--text-faint)] font-mono uppercase">{isUserPrompt ? 'Prompt' : isAgentThinking ? 'Thinking' : 'Response'}</span>
                   <div className="flex items-center gap-2">
                     <button
                       onClick={handleHighlight}
@@ -226,7 +232,7 @@ export function EventDetailBody({ event, onSend }: EventDetailBodyProps) {
                     </button>
                   </div>
                 </div>
-                <div className={`p-3 border-l-2 ${isUserPrompt ? 'border-[var(--accent)]' : 'border-[var(--ok)]/50'} ${MARKDOWN_PROSE}`}>
+                <div className={`p-3 border-l-2 ${isUserPrompt ? 'border-[var(--accent)]' : isAgentThinking ? 'border-[#6e40c9]/50' : 'border-[var(--ok)]/50'} ${MARKDOWN_PROSE}`}>
                   <ReactMarkdown remarkPlugins={REMARK_PLUGINS}>{effectivePrompt!}</ReactMarkdown>
                 </div>
               </div>
@@ -576,7 +582,7 @@ function DriftDetailSection({
 
 function getInputPreview(inp: Record<string, unknown>): string | null {
   return (inp.command as string | undefined)
-    ?? (inp.file_path as string | undefined)
+    ?? toolFilePath(inp)
     ?? (inp.url as string | undefined)
     ?? (inp.query as string | undefined)
     ?? (inp.prompt as string | undefined)
