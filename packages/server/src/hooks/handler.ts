@@ -39,12 +39,14 @@ import type {
   CwdChangedInput,
   FileChangedInput,
   StatusLineInput,
+  StreamDeltaInput,
   PreToolUseResponse,
   PermissionResponse,
   ApprovalDecision,
 } from './types.js';
 import type { LaymanConfig } from '../config/schema.js';
 import type { DriftMonitor } from '../drift/monitor.js';
+import type { LiveStreamStore } from '../stream/live.js';
 
 const AUTO_ALLOW_TOOLS = new Set(['Read', 'Glob', 'Grep', 'WebSearch']);
 
@@ -78,7 +80,8 @@ export function registerHookHandler(
   analysisEngine: AnalysisEngine,
   getConfig: () => LaymanConfig,
   gate: SessionGate,
-  driftMonitor?: DriftMonitor
+  driftMonitor?: DriftMonitor,
+  liveStreams?: LiveStreamStore
 ): void {
   fastify.post<{ Params: { eventName: string }; Body: Record<string, unknown> }>(
     '/hooks/:eventName',
@@ -92,10 +95,15 @@ export function registerHookHandler(
         const cwd = (body as { cwd?: string }).cwd;
         // Resolve agent type — only accept known agent values to avoid confusion
         // with SubagentStart's agent_type field (which is the subagent name, not the source agent)
+        // Every new harness MUST be added here. An unrecognised agent_type falls
+        // through to 'claude-code' silently — no error, events still flow — so the
+        // symptom is mis-attributed sessions plus an auto-activate/approval toggle
+        // that quietly targets the wrong client.
         const rawAgentType = (body as { agent_type?: string }).agent_type;
         const agentType =
           rawAgentType === 'opencode' ? 'opencode'
           : rawAgentType === 'codex' ? 'codex'
+          : rawAgentType === 'pi' ? 'pi'
           : 'claude-code';
         const opencodeUrl = (body as { opencode_url?: string }).opencode_url;
 
@@ -314,6 +322,14 @@ export function registerHookHandler(
             await handleStatusLine(body as unknown as StatusLineInput, eventStore, agentType);
             return reply.status(200).send({});
           }
+          case 'StreamDelta': {
+            // Fast path: this arrives thousands of times per turn on a local
+            // model. It writes to the live-stream store and returns — it must
+            // never reach eventStore.add(), which would PII-scan, ring-buffer,
+            // persist and broadcast every token.
+            handleStreamDelta(body as unknown as StreamDeltaInput, agentType, getConfig, liveStreams);
+            return reply.status(200).send({});
+          }
           default:
             return reply.status(400).send({ error: `Unknown hook event: ${eventName}` });
         }
@@ -330,6 +346,64 @@ export function registerHookHandler(
       }
     }
   );
+}
+
+/**
+ * Route a token delta to the live-stream store.
+ *
+ * When `liveTokens.enabled` is false the delta is dropped *here*, server-side,
+ * rather than being stored and ignored by the client — a user who turns the
+ * feature off should stop paying for it, not merely stop seeing it.
+ */
+function handleStreamDelta(
+  input: StreamDeltaInput,
+  agentType: string,
+  getConfig: () => LaymanConfig,
+  liveStreams?: LiveStreamStore,
+): void {
+  if (!liveStreams) return;
+  const config = getConfig();
+  if (!config.liveTokens.enabled) return;
+
+  liveStreams.applyDelta({
+    sessionId: input.session_id,
+    agentType,
+    messageId: input.message_id,
+    seq: input.seq,
+    textDelta: input.text_delta,
+    // Suppressing thinking at ingest keeps it out of the buffer entirely, so it
+    // is never broadcast and never sits in memory.
+    thinkingDelta: config.liveTokens.showThinking ? input.thinking_delta : undefined,
+    tokens: input.tokens,
+    model: input.model,
+    done: input.done,
+  });
+}
+
+/**
+ * Harnesses for which suspending a tool call is opt-in rather than the default.
+ *
+ * pi's documented position is that a coding agent should not impose permission
+ * popups — "run in a container, or build your own confirmation flow with
+ * extensions". Layman blocking pi by default would override that choice on the
+ * user's behalf. Blocking it *on request* is a faithful reading of the same
+ * position, so the capability exists behind `config.approvalClients`.
+ *
+ * Every other harness blocks unconditionally and is unaffected.
+ */
+const OPT_IN_BLOCKING_CLIENTS = new Set(['pi']);
+
+/**
+ * Whether Layman may suspend this agent's process awaiting a user decision.
+ *
+ * Deliberately evaluated per tool call rather than cached per session, so
+ * toggling the setting takes effect on the agent's next tool call with no
+ * restart. The decision lives here rather than in the harness integration for
+ * the same reason — a client that had to be told at startup would need one.
+ */
+function mayBlock(config: LaymanConfig, agentType: string): boolean {
+  if (!OPT_IN_BLOCKING_CLIENTS.has(agentType)) return true;
+  return config.approvalClients.includes(agentType);
 }
 
 function computeShouldAutoAllow(
@@ -358,6 +432,7 @@ async function handlePreToolUse(
 ): Promise<PreToolUseResponse> {
   const config = getConfig();
   const riskLevel = classifyRisk(input.tool_name, input.tool_input);
+  const canBlock = mayBlock(config, agentType);
 
   // Emit any assistant "thinking" text that preceded this tool call
   await emitNewAssistantMessages(input.transcript_path, input.session_id, eventStore, agentType);
@@ -368,7 +443,10 @@ async function handlePreToolUse(
   if (driftMonitor && config.driftMonitoring?.enabled) {
     const driftResult = driftMonitor.checkPreToolUse(input.session_id);
 
-    if (driftResult.shouldBlock) {
+    // A red-level drift block suspends the agent exactly as an approval does, so
+    // it has to respect the same opt-in. The drift_alert event is still recorded
+    // below via the reminder path — the user loses the block, not the signal.
+    if (driftResult.shouldBlock && canBlock) {
       // Red level: block the agent via pending approval
       eventStore.add('drift_alert', input.session_id, {
         driftSummary: driftResult.reason,
@@ -421,8 +499,10 @@ async function handlePreToolUse(
     }
   }
 
-  // Check auto-allow rules
-  const shouldAutoAllow = computeShouldAutoAllow(config, input.tool_name, input.tool_input, riskLevel);
+  // Check auto-allow rules. A harness we may not block takes the same path as an
+  // auto-allowed call: the event is recorded and analysed, but nothing suspends.
+  const shouldAutoAllow =
+    !canBlock || computeShouldAutoAllow(config, input.tool_name, input.tool_input, riskLevel);
 
   const shouldAnalyze =
     config.autoAnalyze === 'all' ||
@@ -1025,6 +1105,10 @@ function handleAgentResponse(
 ): void {
   eventStore.add('agent_response', input.session_id, {
     prompt: input.response,
+    // Omit rather than store an empty string: `getEffectiveAgentContent()`
+    // branches on truthiness, and '' would claim "already split, no reasoning"
+    // for a harness that simply did not send the field.
+    ...(input.thinking ? { thinking: input.thinking } : {}),
   }, undefined, agentType);
 }
 
@@ -1239,6 +1323,7 @@ function handleStatusLine(
     rateLimit7dayResetsAt: input.rate_limits?.seven_day?.resets_at,
     sessionName: input.session_name,
     claudeCodeVersion: input.version,
+    thinkingLevel: input.thinking_level,
   }, undefined, agentType);
 
   // Propagate session name to live sessions list

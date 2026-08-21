@@ -31,6 +31,8 @@ Drift scores are EMA-smoothed (alpha 0.3) to avoid reacting to one-off spikes. S
 
 For harnesses with pre-execution hooks (Claude Code, Codex, Cline), Layman can intercept tool calls before they execute and ask for your approval. Pending calls surface as callouts on the Dashboard and in Logs with **Allow / Deny / Defer** actions. Auto-approve levels (All / Medium / High / None) delegate low-risk calls automatically.
 
+pi is the exception: it can block, but does not by default. pi's design position is that a coding agent should not impose permission popups, so Layman offers it as a per-harness choice instead of assuming it — turn on **Require approval for tool calls** on the pi row in **Settings -> Harness**. The change takes effect on the next tool call, with no pi restart.
+
 ![Tool approval](images/approval.png)
 
 ## Session recording, bookmarks, and search
@@ -65,7 +67,26 @@ Each session header shows an AI-generated plain-English summary of what the agen
 
 ## Session metrics
 
-When connected to Claude Code, sessions show live metrics: model name, context window usage (exact `ctx NN%` with a meter), cumulative session cost, token counts, lines changed, and rate-limit warnings in the account limits strip.
+When connected to Claude Code, sessions show live metrics: model name, context window usage (exact `ctx NN%` with a meter), cumulative session cost, token counts, lines changed, and rate-limit warnings in the account limits strip. pi reports the same metrics plus its current reasoning level.
+
+Cost is shown only when it is non-zero. A locally hosted model has every cost field set to zero, and a permanent `$0.00` in the most prominent slot would crowd out the numbers that actually move.
+
+## Live token streaming
+
+Harnesses that expose a streaming hook push partial output to the dashboard as it is generated: a row pinned to the tail of the Logs stream showing the response as it is written, the model's reasoning rendered separately and de-emphasised, and a token counter that ticks during generation. When the turn finishes, the live row is replaced by the committed response.
+
+Fidelity depends on what each harness exposes. Where there is no streaming hook, there is simply no live row — nothing is stuck or empty:
+
+| Harness | Live text | Live thinking | Live tokens |
+|---|:-:|:-:|:-:|
+| pi | token-level | token-level, separate stream | live counter |
+| OpenCode | token-level | `reasoning` parts | post-turn |
+| Claude Code | ❌ | ❌ | post-turn counter |
+| Codex | ❌ | ❌ | post-turn only |
+| Cline | ❌ | ❌ | post-turn only |
+| Mistral Vibe | ❌ | ❌ | post-turn only |
+
+Two toggles in **Settings -> Stream behavior**: **Live tokens** turns the channel off entirely, and **Live thinking** drops just the reasoning stream. Both take effect on the server, so turning them off stops the data being sent rather than merely hidden. Streamed text passes through the same PII filter as recorded events.
 
 ## Setup wizard
 

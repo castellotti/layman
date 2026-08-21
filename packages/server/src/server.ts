@@ -17,6 +17,7 @@ import { registerClineHookHandler } from './cline/handler.js';
 import { registerOpenWebUIHookHandler } from './openwebui/handler.js';
 import { AnalysisEngine } from './analysis/engine.js';
 import { DriftMonitor } from './drift/monitor.js';
+import { LiveStreamStore, type LiveStream } from './stream/live.js';
 import { resolveEndpoint } from './analysis/providers/openai-compat.js';
 import { filterPii, redactValue, redactString } from './pii/filter.js';
 import { PII_CATEGORIES, PII_GROUPS } from './pii/categories.js';
@@ -170,6 +171,53 @@ export function createServer(config: LaymanConfig): LaymanServer {
 
   // Now that broadcast exists, create the DriftMonitor
   driftMonitor = new DriftMonitor(eventStore, analysisEngine, pendingManager, getConfig, broadcast);
+
+  // ─── Live token streaming ─────────────────────────────────────────────────
+  const liveStreams = new LiveStreamStore();
+  // Deltas never pass through EventStore, so they never meet its PII filter.
+  // Wire the same redaction in here — see LiveStreamStore.setStringFilter for
+  // why it is applied to the accumulated buffer rather than to each delta.
+  liveStreams.setStringFilter((text) => (getConfig().piiFilter ? redactString(text) : text));
+  liveStreams.start();
+
+  /**
+   * Coalesce stream broadcasts to ~10 Hz per session.
+   *
+   * A local model on a fast GPU generates far quicker than a browser can
+   * usefully repaint, and the producer already batches. Re-amplifying that to
+   * one frame per delta would saturate the socket and the React render loop for
+   * no visible gain. The trailing timer guarantees the final state of a burst is
+   * always sent, so the last tokens before a pause are never left unrendered.
+   */
+  const STREAM_BROADCAST_INTERVAL_MS = 100;
+  const streamPending = new Map<string, LiveStream>();
+  const streamTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+  function flushStream(sessionId: string): void {
+    const stream = streamPending.get(sessionId);
+    streamPending.delete(sessionId);
+    streamTimers.delete(sessionId);
+    if (stream) broadcast({ type: 'stream:update', sessionId, stream });
+  }
+
+  liveStreams.on('stream:update', (stream: LiveStream) => {
+    streamPending.set(stream.sessionId, stream);
+    if (streamTimers.has(stream.sessionId)) return;
+    streamTimers.set(
+      stream.sessionId,
+      setTimeout(() => flushStream(stream.sessionId), STREAM_BROADCAST_INTERVAL_MS),
+    );
+  });
+
+  liveStreams.on('stream:end', (sessionId: string) => {
+    // Drop any coalesced partial: it is superseded by the committed
+    // agent_response, and delivering it after the end would resurrect the row.
+    const timer = streamTimers.get(sessionId);
+    if (timer) clearTimeout(timer);
+    streamTimers.delete(sessionId);
+    streamPending.delete(sessionId);
+    broadcast({ type: 'stream:end', sessionId });
+  });
 
   // Build sessions list annotated with active flag from the gate
   function buildSessionsList() {
@@ -826,11 +874,22 @@ export function createServer(config: LaymanConfig): LaymanServer {
       if (!session) {
         return reply.status(404).send({ error: 'Session not found' });
       }
-      if (session.agentType === 'cline') {
-        return reply.status(400).send({ error: 'Prompt submission is not yet supported for Cline sessions' });
+      // Harnesses whose integration polls the prompt queue and can inject the
+      // result back into a running session. Everything else has no way to
+      // receive a prompt it did not solicit.
+      if (session.agentType !== 'opencode' && session.agentType !== 'pi') {
+        return reply.status(400).send({
+          error: `Prompt submission is not supported for ${session.agentType} sessions`,
+        });
       }
-      if (session.agentType !== 'opencode') {
-        return reply.status(400).send({ error: 'Prompt submission is only supported for OpenCode sessions' });
+
+      // pi has no HTTP surface of its own; its extension polls the queue and
+      // calls pi.sendUserMessage(), which is strictly simpler than OpenCode's
+      // HTTP-or-subprocess dance below.
+      if (session.agentType === 'pi') {
+        const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        promptQueue.push({ id, sessionId, prompt: prompt.trim(), queuedAt: Date.now() });
+        return { ok: true, method: 'queued' };
       }
 
       // Try OpenCode HTTP API first (only works when started with --port).
@@ -861,32 +920,47 @@ export function createServer(config: LaymanConfig): LaymanServer {
       return { ok: true, method: 'queued' };
     });
 
-    // Plugin polling endpoint — returns the oldest pending prompt for any of the given sessions.
-    fastify.get<{ Querystring: { sessionIds?: string } }>(
-      '/api/opencode/pending-prompt',
-      async (request) => {
-        const ids = (request.query.sessionIds ?? '').split(',').filter(Boolean);
-        if (ids.length === 0) return null;
-        // Evict stale prompts (older than 10 minutes)
-        const cutoff = Date.now() - 10 * 60 * 1000;
-        while (promptQueue.length > 0 && promptQueue[0].queuedAt < cutoff) {
-          promptQueue.shift();
-        }
-        const idx = promptQueue.findIndex((p) => ids.includes(p.sessionId));
-        if (idx < 0) return null;
-        return promptQueue[idx];
-      }
-    );
+    // ─── Prompt relay ─────────────────────────────────────────────────────
+    // Polled by any harness integration that can inject a prompt into a running
+    // session (the OpenCode plugin and the pi extension today).
+    //
+    // The `/api/opencode/*` spellings predate pi and are kept as aliases: an
+    // OpenCode plugin installed before this change is a file on the user's disk
+    // that we do not control the update timing of, and it polls the old path
+    // forever until they reinstall.
 
-    // Plugin dequeue endpoint — acknowledge and remove a pending prompt.
-    fastify.delete<{ Params: { id: string } }>(
-      '/api/opencode/pending-prompt/:id',
-      async (request) => {
-        const idx = promptQueue.findIndex((p) => p.id === request.params.id);
-        if (idx >= 0) promptQueue.splice(idx, 1);
-        return { ok: true };
+    function takePendingPrompt(sessionIdsCsv: string) {
+      const ids = sessionIdsCsv.split(',').filter(Boolean);
+      if (ids.length === 0) return null;
+      // Evict stale prompts (older than 10 minutes)
+      const cutoff = Date.now() - 10 * 60 * 1000;
+      while (promptQueue.length > 0 && promptQueue[0].queuedAt < cutoff) {
+        promptQueue.shift();
       }
-    );
+      const idx = promptQueue.findIndex((p) => ids.includes(p.sessionId));
+      if (idx < 0) return null;
+      return promptQueue[idx];
+    }
+
+    function dequeuePrompt(id: string) {
+      const idx = promptQueue.findIndex((p) => p.id === id);
+      if (idx >= 0) promptQueue.splice(idx, 1);
+      return { ok: true };
+    }
+
+    for (const path of ['/api/prompts/pending', '/api/opencode/pending-prompt']) {
+      fastify.get<{ Querystring: { sessionIds?: string } }>(
+        path,
+        async (request) => takePendingPrompt(request.query.sessionIds ?? ''),
+      );
+    }
+
+    for (const path of ['/api/prompts/pending/:id', '/api/opencode/pending-prompt/:id']) {
+      fastify.delete<{ Params: { id: string } }>(
+        path,
+        async (request) => dequeuePrompt(request.params.id),
+      );
+    }
 
     // Activate a session for monitoring
     fastify.post('/api/activate', async (request) => {
@@ -1330,6 +1404,17 @@ export function createServer(config: LaymanConfig): LaymanServer {
           }
         }
 
+        // Send any in-flight token streams. Without this, opening the dashboard
+        // mid-generation shows nothing until the next delta — and if the agent
+        // has just gone quiet, nothing at all.
+        for (const stream of liveStreams.getAll()) {
+          ws.send(JSON.stringify({
+            type: 'stream:update',
+            sessionId: stream.sessionId,
+            stream,
+          } satisfies ServerMessage));
+        }
+
         ws.on('message', (data: unknown) => {
           try {
             const message = JSON.parse(String(data)) as ClientMessage;
@@ -1557,7 +1642,7 @@ export function createServer(config: LaymanConfig): LaymanServer {
   }
 
   // Register hook handler routes
-  registerHookHandler(fastify, pendingManager, eventStore, analysisEngine, getConfig, gate, driftMonitor);
+  registerHookHandler(fastify, pendingManager, eventStore, analysisEngine, getConfig, gate, driftMonitor, liveStreams);
   registerClineHookHandler(fastify, pendingManager, eventStore, analysisEngine, getConfig, gate);
   registerOpenWebUIHookHandler(fastify, eventStore, gate, db);
 

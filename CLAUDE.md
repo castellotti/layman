@@ -45,6 +45,7 @@ Layman is a pnpm monorepo with two packages:
 | OpenCode | Bidirectional plugin (`packages/opencode-plugin`) | `/layman` slash command |
 | Mistral Vibe | Passive file watcher on `~/.vibe/logs/session/` | `/layman` slash command |
 | Cline | Shell-script hooks in `~/Documents/Cline/Hooks/` | `/layman` workflow in Cline |
+| pi | TypeScript extension at `~/.pi/agent/extensions/layman/index.ts` | `/layman` slash command or auto-activate |
 
 ### How data flows
 
@@ -59,6 +60,8 @@ Layman is a pnpm monorepo with two packages:
 4. **Mistral Vibe watcher** (`packages/server/src/vibe/watcher.ts`): Polls `~/.vibe/logs/session/<dir>/messages.jsonl` every 2 seconds from a tracked byte offset. Translates Vibe's JSONL message format to Layman events. Sessions require `/layman` activation; sessions idle for 15+ minutes are treated as ended. Sessions within a 5-minute replay window are read from the beginning.
 
 5. **OpenCode plugin** (`packages/opencode-plugin`): A bidirectional plugin that receives events from OpenCode and can send prompts back. Registered in `~/.config/opencode/opencode.json`.
+
+5b. **pi extension** (`packages/pi-extension`): A single TypeScript file that the installer copies verbatim to `~/.pi/agent/extensions/layman/index.ts`, where pi auto-discovers it and loads it through jiti — no build step, no `node_modules` beside it. It translates pi's event API to the same `/hooks/:eventName` payloads every other client posts (`agent_type: "pi"`), so no separate handler is needed. It is bidirectional: it polls `/api/prompts/pending` and injects via `pi.sendUserMessage()`. It is also the richest source Layman has — pi separates reasoning from response text at the protocol level, so `data.thinking` is populated directly, and `message_update` feeds the live token channel. `/layman` calls `POST /api/activate` directly rather than smuggling an `echo layman:activate` through a bash tool call, because pi dispatches extension commands before the prompt reaches the model.
 
 6. **EventStore** (`packages/server/src/events/store.ts`) — in-memory, max 10,000 events, emits `event:new` / `event:update` / `sessions:changed`. Also tracks active sessions (sessionId → cwd) via `trackSession()`. Events passing through the store are automatically scanned by the PII filter before storage.
 
@@ -138,6 +141,53 @@ rather than in component state. `?play=1` and `?t=` are arrival-only and deliber
 re-emitted. `?view=` maps to the internal `ViewMode` through the two tables in `sessionStore.ts`
 (`viewNameForMode` / `viewModeForName`) — the only place the URL vocabulary and `ViewMode` meet.
 
+### Live token streaming
+
+Partial assistant output — text and reasoning, separately — pushed to the dashboard as it is
+generated, plus a running token counter.
+
+```
+packages/server/src/stream/live.ts        LiveStreamStore: accumulate, redact, sweep
+packages/server/src/hooks/handler.ts      POST /hooks/StreamDelta (fast path in the existing switch)
+packages/web/src/components/logs/LiveStreamRow.tsx   the row pinned to the stream tail
+```
+
+**This deliberately bypasses `EventStore`.** Everything added via `EventStore.add()` is PII-scanned,
+pushed onto a 10,000-entry ring, recorded into SQLite and broadcast — right for a tool call, ruinous
+for a token delta, of which a local model produces thousands per turn. `session_metrics` set the
+precedent: high-frequency data gets a dedicated map and a dedicated WebSocket message
+(`stream:update` / `stream:end`), never the timeline. `/hooks/StreamDelta` still lives inside the
+`/hooks/:eventName` switch so it inherits session tracking, agent-type resolution and the
+activation gate — it just never calls `eventStore.add()`.
+
+Three consequences worth knowing:
+
+- **PII is applied to the accumulated buffer, not to each delta.** A secret routinely straddles a
+  delta boundary — neither half matches on its own — so per-delta filtering would leak it whole.
+  This is the same class of hole documented for `attachLaymans()` under `EventStore.setStringFilter()`.
+- **Coalescing happens twice**: the producer batches at 100 ms / 256 chars, and the server coalesces
+  per session at ~10 Hz before broadcasting. One fast producer must not saturate every connected
+  dashboard, and the server must not re-amplify what the producer already batched.
+- **`liveTokens.enabled: false` drops deltas at ingest, server-side**, and `showThinking: false`
+  suppresses reasoning before it enters the buffer. A user who turns the feature off should stop
+  paying for it, not merely stop seeing it.
+
+The client clears a session's buffer both on `stream:end` *and* when the committed `agent_response`
+arrives. Those are separate WebSocket frames with no ordering guarantee between them, so relying on
+`stream:end` alone can render the partial and the finished text at once.
+
+Fidelity is not uniform, and the four harnesses with no streaming hook must render as **no live row
+at all** — never an empty or stuck one:
+
+| Harness | Mechanism | Live text | Live thinking | Live tokens |
+|---|---|---|---|---|
+| pi | `message_update` / `AssistantMessageEvent` | token-level | token-level, separate stream | per-turn `usage`, live counter |
+| OpenCode | `message.part.updated` | token-level (cumulative → diffed) | `reasoning` parts | post-turn |
+| Claude Code | StatusLine relay, 300 ms debounce | ✗ | ✗ | post-turn counter |
+| Codex | 5 hooks, no streaming | ✗ | ✗ | post-turn only |
+| Cline | shell hooks | ✗ | ✗ | post-turn only |
+| Mistral Vibe | 2 s log poll | ✗ | ✗ | post-turn only |
+
 ### Text to speech
 
 Reads agent responses aloud through a [speaches](https://github.com/speaches-ai/speaches) server
@@ -180,7 +230,53 @@ tested in node, where there is no `Audio` and no `URL.createObjectURL`.
 
 - **`EventStore.setStringFilter()`**: `attachLaymans()` writes `event.laymans.explanation` directly, bypassing `EventData` and therefore the `dataFilter` PII redaction every other field gets. A separate `stringFilter` hook (wired in `server.ts` next to `setDataFilter`) redacts it at the same point. Any future field that rides outside `EventData` needs the same treatment — it will not be filtered by default.
 
-- **Docker mounts**: The container mounts `${HOME}/.claude` (Claude Code hooks/commands/StatusLine relay), `${HOME}/.config` (OpenCode detection/commands), `${HOME}/.vibe` (Vibe log watching), `${HOME}/Documents/Cline` (Cline hook script installation), and `${HOME}/.codex` (Codex hook script installation and hooks.json). The `HookInstaller` runs inside the container and writes through these mounts to the host filesystem.
+- **Docker mounts**: The container mounts `${HOME}/.claude` (Claude Code hooks/commands/StatusLine relay), `${HOME}/.config` (OpenCode detection/commands), `${HOME}/.vibe` (Vibe log watching), `${HOME}/Documents/Cline` (Cline hook script installation), `${HOME}/.codex` (Codex hook script installation and hooks.json), and `${HOME}/.pi` (pi extension installation). The `HookInstaller` runs inside the container and writes through these mounts to the host filesystem.
+
+- **`handler.ts`'s agent-type allow-list is a required edit for every new harness.**
+  `handler.ts:96-107` resolves `agent_type` through a hardcoded chain that falls through to
+  `'claude-code'`. An unrecognised value is **not** an error: sessions appear, events flow, and
+  everything looks fine — but the harness attribution, the auto-activate toggle and the per-client
+  approval setting all quietly target the wrong client. There is no registry to add to and nothing
+  fails loudly, so this is the single easiest thing to miss when adding a harness. It is the reason
+  `handler.pi.test.ts` asserts `agent_type: 'pi'` resolves to `'pi'` and not to `'claude-code'`.
+
+- **pi gets a TypeScript extension, not shell hooks.** Codex and Cline get `curl`-in-`bash` scripts
+  because that is the only surface those harnesses expose. pi exposes a first-class typed event API
+  and explicitly positions itself as "aggressively extensible so it doesn't have to dictate your
+  workflow"; writing shell hooks against it would be writing *against* pi rather than with it. The
+  extension is deliberately **one file with no imports at all** — not even `import type`. jiti
+  erases type imports, so they would work at runtime, but they would also make `pnpm -r typecheck`
+  depend on `@earendil-works/pi-coding-agent`, a package this repo has no other reason to install.
+  The pi API surface is instead restated structurally at the top of the file. The cost is that pi
+  API drift shows up in manual testing rather than at compile time; the benefit is that the
+  installed file has no resolution requirements whatsoever. One file (rather than a directory) is
+  what lets it reuse `installOptionalClientCommands`' content-hash machinery, which gives
+  install / update-available / uninstall detection for free.
+
+- **Tool-call blocking is opt-in for pi, and gated server-side.** pi's documented position is "no
+  permission popups — run in a container, or build your own confirmation flow with extensions".
+  Blocking pi by default would override that on the user's behalf; offering it as a toggle is a
+  faithful reading of the same position. `OPT_IN_BLOCKING_CLIENTS` in `handler.ts` names the
+  harnesses this applies to, mirrored by `OPT_IN_APPROVAL_CLIENTS` in `HarnessSection.tsx` so only
+  those grow a toggle. The decision is evaluated **per tool call on the server**, not cached and not
+  told to the extension at startup, which is what makes flipping the toggle take effect without
+  restarting pi. Note the drift monitor's red-level block goes through `PendingApprovalManager` too
+  and is gated by the same check — otherwise it would suspend pi through a second door while the
+  approvals toggle read "off".
+
+- **pi brackets a live stream on `message_start`/`message_end`, not on `assistantMessageEvent`'s
+  `start`/`done`.** Those two variants exist in pi's stream protocol type, which makes them look
+  like the obvious choice, but the agent core consumes them to emit the `message_start` and
+  `message_end` extension events and does not forward them: subscribing to `message_update` on pi
+  0.84.2 yields only `{thinking,text,toolcall}_{start,delta,end}`. Getting this wrong fails
+  *quietly* — deltas still accumulate and text still appears — but the buffer never resets between
+  the several assistant messages in one turn and the live row only clears via the 60 s idle sweep.
+
+- **The pi extension awaits exactly two things.** Everything is fire-and-forget so a dead or slow
+  Layman degrades to "pi works, nothing is recorded" rather than a stalled TUI. The exceptions are
+  `tool_call`, whose response can block, and `session_shutdown` — where the process exits before an
+  un-awaited `fetch` is ever flushed, losing `SessionEnd` entirely. The shutdown post therefore has
+  its own much shorter timeout (800 ms): a delayed exit is a worse failure than a missing end event.
 
 - **Auto-activate**: The `autoActivateClients` config array (in `~/.claude/layman.json`) lists client agent types (e.g. `'claude-code'`) whose sessions should auto-activate without requiring `/layman`. When a hook event arrives from a matching agent, `handler.ts` calls `gate.activate()` before the gate check, so events flow immediately. The toggle is in Settings → Client Setup on each client's row. Off by default.
 
@@ -269,7 +365,7 @@ Manages installation of hooks, slash commands, and the StatusLine relay for all 
 - `installCommand()` — writes the `/layman` slash command to `~/.claude/commands/layman.md`
 - `installStatusLine()` — writes the StatusLine relay script to `~/.claude/hooks/layman/statusline.sh` and sets `statusLine.command` in settings.json. If an existing statusLine command is present, composes with it (chains both).
 - `uninstallStatusLine()` — removes the relay script and restores any previously configured statusLine command
-- `installClient(id)` — installs a single client by id (`'claude-code'` | `'codex'` | `'opencode'` | `'mistral-vibe'` | `'cline'`)
+- `installClient(id)` — installs a single client by id (`'claude-code'` | `'codex'` | `'opencode'` | `'mistral-vibe'` | `'cline'` | `'pi'`)
 - `uninstallClient(id)` — removes integration files for a single client
 - `installOptionalClientCommands(clientId?)` — installs the `/layman` command for detected optional clients; pass a `clientId` to restrict to one
 - `installCodexHooks()` — writes bash hook scripts to `~/.codex/hooks/layman/` and merges entries into `~/.codex/hooks.json`
@@ -278,7 +374,11 @@ Manages installation of hooks, slash commands, and the StatusLine relay for all 
 - `uninstall()` — removes Claude Code hooks, command file, and StatusLine relay
 - `isInstalled()` — returns true if Claude Code hooks are present
 
-Each optional client has an `id` field (`'codex'`, `'opencode'`, `'mistral-vibe'`, `'cline'`) used as the key in `declinedClients` config and in API routes. Optional clients are detected by checking whether their config directories exist on the host filesystem.
+Each optional client has an `id` field (`'codex'`, `'opencode'`, `'mistral-vibe'`, `'cline'`, `'pi'`) used as the key in `declinedClients` config and in API routes. Optional clients are detected by checking whether their config directories exist on the host filesystem, plus a `signalFiles` check so an empty directory created by a Docker bind mount is not mistaken for an install.
+
+Two `OptionalClient` fields exist for pi and are worth knowing before adding a client:
+- `tagStyle: 'line'` — every installed file gets a trailing `layman:<hash>` version tag, normally an HTML comment. That is a **syntax error in a TypeScript file**, which pi's extension is, so those emit `// layman:<hash>` instead. `getStatus()` matches the substring and is indifferent to the wrapper.
+- `getContent(options)` receives the installer options rather than nothing, so a client whose integration *embeds* configuration (pi bakes in both the server URL and the approval timeout) produces content that changes with it. That makes the content hash sensitive to those settings, so an install left pointing at an old URL reports as out of date instead of silently green.
 
 **Installation is opt-in.** The server does not auto-install on startup. On first dashboard visit, a modal lists all detected-but-unintegrated clients with toggles (default off); the user selects which to install and clicks **Accept**. Toggled-off clients are saved as `declinedClients` in `~/.claude/layman.json` and won't be offered again until the user clicks **Install** from Settings. Install/Uninstall is also available per-client in **Settings → Client Setup**.
 

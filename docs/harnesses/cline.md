@@ -7,7 +7,7 @@ Cline uses shell-script hooks that Layman installs to `~/Documents/Cline/Hooks/`
 First time or after a Layman update:
 
 1. Ensure Cline is installed in VS Code or IntelliJ.
-2. Open the Layman dashboard -> **Settings -> Connection** -> click **Install** next to Cline.
+2. Open the Layman dashboard -> **Settings -> Harness** -> click **Install** next to Cline.
 3. Layman writes hook scripts to `~/Documents/Cline/Hooks/` and a workflow file to `~/Documents/Cline/Workflows/layman.md`.
 
 ## Activating a session

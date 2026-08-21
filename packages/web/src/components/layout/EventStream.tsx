@@ -7,6 +7,7 @@ import { NavigationBar } from '../controls/NavigationBar.js';
 import { SessionMetricsBar } from '../controls/SessionMetricsBar.js';
 import { PromptInput } from '../controls/PromptInput.js';
 import { Minimap } from '../logs/Minimap.js';
+import { LiveStreamRow } from '../logs/LiveStreamRow.js';
 import { JumpToLatest } from '../primitives/index.js';
 import { saveAndBookmarkSession } from '../../lib/bookmarks-api.js';
 import { pairFor, hasLogDetail } from '../../lib/event-pairing.js';
@@ -323,10 +324,14 @@ export function EventStream({ onSend, archived = false, archivedDate, turnRuler 
     void saveAndBookmarkSession(activeSessionId, name.trim() || activeSessionId.slice(0, 8));
   }, [activeSessionId]);
 
-  const activeOpenCodeSession =
+  // Harnesses whose integration can inject a prompt into a running session.
+  // Mirrors the allow-list on POST /api/sessions/:id/prompt — offering the input
+  // for a harness the server will reject just produces a silent dead end.
+  const PROMPTABLE_AGENTS = ['opencode', 'pi'];
+  const promptableSession =
     (activeSessionId !== null
-      ? sessions.find((s) => s.sessionId === activeSessionId && s.agentType === 'opencode')
-      : null) ?? sessions.find((s) => s.agentType === 'opencode') ?? null;
+      ? sessions.find((s) => s.sessionId === activeSessionId && PROMPTABLE_AGENTS.includes(s.agentType))
+      : null) ?? sessions.find((s) => PROMPTABLE_AGENTS.includes(s.agentType)) ?? null;
 
   const hasEvents = sessionEvents.length > 0;
   const bufferedCount = totalCount - events.length;
@@ -471,6 +476,11 @@ export function EventStream({ onSend, archived = false, archivedDate, turnRuler 
               );
             })
           )}
+
+          {/* Partial output, pinned to the tail. Renders nothing when the
+              harness does not stream or the agent is idle. An archived
+              transcript is by definition not live. */}
+          {!archived && <LiveStreamRow sessionId={activeSessionId} />}
         </div>
 
         {/* Jump to latest pill — floats above the stream (live only) */}
@@ -490,9 +500,9 @@ export function EventStream({ onSend, archived = false, archivedDate, turnRuler 
         )}
       </div>
 
-      {!archived && activeOpenCodeSession && (
+      {!archived && promptableSession && (
         <div data-print-hide>
-          <PromptInput sessionId={activeOpenCodeSession.sessionId} />
+          <PromptInput sessionId={promptableSession.sessionId} />
         </div>
       )}
     </div>

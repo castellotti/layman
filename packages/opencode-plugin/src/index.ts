@@ -55,6 +55,46 @@ export default async function LaymanPlugin(ctx: { directory: string }) {
   // Track the latest text for each assistant message (keyed by messageID).
   const messageText = new Map<string, { sessionID: string; text: string }>();
 
+  /**
+   * Last value seen for each streaming part, keyed by part id.
+   *
+   * OpenCode's `part.text` is the **whole accumulated text so far**, not a
+   * delta — a fresh `message.part.updated` carries everything already sent plus
+   * the new tokens. Layman's stream channel takes deltas, so the suffix has to
+   * be computed against the previous value. Keyed by `part.id` rather than
+   * `messageID` because one message can hold several text and reasoning parts,
+   * each growing independently.
+   */
+  const partText = new Map<string, string>();
+
+  /** Monotonic sequence per message, so Layman can drop replays and reorderings. */
+  const streamSeq = new Map<string, number>();
+
+  function nextSeq(messageID: string): number {
+    const seq = (streamSeq.get(messageID) ?? -1) + 1;
+    streamSeq.set(messageID, seq);
+    return seq;
+  }
+
+  /** Forget a finished message's streaming bookkeeping. */
+  function endStream(sessionID: string, messageID: string): void {
+    void postToLayman(LAYMAN_URL, 'StreamDelta', {
+      session_id: sessionID,
+      cwd: directory,
+      hook_event_name: 'StreamDelta',
+      transcript_path: '',
+      permission_mode: 'default',
+      agent_type: 'opencode',
+      message_id: messageID,
+      seq: nextSeq(messageID),
+      done: true,
+    });
+    streamSeq.delete(messageID);
+    for (const key of [...partText.keys()]) {
+      if (key.startsWith(`${messageID}:`)) partText.delete(key);
+    }
+  }
+
   // Start polling Layman for pending prompts.
   // The plugin runs inside the OpenCode Bun Worker, so `setInterval` works here.
   setInterval(() => {
@@ -64,7 +104,7 @@ export default async function LaymanPlugin(ctx: { directory: string }) {
     void (async () => {
       try {
         const res = await fetch(
-          `${LAYMAN_URL}/api/opencode/pending-prompt?sessionIds=${encodeURIComponent(sessionIds)}`,
+          `${LAYMAN_URL}/api/prompts/pending?sessionIds=${encodeURIComponent(sessionIds)}`,
           { signal: AbortSignal.timeout(3000) }
         );
         if (!res.ok) return;
@@ -76,7 +116,7 @@ export default async function LaymanPlugin(ctx: { directory: string }) {
         if (!cwd) return;
 
         // Acknowledge dequeue immediately so we don't process it twice.
-        await fetch(`${LAYMAN_URL}/api/opencode/pending-prompt/${id}`, {
+        await fetch(`${LAYMAN_URL}/api/prompts/pending/${id}`, {
           method: 'DELETE',
           signal: AbortSignal.timeout(3000),
         }).catch(() => {});
@@ -162,6 +202,7 @@ export default async function LaymanPlugin(ctx: { directory: string }) {
 
       if (type === 'message.part.updated') {
         const part = properties.part as {
+          id?: string;
           type: string;
           sessionID?: string;
           messageID?: string;
@@ -176,7 +217,38 @@ export default async function LaymanPlugin(ctx: { directory: string }) {
           messageText.set(part.messageID, { sessionID: part.sessionID, text: part.text });
         }
 
+        // Live streaming. `reasoning` is OpenCode's separate part type for
+        // model reasoning — verified against @opencode-ai/sdk, where
+        // ReasoningPart is `{ type: "reasoning"; text: string; … }`, the same
+        // shape as TextPart. Both accumulate, so we send the suffix.
+        if ((part.type === 'text' || part.type === 'reasoning') && part.text !== undefined) {
+          const key = `${part.messageID}:${part.id ?? part.type}`;
+          const previous = partText.get(key) ?? '';
+          const delta = part.text.startsWith(previous)
+            ? part.text.slice(previous.length)
+            // A part that did not grow from what we last saw was rewritten
+            // rather than extended; resend it whole rather than emit a
+            // nonsensical suffix.
+            : part.text;
+          partText.set(key, part.text);
+
+          if (delta) {
+            void postToLayman(LAYMAN_URL, 'StreamDelta', {
+              session_id: part.sessionID,
+              cwd: directory,
+              hook_event_name: 'StreamDelta',
+              transcript_path: '',
+              permission_mode: 'default',
+              agent_type: 'opencode',
+              message_id: part.messageID,
+              seq: nextSeq(part.messageID),
+              ...(part.type === 'reasoning' ? { thinking_delta: delta } : { text_delta: delta }),
+            });
+          }
+        }
+
         if (part.type === 'step-finish' && part.reason !== 'tool-calls' && part.reason !== 'tool_use') {
+          endStream(part.sessionID, part.messageID);
           const accumulated = messageText.get(part.messageID);
           if (accumulated?.text) {
             void postToLayman(LAYMAN_URL, 'AgentResponse', {
