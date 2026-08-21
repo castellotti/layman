@@ -49,7 +49,9 @@ Sessions can optionally be recorded to a local SQLite database, capturing user p
 
 ## Historical session import
 
-Layman can discover and import past Claude Code sessions from JSONL transcript files (`~/.claude/projects/`) that were never monitored live. **Settings -> Data** provides a scan dialog with per-session results and an optional auto-import-on-startup flag. Existing live sessions are enriched with missing events without downgrading their live status.
+Layman can discover and import past sessions from JSONL transcript files that were never monitored live - Claude Code (`~/.claude/projects/`) and pi (`~/.pi/agent/sessions/`). **Settings -> Data** provides a scan dialog with per-session results, a Harness column, and an optional auto-import-on-startup flag. Existing live sessions are enriched with missing events without downgrading their live status.
+
+pi's session files are format-version-3 JSONL *trees* (entries link by `id`/`parentId` rather than forming a flat sequence, since pi branches in place on `/fork`), so import walks from the latest-timestamp leaf back to the root and imports only that path - abandoned branches are left out rather than replayed as if they happened. Reasoning is carried through directly from pi's own `thinking` content blocks, the same clean separation the live extension gets, with no `<thinking>`-tag parsing involved.
 
 ## PII filter
 

@@ -1,12 +1,16 @@
 /**
- * Pre-activation transcript recovery and historical session import for Claude Code.
+ * Pre-activation transcript recovery and historical session import.
  *
  * This module handles three scenarios:
  *   1. Pre-activation recovery: When /layman is run mid-session, reads the JSONL
  *      transcript up to the activation command and injects prior events.
+ *      Claude Code only — the only harness that sends transcript_path.
  *   2. Startup gap recovery: Fills events that occurred while Layman was down.
- *   3. Historical import: Discovers ALL transcript files and imports sessions
- *      that were never monitored live.
+ *      Claude Code only — see GAP_RECOVERY_AGENT_TYPES below for why.
+ *   3. Historical import: Discovers ALL transcript files across every
+ *      registered TranscriptSource (the "Transcript source registry" section
+ *      below) and imports sessions that were never monitored live. Adding a
+ *      harness here is the only change needed to cover it.
  *
  * Key guarantees:
  *   - No overlap with hooks: Claude Code blocks on PreToolUse while we read,
@@ -27,6 +31,11 @@ import type { EventStore } from '../events/store.js';
 import type { TimelineEvent } from '../events/types.js';
 import type { Database } from '../db/database.js';
 import type { SessionRecorder } from '../db/recorder.js';
+import type { DiscoveredTranscript, TranscriptMetadata, TranscriptSource } from './transcript-shared.js';
+import { buildEvent } from './transcript-shared.js';
+import { piTranscriptSource } from './transcript-pi.js';
+
+export type { DiscoveredTranscript, TranscriptMetadata, TranscriptSource } from './transcript-shared.js';
 
 const ACTIVATION_PATTERN = /echo\s+["']?layman:activate["']?|curl\b.*\/api\/activate/;
 
@@ -49,29 +58,9 @@ async function readTranscript(path: string): Promise<string | null> {
 
 type Block = Record<string, unknown>;
 
-function buildEvent(
-  id: string,
-  type: TimelineEvent['type'],
-  sessionId: string,
-  agentType: string,
-  timestamp: number,
-  data: TimelineEvent['data'],
-  riskLevel?: 'low' | 'medium' | 'high'
-): TimelineEvent {
-  return { id, type, sessionId, agentType, timestamp, data, riskLevel };
-}
-
 // ---------------------------------------------------------------------------
-// Shared transcript parser
+// Shared transcript parser (claude-code)
 // ---------------------------------------------------------------------------
-
-export interface TranscriptMetadata {
-  cwd: string;
-  gitBranch: string;
-  version: string;
-  firstTimestamp: number;
-  lastTimestamp: number;
-}
 
 interface ParseOptions {
   stopAtActivation?: boolean;
@@ -305,6 +294,70 @@ function tryParse(line: string): Record<string, unknown> | null {
 }
 
 // ---------------------------------------------------------------------------
+// Transcript source registry
+//
+// Each harness that can be discovered and imported from on-disk transcripts
+// registers one TranscriptSource here. Adding a harness to this list is what
+// makes discoverTranscriptFiles() and importHistoricalSessions() see it —
+// there is no other place agentType is hardcoded for either function.
+// ---------------------------------------------------------------------------
+
+/**
+ * Discover all Claude Code JSONL transcript files from ~/.claude/projects/.
+ * Returns one entry per main transcript file (excludes subagent transcripts).
+ */
+function discoverClaudeCodeTranscripts(): DiscoveredTranscript[] {
+  const results: DiscoveredTranscript[] = [];
+  const basePaths = ['/root/.claude/projects', join(homedir(), '.claude', 'projects')];
+
+  for (const base of basePaths) {
+    if (!existsSync(base)) continue;
+
+    let projectDirs: string[];
+    try { projectDirs = readdirSync(base); } catch { continue; }
+
+    for (const projectDir of projectDirs) {
+      const projectPath = join(base, projectDir);
+      let stat;
+      try { stat = statSync(projectPath); } catch { continue; }
+      if (!stat.isDirectory()) continue;
+
+      let files: string[];
+      try { files = readdirSync(projectPath); } catch { continue; }
+
+      for (const file of files) {
+        if (!file.endsWith('.jsonl')) continue;
+        // Skip non-UUID filenames (e.g. config files)
+        const sessionId = file.replace('.jsonl', '');
+        if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(sessionId)) continue;
+
+        results.push({
+          path: join(projectPath, file),
+          sessionId,
+          projectDir,
+          agentType: 'claude-code',
+        });
+      }
+    }
+
+    // Only use the first base path that exists (Docker or native)
+    if (results.length > 0) break;
+  }
+
+  return results;
+}
+
+const claudeCodeSource: TranscriptSource = {
+  agentType: 'claude-code',
+  discover: discoverClaudeCodeTranscripts,
+  parse: (lines, sessionId) => parseTranscriptLines(lines, sessionId, 'claude-code'),
+  parseAfter: (lines, sessionId, afterTimestamp) =>
+    parseTranscriptLines(lines, sessionId, 'claude-code', { afterTimestamp }),
+};
+
+const TRANSCRIPT_SOURCES: TranscriptSource[] = [claudeCodeSource, piTranscriptSource];
+
+// ---------------------------------------------------------------------------
 // Pre-activation recovery (called mid-session when /layman activates)
 // ---------------------------------------------------------------------------
 
@@ -383,6 +436,17 @@ function resolveTranscriptPath(cwd: string, sessionId: string): string | null {
 }
 
 /**
+ * Startup gap recovery supports claude-code only. pi has no `transcript_path`
+ * in its hook payloads (deliberately — see the root CLAUDE.md), and its
+ * on-disk directory naming isn't the cwd-to-dashes scheme
+ * resolveTranscriptPath() assumes, so there is nothing to resolve a live
+ * session's path from here. Reading this off the registry's own agentType,
+ * rather than a second `'claude-code'` string literal, keeps this list from
+ * silently drifting from the one in TRANSCRIPT_SOURCES.
+ */
+const GAP_RECOVERY_AGENT_TYPES = [claudeCodeSource.agentType];
+
+/**
  * On server startup, scan SQLite for claude-code sessions that have no
  * session_end event and whose JSONL transcript contains events written
  * after the last recorded SQLite timestamp.
@@ -394,18 +458,19 @@ export async function recoverSessionGaps(
   const cutoff = Date.now() - SEVEN_DAYS_MS;
 
   type SessionRow = { session_id: string; cwd: string; last_event_ts: number };
+  const placeholders = GAP_RECOVERY_AGENT_TYPES.map(() => '?').join(',');
   const sessions = db.prepare(`
     SELECT rs.session_id, rs.cwd, MAX(re.timestamp) AS last_event_ts
     FROM recorded_sessions rs
     JOIN recorded_events re ON re.session_id = rs.session_id
-    WHERE rs.agent_type = 'claude-code'
+    WHERE rs.agent_type IN (${placeholders})
       AND rs.cwd != ''
       AND rs.last_seen >= ?
       AND rs.session_id NOT IN (
         SELECT session_id FROM recorded_events WHERE type = 'session_end'
       )
     GROUP BY rs.session_id
-  `).all(cutoff) as SessionRow[];
+  `).all(...GAP_RECOVERY_AGENT_TYPES, cutoff) as SessionRow[];
 
   let totalEvents = 0;
   let totalSessions = 0;
@@ -417,7 +482,7 @@ export async function recoverSessionGaps(
     if (!content) continue;
 
     const lines = content.trim().split('\n').filter(Boolean);
-    const { events } = parseTranscriptLines(lines, session_id, 'claude-code', {
+    const { events } = parseTranscriptLines(lines, session_id, claudeCodeSource.agentType, {
       afterTimestamp: last_event_ts,
     });
 
@@ -437,15 +502,10 @@ export async function recoverSessionGaps(
 // Historical session import
 // ---------------------------------------------------------------------------
 
-export interface TranscriptFile {
-  path: string;
-  sessionId: string;
-  projectDir: string;
-}
-
 export interface ImportedSessionSummary {
   sessionId: string;
   cwd: string;
+  agentType: string;
   startedAt: number;
   lastSeen: number;
   eventCount: number;
@@ -464,53 +524,19 @@ export interface ImportResult {
 }
 
 /**
- * Discover all Claude Code JSONL transcript files from ~/.claude/projects/.
- * Returns one entry per main transcript file (excludes subagent transcripts).
+ * Discover all known-harness transcript files on disk by asking every
+ * registered TranscriptSource where its files live. There is no default
+ * agentType here — a file only appears in the result if some source claimed
+ * it, and every entry already carries the agentType that claimed it.
  */
-export function discoverTranscriptFiles(): TranscriptFile[] {
-  const results: TranscriptFile[] = [];
-  const basePaths = ['/root/.claude/projects', join(homedir(), '.claude', 'projects')];
-
-  for (const base of basePaths) {
-    if (!existsSync(base)) continue;
-
-    let projectDirs: string[];
-    try { projectDirs = readdirSync(base); } catch { continue; }
-
-    for (const projectDir of projectDirs) {
-      const projectPath = join(base, projectDir);
-      let stat;
-      try { stat = statSync(projectPath); } catch { continue; }
-      if (!stat.isDirectory()) continue;
-
-      let files: string[];
-      try { files = readdirSync(projectPath); } catch { continue; }
-
-      for (const file of files) {
-        if (!file.endsWith('.jsonl')) continue;
-        // Skip non-UUID filenames (e.g. config files)
-        const sessionId = file.replace('.jsonl', '');
-        if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(sessionId)) continue;
-
-        results.push({
-          path: join(projectPath, file),
-          sessionId,
-          projectDir,
-        });
-      }
-    }
-
-    // Only use the first base path that exists (Docker or native)
-    if (results.length > 0) break;
-  }
-
-  return results;
+export function discoverTranscriptFiles(): DiscoveredTranscript[] {
+  return TRANSCRIPT_SOURCES.flatMap((source) => source.discover());
 }
 
 /**
- * Import historical sessions from Claude Code transcript files.
- * Discovers all JSONL files, imports unknown sessions, and optionally
- * enriches existing sessions with missing events.
+ * Import historical sessions from any registered harness's transcript files.
+ * Discovers all files, imports unknown sessions, and optionally enriches
+ * existing sessions with missing events.
  */
 export async function importHistoricalSessions(
   db: Database,
@@ -532,6 +558,8 @@ export async function importHistoricalSessions(
   const transcriptFiles = discoverTranscriptFiles();
   if (transcriptFiles.length === 0) return result;
 
+  const sourceByAgentType = new Map(TRANSCRIPT_SOURCES.map((s) => [s.agentType, s]));
+
   // Get existing sessions from DB
   type SessionRow = { session_id: string; source: string | null };
   const existingRows = db.prepare(
@@ -539,7 +567,10 @@ export async function importHistoricalSessions(
   ).all() as SessionRow[];
   const existingSessions = new Map(existingRows.map(r => [r.session_id, r.source]));
 
-  for (const { path, sessionId } of transcriptFiles) {
+  for (const discovered of transcriptFiles) {
+    const { path, sessionId, agentType } = discovered;
+    const source = sourceByAgentType.get(agentType)!;
+
     const existingSource = existingSessions.get(sessionId);
     const isKnown = existingSource !== undefined;
 
@@ -564,15 +595,17 @@ export async function importHistoricalSessions(
 
       if (!isKnown) {
         // Full import of unknown session
-        const { events, metadata } = parseTranscriptLines(lines, sessionId, 'claude-code');
+        const { events, metadata } = source.parse(lines, sessionId);
 
         if (events.length === 0) {
           result.skipped++;
           continue;
         }
 
+        const cwd = metadata.cwd || discovered.cwd || '';
+
         // Batch insert via recorder
-        recorder.importSession(sessionId, metadata.cwd, 'claude-code', events, 'imported');
+        recorder.importSession(sessionId, cwd, agentType, events, 'imported');
 
         const toolCallCount = events.filter(e => e.type === 'tool_call_completed').length;
         const userPromptCount = events.filter(e => e.type === 'user_prompt').length;
@@ -581,7 +614,8 @@ export async function importHistoricalSessions(
         result.totalEvents += events.length;
         result.sessions.push({
           sessionId,
-          cwd: metadata.cwd,
+          cwd,
+          agentType,
           startedAt: metadata.firstTimestamp,
           lastSeen: metadata.lastTimestamp,
           eventCount: events.length,
@@ -590,7 +624,7 @@ export async function importHistoricalSessions(
           status: 'discovered',
         });
 
-      } else if (enrichExisting) {
+      } else if (enrichExisting && source.parseAfter) {
         // Enrich existing session — find events after last recorded timestamp
         type TsRow = { max_ts: number | null };
         const tsRow = db.prepare(
@@ -598,9 +632,7 @@ export async function importHistoricalSessions(
         ).get(sessionId) as TsRow | undefined;
         const lastRecordedTs = tsRow?.max_ts ?? 0;
 
-        const { events, metadata } = parseTranscriptLines(lines, sessionId, 'claude-code', {
-          afterTimestamp: lastRecordedTs,
-        });
+        const { events, metadata } = source.parseAfter(lines, sessionId, lastRecordedTs);
 
         if (events.length === 0) {
           result.skipped++;
@@ -620,9 +652,58 @@ export async function importHistoricalSessions(
         result.sessions.push({
           sessionId,
           cwd: metadata.cwd || '',
+          agentType,
           startedAt: metadata.firstTimestamp,
           lastSeen: metadata.lastTimestamp,
           eventCount: events.length,
+          toolCallCount,
+          userPromptCount,
+          status: 'enriched',
+        });
+
+      } else if (enrichExisting) {
+        // No incremental parse for this harness (e.g. pi's tree structure
+        // doesn't support a flat afterTimestamp cutoff): re-parse the whole
+        // file and let importSession()'s INSERT OR IGNORE upsert skip
+        // whatever is already recorded, so this stays idempotent.
+        const before = (db.prepare(
+          'SELECT COUNT(*) as c FROM recorded_events WHERE session_id = ?'
+        ).get(sessionId) as { c: number }).c;
+
+        const { events, metadata } = source.parse(lines, sessionId);
+        if (events.length === 0) {
+          result.skipped++;
+          continue;
+        }
+
+        const cwd = metadata.cwd || discovered.cwd || '';
+        // importSession()'s own upsert never downgrades an existing 'live'
+        // session's source, so 'imported' here is safe regardless of what
+        // existingSource currently is.
+        recorder.importSession(sessionId, cwd, agentType, events, 'imported');
+
+        const after = (db.prepare(
+          'SELECT COUNT(*) as c FROM recorded_events WHERE session_id = ?'
+        ).get(sessionId) as { c: number }).c;
+        const added = after - before;
+
+        if (added === 0) {
+          result.skipped++;
+          continue;
+        }
+
+        const toolCallCount = events.filter(e => e.type === 'tool_call_completed').length;
+        const userPromptCount = events.filter(e => e.type === 'user_prompt').length;
+
+        result.enriched++;
+        result.totalEvents += added;
+        result.sessions.push({
+          sessionId,
+          cwd,
+          agentType,
+          startedAt: metadata.firstTimestamp,
+          lastSeen: metadata.lastTimestamp,
+          eventCount: added,
           toolCallCount,
           userPromptCount,
           status: 'enriched',

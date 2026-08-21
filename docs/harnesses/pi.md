@@ -49,11 +49,24 @@ To skip the step entirely, turn on **Auto-activate sessions** on the pi row in
 
 - **No sub-agents.** pi has none by design, so `subagent_start` / `subagent_stop` events never
   fire and anything built on them is empty for pi sessions.
-- **No pre-activation history.** Layman only parses claude-code's transcript format, so events
-  from before `/layman` are not recovered. Importing pi's session JSONL is a separate feature.
+- **No live pre-activation recovery.** Running `/layman` mid-session does not backfill everything
+  said before it, the way claude-code's transcript-path recovery does - pi sends no
+  `transcript_path` in its hook payloads (deliberately; see the root `CLAUDE.md`). Past sessions
+  can still be recovered after the fact through **Settings -> Data -> Import session history**,
+  which reads pi's own session JSONL directly.
 - **Killing pi with Ctrl+C may not end the session immediately.** pi does not always run its
   shutdown handler on an abrupt signal. A stale live-generation row is swept within about a minute.
 - **`PermissionRequest` has no pi equivalent.** Tool approval goes through `tool_call` only.
+
+## Historical session import
+
+**Settings -> Data -> Import session history** discovers pi sessions from `~/.pi/agent/sessions/`
+alongside Claude Code's and imports the ones Layman never monitored live. pi's files are
+format-version-3 JSONL trees rather than a flat log - branching in place on `/fork` instead of
+starting a new file - so import walks from the latest-timestamp leaf back to the root and imports
+only that path, leaving abandoned branches out. A session already recorded live is enriched rather
+than duplicated. Files from an unmigrated pre-v3 session (pi migrates on load, so this only happens
+if pi hasn't opened the file since upgrading) are skipped rather than guessed at.
 
 ## Notes
 
