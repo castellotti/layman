@@ -1684,6 +1684,7 @@ export function createServer(config: LaymanConfig): LaymanServer {
 
     async stop() {
       vibeWatcher.stop();
+      liveStreams.stop();
       await fastify.close();
     },
 

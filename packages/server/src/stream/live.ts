@@ -89,7 +89,7 @@ export class LiveStreamStore extends EventEmitter {
   /** Highest `seq` accepted per session, for ordering. */
   private lastSeq = new Map<string, number>();
   /**
-   * The last message closed per session, and when.
+   * When each closed message was closed, keyed by session *and* message.
    *
    * A producer's `done` flush and its final delta flush are independent posts
    * with no ordering guarantee between them: pi's `message_end` fires both
@@ -98,8 +98,13 @@ export class LiveStreamStore extends EventEmitter {
    * recreating the row and re-broadcasting `stream:update` after `stream:end`.
    * For a tool-call-only message no committed `agent_response` ever follows to
    * clear it, so the phantom row would sit there until the idle sweep.
+   *
+   * Keyed per message rather than one entry per session because a turn holds
+   * several assistant messages: with only the latest remembered, a straggler
+   * for message A arriving after B had opened and closed passed the guard and
+   * resurrected exactly the phantom row this exists to prevent.
    */
-  private finished = new Map<string, { messageId: string; at: number }>();
+  private finished = new Map<string, number>();
   /** Output characters accumulated for the current message, pre-truncation. */
   private outputChars = new Map<string, number>();
   private sweepTimer?: ReturnType<typeof setInterval>;
@@ -120,6 +125,15 @@ export class LiveStreamStore extends EventEmitter {
 
   private redact(text: string): string {
     return this.stringFilter ? this.stringFilter(text) : text;
+  }
+
+  /** NUL-separated: no id can contain the separator, so keys cannot collide. */
+  private finishedKey(sessionId: string, messageId: string): string {
+    return `${sessionId}\u0000${messageId}`;
+  }
+
+  private markFinished(sessionId: string, messageId: string, at: number): void {
+    this.finished.set(this.finishedKey(sessionId, messageId), at);
   }
 
   /**
@@ -149,8 +163,7 @@ export class LiveStreamStore extends EventEmitter {
     // A message that has already been closed stays closed. Anything still
     // arriving for it is a delta that lost the race with its own `done`, and
     // reviving the row for it is worse than dropping the last few tokens.
-    const closed = this.finished.get(delta.sessionId);
-    if (closed && closed.messageId === delta.messageId) return null;
+    if (this.finished.has(this.finishedKey(delta.sessionId, delta.messageId))) return null;
 
     // A new message supersedes whatever was streaming for this session: the
     // previous one either finished or was abandoned, and either way its partial
@@ -220,7 +233,11 @@ export class LiveStreamStore extends EventEmitter {
       const existed = this.streams.delete(delta.sessionId);
       this.lastSeq.delete(delta.sessionId);
       this.outputChars.delete(delta.sessionId);
-      this.finished.set(delta.sessionId, { messageId: delta.messageId, at: now });
+      this.markFinished(delta.sessionId, delta.messageId, now);
+      // Closing one message also tears down whatever else was streaming for the
+      // session, so that message is closed too and needs the same protection —
+      // otherwise its own stragglers reopen a row nothing will ever clear.
+      if (isNewMessage && existing) this.markFinished(delta.sessionId, existing.messageId, now);
       if (existed) this.emit('stream:end', delta.sessionId);
       return null;
     }
@@ -236,7 +253,7 @@ export class LiveStreamStore extends EventEmitter {
     if (!this.streams.delete(sessionId)) return;
     this.lastSeq.delete(sessionId);
     this.outputChars.delete(sessionId);
-    if (stream) this.finished.set(sessionId, { messageId: stream.messageId, at: now });
+    if (stream) this.markFinished(sessionId, stream.messageId, now);
     this.emit('stream:end', sessionId);
   }
 
@@ -259,8 +276,8 @@ export class LiveStreamStore extends EventEmitter {
     }
     // Closed-message records are only useful for as long as a straggling delta
     // could still arrive; keeping them past that is an unbounded map.
-    for (const [sessionId, record] of this.finished) {
-      if (now - record.at > FINISHED_MEMORY_MS) this.finished.delete(sessionId);
+    for (const [key, at] of this.finished) {
+      if (now - at > FINISHED_MEMORY_MS) this.finished.delete(key);
     }
   }
 }

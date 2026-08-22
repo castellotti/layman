@@ -142,7 +142,18 @@ export function withThinkingRows(events: TimelineEvent[]): TimelineEvent[] {
 
   const out: TimelineEvent[] = [];
   for (const event of events) {
-    const row = thinkingRowFor(event, getEffectiveAgentContent(event).thinking);
+    const { thinking, response } = getEffectiveAgentContent(event);
+    const row = thinkingRowFor(event, thinking);
+    // A message that is *only* reasoning — which is every tool-calling step of
+    // a reasoning model, since pi records those for their reasoning alone —
+    // would otherwise render its reasoning row followed by an empty RESPONSE
+    // row. The reasoning row is the whole message, so it takes over the real
+    // event id and everything that resolves a row by id (scroll-to, expansion,
+    // row numbering, pairing) keeps working with no special case.
+    if (row && !response.trim()) {
+      out.push({ ...row, id: event.id });
+      continue;
+    }
     if (row) out.push(row);
     out.push(event);
   }

@@ -70,10 +70,21 @@ export default async function LaymanPlugin(ctx: { directory: string }) {
   /** Monotonic sequence per message, so Layman can drop replays and reorderings. */
   const streamSeq = new Map<string, number>();
 
+  /** messageID → sessionID, so a turn's bookkeeping can be swept when it ends. */
+  const messageSession = new Map<string, string>();
+
   function nextSeq(messageID: string): number {
     const seq = (streamSeq.get(messageID) ?? -1) + 1;
     streamSeq.set(messageID, seq);
     return seq;
+  }
+
+  function forgetStream(messageID: string): void {
+    streamSeq.delete(messageID);
+    messageSession.delete(messageID);
+    for (const key of [...partText.keys()]) {
+      if (key.startsWith(`${messageID}:`)) partText.delete(key);
+    }
   }
 
   /** Forget a finished message's streaming bookkeeping. */
@@ -89,9 +100,24 @@ export default async function LaymanPlugin(ctx: { directory: string }) {
       seq: nextSeq(messageID),
       done: true,
     });
-    streamSeq.delete(messageID);
-    for (const key of [...partText.keys()]) {
-      if (key.startsWith(`${messageID}:`)) partText.delete(key);
+    forgetStream(messageID);
+  }
+
+  /**
+   * Drop the streaming bookkeeping for every message of a finished turn.
+   *
+   * `endStream()` only runs on a terminal `step-finish`, so a message that is
+   * aborted, errors, or whose last step is a tool call never reaches one — and
+   * `partText` holds each part's *whole* accumulated text, not a delta, inside
+   * a worker that lives as long as the OpenCode session. `session.idle` means
+   * the turn is over and no part can grow again, so whatever is still here is
+   * garbage. `messageText` is deliberately left alone: it is the payload the
+   * terminal `step-finish` posts as the agent response, and idle is not
+   * ordered against it.
+   */
+  function forgetSessionStreams(sessionID: string): void {
+    for (const [messageID, owner] of [...messageSession]) {
+      if (owner === sessionID) forgetStream(messageID);
     }
   }
 
@@ -223,6 +249,7 @@ export default async function LaymanPlugin(ctx: { directory: string }) {
         // shape as TextPart. Both accumulate, so we send the suffix.
         if ((part.type === 'text' || part.type === 'reasoning') && part.text !== undefined) {
           const key = `${part.messageID}:${part.id ?? part.type}`;
+          messageSession.set(part.messageID, part.sessionID);
           const previous = partText.get(key) ?? '';
           const delta = part.text.startsWith(previous)
             ? part.text.slice(previous.length)
@@ -288,6 +315,7 @@ export default async function LaymanPlugin(ctx: { directory: string }) {
         const sessionId = info?.id;
         if (!sessionId) return;
         knownSessions.delete(sessionId);
+        forgetSessionStreams(sessionId);
         void postToLayman(LAYMAN_URL, 'SessionEnd', {
           session_id: sessionId,
           cwd: directory,
@@ -301,6 +329,7 @@ export default async function LaymanPlugin(ctx: { directory: string }) {
       if (type === 'session.idle') {
         const sessionId = properties.sessionID as string | undefined;
         if (!sessionId) return;
+        forgetSessionStreams(sessionId);
         void postToLayman(LAYMAN_URL, 'Stop', {
           session_id: sessionId,
           cwd: directory,

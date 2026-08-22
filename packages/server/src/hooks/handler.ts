@@ -451,8 +451,8 @@ async function handlePreToolUse(
     const driftResult = driftMonitor.checkPreToolUse(input.session_id);
 
     // A red-level drift block suspends the agent exactly as an approval does, so
-    // it has to respect the same opt-in. The drift_alert event is still recorded
-    // below via the reminder path — the user loses the block, not the signal.
+    // it has to respect the same opt-in — but the user should lose the block,
+    // not the signal.
     if (driftResult.shouldBlock && canBlock) {
       // Red level: block the agent via pending approval
       eventStore.add('drift_alert', input.session_id, {
@@ -477,14 +477,32 @@ async function handlePreToolUse(
         hookSpecificOutput: {
           hookEventName: 'PreToolUse',
           permissionDecision: decision.decision,
-          permissionDecisionReason: decision.reason ?? driftResult.reason,
+          permissionDecisionReason: decision.reason ?? `[Drift Monitor] ${driftResult.reason}`,
           updatedInput: decision.updatedInput,
         },
       };
     }
 
+    // A red result we may not act on is demoted to a reminder, not dropped.
+    // `checkPreToolUse` returns `shouldBlock` and `shouldRemind` as mutually
+    // exclusive alternatives — the red branch returns before the orange one is
+    // reached — so without this a red level on a harness Layman may not suspend
+    // falls past both branches to the auto-allow return below and says nothing
+    // at all. That inverts the severity ordering: pi with approvals off (its
+    // default) got a reminder at orange and silence at red.
+    const demotedBlock = driftResult.shouldBlock && !canBlock;
+
     // Orange level: non-blocking reminder via permissionDecisionReason
-    if (driftResult.shouldRemind) {
+    if (driftResult.shouldRemind || demotedBlock) {
+      // The block branch above is the only other place a per-tool-call
+      // drift_alert is recorded, and for a demoted block it was skipped.
+      if (demotedBlock) {
+        eventStore.add('drift_alert', input.session_id, {
+          driftSummary: driftResult.reason,
+          driftLevel: 'red',
+        }, 'high', agentType);
+      }
+
       // `!canBlock` has to be part of this, not only of the check further down.
       // A harness we may not suspend always takes the auto-allow path, and
       // reaching the auto-allow check below instead would return a bare `{}` —

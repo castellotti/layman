@@ -14,7 +14,6 @@ import { MARKDOWN_PROSE, REMARK_PLUGINS } from '../../lib/markdown.js';
 import { getEffectiveAgentContent } from '../../lib/reasoning.js';
 
 export { ThinkingBlock } from '../shared/ThinkingBlock.js';
-import { ThinkingBlock } from '../shared/ThinkingBlock.js';
 
 function formatToolInput(toolInput: Record<string, unknown>, toolName?: string): string {
   // Special handling for Bash command

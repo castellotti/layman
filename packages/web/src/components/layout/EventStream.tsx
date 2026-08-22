@@ -77,8 +77,14 @@ export function EventStream({ onSend, archived = false, archivedDate, turnRuler 
   );
 
   // Rows with an expandable detail card — computed against the full (unfiltered)
-  // per-session event list so pairing/expand-all always operates on real exchanges.
-  const detailEventIds = useMemo(() => sessionEvents.filter(hasLogDetail).map((e) => e.id), [sessionEvents]);
+  // per-session list so pairing/expand-all always operates on real exchanges, and
+  // against the *display* list so it covers derived thinking rows. Built from
+  // `sessionEvents` it silently omitted them: "Expand all" left every reasoning
+  // row collapsed while `allExpanded` flipped the label to "Collapse all".
+  const detailEventIds = useMemo(
+    () => displaySessionEvents.filter((e) => isThinkingRow(e) || hasLogDetail(e)).map((e) => e.id),
+    [displaySessionEvents]
+  );
   const detailEventIdSet = useMemo(() => new Set(detailEventIds), [detailEventIds]);
   const effectiveExpanded = useMemo(
     () => (expandedLogEventIds === 'all' ? new Set(detailEventIds) : expandedLogEventIds),
@@ -487,10 +493,10 @@ export function EventStream({ onSend, archived = false, archivedDate, turnRuler 
                     <LogRow
                       event={event}
                       index={rowNumber(event.id)}
-                      // A thinking row is always expandable — its whole content
-                      // is the detail, and it is absent from detailEventIdSet,
-                      // which is built from real events only.
-                      hasDetail={isThinkingRow(event) || detailEventIdSet.has(event.id)}
+                      // One list decides what is expandable and what "Expand
+                      // all" expands; a thinking row is always in it, since its
+                      // whole content is the detail.
+                      hasDetail={detailEventIdSet.has(event.id)}
                       isExpanded={effectiveExpanded.has(event.id)}
                       isSelected={i === selectedIndex}
                       onSelect={handleSelectRow}

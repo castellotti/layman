@@ -52,13 +52,24 @@ function sortStable(events: TimelineEvent[]): TimelineEvent[] {
 function buildTurn(owned: TimelineEvent[], index: number): Turn {
   const prompt = owned[0];
 
+  // The turn's response is the last `agent_response` that actually said
+  // something. A reasoning model emits an assistant message per tool-calling
+  // step and pi records those for their reasoning alone — `response: ''` with
+  // `thinking` set — so taking the last one unconditionally let a trailing
+  // reasoning-only message blank out the real answer in the transcript, the
+  // markdown export and TTS alike. An empty one is still used when the turn
+  // produced nothing else, so its reasoning is not lost.
   let responseEvent: TimelineEvent | null = null;
+  let emptyResponseEvent: TimelineEvent | null = null;
   for (let i = owned.length - 1; i > 0; i--) {
-    if (owned[i].type === 'agent_response') {
+    if (owned[i].type !== 'agent_response') continue;
+    if (getEffectiveAgentContent(owned[i]).response.trim()) {
       responseEvent = owned[i];
       break;
     }
+    emptyResponseEvent ??= owned[i];
   }
+  responseEvent ??= emptyResponseEvent;
 
   const riskLevels: Record<string, number> = {};
   let toolCallCount = 0;

@@ -136,6 +136,20 @@ describe('withThinkingRows', () => {
     expect(rows.map((r) => r.id)).toEqual(['p1', 'r2']);
   });
 
+  it('replaces a reasoning-only response with its thinking row', () => {
+    // Every tool-calling step of a reasoning model is a message with reasoning
+    // and no prose; rendering the thinking row *and* the response left an empty
+    // RESPONSE row under each one. The thinking row is the whole message, so it
+    // takes over the real event id — everything that resolves a row by id
+    // (scroll-to, expansion, row numbering, pairing) keeps working unchanged.
+    const reasoningOnly = ev({ id: 'r5', data: { prompt: '', thinking: 'weighing it up' } });
+    const rows = withThinkingRows([prompt, reasoningOnly]);
+
+    expect(rows.map((r) => r.id)).toEqual(['p1', 'r5']);
+    expect(rows[1].type).toBe('agent_thinking');
+    expect(rows[1].data.prompt).toBe('weighing it up');
+  });
+
   it('returns the same array when nothing can have reasoning', () => {
     // The cheap bail-out: harnesses that report no reasoning must not pay an
     // allocation per render.

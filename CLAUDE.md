@@ -80,8 +80,13 @@ Layman is a pnpm monorepo with two packages:
 ### Turns and addressable URLs
 
 A **turn** is one `user_prompt` plus every event it owns up to (but not including) the next
-`user_prompt`, and its response is the *last* `agent_response` in that window — an agent emits
-several interstitial messages between tool calls, and the final one is the answer.
+`user_prompt`, and its response is the last `agent_response` in that window *that said something* —
+an agent emits several interstitial messages between tool calls, and the final one is the answer.
+The "said something" qualifier is not pedantry: a reasoning model emits one assistant message per
+tool-calling step and pi records those for their reasoning alone (empty text, `thinking` set), so
+taking the last one unconditionally let a trailing reasoning-only message blank out the answer in
+the transcript, the export and TTS at once. A reasoning-only message is still used when the turn
+produced nothing else, so an aborted turn keeps its reasoning.
 
 The rule lives in **one place per package** and must stay in sync:
 - `packages/server/src/turns/extract.ts` (server)
@@ -181,9 +186,12 @@ Three more things a live row must never do, each of which produced a stuck row b
 - **A closed message stays closed.** A producer's final delta flush and its `done` flush are
   *independent* posts with no ordering guarantee — pi's `message_end` fires both back to back — and
   when `done` wins the race, the straggler looks exactly like the first delta of a new message.
-  `LiveStreamStore` remembers the last closed `messageId` per session for the length of the idle
-  sweep and drops deltas for it. Without that, an assistant message consisting only of tool calls
-  leaves a phantom row: no committed `agent_response` ever follows to clear it.
+  `LiveStreamStore` remembers closed messages for the length of the idle sweep and drops deltas for
+  them. Without that, an assistant message consisting only of tool calls leaves a phantom row: no
+  committed `agent_response` ever follows to clear it. The record is keyed by session **and**
+  message, not one entry per session — a turn holds several assistant messages, and with only the
+  latest remembered a straggler for A arriving after B had opened and closed sailed through the
+  guard. A `done` naming a message other than the one currently streaming closes both.
 - **`SessionEnd` closes the stream, server-side.** The extension's own closing flush rides the
   fire-and-forget path and is dropped by the exiting process — which is the whole reason `SessionEnd`
   is the one post it awaits. Trusting the delta means a harness quit mid-generation shows
@@ -290,6 +298,14 @@ tested in node, where there is no `Audio` and no `URL.createObjectURL`.
   the configuration that has no other channel for it — pi with approvals off, its default. The
   extension correspondingly surfaces an allow-*with*-reason through `ctx.ui.notify` rather than
   looking only at `permissionDecision === 'deny'`.
+
+  The same applies to a **red** level, and less obviously: `DriftMonitor.checkPreToolUse()` returns
+  `shouldBlock` and `shouldRemind` as mutually exclusive *alternatives* — the red branch returns
+  before the orange one is reached — so a red result on a harness Layman may not suspend matched
+  neither branch and fell through to the bare auto-allow. That inverted the severity ordering: pi
+  got a reminder at orange and silence at red. `handlePreToolUse` therefore demotes an unhonourable
+  block to a reminder explicitly, recording the `drift_alert` the block branch would have. Losing
+  the block is the point of the toggle; losing the signal never was.
 
 - **A partial `StatusLine` payload blanks the metrics bar.** `handleStatusLine` builds a
   `session_metrics` event from whatever arrives and the client *replaces* its map entry rather than

@@ -320,6 +320,53 @@ describe('pi tool calls', () => {
     expect(store.getAll().map((e) => e.type)).toContain('tool_call_approved');
   });
 
+  it('demotes a red drift block to a reminder rather than dropping it', async () => {
+    // checkPreToolUse returns shouldBlock and shouldRemind as alternatives —
+    // the red branch returns before the orange one is reached — so a red level
+    // on a harness Layman may not suspend used to fall past both branches to
+    // the auto-allow return and say nothing at all. That inverted the severity
+    // ordering: pi with approvals off got a reminder at orange and silence at
+    // the strictly worse red.
+    const app = Fastify();
+    const store = new EventStore();
+    const gate = new SessionGate();
+    const config = LaymanConfigSchema.parse({
+      autoApprove: 'none',
+      approvalClients: [],
+      driftMonitoring: { enabled: true, blockOnRed: true },
+    });
+    const driftMonitor = {
+      checkPreToolUse: () => ({
+        shouldBlock: true,
+        shouldRemind: false,
+        reason: 'Rewriting files no prompt asked about',
+        rulesSummary: 'Never commit without asking',
+      }),
+    };
+    registerHookHandler(
+      app, new PendingApprovalManager(1), store, new AnalysisEngine(),
+      () => config, gate, driftMonitor as never,
+    );
+    gate.activate(SESSION);
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/hooks/PreToolUse',
+      payload: piBody('PreToolUse', { tool_name: 'Bash', tool_input: { command: 'git commit' } }),
+    });
+
+    const body = res.json() as {
+      hookSpecificOutput?: { permissionDecision?: string; permissionDecisionReason?: string };
+    };
+    // The user loses the block, not the signal: the reason still reaches the
+    // model and the alert is still recorded for the dashboard.
+    expect(body.hookSpecificOutput?.permissionDecision).toBe('allow');
+    expect(body.hookSpecificOutput?.permissionDecisionReason)
+      .toContain('Rewriting files no prompt asked about');
+    const alert = store.getAll().find((e) => e.type === 'drift_alert');
+    expect(alert?.data.driftLevel).toBe('red');
+  });
+
   it('records a failed tool result as a failure event', async () => {
     await h.app.inject({
       method: 'POST',

@@ -192,6 +192,37 @@ describe('lifecycle', () => {
     expect(next?.text).toBe('second');
   });
 
+  it('keeps an older message closed after a later one has opened and closed', () => {
+    // A turn holds several assistant messages. With only the latest closure
+    // remembered per session, a straggler for A arriving after B had come and
+    // gone passed the guard and was treated as a brand-new message —
+    // resurrecting exactly the phantom row the guard exists to prevent.
+    const ended: string[] = [];
+    store.on('stream:end', (id: string) => ended.push(id));
+
+    store.applyDelta(delta({ seq: 0, textDelta: 'a' }));
+    store.applyDelta(delta({ seq: 1, done: true }));
+    store.applyDelta(delta({ messageId: 'msg-2', seq: 0, textDelta: 'b' }));
+    store.applyDelta(delta({ messageId: 'msg-2', seq: 1, done: true }));
+
+    const late = store.applyDelta(delta({ seq: 2, textDelta: 'straggler' }));
+
+    expect(late).toBeNull();
+    expect(store.get(SESSION)).toBeUndefined();
+    expect(ended).toEqual([SESSION, SESSION]);
+  });
+
+  it('closes the superseded message when a done arrives for a different one', () => {
+    // The done tears down whatever was streaming, so that message is closed
+    // too and needs the same protection — otherwise its own stragglers reopen
+    // a row that nothing will ever clear.
+    store.applyDelta(delta({ seq: 0, textDelta: 'a' }));
+    store.applyDelta(delta({ messageId: 'msg-2', done: true }));
+
+    expect(store.applyDelta(delta({ seq: 1, textDelta: 'straggler' }))).toBeNull();
+    expect(store.get(SESSION)).toBeUndefined();
+  });
+
   it('forgets a closed message once no straggler could still arrive', () => {
     store.applyDelta(delta({ seq: 0, textDelta: 'a' }), 1_000);
     store.applyDelta(delta({ seq: 1, done: true }), 1_000);
