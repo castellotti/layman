@@ -56,34 +56,36 @@ export default async function LaymanPlugin(ctx: { directory: string }) {
   const messageText = new Map<string, { sessionID: string; text: string }>();
 
   /**
-   * Last value seen for each streaming part, keyed by part id.
+   * Streaming bookkeeping, keyed `sessionID:messageID[:partID]`.
    *
-   * OpenCode's `part.text` is the **whole accumulated text so far**, not a
-   * delta — a fresh `message.part.updated` carries everything already sent plus
-   * the new tokens. Layman's stream channel takes deltas, so the suffix has to
-   * be computed against the previous value. Keyed by `part.id` rather than
-   * `messageID` because one message can hold several text and reasoning parts,
-   * each growing independently.
+   * `partText` holds the last value seen for each streaming part. OpenCode's
+   * `part.text` is the **whole accumulated text so far**, not a delta — a fresh
+   * `message.part.updated` carries everything already sent plus the new tokens
+   * — and Layman's stream channel takes deltas, so the suffix has to be
+   * computed against the previous value. It is keyed per *part*, not per
+   * message, because one message holds several text and reasoning parts that
+   * grow independently.
+   *
+   * Both are keyed by session first so a whole turn can be swept with a prefix
+   * match, which is what removes the need for a separate message→session index.
    */
   const partText = new Map<string, string>();
 
   /** Monotonic sequence per message, so Layman can drop replays and reorderings. */
   const streamSeq = new Map<string, number>();
 
-  /** messageID → sessionID, so a turn's bookkeeping can be swept when it ends. */
-  const messageSession = new Map<string, string>();
-
-  function nextSeq(messageID: string): number {
-    const seq = (streamSeq.get(messageID) ?? -1) + 1;
-    streamSeq.set(messageID, seq);
+  function nextSeq(sessionID: string, messageID: string): number {
+    const key = `${sessionID}:${messageID}`;
+    const seq = (streamSeq.get(key) ?? -1) + 1;
+    streamSeq.set(key, seq);
     return seq;
   }
 
-  function forgetStream(messageID: string): void {
-    streamSeq.delete(messageID);
-    messageSession.delete(messageID);
-    for (const key of [...partText.keys()]) {
-      if (key.startsWith(`${messageID}:`)) partText.delete(key);
+  /** Drop every key under a prefix. Deleting while iterating a Map is defined. */
+  function forgetPrefix(prefix: string): void {
+    streamSeq.delete(prefix);
+    for (const key of partText.keys()) {
+      if (key.startsWith(`${prefix}:`)) partText.delete(key);
     }
   }
 
@@ -97,10 +99,10 @@ export default async function LaymanPlugin(ctx: { directory: string }) {
       permission_mode: 'default',
       agent_type: 'opencode',
       message_id: messageID,
-      seq: nextSeq(messageID),
+      seq: nextSeq(sessionID, messageID),
       done: true,
     });
-    forgetStream(messageID);
+    forgetPrefix(`${sessionID}:${messageID}`);
   }
 
   /**
@@ -116,8 +118,11 @@ export default async function LaymanPlugin(ctx: { directory: string }) {
    * ordered against it.
    */
   function forgetSessionStreams(sessionID: string): void {
-    for (const [messageID, owner] of [...messageSession]) {
-      if (owner === sessionID) forgetStream(messageID);
+    for (const key of streamSeq.keys()) {
+      if (key.startsWith(`${sessionID}:`)) streamSeq.delete(key);
+    }
+    for (const key of partText.keys()) {
+      if (key.startsWith(`${sessionID}:`)) partText.delete(key);
     }
   }
 
@@ -248,8 +253,7 @@ export default async function LaymanPlugin(ctx: { directory: string }) {
         // ReasoningPart is `{ type: "reasoning"; text: string; … }`, the same
         // shape as TextPart. Both accumulate, so we send the suffix.
         if ((part.type === 'text' || part.type === 'reasoning') && part.text !== undefined) {
-          const key = `${part.messageID}:${part.id ?? part.type}`;
-          messageSession.set(part.messageID, part.sessionID);
+          const key = `${part.sessionID}:${part.messageID}:${part.id ?? part.type}`;
           const previous = partText.get(key) ?? '';
           const delta = part.text.startsWith(previous)
             ? part.text.slice(previous.length)
@@ -268,7 +272,7 @@ export default async function LaymanPlugin(ctx: { directory: string }) {
               permission_mode: 'default',
               agent_type: 'opencode',
               message_id: part.messageID,
-              seq: nextSeq(part.messageID),
+              seq: nextSeq(part.sessionID, part.messageID),
               ...(part.type === 'reasoning' ? { thinking_delta: delta } : { text_delta: delta }),
             });
           }

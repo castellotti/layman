@@ -65,8 +65,14 @@ export function eventDetail(event: TimelineEvent): string {
 }
 
 /**
- * Suffix marking a derived thinking row's id. Distinct from any real event id,
- * so expand/collapse state for the two rows never collides.
+ * Suffix marking a derived thinking row's id, so expand/collapse state for the
+ * two rows never collides.
+ *
+ * Carried only by a row that renders *beside* its response. A reasoning-only
+ * message has no second row to collide with, and `withThinkingRows` gives that
+ * row the real event id instead — so the suffix is a marker of "there is also a
+ * response row", not of "this row is derived". Use `isThinkingRow()`, which
+ * tests the type, for the latter.
  */
 export const THINKING_ROW_SUFFIX = '#thinking';
 
@@ -151,7 +157,8 @@ export function withThinkingRows(events: TimelineEvent[]): TimelineEvent[] {
     // event id and everything that resolves a row by id (scroll-to, expansion,
     // row numbering, pairing) keeps working with no special case.
     if (row && !response.trim()) {
-      out.push({ ...row, id: event.id });
+      row.id = event.id;
+      out.push(row);
       continue;
     }
     if (row) out.push(row);

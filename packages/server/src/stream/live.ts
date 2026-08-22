@@ -128,12 +128,12 @@ export class LiveStreamStore extends EventEmitter {
   }
 
   /** NUL-separated: no id can contain the separator, so keys cannot collide. */
-  private finishedKey(sessionId: string, messageId: string): string {
-    return `${sessionId}\u0000${messageId}`;
+  private isFinished(sessionId: string, messageId: string): boolean {
+    return this.finished.has(`${sessionId}\u0000${messageId}`);
   }
 
   private markFinished(sessionId: string, messageId: string, at: number): void {
-    this.finished.set(this.finishedKey(sessionId, messageId), at);
+    this.finished.set(`${sessionId}\u0000${messageId}`, at);
   }
 
   /**
@@ -163,7 +163,7 @@ export class LiveStreamStore extends EventEmitter {
     // A message that has already been closed stays closed. Anything still
     // arriving for it is a delta that lost the race with its own `done`, and
     // reviving the row for it is worse than dropping the last few tokens.
-    if (this.finished.has(this.finishedKey(delta.sessionId, delta.messageId))) return null;
+    if (this.isFinished(delta.sessionId, delta.messageId)) return null;
 
     // A new message supersedes whatever was streaming for this session: the
     // previous one either finished or was abandoned, and either way its partial

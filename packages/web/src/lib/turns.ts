@@ -60,16 +60,15 @@ function buildTurn(owned: TimelineEvent[], index: number): Turn {
   // markdown export and TTS alike. An empty one is still used when the turn
   // produced nothing else, so its reasoning is not lost.
   let responseEvent: TimelineEvent | null = null;
-  let emptyResponseEvent: TimelineEvent | null = null;
+  let content: { thinking: string | null; response: string } = { thinking: null, response: '' };
   for (let i = owned.length - 1; i > 0; i--) {
     if (owned[i].type !== 'agent_response') continue;
-    if (getEffectiveAgentContent(owned[i]).response.trim()) {
-      responseEvent = owned[i];
-      break;
-    }
-    emptyResponseEvent ??= owned[i];
+    const candidate = getEffectiveAgentContent(owned[i]);
+    // The first one seen walking backwards is the fallback — the turn's last
+    // word, whatever it was — and is kept only until one that spoke turns up.
+    if (!responseEvent) { responseEvent = owned[i]; content = candidate; }
+    if (candidate.response.trim()) { responseEvent = owned[i]; content = candidate; break; }
   }
-  responseEvent ??= emptyResponseEvent;
 
   const riskLevels: Record<string, number> = {};
   let toolCallCount = 0;
@@ -77,10 +76,6 @@ function buildTurn(owned: TimelineEvent[], index: number): Turn {
     if (TOOL_CALL_TYPES.has(event.type)) toolCallCount++;
     if (event.riskLevel) riskLevels[event.riskLevel] = (riskLevels[event.riskLevel] ?? 0) + 1;
   }
-
-  const content = responseEvent
-    ? getEffectiveAgentContent(responseEvent)
-    : { thinking: null, response: '' };
 
   return {
     sessionId: prompt.sessionId,

@@ -8,7 +8,7 @@ import { SessionMetricsBar } from '../controls/SessionMetricsBar.js';
 import { PromptInput } from '../controls/PromptInput.js';
 import { Minimap } from '../logs/Minimap.js';
 import { LiveStreamRow } from '../logs/LiveStreamRow.js';
-import { withThinkingRows, baseEventId, isThinkingRow } from '../../lib/event-styles.js';
+import { withThinkingRows, baseEventId } from '../../lib/event-styles.js';
 import { JumpToLatest } from '../primitives/index.js';
 import { saveAndBookmarkSession } from '../../lib/bookmarks-api.js';
 import { pairFor, hasLogDetail } from '../../lib/event-pairing.js';
@@ -78,11 +78,12 @@ export function EventStream({ onSend, archived = false, archivedDate, turnRuler 
 
   // Rows with an expandable detail card — computed against the full (unfiltered)
   // per-session list so pairing/expand-all always operates on real exchanges, and
-  // against the *display* list so it covers derived thinking rows. Built from
-  // `sessionEvents` it silently omitted them: "Expand all" left every reasoning
-  // row collapsed while `allExpanded` flipped the label to "Collapse all".
+  // against the *display* list so it covers derived thinking rows (which carry
+  // their reasoning in `data.prompt`, so `hasLogDetail` already accepts them).
+  // Built from `sessionEvents` it silently omitted them: "Expand all" left every
+  // reasoning row collapsed while `allExpanded` flipped the label to "Collapse all".
   const detailEventIds = useMemo(
-    () => displaySessionEvents.filter((e) => isThinkingRow(e) || hasLogDetail(e)).map((e) => e.id),
+    () => displaySessionEvents.filter(hasLogDetail).map((e) => e.id),
     [displaySessionEvents]
   );
   const detailEventIdSet = useMemo(() => new Set(detailEventIds), [detailEventIds]);
@@ -128,8 +129,11 @@ export function EventStream({ onSend, archived = false, archivedDate, turnRuler 
   // Row line click — select-to-focus: expand this row + its pair, collapse the rest.
   // Also moves the keyboard-navigation cursor here so arrow-key nav continues from the click.
   const handleSelectRow = useCallback((eventId: string) => {
-    // A thinking row has no paired event for select-to-focus to open, so it
-    // toggles only itself; pairing is resolved against the real event list.
+    // A suffixed id means the row renders beside its own response, so there is
+    // nothing for select-to-focus to pair it with and it toggles only itself. A
+    // reasoning-only message, whose derived row took over the real event id, is
+    // the whole message and pairs with its prompt like any other response.
+    // Pairing is resolved against the real event list either way.
     setExpandedLogEventIds(
       eventId === baseEventId(eventId)
         ? new Set(pairFor(eventId, sessionEvents))

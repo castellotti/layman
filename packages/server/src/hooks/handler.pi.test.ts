@@ -5,7 +5,11 @@ import { PendingApprovalManager } from './pending.js';
 import { SessionGate } from './gate.js';
 import { EventStore } from '../events/store.js';
 import { AnalysisEngine } from '../analysis/engine.js';
+import { z } from 'zod';
 import { LaymanConfigSchema, type LaymanConfig } from '../config/schema.js';
+
+/** The schema's *input* type, so a test can override one nested field. */
+type ConfigOverrides = Partial<z.input<typeof LaymanConfigSchema>>;
 import { LiveStreamStore } from '../stream/live.js';
 
 /**
@@ -28,14 +32,19 @@ interface Harness {
   config: LaymanConfig;
 }
 
-function makeHarness(overrides: Partial<LaymanConfig> = {}): Harness {
+/** A canned `DriftMonitor` — the real one needs an analysis engine and a clock. */
+function stubDriftMonitor(result: Record<string, unknown>) {
+  return { checkPreToolUse: () => result } as never;
+}
+
+function makeHarness(overrides: ConfigOverrides = {}, driftMonitor?: never): Harness {
   const app = Fastify();
   const store = new EventStore();
   const gate = new SessionGate();
   const pending = new PendingApprovalManager(1);
   const config = LaymanConfigSchema.parse({ autoApprove: 'none', ...overrides });
 
-  registerHookHandler(app, pending, store, new AnalysisEngine(), () => config, gate);
+  registerHookHandler(app, pending, store, new AnalysisEngine(), () => config, gate, driftMonitor);
   return { app, store, gate, pending, config };
 }
 
@@ -284,25 +293,14 @@ describe('pi tool calls', () => {
     // channel pi has for it. Treating "cannot block" as a plain auto-allow
     // returned a bare {} and dropped the reminder for exactly the harnesses
     // that have no second route — pi with approvals off, its default.
-    const app = Fastify();
-    const store = new EventStore();
-    const gate = new SessionGate();
-    const config = LaymanConfigSchema.parse({
-      autoApprove: 'none',
-      approvalClients: [],
-      driftMonitoring: { enabled: true },
-    });
-    const driftMonitor = {
-      checkPreToolUse: () => ({
+    const { app, store, gate } = makeHarness(
+      { approvalClients: [], driftMonitoring: { enabled: true } },
+      stubDriftMonitor({
         shouldBlock: false,
         shouldRemind: true,
         reason: 'Drifting from the stated goal',
         rulesSummary: 'Never commit without asking',
       }),
-    };
-    registerHookHandler(
-      app, new PendingApprovalManager(1), store, new AnalysisEngine(),
-      () => config, gate, driftMonitor as never,
     );
     gate.activate(SESSION);
 
@@ -327,25 +325,14 @@ describe('pi tool calls', () => {
     // the auto-allow return and say nothing at all. That inverted the severity
     // ordering: pi with approvals off got a reminder at orange and silence at
     // the strictly worse red.
-    const app = Fastify();
-    const store = new EventStore();
-    const gate = new SessionGate();
-    const config = LaymanConfigSchema.parse({
-      autoApprove: 'none',
-      approvalClients: [],
-      driftMonitoring: { enabled: true, blockOnRed: true },
-    });
-    const driftMonitor = {
-      checkPreToolUse: () => ({
+    const { app, store, gate } = makeHarness(
+      { approvalClients: [], driftMonitoring: { enabled: true, blockOnRed: true } },
+      stubDriftMonitor({
         shouldBlock: true,
         shouldRemind: false,
         reason: 'Rewriting files no prompt asked about',
         rulesSummary: 'Never commit without asking',
       }),
-    };
-    registerHookHandler(
-      app, new PendingApprovalManager(1), store, new AnalysisEngine(),
-      () => config, gate, driftMonitor as never,
     );
     gate.activate(SESSION);
 

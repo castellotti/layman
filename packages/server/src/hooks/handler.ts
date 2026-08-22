@@ -444,22 +444,34 @@ async function handlePreToolUse(
   // Emit any assistant "thinking" text that preceded this tool call
   await emitNewAssistantMessages(input.transcript_path, input.session_id, eventStore, agentType);
 
+  // Check auto-allow rules. A harness we may not block takes the same path as an
+  // auto-allowed call: the event is recorded and analysed, but nothing suspends.
+  // Computed before the drift branch because that branch needs the same answer:
+  // reaching the check below instead would return a bare `{}` and discard the
+  // drift reminder for exactly the harnesses (pi with approvals off) that have
+  // no other channel for it.
+  const shouldAutoAllow =
+    !canBlock || computeShouldAutoAllow(config, input.tool_name, input.tool_input, riskLevel);
+
   // --- Drift monitoring intervention ---
   let driftReminder: string | undefined;
 
   if (driftMonitor && config.driftMonitoring?.enabled) {
     const driftResult = driftMonitor.checkPreToolUse(input.session_id);
+    const driftReason = `[Drift Monitor] ${driftResult.reason}`;
 
-    // A red-level drift block suspends the agent exactly as an approval does, so
-    // it has to respect the same opt-in — but the user should lose the block,
-    // not the signal.
-    if (driftResult.shouldBlock && canBlock) {
-      // Red level: block the agent via pending approval
+    // Recorded before the split below, because a red level we may not act on
+    // still happened: the user loses the block, not the signal.
+    if (driftResult.shouldBlock) {
       eventStore.add('drift_alert', input.session_id, {
         driftSummary: driftResult.reason,
         driftLevel: 'red',
       }, 'high', agentType);
+    }
 
+    // A red-level drift block suspends the agent exactly as an approval does, so
+    // it has to respect the same opt-in.
+    if (driftResult.shouldBlock && canBlock) {
       const decision: ApprovalDecision = await pendingManager.createAndWait(input, undefined, { isDriftBlock: true });
 
       const finalType =
@@ -477,40 +489,21 @@ async function handlePreToolUse(
         hookSpecificOutput: {
           hookEventName: 'PreToolUse',
           permissionDecision: decision.decision,
-          permissionDecisionReason: decision.reason ?? `[Drift Monitor] ${driftResult.reason}`,
+          permissionDecisionReason: decision.reason ?? driftReason,
           updatedInput: decision.updatedInput,
         },
       };
     }
 
-    // A red result we may not act on is demoted to a reminder, not dropped.
-    // `checkPreToolUse` returns `shouldBlock` and `shouldRemind` as mutually
-    // exclusive alternatives — the red branch returns before the orange one is
-    // reached — so without this a red level on a harness Layman may not suspend
-    // falls past both branches to the auto-allow return below and says nothing
-    // at all. That inverts the severity ordering: pi with approvals off (its
-    // default) got a reminder at orange and silence at red.
-    const demotedBlock = driftResult.shouldBlock && !canBlock;
-
-    // Orange level: non-blocking reminder via permissionDecisionReason
-    if (driftResult.shouldRemind || demotedBlock) {
-      // The block branch above is the only other place a per-tool-call
-      // drift_alert is recorded, and for a demoted block it was skipped.
-      if (demotedBlock) {
-        eventStore.add('drift_alert', input.session_id, {
-          driftSummary: driftResult.reason,
-          driftLevel: 'red',
-        }, 'high', agentType);
-      }
-
-      // `!canBlock` has to be part of this, not only of the check further down.
-      // A harness we may not suspend always takes the auto-allow path, and
-      // reaching the auto-allow check below instead would return a bare `{}` —
-      // discarding the reminder entirely for exactly the harnesses (pi with
-      // approvals off) that have no other channel for it.
-      const shouldAutoAllow =
-        !canBlock || computeShouldAutoAllow(config, input.tool_name, input.tool_input, riskLevel);
-
+    // Orange level, plus any red we were not allowed to act on: a non-blocking
+    // reminder via permissionDecisionReason. `shouldBlock` still being true here
+    // means `canBlock` was false, and demoting it is what keeps the severity
+    // ordering intact — `checkPreToolUse` returns `shouldBlock` and
+    // `shouldRemind` as mutually exclusive alternatives (the red branch returns
+    // before the orange one is reached), so a red level left to fall through
+    // reaches the auto-allow return below and says nothing at all. pi with
+    // approvals off, its default, got a reminder at orange and silence at red.
+    if (driftResult.shouldRemind || driftResult.shouldBlock) {
       if (shouldAutoAllow) {
         eventStore.add('tool_call_approved', input.session_id, {
           toolName: input.tool_name,
@@ -521,19 +514,14 @@ async function handlePreToolUse(
           hookSpecificOutput: {
             hookEventName: 'PreToolUse',
             permissionDecision: 'allow',
-            permissionDecisionReason: `[Drift Monitor] ${driftResult.reason}. Key rules: ${(driftResult.rulesSummary ?? '').slice(0, 500)}`,
+            permissionDecisionReason: `${driftReason}. Key rules: ${(driftResult.rulesSummary ?? '').slice(0, 500)}`,
           },
         };
       }
       // Not auto-allowed: capture drift context for pending approval flow
-      driftReminder = `[Drift Monitor] ${driftResult.reason}`;
+      driftReminder = driftReason;
     }
   }
-
-  // Check auto-allow rules. A harness we may not block takes the same path as an
-  // auto-allowed call: the event is recorded and analysed, but nothing suspends.
-  const shouldAutoAllow =
-    !canBlock || computeShouldAutoAllow(config, input.tool_name, input.tool_input, riskLevel);
 
   const shouldAnalyze =
     config.autoAnalyze === 'all' ||
