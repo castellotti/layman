@@ -279,6 +279,47 @@ describe('pi tool calls', () => {
     await inflight;
   });
 
+  it('still delivers an orange drift reminder to a harness it may not block', async () => {
+    // The reminder rides back on permissionDecisionReason, which is the only
+    // channel pi has for it. Treating "cannot block" as a plain auto-allow
+    // returned a bare {} and dropped the reminder for exactly the harnesses
+    // that have no second route — pi with approvals off, its default.
+    const app = Fastify();
+    const store = new EventStore();
+    const gate = new SessionGate();
+    const config = LaymanConfigSchema.parse({
+      autoApprove: 'none',
+      approvalClients: [],
+      driftMonitoring: { enabled: true },
+    });
+    const driftMonitor = {
+      checkPreToolUse: () => ({
+        shouldBlock: false,
+        shouldRemind: true,
+        reason: 'Drifting from the stated goal',
+        rulesSummary: 'Never commit without asking',
+      }),
+    };
+    registerHookHandler(
+      app, new PendingApprovalManager(1), store, new AnalysisEngine(),
+      () => config, gate, driftMonitor as never,
+    );
+    gate.activate(SESSION);
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/hooks/PreToolUse',
+      payload: piBody('PreToolUse', { tool_name: 'Bash', tool_input: { command: 'git commit' } }),
+    });
+
+    const body = res.json() as {
+      hookSpecificOutput?: { permissionDecision?: string; permissionDecisionReason?: string };
+    };
+    expect(body.hookSpecificOutput?.permissionDecision).toBe('allow');
+    expect(body.hookSpecificOutput?.permissionDecisionReason).toContain('Drifting from the stated goal');
+    expect(store.getAll().map((e) => e.type)).toContain('tool_call_approved');
+  });
+
   it('records a failed tool result as a failure event', async () => {
     await h.app.inject({
       method: 'POST',
@@ -450,6 +491,24 @@ describe('StreamDelta ingest', () => {
     await app.inject({
       method: 'POST', url: '/hooks/StreamDelta',
       payload: deltaBody({ seq: 1, text_delta: undefined, done: true }),
+    });
+
+    expect(streams.get(SESSION)).toBeUndefined();
+  });
+
+  it('closes the live row when the session ends mid-generation', async () => {
+    // A harness quit while generating cannot be relied on to flush its own
+    // closing delta — pi's extension awaits only SessionEnd, because an
+    // un-awaited fetch never leaves an exiting process. Without this the
+    // dashboard shows "responding…" with a blinking caret until the idle sweep.
+    const { app, streams } = streamHarness();
+
+    await app.inject({ method: 'POST', url: '/hooks/StreamDelta', payload: deltaBody() });
+    expect(streams.get(SESSION)).toBeDefined();
+
+    await app.inject({
+      method: 'POST', url: '/hooks/SessionEnd',
+      payload: piBody('SessionEnd', { reason: 'quit' }),
     });
 
     expect(streams.get(SESSION)).toBeUndefined();

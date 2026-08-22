@@ -27,6 +27,19 @@ describe('toolFilePath', () => {
     expect(toolFilePath({ command: 'ls' })).toBeUndefined();
     expect(toolFilePath(undefined)).toBeUndefined();
   });
+
+  it("declines a search tool's path, which is the directory searched", () => {
+    // Grep and Glob use `path` for where to look, not what was operated on.
+    // Returning it made every search in a session summarise as the same repo
+    // root, hiding the pattern that says what the call was actually for.
+    expect(toolFilePath({ path: '/repo', pattern: 'TODO' }, 'Grep')).toBeUndefined();
+    expect(toolFilePath({ path: '/repo', pattern: '**/*.ts' }, 'Glob')).toBeUndefined();
+  });
+
+  it('still reads a path for tools that operate on one', () => {
+    expect(toolFilePath({ path: '/tmp/a.ts' }, 'Read')).toBe('/tmp/a.ts');
+    expect(toolFilePath({ file_path: '/tmp/a.ts' }, 'Edit')).toBe('/tmp/a.ts');
+  });
 });
 
 describe('toolLineRange', () => {
@@ -72,5 +85,9 @@ describe('toolPathWithRange', () => {
 
   it('returns undefined when there is no path', () => {
     expect(toolPathWithRange({ command: 'ls' })).toBeUndefined();
+  });
+
+  it('passes the tool name through to the search-tool exclusion', () => {
+    expect(toolPathWithRange({ path: '/repo', pattern: 'TODO' }, 'Grep')).toBeUndefined();
   });
 });

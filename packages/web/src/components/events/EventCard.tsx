@@ -16,14 +16,16 @@ import { getEffectiveAgentContent } from '../../lib/reasoning.js';
 export { ThinkingBlock } from '../shared/ThinkingBlock.js';
 import { ThinkingBlock } from '../shared/ThinkingBlock.js';
 
-function formatToolInput(toolInput: Record<string, unknown>): string {
+function formatToolInput(toolInput: Record<string, unknown>, toolName?: string): string {
   // Special handling for Bash command
   if ('command' in toolInput) {
     return String(toolInput.command);
   }
   // File path tools. The path key differs per harness (pi uses `path`), and a
   // windowed read carries offset/limit that say which part of the file was read.
-  const filePath = toolFilePath(toolInput);
+  // `toolName` is what keeps Grep/Glob out of this branch — their `path` is the
+  // directory searched, and the pattern below is the identifying argument.
+  const filePath = toolFilePath(toolInput, toolName);
   if (filePath) {
     const path = `${filePath}${toolLineRange(toolInput)}`;
     if ('content' in toolInput) {
@@ -169,7 +171,7 @@ export function EventDetailBody({ event, onSend }: EventDetailBodyProps) {
               <div>
                 {!isShell && <p className="text-[10px] text-[var(--text-faint)] mb-1 font-mono uppercase">Input</p>}
                 <CodeBlock
-                  code={formatToolInput(input)}
+                  code={formatToolInput(input, tool)}
                   language={isShell ? 'bash' : 'text'}
                   maxLines={10}
                   showWrapToggle
@@ -580,9 +582,11 @@ function DriftDetailSection({
   );
 }
 
-function getInputPreview(inp: Record<string, unknown>): string | null {
+function getInputPreview(inp: Record<string, unknown>, toolName?: string): string | null {
   return (inp.command as string | undefined)
-    ?? toolFilePath(inp)
+    ?? toolFilePath(inp, toolName)
+    // Reached by Grep/Glob, whose `path` toolFilePath() declines to return.
+    ?? (inp.pattern as string | undefined)
     ?? (inp.url as string | undefined)
     ?? (inp.query as string | undefined)
     ?? (inp.prompt as string | undefined)
@@ -617,7 +621,7 @@ function SubagentTranscriptView({ entries }: { entries: SubagentTranscriptEntry[
                   <div className="flex items-center gap-1.5">
                     <span className="text-[10px] text-[var(--ok)] font-mono font-semibold">{entry.toolName}</span>
                     {entry.toolInput && (() => {
-                      const preview = getInputPreview(entry.toolInput);
+                      const preview = getInputPreview(entry.toolInput, entry.toolName);
                       return preview ? (
                         <span className="text-[11px] text-[var(--text)] font-mono truncate">{String(preview).slice(0, 80)}</span>
                       ) : null;

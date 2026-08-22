@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync, readFileSync } from 'fs';
 import { join, dirname } from 'path';
 import { tmpdir } from 'os';
+import { randomUUID } from 'crypto';
 import { fileURLToPath } from 'url';
 import { EventStore } from '../events/store.js';
 import { SessionRecorder } from '../db/recorder.js';
@@ -75,9 +76,12 @@ class FakeDb {
         },
       };
     }
-    if (sql.includes('SELECT COUNT(*) as c FROM recorded_events')) {
+    if (sql.includes('SELECT id FROM recorded_events')) {
       return {
-        get: (sessionId: string) => ({ c: Array.from(db.events.values()).filter((e) => e.session_id === sessionId).length }),
+        all: (sessionId: string) =>
+          Array.from(db.events.values())
+            .filter((e) => e.session_id === sessionId)
+            .map((e) => ({ id: e.id })),
       };
     }
     // SessionRecorder's constructor eagerly prepares statements for paths
@@ -226,12 +230,16 @@ describe('importHistoricalSessions', () => {
     const recorder = makeRecorder(db);
     const eventStore = new EventStore();
 
-    // Simulate the session already having been recorded live, before any
-    // history scan ever runs — same events the pi parser would produce.
+    // Simulate live recording *as it actually happens*: EventStore.add() mints
+    // `randomUUID()` ids, which never match the deterministic ones the pi parser
+    // derives from the transcript. Recording the parser's own events here would
+    // hand INSERT OR IGNORE a set of ids to collide with and hide the very
+    // duplication this test exists to catch.
     const { parsePiTranscript } = await import('./transcript-pi.js');
     const lines = readFileSync(piPath, 'utf-8').trim().split('\n').filter(Boolean);
     const { events } = parsePiTranscript(lines, PI_SESSION_ID);
-    recorder.importSession(PI_SESSION_ID, '/Users/test/project', 'pi', events, 'live');
+    const liveEvents = events.map((e) => ({ ...e, id: randomUUID() }));
+    recorder.importSession(PI_SESSION_ID, '/Users/test/project', 'pi', liveEvents, 'live');
     expect(db.sessions.get(PI_SESSION_ID)?.source).toBe('live');
     const eventCountAfterLiveRecording = db.events.size;
 
@@ -241,5 +249,34 @@ describe('importHistoricalSessions', () => {
     expect(result.skipped).toBe(1);
     expect(db.events.size).toBe(eventCountAfterLiveRecording); // no duplicate rows
     expect(db.sessions.get(PI_SESSION_ID)?.source).toBe('live'); // not downgraded to 'imported'
+  });
+
+  it('reports counts describing only what enrichment added, not the whole file', async () => {
+    const piPath = writePiFixture();
+    const db = new FakeDb();
+    const recorder = makeRecorder(db);
+    const eventStore = new EventStore();
+
+    // An 'imported' session missing its tail: everything but the last two
+    // events is already recorded, under the parser's own ids.
+    const { parsePiTranscript } = await import('./transcript-pi.js');
+    const lines = readFileSync(piPath, 'utf-8').trim().split('\n').filter(Boolean);
+    const { events } = parsePiTranscript(lines, PI_SESSION_ID);
+    expect(events.length).toBeGreaterThan(2);
+    const missing = events.slice(-2);
+    recorder.importSession(
+      PI_SESSION_ID, '/Users/test/project', 'pi', events.slice(0, -2), 'imported'
+    );
+
+    const result = await importHistoricalSessions(db as unknown as Database, eventStore, recorder, { enrichExisting: true });
+
+    expect(result.enriched).toBe(1);
+    const session = result.sessions.find((s) => s.sessionId === PI_SESSION_ID)!;
+    expect(session.eventCount).toBe(2);
+    // The counts have to be over the added events too. Deriving them from the
+    // full parse gave `eventCount: 2, toolCallCount: <every call in the file>`.
+    expect(session.toolCallCount).toBe(missing.filter((e) => e.type === 'tool_call_completed').length);
+    expect(session.userPromptCount).toBe(missing.filter((e) => e.type === 'user_prompt').length);
+    expect(result.totalEvents).toBe(2);
   });
 });

@@ -661,17 +661,36 @@ export async function importHistoricalSessions(
           status: 'enriched',
         });
 
+      } else if (enrichExisting && existingSource === 'live') {
+        // A session Layman watched live is already complete, and re-parsing its
+        // transcript would *duplicate* it rather than enrich it: live events are
+        // stored under `randomUUID()` (events/store.ts) while the parsers mint
+        // deterministic ids from the transcript, so INSERT OR IGNORE has nothing
+        // to match on and every event lands a second time. The harnesses with a
+        // `parseAfter` cutoff escape this only because the cutoff excludes
+        // everything already recorded — which is not a property to rely on here.
+        result.skipped++;
+        continue;
+
       } else if (enrichExisting) {
         // No incremental parse for this harness (e.g. pi's tree structure
-        // doesn't support a flat afterTimestamp cutoff): re-parse the whole
-        // file and let importSession()'s INSERT OR IGNORE upsert skip
-        // whatever is already recorded, so this stays idempotent.
-        const before = (db.prepare(
-          'SELECT COUNT(*) as c FROM recorded_events WHERE session_id = ?'
-        ).get(sessionId) as { c: number }).c;
+        // doesn't support a flat afterTimestamp cutoff): re-parse the whole file
+        // and insert only the events whose ids are not recorded yet.
+        //
+        // The filter is explicit rather than left to importSession()'s
+        // INSERT OR IGNORE so that the counts reported below describe what was
+        // actually added. Counting rows before and after would give a correct
+        // total while `toolCallCount` and `userPromptCount` still described the
+        // whole file — a session that gained 3 events reporting 200 tool calls.
+        const recordedIds = new Set(
+          (db.prepare(
+            'SELECT id FROM recorded_events WHERE session_id = ?'
+          ).all(sessionId) as { id: string }[]).map(r => r.id)
+        );
 
         const { events, metadata } = source.parse(lines, sessionId);
-        if (events.length === 0) {
+        const newEvents = events.filter(e => !recordedIds.has(e.id));
+        if (newEvents.length === 0) {
           result.skipped++;
           continue;
         }
@@ -680,30 +699,20 @@ export async function importHistoricalSessions(
         // importSession()'s own upsert never downgrades an existing 'live'
         // session's source, so 'imported' here is safe regardless of what
         // existingSource currently is.
-        recorder.importSession(sessionId, cwd, agentType, events, 'imported');
+        recorder.importSession(sessionId, cwd, agentType, newEvents, 'imported');
 
-        const after = (db.prepare(
-          'SELECT COUNT(*) as c FROM recorded_events WHERE session_id = ?'
-        ).get(sessionId) as { c: number }).c;
-        const added = after - before;
-
-        if (added === 0) {
-          result.skipped++;
-          continue;
-        }
-
-        const toolCallCount = events.filter(e => e.type === 'tool_call_completed').length;
-        const userPromptCount = events.filter(e => e.type === 'user_prompt').length;
+        const toolCallCount = newEvents.filter(e => e.type === 'tool_call_completed').length;
+        const userPromptCount = newEvents.filter(e => e.type === 'user_prompt').length;
 
         result.enriched++;
-        result.totalEvents += added;
+        result.totalEvents += newEvents.length;
         result.sessions.push({
           sessionId,
           cwd,
           agentType,
           startedAt: metadata.firstTimestamp,
           lastSeen: metadata.lastTimestamp,
-          eventCount: added,
+          eventCount: newEvents.length,
           toolCallCount,
           userPromptCount,
           status: 'enriched',

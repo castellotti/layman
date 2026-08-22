@@ -20,6 +20,16 @@ export interface LiveStream {
   /** Accumulated, tail-truncated to MAX_BUFFER_CHARS. */
   text: string;
   tokens: { input: number; output: number; cacheRead: number; cacheWrite: number };
+  /**
+   * `tokens.output` is derived from the accumulated text rather than reported.
+   *
+   * No harness reports usage *during* generation — pi and OpenCode both attach
+   * it to the finished message, by which point the live row is already gone — so
+   * a counter that only ever showed reported values would read 0 for its entire
+   * lifetime. The UI renders the approximation with a `~`; a producer that does
+   * send `tokens` supersedes it and clears this flag.
+   */
+  tokensEstimated?: boolean;
   model?: string;
   startedAt: number;
   updatedAt: number;
@@ -50,6 +60,23 @@ const IDLE_SWEEP_MS = 60_000;
 
 const SWEEP_INTERVAL_MS = 10_000;
 
+/**
+ * Characters per token, for the live output estimate.
+ *
+ * The 4:1 rule of thumb every tokenizer's documentation quotes for English
+ * prose. Running a real tokenizer over every delta would cost more than the
+ * number is worth — this is a progress indicator, not an accounting figure, and
+ * the exact usage lands with the committed message moments later.
+ */
+const CHARS_PER_TOKEN = 4;
+
+/**
+ * How long a finished message stays remembered, so a straggling delta cannot
+ * reopen it. Matched to the idle sweep: past that window no live row survives
+ * anyway, so there is nothing left to protect.
+ */
+const FINISHED_MEMORY_MS = IDLE_SWEEP_MS;
+
 function tail(existing: string, addition: string): string {
   const combined = existing + addition;
   return combined.length <= MAX_BUFFER_CHARS
@@ -61,6 +88,20 @@ export class LiveStreamStore extends EventEmitter {
   private streams = new Map<string, LiveStream>();
   /** Highest `seq` accepted per session, for ordering. */
   private lastSeq = new Map<string, number>();
+  /**
+   * The last message closed per session, and when.
+   *
+   * A producer's `done` flush and its final delta flush are independent posts
+   * with no ordering guarantee between them: pi's `message_end` fires both
+   * back to back. If `done` arrives first the stream is deleted, and without
+   * this record the late delta would be treated as a brand-new message —
+   * recreating the row and re-broadcasting `stream:update` after `stream:end`.
+   * For a tool-call-only message no committed `agent_response` ever follows to
+   * clear it, so the phantom row would sit there until the idle sweep.
+   */
+  private finished = new Map<string, { messageId: string; at: number }>();
+  /** Output characters accumulated for the current message, pre-truncation. */
+  private outputChars = new Map<string, number>();
   private sweepTimer?: ReturnType<typeof setInterval>;
   private stringFilter?: (text: string) => string;
 
@@ -105,6 +146,12 @@ export class LiveStreamStore extends EventEmitter {
   applyDelta(delta: StreamDelta, now = Date.now()): LiveStream | null {
     const existing = this.streams.get(delta.sessionId);
 
+    // A message that has already been closed stays closed. Anything still
+    // arriving for it is a delta that lost the race with its own `done`, and
+    // reviving the row for it is worse than dropping the last few tokens.
+    const closed = this.finished.get(delta.sessionId);
+    if (closed && closed.messageId === delta.messageId) return null;
+
     // A new message supersedes whatever was streaming for this session: the
     // previous one either finished or was abandoned, and either way its partial
     // text must not be prepended to the new one.
@@ -131,18 +178,39 @@ export class LiveStreamStore extends EventEmitter {
         }
       : { ...existing! };
 
-    if (isNewMessage) this.lastSeq.delete(delta.sessionId);
+    if (isNewMessage) {
+      this.lastSeq.delete(delta.sessionId);
+      this.outputChars.set(delta.sessionId, 0);
+    }
     if (delta.seq !== undefined) this.lastSeq.set(delta.sessionId, delta.seq);
+
+    let chars = this.outputChars.get(delta.sessionId) ?? 0;
 
     if (delta.thinkingDelta) {
       stream.thinking = this.redact(tail(stream.thinking, delta.thinkingDelta));
       stream.phase = 'thinking';
+      chars += delta.thinkingDelta.length;
     }
     if (delta.textDelta) {
       stream.text = this.redact(tail(stream.text, delta.textDelta));
       stream.phase = 'text';
+      chars += delta.textDelta.length;
     }
-    if (delta.tokens) stream.tokens = { ...stream.tokens, ...delta.tokens };
+    this.outputChars.set(delta.sessionId, chars);
+
+    if (delta.tokens) {
+      stream.tokens = { ...stream.tokens, ...delta.tokens };
+      // A reported figure always wins, and once one arrives the estimate is
+      // never reinstated for this message.
+      if (delta.tokens.output !== undefined) stream.tokensEstimated = false;
+    }
+    // Counted from the running character total rather than the buffers, which
+    // are tail-truncated at 32 KB — a long monologue would otherwise appear to
+    // stop generating once it hit the cap.
+    if (stream.tokensEstimated !== false && chars > 0) {
+      stream.tokens = { ...stream.tokens, output: Math.round(chars / CHARS_PER_TOKEN) };
+      stream.tokensEstimated = true;
+    }
     if (delta.model) stream.model = delta.model;
     stream.updatedAt = now;
 
@@ -151,6 +219,8 @@ export class LiveStreamStore extends EventEmitter {
       // tool-call-only assistant message, say) must not emit a spurious end.
       const existed = this.streams.delete(delta.sessionId);
       this.lastSeq.delete(delta.sessionId);
+      this.outputChars.delete(delta.sessionId);
+      this.finished.set(delta.sessionId, { messageId: delta.messageId, at: now });
       if (existed) this.emit('stream:end', delta.sessionId);
       return null;
     }
@@ -161,9 +231,12 @@ export class LiveStreamStore extends EventEmitter {
   }
 
   /** End a session's stream, if it has one. Idempotent. */
-  finish(sessionId: string): void {
+  finish(sessionId: string, now = Date.now()): void {
+    const stream = this.streams.get(sessionId);
     if (!this.streams.delete(sessionId)) return;
     this.lastSeq.delete(sessionId);
+    this.outputChars.delete(sessionId);
+    if (stream) this.finished.set(sessionId, { messageId: stream.messageId, at: now });
     this.emit('stream:end', sessionId);
   }
 
@@ -182,7 +255,12 @@ export class LiveStreamStore extends EventEmitter {
    */
   sweep(now = Date.now()): void {
     for (const [sessionId, stream] of this.streams) {
-      if (now - stream.updatedAt > IDLE_SWEEP_MS) this.finish(sessionId);
+      if (now - stream.updatedAt > IDLE_SWEEP_MS) this.finish(sessionId, now);
+    }
+    // Closed-message records are only useful for as long as a straggling delta
+    // could still arrive; keeping them past that is an unbounded map.
+    for (const [sessionId, record] of this.finished) {
+      if (now - record.at > FINISHED_MEMORY_MS) this.finished.delete(sessionId);
     }
   }
 }

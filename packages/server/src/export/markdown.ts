@@ -79,7 +79,7 @@ export function describeToolCall(event: TimelineEvent, max = 120): string {
   // Resolved through the shared helper rather than a literal key, because the
   // path argument is named differently per harness (pi uses `path`), and a
   // windowed read carries the line range that says what was actually looked at.
-  const path = toolPathWithRange(input);
+  const path = toolPathWithRange(input, event.data.toolName);
   if (path) return truncate(path);
 
   for (const key of ['pattern', 'query', 'url', 'prompt']) {

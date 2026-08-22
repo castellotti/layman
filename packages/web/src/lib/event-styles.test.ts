@@ -94,6 +94,23 @@ describe('eventDetail', () => {
     expect(detail).toBe('Grep — TODO');
   });
 
+  it("shows a search's pattern rather than the directory it searched", () => {
+    // claude-code's Grep/Glob use `path` for where to look. Resolving it as the
+    // file the call operated on made every search in a session read as the same
+    // repository root, and made the pattern fallback above unreachable.
+    const grep = eventDetail(ev({
+      type: 'tool_call_completed',
+      data: { toolName: 'Grep', toolInput: { pattern: 'TODO', path: '/repo' } },
+    }));
+    expect(grep).toBe('Grep — TODO');
+
+    const glob = eventDetail(ev({
+      type: 'tool_call_completed',
+      data: { toolName: 'Glob', toolInput: { pattern: '**/*.ts', path: '/repo' } },
+    }));
+    expect(glob).toBe('Glob — **/*.ts');
+  });
+
   it('prefers a bash command over anything else', () => {
     const detail = eventDetail(ev({
       type: 'tool_call_completed',

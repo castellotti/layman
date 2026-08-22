@@ -55,7 +55,7 @@ export function eventDetail(event: TimelineEvent): string {
     if (input?.command) return `${event.data.toolName} — ${String(input.command)}`;
     // Path plus line window, so a windowed read reads `Read — …/foo.js:320-419`
     // rather than losing the range that says which part of the file was looked at.
-    const path = toolPathWithRange(input);
+    const path = toolPathWithRange(input, event.data.toolName);
     if (path) return `${event.data.toolName} — ${path}`;
     if (typeof input?.pattern === 'string') return `${event.data.toolName} — ${input.pattern}`;
     return event.data.toolName;

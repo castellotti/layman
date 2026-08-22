@@ -691,6 +691,10 @@ export default function laymanExtension(pi: ExtensionAPI): void {
     // timer and a stream the dashboard thinks is still running.
     clearStreamTimer();
     clearPromptTimer();
+    // Best-effort: this goes out through the same fire-and-forget path as every
+    // other post and will usually be dropped by the exiting process, which is
+    // why the server also closes the live stream on `SessionEnd` below rather
+    // than trusting this to arrive.
     flushStream(ctx, true);
 
     // Awaited, unlike every other post: pi is about to exit, and an
@@ -704,7 +708,14 @@ export default function laymanExtension(pi: ExtensionAPI): void {
 
   pi.on('session_info_changed', (event, ctx) => {
     if (!event.name) return;
-    post('StatusLine', { ...basePayload(ctx, 'StatusLine'), session_name: event.name });
+    // The *whole* payload, with the new name substituted — not a payload
+    // carrying only the name. `handleStatusLine` builds a `session_metrics`
+    // event from whatever it receives and the client replaces its map entry
+    // wholesale rather than merging, so a name-only post blanks the model,
+    // cost, tokens and context percentage out of the metrics bar. pi names a
+    // session shortly after its first turn, which is exactly when the bar has
+    // just been populated.
+    post('StatusLine', { ...statusLinePayload(ctx), session_name: event.name });
   });
 
   // --- Session metrics -------------------------------------------------------
@@ -767,6 +778,13 @@ export default function laymanExtension(pi: ExtensionAPI): void {
         block: true,
         reason: decision.permissionDecisionReason ?? 'Denied in Layman.',
       };
+    }
+    // An allow can still carry a reason: that is how the drift monitor delivers
+    // its orange-level reminder. Discarding it would make the reminder reach
+    // nothing at all for pi, whose usual configuration is not to block. Shown
+    // rather than injected because pi's tool result is the model's, not ours.
+    if (decision?.permissionDecisionReason) {
+      ctx.ui.notify(decision.permissionDecisionReason, 'warn');
     }
     // Anything else — allow, ask, no response at all — proceeds. "ask" cannot
     // be honoured here: pi has no permission prompt of its own to defer to.

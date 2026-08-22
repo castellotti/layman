@@ -56,7 +56,12 @@ To skip the step entirely, turn on **Auto-activate sessions** on the pi row in
   which reads pi's own session JSONL directly.
 - **Killing pi with Ctrl+C may not end the session immediately.** pi does not always run its
   shutdown handler on an abrupt signal. A stale live-generation row is swept within about a minute.
+  Quitting normally closes the row at once, from the server side.
 - **`PermissionRequest` has no pi equivalent.** Tool approval goes through `tool_call` only.
+- **Drift reminders appear in pi's notification area, not in the agent's context.** At amber level
+  Layman returns the reminder alongside its allow decision, and the extension shows it to you. pi
+  gives an extension no way to inject text into the model's context on an allowed tool call, so
+  unlike claude-code the agent itself does not see it.
 
 ## Historical session import
 

@@ -512,6 +512,8 @@ export interface LiveStream {
   thinking: string;
   text: string;
   tokens: { input: number; output: number; cacheRead: number; cacheWrite: number };
+  /** `tokens.output` is derived from the accumulated text, so render it as `~n`. */
+  tokensEstimated?: boolean;
   model?: string;
   startedAt: number;
   updatedAt: number;

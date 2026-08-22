@@ -23,7 +23,7 @@ Layman continuously monitors AI agent sessions for two kinds of drift:
 - **Session goal drift** - detects when the agent strays from what you asked it to do (scope creep, phantom file references, pattern breaks).
 - **Rules drift** - detects when the agent violates rules defined in your project's `CLAUDE.md` files (wrong commands, forbidden actions, convention breaks). `AGENTS.md` files are also supported for harnesses besides Claude Code.
 
-Drift scores are EMA-smoothed (alpha 0.3) to avoid reacting to one-off spikes. Scores map to three color levels (green -> amber -> red) with configurable thresholds. At **amber** the agent gets an in-context reminder; at **red** Layman can pause the agent entirely and require your approval to continue. Individual drift findings can be dismissed as false positives - dismissed items are fed back into the LLM prompt so they won't be re-flagged.
+Drift scores are EMA-smoothed (alpha 0.3) to avoid reacting to one-off spikes. Scores map to three color levels (green -> amber -> red) with configurable thresholds. At **amber** the agent gets an in-context reminder (on pi, which has no way to inject one, it is shown to you instead); at **red** Layman can pause the agent entirely and require your approval to continue. Individual drift findings can be dismissed as false positives - dismissed items are fed back into the LLM prompt so they won't be re-flagged.
 
 ![Drift monitoring](images/drift.png)
 
@@ -77,12 +77,14 @@ Cost is shown only when it is non-zero. A locally hosted model has every cost fi
 
 Harnesses that expose a streaming hook push partial output to the dashboard as it is generated: a row pinned to the tail of the Logs stream showing the response as it is written, the model's reasoning rendered separately and de-emphasised, and a token counter that ticks during generation. When the turn finishes, the live row is replaced by the committed response.
 
+The live count is shown as `~1.2k out` because no harness reports usage while it is still generating — it arrives with the finished message, by which point the live row is gone. The `~` marks a figure derived from the output so far; the exact numbers appear in the session metrics bar once the turn ends.
+
 Fidelity depends on what each harness exposes. Where there is no streaming hook, there is simply no live row — nothing is stuck or empty:
 
 | Harness | Live text | Live thinking | Live tokens |
 |---|:-:|:-:|:-:|
-| pi | token-level | token-level, separate stream | live counter |
-| OpenCode | token-level | `reasoning` parts | post-turn |
+| pi | token-level | token-level, separate stream | live estimate, exact after |
+| OpenCode | token-level | `reasoning` parts | live estimate, exact after |
 | Claude Code | ❌ | ❌ | post-turn counter |
 | Codex | ❌ | ❌ | post-turn only |
 | Cline | ❌ | ❌ | post-turn only |

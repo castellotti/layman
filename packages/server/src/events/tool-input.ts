@@ -19,9 +19,29 @@
 /** Keys a harness may use for "the file this call operates on", in priority order. */
 const FILE_PATH_KEYS = ['file_path', 'path', 'filePath', 'filepath'] as const;
 
-/** The file a tool call touches, whatever the harness calls the argument. */
-export function toolFilePath(input: Record<string, unknown> | undefined): string | undefined {
+/**
+ * Tools whose `path` argument is the directory to search, not a file operated on.
+ *
+ * Without this exclusion every `Grep` and `Glob` in a session summarises as the
+ * same repository root — `Grep — /Users/me/project` repeated dozens of times —
+ * because `path` outranks `pattern`, which is the argument that actually says
+ * what the call was looking for. Pass `toolName` at any call site that renders a
+ * summary; access tracking handles these two tools explicitly and does not.
+ */
+const SEARCH_TOOLS = new Set(['Grep', 'Glob']);
+
+/**
+ * The file a tool call touches, whatever the harness calls the argument.
+ *
+ * `toolName` is optional because most callers have a path-shaped tool in hand
+ * already; supply it wherever a search tool could turn up.
+ */
+export function toolFilePath(
+  input: Record<string, unknown> | undefined,
+  toolName?: string
+): string | undefined {
   if (!input) return undefined;
+  if (toolName && SEARCH_TOOLS.has(toolName)) return undefined;
   for (const key of FILE_PATH_KEYS) {
     const value = input[key];
     if (typeof value === 'string' && value.trim().length > 0) return value;
@@ -51,8 +71,11 @@ export function toolLineRange(input: Record<string, unknown> | undefined): strin
 }
 
 /** `…/autocomplete.js:320-419` — the path plus its line window, if any. */
-export function toolPathWithRange(input: Record<string, unknown> | undefined): string | undefined {
-  const path = toolFilePath(input);
+export function toolPathWithRange(
+  input: Record<string, unknown> | undefined,
+  toolName?: string
+): string | undefined {
+  const path = toolFilePath(input, toolName);
   if (!path) return undefined;
   return `${path}${toolLineRange(input)}`;
 }

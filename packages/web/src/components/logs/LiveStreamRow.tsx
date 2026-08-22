@@ -81,7 +81,11 @@ export function LiveStreamRow({ sessionId }: { sessionId: string | null }) {
         </span>
         {stream.model && <span>{stream.model}</span>}
         {stream.tokens.output > 0 && (
-          <span className="tabular-nums">{formatTokens(stream.tokens.output)} out</span>
+          // `~` when the count is derived from characters rather than reported:
+          // no harness sends usage mid-generation, so this is the usual case.
+          <span className="tabular-nums">
+            {stream.tokensEstimated ? '~' : ''}{formatTokens(stream.tokens.output)} out
+          </span>
         )}
       </div>
 

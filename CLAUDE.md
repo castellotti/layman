@@ -176,13 +176,31 @@ The client clears a session's buffer both on `stream:end` *and* when the committ
 arrives. Those are separate WebSocket frames with no ordering guarantee between them, so relying on
 `stream:end` alone can render the partial and the finished text at once.
 
+Three more things a live row must never do, each of which produced a stuck row before it was fixed:
+
+- **A closed message stays closed.** A producer's final delta flush and its `done` flush are
+  *independent* posts with no ordering guarantee — pi's `message_end` fires both back to back — and
+  when `done` wins the race, the straggler looks exactly like the first delta of a new message.
+  `LiveStreamStore` remembers the last closed `messageId` per session for the length of the idle
+  sweep and drops deltas for it. Without that, an assistant message consisting only of tool calls
+  leaves a phantom row: no committed `agent_response` ever follows to clear it.
+- **`SessionEnd` closes the stream, server-side.** The extension's own closing flush rides the
+  fire-and-forget path and is dropped by the exiting process — which is the whole reason `SessionEnd`
+  is the one post it awaits. Trusting the delta means a harness quit mid-generation shows
+  "responding…" with a blinking caret for up to 60 s.
+- **The token counter is an estimate, and says so.** No harness reports usage *during* generation:
+  pi and OpenCode both attach it to the finished message, by which point the row is gone. The count
+  is derived from the accumulated output (4 chars/token) and rendered `~1.2k out`; `tokensEstimated`
+  is cleared for good the moment a producer sends a real `tokens.output`. It is counted from a
+  running character total, not from the buffers, which are tail-truncated at 32 KB.
+
 Fidelity is not uniform, and the four harnesses with no streaming hook must render as **no live row
 at all** — never an empty or stuck one:
 
 | Harness | Mechanism | Live text | Live thinking | Live tokens |
 |---|---|---|---|---|
-| pi | `message_update` / `AssistantMessageEvent` | token-level | token-level, separate stream | per-turn `usage`, live counter |
-| OpenCode | `message.part.updated` | token-level (cumulative → diffed) | `reasoning` parts | post-turn |
+| pi | `message_update` / `AssistantMessageEvent` | token-level | token-level, separate stream | estimated live counter; exact per-turn `usage` after |
+| OpenCode | `message.part.updated` | token-level (cumulative → diffed) | `reasoning` parts | estimated live counter; exact post-turn |
 | Claude Code | StatusLine relay, 300 ms debounce | ✗ | ✗ | post-turn counter |
 | Codex | 5 hooks, no streaming | ✗ | ✗ | post-turn only |
 | Cline | shell hooks | ✗ | ✗ | post-turn only |
@@ -264,6 +282,22 @@ tested in node, where there is no `Audio` and no `URL.createObjectURL`.
   and is gated by the same check — otherwise it would suspend pi through a second door while the
   approvals toggle read "off".
 
+- **"Cannot block" is a kind of auto-allow, and must be handled as one everywhere.** The orange-level
+  drift reminder rides back on `permissionDecisionReason`, which is only ever set on a branch that
+  returns a decision. The `!canBlock` check therefore belongs in `handlePreToolUse`'s *drift* branch
+  as well as in the auto-allow check below it: with it only below, a harness Layman may not block
+  fell past the drift branch and returned a bare `{}`, silently discarding the reminder for exactly
+  the configuration that has no other channel for it — pi with approvals off, its default. The
+  extension correspondingly surfaces an allow-*with*-reason through `ctx.ui.notify` rather than
+  looking only at `permissionDecision === 'deny'`.
+
+- **A partial `StatusLine` payload blanks the metrics bar.** `handleStatusLine` builds a
+  `session_metrics` event from whatever arrives and the client *replaces* its map entry rather than
+  merging, so posting one field clears every other. pi's `session_info_changed` (which fires shortly
+  after the first turn, just as the bar fills) therefore sends the whole `statusLinePayload(ctx)`
+  with the name substituted, not a name-only body. Any future partial-update source needs the same
+  treatment or a merging store.
+
 - **pi brackets a live stream on `message_start`/`message_end`, not on `assistantMessageEvent`'s
   `start`/`done`.** Those two variants exist in pi's stream protocol type, which makes them look
   like the obvious choice, but the agent core consumes them to emit the `message_start` and
@@ -292,6 +326,24 @@ tested in node, where there is no `Audio` and no `URL.createObjectURL`.
   fixes every consumer at once. **The window must stay identical in `extract.ts` and `turns.ts`** or
   client and server disagree about how many turns a session has. `extractTurn()` / `TurnStore.getTurn()`
   still resolve a collapsed duplicate's id to the surviving turn, so links minted before the fix work.
+
+- **History enrichment must never touch a session recorded live** (`recovery.ts`). `importSession()`
+  is idempotent only in the sense that `INSERT OR IGNORE` dedupes on *id*, and the two producers do
+  not agree on ids: live events get `randomUUID()` (`events/store.ts`) while every transcript parser
+  mints a deterministic id from the file. Re-parsing a live-recorded session therefore inserts a
+  second full copy of it rather than enriching it. The harnesses with a `parseAfter` cutoff escape
+  this only incidentally — the cutoff excludes what is already recorded — which is not a property to
+  build on, so the whole-file fallback both skips `source === 'live'` sessions and filters against
+  the recorded ids explicitly. A test that seeds "live" events using the *parser's* ids proves
+  nothing; it hands the upsert something to collide with and hides the bug.
+
+- **`toolFilePath()` takes an optional `toolName` because `path` is overloaded** (`events/tool-input.ts`,
+  mirrored in the web copy). pi names its file argument `path`, and claude-code's `Grep`/`Glob` use
+  the same key for the directory to *search*. With `path` outranking `pattern`, every search in a
+  session summarised as the same repository root — in Logs rows, the dashboard tail, `EventCard` and
+  the markdown export — and the `pattern` fallback below it was unreachable. Pass `toolName` at any
+  call site that renders a summary. Access tracking does not need it: `extractAccess()` switches on
+  the tool name and handles `Grep`/`Glob` explicitly.
 
 - **Hook identity is structural, not tagged**: `buildLaymanHooks()` writes `_layman: true`, but **claude-code strips unknown keys when it rewrites `settings.json`**, so the tag does not survive and cannot be relied on. `isLaymanHook()` therefore matches on URL *shape* — any `{origin}/hooks/{KnownLaymanEvent}` — rather than on the tag or on the configured `serverUrl`. This matters because matching `serverUrl` alone meant that any URL change (port, `--hook-url`, `localhost` vs `host.docker.internal`) stopped matching the old entries and **appended a duplicate hook set**, causing every event to fire twice. Structural matching makes `install()` idempotent and self-healing across URL changes.
 

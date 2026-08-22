@@ -231,6 +231,13 @@ export function registerHookHandler(
             return reply.status(200).send({});
           }
           case 'SessionEnd': {
+            // Close any live row for this session first. A harness quit
+            // mid-generation cannot be relied on to flush its own final
+            // `StreamDelta` — the pi extension awaits only `SessionEnd`,
+            // precisely because an un-awaited fetch never leaves a process that
+            // is exiting — so without this the dashboard shows a "responding…"
+            // row with a blinking caret until the 60 s idle sweep.
+            liveStreams?.finish((body as unknown as SessionEndInput).session_id);
             await handleSessionEnd(body as unknown as SessionEndInput, eventStore, gate, agentType, driftMonitor);
             return reply.status(200).send({});
           }
@@ -478,7 +485,13 @@ async function handlePreToolUse(
 
     // Orange level: non-blocking reminder via permissionDecisionReason
     if (driftResult.shouldRemind) {
-      const shouldAutoAllow = computeShouldAutoAllow(config, input.tool_name, input.tool_input, riskLevel);
+      // `!canBlock` has to be part of this, not only of the check further down.
+      // A harness we may not suspend always takes the auto-allow path, and
+      // reaching the auto-allow check below instead would return a bare `{}` —
+      // discarding the reminder entirely for exactly the harnesses (pi with
+      // approvals off) that have no other channel for it.
+      const shouldAutoAllow =
+        !canBlock || computeShouldAutoAllow(config, input.tool_name, input.tool_input, riskLevel);
 
       if (shouldAutoAllow) {
         eventStore.add('tool_call_approved', input.session_id, {

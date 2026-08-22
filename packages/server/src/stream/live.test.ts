@@ -162,6 +162,96 @@ describe('lifecycle', () => {
 
     expect(store.getAll().map((s) => s.sessionId).sort()).toEqual(['sess-1', 'sess-2']);
   });
+
+  it('does not let a delta that lost the race with its own done reopen the row', () => {
+    // pi's message_end posts a scheduled delta flush and a done flush back to
+    // back, as two independent fetches with no ordering guarantee. When done
+    // lands first, the straggler must not recreate the stream — for a
+    // tool-call-only message no committed agent_response ever follows to clear
+    // it, so the phantom row would sit there until the idle sweep.
+    const updates: LiveStream[] = [];
+    const ended: string[] = [];
+    store.on('stream:update', (s: LiveStream) => updates.push(s));
+    store.on('stream:end', (id: string) => ended.push(id));
+
+    store.applyDelta(delta({ seq: 0, textDelta: 'a' }));
+    store.applyDelta(delta({ seq: 2, done: true }));
+    const late = store.applyDelta(delta({ seq: 1, textDelta: 'b' }));
+
+    expect(late).toBeNull();
+    expect(store.get(SESSION)).toBeUndefined();
+    expect(ended).toEqual([SESSION]);
+    expect(updates).toHaveLength(1); // only the pre-close delta
+  });
+
+  it('still opens a stream for the next message after one is closed', () => {
+    store.applyDelta(delta({ seq: 0, textDelta: 'first' }));
+    store.applyDelta(delta({ seq: 1, done: true }));
+
+    const next = store.applyDelta(delta({ messageId: 'msg-2', seq: 0, textDelta: 'second' }));
+    expect(next?.text).toBe('second');
+  });
+
+  it('forgets a closed message once no straggler could still arrive', () => {
+    store.applyDelta(delta({ seq: 0, textDelta: 'a' }), 1_000);
+    store.applyDelta(delta({ seq: 1, done: true }), 1_000);
+
+    store.sweep(90_000);
+
+    // Past the window the record is dropped, so a delta for the same id is
+    // treated as new again. Nothing real produces one this late; the point is
+    // that the bookkeeping map does not grow without bound.
+    const revived = store.applyDelta(delta({ seq: 2, textDelta: 'b' }), 91_000);
+    expect(revived?.text).toBe('b');
+  });
+});
+
+describe('token counter', () => {
+  it('estimates output tokens from the accumulated text', () => {
+    // No harness reports usage mid-generation, so without this the counter
+    // would read 0 for the whole life of every live row.
+    const stream = store.applyDelta(delta({ seq: 0, textDelta: 'x'.repeat(400) }));
+
+    expect(stream?.tokens.output).toBe(100);
+    expect(stream?.tokensEstimated).toBe(true);
+  });
+
+  it('counts thinking towards the estimate as well', () => {
+    const stream = store.applyDelta(
+      delta({ seq: 0, thinkingDelta: 'y'.repeat(200), textDelta: 'x'.repeat(200) })
+    );
+
+    expect(stream?.tokens.output).toBe(100);
+  });
+
+  it('keeps counting past the buffer truncation point', () => {
+    // The buffers are tail-truncated at 32 KB; counting their length rather
+    // than the running total would make a long monologue appear to stop.
+    store.applyDelta(delta({ seq: 0, textDelta: 'x'.repeat(40_000) }));
+    const stream = store.applyDelta(delta({ seq: 1, textDelta: 'x'.repeat(4_000) }));
+
+    expect(stream?.tokens.output).toBe(11_000);
+  });
+
+  it('lets a reported count supersede the estimate for good', () => {
+    store.applyDelta(delta({ seq: 0, textDelta: 'x'.repeat(400) }));
+    const reported = store.applyDelta(delta({ seq: 1, tokens: { output: 7 } }));
+
+    expect(reported?.tokens.output).toBe(7);
+    expect(reported?.tokensEstimated).toBe(false);
+
+    const after = store.applyDelta(delta({ seq: 2, textDelta: 'x'.repeat(400) }));
+    expect(after?.tokens.output).toBe(7);
+    expect(after?.tokensEstimated).toBe(false);
+  });
+
+  it('restarts the estimate for each message', () => {
+    store.applyDelta(delta({ seq: 0, textDelta: 'x'.repeat(400) }));
+    store.applyDelta(delta({ seq: 1, done: true }));
+
+    const next = store.applyDelta(delta({ messageId: 'msg-2', seq: 0, textDelta: 'x'.repeat(80) }));
+    expect(next?.tokens.output).toBe(20);
+  });
 });
 
 describe('PII redaction', () => {
