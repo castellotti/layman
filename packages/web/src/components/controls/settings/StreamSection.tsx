@@ -39,6 +39,22 @@ export function StreamSection({
         checked={config.autoScroll}
         onChange={() => updateConfig({ autoScroll: !config.autoScroll })}
       />
+      <ToggleRow
+        label="Live tokens"
+        desc="Show the agent's response as it is generated. Only pi and OpenCode stream; other harnesses are unaffected."
+        checked={config.liveTokens?.enabled ?? true}
+        onChange={() => updateConfig({
+          liveTokens: { ...config.liveTokens, enabled: !(config.liveTokens?.enabled ?? true) },
+        })}
+      />
+      <ToggleRow
+        label="Live thinking"
+        desc="Include the reasoning stream alongside the response. Turning this off stops it being sent, not just shown."
+        checked={config.liveTokens?.showThinking ?? true}
+        onChange={() => updateConfig({
+          liveTokens: { ...config.liveTokens, showThinking: !(config.liveTokens?.showThinking ?? true) },
+        })}
+      />
 
       <CustomRow>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>

@@ -21,6 +21,10 @@ services:
       # Mount ~/.codex so the installer can detect Codex, write hook scripts to
       # ~/.codex/hooks/layman/, and update ~/.codex/hooks.json.
       - ${HOME}/.codex:/root/.codex
+      # Mount ~/.pi so the installer can detect pi and write its TypeScript
+      # extension to ~/.pi/agent/extensions/layman/index.ts, which pi
+      # auto-discovers. Nothing else in ~/.pi is touched.
+      - ${HOME}/.pi:/root/.pi
     environment:
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}

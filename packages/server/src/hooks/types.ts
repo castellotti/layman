@@ -88,6 +88,15 @@ export interface SubagentStopInput extends HookInputBase {
 export interface AgentResponseInput extends HookInputBase {
   hook_event_name: 'AgentResponse';
   response: string;
+  /**
+   * Reasoning already separated from the response by the harness.
+   *
+   * Only pi supplies this: its `AssistantMessage.content` carries thinking as a
+   * distinct part type, so there is nothing to infer. When present it is stored
+   * as `data.thinking`, which `getEffectiveAgentContent()` prefers over parsing
+   * `<thinking>` tags out of the response text.
+   */
+  thinking?: string;
 }
 
 export interface StopFailureInput extends HookInputBase {
@@ -228,6 +237,31 @@ export interface StatusLineInput extends HookInputBase {
     five_hour?: { used_percentage: number; resets_at: string };
     seven_day?: { used_percentage: number; resets_at: string };
   };
+  /**
+   * Harness reasoning effort. pi supplies this; claude-code's StatusLine has no
+   * equivalent field, which is why it is optional rather than part of `model`.
+   */
+  thinking_level?: string;
+}
+
+/**
+ * A chunk of assistant output as it is generated.
+ *
+ * Not a timeline event: see `stream/live.ts`. Only harnesses with a streaming
+ * hook send these — pi's `message_update` and OpenCode's `message.part.updated`.
+ */
+export interface StreamDeltaInput extends HookInputBase {
+  hook_event_name: 'StreamDelta';
+  /** Identifies the assistant message; a change resets the accumulator. */
+  message_id: string;
+  /** Monotonic within a message. Lets the store drop replays and reorderings. */
+  seq?: number;
+  text_delta?: string;
+  thinking_delta?: string;
+  tokens?: { input?: number; output?: number; cacheRead?: number; cacheWrite?: number };
+  model?: string;
+  /** Final chunk for this message — ends the live stream. */
+  done?: boolean;
 }
 
 export type AnyHookInput =

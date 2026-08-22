@@ -65,6 +65,17 @@ export const TtsConfigSchema = z.object({
   maxChars: z.number().int().min(200).max(20000).default(4000),
 });
 
+/**
+ * Live token streaming — partial assistant output pushed to the dashboard as it
+ * is generated. Only harnesses that expose a streaming hook can feed it (pi and
+ * OpenCode today); for the rest its absence renders as no live row at all.
+ */
+export const LiveTokensConfigSchema = z.object({
+  enabled: z.boolean().default(true),
+  /** Show the reasoning stream alongside the response stream. */
+  showThinking: z.boolean().default(true),
+});
+
 export const LaymanConfigSchema = z.object({
   port: z.number().int().min(1).max(65535).default(8880),
   host: z.string().default('localhost'),
@@ -103,7 +114,21 @@ export const LaymanConfigSchema = z.object({
   declinedClients: z.array(z.string()).default([]),
   idleThresholdMinutes: z.number().int().min(1).max(60).default(5),
   autoActivateClients: z.array(z.string()).default([]),
+  /**
+   * Client agent types whose tool calls Layman is allowed to suspend for approval.
+   *
+   * Only consulted for harnesses whose blocking is opt-in — currently just pi,
+   * whose stated position is that a coding agent should not impose permission
+   * popups and that confirmation flows belong to the user. Empty by default, so
+   * pi runs unblocked until the user asks otherwise.
+   *
+   * A per-client array rather than a `pi`-specific boolean so the same toggle
+   * generalises if another harness ever wants opt-in blocking. Harnesses that
+   * block unconditionally (claude-code, Cline) ignore this entirely.
+   */
+  approvalClients: z.array(z.string()).default([]),
   driftMonitoring: DriftMonitoringConfigSchema.default({}),
+  liveTokens: LiveTokensConfigSchema.default({}),
   tts: TtsConfigSchema.default({}),
   setupWizardComplete: z.boolean().default(false),
   openWebUiUrl: z.string().default(''),
@@ -111,6 +136,7 @@ export const LaymanConfigSchema = z.object({
 });
 
 export type LaymanConfig = z.infer<typeof LaymanConfigSchema>;
+export type LiveTokensConfig = z.infer<typeof LiveTokensConfigSchema>;
 export type AnalysisConfigType = z.infer<typeof AnalysisConfigSchema>;
 export type TtsConfig = z.infer<typeof TtsConfigSchema>;
 export type AutoAllowRules = z.infer<typeof AutoAllowRulesSchema>;

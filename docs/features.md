@@ -23,13 +23,15 @@ Layman continuously monitors AI agent sessions for two kinds of drift:
 - **Session goal drift** - detects when the agent strays from what you asked it to do (scope creep, phantom file references, pattern breaks).
 - **Rules drift** - detects when the agent violates rules defined in your project's `CLAUDE.md` files (wrong commands, forbidden actions, convention breaks). `AGENTS.md` files are also supported for harnesses besides Claude Code.
 
-Drift scores are EMA-smoothed (alpha 0.3) to avoid reacting to one-off spikes. Scores map to three color levels (green -> amber -> red) with configurable thresholds. At **amber** the agent gets an in-context reminder; at **red** Layman can pause the agent entirely and require your approval to continue. Individual drift findings can be dismissed as false positives - dismissed items are fed back into the LLM prompt so they won't be re-flagged.
+Drift scores are EMA-smoothed (alpha 0.3) to avoid reacting to one-off spikes. Scores map to three color levels (green -> amber -> red) with configurable thresholds. At **amber** the agent gets an in-context reminder (on pi, which has no way to inject one, it is shown to you instead); at **red** Layman can pause the agent entirely and require your approval to continue. Individual drift findings can be dismissed as false positives - dismissed items are fed back into the LLM prompt so they won't be re-flagged.
 
 ![Drift monitoring](images/drift.png)
 
 ## Tool approval
 
 For harnesses with pre-execution hooks (Claude Code, Codex, Cline), Layman can intercept tool calls before they execute and ask for your approval. Pending calls surface as callouts on the Dashboard and in Logs with **Allow / Deny / Defer** actions. Auto-approve levels (All / Medium / High / None) delegate low-risk calls automatically.
+
+pi is the exception: it can block, but does not by default. pi's design position is that a coding agent should not impose permission popups, so Layman offers it as a per-harness choice instead of assuming it — turn on **Require approval for tool calls** on the pi row in **Settings -> Harness**. The change takes effect on the next tool call, with no pi restart.
 
 ![Tool approval](images/approval.png)
 
@@ -47,7 +49,9 @@ Sessions can optionally be recorded to a local SQLite database, capturing user p
 
 ## Historical session import
 
-Layman can discover and import past Claude Code sessions from JSONL transcript files (`~/.claude/projects/`) that were never monitored live. **Settings -> Data** provides a scan dialog with per-session results and an optional auto-import-on-startup flag. Existing live sessions are enriched with missing events without downgrading their live status.
+Layman can discover and import past sessions from JSONL transcript files that were never monitored live - Claude Code (`~/.claude/projects/`) and pi (`~/.pi/agent/sessions/`). **Settings -> Data** provides a scan dialog with per-session results, a Harness column, and an optional auto-import-on-startup flag. Existing live sessions are enriched with missing events without downgrading their live status.
+
+pi's session files are format-version-3 JSONL *trees* (entries link by `id`/`parentId` rather than forming a flat sequence, since pi branches in place on `/fork`), so import walks from the latest-timestamp leaf back to the root and imports only that path - abandoned branches are left out rather than replayed as if they happened. Reasoning is carried through directly from pi's own `thinking` content blocks, the same clean separation the live extension gets, with no `<thinking>`-tag parsing involved.
 
 ## PII filter
 
@@ -65,7 +69,28 @@ Each session header shows an AI-generated plain-English summary of what the agen
 
 ## Session metrics
 
-When connected to Claude Code, sessions show live metrics: model name, context window usage (exact `ctx NN%` with a meter), cumulative session cost, token counts, lines changed, and rate-limit warnings in the account limits strip.
+When connected to Claude Code, sessions show live metrics: model name, context window usage (exact `ctx NN%` with a meter), cumulative session cost, token counts, lines changed, and rate-limit warnings in the account limits strip. pi reports the same metrics plus its current reasoning level.
+
+Cost is shown only when it is non-zero. A locally hosted model has every cost field set to zero, and a permanent `$0.00` in the most prominent slot would crowd out the numbers that actually move.
+
+## Live token streaming
+
+Harnesses that expose a streaming hook push partial output to the dashboard as it is generated: a row pinned to the tail of the Logs stream showing the response as it is written, the model's reasoning rendered separately and de-emphasised, and a token counter that ticks during generation. When the turn finishes, the live row is replaced by the committed response.
+
+The live count is shown as `~1.2k out` because no harness reports usage while it is still generating — it arrives with the finished message, by which point the live row is gone. The `~` marks a figure derived from the output so far; the exact numbers appear in the session metrics bar once the turn ends.
+
+Fidelity depends on what each harness exposes. Where there is no streaming hook, there is simply no live row — nothing is stuck or empty:
+
+| Harness | Live text | Live thinking | Live tokens |
+|---|:-:|:-:|:-:|
+| pi | token-level | token-level, separate stream | live estimate, exact after |
+| OpenCode | token-level | `reasoning` parts | live estimate, exact after |
+| Claude Code | ❌ | ❌ | post-turn counter |
+| Codex | ❌ | ❌ | post-turn only |
+| Cline | ❌ | ❌ | post-turn only |
+| Mistral Vibe | ❌ | ❌ | post-turn only |
+
+Two toggles in **Settings -> Stream behavior**: **Live tokens** turns the channel off entirely, and **Live thinking** drops just the reasoning stream. Both take effect on the server, so turning them off stops the data being sent rather than merely hidden. Streamed text passes through the same PII filter as recorded events.
 
 ## Setup wizard
 

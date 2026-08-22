@@ -125,6 +125,13 @@ export interface EventData {
   rateLimit7dayResetsAt?: string;
   sessionName?: string;
   claudeCodeVersion?: string;
+  /**
+   * The harness's current reasoning effort setting (pi: "off" | "minimal" |
+   * "low" | "medium" | "high"). Only pi reports this; it is a per-session
+   * setting the user changes mid-session, and on a local reasoning model it
+   * explains a swing in latency and output tokens that nothing else would.
+   */
+  thinkingLevel?: string;
   driftType?: 'session_goal' | 'rules';
   driftPct?: number;
   driftLevel?: DriftLevel;
