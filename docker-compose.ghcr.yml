@@ -10,6 +10,7 @@ services:
       - ${HOME}/.vibe:/root/.vibe
       - ${HOME}/Documents/Cline:/root/Documents/Cline
       - ${HOME}/.codex:/root/.codex
+      - ${HOME}/.pi:/root/.pi
     environment:
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}

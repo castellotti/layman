@@ -59,6 +59,10 @@
   from { opacity: 0; }
   to { opacity: 1; }
 }
+/* Live-generation caret — see components/logs/LiveStreamRow.tsx */
+@keyframes layman-blink {
+  to { visibility: hidden; }
+}
 
 * {
   box-sizing: border-box;

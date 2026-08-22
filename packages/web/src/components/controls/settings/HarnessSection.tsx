@@ -70,20 +70,62 @@ export function HarnessSetupSection({ onSend }: { onSend: (msg: ClientMessage) =
   const standardClients = optionalClients.filter((c) => c.id !== 'open-webui');
   const claudeState = clientState['claude-code'] ?? 'idle';
 
-  const autoActivateToggle = (id: string) => (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', minHeight: 24, paddingLeft: 12 }}>
-      <span style={{ fontSize: 10.5, color: 'var(--text-faint)' }}>Auto-activate sessions</span>
-      <MiniToggle
-        checked={!!config && (config.autoActivateClients ?? []).includes(id)}
-        onClick={() => {
-          if (!config) return;
-          const clients = config.autoActivateClients ?? [];
-          const enabled = clients.includes(id);
-          const updated = enabled ? clients.filter((c) => c !== id) : [...clients, id];
-          onSend({ type: 'config:update', config: { autoActivateClients: updated } });
-        }}
-      />
-    </div>
+  /**
+   * A per-client toggle row. Both toggles are the same shape — a label, an
+   * optional explanatory line, and a MiniToggle driven by membership of a
+   * string array in config.
+   */
+  const clientToggle = (
+    id: string,
+    label: string,
+    field: 'autoActivateClients' | 'approvalClients',
+    hint?: string,
+  ) => {
+    const clients = config?.[field] ?? [];
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', minHeight: 24, paddingLeft: 12 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 1, paddingRight: 8 }}>
+          <span style={{ fontSize: 10.5, color: 'var(--text-faint)' }}>{label}</span>
+          {hint && <span style={{ fontSize: 9.5, color: 'var(--text-faint)', opacity: 0.75 }}>{hint}</span>}
+        </div>
+        <MiniToggle
+          checked={clients.includes(id)}
+          onClick={() => {
+            if (!config) return;
+            const enabled = clients.includes(id);
+            const updated = enabled ? clients.filter((c) => c !== id) : [...clients, id];
+            onSend({ type: 'config:update', config: { [field]: updated } });
+          }}
+        />
+      </div>
+    );
+  };
+
+  /**
+   * Harnesses whose tool-call blocking is opt-in, mirroring
+   * OPT_IN_BLOCKING_CLIENTS in the server's hook handler. Only these get an
+   * approvals toggle; every other harness blocks unconditionally and a toggle
+   * there would imply a choice that does not exist.
+   */
+  const OPT_IN_APPROVAL_CLIENTS = new Set(['pi']);
+
+  const autoActivateToggle = (id: string) =>
+    clientToggle(id, 'Auto-activate sessions', 'autoActivateClients');
+
+  const approvalsToggle = (id: string) =>
+    clientToggle(
+      id,
+      'Require approval for tool calls',
+      'approvalClients',
+      'Suspends the agent until you decide. Off by default.',
+    );
+
+  /** Both per-client toggles, rendered under an installed client's row. */
+  const clientToggles = (id: string) => (
+    <>
+      {autoActivateToggle(id)}
+      {OPT_IN_APPROVAL_CLIENTS.has(id) && approvalsToggle(id)}
+    </>
   );
 
   return (
@@ -114,7 +156,7 @@ export function HarnessSetupSection({ onSend }: { onSend: (msg: ClientMessage) =
           )}
         </div>
       </div>
-      {claudeCodeOk && config && autoActivateToggle('claude-code')}
+      {claudeCodeOk && config && clientToggles('claude-code')}
 
       {/* Other detected harnesses */}
       {standardClients.map((client) => {
@@ -150,7 +192,7 @@ export function HarnessSetupSection({ onSend }: { onSend: (msg: ClientMessage) =
                 ) : null}
               </div>
             </div>
-            {client.detected && fullyOk && config && autoActivateToggle(client.id)}
+            {client.detected && fullyOk && config && clientToggles(client.id)}
           </div>
         );
       })}

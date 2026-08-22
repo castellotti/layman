@@ -13,6 +13,7 @@ import type { ClientMessage } from '../../lib/ws-protocol.js';
 function detailLabel(event: TimelineEvent): string {
   if (event.type === 'user_prompt') return 'PROMPT';
   if (event.type === 'agent_response') return 'RESPONSE';
+  if (event.type === 'agent_thinking') return 'THINKING';
   if (event.data.toolName) return event.data.toolName.toUpperCase();
   return kindLabel(event.type).toUpperCase();
 }
@@ -20,6 +21,8 @@ function detailLabel(event: TimelineEvent): string {
 /** Copies the raw source text for an event's detail — never the rendered DOM. */
 function sourceTextFor(event: TimelineEvent): string {
   if (event.type === 'agent_response') return getEffectiveAgentContent(event).response;
+  // The derived reasoning row carries its text in `prompt` (see thinkingRowFor).
+  if (event.type === 'agent_thinking') return event.data.prompt ?? '';
   if (event.data.prompt) return event.data.prompt;
   if (event.data.toolInput) {
     const input = event.data.toolInput;

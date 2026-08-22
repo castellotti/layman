@@ -111,7 +111,11 @@ export function SessionMetricsBar() {
   if (!metrics) return null;
 
   const hasContext = !isAllSessions && metrics.contextUsedPct !== undefined;
-  const hasCost = metrics.costUsd !== undefined;
+  // Zero is not a cost worth a slot in the bar. A locally hosted model has every
+  // cost field set to 0, so `!== undefined` would render a permanent "$0.0000"
+  // in the most prominent position and push the numbers that do vary — tokens
+  // and context fill — off to the side. It reappears the moment spend is real.
+  const hasCost = (metrics.costUsd ?? 0) > 0;
   const hasTokens = (metrics.totalInputTokens ?? 0) > 0 || (metrics.totalOutputTokens ?? 0) > 0;
   const hasLines = (metrics.linesAdded ?? 0) > 0 || (metrics.linesRemoved ?? 0) > 0;
 
@@ -127,6 +131,13 @@ export function SessionMetricsBar() {
       {/* "All sessions" label when aggregating */}
       {isAllSessions && activeSessionIds.size > 1 && (
         <span className="text-[#484f58]">{activeSessionIds.size} sessions</span>
+      )}
+
+      {/* Reasoning effort — only pi reports one */}
+      {!isAllSessions && metrics.thinkingLevel && (
+        <span className="text-[#484f58]" title="Reasoning effort">
+          think <span className="text-[#8b949e]">{metrics.thinkingLevel}</span>
+        </span>
       )}
 
       {/* Context window fill */}

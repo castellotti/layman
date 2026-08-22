@@ -6,7 +6,7 @@ import type { SessionInfo } from '../../lib/ws-protocol.js';
 import type { SessionMetrics } from '../../lib/types.js';
 import { deriveSessionState, getSessionDisplayName, contextPctColor } from '../../lib/session-state.js';
 import { formatTime, formatDuration as formatElapsed, cwdBasename } from '../../lib/format.js';
-import { EVENT_KIND_COLOR, kindLabel, eventDetail } from '../../lib/event-styles.js';
+import { EVENT_KIND_COLOR, kindLabel, eventDetail, withThinkingRows, baseEventId } from '../../lib/event-styles.js';
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
@@ -143,7 +143,10 @@ function RecentTail({ events, onOpenInLogs, sessionId, scrollRef }: {
 }) {
   const tail = useMemo(() => {
     const meaningful = events.filter(e => e.type !== 'session_metrics' && e.type !== 'notification');
-    return meaningful.slice(-MAX_TAIL_EVENTS);
+    // Reasoning is lifted into its own row here too, so the dashboard tail and
+    // the Logs list show the same sequence rather than the dashboard silently
+    // folding thinking back into the response it preceded.
+    return withThinkingRows(meaningful).slice(-MAX_TAIL_EVENTS);
   }, [events]);
 
   // Built once per `events` change so each tail row can look up its position in O(1)
@@ -188,11 +191,12 @@ function RecentTail({ events, onOpenInLogs, sessionId, scrollRef }: {
       {tail.map((event, i) => {
         const color = EVENT_KIND_COLOR[event.type] ?? 'var(--text-muted)';
         const detail = eventDetail(event);
-        const globalIdx = eventIndexById.get(event.id) ?? -1;
+        const realId = baseEventId(event.id);
+        const globalIdx = eventIndexById.get(realId) ?? -1;
         return (
           <div
             key={event.id}
-            onClick={() => onOpenInLogs(sessionId, event.id)}
+            onClick={() => onOpenInLogs(sessionId, realId)}
             style={{
               display: 'flex',
               alignItems: 'center',

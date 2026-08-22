@@ -178,6 +178,14 @@ describe('describeToolCall', () => {
     expect(describeToolCall(ev('tool_call_completed', { toolInput: {} }))).toBe('');
   });
 
+  it("uses a search's pattern, not the directory it searched", () => {
+    // Mirrors eventDetail() in packages/web/src/lib/event-styles.ts — an export
+    // and the live dashboard must summarise the same call identically.
+    expect(describeToolCall(ev('tool_call_completed', {
+      toolName: 'Grep', toolInput: { pattern: 'TODO', path: '/repo' },
+    }))).toBe('TODO');
+  });
+
   it('flattens newlines and truncates', () => {
     const long = describeToolCall(ev('tool_call_completed', { toolInput: { command: `a\n${'x'.repeat(200)}` } }));
 

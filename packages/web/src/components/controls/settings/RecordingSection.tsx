@@ -56,7 +56,7 @@ type ImportResult = {
   skipped: number;
   errors: number;
   sessions: Array<{
-    sessionId: string; cwd: string; startedAt: number; lastSeen: number;
+    sessionId: string; cwd: string; agentType: string; startedAt: number; lastSeen: number;
     eventCount: number; toolCallCount: number; userPromptCount: number;
     status: 'discovered' | 'enriched' | 'skipped';
   }>;
@@ -164,7 +164,7 @@ export function RecordingSection({
           </button>
         </div>
         <span style={{ fontSize: 10.5, color: 'var(--text-faint)', lineHeight: 1.5 }}>
-          Discover Claude Code sessions from transcripts not monitored live and import them into history.
+          Discover Claude Code and pi sessions from transcripts not monitored live and import them into history.
         </span>
       </CustomRow>
 

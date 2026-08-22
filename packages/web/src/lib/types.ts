@@ -16,6 +16,15 @@ export type EventType =
   | 'subagent_start'
   | 'subagent_stop'
   | 'agent_response'
+  /**
+   * Display-only. The server never sends this and it is never recorded: the
+   * Logs list derives it from an `agent_response` that carries reasoning, so
+   * thinking reads as its own row rather than as a block nested inside the
+   * answer. Deriving it on the client rather than emitting a real event means
+   * it applies retroactively to every already-recorded session, including
+   * Claude Code's, whose reasoning is parsed out of the response text.
+   */
+  | 'agent_thinking'
   | 'stop_failure'
   | 'pre_compact'
   | 'post_compact'
@@ -161,6 +170,8 @@ export interface EventData {
   rateLimit7dayResetsAt?: string;
   sessionName?: string;
   claudeCodeVersion?: string;
+  /** Harness reasoning effort. pi only — see the server's EventData.thinkingLevel. */
+  thinkingLevel?: string;
   // Drift monitoring
   driftType?: 'session_goal' | 'rules';
   driftPct?: number;
@@ -283,6 +294,14 @@ export interface LaymanConfig {
   autoScroll: boolean;
   idleThresholdMinutes: number;
   autoActivateClients: string[];
+  /**
+   * Client agent types allowed to have their tool calls suspended for approval.
+   * Only consulted for harnesses where blocking is opt-in (pi). Mirrors the
+   * server schema — see CLAUDE.md "Type duplication".
+   */
+  approvalClients: string[];
+  /** Live token streaming. Mirrors LiveTokensConfigSchema on the server. */
+  liveTokens: { enabled: boolean; showThinking: boolean };
   driftMonitoring: DriftMonitoringConfig;
   tts: TtsConfig;
   setupWizardComplete: boolean;
@@ -472,7 +491,32 @@ export interface SessionMetrics {
   rateLimit7dayResetsAt?: string;
   sessionName?: string;
   claudeCodeVersion?: string;
+  /** Harness reasoning effort. pi only — see EventData.thinkingLevel. */
+  thinkingLevel?: string;
   timestamp: number;
+}
+
+// ─── Live token streaming ─────────────────────────────────────────────────────
+// Mirrors packages/server/src/stream/live.ts — see CLAUDE.md "Type duplication".
+
+/**
+ * Partial assistant output for a session, as it is generated. Lives in a
+ * dedicated store rather than the event stream: at a local model's generation
+ * speed these arrive thousands of times per turn.
+ */
+export interface LiveStream {
+  sessionId: string;
+  agentType: string;
+  messageId: string;
+  phase: 'thinking' | 'text' | 'idle';
+  thinking: string;
+  text: string;
+  tokens: { input: number; output: number; cacheRead: number; cacheWrite: number };
+  /** `tokens.output` is derived from the accumulated text, so render it as `~n`. */
+  tokensEstimated?: boolean;
+  model?: string;
+  startedAt: number;
+  updatedAt: number;
 }
 
 // ─── Turns ────────────────────────────────────────────────────────────────────

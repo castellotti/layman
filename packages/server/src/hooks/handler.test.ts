@@ -47,6 +47,7 @@ const MOCK_CONFIG: LaymanConfig = {
   declinedClients: [],
   idleThresholdMinutes: 5,
   autoActivateClients: [],
+  approvalClients: [],
   driftMonitoring: {
     enabled: false,
     checkIntervalToolCalls: 10,
@@ -56,6 +57,7 @@ const MOCK_CONFIG: LaymanConfig = {
     blockOnRed: true,
     remindOnOrange: true,
   },
+  liveTokens: { enabled: true, showThinking: true },
   tts: TtsConfigSchema.parse({}),
   setupWizardComplete: false,
   openWebUiUrl: '',

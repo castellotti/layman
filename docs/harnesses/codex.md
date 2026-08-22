@@ -1,13 +1,13 @@
 # Codex
 
-Codex uses shell-script hooks that Layman installs to `~/.codex/hooks/layman/` and registers in `~/.codex/hooks.json`. Sessions are activated per-session by typing `@layman` in Codex.
+Codex uses shell-script hooks that Layman installs to `~/.codex/hooks/layman/` and registers in `~/.codex/hooks.json`. Sessions are activated per-session by typing `$layman` in Codex.
 
 ## Installation
 
 First time or after a Layman update:
 
 1. Ensure Codex is installed (`codex` binary on PATH or at `/opt/homebrew/bin/codex`).
-2. Open the Layman dashboard -> **Settings -> Connection** -> click **Install** next to Codex.
+2. Open the Layman dashboard -> **Settings -> Harness** -> click **Install** next to Codex.
 3. Layman writes hook scripts to `~/.codex/hooks/layman/`, adds entries to `~/.codex/hooks.json`, and enables the `codex_hooks` feature flag in `~/.codex/config.toml` (required - hooks are disabled by default in Codex).
 
 ## Usage
@@ -16,7 +16,7 @@ First time or after a Layman update:
    ```bash
    codex
    ```
-2. Type `@layman` to activate monitoring for the session. Events will appear in the Layman dashboard.
+2. Type `$layman` to activate monitoring for the session. Events will appear in the Layman dashboard.
 
 ## Notes
 

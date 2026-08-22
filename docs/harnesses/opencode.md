@@ -14,7 +14,7 @@ OpenCode uses a bidirectional plugin with full session visibility. It requires a
    }
    ```
 
-2. Open the Layman dashboard -> **Settings -> Connection** -> click **Install** next to OpenCode to install the `/layman` command for it.
+2. Open the Layman dashboard -> **Settings -> Harness** -> click **Install** next to OpenCode to install the `/layman` command for it.
 
 ## Usage
 

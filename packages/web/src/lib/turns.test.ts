@@ -49,6 +49,38 @@ describe('extractTurns', () => {
     expect(turns[0].toolCallCount).toBe(2);
   });
 
+  it('skips a trailing reasoning-only response when choosing the answer', () => {
+    // Mirrors packages/server/src/turns/extract.test.ts. pi records an
+    // assistant message per tool-calling step for its reasoning alone — empty
+    // text with `thinking` set — so taking the last one unconditionally let a
+    // blank message overwrite the real answer.
+    const opening = prompt('plug the holes');
+    const answer = response('all three changes are in and verified');
+    const events = [
+      opening,
+      answer,
+      ev('agent_response', { data: { prompt: '', thinking: 'now I should run the tests' } }),
+      ev('tool_call_completed'),
+    ];
+
+    const turns = extractTurns(events);
+
+    expect(turns[0].responseText).toBe('all three changes are in and verified');
+    expect(turns[0].responseEventId).toBe(answer.id);
+  });
+
+  it('falls back to a reasoning-only response when the turn said nothing else', () => {
+    const opening = prompt('plug the holes');
+    const thinkingOnly = ev('agent_response', {
+      id: 'r-thinking', data: { prompt: '', thinking: 'let me look at the tests' },
+    });
+    const turns = extractTurns([opening, thinkingOnly]);
+
+    expect(turns[0].responseEventId).toBe('r-thinking');
+    expect(turns[0].thinkingText).toBe('let me look at the tests');
+    expect(turns[0].responseText).toBe('');
+  });
+
   it('excludes events preceding the first user_prompt', () => {
     const preamble = ev('session_start');
     const turns = extractTurns([preamble, prompt('go'), response('done')]);

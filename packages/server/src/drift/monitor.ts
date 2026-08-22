@@ -272,13 +272,16 @@ export class DriftMonitor {
     const dm = config.driftMonitoring;
     const worstLevel = this.worstLevel(state.sessionGoalDriftLevel, state.rulesDriftLevel);
 
-    // Red level: block
+    // Red level: block.
+    // `reason` is the bare violation summary at both levels — the caller frames
+    // it, and a red result that cannot be blocked is re-used verbatim as the
+    // orange-style reminder, where a second "Drift monitoring:" would read as
+    // duplicated boilerplate to the model receiving it.
     if (worstLevel === 'red' && dm.blockOnRed) {
-      const violations = this.buildViolationSummary(state);
       return {
         shouldBlock: true,
         shouldRemind: false,
-        reason: `Drift monitoring: ${violations}`,
+        reason: this.buildViolationSummary(state),
         rulesSummary: this.buildRulesSummary(state),
       };
     }

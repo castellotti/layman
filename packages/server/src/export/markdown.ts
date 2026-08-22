@@ -10,6 +10,7 @@ import type { RecordedSession } from '../db/types.js';
 import type { Turn } from '../turns/types.js';
 import { TOOL_CALL_TYPES } from '../turns/extract.js';
 import { buildUrl } from './urls.js';
+import { toolPathWithRange } from '../events/tool-input.js';
 
 export interface MarkdownOpts {
   /** Base URL of the instance, for "Open in Layman" links. */
@@ -65,17 +66,25 @@ function formatDuration(startedAt: number, endedAt: number | null): string {
  */
 export function describeToolCall(event: TimelineEvent, max = 120): string {
   const input = event.data.toolInput ?? {};
+  const truncate = (value: string): string => {
+    const flat = value.replace(/\s+/g, ' ').trim();
+    return flat.length > max ? `${flat.slice(0, max - 1)}…` : flat;
+  };
+
   // Order matches formatToolInput() in packages/web/src/components/events/EventCard.tsx —
   // keep them identical or an export and the live dashboard will summarize the same
   // tool call input differently.
-  const candidates = ['command', 'file_path', 'pattern', 'query', 'url', 'prompt'];
+  if (typeof input.command === 'string' && input.command.trim()) return truncate(input.command);
 
-  for (const key of candidates) {
+  // Resolved through the shared helper rather than a literal key, because the
+  // path argument is named differently per harness (pi uses `path`), and a
+  // windowed read carries the line range that says what was actually looked at.
+  const path = toolPathWithRange(input, event.data.toolName);
+  if (path) return truncate(path);
+
+  for (const key of ['pattern', 'query', 'url', 'prompt']) {
     const value = input[key];
-    if (typeof value === 'string' && value.trim().length > 0) {
-      const flat = value.replace(/\s+/g, ' ').trim();
-      return flat.length > max ? `${flat.slice(0, max - 1)}…` : flat;
-    }
+    if (typeof value === 'string' && value.trim().length > 0) return truncate(value);
   }
   return '';
 }

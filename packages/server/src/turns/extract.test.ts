@@ -48,6 +48,40 @@ describe('extractTurns', () => {
     expect(turns[0].eventIds).toHaveLength(7);
   });
 
+  it('skips a trailing reasoning-only response when choosing the answer', () => {
+    // pi records an assistant message per tool-calling step for its reasoning
+    // alone — empty text with `thinking` set — so taking the last one
+    // unconditionally let a blank message overwrite the real answer in the
+    // transcript, the markdown export and TTS alike.
+    const opening = prompt('plug the holes');
+    const answer = response('all three changes are in and verified');
+    const events = [
+      opening,
+      answer,
+      ev('agent_response', { data: { prompt: '', thinking: 'now I should run the tests' } }),
+      ev('tool_call_completed'),
+    ];
+
+    const turns = extractTurns(events);
+
+    expect(turns[0].responseText).toBe('all three changes are in and verified');
+    expect(turns[0].responseEventId).toBe(answer.id);
+  });
+
+  it('falls back to a reasoning-only response when the turn said nothing else', () => {
+    // An aborted or tool-terminated turn has only reasoning to show. Dropping
+    // it as empty would lose that too.
+    const opening = prompt('plug the holes');
+    const thinkingOnly = ev('agent_response', {
+      id: 'r-thinking', data: { prompt: '', thinking: 'let me look at the tests' },
+    });
+    const turns = extractTurns([opening, thinkingOnly]);
+
+    expect(turns[0].responseEventId).toBe('r-thinking');
+    expect(turns[0].thinkingText).toBe('let me look at the tests');
+    expect(turns[0].responseText).toBe('');
+  });
+
   it('numbers turns from zero and splits on each user_prompt', () => {
     const events = [
       prompt('first'),

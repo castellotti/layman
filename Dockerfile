@@ -10,6 +10,7 @@ COPY package.json pnpm-workspace.yaml pnpm-lock.yaml* ./
 COPY packages/server/package.json packages/server/
 COPY packages/web/package.json packages/web/
 COPY packages/opencode-plugin/package.json packages/opencode-plugin/
+COPY packages/pi-extension/package.json packages/pi-extension/
 
 # Install dependencies and compile native modules (better-sqlite3 requires node-gyp)
 RUN pnpm install --frozen-lockfile
@@ -33,6 +34,10 @@ COPY --from=build /app/web-dist ./web-dist
 COPY --from=build /app/packages/server/node_modules ./packages/server/node_modules
 COPY --from=build /app/packages/server/package.json ./packages/server/
 COPY --from=build /app/packages/opencode-plugin ./packages/opencode-plugin
+# The pi extension is read from this path at install time and written to the
+# host's ~/.pi/agent/extensions/layman/ through the bind mount — it is source
+# the container serves, not something it executes.
+COPY --from=build /app/packages/pi-extension ./packages/pi-extension
 
 # Create a simple entry point
 COPY --from=build /app/node_modules ./node_modules

@@ -22,6 +22,7 @@ export type { LaymanConfig } from '../config/schema.js';
 export type { BookmarkFolder, Bookmark, RecordedSession, QAEntry, HighlightFolder, Highlight } from '../db/types.js';
 export type { SessionTimeMetrics } from '../db/time-metrics.js';
 export type { DriftLevel, DriftState, DriftThresholds, DriftCheckResult, DriftPreToolUseResult } from '../drift/types.js';
+export type { LiveStream, StreamDelta } from '../stream/live.js';
 
 // WebSocket protocol types
 import type { TimelineEvent } from '../events/types.js';
@@ -33,6 +34,7 @@ import type { LaymansResult } from '../analysis/types.js';
 import type { SessionInfo } from '../events/store.js';
 import type { BookmarkFolder, Bookmark, HighlightFolder, Highlight } from '../db/types.js';
 import type { DriftState } from '../drift/types.js';
+import type { LiveStream } from '../stream/live.js';
 
 export interface SessionStatus {
   connected: boolean;
@@ -97,7 +99,9 @@ export type ServerMessage =
   | { type: 'highlights:created'; highlight: Highlight }
   | { type: 'highlights:updated'; highlight: Highlight }
   | { type: 'highlights:deleted'; highlightId: string }
-  | { type: 'drift:update'; sessionId: string; state: DriftState };
+  | { type: 'drift:update'; sessionId: string; state: DriftState }
+  | { type: 'stream:update'; sessionId: string; stream: LiveStream }
+  | { type: 'stream:end'; sessionId: string };
 
 export type ClientMessage =
   | { type: 'approval:decide'; approvalId: string; decision: ApprovalDecision }

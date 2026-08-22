@@ -73,12 +73,22 @@ function Spinner() {
 interface ImportedSession {
   sessionId: string;
   cwd: string;
+  agentType: string;
   startedAt: number;
   lastSeen: number;
   eventCount: number;
   toolCallCount: number;
   userPromptCount: number;
   status: 'discovered' | 'enriched' | 'skipped';
+}
+
+const HARNESS_LABELS: Record<string, string> = {
+  'claude-code': 'Claude Code',
+  pi: 'pi',
+};
+
+function harnessLabel(agentType: string): string {
+  return HARNESS_LABELS[agentType] ?? agentType;
 }
 
 export function ImportDialog({
@@ -98,9 +108,9 @@ export function ImportDialog({
           <>
             <h3 style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', margin: '0 0 8px' }}>Import session history</h3>
             <p style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 16, lineHeight: 1.5 }}>
-              Scan Claude Code transcript files for sessions that were not monitored by Layman
-              and import them into the history database. Existing live-recorded sessions will be
-              enriched with any missing events without modifying their data.
+              Scan Claude Code and pi transcript files for sessions that were not monitored by
+              Layman and import them into the history database. Existing live-recorded sessions
+              will be enriched with any missing events without modifying their data.
             </p>
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
               <button onClick={onClose} style={btnStyle}>Cancel</button>
@@ -131,6 +141,7 @@ export function ImportDialog({
                   <thead style={{ position: 'sticky', top: 0, background: 'var(--bg-raised)' }}>
                     <tr style={{ color: 'var(--text-muted)', borderBottom: '1px solid var(--border-strong)' }}>
                       <th style={{ textAlign: 'left', padding: '4px 8px', fontWeight: 500 }}>Project</th>
+                      <th style={{ textAlign: 'left', padding: '4px 8px', fontWeight: 500 }}>Harness</th>
                       <th style={{ textAlign: 'left', padding: '4px 8px', fontWeight: 500 }}>Date</th>
                       <th style={{ textAlign: 'right', padding: '4px 8px', fontWeight: 500 }}>Events</th>
                       <th style={{ textAlign: 'right', padding: '4px 8px', fontWeight: 500 }}>Tools</th>
@@ -142,6 +153,9 @@ export function ImportDialog({
                       <tr key={s.sessionId} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
                         <td style={{ padding: '4px 8px', color: 'var(--text)', maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={s.cwd}>
                           {sessionDisplayName(undefined, s.cwd, s.sessionId)}
+                        </td>
+                        <td style={{ padding: '4px 8px', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+                          {harnessLabel(s.agentType)}
                         </td>
                         <td style={{ padding: '4px 8px', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
                           {new Date(s.startedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}

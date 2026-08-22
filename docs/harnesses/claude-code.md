@@ -2,7 +2,7 @@
 
 Full hook coverage (26 event types), StatusLine metrics relay, and tool approval from the Layman UI.
 
-Hooks are installed to `~/.claude` by the setup wizard or **Settings -> Connection -> Install**.
+Hooks are installed to `~/.claude` by the setup wizard or **Settings -> Harness -> Install**.
 
 ## Activating a session
 
@@ -17,7 +17,7 @@ Sessions are **not** recorded by default. To opt a session in:
 
 You can activate multiple sessions across different projects - they all appear in the same dashboard.
 
-**Auto-activate:** To skip the `/layman` step, go to **Settings -> Connection** and toggle **Auto-activate sessions** on the Claude Code row. All new Claude Code sessions will be monitored automatically.
+**Auto-activate:** To skip the `/layman` step, go to **Settings -> Harness** and toggle **Auto-activate sessions** on the Claude Code row. All new Claude Code sessions will be monitored automatically.
 
 ## Capabilities
 

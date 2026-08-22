@@ -34,15 +34,22 @@ export function useTTS(): void {
     // One pending 'final' candidate per session: a new response supersedes it.
     const pending = new Map<string, ReturnType<typeof setTimeout>>();
 
-    const speak = (event: TimelineEvent): void => {
+    /** What would be spoken for this event, or '' if there is nothing to say. */
+    const textFor = (event: TimelineEvent): string => {
       const { config } = useSessionStore.getState();
-      if (!config) return;
-
-      const text = speechTextForEvent(event, {
+      if (!config) return '';
+      return speechTextForEvent(event, {
         codeBlocks: config.tts.codeBlocks,
         maxChars: config.tts.maxChars,
         speakLaymans: config.tts.speakLaymans,
       });
+    };
+
+    const speak = (event: TimelineEvent): void => {
+      const { config } = useSessionStore.getState();
+      if (!config) return;
+
+      const text = textFor(event);
       if (!text) return;
 
       ttsPlayer.enqueue({
@@ -87,6 +94,13 @@ export function useTTS(): void {
 
         if (event.timestamp < mountedAt) continue;
         if (listening && event.sessionId !== listening) continue;
+
+        // A message with nothing to say is not a candidate. pi records one
+        // assistant message per tool-calling step for its reasoning alone, and
+        // in 'final' mode such a message superseded the real answer as the
+        // pending candidate and then spoke nothing — silently swallowing the
+        // turn. `speak()` bails on empty text anyway, so 'all' is unaffected.
+        if (!textFor(event)) continue;
 
         if (tts.autoSpeak === 'all') {
           speak(event);

@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { TimelineEvent, PendingApprovalDTO, LaymanConfig, SessionStatus, SetupStatus, BookmarkFolder, Bookmark, HighlightFolder, Highlight, SessionTimeMetrics, SessionAccessLog, SessionMetrics, DriftState, ResolvedId } from '../lib/types.js';
+import type { TimelineEvent, PendingApprovalDTO, LaymanConfig, SessionStatus, SetupStatus, BookmarkFolder, Bookmark, HighlightFolder, Highlight, SessionTimeMetrics, SessionAccessLog, SessionMetrics, DriftState, LiveStream, ResolvedId } from '../lib/types.js';
 import type { SessionInfo } from '../lib/ws-protocol.js';
 import type { LaymanRoute, RouteOptions, ViewName } from '../lib/layman-url.js';
 import { extractTurn } from '../lib/turns.js';
@@ -266,6 +266,14 @@ export interface SessionState {
   // Drift monitoring state (latest per session)
   driftState: Map<string, DriftState>;
 
+  /**
+   * In-flight assistant output per session. Kept out of `events` for the same
+   * reason `sessionMetrics` is: these arrive far too often to belong in a
+   * timeline. Empty for harnesses with no streaming hook, which must render as
+   * no live row at all rather than an empty or stuck one.
+   */
+  liveStreams: Map<string, LiveStream>;
+
   // Sessions that have had user-initiated investigation interactions
   investigatedSessions: Set<string>;
 
@@ -353,6 +361,8 @@ export interface SessionState {
   clearSessionSummary: () => void;
   clearSessionSummaryError: () => void;
   setDriftState: (sessionId: string, state: DriftState) => void;
+  setLiveStream: (sessionId: string, stream: LiveStream) => void;
+  clearLiveStream: (sessionId: string) => void;
   markSessionInvestigated: (sessionId: string) => void;
 
   toggleDashboardVisible: () => void;
@@ -431,6 +441,8 @@ export const useSessionStore = create<SessionState>((set, get) => ({
 
   driftState: new Map(),
 
+  liveStreams: new Map(),
+
   investigatedSessions: new Set<string>(),
 
   dashboardOverride: null,
@@ -483,9 +495,20 @@ export const useSessionStore = create<SessionState>((set, get) => ({
           rateLimit7dayResetsAt: event.data.rateLimit7dayResetsAt,
           sessionName: event.data.sessionName,
           claudeCodeVersion: event.data.claudeCodeVersion,
+          thinkingLevel: event.data.thinkingLevel,
           timestamp: event.timestamp,
         });
         return { sessionMetrics: newMetrics };
+      }
+
+      // The committed response supersedes whatever was streaming for this
+      // session. Without this the partial buffer and the finished event both
+      // render, showing the same text twice — the `stream:end` frame usually
+      // arrives first, but it is a separate message and not ordered against this one.
+      let liveStreams = state.liveStreams;
+      if (event.type === 'agent_response' && liveStreams.has(event.sessionId)) {
+        liveStreams = new Map(liveStreams);
+        liveStreams.delete(event.sessionId);
       }
 
       // If this session was manually dismissed, auto-restore it on new activity
@@ -500,9 +523,9 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       if (existing >= 0) {
         const newEvents = [...state.events];
         newEvents[existing] = { ...newEvents[existing], ...event };
-        return { events: newEvents, dashboardDismissedSessions };
+        return { events: newEvents, dashboardDismissedSessions, liveStreams };
       }
-      return { events: [...state.events, event], dashboardDismissedSessions };
+      return { events: [...state.events, event], dashboardDismissedSessions, liveStreams };
     }),
 
   updateEvent: (eventId, updates) =>
@@ -1092,6 +1115,21 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       const newMap = new Map(prev.driftState);
       newMap.set(sessionId, driftData);
       return { driftState: newMap };
+    }),
+
+  setLiveStream: (sessionId, stream) =>
+    set((prev) => {
+      const newMap = new Map(prev.liveStreams);
+      newMap.set(sessionId, stream);
+      return { liveStreams: newMap };
+    }),
+
+  clearLiveStream: (sessionId) =>
+    set((prev) => {
+      if (!prev.liveStreams.has(sessionId)) return prev;
+      const newMap = new Map(prev.liveStreams);
+      newMap.delete(sessionId);
+      return { liveStreams: newMap };
     }),
 
   markSessionInvestigated: (sessionId) =>

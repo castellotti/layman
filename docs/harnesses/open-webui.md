@@ -6,7 +6,7 @@ Open WebUI uses a filter function that Layman installs directly into your Open W
 
 First time or after a Layman update:
 
-1. Open the Layman dashboard -> **Settings -> Connection** -> click **Configure** next to Open WebUI.
+1. Open the Layman dashboard -> **Settings -> Harness** -> click **Configure** next to Open WebUI.
 2. Enter your Open WebUI URL (e.g. `http://localhost:3000`). Click **⟳ Auto-detect** to find a running instance automatically.
 3. If your Open WebUI instance requires authentication, enter an API key. Generate one under **Admin Panel -> Settings -> General -> Enable API Key Authentication**, then **Profile -> API Keys**. Leave blank if auth is disabled.
 4. Click **Install**. Layman pushes the filter function to Open WebUI and enables it globally.

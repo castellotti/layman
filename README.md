@@ -10,12 +10,12 @@ Agentic insight and oversight - a local dashboard for monitoring AI coding agent
 
 ![Layman dashboard](docs/images/dashboard.png)
 
-Layman watches [Claude Code](https://github.com/anthropics/claude-code), [Codex](https://github.com/openai/codex), [OpenCode](https://github.com/anomalyco/opencode), [Mistral Vibe](https://github.com/mistralai/mistral-vibe), [Cline](https://github.com/cline/cline), and [Open WebUI](https://github.com/open-webui/open-webui) as they work:
+Layman watches [Claude Code](https://github.com/anthropics/claude-code), [Codex](https://github.com/openai/codex), [OpenCode](https://github.com/anomalyco/opencode), [Mistral Vibe](https://github.com/mistralai/mistral-vibe), [Cline](https://github.com/cline/cline), [pi](https://pi.dev), and [Open WebUI](https://github.com/open-webui/open-webui) as they work:
 
 - **Monitor** - live dashboard, exchange-tree logs with minimap, interactive flowchart with follow-latest camera
 - **Explain** - plain-language "Layman's Terms" for every action; investigation chat with full-session context
 - **Analyze** - automatic risk classification; drift scoring against your prompts and `CLAUDE.md`/`AGENTS.md` rules, with agent pause at red
-- **Approve** - intercept tool calls before execution (Claude Code, Codex, OpenCode, Cline)
+- **Approve** - intercept tool calls before execution (Claude Code, Codex, OpenCode, Cline; opt-in for pi)
 - **Record** - opt-in session recording to local SQLite, PII redacted by default; bookmarks, folders, full-content search; historical import from Claude Code JSONL transcripts
 
 Runs in Docker, binds to `127.0.0.1:8880` only. No accounts, no telemetry, no data leaves your machine.
@@ -36,14 +36,15 @@ md -Force "$env:USERPROFILE\layman"; Invoke-WebRequest "https://raw.githubuserco
 
 Open **http://localhost:8880**, let the setup wizard install hooks for the clients it detects, then activate a session from your agent:
 
-| Harness | Monitoring | Activation | Tool approval | Prompt from UI |
-|---|---|---|:-:|:-:|
-| [Claude Code](docs/harnesses/claude-code.md) | Hooks (26 event types) | `/layman` or auto-activate | ✅ | ❌ |
-| [Codex](docs/harnesses/codex.md) | Shell-script hooks | `@layman` per session | ✅ | ❌ |
-| [OpenCode](docs/harnesses/opencode.md) | Bidirectional plugin | `/layman` per session | ❌ | ✅ |
-| [Mistral Vibe](docs/harnesses/vibe.md) | Passive log watcher | Automatic | ❌ | ❌ |
-| [Cline](docs/harnesses/cline.md) | Shell-script hooks | `/layman` (Act mode) | ✅ | ❌ |
-| [Open WebUI](docs/harnesses/open-webui.md) | Filter function | Automatic | ❌ | ❌ |
+| Harness | Monitoring | Activation | Tool approval | Prompt from UI | Live tokens |
+|---|---|---|:-:|:-:|:-:|
+| [Claude Code](docs/harnesses/claude-code.md) | Hooks (26 event types) | `/layman` or auto-activate | ✅ | ❌ | ❌ |
+| [Codex](docs/harnesses/codex.md) | Shell-script hooks | `$layman` per session | ✅ | ❌ | ❌ |
+| [OpenCode](docs/harnesses/opencode.md) | Bidirectional plugin | `/layman` per session | ❌ | ✅ | ✅ |
+| [Mistral Vibe](docs/harnesses/vibe.md) | Passive log watcher | Automatic | ❌ | ❌ | ❌ |
+| [Cline](docs/harnesses/cline.md) | Shell-script hooks | `/layman` (Act mode) | ✅ | ❌ | ❌ |
+| [pi](docs/harnesses/pi.md) | TypeScript extension | `/layman` or auto-activate | opt-in | ✅ | ✅ + thinking |
+| [Open WebUI](docs/harnesses/open-webui.md) | Filter function | Automatic | ❌ | ❌ | ❌ |
 
 Updating, stopping, mounts, and port binding: [docs/installation.md](docs/installation.md).
 
@@ -119,7 +120,7 @@ Or build and run the container locally: `make docker-run` (see [Makefile](Makefi
 |---|---|
 | [Installation & operation](docs/installation.md) | Quick start details, what gets mounted, port binding, updating, stopping, adding clients |
 | [Features in depth](docs/features.md) | Risk analysis, drift monitoring, PII filter, access tracking, metrics, historical import |
-| [Claude Code](docs/harnesses/claude-code.md) · [Codex](docs/harnesses/codex.md) · [OpenCode](docs/harnesses/opencode.md) · [Vibe](docs/harnesses/vibe.md) · [Cline](docs/harnesses/cline.md) · [Open WebUI](docs/harnesses/open-webui.md) | Per-harness installation, activation, and capability notes |
+| [Claude Code](docs/harnesses/claude-code.md) · [Codex](docs/harnesses/codex.md) · [OpenCode](docs/harnesses/opencode.md) · [Vibe](docs/harnesses/vibe.md) · [Cline](docs/harnesses/cline.md) · [pi](docs/harnesses/pi.md) · [Open WebUI](docs/harnesses/open-webui.md) | Per-harness installation, activation, and capability notes |
 | [Development](docs/development.md) | Building from source, workspace layout, testing, contributing |
 | [CHANGELOG.md](CHANGELOG.md) | Release history |
 
