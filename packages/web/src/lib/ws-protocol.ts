@@ -11,6 +11,7 @@ import type {
   HighlightFolder,
   Highlight,
   DriftState,
+  LiveStream,
 } from './types.js';
 
 export interface SessionInfo {
@@ -54,7 +55,9 @@ export type ServerMessage =
   | { type: 'highlights:created'; highlight: Highlight }
   | { type: 'highlights:updated'; highlight: Highlight }
   | { type: 'highlights:deleted'; highlightId: string }
-  | { type: 'drift:update'; sessionId: string; state: DriftState };
+  | { type: 'drift:update'; sessionId: string; state: DriftState }
+  | { type: 'stream:update'; sessionId: string; stream: LiveStream }
+  | { type: 'stream:end'; sessionId: string };
 
 export type ClientMessage =
   | { type: 'approval:decide'; approvalId: string; decision: ApprovalDecision }

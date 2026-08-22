@@ -87,14 +87,33 @@ interface OptionalClient {
   commandsDir: string;
   /** File name to write (default: 'layman.md') */
   fileName?: string;
-  /** Custom content generator — if omitted, uses the standard layman.md content */
-  getContent?: () => string;
+  /**
+   * Custom content generator — if omitted, uses the standard layman.md content.
+   *
+   * Receives the installer options so a client whose integration embeds them
+   * (pi's extension bakes in both the server URL and the approval timeout; the
+   * markdown commands bake in nothing) produces content that changes with them.
+   * That in turn makes the content hash sensitive to those settings, so
+   * `getStatus()` reports an install carrying stale values as out of date
+   * instead of silently green.
+   */
+  getContent?: (options: HookInstallerOptions) => string;
   /**
    * Files or directories inside configDir whose presence proves the client is
    * genuinely installed — not just an empty directory created by a Docker bind mount.
    * If defined, at least one must exist for `detected` to be true.
    */
   signalFiles?: string[];
+  /**
+   * Comment syntax for the trailing `layman:<hash>` version tag.
+   *
+   * Every installed file gets the tag appended so `getStatus()` can tell an
+   * up-to-date install from a stale one. Markdown files take an HTML comment,
+   * but that is a syntax error in a TypeScript file (pi's extension is one), so
+   * those need a `//` line comment instead. `getStatus()` matches on the
+   * `layman:<hash>` substring and is indifferent to which wrapper is used.
+   */
+  tagStyle?: 'html' | 'line';
 }
 
 const VIBE_SKILL_CONTENT = `---
@@ -159,6 +178,22 @@ const OPTIONAL_CLIENTS: OptionalClient[] = [
     commandsDir: join(homedir(), 'Documents', 'Cline', 'Workflows'),
     getContent: () => getClineWorkflowContent(),
     signalFiles: ['Rules'],
+  },
+  {
+    // pi integrates through a TypeScript extension rather than shell hooks or a
+    // slash-command file: pi auto-discovers ~/.pi/agent/extensions/*/index.ts and
+    // loads it with jiti, so there is no settings.json to mutate and reinstalling
+    // is idempotent. `signalFiles: ['agent']` guards against the empty-directory
+    // false positive the Docker bind mount would otherwise create on a machine
+    // that has never run pi.
+    id: 'pi',
+    name: 'pi',
+    configDir: join(homedir(), '.pi'),
+    commandsDir: join(homedir(), '.pi', 'agent', 'extensions', 'layman'),
+    fileName: 'index.ts',
+    getContent: (options) => getPiExtensionContent(options),
+    signalFiles: ['agent'],
+    tagStyle: 'line',
   },
 ];
 
@@ -410,6 +445,36 @@ function getClineWorkflowContent(): string {
     '   "Layman server may not be running. Start it with: docker compose -f ~/layman/docker-compose.yml up -d"',
     '',
   ].join('\n');
+}
+
+/**
+ * Read the pi extension source, which is installed verbatim (bar the URL
+ * substitution) to `~/.pi/agent/extensions/layman/index.ts`.
+ *
+ * Unlike the Codex and Cline templates, this one lives in a sibling workspace
+ * package rather than under `packages/server/`, because `packages/server/tsconfig.json`
+ * only includes `src/**`/`*` — anything under `packages/server/hooks/` is never
+ * typechecked. A TypeScript file that pi will execute needs to be typechecked,
+ * so it gets its own package with its own tsconfig, picked up by `pnpm -r typecheck`.
+ */
+function getPiExtensionContent(options: HookInstallerOptions): string {
+  const __dirname = dirname(fileURLToPath(import.meta.url));
+  // Production (dist/) and development both resolve from packages/server/dist,
+  // so the sibling package is two levels up. The second candidate covers a
+  // deeper bundle layout — see installCodexHooks for the same defensive pair.
+  const candidates = [
+    join(__dirname, '..', '..', 'pi-extension', 'src', 'index.ts'),
+    join(__dirname, '..', '..', '..', 'pi-extension', 'src', 'index.ts'),
+  ];
+  const srcPath = candidates.find((p) => existsSync(p));
+  if (!srcPath) throw new Error('pi extension source not found');
+  // The extension's ceiling for an approval round-trip must outlast the server's
+  // own pending-approval timeout, or pi would give up on a decision the server
+  // is still about to send. 10s of margin covers the round trip.
+  const approvalTimeoutMs = String(options.hookTimeout * 1000 + 10_000);
+  return readFileSync(srcPath, 'utf-8')
+    .replace(/__LAYMAN_URL__/g, options.serverUrl)
+    .replace(/__LAYMAN_TIMEOUT_MS__/g, approvalTimeoutMs);
 }
 
 /** Project-level settings files claude-code reads, in precedence order. */
@@ -903,12 +968,25 @@ export class HookInstaller {
 
     for (const client of clients) {
       if (!existsSync(client.configDir)) continue; // client not installed — skip
+
+      // A getContent() that reads a template off disk can fail (a stale image
+      // built before the template was added, a bind mount that briefly EAGAINs).
+      // Skip that one client rather than aborting the loop and leaving the
+      // remaining clients uninstalled.
+      let content: string;
+      try {
+        content = client.getContent ? client.getContent(this.options) : defaultContent;
+      } catch (err) {
+        console.log(`Skipping ${client.name}: ${(err as Error).message}`);
+        continue;
+      }
+
       if (!existsSync(client.commandsDir)) {
         mkdirSync(client.commandsDir, { recursive: true });
       }
-      const content = client.getContent ? client.getContent() : defaultContent;
       const hash = commandHash(content);
-      const tagged = `${content.trimEnd()}\n<!-- layman:${hash} -->\n`;
+      const tag = client.tagStyle === 'line' ? `// layman:${hash}` : `<!-- layman:${hash} -->`;
+      const tagged = `${content.trimEnd()}\n${tag}\n`;
       const fileName = client.fileName ?? 'layman.md';
       writeFileSync(join(client.commandsDir, fileName), tagged, 'utf-8');
       console.log(`Layman command installed for ${client.name} at ${join(client.commandsDir, fileName)}`);
@@ -1355,12 +1433,15 @@ export class HookInstaller {
       );
       const fileName = client.fileName ?? 'layman.md';
       const clientCmdPath = join(client.commandsDir, fileName);
-      const content = client.getContent ? client.getContent() : defaultContent;
-      const expectedHash = commandHash(content);
       const commandInstalled = existsSync(clientCmdPath);
       let commandUpToDate = false;
       if (commandInstalled) {
         try {
+          // getContent() may read a template off disk and throw if it is
+          // missing; "can't verify" must not become "stale", or the UI shows a
+          // permanent update prompt that reinstalling cannot clear.
+          const content = client.getContent ? client.getContent(this.options) : defaultContent;
+          const expectedHash = commandHash(content);
           commandUpToDate = readFileSync(clientCmdPath, 'utf-8').includes(`layman:${expectedHash}`);
         } catch {
           commandUpToDate = true; // unreadable → assume current

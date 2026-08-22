@@ -1,4 +1,5 @@
 import type { FileAccess, UrlAccess } from './types.js';
+import { toolFilePath } from './tool-input.js';
 
 export interface AccessExtractionResult {
   files: FileAccess[];
@@ -73,7 +74,10 @@ export function extractAccess(
 
   if (!toolInput) return { files, urls };
 
-  const filePath = toolInput.file_path as string | undefined;
+  // Resolved through the shared helper, not a literal key: harnesses name this
+  // argument differently (pi uses `path`), and reading only `file_path` made
+  // every pi file read and write invisible to access tracking.
+  const filePath = toolFilePath(toolInput);
 
   switch (toolName) {
     case 'Read': {

@@ -5,7 +5,7 @@ import { sessionDisplayName } from '../../lib/session-state.js';
 function getSessionName(cwd: string, sessionId: string, agentType?: string, showAgentPrefix?: boolean, sessionName?: string): string {
   const name = sessionDisplayName(sessionName, cwd, sessionId);
   if (showAgentPrefix && agentType) {
-    const prefix = agentType === 'claude-code' ? '[CC]' : agentType === 'codex' ? '[CX]' : agentType === 'opencode' ? '[OC]' : agentType === 'cline' ? '[CL]' : `[${agentType.slice(0, 2).toUpperCase()}]`;
+    const prefix = agentType === 'claude-code' ? '[CC]' : agentType === 'codex' ? '[CX]' : agentType === 'opencode' ? '[OC]' : agentType === 'cline' ? '[CL]' : agentType === 'pi' ? '[PI]' : `[${agentType.slice(0, 2).toUpperCase()}]`;
     return `${prefix} ${name}`;
   }
   return name;
