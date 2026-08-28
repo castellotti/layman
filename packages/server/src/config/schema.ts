@@ -76,6 +76,20 @@ export const LiveTokensConfigSchema = z.object({
   showThinking: z.boolean().default(true),
 });
 
+/**
+ * glove — passive monitoring of sandboxed harnesses (github.com/castellotti/glove).
+ *
+ * glove runs harnesses in containers with a per-sandbox fake home persisted on
+ * the host under `sessionsDir`. When enabled, the passive file watcher discovers
+ * those sandboxes and tails their harness logs alongside native ones, read-only.
+ * Off by default: native monitoring is entirely unaffected either way.
+ */
+export const GloveConfigSchema = z.object({
+  enabled: z.boolean().default(false),
+  /** Host directory glove persists sandbox homes under (`<sessionsDir>/<name>/home/`). */
+  sessionsDir: z.string().default('~/.glove/sessions'),
+});
+
 export const LaymanConfigSchema = z.object({
   port: z.number().int().min(1).max(65535).default(8880),
   host: z.string().default('localhost'),
@@ -129,6 +143,7 @@ export const LaymanConfigSchema = z.object({
   approvalClients: z.array(z.string()).default([]),
   driftMonitoring: DriftMonitoringConfigSchema.default({}),
   liveTokens: LiveTokensConfigSchema.default({}),
+  glove: GloveConfigSchema.default({}),
   tts: TtsConfigSchema.default({}),
   setupWizardComplete: z.boolean().default(false),
   openWebUiUrl: z.string().default(''),
@@ -137,6 +152,7 @@ export const LaymanConfigSchema = z.object({
 
 export type LaymanConfig = z.infer<typeof LaymanConfigSchema>;
 export type LiveTokensConfig = z.infer<typeof LiveTokensConfigSchema>;
+export type GloveConfig = z.infer<typeof GloveConfigSchema>;
 export type AnalysisConfigType = z.infer<typeof AnalysisConfigSchema>;
 export type TtsConfig = z.infer<typeof TtsConfigSchema>;
 export type AutoAllowRules = z.infer<typeof AutoAllowRulesSchema>;
