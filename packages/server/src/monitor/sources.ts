@@ -51,6 +51,12 @@ const VIBE_SESSION_SUBPATH = join('.vibe', 'logs', 'session');
 const PI_AGENT_TYPE = 'pi';
 /** Relative path from a home directory to pi's session-log dir. */
 const PI_SESSION_SUBPATH = join('.pi', 'agent', 'sessions');
+/**
+ * Relative path from a home directory to the installed Layman pi extension. Its
+ * presence means the live extension is recording native pi over hooks, so the
+ * passive watcher must not also tail the native transcript (see NativePiSource).
+ */
+const PI_EXTENSION_SUBPATH = join('.pi', 'agent', 'extensions', 'layman', 'index.ts');
 
 /**
  * The native (non-sandboxed) Vibe logs — the historical single root. Tries the
@@ -72,18 +78,33 @@ export class NativeVibeSource implements MonitorSource {
 
 /**
  * The native (non-sandboxed) pi logs. Mirrors `NativeVibeSource`: tries the
- * Docker bind-mount path first, then the real host home. Carries no label, so
+ * Docker bind-mount home first, then the real host home. Carries no label, so
  * native pi sessions are the baseline sandboxed ones are distinguished *from*.
+ *
+ * Unlike Vibe, native pi has a *live* integration — the Layman pi extension,
+ * which records the same session over hooks. If that extension is installed,
+ * this source returns no root: tailing the native transcript in addition would
+ * record every turn twice (the passive path mints fresh ids, so the live-source
+ * dedupe can't collapse them). The passive watcher is for glove-sandboxed pi
+ * (which can't reach Layman) and native pi *without* the extension. Glove pi
+ * roots come from GloveSource and are unaffected — a sandbox never runs the
+ * host's extension.
  */
 export class NativePiSource implements MonitorSource {
   readonly id = 'native-pi';
 
   roots(): WatchRoot[] {
-    const dockerPath = join('/root', PI_SESSION_SUBPATH);
-    const hostPath = join(homedir(), PI_SESSION_SUBPATH);
-    const path = existsSync(dockerPath) ? dockerPath : existsSync(hostPath) ? hostPath : null;
-    if (!path) return [];
-    return [{ path, agentType: PI_AGENT_TYPE }];
+    const dockerHome = '/root';
+    const hostHome = homedir();
+    const home = existsSync(join(dockerHome, PI_SESSION_SUBPATH))
+      ? dockerHome
+      : existsSync(join(hostHome, PI_SESSION_SUBPATH))
+        ? hostHome
+        : null;
+    if (!home) return [];
+    // The live extension owns native pi when installed; don't double-record.
+    if (existsSync(join(home, PI_EXTENSION_SUBPATH))) return [];
+    return [{ path: join(home, PI_SESSION_SUBPATH), agentType: PI_AGENT_TYPE }];
   }
 }
 

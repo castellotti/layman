@@ -19,6 +19,25 @@ import { buildEvent } from './transcript-shared.js';
 const SESSION_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
+ * Derive a pi session id from a `<timestamp>_<sessionId>.jsonl` filename, or
+ * null when the name isn't a pi transcript. The session id is the uuid suffix —
+ * the same id pi's live extension reports, which is what makes dedupe against an
+ * already-recorded session work.
+ *
+ * Shared by history import (`discoverPiSessionsUnder`) and the passive watcher
+ * (`pi/watcher.ts`) so the two never disagree about what counts as a pi
+ * transcript. If pi's filename format changes, this is the single place to edit.
+ */
+export function sessionIdFromPiFilename(file: string): string | null {
+  if (!file.endsWith('.jsonl')) return null;
+  const stem = file.slice(0, -'.jsonl'.length);
+  const underscoreIdx = stem.lastIndexOf('_');
+  if (underscoreIdx === -1) return null;
+  const sessionId = stem.slice(underscoreIdx + 1);
+  return SESSION_ID_PATTERN.test(sessionId) ? sessionId : null;
+}
+
+/**
  * pi names its tools in lowercase; Layman's risk classifier and read-only
  * auto-allow list are keyed on claude-code's PascalCase names.
  *
@@ -83,12 +102,8 @@ export function discoverPiSessionsUnder(base: string, label?: string): Discovere
     try { files = readdirSync(projectPath); } catch { continue; }
 
     for (const file of files) {
-      if (!file.endsWith('.jsonl')) continue;
-      const stem = file.slice(0, -'.jsonl'.length);
-      const underscoreIdx = stem.lastIndexOf('_');
-      if (underscoreIdx === -1) continue;
-      const sessionId = stem.slice(underscoreIdx + 1);
-      if (!SESSION_ID_PATTERN.test(sessionId)) continue;
+      const sessionId = sessionIdFromPiFilename(file);
+      if (!sessionId) continue;
 
       results.push({
         path: join(projectPath, file),

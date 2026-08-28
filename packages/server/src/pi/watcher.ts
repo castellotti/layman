@@ -36,7 +36,7 @@ import type { LaymanConfig } from '../config/schema.js';
 import type { MonitorSource, WatchRoot } from '../monitor/sources.js';
 import type { TimelineEvent } from '../events/types.js';
 import { extractAccess } from '../events/access-extractor.js';
-import { parsePiTranscript, decodeCwd } from '../hooks/transcript-pi.js';
+import { parsePiTranscript, decodeCwd, sessionIdFromPiFilename } from '../hooks/transcript-pi.js';
 
 const AGENT_TYPE = 'pi';
 const SCAN_INTERVAL_MS = 2000;
@@ -46,32 +46,22 @@ const REPLAY_WINDOW_MS = 5 * 60 * 1000; // 5 minutes
 /** If the transcript file hasn't grown in this long, the pi session is treated as ended. */
 const SESSION_IDLE_TIMEOUT_MS = 15 * 60 * 1000; // 15 minutes
 
-/** Matches pi session filenames `<timestamp>_<sessionId>.jsonl`. */
-const SESSION_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-/** Derive the session id from a `<timestamp>_<sessionId>.jsonl` filename, or null. */
-function sessionIdFromFile(file: string): string | null {
-  if (!file.endsWith('.jsonl')) return null;
-  const stem = file.slice(0, -'.jsonl'.length);
-  const idx = stem.lastIndexOf('_');
-  if (idx === -1) return null;
-  const id = stem.slice(idx + 1);
-  return SESSION_ID_PATTERN.test(id) ? id : null;
-}
-
 interface TrackedSession {
   sessionId: string;
   cwd: string;
   /** Absolute path to the session's `.jsonl` transcript. */
   file: string;
   /**
-   * Count of *committed* events already emitted to the store. Committed excludes
-   * trailing `tool_call_pending` (an in-flight tool that has no result yet): those
-   * become `tool_call_completed` once the result line lands, so emitting them
-   * would leave a stale pending we could never reconcile. The committed prefix
-   * grows monotonically as a linear session proceeds, so slicing by count is safe.
+   * Ids of *committed* events already emitted to the store, keyed by the parser's
+   * deterministic event id (`${sessionId}_${entryId}...`). Committed excludes
+   * trailing `tool_call_pending` (an in-flight tool that has no result yet): a
+   * pending shares its id with the `tool_call_completed` that replaces it once the
+   * result lands, so it is simply not emitted until then. Tracking by id rather
+   * than by count is what keeps re-emission stable when the parsed order shifts —
+   * parallel tool calls can complete out of order, moving earlier positions, but
+   * an id is emitted at most once regardless of where it lands.
    */
-  emittedCount: number;
+  emittedIds: Set<string>;
   pollTimer: ReturnType<typeof setInterval> | null;
   lastActivityMs: number;
   agentType: string;
@@ -208,7 +198,7 @@ export class PiSessionWatcher {
         for (const file of files) {
           const filePath = join(projectPath, file);
           if (this.sessions.has(filePath)) continue;
-          if (!sessionIdFromFile(file)) continue;
+          if (!sessionIdFromPiFilename(file)) continue;
 
           try {
             const stat = statSync(filePath);
@@ -226,7 +216,7 @@ export class PiSessionWatcher {
   private tryAddSession(filePath: string, projectDir: string, root: ActiveRoot): void {
     if (this.sessions.has(filePath)) return;
 
-    const sessionId = sessionIdFromFile(basename(filePath));
+    const sessionId = sessionIdFromPiFilename(basename(filePath));
     if (!sessionId) return;
 
     const lines = this.readLines(filePath);
@@ -257,7 +247,7 @@ export class PiSessionWatcher {
       sessionId,
       cwd,
       file: filePath,
-      emittedCount: isRecent ? 0 : committed.length,
+      emittedIds: new Set<string>(),
       lastActivityMs: Date.now(),
       agentType: root.agentType,
       label: root.label,
@@ -265,7 +255,13 @@ export class PiSessionWatcher {
     };
     this.sessions.set(filePath, session);
 
-    if (isRecent) this.emitNew(session, committed);
+    if (isRecent) {
+      this.emitNew(session, committed);
+    } else {
+      // Old session: adopt the existing history as already-emitted so only future
+      // turns are recorded, without replaying the backlog.
+      for (const ev of committed) session.emittedIds.add(ev.id);
+    }
 
     session.pollTimer = setInterval(() => this.pollSession(session), SCAN_INTERVAL_MS);
   }
@@ -276,18 +272,27 @@ export class PiSessionWatcher {
 
     const { events } = parsePiTranscript(lines, session.sessionId);
     const committed = committedEvents(events);
-    if (committed.length > session.emittedCount) {
-      this.emitNew(session, committed);
+    const before = session.emittedIds.size;
+    this.emitNew(session, committed);
+    if (session.emittedIds.size > before) {
       session.lastActivityMs = Date.now();
     }
   }
 
-  /** Emit committed events past what this session has already emitted, advancing the cursor. */
+  /**
+   * Emit every committed event this session hasn't emitted yet, keyed by the
+   * parser's deterministic event id. Iterating by id (not by array index) is what
+   * makes this safe when a re-parse reorders the committed list — e.g. a late tool
+   * result inserting an earlier-timestamped completion ahead of one already sent.
+   * Each id is emitted at most once; a shifted position can neither duplicate nor
+   * skip an event.
+   */
   private emitNew(session: TrackedSession, committed: TimelineEvent[]): void {
-    for (let i = session.emittedCount; i < committed.length; i++) {
-      this.emitEvent(session, committed[i]);
+    for (const ev of committed) {
+      if (session.emittedIds.has(ev.id)) continue;
+      this.emitEvent(session, ev);
+      session.emittedIds.add(ev.id);
     }
-    session.emittedCount = committed.length;
   }
 
   /**
@@ -330,15 +335,23 @@ export class PiSessionWatcher {
 
   private cleanupEndedSessions(): void {
     for (const session of this.sessions.values()) {
-      if (!session.pollTimer) continue; // already tombstoned
+      // Tombstoned session: resurrect it if its transcript has grown again.
+      // scanExistingSessions skips paths already in `this.sessions`, so a
+      // tombstone left in the map with no pollTimer is never re-added there —
+      // this is the only place a resumed pi session can come back to life.
+      // Mirrors VibeSessionWatcher.cleanupEndedSessions.
+      if (!session.pollTimer) {
+        this.tryResumeSession(session);
+        continue;
+      }
 
       const idleMs = Date.now() - session.lastActivityMs;
       if (idleMs < SESSION_IDLE_TIMEOUT_MS) continue;
 
       // One final poll before declaring the session over, in case a late write landed.
-      const beforeCount = session.emittedCount;
+      const beforeCount = session.emittedIds.size;
       this.pollSession(session);
-      if (session.emittedCount > beforeCount) {
+      if (session.emittedIds.size > beforeCount) {
         session.lastActivityMs = Date.now();
         continue;
       }
@@ -346,9 +359,46 @@ export class PiSessionWatcher {
       this.eventStore.add('session_end', session.sessionId, {}, undefined, session.agentType);
       this.gate.deactivate(session.sessionId);
       clearInterval(session.pollTimer);
-      session.pollTimer = null; // tombstone; the file may still be re-scanned if it grows
+      session.pollTimer = null; // tombstone; resurrected by tryResumeSession if it grows
       console.log(`[pi] Session ${session.sessionId.slice(0, 8)} ended (idle ${Math.round(idleMs / 60000)}m)`);
     }
+  }
+
+  /**
+   * Bring a tombstoned (idle-timed-out) session back to life when its transcript
+   * has new committed events. Emits a `resumed` session_start before catching up
+   * so the marker lands at the right point in the timeline, restarts the poll
+   * timer, and re-applies auto-activation exactly as tryAddSession does.
+   */
+  private tryResumeSession(session: TrackedSession): void {
+    const lines = this.readLines(session.file);
+    if (!lines) return;
+
+    const { events } = parsePiTranscript(lines, session.sessionId);
+    const committed = committedEvents(events);
+    const hasNew = committed.some((ev) => !session.emittedIds.has(ev.id));
+    if (!hasNew) return;
+
+    const lastStored = this.getLastSessionEvent(session.sessionId);
+    const resumedAt = Date.now();
+    const gapMinutes = lastStored ? Math.round((resumedAt - lastStored.timestamp) / 60000) : 0;
+
+    this.eventStore.trackSession(session.sessionId, session.cwd, session.agentType, undefined, session.label);
+    this.eventStore.add('session_start', session.sessionId, { source: 'resumed', gapMinutes }, undefined, session.agentType);
+    if (this.getConfig().autoActivateClients.includes(session.agentType)) {
+      this.gate.activate(session.sessionId);
+    }
+
+    this.emitNew(session, committed);
+    session.lastActivityMs = resumedAt;
+    session.pollTimer = setInterval(() => this.pollSession(session), SCAN_INTERVAL_MS);
+    console.log(`[pi] Session ${session.sessionId.slice(0, 8)} resumed (gap ${gapMinutes}m)`);
+  }
+
+  /** Timestamp of the most recent stored event for a session, for gap measurement. */
+  private getLastSessionEvent(sessionId: string): { timestamp: number } | null {
+    const last = this.eventStore.findLast((e) => e.sessionId === sessionId);
+    return last ? { timestamp: last.timestamp } : null;
   }
 
   private readLines(filePath: string): string[] | null {
@@ -372,8 +422,10 @@ export class PiSessionWatcher {
 /**
  * Events safe to emit while tailing: everything except `tool_call_pending`.
  * A pending is an in-flight tool with no result yet; once the result lands the
- * parser replaces it with a `tool_call_completed`. The committed prefix grows
- * monotonically as a linear session proceeds, so emitting it by count is stable.
+ * parser replaces it with a `tool_call_completed` bearing the *same* event id.
+ * Emission dedupes by id (see `emitNew`), so a pending is simply withheld until
+ * it completes — and reordering of already-committed events, as happens when
+ * parallel tools finish out of order, can neither duplicate nor drop one.
  */
 function committedEvents(events: TimelineEvent[]): TimelineEvent[] {
   return events.filter((e) => e.type !== 'tool_call_pending');
