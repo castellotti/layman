@@ -35,6 +35,7 @@ import { computeTimeMetrics } from './db/time-metrics.js';
 import type { SearchRequest } from './db/search.js';
 import type { LaymanConfig } from './config/schema.js';
 import { VibeSessionWatcher } from './vibe/watcher.js';
+import { NativeVibeSource, GloveSource } from './monitor/sources.js';
 import { recoverSessionGaps, importHistoricalSessions } from './hooks/recovery.js';
 import type { ServerMessage, ClientMessage, SessionStatus, SetupStatus } from './types/index.js';
 
@@ -143,7 +144,16 @@ export function createServer(config: LaymanConfig): LaymanServer {
     return tracked.some((dir) => resolve(dir) === target) ? [target] : null;
   };
 
-  const vibeWatcher = new VibeSessionWatcher(eventStore, gate, getConfig);
+  // Passive-watcher sources: the native ~/.vibe root always, plus glove sandbox
+  // roots when enabled. Native precedes glove so it wins any path collision.
+  const gloveSource = new GloveSource(() => {
+    const glove = getConfig().glove;
+    return glove.enabled ? expandHome(glove.sessionsDir) : null;
+  });
+  const vibeWatcher = new VibeSessionWatcher(eventStore, gate, getConfig, [
+    new NativeVibeSource(),
+    gloveSource,
+  ]);
 
   // Persistent storage
   const db = openDatabase();

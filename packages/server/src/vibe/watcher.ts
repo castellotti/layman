@@ -2,8 +2,15 @@
  * Watches Mistral Vibe session log directories for new JSONL messages
  * and translates them into Layman EventStore events.
  *
- * Vibe writes incremental JSONL to ~/.vibe/logs/session/<dir>/messages.jsonl
- * after each turn. We poll from a tracked byte offset to pick up new lines.
+ * Vibe writes incremental JSONL to <root>/<dir>/messages.jsonl after each turn;
+ * we poll from a tracked byte offset to pick up new lines.
+ *
+ * Roots are not hardcoded: they come from a list of `MonitorSource`s, re-queried
+ * on every scan tick, so the native `~/.vibe` root and any number of glove
+ * sandbox roots are watched at once and appear/disappear dynamically. Each root
+ * carries the agent type and an optional sandbox label; a session inherits both,
+ * so sandboxed sessions are tagged with their sandbox name. See
+ * `../monitor/sources.ts`.
  */
 
 import { watch, existsSync, readdirSync, statSync, readFileSync } from 'fs';
@@ -11,11 +18,11 @@ import { open } from 'fs/promises';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { join, basename } from 'path';
-import { homedir } from 'os';
 import type { FSWatcher } from 'fs';
 import type { EventStore } from '../events/store.js';
 import type { SessionGate } from '../hooks/gate.js';
 import type { LaymanConfig } from '../config/schema.js';
+import type { MonitorSource, WatchRoot } from '../monitor/sources.js';
 import { classifyRisk } from '../events/classifier.js';
 import { extractAccess } from '../events/access-extractor.js';
 
@@ -115,17 +122,18 @@ interface TrackedSession {
   lastActivityMs: number;
   /** Map of tool_call_id → { toolName, toolInput } for correlating tool results */
   pendingTools: Map<string, { toolName: string; toolInput: Record<string, unknown> }>;
+  /** Agent type this session is attributed to, from its watch root. */
+  agentType: string;
+  /** Sandbox label from the root (surfaced as session name); undefined for native. */
+  label?: string;
 }
 
-/** Resolve the Vibe session log directory, trying Docker mount first */
-function resolveSessionLogDir(): string | null {
-  const dockerPath = '/root/.vibe/logs/session';
-  if (existsSync(dockerPath)) return dockerPath;
-
-  const hostPath = join(homedir(), '.vibe', 'logs', 'session');
-  if (existsSync(hostPath)) return hostPath;
-
-  return null;
+/** A watch root the watcher is actively tailing, plus its fs.watch handle. */
+interface ActiveRoot {
+  path: string;
+  agentType: string;
+  label?: string;
+  watcher: FSWatcher | null;
 }
 
 /** A synthetic placeholder session created when a vibe process is detected at launch,
@@ -139,70 +147,102 @@ export class VibeSessionWatcher {
   private eventStore: EventStore;
   private gate: SessionGate;
   private getConfig: () => LaymanConfig;
+  private sources: MonitorSource[];
   private sessions = new Map<string, TrackedSession>();
-  private dirWatcher: FSWatcher | null = null;
+  /** Currently-watched roots, keyed by absolute path. */
+  private activeRoots = new Map<string, ActiveRoot>();
   private scanTimer: ReturnType<typeof setInterval> | null = null;
-  private logDir: string | null = null;
   /** PIDs of vibe processes we've already seen */
   private knownVibePids = new Set<number>();
   /** Synthetic placeholder sessions keyed by PID, active before real meta.json appears */
   private pendingSessions = new Map<number, PendingSession>();
   private vibeCheckInProgress = false;
 
-  constructor(eventStore: EventStore, gate: SessionGate, getConfig: () => LaymanConfig) {
+  constructor(
+    eventStore: EventStore,
+    gate: SessionGate,
+    getConfig: () => LaymanConfig,
+    sources: MonitorSource[],
+  ) {
     this.eventStore = eventStore;
     this.gate = gate;
     this.getConfig = getConfig;
+    this.sources = sources;
   }
 
   start(): void {
     void this.checkVibeProcesses();
 
-    this.logDir = resolveSessionLogDir();
-    if (this.logDir) {
-      console.log(`[vibe] Session watcher started, watching ${this.logDir}`);
-      this.scanExistingSessions();
-      this.startDirWatcher(this.logDir);
-    } else {
-      console.log('[vibe] Session log directory not found yet; will retry on each scan');
-    }
+    this.reconcileRoots();
+    this.scanExistingSessions();
 
     // Periodic scan to catch anything fs.watch misses (fs.watch is unreliable on
-    // Docker Desktop bind mounts) and to detect newly-ended sessions.
+    // Docker Desktop bind mounts), to pick up roots that appear later (a sandbox
+    // launched or vibe installed after Layman started), and to detect ended sessions.
     this.scanTimer = setInterval(() => {
-      if (!this.logDir) {
-        // Re-resolve in case vibe was installed after Layman started
-        this.logDir = resolveSessionLogDir();
-        if (this.logDir) {
-          console.log(`[vibe] Session log directory found: ${this.logDir}`);
-          this.startDirWatcher(this.logDir);
-        }
-      }
-      if (this.logDir) this.scanExistingSessions();
+      this.reconcileRoots();
+      this.scanExistingSessions();
       void this.cleanupEndedSessions();
       void this.checkVibeProcesses();
     }, SCAN_INTERVAL_MS);
   }
 
-  private startDirWatcher(logDir: string): void {
+  /**
+   * Bring the set of watched roots in line with what the sources currently
+   * report: open watchers for roots that appeared, close watchers for roots
+   * that vanished. Called on every scan tick, which is what makes glove
+   * sandboxes appearing or disappearing mid-run take effect without a restart.
+   */
+  private reconcileRoots(): void {
+    const desired = new Map<string, WatchRoot>();
+    for (const source of this.sources) {
+      for (const root of source.roots()) {
+        // First source to claim a path wins; native precedes glove in the list.
+        if (!desired.has(root.path)) desired.set(root.path, root);
+      }
+    }
+
+    // Drop roots no longer reported. Sessions under them are left to idle-timeout
+    // naturally (their log files stop growing), so no events are lost mid-flight.
+    for (const [path, active] of this.activeRoots) {
+      if (!desired.has(path)) {
+        if (active.watcher) active.watcher.close();
+        this.activeRoots.delete(path);
+        console.log(`[vibe] Stopped watching root ${path}`);
+      }
+    }
+
+    // Add roots that appeared.
+    for (const [path, root] of desired) {
+      if (this.activeRoots.has(path)) continue;
+      const active: ActiveRoot = { path, agentType: root.agentType, label: root.label, watcher: null };
+      active.watcher = this.startDirWatcher(active);
+      this.activeRoots.set(path, active);
+      const tag = root.label ? ` (glove: ${root.label})` : '';
+      console.log(`[vibe] Watching root ${path}${tag}`);
+    }
+  }
+
+  private startDirWatcher(root: ActiveRoot): FSWatcher | null {
     try {
-      this.dirWatcher = watch(logDir, (eventType, filename) => {
-        if (!filename || !this.logDir) return;
-        const dirPath = join(this.logDir, filename);
+      return watch(root.path, (_eventType, filename) => {
+        if (!filename) return;
+        const dirPath = join(root.path, filename);
         if (this.sessions.has(dirPath)) return;
         // Small delay for meta.json to be written
-        setTimeout(() => this.tryAddSession(dirPath), 500);
+        setTimeout(() => this.tryAddSession(dirPath, root), 500);
       });
     } catch {
       // fs.watch may fail on some systems — fall back to periodic scan
+      return null;
     }
   }
 
   stop(): void {
-    if (this.dirWatcher) {
-      this.dirWatcher.close();
-      this.dirWatcher = null;
+    for (const active of this.activeRoots.values()) {
+      if (active.watcher) active.watcher.close();
     }
+    this.activeRoots.clear();
     if (this.scanTimer) {
       clearInterval(this.scanTimer);
       this.scanTimer = null;
@@ -282,32 +322,34 @@ export class VibeSessionWatcher {
   }
 
   private scanExistingSessions(): void {
-    if (!this.logDir || !existsSync(this.logDir)) return;
-
     const now = Date.now();
-    let entries: string[];
-    try {
-      entries = readdirSync(this.logDir);
-    } catch {
-      return;
-    }
+    for (const root of this.activeRoots.values()) {
+      if (!existsSync(root.path)) continue;
 
-    for (const name of entries) {
-      const dirPath = join(this.logDir, name);
-      if (this.sessions.has(dirPath)) continue;
-
+      let entries: string[];
       try {
-        const stat = statSync(dirPath);
-        if (!stat.isDirectory()) continue;
-        if (now - stat.mtimeMs > RECENT_SESSION_THRESHOLD_MS) continue;
-        this.tryAddSession(dirPath);
+        entries = readdirSync(root.path);
       } catch {
-        // skip inaccessible entries
+        continue;
+      }
+
+      for (const name of entries) {
+        const dirPath = join(root.path, name);
+        if (this.sessions.has(dirPath)) continue;
+
+        try {
+          const stat = statSync(dirPath);
+          if (!stat.isDirectory()) continue;
+          if (now - stat.mtimeMs > RECENT_SESSION_THRESHOLD_MS) continue;
+          this.tryAddSession(dirPath, root);
+        } catch {
+          // skip inaccessible entries
+        }
       }
     }
   }
 
-  private tryAddSession(dirPath: string): void {
+  private tryAddSession(dirPath: string, root: ActiveRoot): void {
     if (this.sessions.has(dirPath)) return;
 
     const metaPath = join(dirPath, 'meta.json');
@@ -341,14 +383,16 @@ export class VibeSessionWatcher {
 
     // Auto-activate: if configured, activate Vibe sessions via the gate
     const config = this.getConfig();
-    if (config.autoActivateClients.includes(AGENT_TYPE)) {
+    if (config.autoActivateClients.includes(root.agentType)) {
       this.gate.activate(sessionId);
     }
 
-    // Register session with EventStore
-    this.eventStore.trackSession(sessionId, cwd, AGENT_TYPE);
-    this.eventStore.add('session_start', sessionId, { source: 'startup' }, undefined, AGENT_TYPE);
-    console.log(`[vibe] Tracking session ${sessionId.slice(0, 8)} (${basename(dirPath)})`);
+    // Register session with EventStore. The sandbox label (undefined for native)
+    // rides through as the session name so gloved sessions are tagged in the UI.
+    this.eventStore.trackSession(sessionId, cwd, root.agentType, undefined, root.label);
+    this.eventStore.add('session_start', sessionId, { source: 'startup' }, undefined, root.agentType);
+    const tag = root.label ? ` [glove: ${root.label}]` : '';
+    console.log(`[vibe] Tracking session ${sessionId.slice(0, 8)} (${basename(dirPath)})${tag}`);
 
     const messagesPath = join(dirPath, 'messages.jsonl');
 
@@ -373,6 +417,8 @@ export class VibeSessionWatcher {
       byteOffset: initialOffset,
       lastActivityMs: Date.now(),
       pendingTools: new Map(),
+      agentType: root.agentType,
+      label: root.label,
       pollTimer: setInterval(() => void this.pollSession(session), POLL_INTERVAL_MS),
     };
 
@@ -423,14 +469,14 @@ private async pollSession(session: TrackedSession): Promise<void> {
   }
 
   private processMessage(session: TrackedSession, msg: VibeMessage): void {
-    const { sessionId } = session;
+    const { sessionId, agentType } = session;
 
     switch (msg.role) {
       case 'user': {
         if (msg.content) {
           this.eventStore.add('user_prompt', sessionId, {
             prompt: msg.content,
-          }, undefined, AGENT_TYPE);
+          }, undefined, agentType);
         }
         break;
       }
@@ -440,7 +486,7 @@ private async pollSession(session: TrackedSession): Promise<void> {
         if (msg.content) {
           this.eventStore.add('agent_response', sessionId, {
             prompt: msg.content,
-          }, undefined, AGENT_TYPE);
+          }, undefined, agentType);
         }
 
         // Emit tool calls (observed post-execution, not blocking)
@@ -461,7 +507,7 @@ private async pollSession(session: TrackedSession): Promise<void> {
             this.eventStore.add('tool_call_approved', sessionId, {
               toolName,
               toolInput,
-            }, riskLevel, AGENT_TYPE);
+            }, riskLevel, agentType);
 
             // Track for correlation with tool result
             if (tc.id) {
@@ -491,7 +537,7 @@ private async pollSession(session: TrackedSession): Promise<void> {
           completedAt,
           fileAccess: filesWithId,
           urlAccess: urlsWithId,
-        }, undefined, AGENT_TYPE);
+        }, undefined, agentType);
 
         if (filesWithId) filesWithId.forEach(f => f.eventId = event.id);
         if (urlsWithId) urlsWithId.forEach(u => u.eventId = event.id);
@@ -527,11 +573,11 @@ private async pollSession(session: TrackedSession): Promise<void> {
 
           // Restore session tracking and emit session_start *before* catch-up events
           // so the marker appears at the right position in the timeline
-          this.eventStore.trackSession(session.sessionId, session.cwd, AGENT_TYPE);
+          this.eventStore.trackSession(session.sessionId, session.cwd, session.agentType, undefined, session.label);
           this.eventStore.add('session_start', session.sessionId, {
             source: 'resumed',
             gapMinutes,
-          }, undefined, AGENT_TYPE);
+          }, undefined, session.agentType);
 
           session.lastActivityMs = resumedAt;
           session.pollTimer = setInterval(() => void this.pollSession(session), POLL_INTERVAL_MS);
@@ -559,7 +605,7 @@ private async pollSession(session: TrackedSession): Promise<void> {
         continue;
       }
 
-      this.eventStore.add('session_end', session.sessionId, {}, undefined, AGENT_TYPE);
+      this.eventStore.add('session_end', session.sessionId, {}, undefined, session.agentType);
       this.gate.deactivate(session.sessionId);
       clearInterval(session.pollTimer);
       session.pollTimer = null; // convert to tombstone
