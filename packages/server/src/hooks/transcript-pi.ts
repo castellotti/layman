@@ -54,60 +54,81 @@ function mapToolName(name: string): string {
  * fallback. The session file's own header `cwd` field, read in
  * `parsePiTranscript()`, is authoritative when present.
  */
-function decodeCwd(dirName: string): string {
+export function decodeCwd(dirName: string): string {
   const trimmed = dirName.replace(/^--/, '').replace(/--$/, '');
   return '/' + trimmed.replace(/-/g, '/');
 }
 
 /**
- * Scan `~/.pi/agent/sessions/` (Docker-mounted at `/root/.pi/...` first, same
- * order `discoverTranscriptFiles()` uses for claude-code) for session files
- * named `<ISO-timestamp>_<uuid>.jsonl`. The session id is the uuid suffix —
- * the same id pi's live extension reports — which is what makes dedupe
- * against an already-recorded session work.
+ * Scan one `.pi/agent/sessions` directory for session files named
+ * `<ISO-timestamp>_<uuid>.jsonl`. The session id is the uuid suffix — the same
+ * id pi's live extension reports — which is what makes dedupe against an
+ * already-recorded session work. `label` tags a glove-sandboxed root (its env
+ * id) and is undefined for the native root.
  */
-export function discoverPiSessions(): DiscoveredTranscript[] {
+export function discoverPiSessionsUnder(base: string, label?: string): DiscoveredTranscript[] {
   const results: DiscoveredTranscript[] = [];
-  const basePaths = ['/root/.pi/agent/sessions', join(homedir(), '.pi', 'agent', 'sessions')];
+  if (!existsSync(base)) return results;
 
-  for (const base of basePaths) {
-    if (!existsSync(base)) continue;
+  let projectDirs: string[];
+  try { projectDirs = readdirSync(base); } catch { return results; }
 
-    let projectDirs: string[];
-    try { projectDirs = readdirSync(base); } catch { continue; }
+  for (const projectDir of projectDirs) {
+    const projectPath = join(base, projectDir);
+    let stat;
+    try { stat = statSync(projectPath); } catch { continue; }
+    if (!stat.isDirectory()) continue;
 
-    for (const projectDir of projectDirs) {
-      const projectPath = join(base, projectDir);
-      let stat;
-      try { stat = statSync(projectPath); } catch { continue; }
-      if (!stat.isDirectory()) continue;
+    let files: string[];
+    try { files = readdirSync(projectPath); } catch { continue; }
 
-      let files: string[];
-      try { files = readdirSync(projectPath); } catch { continue; }
+    for (const file of files) {
+      if (!file.endsWith('.jsonl')) continue;
+      const stem = file.slice(0, -'.jsonl'.length);
+      const underscoreIdx = stem.lastIndexOf('_');
+      if (underscoreIdx === -1) continue;
+      const sessionId = stem.slice(underscoreIdx + 1);
+      if (!SESSION_ID_PATTERN.test(sessionId)) continue;
 
-      for (const file of files) {
-        if (!file.endsWith('.jsonl')) continue;
-        const stem = file.slice(0, -'.jsonl'.length);
-        const underscoreIdx = stem.lastIndexOf('_');
-        if (underscoreIdx === -1) continue;
-        const sessionId = stem.slice(underscoreIdx + 1);
-        if (!SESSION_ID_PATTERN.test(sessionId)) continue;
-
-        results.push({
-          path: join(projectPath, file),
-          sessionId,
-          projectDir,
-          agentType: 'pi',
-          cwd: decodeCwd(projectDir),
-        });
-      }
+      results.push({
+        path: join(projectPath, file),
+        sessionId,
+        projectDir,
+        agentType: 'pi',
+        cwd: decodeCwd(projectDir),
+        label,
+      });
     }
-
-    // Only use the first base path that exists (Docker or native).
-    if (results.length > 0) break;
   }
 
   return results;
+}
+
+/**
+ * Discover native pi sessions from `~/.pi/agent/sessions/` (Docker-mounted at
+ * `/root/.pi/...` first, same order `discoverTranscriptFiles()` uses for
+ * claude-code). Only the first base path that yields results is used.
+ */
+export function discoverPiSessions(): DiscoveredTranscript[] {
+  const basePaths = ['/root/.pi/agent/sessions', join(homedir(), '.pi', 'agent', 'sessions')];
+
+  for (const base of basePaths) {
+    const results = discoverPiSessionsUnder(base);
+    if (results.length > 0) return results;
+  }
+
+  return [];
+}
+
+/**
+ * Discover pi sessions inside glove sandbox homes. `roots` are the pi watch
+ * roots `GloveSource` reports (each `.../.pi/agent/sessions` path plus its env
+ * id label); scanning them here is what makes **Import session history** cover
+ * gloved pi runs that were never monitored live, tagged with their env id.
+ * Returns nothing when glove is disabled (the caller passes no pi roots).
+ */
+export function discoverGlovePiSessions(roots: Array<{ path: string; label?: string }>): DiscoveredTranscript[] {
+  return roots.flatMap((root) => discoverPiSessionsUnder(root.path, root.label));
 }
 
 // ---------------------------------------------------------------------------

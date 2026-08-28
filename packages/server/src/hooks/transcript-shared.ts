@@ -24,6 +24,12 @@ export interface DiscoveredTranscript {
   agentType: string;
   /** Best-effort cwd recovered at discovery time (e.g. from a directory name). A parser-reported cwd, when present, takes precedence. */
   cwd?: string;
+  /**
+   * Sandbox label (glove env id) for a transcript discovered under a glove
+   * environment home; undefined for native transcripts. Surfaced as the session
+   * name so imported gloved sessions are tagged like passively-watched ones.
+   */
+  label?: string;
 }
 
 /**

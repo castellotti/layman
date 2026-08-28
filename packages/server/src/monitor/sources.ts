@@ -9,9 +9,9 @@
  * one of them displacing the others.
  *
  * The interface deliberately separates *where* to watch (a source) from *how* to
- * parse (the watcher's format logic). Only Vibe is passive today, so every root
- * currently declares `agentType: 'mistral-vibe'`; a future passive harness adds
- * a parser branch in the watcher and a source here, and nothing else changes.
+ * parse (the watcher's format logic). Each root declares its `agentType`, so a
+ * single glove sandbox can yield both a Vibe root and a pi root; each passive
+ * watcher filters `roots()` down to the agent type it knows how to parse.
  *
  * `roots()` is re-queried on every scan tick, so sources are dynamic: a glove
  * sandbox that appears or disappears mid-run is picked up or dropped on the next
@@ -38,7 +38,7 @@ export interface WatchRoot {
 
 /** Supplies watch roots for the passive file watcher. Queried on every scan tick. */
 export interface MonitorSource {
-  /** Stable identifier, for logging (`'native'`, `'glove'`). */
+  /** Stable identifier, for logging (`'native-vibe'`, `'native-pi'`, `'glove'`). */
   readonly id: string;
   /** Current set of roots. May change between calls; empty is valid. */
   roots(): WatchRoot[];
@@ -48,6 +48,10 @@ const VIBE_AGENT_TYPE = 'mistral-vibe';
 /** Relative path from a home directory to the Vibe session-log dir. */
 const VIBE_SESSION_SUBPATH = join('.vibe', 'logs', 'session');
 
+const PI_AGENT_TYPE = 'pi';
+/** Relative path from a home directory to pi's session-log dir. */
+const PI_SESSION_SUBPATH = join('.pi', 'agent', 'sessions');
+
 /**
  * The native (non-sandboxed) Vibe logs — the historical single root. Tries the
  * Docker bind-mount path first, then the real host home, matching the watcher's
@@ -55,7 +59,7 @@ const VIBE_SESSION_SUBPATH = join('.vibe', 'logs', 'session');
  * baseline the sandboxed ones are distinguished *from*.
  */
 export class NativeVibeSource implements MonitorSource {
-  readonly id = 'native';
+  readonly id = 'native-vibe';
 
   roots(): WatchRoot[] {
     const dockerPath = join('/root', VIBE_SESSION_SUBPATH);
@@ -67,23 +71,44 @@ export class NativeVibeSource implements MonitorSource {
 }
 
 /**
+ * The native (non-sandboxed) pi logs. Mirrors `NativeVibeSource`: tries the
+ * Docker bind-mount path first, then the real host home. Carries no label, so
+ * native pi sessions are the baseline sandboxed ones are distinguished *from*.
+ */
+export class NativePiSource implements MonitorSource {
+  readonly id = 'native-pi';
+
+  roots(): WatchRoot[] {
+    const dockerPath = join('/root', PI_SESSION_SUBPATH);
+    const hostPath = join(homedir(), PI_SESSION_SUBPATH);
+    const path = existsSync(dockerPath) ? dockerPath : existsSync(hostPath) ? hostPath : null;
+    if (!path) return [];
+    return [{ path, agentType: PI_AGENT_TYPE }];
+  }
+}
+
+/**
  * Sandboxed harness logs produced by glove (github.com/castellotti/glove).
  *
  * glove runs each harness inside a container with a fake home persisted on the
- * host at `<sessionsDir>/<sandbox>/home/`, mirroring the real dotfile layout.
- * So a gloved Vibe writes `<sessionsDir>/<sandbox>/home/.vibe/logs/session/...`
- * — exactly the layout the watcher already understands, only rooted elsewhere.
+ * host at `<sessionsDir>/<env-id>/home/`, mirroring the real dotfile layout.
+ * So a gloved Vibe writes `<sessionsDir>/<env-id>/home/.vibe/logs/session/...`
+ * and a gloved pi writes `<sessionsDir>/<env-id>/home/.pi/agent/sessions/...`
+ * — exactly the layouts the passive watchers already understand, only rooted
+ * elsewhere.
  *
- * This source globs one level of sandbox directories and returns a root for each
- * that actually contains Vibe logs, labelled with the sandbox name (`vibe-local`)
- * so its sessions are tagged in the UI. It reads only what the sandbox already
+ * This source globs one level of environment directories and returns a root for
+ * each harness log tree it finds, labelled with the env id (`pi-local`) so its
+ * sessions are tagged in the UI. A single sandbox may run both harnesses, so it
+ * can yield a vibe root *and* a pi root. It reads only what the sandbox already
  * persisted: no new mount into the container, no egress, nothing added to what
  * the sandboxed agent can see — read-only "outside looking in".
  *
- * Only Vibe is discovered today. Network-hook harnesses (pi, codex, cline,
- * opencode) POST *to* Layman, which a net-restricted sandbox cannot reach, and
- * they persist no tailable transcript — monitoring those from a sandbox is a
- * separate mechanism (a glove-provided forwarder), not this source.
+ * Vibe and pi are discovered because both persist a tailable transcript on the
+ * host. The other network-hook harnesses (codex, cline, opencode) POST *to*
+ * Layman, which a net-restricted sandbox cannot reach, and persist nothing to
+ * tail — monitoring those from a sandbox is a separate mechanism (a
+ * glove-provided forwarder), not this source.
  */
 export class GloveSource implements MonitorSource {
   readonly id = 'glove';
@@ -113,9 +138,13 @@ export class GloveSource implements MonitorSource {
       } catch {
         continue; // vanished between readdir and stat
       }
-      const logDir = join(sandboxDir, 'home', VIBE_SESSION_SUBPATH);
-      if (existsSync(logDir)) {
-        roots.push({ path: logDir, agentType: VIBE_AGENT_TYPE, label: sandbox });
+      const vibeDir = join(sandboxDir, 'home', VIBE_SESSION_SUBPATH);
+      if (existsSync(vibeDir)) {
+        roots.push({ path: vibeDir, agentType: VIBE_AGENT_TYPE, label: sandbox });
+      }
+      const piDir = join(sandboxDir, 'home', PI_SESSION_SUBPATH);
+      if (existsSync(piDir)) {
+        roots.push({ path: piDir, agentType: PI_AGENT_TYPE, label: sandbox });
       }
     }
     return roots;
