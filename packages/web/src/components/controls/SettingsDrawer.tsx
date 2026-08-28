@@ -4,6 +4,7 @@ import type { ClientMessage } from '../../lib/ws-protocol.js';
 import type { LaymanConfig } from '../../lib/types.js';
 import { HarnessSection } from './settings/HarnessSection.js';
 import { WebUISection } from './settings/WebUISection.js';
+import { GloveSection } from './settings/GloveSection.js';
 import { AnalysisModelSection } from './settings/AnalysisModelSection.js';
 import { AutoExplainSection } from './settings/AutoExplainSection.js';
 import { AutoAnalysisSection } from './settings/AutoAnalysisSection.js';
@@ -16,7 +17,7 @@ import { TTSSection } from './settings/TTSSection.js';
 export { HarnessSetupSection } from './settings/HarnessSection.js';
 export { PROVIDER_CONFIG } from './settings/AnalysisModelSection.js';
 
-type Group = 'Connection' | 'Automation' | 'Data' | 'Stream';
+type Group = 'Connection' | 'Automation' | 'Data' | 'Stream' | 'Extensions';
 
 interface SectionDef {
   key: string;
@@ -77,9 +78,14 @@ const SECTIONS: SectionDef[] = [
     searchTerms: ['full command', 'newest session', 'collapse history', 'auto-scroll', 'idle threshold'],
     render: (config, onSend) => <StreamSection config={config} onSend={onSend} />,
   },
+  {
+    key: 'glove', group: 'Extensions', label: 'Glove',
+    searchTerms: ['glove', 'sandbox', 'sandboxed', 'container', 'Docker', 'Podman', 'Vibe', 'monitor', 'sessions directory', 'extension', 'plugin'],
+    render: (config, onSend) => <GloveSection config={config} onSend={onSend} />,
+  },
 ];
 
-const GROUP_ORDER: Group[] = ['Connection', 'Automation', 'Data', 'Stream'];
+const GROUP_ORDER: Group[] = ['Connection', 'Automation', 'Data', 'Stream', 'Extensions'];
 
 interface SettingsDrawerProps {
   onSend: (msg: ClientMessage) => void;

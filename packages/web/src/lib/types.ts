@@ -302,6 +302,8 @@ export interface LaymanConfig {
   approvalClients: string[];
   /** Live token streaming. Mirrors LiveTokensConfigSchema on the server. */
   liveTokens: { enabled: boolean; showThinking: boolean };
+  /** Passive monitoring of glove-sandboxed harnesses. Mirrors GloveConfigSchema. */
+  glove: { enabled: boolean; sessionsDir: string };
   driftMonitoring: DriftMonitoringConfig;
   tts: TtsConfig;
   setupWizardComplete: boolean;
