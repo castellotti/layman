@@ -79,15 +79,16 @@ export const LiveTokensConfigSchema = z.object({
 /**
  * glove — passive monitoring of sandboxed harnesses (github.com/castellotti/glove).
  *
- * glove runs harnesses in containers with a per-sandbox fake home persisted on
- * the host under `sessionsDir`. When enabled, the passive file watcher discovers
- * those sandboxes and tails their harness logs alongside native ones, read-only.
- * Off by default: native monitoring is entirely unaffected either way.
+ * glove runs harnesses in containers with a per-environment fake home persisted
+ * on the host under `sessionsDir`. When enabled, the passive file watchers
+ * discover those environments and tail their harness logs (Vibe and pi)
+ * alongside native ones, read-only. Off by default: native monitoring is
+ * entirely unaffected either way.
  */
 export const GloveConfigSchema = z.object({
   enabled: z.boolean().default(false),
-  /** Host directory glove persists sandbox homes under (`<sessionsDir>/<name>/home/`). */
-  sessionsDir: z.string().default('~/.glove/sessions'),
+  /** Host directory glove persists environment homes under (`<sessionsDir>/<env-id>/home/`). */
+  sessionsDir: z.string().default('~/.glove/envs'),
 });
 
 export const LaymanConfigSchema = z.object({
