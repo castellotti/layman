@@ -27,9 +27,8 @@
  * young sessions.
  */
 
-import { watch, existsSync, readdirSync, statSync, readFileSync } from 'fs';
+import { existsSync, readdirSync, statSync, readFileSync } from 'fs';
 import { join, basename } from 'path';
-import type { FSWatcher } from 'fs';
 import type { EventStore } from '../events/store.js';
 import type { SessionGate } from '../hooks/gate.js';
 import type { LaymanConfig } from '../config/schema.js';
@@ -64,16 +63,15 @@ interface TrackedSession {
   emittedIds: Set<string>;
   pollTimer: ReturnType<typeof setInterval> | null;
   lastActivityMs: number;
+  /**
+   * Byte size of the transcript at the last read. pi only appends, so a poll
+   * whose file size hasn't grown has nothing new to parse and short-circuits
+   * before the full re-read — the same guard `VibeSessionWatcher` gets from its
+   * byte offset.
+   */
+  lastSize: number;
   agentType: string;
   label?: string;
-}
-
-/** A watch root the watcher is actively tailing, plus its fs.watch handle. */
-interface ActiveRoot {
-  path: string;
-  agentType: string;
-  label?: string;
-  watcher: FSWatcher | null;
 }
 
 export class PiSessionWatcher {
@@ -83,8 +81,8 @@ export class PiSessionWatcher {
   private sources: MonitorSource[];
   /** Tracked sessions, keyed by absolute transcript file path. */
   private sessions = new Map<string, TrackedSession>();
-  /** Currently-watched roots, keyed by absolute path. */
-  private activeRoots = new Map<string, ActiveRoot>();
+  /** Roots currently being scanned, keyed by absolute path. */
+  private activeRoots = new Map<string, WatchRoot>();
   private scanTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor(
@@ -103,9 +101,10 @@ export class PiSessionWatcher {
     this.reconcileRoots();
     this.scanExistingSessions();
 
-    // Periodic scan is the primary discovery mechanism: fs.watch is unreliable on
-    // Docker Desktop bind mounts, and pi writes files one level below the watched
-    // root, so a root-level watcher wouldn't see new transcript lines anyway.
+    // The periodic scan is the sole discovery mechanism. fs.watch is unreliable
+    // on Docker Desktop bind mounts, and pi writes transcript files one level
+    // below the watched root — a root-level watcher wouldn't see new lines anyway
+    // (appends are picked up by each session's poll timer, not by discovery).
     this.scanTimer = setInterval(() => {
       this.reconcileRoots();
       this.scanExistingSessions();
@@ -114,10 +113,6 @@ export class PiSessionWatcher {
   }
 
   stop(): void {
-    for (const active of this.activeRoots.values()) {
-      if (active.watcher) active.watcher.close();
-    }
-    this.activeRoots.clear();
     if (this.scanTimer) {
       clearInterval(this.scanTimer);
       this.scanTimer = null;
@@ -126,10 +121,11 @@ export class PiSessionWatcher {
       if (session.pollTimer) clearInterval(session.pollTimer);
     }
     this.sessions.clear();
+    this.activeRoots.clear();
   }
 
   /**
-   * Bring the set of watched roots in line with what the sources currently
+   * Bring the set of scanned roots in line with what the sources currently
    * report. A glove source now emits both Vibe and pi roots; this watcher only
    * parses pi, so it ignores anything else (the vibe watcher claims those).
    */
@@ -144,9 +140,8 @@ export class PiSessionWatcher {
     }
 
     // Drop roots no longer reported. Sessions under them idle-timeout naturally.
-    for (const [path, active] of this.activeRoots) {
+    for (const path of this.activeRoots.keys()) {
       if (!desired.has(path)) {
-        if (active.watcher) active.watcher.close();
         this.activeRoots.delete(path);
         console.log(`[pi] Stopped watching root ${path}`);
       }
@@ -155,20 +150,9 @@ export class PiSessionWatcher {
     // Add roots that appeared.
     for (const [path, root] of desired) {
       if (this.activeRoots.has(path)) continue;
-      const active: ActiveRoot = { path, agentType: root.agentType, label: root.label, watcher: null };
-      active.watcher = this.startDirWatcher(active);
-      this.activeRoots.set(path, active);
+      this.activeRoots.set(path, root);
       const tag = root.label ? ` (glove: ${root.label})` : '';
       console.log(`[pi] Watching root ${path}${tag}`);
-    }
-  }
-
-  private startDirWatcher(root: ActiveRoot): FSWatcher | null {
-    try {
-      // Best-effort responsiveness only; the periodic scan does the real work.
-      return watch(root.path, { recursive: true }, () => this.scanExistingSessions());
-    } catch {
-      return null; // fs.watch may fail (or lack recursive support) — periodic scan covers it
     }
   }
 
@@ -198,13 +182,14 @@ export class PiSessionWatcher {
         for (const file of files) {
           const filePath = join(projectPath, file);
           if (this.sessions.has(filePath)) continue;
-          if (!sessionIdFromPiFilename(file)) continue;
+          const sessionId = sessionIdFromPiFilename(file);
+          if (!sessionId) continue;
 
           try {
             const stat = statSync(filePath);
             if (!stat.isFile()) continue;
             if (now - stat.mtimeMs > RECENT_SESSION_THRESHOLD_MS) continue;
-            this.tryAddSession(filePath, projectDir, root);
+            this.tryAddSession(filePath, projectDir, root, sessionId);
           } catch {
             // skip inaccessible entries
           }
@@ -213,12 +198,11 @@ export class PiSessionWatcher {
     }
   }
 
-  private tryAddSession(filePath: string, projectDir: string, root: ActiveRoot): void {
-    if (this.sessions.has(filePath)) return;
-
-    const sessionId = sessionIdFromPiFilename(basename(filePath));
-    if (!sessionId) return;
-
+  private tryAddSession(filePath: string, projectDir: string, root: WatchRoot, sessionId: string): void {
+    // Size before read, so a concurrent append can only make the stored size an
+    // under-estimate (re-parsed next poll, then deduped) — never an over-estimate
+    // that would skip a real append.
+    const size = this.sizeOf(filePath);
     const lines = this.readLines(filePath);
     if (!lines) return;
 
@@ -249,6 +233,7 @@ export class PiSessionWatcher {
       file: filePath,
       emittedIds: new Set<string>(),
       lastActivityMs: Date.now(),
+      lastSize: size,
       agentType: root.agentType,
       label: root.label,
       pollTimer: null,
@@ -267,8 +252,14 @@ export class PiSessionWatcher {
   }
 
   private pollSession(session: TrackedSession): void {
+    // pi only appends: an unchanged file size means no new lines, so skip the
+    // full re-read + re-parse (which grows O(n) with the transcript) entirely.
+    const size = this.sizeOf(session.file);
+    if (size <= session.lastSize) return;
+
     const lines = this.readLines(session.file);
     if (!lines) return;
+    session.lastSize = size;
 
     const { events } = parsePiTranscript(lines, session.sessionId);
     const committed = committedEvents(events);
@@ -371,15 +362,21 @@ export class PiSessionWatcher {
    * timer, and re-applies auto-activation exactly as tryAddSession does.
    */
   private tryResumeSession(session: TrackedSession): void {
+    // A tombstone stays in the map forever; short-circuit on unchanged size so an
+    // ended session isn't re-read and re-parsed on every scan tick indefinitely.
+    const size = this.sizeOf(session.file);
+    if (size <= session.lastSize) return;
+
     const lines = this.readLines(session.file);
     if (!lines) return;
+    session.lastSize = size;
 
     const { events } = parsePiTranscript(lines, session.sessionId);
     const committed = committedEvents(events);
     const hasNew = committed.some((ev) => !session.emittedIds.has(ev.id));
     if (!hasNew) return;
 
-    const lastStored = this.getLastSessionEvent(session.sessionId);
+    const lastStored = this.eventStore.findLast((e) => e.sessionId === session.sessionId);
     const resumedAt = Date.now();
     const gapMinutes = lastStored ? Math.round((resumedAt - lastStored.timestamp) / 60000) : 0;
 
@@ -395,12 +392,6 @@ export class PiSessionWatcher {
     console.log(`[pi] Session ${session.sessionId.slice(0, 8)} resumed (gap ${gapMinutes}m)`);
   }
 
-  /** Timestamp of the most recent stored event for a session, for gap measurement. */
-  private getLastSessionEvent(sessionId: string): { timestamp: number } | null {
-    const last = this.eventStore.findLast((e) => e.sessionId === sessionId);
-    return last ? { timestamp: last.timestamp } : null;
-  }
-
   private readLines(filePath: string): string[] | null {
     try {
       const content = readFileSync(filePath, 'utf-8');
@@ -413,6 +404,14 @@ export class PiSessionWatcher {
   private mtimeOf(filePath: string): number {
     try {
       return statSync(filePath).mtimeMs;
+    } catch {
+      return 0;
+    }
+  }
+
+  private sizeOf(filePath: string): number {
+    try {
+      return statSync(filePath).size;
     } catch {
       return 0;
     }
