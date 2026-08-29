@@ -35,7 +35,8 @@ import { computeTimeMetrics } from './db/time-metrics.js';
 import type { SearchRequest } from './db/search.js';
 import type { LaymanConfig } from './config/schema.js';
 import { VibeSessionWatcher } from './vibe/watcher.js';
-import { NativeVibeSource, GloveSource } from './monitor/sources.js';
+import { PiSessionWatcher } from './pi/watcher.js';
+import { NativeVibeSource, NativePiSource, GloveSource } from './monitor/sources.js';
 import { recoverSessionGaps, importHistoricalSessions } from './hooks/recovery.js';
 import type { ServerMessage, ClientMessage, SessionStatus, SetupStatus } from './types/index.js';
 
@@ -144,14 +145,20 @@ export function createServer(config: LaymanConfig): LaymanServer {
     return tracked.some((dir) => resolve(dir) === target) ? [target] : null;
   };
 
-  // Passive-watcher sources: the native ~/.vibe root always, plus glove sandbox
-  // roots when enabled. Native precedes glove so it wins any path collision.
+  // Passive-watcher sources: the native root always, plus glove sandbox roots
+  // when enabled. Native precedes glove so it wins any path collision. The glove
+  // source emits both Vibe and pi roots; each watcher filters roots() to the
+  // agent type it parses, so the shared source instance feeds both.
   const gloveSource = new GloveSource(() => {
     const glove = getConfig().glove;
     return glove.enabled ? expandHome(glove.sessionsDir) : null;
   });
   const vibeWatcher = new VibeSessionWatcher(eventStore, gate, getConfig, [
     new NativeVibeSource(),
+    gloveSource,
+  ]);
+  const piWatcher = new PiSessionWatcher(eventStore, gate, getConfig, [
+    new NativePiSource(),
     gloveSource,
   ]);
 
@@ -409,7 +416,10 @@ export function createServer(config: LaymanConfig): LaymanServer {
 
     // Historical session import — discover and import transcript files
     fastify.post('/api/import/history', async () => {
-      return importHistoricalSessions(db, eventStore, recorder, { enrichExisting: true });
+      return importHistoricalSessions(db, eventStore, recorder, {
+        enrichExisting: true,
+        gloveRoots: gloveSource.roots(),
+      });
     });
 
     // PII purge — execute redaction on all SQLite data
@@ -1663,6 +1673,7 @@ export function createServer(config: LaymanConfig): LaymanServer {
       await registerPlugins();
       registerRoutes();
       vibeWatcher.start();
+      piWatcher.start();
 
       if (getConfig().recordingRecovery && getConfig().sessionRecording) {
         void recoverSessionGaps(db, eventStore).then(({ events, sessions }) => {
@@ -1671,7 +1682,7 @@ export function createServer(config: LaymanConfig): LaymanServer {
       }
 
       if (getConfig().historyImport) {
-        void importHistoricalSessions(db, eventStore, recorder).then(({ discovered, totalEvents }) => {
+        void importHistoricalSessions(db, eventStore, recorder, { gloveRoots: gloveSource.roots() }).then(({ discovered, totalEvents }) => {
           if (discovered > 0) console.log(`[import] Discovered ${discovered} historical sessions (${totalEvents} events)`);
         });
       }
@@ -1694,6 +1705,7 @@ export function createServer(config: LaymanConfig): LaymanServer {
 
     async stop() {
       vibeWatcher.stop();
+      piWatcher.stop();
       liveStreams.stop();
       await fastify.close();
     },

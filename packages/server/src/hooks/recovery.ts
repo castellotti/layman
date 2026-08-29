@@ -33,7 +33,8 @@ import type { Database } from '../db/database.js';
 import type { SessionRecorder } from '../db/recorder.js';
 import type { DiscoveredTranscript, TranscriptMetadata, TranscriptSource } from './transcript-shared.js';
 import { buildEvent } from './transcript-shared.js';
-import { piTranscriptSource } from './transcript-pi.js';
+import { piTranscriptSource, discoverGlovePiSessions } from './transcript-pi.js';
+import type { WatchRoot } from '../monitor/sources.js';
 
 export type { DiscoveredTranscript, TranscriptMetadata, TranscriptSource } from './transcript-shared.js';
 
@@ -528,9 +529,17 @@ export interface ImportResult {
  * registered TranscriptSource where its files live. There is no default
  * agentType here — a file only appears in the result if some source claimed
  * it, and every entry already carries the agentType that claimed it.
+ *
+ * `gloveRoots` (the passive watchers' current watch roots) extends discovery
+ * into glove sandbox homes: any pi root among them is scanned too, so a gloved
+ * pi run that was never monitored live is still importable. Empty when glove is
+ * disabled. Only pi is imported from a sandbox — claude-code isn't run under
+ * glove and Vibe has no history importer — so non-pi roots are ignored here.
  */
-export function discoverTranscriptFiles(): DiscoveredTranscript[] {
-  return TRANSCRIPT_SOURCES.flatMap((source) => source.discover());
+export function discoverTranscriptFiles(gloveRoots: WatchRoot[] = []): DiscoveredTranscript[] {
+  const native = TRANSCRIPT_SOURCES.flatMap((source) => source.discover());
+  const glovePi = discoverGlovePiSessions(gloveRoots.filter((r) => r.agentType === piTranscriptSource.agentType));
+  return [...native, ...glovePi];
 }
 
 /**
@@ -542,9 +551,9 @@ export async function importHistoricalSessions(
   db: Database,
   eventStore: EventStore,
   recorder: SessionRecorder,
-  options?: { enrichExisting?: boolean }
+  options?: { enrichExisting?: boolean; gloveRoots?: WatchRoot[] }
 ): Promise<ImportResult> {
-  const { enrichExisting = false } = options ?? {};
+  const { enrichExisting = false, gloveRoots = [] } = options ?? {};
 
   const result: ImportResult = {
     discovered: 0,
@@ -555,7 +564,7 @@ export async function importHistoricalSessions(
     sessions: [],
   };
 
-  const transcriptFiles = discoverTranscriptFiles();
+  const transcriptFiles = discoverTranscriptFiles(gloveRoots);
   if (transcriptFiles.length === 0) return result;
 
   const sourceByAgentType = new Map(TRANSCRIPT_SOURCES.map((s) => [s.agentType, s]));
@@ -604,8 +613,9 @@ export async function importHistoricalSessions(
 
         const cwd = metadata.cwd || discovered.cwd || '';
 
-        // Batch insert via recorder
-        recorder.importSession(sessionId, cwd, agentType, events, 'imported');
+        // Batch insert via recorder. discovered.label (a glove env id, undefined
+        // for native) tags the session name so gloved imports look like watched ones.
+        recorder.importSession(sessionId, cwd, agentType, events, 'imported', discovered.label);
 
         const toolCallCount = events.filter(e => e.type === 'tool_call_completed').length;
         const userPromptCount = events.filter(e => e.type === 'user_prompt').length;
@@ -699,7 +709,7 @@ export async function importHistoricalSessions(
         // importSession()'s own upsert never downgrades an existing 'live'
         // session's source, so 'imported' here is safe regardless of what
         // existingSource currently is.
-        recorder.importSession(sessionId, cwd, agentType, newEvents, 'imported');
+        recorder.importSession(sessionId, cwd, agentType, newEvents, 'imported', discovered.label);
 
         const toolCallCount = newEvents.filter(e => e.type === 'tool_call_completed').length;
         const userPromptCount = newEvents.filter(e => e.type === 'user_prompt').length;
