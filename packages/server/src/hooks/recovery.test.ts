@@ -31,7 +31,7 @@ const FIXTURES_DIR = join(dirname(fileURLToPath(import.meta.url)), '__fixtures__
  * see turns/store.test.ts), so this follows the same convention.
  */
 class FakeDb {
-  sessions = new Map<string, { session_id: string; cwd: string; agent_type: string; started_at: number; last_seen: number; source: string }>();
+  sessions = new Map<string, { session_id: string; cwd: string; agent_type: string; started_at: number; last_seen: number; source: string; session_name: string | null }>();
   events = new Map<string, { id: string; session_id: string; type: string; timestamp: number }>();
 
   transaction<T extends (...args: unknown[]) => unknown>(fn: T): T {
@@ -42,16 +42,18 @@ class FakeDb {
     const db = this;
     if (sql.includes('INSERT INTO recorded_sessions')) {
       return {
-        run(sessionId: string, cwd: string, agentType: string, startedAt: number, lastSeen: number, source: string) {
+        run(sessionId: string, cwd: string, agentType: string, startedAt: number, lastSeen: number, source: string, sessionName: string | null = null) {
           const existing = db.sessions.get(sessionId);
           if (!existing) {
-            db.sessions.set(sessionId, { session_id: sessionId, cwd, agent_type: agentType, started_at: startedAt, last_seen: lastSeen, source });
+            db.sessions.set(sessionId, { session_id: sessionId, cwd, agent_type: agentType, started_at: startedAt, last_seen: lastSeen, source, session_name: sessionName });
           } else {
             db.sessions.set(sessionId, {
               ...existing,
               last_seen: Math.max(existing.last_seen, lastSeen),
               cwd: existing.cwd === '' ? cwd : existing.cwd,
               source: existing.source === 'live' ? 'live' : source,
+              // COALESCE(existing, excluded): keep an existing name, else take the new one.
+              session_name: existing.session_name ?? sessionName,
             });
           }
         },
@@ -126,6 +128,24 @@ function writePiFixture(): string {
   return path;
 }
 
+const GLOVE_PI_SESSION_ID = '44444444-4444-4444-4444-444444444444';
+
+/**
+ * Write a pi transcript inside a glove sandbox home and return the pi watch
+ * root (`.../.pi/agent/sessions`) a GloveSource would report for it, plus the
+ * env id label. Sits outside `home` deliberately — a glove session lives under
+ * the glove sessions dir, not the native pi home.
+ */
+function writeGlovePiFixture(envId: string): { root: string; label: string } {
+  const sessionsDir = join(home, '.glove', 'envs', envId, 'home', '.pi', 'agent', 'sessions');
+  const projectDir = join(sessionsDir, '--Users-test-pi-project--');
+  mkdirSync(projectDir, { recursive: true });
+  const content = readFileSync(join(FIXTURES_DIR, 'linear.jsonl'), 'utf-8')
+    .replace('aaaaaaaa-0000-7000-8000-000000000000', GLOVE_PI_SESSION_ID);
+  writeFileSync(join(projectDir, `2026-08-21T09-00-00-000Z_${GLOVE_PI_SESSION_ID}.jsonl`), content);
+  return { root: sessionsDir, label: envId };
+}
+
 let discoverTranscriptFiles: typeof DiscoverFn;
 let importHistoricalSessions: typeof ImportFn;
 
@@ -163,6 +183,25 @@ describe('discoverTranscriptFiles', () => {
     // prefers the session file's own header cwd, which importHistoricalSessions
     // uses instead of this value.
     expect(pi.cwd).toBe('/Users/test/pi/project');
+  });
+
+  it('ignores glove roots by default (none passed) but discovers pi sessions under them when given', () => {
+    const { root, label } = writeGlovePiFixture('pi-local');
+
+    // Without glove roots, the native scan finds nothing here.
+    expect(discoverTranscriptFiles()).toEqual([]);
+
+    const found = discoverTranscriptFiles([{ path: root, agentType: 'pi', label }]);
+    expect(found).toHaveLength(1);
+    expect(found[0].sessionId).toBe(GLOVE_PI_SESSION_ID);
+    expect(found[0].agentType).toBe('pi');
+    expect(found[0].label).toBe('pi-local');
+  });
+
+  it('does not scan a non-pi glove root (vibe has no history importer)', () => {
+    const { root } = writeGlovePiFixture('both');
+    // A vibe-typed root pointing at the same tree must be ignored, not parsed as pi.
+    expect(discoverTranscriptFiles([{ path: root, agentType: 'mistral-vibe', label: 'both' }])).toEqual([]);
   });
 });
 
@@ -204,6 +243,25 @@ describe('importHistoricalSessions', () => {
     // Per-event agent_type: transcript-pi.test.ts's "tags every event with
     // agentType 'pi'" test covers the parser output directly; FakeDb doesn't
     // retain that column, so it isn't re-checked through the DB layer here.
+  });
+
+  it('imports a gloved pi session from a glove root and tags it with the env id', async () => {
+    const { root, label } = writeGlovePiFixture('pi-local');
+    const db = new FakeDb();
+    const recorder = makeRecorder(db);
+    const eventStore = new EventStore();
+
+    const result = await importHistoricalSessions(db as unknown as Database, eventStore, recorder, {
+      gloveRoots: [{ path: root, agentType: 'pi', label }],
+    });
+
+    expect(result.discovered).toBe(1);
+    const session = result.sessions[0];
+    expect(session.sessionId).toBe(GLOVE_PI_SESSION_ID);
+    expect(session.agentType).toBe('pi');
+    // The env id rides through to the session name, so the gloved import is
+    // tagged just like a passively-watched gloved session.
+    expect(db.sessions.get(GLOVE_PI_SESSION_ID)?.session_name).toBe('pi-local');
   });
 
   it('re-scanning an already-imported session finds nothing new (idempotent)', async () => {

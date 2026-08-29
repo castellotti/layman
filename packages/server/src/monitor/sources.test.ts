@@ -11,6 +11,13 @@ function makeGloveVibeSandbox(base: string, name: string): string {
   return logDir;
 }
 
+/** Create the glove pi log layout for a sandbox: <base>/<name>/home/.pi/agent/sessions */
+function makeGlovePiSandbox(base: string, name: string): string {
+  const logDir = join(base, name, 'home', '.pi', 'agent', 'sessions');
+  mkdirSync(logDir, { recursive: true });
+  return logDir;
+}
+
 describe('GloveSource', () => {
   let root: string;
 
@@ -50,6 +57,29 @@ describe('GloveSource', () => {
 
     const labels = new GloveSource(() => base).roots().map((r) => r.label);
     expect(labels).toEqual(['vibe-local']);
+  });
+
+  it('discovers a sandbox with pi logs and tags it agentType "pi"', () => {
+    const base = join(root, 'sessions');
+    const piDir = makeGlovePiSandbox(base, 'pi-local');
+
+    const source = new GloveSource(() => base);
+    expect(source.roots()).toEqual([
+      { path: piDir, agentType: 'pi', label: 'pi-local' },
+    ]);
+  });
+
+  it('emits both a vibe and a pi root for a sandbox that runs both', () => {
+    const base = join(root, 'sessions');
+    const vibeDir = makeGloveVibeSandbox(base, 'both');
+    const piDir = makeGlovePiSandbox(base, 'both');
+
+    const roots = new GloveSource(() => base).roots();
+    // Order within a sandbox is vibe then pi; both carry the same env-id label.
+    expect(roots).toEqual([
+      { path: vibeDir, agentType: 'mistral-vibe', label: 'both' },
+      { path: piDir, agentType: 'pi', label: 'both' },
+    ]);
   });
 
   it('re-globs on each call so sandboxes appearing later are picked up', () => {

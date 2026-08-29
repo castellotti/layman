@@ -190,16 +190,18 @@ export class SessionRecorder {
     cwd: string,
     agentType: string,
     events: TimelineEvent[],
-    source: string
+    source: string,
+    sessionName?: string
   ): void {
     if (events.length === 0) return;
     const upsertSess = this.db.prepare(`
-      INSERT INTO recorded_sessions (session_id, cwd, agent_type, started_at, last_seen, source)
-      VALUES (?, ?, ?, ?, ?, ?)
+      INSERT INTO recorded_sessions (session_id, cwd, agent_type, started_at, last_seen, source, session_name)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(session_id) DO UPDATE SET
         last_seen = MAX(last_seen, excluded.last_seen),
         cwd = CASE WHEN recorded_sessions.cwd = '' THEN excluded.cwd ELSE recorded_sessions.cwd END,
-        source = CASE WHEN recorded_sessions.source = 'live' THEN 'live' ELSE excluded.source END
+        source = CASE WHEN recorded_sessions.source = 'live' THEN 'live' ELSE excluded.source END,
+        session_name = COALESCE(recorded_sessions.session_name, excluded.session_name)
     `);
     const insertEv = this.db.prepare(`
       INSERT OR IGNORE INTO recorded_events
@@ -210,7 +212,7 @@ export class SessionRecorder {
     const lastSeen = events[events.length - 1].timestamp;
     const filteredCwd = this.getPiiFilterEnabled() ? redactString(cwd) : cwd;
     const tx = this.db.transaction(() => {
-      upsertSess.run(sessionId, filteredCwd, agentType, startedAt, lastSeen, source);
+      upsertSess.run(sessionId, filteredCwd, agentType, startedAt, lastSeen, source, sessionName ?? null);
       for (const event of events) {
         insertEv.run(
           event.id,

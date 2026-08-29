@@ -58,7 +58,7 @@ const MOCK_CONFIG: LaymanConfig = {
     remindOnOrange: true,
   },
   liveTokens: { enabled: true, showThinking: true },
-  glove: { enabled: false, sessionsDir: '~/.glove/sessions' },
+  glove: { enabled: false, sessionsDir: '~/.glove/envs' },
   tts: TtsConfigSchema.parse({}),
   setupWizardComplete: false,
   openWebUiUrl: '',

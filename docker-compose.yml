@@ -26,11 +26,11 @@ services:
       # auto-discovers. Nothing else in ~/.pi is touched.
       - ${HOME}/.pi:/root/.pi
       # glove sandbox homes (read-only). When `glove.enabled` is set, the passive
-      # watcher tails harness logs under ~/.glove/sessions/<name>/home/ to monitor
-      # sandboxed sessions live. Read-only: Layman never writes into a sandbox, and
-      # the mount adds nothing to what the sandboxed agent can see. Off by default;
-      # native monitoring is unaffected whether or not glove is enabled.
-      - ${HOME}/.glove/sessions:/root/.glove/sessions:ro
+      # watchers tail harness logs (Vibe and pi) under ~/.glove/envs/<env-id>/home/
+      # to monitor sandboxed sessions live. Read-only: Layman never writes into a
+      # sandbox, and the mount adds nothing to what the sandboxed agent can see.
+      # Off by default; native monitoring is unaffected whether or not glove is enabled.
+      - ${HOME}/.glove/envs:/root/.glove/envs:ro
     environment:
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}

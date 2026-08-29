@@ -197,6 +197,9 @@ export class VibeSessionWatcher {
     const desired = new Map<string, WatchRoot>();
     for (const source of this.sources) {
       for (const root of source.roots()) {
+        // A glove source now emits both Vibe and pi roots; this watcher only
+        // parses Vibe, so ignore anything else (the pi watcher claims those).
+        if (root.agentType !== AGENT_TYPE) continue;
         // First source to claim a path wins; native precedes glove in the list.
         if (!desired.has(root.path)) desired.set(root.path, root);
       }
