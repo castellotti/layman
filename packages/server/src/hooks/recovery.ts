@@ -354,7 +354,24 @@ const claudeCodeSource: TranscriptSource = {
   parse: (lines, sessionId) => parseTranscriptLines(lines, sessionId, 'claude-code'),
   parseAfter: (lines, sessionId, afterTimestamp) =>
     parseTranscriptLines(lines, sessionId, 'claude-code', { afterTimestamp }),
+  resolveSessionId: resolveClaudeCodeSessionId,
 };
+
+/**
+ * The session id Claude Code stamps on each transcript line. On resume/fork the
+ * filename is a fresh uuid but the lines keep the original `sessionId`, so this
+ * is the authoritative identity. Returns the first non-empty `sessionId` found,
+ * or null if the format predates the field.
+ */
+export function resolveClaudeCodeSessionId(lines: string[]): string | null {
+  for (const line of lines) {
+    let obj: Record<string, unknown>;
+    try { obj = JSON.parse(line) as Record<string, unknown>; } catch { continue; }
+    const sid = obj.sessionId;
+    if (typeof sid === 'string' && sid) return sid;
+  }
+  return null;
+}
 
 const TRANSCRIPT_SOURCES: TranscriptSource[] = [claudeCodeSource, piTranscriptSource];
 
@@ -521,6 +538,8 @@ export interface ImportResult {
   totalEvents: number;
   skipped: number;
   errors: number;
+  /** Zero-event 'imported' rows deleted at the start of the run (see below). */
+  removedPhantoms: number;
   sessions: ImportedSessionSummary[];
 }
 
@@ -558,6 +577,7 @@ export async function importHistoricalSessions(
   const result: ImportResult = {
     discovered: 0,
     enriched: 0,
+    removedPhantoms: 0,
     totalEvents: 0,
     skipped: 0,
     errors: 0,
@@ -569,6 +589,19 @@ export async function importHistoricalSessions(
 
   const sourceByAgentType = new Map(TRANSCRIPT_SOURCES.map((s) => [s.agentType, s]));
 
+  // Remove phantom sessions left by an earlier, filename-keyed import: an
+  // 'imported' row that ended up with zero events because all of its
+  // deterministic event ids collided (INSERT OR IGNORE) with another session
+  // that already owned them — the resume/fork case resolveSessionId now
+  // prevents. importSession() never creates a 0-event row otherwise (it returns
+  // early on empty input), so an 'imported' session with no events is always
+  // such a phantom and is safe to drop.
+  result.removedPhantoms = db.prepare(
+    `DELETE FROM recorded_sessions
+       WHERE source = 'imported'
+         AND session_id NOT IN (SELECT DISTINCT session_id FROM recorded_events)`
+  ).run().changes;
+
   // Get existing sessions from DB
   type SessionRow = { session_id: string; source: string | null };
   const existingRows = db.prepare(
@@ -577,17 +610,8 @@ export async function importHistoricalSessions(
   const existingSessions = new Map(existingRows.map(r => [r.session_id, r.source]));
 
   for (const discovered of transcriptFiles) {
-    const { path, sessionId, agentType } = discovered;
+    const { path, agentType } = discovered;
     const source = sourceByAgentType.get(agentType)!;
-
-    const existingSource = existingSessions.get(sessionId);
-    const isKnown = existingSource !== undefined;
-
-    // If known and we're not enriching, skip
-    if (isKnown && !enrichExisting) {
-      result.skipped++;
-      continue;
-    }
 
     try {
       const content = await readTranscript(path);
@@ -598,6 +622,22 @@ export async function importHistoricalSessions(
 
       const lines = content.trim().split('\n').filter(Boolean);
       if (lines.length === 0) {
+        result.skipped++;
+        continue;
+      }
+
+      // Identify the session by the id stamped inside the transcript, not the
+      // filename. On resume/fork a harness writes `<new-uuid>.jsonl` whose lines
+      // still carry the original sessionId; keying by filename would mint a
+      // phantom whose events all collide with the original's. Falls back to the
+      // filename-derived id when the source can't resolve one.
+      const sessionId = source.resolveSessionId?.(lines) ?? discovered.sessionId;
+
+      const existingSource = existingSessions.get(sessionId);
+      const isKnown = existingSource !== undefined;
+
+      // If known and we're not enriching, skip
+      if (isKnown && !enrichExisting) {
         result.skipped++;
         continue;
       }
@@ -616,6 +656,10 @@ export async function importHistoricalSessions(
         // Batch insert via recorder. discovered.label (a glove env id, undefined
         // for native) tags the session name so gloved imports look like watched ones.
         recorder.importSession(sessionId, cwd, agentType, events, 'imported', discovered.label);
+        // Mark known for the rest of this scan so a second transcript file that
+        // resolves to the same session (its resume/fork sibling) enriches rather
+        // than re-importing — existingSessions was snapshotted before the loop.
+        existingSessions.set(sessionId, 'imported');
 
         const toolCallCount = events.filter(e => e.type === 'tool_call_completed').length;
         const userPromptCount = events.filter(e => e.type === 'user_prompt').length;

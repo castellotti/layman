@@ -95,7 +95,7 @@ export function ImportDialog({
   state, result, error, onScanNow, onClose,
 }: {
   state: 'idle' | 'scanning' | 'done' | 'error';
-  result: { discovered: number; enriched: number; totalEvents: number; skipped: number; errors: number; sessions: ImportedSession[] } | null;
+  result: { discovered: number; enriched: number; totalEvents: number; skipped: number; errors: number; removedPhantoms?: number; sessions: ImportedSession[] } | null;
   error: string | null;
   onScanNow: () => void;
   onClose: () => void;
@@ -131,6 +131,9 @@ export function ImportDialog({
               {result.discovered === 0 && result.enriched === 0
                 ? 'No new sessions found — all available transcripts are already in the database.'
                 : `Discovered ${result.discovered} new session${result.discovered === 1 ? '' : 's'}, enriched ${result.enriched} existing session${result.enriched === 1 ? '' : 's'} (${result.totalEvents.toLocaleString()} events total).`}
+              {!!result.removedPhantoms && result.removedPhantoms > 0 && (
+                <> Removed {result.removedPhantoms} empty duplicate session{result.removedPhantoms === 1 ? '' : 's'} left by a previous import.</>
+              )}
               {result.errors > 0 && (
                 <span style={{ color: 'var(--error)' }}> {result.errors} file{result.errors === 1 ? '' : 's'} failed to parse.</span>
               )}

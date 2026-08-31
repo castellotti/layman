@@ -67,6 +67,18 @@ class FakeDb {
         },
       };
     }
+    if (sql.includes("DELETE FROM recorded_sessions")) {
+      return {
+        run: () => {
+          let changes = 0;
+          for (const [id, s] of db.sessions) {
+            const hasEvents = Array.from(db.events.values()).some((e) => e.session_id === id);
+            if (s.source === 'imported' && !hasEvents) { db.sessions.delete(id); changes++; }
+          }
+          return { changes };
+        },
+      };
+    }
     if (sql.includes('SELECT session_id, source FROM recorded_sessions')) {
       return { all: () => Array.from(db.sessions.values()).map((s) => ({ session_id: s.session_id, source: s.source })) };
     }
@@ -89,7 +101,7 @@ class FakeDb {
     // SessionRecorder's constructor eagerly prepares statements for paths
     // these tests never exercise (the live event:new/event:update listeners,
     // recordQA) — a harmless no-op keeps construction from throwing.
-    return { run: () => {}, get: () => undefined, all: () => [] };
+    return { run: () => ({ changes: 0 }), get: () => undefined, all: () => [] };
   }
 }
 
@@ -336,5 +348,97 @@ describe('importHistoricalSessions', () => {
     expect(session.toolCallCount).toBe(missing.filter((e) => e.type === 'tool_call_completed').length);
     expect(session.userPromptCount).toBe(missing.filter((e) => e.type === 'user_prompt').length);
     expect(result.totalEvents).toBe(2);
+  });
+
+  /**
+   * Claude Code resume/fork: it writes `<new-uuid>.jsonl` but stamps every line
+   * with the ORIGINAL sessionId. Keying by filename used to mint a phantom
+   * empty session (all event ids collided with the original's) that
+   * re-"enriched" the same events on every scan.
+   */
+  const REAL_ID = '55555555-5555-5555-5555-555555555555';
+  const RESUME_FILE_ID = '66666666-6666-6666-6666-666666666666';
+
+  function writeResumeFixture(): void {
+    const projectDir = join(home, '.claude', 'projects', '-Users-test-cc-project');
+    mkdirSync(projectDir, { recursive: true });
+    const lines = [
+      JSON.stringify({
+        type: 'user', uuid: '77777777-7777-7777-7777-777777777777', sessionId: REAL_ID,
+        timestamp: '2026-08-21T09:00:00.000Z', cwd: '/Users/test/cc-project',
+        message: { role: 'user', content: 'Resumed hello' },
+      }),
+      JSON.stringify({
+        type: 'assistant', uuid: '88888888-8888-8888-8888-888888888888', sessionId: REAL_ID,
+        timestamp: '2026-08-21T09:00:01.000Z',
+        message: { role: 'assistant', content: [{ type: 'text', text: 'Resumed hi' }] },
+      }),
+    ];
+    // Filename differs from the internal sessionId — the resume case.
+    writeFileSync(join(projectDir, `${RESUME_FILE_ID}.jsonl`), lines.join('\n') + '\n');
+  }
+
+  it('resolveClaudeCodeSessionId reads the id from the lines, not the filename', async () => {
+    const { resolveClaudeCodeSessionId } = await import('./recovery.js');
+    const lines = [
+      JSON.stringify({ type: 'summary' }),
+      JSON.stringify({ type: 'user', sessionId: REAL_ID, uuid: 'x' }),
+    ];
+    expect(resolveClaudeCodeSessionId(lines)).toBe(REAL_ID);
+    expect(resolveClaudeCodeSessionId([JSON.stringify({ type: 'user' })])).toBeNull();
+  });
+
+  it('attributes a resume transcript to its internal session id, not the filename', async () => {
+    writeResumeFixture();
+    const db = new FakeDb();
+    const recorder = makeRecorder(db);
+    const eventStore = new EventStore();
+
+    const result = await importHistoricalSessions(db as unknown as Database, eventStore, recorder, { enrichExisting: true });
+
+    // Imported under REAL_ID, and no phantom row under the filename id.
+    expect(result.discovered).toBe(1);
+    expect(result.sessions[0].sessionId).toBe(REAL_ID);
+    expect(db.sessions.has(REAL_ID)).toBe(true);
+    expect(db.sessions.has(RESUME_FILE_ID)).toBe(false);
+  });
+
+  it('does not re-import/enrich a resume transcript whose real session is already live', async () => {
+    writeResumeFixture();
+    const db = new FakeDb();
+    const recorder = makeRecorder(db);
+    const eventStore = new EventStore();
+
+    // Simulate the real session already fully recorded live. Live events carry
+    // randomUUID ids (not the transcript's deterministic ones), but the
+    // enrichment cutoff is MAX(timestamp): with the recorded events at or past
+    // the transcript's own timestamps, parseAfter returns nothing to add.
+    const lastTs = new Date('2026-08-21T09:00:01.000Z').getTime();
+    db.sessions.set(REAL_ID, { session_id: REAL_ID, cwd: '/Users/test/cc-project', agent_type: 'claude-code', started_at: lastTs - 1000, last_seen: lastTs, source: 'live', session_name: null });
+    db.events.set('live-a', { id: 'live-a', session_id: REAL_ID, type: 'user_prompt', timestamp: lastTs - 1000 });
+    db.events.set('live-b', { id: 'live-b', session_id: REAL_ID, type: 'agent_response', timestamp: lastTs });
+    const before = db.events.size;
+
+    const result = await importHistoricalSessions(db as unknown as Database, eventStore, recorder, { enrichExisting: true });
+
+    expect(result.discovered).toBe(0);
+    expect(result.enriched).toBe(0);
+    expect(db.events.size).toBe(before); // no duplication of the live session
+    expect(db.sessions.has(RESUME_FILE_ID)).toBe(false); // no phantom under the filename
+  });
+
+  it('removes a pre-existing zero-event imported phantom and reports it', async () => {
+    writeClaudeCodeFixture();
+    const db = new FakeDb();
+    const recorder = makeRecorder(db);
+    const eventStore = new EventStore();
+
+    // A leftover phantom from an earlier filename-keyed import.
+    db.sessions.set('99999999-9999-9999-9999-999999999999', { session_id: '99999999-9999-9999-9999-999999999999', cwd: '', agent_type: 'claude-code', started_at: 1, last_seen: 1, source: 'imported', session_name: null });
+
+    const result = await importHistoricalSessions(db as unknown as Database, eventStore, recorder, { enrichExisting: true });
+
+    expect(result.removedPhantoms).toBe(1);
+    expect(db.sessions.has('99999999-9999-9999-9999-999999999999')).toBe(false);
   });
 });

@@ -42,6 +42,20 @@ export interface TranscriptSource {
   discover(): DiscoveredTranscript[];
   parse(lines: string[], sessionId: string): { events: TimelineEvent[]; metadata: TranscriptMetadata };
   /**
+   * The transcript's *authoritative* session id, read from the file contents
+   * rather than its filename. Optional; when omitted (or it returns null) the
+   * filename-derived id from `discover()` is used.
+   *
+   * This exists because a harness can write a transcript whose filename differs
+   * from the session it belongs to. Claude Code does this on resume/fork: it
+   * creates `<new-uuid>.jsonl` but stamps every line with the *original*
+   * `sessionId`. Keying by filename then mints a phantom session whose events
+   * all collide (on their deterministic ids) with the original's, leaving a
+   * 0-event row that re-"enriches" the same events on every scan. Resolving the
+   * id from the contents attributes those lines to the real session instead.
+   */
+  resolveSessionId?(lines: string[]): string | null;
+  /**
    * Parse only events after a cutoff timestamp, for cheap enrichment of an
    * already-recorded session. Optional: a source without this (no on-disk
    * format to filter incrementally, or not worth the complexity yet) still
