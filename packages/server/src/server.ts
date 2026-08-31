@@ -24,7 +24,7 @@ import { PII_CATEGORIES, PII_GROUPS } from './pii/categories.js';
 import { scanPii, executePurge } from './pii/purge.js';
 import { updateConfig, saveConfig } from './config/config.js';
 import { openDatabase } from './db/database.js';
-import { SessionRecorder } from './db/recorder.js';
+import { SessionRecorder, countRecordedSessionsByAgentType } from './db/recorder.js';
 import { BookmarkStore } from './db/bookmarks.js';
 import { HighlightStore } from './db/highlights.js';
 import { TurnStore } from './turns/store.js';
@@ -50,6 +50,21 @@ function mergeDeclined(status: SetupStatus, declinedClients: string[], openWebUi
     if (c.id === 'open-webui') {
       c.detected = !!(openWebUiUrl?.trim());
     }
+  }
+  return status;
+}
+
+/**
+ * Annotate the setup status with recorded-session counts per harness. Each
+ * client's id is also its stored agent_type ('claude-code', 'codex', 'cline',
+ * 'pi', 'opencode', 'mistral-vibe', 'open-webui'), so the map keys line up
+ * directly. Lets the UI show that a harness's history is preserved even when
+ * the harness is no longer installed on this machine.
+ */
+function mergeRecordedCounts(status: SetupStatus, counts: Record<string, number>): SetupStatus {
+  status.claudeCodeRecordedSessions = counts['claude-code'] ?? 0;
+  for (const c of status.optionalClients) {
+    c.recordedSessionCount = counts[c.id] ?? 0;
   }
   return status;
 }
@@ -718,7 +733,8 @@ export function createServer(config: LaymanConfig): LaymanServer {
     // Setup status — check if hooks and slash command are installed
     fastify.get('/api/setup/status', async () => {
       const installer = makeInstaller();
-      return mergeDeclined(installer.getStatus(), activeConfig.declinedClients ?? [], activeConfig.openWebUiUrl);
+      const status = mergeDeclined(installer.getStatus(), activeConfig.declinedClients ?? [], activeConfig.openWebUiUrl);
+      return mergeRecordedCounts(status, countRecordedSessionsByAgentType(db));
     });
 
     // Orphaned project-level hooks — leftovers from before Layman installed
@@ -769,7 +785,10 @@ export function createServer(config: LaymanConfig): LaymanServer {
         installer.installCodexHooks();
         installer.installClineHooks();
       }
-      return mergeDeclined(installer.getStatus(), activeConfig.declinedClients ?? [], activeConfig.openWebUiUrl);
+      return mergeRecordedCounts(
+        mergeDeclined(installer.getStatus(), activeConfig.declinedClients ?? [], activeConfig.openWebUiUrl),
+        countRecordedSessionsByAgentType(db),
+      );
     });
 
     // Setup install single client
@@ -782,7 +801,10 @@ export function createServer(config: LaymanConfig): LaymanServer {
       });
       saveConfig(activeConfig);
       broadcast({ type: 'session:config', config: activeConfig });
-      return mergeDeclined(installer.getStatus(), activeConfig.declinedClients ?? [], activeConfig.openWebUiUrl);
+      return mergeRecordedCounts(
+        mergeDeclined(installer.getStatus(), activeConfig.declinedClients ?? [], activeConfig.openWebUiUrl),
+        countRecordedSessionsByAgentType(db),
+      );
     });
 
     // Setup uninstall single client
@@ -790,7 +812,10 @@ export function createServer(config: LaymanConfig): LaymanServer {
       const { client } = request.params;
       const installer = makeInstaller();
       installer.uninstallClient(client);
-      return mergeDeclined(installer.getStatus(), activeConfig.declinedClients ?? [], activeConfig.openWebUiUrl);
+      return mergeRecordedCounts(
+        mergeDeclined(installer.getStatus(), activeConfig.declinedClients ?? [], activeConfig.openWebUiUrl),
+        countRecordedSessionsByAgentType(db),
+      );
     });
 
     // Record declined clients
@@ -833,7 +858,10 @@ export function createServer(config: LaymanConfig): LaymanServer {
           const msg = err instanceof Error ? err.message : String(err);
           return reply.status(400).send({ error: msg });
         }
-        return mergeDeclined(installer.getStatus(), activeConfig.declinedClients ?? [], activeConfig.openWebUiUrl);
+        return mergeRecordedCounts(
+        mergeDeclined(installer.getStatus(), activeConfig.declinedClients ?? [], activeConfig.openWebUiUrl),
+        countRecordedSessionsByAgentType(db),
+      );
       },
     );
 
@@ -849,7 +877,10 @@ export function createServer(config: LaymanConfig): LaymanServer {
         const msg = err instanceof Error ? err.message : String(err);
         return reply.status(400).send({ error: msg });
       }
-      return mergeDeclined(installer.getStatus(), activeConfig.declinedClients ?? [], activeConfig.openWebUiUrl);
+      return mergeRecordedCounts(
+        mergeDeclined(installer.getStatus(), activeConfig.declinedClients ?? [], activeConfig.openWebUiUrl),
+        countRecordedSessionsByAgentType(db),
+      );
     });
 
     // Open WebUI: probe common URLs in parallel to auto-detect a running instance

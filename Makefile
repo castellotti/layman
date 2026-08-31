@@ -23,6 +23,7 @@ clean:
 # ── Quick start (pre-built ghcr.io image) ─────────────────────────────────────
 
 start:
+	@mkdir -p "$${HOME}/.local/share/layman"
 	docker compose -f docker-compose.ghcr.yml pull
 	docker compose -f docker-compose.ghcr.yml up -d
 	@echo ""
@@ -33,6 +34,7 @@ stop:
 	@echo "Layman stopped."
 
 update:
+	@mkdir -p "$${HOME}/.local/share/layman"
 	docker compose -f docker-compose.ghcr.yml pull
 	docker compose -f docker-compose.ghcr.yml up -d
 	@echo "Layman updated and restarted."
@@ -45,6 +47,7 @@ docker-build:
 # Start Layman pointed at the current working directory's .claude folder.
 # Override the project dir: make docker-run LAYMAN_PROJECT_DIR=/path/to/project
 docker-run: docker-build
+	@mkdir -p "$${HOME}/.local/share/layman"
 	LAYMAN_PROJECT_DIR=$(or $(LAYMAN_PROJECT_DIR),$(CURDIR)) \
 	docker compose up -d
 	@echo ""
