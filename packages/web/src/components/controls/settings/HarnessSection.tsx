@@ -132,7 +132,17 @@ export function HarnessSetupSection({ onSend }: { onSend: (msg: ClientMessage) =
     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
       {/* Claude Code row */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', minHeight: 26 }}>
-        <span style={{ fontSize: 12, color: 'var(--text)' }}>Claude Code</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ fontSize: 12, color: 'var(--text)' }}>Claude Code</span>
+          {!claudeCodeOk && !!setupStatus?.claudeCodeRecordedSessions && (
+            <span
+              title="Claude Code hooks aren't installed here, but its recorded history is preserved in Layman's database."
+              style={{ fontSize: 10, color: 'var(--text-muted)', opacity: 0.9 }}
+            >
+              · {setupStatus.claudeCodeRecordedSessions} recorded {setupStatus.claudeCodeRecordedSessions === 1 ? 'session' : 'sessions'} kept
+            </span>
+          )}
+        </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           {setupStatus && claudeCodeOk && (
             <>
@@ -171,6 +181,14 @@ export function HarnessSetupSection({ onSend }: { onSend: (msg: ClientMessage) =
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                 <span style={{ fontSize: 12, color: client.detected ? 'var(--text)' : 'var(--text-faint)' }}>{client.name}</span>
                 {!client.detected && <span style={{ fontSize: 10.5, color: 'var(--text-faint)' }}>(not detected)</span>}
+                {!client.detected && !!client.recordedSessionCount && (
+                  <span
+                    title="This harness is not installed here, but its recorded history is preserved in Layman's database."
+                    style={{ fontSize: 10, color: 'var(--text-muted)', opacity: 0.9 }}
+                  >
+                    · {client.recordedSessionCount} recorded {client.recordedSessionCount === 1 ? 'session' : 'sessions'} kept
+                  </span>
+                )}
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                 {client.detected && client.commandInstalled && (

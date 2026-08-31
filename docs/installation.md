@@ -102,7 +102,7 @@ Opening one restores that exact view. Add `?view=logs` (or `dashboard`, `prompts
 
 If a link opens on **"Not found on this instance"**, the id is not in this Layman's database. Usually that means the link came from a different machine, or the session was deleted or purged here. The panel names the instance it checked and offers a search box so you can look for the session by name or content.
 
-Links are built from the `publicUrl` setting when you set one, and otherwise from whatever address you are browsing. Set `publicUrl` in `~/.claude/layman.json` if you want copied links to use a hostname other people can reach - otherwise a link copied from `localhost` only works on your own machine.
+Links are built from the `publicUrl` setting when you set one, and otherwise from whatever address you are browsing. Set `publicUrl` in `~/.local/share/layman/layman.json` if you want copied links to use a hostname other people can reach - otherwise a link copied from `localhost` only works on your own machine.
 
 ## Reading responses aloud (optional)
 
@@ -139,7 +139,7 @@ browser, and if you also turn off *Preserve pitch* it raises the pitch too - the
 | **"speaches has no models installed"** | Run the `curl -X POST …/v1/models/…` command above. |
 | **Test connection fails with a connection error** | speaches is not running, or not on port 8000. Check with `curl http://localhost:8000/v1/models`. |
 | **Nothing happens for 30-60 seconds after clicking a speaker** | A long reply is several minutes of audio and takes real time to synthesise. The status bar shows `◌` while it works. Lower *Max characters* if you want it to start sooner. |
-| **"Speed must be between 0.5 and 2.0"** | Only reachable by hand-editing `~/.claude/layman.json`; the slider is already limited to what speaches accepts. |
+| **"Speed must be between 0.5 and 2.0"** | Only reachable by hand-editing `~/.local/share/layman/layman.json`; the slider is already limited to what speaches accepts. |
 
 If Layman runs in Docker and speaches runs on your machine, leave the endpoint as
 `http://localhost:8000` - Layman rewrites it to reach the host automatically.

@@ -13,6 +13,24 @@ export interface QARecord {
   latencyMs: number | null;
 }
 
+/**
+ * Count recorded sessions per harness (agent_type) from the database.
+ *
+ * Used by the setup-status route so the UI can reassure the user that a
+ * harness's history is preserved even when the harness is no longer installed
+ * on this machine (e.g. after a home-folder restore onto a fresh OS). The DB is
+ * the source of truth here — records never depend on the harness still being
+ * present. Returns a map like `{ 'claude-code': 413, 'cline': 8, ... }`.
+ */
+export function countRecordedSessionsByAgentType(db: Database): Record<string, number> {
+  const rows = db
+    .prepare('SELECT agent_type, COUNT(*) AS n FROM recorded_sessions GROUP BY agent_type')
+    .all() as Array<{ agent_type: string; n: number }>;
+  const counts: Record<string, number> = {};
+  for (const { agent_type, n } of rows) counts[agent_type] = n;
+  return counts;
+}
+
 export class SessionRecorder {
   private upsertSession: BetterSqlite3.Statement<unknown[]>;
   private insertEvent: BetterSqlite3.Statement<unknown[]>;

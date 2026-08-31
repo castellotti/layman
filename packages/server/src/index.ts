@@ -9,7 +9,17 @@ import { tmpdir } from 'os';
 import { createServer } from './server.js';
 import { HookInstaller, findOrphanedProjectHooks, repairOrphanedProjectHooks } from './hooks/installer.js';
 import { loadConfig, setConfig } from './config/config.js';
+import { migrateLegacyData } from './config/paths.js';
 import type { LaymanConfig } from './config/schema.js';
+
+/**
+ * Move Layman's data/config out of the legacy ~/.claude location on first
+ * launch (non-destructive copy). Runs before loadConfig/openDatabase so both
+ * read from the new path. No-op once migrated. See config/paths.ts.
+ */
+function runDataMigration(): void {
+  for (const msg of migrateLegacyData()) console.log(`[layman] ${msg}`);
+}
 
 const PID_FILE = join(tmpdir(), 'layman.pid');
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -58,6 +68,7 @@ program
       ...(Object.keys(analysisFlags).length > 0 ? { analysis: analysisFlags as LaymanConfig['analysis'] } : {}),
     };
 
+    runDataMigration();
     const config = await loadConfig(cliFlags);
     setConfig(config);
 
@@ -125,6 +136,7 @@ program
       ...(Object.keys(analysisFlags).length > 0 ? { analysis: analysisFlags as LaymanConfig['analysis'] } : {}),
     };
 
+    runDataMigration();
     const config = await loadConfig(cliFlags);
     setConfig(config);
 

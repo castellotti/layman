@@ -1,8 +1,8 @@
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs';
-import { join, dirname } from 'path';
-import { homedir } from 'os';
+import { dirname } from 'path';
 import { cosmiconfig } from 'cosmiconfig';
 import { LaymanConfigSchema } from './schema.js';
+import { laymanConfigPath } from './paths.js';
 import type { LaymanConfig } from './schema.js';
 
 const explorer = cosmiconfig('layman', {
@@ -19,10 +19,11 @@ const explorer = cosmiconfig('layman', {
 
 /**
  * Derive the path for the auto-saved runtime config.
- * Stored alongside the global settings in ~/.claude/layman.json.
+ * Stored in Layman's harness-agnostic data dir (see config/paths.ts);
+ * historically this lived at ~/.claude/layman.json.
  */
 function getRuntimeConfigPath(): string {
-  return join(homedir(), '.claude', 'layman.json');
+  return laymanConfigPath();
 }
 
 /** Fields not worth persisting (they're CLI/startup-only concerns). */
@@ -68,7 +69,7 @@ export async function loadConfig(
     // No config file — use defaults
   }
 
-  // Auto-saved runtime config (.claude/layman.json)
+  // Auto-saved runtime config (layman.json in the data dir; see config/paths.ts)
   const runtimeFile = loadRuntimeConfig();
 
   // Existing users who already have a config file should not see the wizard
