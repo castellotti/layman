@@ -1,20 +1,23 @@
 import BetterSqlite3 from 'better-sqlite3';
-import { join } from 'path';
-import { homedir } from 'os';
+import { ensureLaymanDataDir, laymanDbPath } from '../config/paths.js';
 
 export type Database = BetterSqlite3.Database;
 
 export function openDatabase(): Database {
-  const dbPath = join(homedir(), '.claude', 'layman.db');
+  // Ensure the data directory exists — better-sqlite3 will not create the
+  // parent directory, and on a fresh install nothing else has created it yet.
+  ensureLaymanDataDir();
+  const dbPath = laymanDbPath();
   const db = new BetterSqlite3(dbPath);
 
   /*
    * DELETE, not WAL — deliberately, and the reason matters.
    *
-   * The database lives at ~/.claude/layman.db, which in the normal Docker
-   * deployment is a *bind mount* into the container (docker-compose.yml mounts
-   * ${HOME}/.claude). On macOS that mount is FUSE-backed (virtiofs / gRPC-FUSE),
-   * and WAL mode depends on two things such mounts do not reliably provide:
+   * The database lives at ~/.local/share/layman/layman.db, which in the normal
+   * Docker deployment is a *bind mount* into the container (docker-compose.yml
+   * mounts ${HOME}/.local/share/layman). On macOS that mount is FUSE-backed
+   * (virtiofs / gRPC-FUSE), and WAL mode depends on two things such mounts do
+   * not reliably provide:
    * a shared-memory `-shm` file coordinated via mmap, and POSIX advisory locks
    * with correct cross-process semantics. Running WAL over one is a documented
    * way to corrupt a SQLite database.

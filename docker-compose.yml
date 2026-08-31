@@ -6,6 +6,14 @@ services:
     ports:
       - "127.0.0.1:8880:8880"
     volumes:
+      # Mount Layman's own data directory. This is where the SQLite database
+      # (layman.db) and runtime config (layman.json) live — a harness-agnostic
+      # XDG data dir, NOT inside any single harness's config. It maps to the
+      # container's /root/.local/share/layman (homedir() there is /root), so the
+      # database stays on the host filesystem (never a Docker volume) exactly as
+      # before, just at a neutral path. Historically this data lived in ~/.claude;
+      # the server migrates it here on first launch.
+      - ${HOME}/.local/share/layman:/root/.local/share/layman
       # Mount the host user's ~/.claude so the installer can write global hooks and commands
       - ${HOME}/.claude:/root/.claude
       # Mount ~/.config so the installer can detect and write commands for optional clients

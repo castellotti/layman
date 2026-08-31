@@ -424,6 +424,8 @@ export interface OptionalClientStatus {
   hooksInstalled?: boolean;
   hooksUpToDate?: boolean;
   declined?: boolean;
+  /** Sessions recorded from this harness in the DB (preserved even if uninstalled). */
+  recordedSessionCount?: number;
 }
 
 export interface SetupStatus {
@@ -434,6 +436,8 @@ export interface SetupStatus {
   statusLineInstalled: boolean;
   statusLineUpToDate: boolean;
   claudeCodeDeclined?: boolean;
+  /** Recorded-session count for Claude Code (not an optional client). */
+  claudeCodeRecordedSessions?: number;
   optionalClients: OptionalClientStatus[];
 }
 

@@ -65,7 +65,7 @@ To inspect the duplicates yourself (a `sqlite3` CLI is the practical tool here, 
 `better-sqlite3` has no prebuild for this machine's Node ABI):
 
 ```bash
-sqlite3 ~/.claude/layman.db "
+sqlite3 ~/.local/share/layman/layman.db "
 WITH p AS (
   SELECT session_id, timestamp, json_extract(data_json,'\$.prompt') AS txt,
          LAG(timestamp) OVER w AS prev_ts,
@@ -158,9 +158,11 @@ manufactures differences that are not real - it produced a phantom "+23% regress
 
 ## The database and why it is not in WAL mode
 
-`~/.claude/layman.db` is a plain file on the host. In the Docker deployment it is reached through
-the `${HOME}/.claude:/root/.claude` bind mount - it is **not** in a Docker volume, so it survives
-`docker compose down -v`, can be backed up with `cp`, and is not affected by Docker's VM disk.
+`~/.local/share/layman/layman.db` is a plain file on the host. In the Docker deployment it is reached
+through the `${HOME}/.local/share/layman:/root/.local/share/layman` bind mount - it is **not** in a
+Docker volume, so it survives `docker compose down -v`, can be backed up with `cp`, and is not
+affected by Docker's VM disk. (Historically it lived in `~/.claude`; Layman copies it to the new
+location on first launch and leaves the original as a backup — see `config/paths.ts`.)
 
 It runs in `journal_mode = DELETE`. On macOS a bind mount is FUSE-backed, and WAL depends on an
 mmap-coordinated `-shm` file plus correct cross-process advisory locking - which FUSE mounts do not
@@ -171,7 +173,7 @@ If it happens again, the recovery is non-destructive and lost nothing last time:
 
 ```bash
 make docker-stop                                  # stop writes first
-cd ~/.claude
+cd ~/.local/share/layman
 mkdir -p layman-backup-$(date +%Y%m%d-%H%M%S)
 cp -p layman.db layman.db-wal layman.db-shm layman-backup-*/   # -wal/-shm may not exist
 
