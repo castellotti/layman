@@ -3,6 +3,7 @@ import { join, dirname } from 'path';
 import { homedir } from 'os';
 import { createHash } from 'crypto';
 import { fileURLToPath } from 'url';
+import { laymanDataDir } from '../config/paths.js';
 
 interface HookEntry {
   type: 'http';
@@ -41,6 +42,13 @@ export interface OptionalClientStatus {
   hooksInstalled?: boolean;
   hooksUpToDate?: boolean;
   declined?: boolean;
+  /**
+   * Number of sessions recorded from this harness in the database. Populated by
+   * the status route from the DB, not by the (filesystem-only) installer. Lets
+   * the UI show "not installed — N recorded sessions kept" for a harness whose
+   * data is preserved even though it is no longer present on this machine.
+   */
+  recordedSessionCount?: number;
 }
 
 export interface SetupStatus {
@@ -51,13 +59,15 @@ export interface SetupStatus {
   statusLineInstalled: boolean;
   statusLineUpToDate: boolean;
   claudeCodeDeclined?: boolean;
+  /** Recorded-session count for Claude Code (not an optional client). */
+  claudeCodeRecordedSessions?: number;
   optionalClients: OptionalClientStatus[];
 }
 
 const GLOBAL_SETTINGS_PATH = join(homedir(), '.claude', 'settings.json');
 const COMMANDS_DIR = join(homedir(), '.claude', 'commands');
 const HOOKS_DIR = join(homedir(), '.claude', 'hooks', 'layman');
-const LAYMAN_DATA_DIR = join(homedir(), '.local', 'share', 'layman');
+const LAYMAN_DATA_DIR = laymanDataDir();
 const OPENWEBUI_VERSION_FILE = join(LAYMAN_DATA_DIR, '.openwebui-version');
 const OPENWEBUI_FUNCTION_ID = 'layman_monitor';
 const OPENWEBUI_FUNCTION_META = {

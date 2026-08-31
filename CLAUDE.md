@@ -69,7 +69,7 @@ Layman is a pnpm monorepo with two packages:
 
 6. **EventStore** (`packages/server/src/events/store.ts`) — in-memory, max 10,000 events, emits `event:new` / `event:update` / `sessions:changed`. Also tracks active sessions (sessionId → cwd) via `trackSession()`. Events passing through the store are automatically scanned by the PII filter before storage.
 
-7. **Session recording** (`packages/server/src/db/`) — SQLite database (`~/.claude/layman.db`, see `db/database.ts`) records all events for history and full-text search. Search uses SQLite FTS5 with a custom query parser supporting `+required`, `-excluded`, and `"quoted phrases"` operators.
+7. **Session recording** (`packages/server/src/db/`) — SQLite database (`~/.local/share/layman/layman.db`, see `db/database.ts` and `config/paths.ts`) records all events for history and full-text search. Search uses SQLite FTS5 with a custom query parser supporting `+required`, `-excluded`, and `"quoted phrases"` operators.
 
 8. **WebSocket** (`/ws`): On connect, server replays the last 100 events, all pending approvals, config, and current sessions list. After that, all changes are pushed as typed `ServerMessage` frames. The protocol is defined in `packages/server/src/types/index.ts` (server) and mirrored in `packages/web/src/lib/ws-protocol.ts` (client) — keep these in sync when adding message types.
 
@@ -260,7 +260,21 @@ tested in node, where there is no `Audio` and no `URL.createObjectURL`.
 
 - **`EventStore.setStringFilter()`**: `attachLaymans()` writes `event.laymans.explanation` directly, bypassing `EventData` and therefore the `dataFilter` PII redaction every other field gets. A separate `stringFilter` hook (wired in `server.ts` next to `setDataFilter`) redacts it at the same point. Any future field that rides outside `EventData` needs the same treatment — it will not be filtered by default.
 
-- **Docker mounts**: The container mounts `${HOME}/.claude` (Claude Code hooks/commands/StatusLine relay), `${HOME}/.config` (OpenCode detection/commands), `${HOME}/.vibe` (Vibe log watching), `${HOME}/Documents/Cline` (Cline hook script installation), `${HOME}/.codex` (Codex hook script installation and hooks.json), and `${HOME}/.pi` (pi extension installation). The `HookInstaller` runs inside the container and writes through these mounts to the host filesystem. `${HOME}/.glove/envs` is also mounted **read-only** (`:ro`) for `GloveSource` — it is the one mount Layman only ever reads, never writes, because writing into a sandbox is exactly what the feature must not do.
+- **Docker mounts**: The container mounts `${HOME}/.local/share/layman` (Layman's own data dir — `layman.db` and `layman.json`; see storage note below), `${HOME}/.claude` (Claude Code hooks/commands/StatusLine relay), `${HOME}/.config` (OpenCode detection/commands), `${HOME}/.vibe` (Vibe log watching), `${HOME}/Documents/Cline` (Cline hook script installation), `${HOME}/.codex` (Codex hook script installation and hooks.json), and `${HOME}/.pi` (pi extension installation). The `HookInstaller` runs inside the container and writes through these mounts to the host filesystem. `${HOME}/.glove/envs` is also mounted **read-only** (`:ro`) for `GloveSource` — it is the one mount Layman only ever reads, never writes, because writing into a sandbox is exactly what the feature must not do.
+
+- **Storage is harness-agnostic, not inside `~/.claude`** (`config/paths.ts`). Layman's SQLite
+  database and runtime config are its own data, not Claude Code's — a user may run only Codex, Vibe,
+  or pi and never install Claude Code. They live in an XDG data dir resolved as
+  `$LAYMAN_DATA_DIR` → `$XDG_DATA_HOME/layman` → `~/.local/share/layman`. In the Linux container this
+  resolves to `/root/.local/share/layman`, which docker-compose bind-mounts to the host's
+  `${HOME}/.local/share/layman` — still a **host** file, never a Docker volume, so the DELETE
+  journal-mode reasoning is unchanged. Historically both files lived in `~/.claude/`;
+  `migrateLegacyData()` (run before `loadConfig`/`openDatabase` in `index.ts`) **copies** them to the
+  new location on first launch when the new file is absent — non-destructive (originals kept as a
+  backup), idempotent, and doubling as a restore path (dropping a backed-up `~/.claude/layman.db` in
+  place is adopted on next launch). All recorded events are keyed by harness (`agent_type`) but never
+  depend on that harness still being installed: history for a removed harness is preserved, and the
+  setup-status route surfaces it as "N recorded sessions kept" via `countRecordedSessionsByAgentType`.
 
 - **glove monitoring is read-only by design** (`monitor/sources.ts`, `GloveConfigSchema`): glove sandboxes a harness in a container and persists its fake home on the host under `~/.glove/envs/<env-id>/home/`; Layman tails those already-persisted logs from outside. The feature adds nothing to what the sandboxed agent can see — no new mount into the container, no egress — which is a deliberate fit for glove's security model, and the reason the mount is `:ro`. It is off by default (`glove.enabled`), and enabling or disabling it never affects native monitoring. Only harnesses that persist a tailable transcript are discoverable this way (Vibe and pi); a network-hook harness inside a net-restricted sandbox cannot reach Layman and persists nothing to tail, so it needs a different mechanism (a glove-provided forwarder), not `GloveSource`. Interception/blocking of a sandboxed harness is that same separate mechanism — this watcher is logging only.
 
@@ -347,11 +361,11 @@ tested in node, where there is no `Audio` and no `URL.createObjectURL`.
   un-awaited `fetch` is ever flushed, losing `SessionEnd` entirely. The shutdown post therefore has
   its own much shorter timeout (800 ms): a delayed exit is a worse failure than a missing end event.
 
-- **Auto-activate**: The `autoActivateClients` config array (in `~/.claude/layman.json`) lists client agent types (e.g. `'claude-code'`) whose sessions should auto-activate without requiring `/layman`. When a hook event arrives from a matching agent, `handler.ts` calls `gate.activate()` before the gate check, so events flow immediately. The toggle is in Settings → Client Setup on each client's row. Off by default.
+- **Auto-activate**: The `autoActivateClients` config array (in `~/.local/share/layman/layman.json`) lists client agent types (e.g. `'claude-code'`) whose sessions should auto-activate without requiring `/layman`. When a hook event arrives from a matching agent, `handler.ts` calls `gate.activate()` before the gate check, so events flow immediately. The toggle is in Settings → Client Setup on each client's row. Off by default.
 
 - **Duplicate prompts are collapsed at extraction time, not deleted from the DB**: the hook
   double-registration bug (below) recorded ~800 `user_prompt` rows twice, and those rows are still
-  in `~/.claude/layman.db`. `extractTurns()` treats a `user_prompt` whose trimmed text matches the
+  in `layman.db`. `extractTurns()` treats a `user_prompt` whose trimmed text matches the
   open turn's and lands within `DUPLICATE_PROMPT_WINDOW_MS` (1 s) as the same prompt, absorbing it
   into that turn. The window is measured, not guessed: 741 same-text pairs are <100 ms apart, 794
   within 1 s, and then nothing until 1 s+ (20 in 1 s–1 min, 34 beyond) which are genuine re-sends.
@@ -405,8 +419,8 @@ tested in node, where there is no `Audio` and no `URL.createObjectURL`.
 
 - **Drift monitoring design**: Drift scores use EMA smoothing (alpha 0.3) so a single LLM spike doesn't trigger alerts. Blocking at red level reuses `PendingApprovalManager` (same as tool approval). The two algorithms run in parallel via `Promise.all`. Cumulative prompt scope means every user message expands the session goal — only agent-initiated scope creep counts as drift. Per-item false-positive dismissals are injected into the LLM prompt to prevent re-flagging without resetting scores.
 
-- **SQLite runs in `journal_mode = DELETE`, not WAL** (`db/database.ts`). `~/.claude/layman.db` is a
-  *bind mount* into the container, and on macOS that is FUSE-backed (virtiofs / gRPC-FUSE). WAL needs
+- **SQLite runs in `journal_mode = DELETE`, not WAL** (`db/database.ts`). `~/.local/share/layman/layman.db`
+  is a *bind mount* into the container, and on macOS that is FUSE-backed (virtiofs / gRPC-FUSE). WAL needs
   an mmap-coordinated `-shm` file and correct cross-process advisory locks, neither of which such a
   mount reliably provides — it is a documented way to corrupt a database. This is not hypothetical:
   on 2026-08-05 the database was found malformed (`btreeInitPage()` error 11 on two `recorded_events`
@@ -480,7 +494,7 @@ Two `OptionalClient` fields exist for pi and are worth knowing before adding a c
 - `tagStyle: 'line'` — every installed file gets a trailing `layman:<hash>` version tag, normally an HTML comment. That is a **syntax error in a TypeScript file**, which pi's extension is, so those emit `// layman:<hash>` instead. `getStatus()` matches the substring and is indifferent to the wrapper.
 - `getContent(options)` receives the installer options rather than nothing, so a client whose integration *embeds* configuration (pi bakes in both the server URL and the approval timeout) produces content that changes with it. That makes the content hash sensitive to those settings, so an install left pointing at an old URL reports as out of date instead of silently green.
 
-**Installation is opt-in.** The server does not auto-install on startup. On first dashboard visit, a modal lists all detected-but-unintegrated clients with toggles (default off); the user selects which to install and clicks **Accept**. Toggled-off clients are saved as `declinedClients` in `~/.claude/layman.json` and won't be offered again until the user clicks **Install** from Settings. Install/Uninstall is also available per-client in **Settings → Client Setup**.
+**Installation is opt-in.** The server does not auto-install on startup. On first dashboard visit, a modal lists all detected-but-unintegrated clients with toggles (default off); the user selects which to install and clicks **Accept**. Toggled-off clients are saved as `declinedClients` in `~/.local/share/layman/layman.json` and won't be offered again until the user clicks **Install** from Settings. Install/Uninstall is also available per-client in **Settings → Client Setup**.
 
 Setup API routes (all in `server.ts`):
 - `GET /api/setup/status` — returns `SetupStatus` with per-client `declined` flags merged from config

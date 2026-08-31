@@ -5,6 +5,10 @@ services:
     ports:
       - "127.0.0.1:8880:8880"
     volumes:
+      # Layman's own data dir (layman.db + layman.json), harness-agnostic.
+      # Kept on the host filesystem, never a Docker volume. Migrated here from
+      # the legacy ~/.claude location on first launch.
+      - ${HOME}/.local/share/layman:/root/.local/share/layman
       - ${HOME}/.claude:/root/.claude
       - ${HOME}/.config:/root/.config
       - ${HOME}/.vibe:/root/.vibe
