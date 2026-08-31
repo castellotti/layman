@@ -386,6 +386,22 @@ tested in node, where there is no `Audio` and no `URL.createObjectURL`.
   the recorded ids explicitly. A test that seeds "live" events using the *parser's* ids proves
   nothing; it hands the upsert something to collide with and hides the bug.
 
+- **A transcript is identified by the session id in its contents, not its filename**
+  (`recovery.ts`, `TranscriptSource.resolveSessionId`). Claude Code writes a resume/fork transcript
+  as `<new-uuid>.jsonl` but stamps every line with the *original* `sessionId`. Keying by filename
+  minted a phantom session whose deterministic event ids all collided (`INSERT OR IGNORE`) with the
+  original that already owned them — a 0-event row whose `MAX(timestamp)` was 0, so every subsequent
+  scan re-parsed the whole file and "enriched" the same colliding events forever (reported as
+  `enriched N` with 0 discovered, in a loop). `importHistoricalSessions()` now resolves each file's
+  session id from its lines (`resolveSessionId`, implemented for claude-code, absent for pi whose
+  filenames already match), so a resume file resolves to its real session and is skipped by the same
+  `parseAfter` cutoff / live-skip that protects any already-recorded session. Two consequences worth
+  keeping: the pre-loop `existingSessions` snapshot is updated after a discover so a same-scan sibling
+  file (the resume and its original both present) enriches rather than re-imports; and a one-time
+  `DELETE` at the start of each scan removes existing 0-event `imported` phantoms (reported as
+  `removedPhantoms`) — safe because `importSession()` returns early on empty input, so a 0-event
+  `imported` row can only be such a phantom.
+
 - **History import discovers glove pi sessions too** (`recovery.ts`, `transcript-pi.ts`).
   `discoverTranscriptFiles(gloveRoots)` scans, in addition to the native `~/.pi/agent/sessions`
   root, every *pi* root the passive watchers report (`gloveSource.roots()` threaded from the two
