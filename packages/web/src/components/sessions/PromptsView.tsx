@@ -19,6 +19,11 @@ interface HighlightEventPair {
   responseEvent: TimelineEvent | null;
 }
 
+// Sentinel section id for the non-folder "History" (unfiled highlights) group, so
+// it can share the single expanded-set hook backing this sidebar's collapsible
+// sections — mirrors UNFILED_SECTION_KEY in SessionsView.
+const UNFILED_SECTION_KEY = '__unfiled__';
+
 // ─── EventBlock ───────────────────────────────────────────────────────────────
 
 function EventBlock({ event, kind }: { event: TimelineEvent; kind: 'prompt' | 'response' }) {
@@ -477,35 +482,50 @@ export function PromptsView() {
 
               <div
                 onDragOver={(e) => { e.preventDefault(); handleDragOverContainer('unfiled'); }}
+                onClick={() => toggleExpanded(UNFILED_SECTION_KEY)}
                 style={{
-                  ...sectionLabel, paddingTop: 4,
+                  ...sectionLabel, paddingTop: 4, cursor: 'pointer',
                   background: dragOverContainerId === 'unfiled' && dragOverItemId === null ? 'var(--bg-selected)' : undefined,
                 }}
               >
+                <span style={{ fontSize: 9, color: 'var(--text-faint)', flexShrink: 0 }}>
+                  {isExpanded(UNFILED_SECTION_KEY) ? '▼' : '▶'}
+                </span>
                 History <span style={{ fontSize: 9, color: 'var(--text-faint)', textTransform: 'none', letterSpacing: 0, fontWeight: 400 }}>newest first</span>
+                <span style={{
+                  fontSize: 9.5, fontFamily: 'var(--font-mono)', color: 'var(--text-faint)',
+                  background: 'var(--bg-card)', border: '1px solid var(--border)',
+                  borderRadius: 10, padding: '0 5px',
+                }}>
+                  {unfiledHighlights.length}
+                </span>
               </div>
-              {unfiledHighlights.length === 0 && (
-                <div
-                  onDragOver={(e) => { e.preventDefault(); handleDragOverContainer('unfiled'); }}
-                  style={{ padding: '4px 12px', fontSize: 10, color: 'var(--text-faint)', fontStyle: 'italic' }}
-                >
-                  Drop highlights here
-                </div>
+              {isExpanded(UNFILED_SECTION_KEY) && (
+                <>
+                  {unfiledHighlights.length === 0 && (
+                    <div
+                      onDragOver={(e) => { e.preventDefault(); handleDragOverContainer('unfiled'); }}
+                      style={{ padding: '4px 12px', fontSize: 10, color: 'var(--text-faint)', fontStyle: 'italic' }}
+                    >
+                      Drop highlights here
+                    </div>
+                  )}
+                  {unfiledHighlights.map((h) => (
+                    <SidebarHighlightRow
+                      key={h.id}
+                      highlight={h}
+                      isSelected={selectedHighlightId === h.id}
+                      sessionLabel={sessionLabelById.get(h.sessionId)}
+                      isDragOver={draggedItemId !== h.id && dragOverContainerId === 'unfiled' && dragOverItemId === h.id}
+                      onSelect={handleSelectHighlight}
+                      onRename={(name) => handleRenameHighlight(h.id, name)}
+                      onDragStart={() => handleItemDragStart({ id: h.id, containerId: 'unfiled', bookmarked: true })}
+                      onDragOver={() => handleDragOverItem('unfiled', h.id)}
+                      onDragEnd={handleItemDragEnd}
+                    />
+                  ))}
+                </>
               )}
-              {unfiledHighlights.map((h) => (
-                <SidebarHighlightRow
-                  key={h.id}
-                  highlight={h}
-                  isSelected={selectedHighlightId === h.id}
-                  sessionLabel={sessionLabelById.get(h.sessionId)}
-                  isDragOver={draggedItemId !== h.id && dragOverContainerId === 'unfiled' && dragOverItemId === h.id}
-                  onSelect={handleSelectHighlight}
-                  onRename={(name) => handleRenameHighlight(h.id, name)}
-                  onDragStart={() => handleItemDragStart({ id: h.id, containerId: 'unfiled', bookmarked: true })}
-                  onDragOver={() => handleDragOverItem('unfiled', h.id)}
-                  onDragEnd={handleItemDragEnd}
-                />
-              ))}
             </>
           )}
         </div>

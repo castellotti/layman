@@ -196,6 +196,14 @@ export function SessionsView({ onSend }: SessionsViewProps) {
 
   const hasSidebarSearch = sidebarSearch.trim().length > 0;
 
+  // While a search is active, every section is forced open so matching rows
+  // inside an otherwise-collapsed folder/Unfiled aren't hidden — the stored
+  // collapse state is untouched and reasserts itself when the query clears.
+  const sectionExpanded = useCallback(
+    (id: string) => hasSidebarSearch || isExpanded(id),
+    [hasSidebarSearch, isExpanded]
+  );
+
   // While the server round-trip for match counts is pending, fall back to a local name/cwd
   // substring match so the list doesn't flash to "no results" during the debounce window.
   const matchesLocally = useCallback((s: RecordedSession) => {
@@ -430,7 +438,7 @@ export function SessionsView({ onSend }: SessionsViewProps) {
                     folderId={folder.id}
                     name={folder.name}
                     items={items}
-                    expanded={isExpanded(folder.id)}
+                    expanded={sectionExpanded(folder.id)}
                     onToggle={() => toggleExpanded(folder.id)}
                     viewingSessionId={viewingSessionId}
                     liveSessionIds={liveSessionIds}
@@ -463,7 +471,7 @@ export function SessionsView({ onSend }: SessionsViewProps) {
                 onClick={() => toggleExpanded(UNFILED_SECTION_KEY)}
               >
                 <span style={{ fontSize: 9, color: 'var(--text-faint)', flexShrink: 0 }}>
-                  {isExpanded(UNFILED_SECTION_KEY) ? '▼' : '▶'}
+                  {sectionExpanded(UNFILED_SECTION_KEY) ? '▼' : '▶'}
                 </span>
                 Unfiled
                 <span style={{
@@ -474,7 +482,7 @@ export function SessionsView({ onSend }: SessionsViewProps) {
                   {unfiledBookmarkedSessions.length}
                 </span>
               </div>
-              {isExpanded(UNFILED_SECTION_KEY) && (
+              {sectionExpanded(UNFILED_SECTION_KEY) && (
                 <>
                   {unfiledBookmarkedSessions.length === 0 && (
                     <div

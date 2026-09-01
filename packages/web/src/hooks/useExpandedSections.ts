@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 
 /**
  * Tracks which collapsible sidebar sections (folders, "Unfiled", …) are
@@ -13,6 +13,13 @@ import { useState, useCallback } from 'react';
 export function useExpandedSections(storageKey: string) {
   const [expanded, setExpanded] = useState<Set<string>>(() => load(storageKey));
 
+  // Persist as an effect rather than inside the updater: the updater must stay
+  // pure (React 18 StrictMode invokes it twice, and batched toggles run it with
+  // intermediate states), so a localStorage write there fires redundantly.
+  useEffect(() => {
+    save(storageKey, expanded);
+  }, [storageKey, expanded]);
+
   const isExpanded = useCallback((id: string) => expanded.has(id), [expanded]);
 
   const toggle = useCallback((id: string) => {
@@ -20,10 +27,9 @@ export function useExpandedSections(storageKey: string) {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
-      save(storageKey, next);
       return next;
     });
-  }, [storageKey]);
+  }, []);
 
   return { isExpanded, toggle };
 }
