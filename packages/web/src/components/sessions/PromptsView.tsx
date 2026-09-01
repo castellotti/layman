@@ -2,7 +2,7 @@ import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { useSessionStore } from '../../stores/sessionStore.js';
 import type { Highlight, HighlightFolder, TimelineEvent } from '../../lib/types.js';
-import { SearchInput, FilterChip, SECTION_LABEL_STYLE, CollapsibleFolderHeader, NewFolderRow, ConfirmDialog, CopyLinkButton } from '../primitives/index.js';
+import { SearchInput, FilterChip, SECTION_LABEL_STYLE, CollapsibleFolderHeader, FolderSectionHeader, InlineRenameInput, RenameButton, ConfirmDialog, CopyLinkButton } from '../primitives/index.js';
 import { getEffectiveAgentContent } from '../../lib/reasoning.js';
 import { isMarkdown, MARKDOWN_PROSE_COMPACT, REMARK_PLUGINS } from '../../lib/markdown.js';
 import { sessionDisplayName } from '../../lib/session-state.js';
@@ -10,6 +10,8 @@ import { useDragReorder } from '../../hooks/useDragReorder.js';
 import { useOptimisticOrder } from '../../hooks/useOptimisticOrder.js';
 import { useFolderDrag, reorderIds, type FolderDragSource, type FolderDropTarget } from '../../hooks/useFolderDrag.js';
 import { useFolderCrud } from '../../hooks/useFolderCrud.js';
+import { useExpandedSections, UNFILED_SECTION_KEY } from '../../hooks/useExpandedSections.js';
+import { useInlineEdit } from '../../hooks/useInlineEdit.js';
 import { SpeakButton } from '../tts/SpeakButton.js';
 
 interface HighlightEventPair {
@@ -66,6 +68,7 @@ interface SidebarHighlightRowProps {
   sessionLabel?: string;
   isDragOver?: boolean;
   onSelect: (h: Highlight) => void;
+  onRename?: (name: string) => void;
   onDragStart?: () => void;
   onDragOver?: () => void;
   onDragEnd?: () => void;
@@ -73,14 +76,22 @@ interface SidebarHighlightRowProps {
 
 function SidebarHighlightRow({
   highlight, isSelected, indent = false, sessionLabel, isDragOver = false,
-  onSelect, onDragStart, onDragOver, onDragEnd,
+  onSelect, onRename, onDragStart, onDragOver, onDragEnd,
 }: SidebarHighlightRowProps) {
   const [hovered, setHovered] = useState(false);
   const date = new Date(highlight.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
   const draggable = !!onDragStart;
+  const { editing, setEditing, editName, setEditName, commitRename, handleKeyDown, inputRef } =
+    useInlineEdit(highlight.name, (next) => onRename?.(next));
+
+  const startEditing = () => {
+    setEditName(highlight.name);
+    setEditing(true);
+  };
+
   return (
     <div
-      draggable={draggable}
+      draggable={draggable && !editing}
       onDragStart={(e) => { e.dataTransfer.effectAllowed = 'move'; onDragStart?.(); }}
       onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; onDragOver?.(); }}
       onDragEnd={onDragEnd}
@@ -90,7 +101,7 @@ function SidebarHighlightRow({
       }}
     >
     <button
-      onClick={() => onSelect(highlight)}
+      onClick={() => { if (!editing) onSelect(highlight); }}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       style={{
@@ -111,16 +122,34 @@ function SidebarHighlightRow({
         </span>
       )}
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{
-          fontSize: 11, fontWeight: 500, color: 'var(--text)', fontFamily: 'var(--font-ui)',
-          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-        }}>
-          {highlight.name}
-        </div>
+        {editing ? (
+          <InlineRenameInput
+            inputRef={inputRef}
+            value={editName}
+            onChange={setEditName}
+            onCommit={commitRename}
+            onKeyDown={handleKeyDown}
+            style={{ width: '100%', borderRadius: 3, padding: '1px 4px', boxSizing: 'border-box' }}
+          />
+        ) : (
+          <div style={{
+            fontSize: 11, fontWeight: 500, color: 'var(--text)', fontFamily: 'var(--font-ui)',
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          }}>
+            {highlight.name}
+          </div>
+        )}
         <div style={{ fontSize: 10, color: 'var(--text-faint)', fontFamily: 'var(--font-mono)' }}>
           {sessionLabel ? `${sessionLabel} · ${date}` : date}
         </div>
       </div>
+      {!editing && onRename && (
+        <RenameButton
+          onClick={startEditing}
+          title="Rename highlight"
+          style={{ flexShrink: 0, opacity: hovered ? 1 : 0, transition: 'opacity 0.1s' }}
+        />
+      )}
     </button>
     </div>
   );
@@ -131,11 +160,14 @@ function SidebarHighlightRow({
 interface SidebarFolderProps {
   folder: HighlightFolder;
   highlights: Highlight[];
+  expanded: boolean;
+  onToggle: () => void;
   selectedHighlightId: string | null;
   sessionLabelById: Map<string, string>;
   onSelect: (h: Highlight) => void;
   onRename: (name: string) => void;
   onDelete: () => void;
+  onRenameHighlight: (id: string, name: string) => void;
   draggedItemId: string | null;
   dragOverContainerId: string | null;
   dragOverItemId: string | null;
@@ -150,19 +182,17 @@ interface SidebarFolderProps {
 }
 
 function SidebarFolder({
-  folder, highlights, selectedHighlightId, sessionLabelById, onSelect,
-  onRename, onDelete,
+  folder, highlights, expanded, onToggle, selectedHighlightId, sessionLabelById, onSelect,
+  onRename, onDelete, onRenameHighlight,
   draggedItemId, dragOverContainerId, dragOverItemId,
   onItemDragStart, onItemDragOverItem, onItemDragOverContainer, onItemDragEnd,
   isFolderDragOver, onFolderDragStart, onFolderDragOver, onFolderDragEnd,
 }: SidebarFolderProps) {
-  const [expanded, setExpanded] = useState(true);
-
   return (
     <div>
       <CollapsibleFolderHeader
         expanded={expanded}
-        onToggle={() => setExpanded((v) => !v)}
+        onToggle={onToggle}
         name={folder.name}
         count={highlights.length}
         onRename={onRename}
@@ -190,6 +220,7 @@ function SidebarFolder({
           sessionLabel={sessionLabelById.get(h.sessionId)}
           isDragOver={draggedItemId !== h.id && dragOverContainerId === folder.id && dragOverItemId === h.id}
           onSelect={onSelect}
+          onRename={(name) => onRenameHighlight(h.id, name)}
           onDragStart={() => onItemDragStart({ id: h.id, containerId: folder.id, bookmarked: true })}
           onDragOver={() => onItemDragOverItem(folder.id, h.id)}
           onDragEnd={onItemDragEnd}
@@ -279,6 +310,17 @@ export function PromptsView() {
     setInvestigationOpen(true);
     navigateFromPromptsToSession(selectedHighlight.sessionId, selectedHighlight.promptEventId);
   }, [selectedHighlight, eventPair, navigateFromPromptsToSession, setSelectedEvent, setInvestigationOpen]);
+
+  // Collapsed by default; expanded folders are remembered across reloads.
+  const { isExpanded, toggle: toggleExpanded } = useExpandedSections('layman.prompts.expandedFolders');
+
+  const handleRenameHighlight = useCallback((id: string, name: string) => {
+    void fetch(`/api/highlights/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name }),
+    }).catch(() => {});
+  }, []);
 
   const handleMoveToFolder = useCallback((folderId: string | null) => {
     if (!selectedHighlight) return;
@@ -381,13 +423,14 @@ export function PromptsView() {
                     isSelected={selectedHighlightId === h.id}
                     sessionLabel={sessionLabelById.get(h.sessionId)}
                     onSelect={handleSelectHighlight}
+                    onRename={(name) => handleRenameHighlight(h.id, name)}
                   />
                 ))}
               </>
             )
           ) : (
             <>
-              <div style={sectionLabel}>Folders</div>
+              <FolderSectionHeader label="Folders" onCreate={handleCreateFolder} />
               {orderedFolders.map((folder) => {
                 const items = folderHighlightsMap.get(folder.id) ?? [];
                 return (
@@ -395,11 +438,14 @@ export function PromptsView() {
                     key={folder.id}
                     folder={folder}
                     highlights={items}
+                    expanded={isExpanded(folder.id)}
+                    onToggle={() => toggleExpanded(folder.id)}
                     selectedHighlightId={selectedHighlightId}
                     sessionLabelById={sessionLabelById}
                     onSelect={handleSelectHighlight}
                     onRename={(name) => handleRenameFolder(folder.id, name)}
                     onDelete={() => setDeleteConfirmFolderId(folder.id)}
+                    onRenameHighlight={handleRenameHighlight}
                     draggedItemId={draggedItemId}
                     dragOverContainerId={dragOverContainerId}
                     dragOverItemId={dragOverItemId}
@@ -417,36 +463,50 @@ export function PromptsView() {
 
               <div
                 onDragOver={(e) => { e.preventDefault(); handleDragOverContainer('unfiled'); }}
+                onClick={() => toggleExpanded(UNFILED_SECTION_KEY)}
                 style={{
-                  ...sectionLabel, paddingTop: 4,
+                  ...sectionLabel, paddingTop: 4, cursor: 'pointer',
                   background: dragOverContainerId === 'unfiled' && dragOverItemId === null ? 'var(--bg-selected)' : undefined,
                 }}
               >
+                <span style={{ fontSize: 9, color: 'var(--text-faint)', flexShrink: 0 }}>
+                  {isExpanded(UNFILED_SECTION_KEY) ? '▼' : '▶'}
+                </span>
                 History <span style={{ fontSize: 9, color: 'var(--text-faint)', textTransform: 'none', letterSpacing: 0, fontWeight: 400 }}>newest first</span>
+                <span style={{
+                  fontSize: 9.5, fontFamily: 'var(--font-mono)', color: 'var(--text-faint)',
+                  background: 'var(--bg-card)', border: '1px solid var(--border)',
+                  borderRadius: 10, padding: '0 5px',
+                }}>
+                  {unfiledHighlights.length}
+                </span>
               </div>
-              {unfiledHighlights.length === 0 && (
-                <div
-                  onDragOver={(e) => { e.preventDefault(); handleDragOverContainer('unfiled'); }}
-                  style={{ padding: '4px 12px', fontSize: 10, color: 'var(--text-faint)', fontStyle: 'italic' }}
-                >
-                  Drop highlights here
-                </div>
+              {isExpanded(UNFILED_SECTION_KEY) && (
+                <>
+                  {unfiledHighlights.length === 0 && (
+                    <div
+                      onDragOver={(e) => { e.preventDefault(); handleDragOverContainer('unfiled'); }}
+                      style={{ padding: '4px 12px', fontSize: 10, color: 'var(--text-faint)', fontStyle: 'italic' }}
+                    >
+                      Drop highlights here
+                    </div>
+                  )}
+                  {unfiledHighlights.map((h) => (
+                    <SidebarHighlightRow
+                      key={h.id}
+                      highlight={h}
+                      isSelected={selectedHighlightId === h.id}
+                      sessionLabel={sessionLabelById.get(h.sessionId)}
+                      isDragOver={draggedItemId !== h.id && dragOverContainerId === 'unfiled' && dragOverItemId === h.id}
+                      onSelect={handleSelectHighlight}
+                      onRename={(name) => handleRenameHighlight(h.id, name)}
+                      onDragStart={() => handleItemDragStart({ id: h.id, containerId: 'unfiled', bookmarked: true })}
+                      onDragOver={() => handleDragOverItem('unfiled', h.id)}
+                      onDragEnd={handleItemDragEnd}
+                    />
+                  ))}
+                </>
               )}
-              {unfiledHighlights.map((h) => (
-                <SidebarHighlightRow
-                  key={h.id}
-                  highlight={h}
-                  isSelected={selectedHighlightId === h.id}
-                  sessionLabel={sessionLabelById.get(h.sessionId)}
-                  isDragOver={draggedItemId !== h.id && dragOverContainerId === 'unfiled' && dragOverItemId === h.id}
-                  onSelect={handleSelectHighlight}
-                  onDragStart={() => handleItemDragStart({ id: h.id, containerId: 'unfiled', bookmarked: true })}
-                  onDragOver={() => handleDragOverItem('unfiled', h.id)}
-                  onDragEnd={handleItemDragEnd}
-                />
-              ))}
-
-              <NewFolderRow onCreate={handleCreateFolder} />
             </>
           )}
         </div>
