@@ -2,7 +2,7 @@ import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { useSessionStore } from '../../stores/sessionStore.js';
 import type { Highlight, HighlightFolder, TimelineEvent } from '../../lib/types.js';
-import { SearchInput, FilterChip, SECTION_LABEL_STYLE, CollapsibleFolderHeader, FolderSectionHeader, ConfirmDialog, CopyLinkButton } from '../primitives/index.js';
+import { SearchInput, FilterChip, SECTION_LABEL_STYLE, CollapsibleFolderHeader, FolderSectionHeader, InlineRenameInput, RenameButton, ConfirmDialog, CopyLinkButton } from '../primitives/index.js';
 import { getEffectiveAgentContent } from '../../lib/reasoning.js';
 import { isMarkdown, MARKDOWN_PROSE_COMPACT, REMARK_PLUGINS } from '../../lib/markdown.js';
 import { sessionDisplayName } from '../../lib/session-state.js';
@@ -10,7 +10,7 @@ import { useDragReorder } from '../../hooks/useDragReorder.js';
 import { useOptimisticOrder } from '../../hooks/useOptimisticOrder.js';
 import { useFolderDrag, reorderIds, type FolderDragSource, type FolderDropTarget } from '../../hooks/useFolderDrag.js';
 import { useFolderCrud } from '../../hooks/useFolderCrud.js';
-import { useExpandedSections } from '../../hooks/useExpandedSections.js';
+import { useExpandedSections, UNFILED_SECTION_KEY } from '../../hooks/useExpandedSections.js';
 import { useInlineEdit } from '../../hooks/useInlineEdit.js';
 import { SpeakButton } from '../tts/SpeakButton.js';
 
@@ -18,11 +18,6 @@ interface HighlightEventPair {
   promptEvent: TimelineEvent | null;
   responseEvent: TimelineEvent | null;
 }
-
-// Sentinel section id for the non-folder "History" (unfiled highlights) group, so
-// it can share the single expanded-set hook backing this sidebar's collapsible
-// sections — mirrors UNFILED_SECTION_KEY in SessionsView.
-const UNFILED_SECTION_KEY = '__unfiled__';
 
 // ─── EventBlock ───────────────────────────────────────────────────────────────
 
@@ -128,19 +123,13 @@ function SidebarHighlightRow({
       )}
       <div style={{ flex: 1, minWidth: 0 }}>
         {editing ? (
-          <input
-            ref={inputRef}
+          <InlineRenameInput
+            inputRef={inputRef}
             value={editName}
-            onClick={(e) => e.stopPropagation()}
-            onChange={(e) => setEditName(e.target.value)}
-            onBlur={commitRename}
-            onKeyDown={(e) => { e.stopPropagation(); handleKeyDown(e); }}
-            style={{
-              width: '100%', fontSize: 11, fontFamily: 'var(--font-ui)',
-              background: 'var(--bg-card)', border: '1px solid var(--border-strong)',
-              borderRadius: 3, color: 'var(--text)', padding: '1px 4px', outline: 'none',
-              boxSizing: 'border-box',
-            }}
+            onChange={setEditName}
+            onCommit={commitRename}
+            onKeyDown={handleKeyDown}
+            style={{ width: '100%', borderRadius: 3, padding: '1px 4px', boxSizing: 'border-box' }}
           />
         ) : (
           <div style={{
@@ -155,19 +144,11 @@ function SidebarHighlightRow({
         </div>
       </div>
       {!editing && onRename && (
-        <span
-          role="button"
-          onClick={(e) => { e.stopPropagation(); startEditing(); }}
+        <RenameButton
+          onClick={startEditing}
           title="Rename highlight"
-          style={{
-            fontSize: 10, color: 'var(--text-faint)', cursor: 'pointer', padding: '1px 3px',
-            flexShrink: 0, opacity: hovered ? 1 : 0, transition: 'opacity 0.1s',
-          }}
-          onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--text)')}
-          onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--text-faint)')}
-        >
-          ✎
-        </span>
+          style={{ flexShrink: 0, opacity: hovered ? 1 : 0, transition: 'opacity 0.1s' }}
+        />
       )}
     </button>
     </div>

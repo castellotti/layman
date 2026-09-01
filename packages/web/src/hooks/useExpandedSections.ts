@@ -1,6 +1,13 @@
 import { useState, useEffect, useCallback } from 'react';
 
 /**
+ * Reserved section id for a sidebar's non-folder group ("Unfiled" / "History"),
+ * so it can share the single expanded-set backing every collapsible section.
+ * A real folder id is a uuid, so this sentinel can never collide with one.
+ */
+export const UNFILED_SECTION_KEY = '__unfiled__';
+
+/**
  * Tracks which collapsible sidebar sections (folders, "Unfiled", …) are
  * expanded, persisting the set to localStorage under `storageKey`.
  *

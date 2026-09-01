@@ -2,12 +2,12 @@ import React, { useState, useCallback, useEffect, useRef, useMemo, Suspense, laz
 import { useSessionStore, fetchSessionEvents } from '../../stores/sessionStore.js';
 import { EventStream } from '../layout/EventStream.js';
 import { InvestigationPanel } from '../layout/InvestigationPanel.js';
-import { SearchInput, SegmentedControl, SECTION_LABEL_STYLE, CollapsibleFolderHeader, FolderSectionHeader, ConfirmDialog, CopyLinkButton } from '../primitives/index.js';
+import { SearchInput, SegmentedControl, SECTION_LABEL_STYLE, CollapsibleFolderHeader, FolderSectionHeader, InlineRenameInput, RenameButton, ConfirmDialog, CopyLinkButton } from '../primitives/index.js';
 import { useDragReorder } from '../../hooks/useDragReorder.js';
 import { useOptimisticOrder } from '../../hooks/useOptimisticOrder.js';
 import { useFolderDrag, reorderIds, type FolderDragSource, type FolderDropTarget } from '../../hooks/useFolderDrag.js';
 import { useFolderCrud } from '../../hooks/useFolderCrud.js';
-import { useExpandedSections } from '../../hooks/useExpandedSections.js';
+import { useExpandedSections, UNFILED_SECTION_KEY } from '../../hooks/useExpandedSections.js';
 import { useInlineEdit } from '../../hooks/useInlineEdit.js';
 import { sessionDisplayName } from '../../lib/session-state.js';
 import type { ClientMessage } from '../../lib/ws-protocol.js';
@@ -20,10 +20,6 @@ const FlowchartView = lazy(() =>
 interface SessionsViewProps {
   onSend: (msg: ClientMessage) => void;
 }
-
-// Sentinel section id for the non-folder "Unfiled" group, so it can share the
-// single expanded-set hook backing this sidebar's collapsible sections.
-const UNFILED_SECTION_KEY = '__unfiled__';
 
 interface BookmarkedItem {
   session: RecordedSession;
@@ -873,19 +869,13 @@ function SidebarSessionRow({
       {/* Text */}
       <div style={{ flex: 1, minWidth: 0 }}>
         {editing ? (
-          <input
-            ref={inputRef}
+          <InlineRenameInput
+            inputRef={inputRef}
             value={editName}
-            onClick={(e) => e.stopPropagation()}
-            onChange={(e) => setEditName(e.target.value)}
-            onBlur={commitRename}
-            onKeyDown={(e) => { e.stopPropagation(); handleKeyDown(e); }}
-            style={{
-              width: '100%', fontSize: 11, fontFamily: 'var(--font-ui)',
-              background: 'var(--bg-card)', border: '1px solid var(--border-strong)',
-              borderRadius: 3, color: 'var(--text)', padding: '1px 4px', outline: 'none',
-              boxSizing: 'border-box',
-            }}
+            onChange={setEditName}
+            onCommit={commitRename}
+            onKeyDown={handleKeyDown}
+            style={{ width: '100%', borderRadius: 3, padding: '1px 4px', boxSizing: 'border-box' }}
           />
         ) : (
           <div style={{
@@ -920,18 +910,7 @@ function SidebarSessionRow({
       {/* Actions (visible on hover) */}
       {!editing && (
       <div style={{ display: 'flex', gap: 3, flexShrink: 0, opacity: hovered ? 1 : 0, transition: 'opacity 0.1s' }}>
-        {onRename && (
-          <span
-            role="button"
-            onClick={(e) => { e.stopPropagation(); startEditing(); }}
-            title="Rename"
-            style={{ fontSize: 10, color: 'var(--text-faint)', cursor: 'pointer', padding: '1px 3px' }}
-            onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--text)')}
-            onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--text-faint)')}
-          >
-            ✎
-          </span>
-        )}
+        {onRename && <RenameButton onClick={startEditing} title="Rename" />}
         {!isBookmarked && onBookmark && (
           <span
             role="button"

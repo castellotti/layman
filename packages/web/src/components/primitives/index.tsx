@@ -164,6 +164,67 @@ export function StateChip({ variant, label }: StateChipProps) {
   );
 }
 
+// ─── Inline rename primitives ────────────────────────────────────────────────
+// Shared by every sidebar rename affordance (folder headers, bookmarked-session
+// rows, highlighted-prompt rows). The wiring — commit on blur, stopPropagation so
+// a click/keystroke inside the field doesn't select or drag the row underneath —
+// is identical everywhere; only the box metrics (width/flex, padding, radius)
+// vary, so callers pass those via `style`.
+
+interface InlineRenameInputProps {
+  inputRef: React.RefObject<HTMLInputElement>;
+  value: string;
+  onChange: (value: string) => void;
+  onCommit: () => void;
+  onKeyDown: (e: React.KeyboardEvent) => void;
+  placeholder?: string;
+  style?: React.CSSProperties;
+}
+
+export function InlineRenameInput({
+  inputRef, value, onChange, onCommit, onKeyDown, placeholder, style,
+}: InlineRenameInputProps) {
+  return (
+    <input
+      ref={inputRef}
+      value={value}
+      placeholder={placeholder}
+      onClick={(e) => e.stopPropagation()}
+      onChange={(e) => onChange(e.target.value)}
+      onBlur={onCommit}
+      onKeyDown={(e) => { e.stopPropagation(); onKeyDown(e); }}
+      style={{
+        fontSize: 11, fontFamily: 'var(--font-ui)', background: 'var(--bg-card)',
+        border: '1px solid var(--border-strong)', color: 'var(--text)', outline: 'none',
+        ...style,
+      }}
+    />
+  );
+}
+
+interface RenameButtonProps {
+  onClick: () => void;
+  title?: string;
+  style?: React.CSSProperties;
+}
+
+// The ✎ hover-to-reveal rename affordance. Swaps to full-strength text on hover
+// and stops propagation so it doesn't trigger the row's select/toggle handler.
+export function RenameButton({ onClick, title = 'Rename', style }: RenameButtonProps) {
+  return (
+    <span
+      role="button"
+      onClick={(e) => { e.stopPropagation(); onClick(); }}
+      title={title}
+      style={{ fontSize: 10, color: 'var(--text-faint)', cursor: 'pointer', padding: '1px 3px', ...style }}
+      onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--text)')}
+      onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--text-faint)')}
+    >
+      ✎
+    </span>
+  );
+}
+
 // ─── CollapsibleFolderHeader ────────────────────────────────────────────────
 // Shared expand/collapse header (name + item count badge) for sidebar folder
 // sections in Sessions and Prompts views. Item ordering/persistence stays
@@ -224,18 +285,13 @@ export function CollapsibleFolderHeader({
       >
         <span style={{ fontSize: 9, color: 'var(--text-faint)', flexShrink: 0 }}>{expanded ? '▼' : '▶'}</span>
         {editing ? (
-          <input
-            ref={inputRef}
+          <InlineRenameInput
+            inputRef={inputRef}
             value={editName}
-            onClick={(e) => e.stopPropagation()}
-            onChange={(e) => setEditName(e.target.value)}
-            onBlur={commitRename}
-            onKeyDown={(e) => { e.stopPropagation(); handleKeyDown(e); }}
-            style={{
-              flex: 1, minWidth: 0, fontSize: 11, fontFamily: 'var(--font-ui)',
-              background: 'var(--bg-card)', border: '1px solid var(--border-strong)',
-              borderRadius: 3, color: 'var(--text)', padding: '1px 4px', outline: 'none',
-            }}
+            onChange={setEditName}
+            onCommit={commitRename}
+            onKeyDown={handleKeyDown}
+            style={{ flex: 1, minWidth: 0, borderRadius: 3, padding: '1px 4px' }}
           />
         ) : (
           <span
@@ -258,18 +314,7 @@ export function CollapsibleFolderHeader({
 
       {!editing && (onRename || onDelete) && (
         <div style={{ display: 'flex', gap: 2, flexShrink: 0, opacity: hovered ? 1 : 0, transition: 'opacity 0.1s' }}>
-          {onRename && (
-            <span
-              role="button"
-              onClick={(e) => { e.stopPropagation(); startEditing(); }}
-              title="Rename folder"
-              style={{ fontSize: 10, color: 'var(--text-faint)', cursor: 'pointer', padding: '1px 3px' }}
-              onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--text)')}
-              onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--text-faint)')}
-            >
-              ✎
-            </span>
-          )}
+          {onRename && <RenameButton onClick={startEditing} title="Rename folder" />}
           {onDelete && (
             <span
               role="button"
@@ -325,19 +370,14 @@ export function FolderSectionHeader({ label, onCreate }: FolderSectionHeaderProp
       </div>
       {editing && (
         <div style={{ padding: '4px 12px' }}>
-          <input
-            ref={inputRef}
+          <InlineRenameInput
+            inputRef={inputRef}
             value={editName}
-            placeholder="Folder name…"
-            onChange={(e) => setEditName(e.target.value)}
-            onBlur={commitRename}
+            onChange={setEditName}
+            onCommit={commitRename}
             onKeyDown={handleKeyDown}
-            style={{
-              width: '100%', fontSize: 11, fontFamily: 'var(--font-ui)',
-              background: 'var(--bg-card)', border: '1px solid var(--border-strong)',
-              borderRadius: 4, color: 'var(--text)', padding: '3px 6px', outline: 'none',
-              boxSizing: 'border-box',
-            }}
+            placeholder="Folder name…"
+            style={{ width: '100%', borderRadius: 4, padding: '3px 6px', boxSizing: 'border-box' }}
           />
         </div>
       )}
