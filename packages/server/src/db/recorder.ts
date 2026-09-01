@@ -36,6 +36,7 @@ export class SessionRecorder {
   private insertEvent: BetterSqlite3.Statement<unknown[]>;
   private updateEvent: BetterSqlite3.Statement<unknown[]>;
   private updateSessionCwd: BetterSqlite3.Statement<unknown[]>;
+  private fillSessionModel: BetterSqlite3.Statement<unknown[]>;
   private insertQA: BetterSqlite3.Statement<unknown[]>;
 
   constructor(
@@ -63,6 +64,11 @@ export class SessionRecorder {
 
     this.updateSessionCwd = db.prepare(`
       UPDATE recorded_sessions SET cwd = ?, agent_type = ?, last_seen = ? WHERE session_id = ?
+    `);
+
+    this.fillSessionModel = db.prepare(`
+      UPDATE recorded_sessions SET session_model = ?
+      WHERE session_id = ? AND (session_model IS NULL OR session_model = '')
     `);
 
     this.insertQA = db.prepare(`
@@ -111,6 +117,15 @@ export class SessionRecorder {
               `UPDATE recorded_sessions SET ${updates.join(', ')} WHERE session_id = ?`
             ).run(...values);
           }
+        }
+
+        // Session-start events carry the model the harness launched with. Record
+        // it as a fallback so the session's model is known even for harnesses
+        // that never emit session_metrics (no StatusLine). Fill-if-empty only:
+        // a later session_metrics event supplies the richer display name and
+        // must win, so this never overwrites an already-recorded model.
+        if (event.type === 'session_start' && event.data.model) {
+          this.fillSessionModel.run(event.data.model, event.sessionId);
         }
       } catch {
         // Non-fatal: recording failure should not disrupt the live session
