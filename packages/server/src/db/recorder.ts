@@ -112,6 +112,18 @@ export class SessionRecorder {
             ).run(...values);
           }
         }
+
+        // Session-start events carry the model the harness launched with. Record
+        // it as a fallback so the session's model is known even for harnesses
+        // that never emit session_metrics (no StatusLine). Fill-if-empty only:
+        // a later session_metrics event supplies the richer display name and
+        // must win, so this never overwrites an already-recorded model.
+        if (event.type === 'session_start' && event.data.model) {
+          this.db.prepare(
+            `UPDATE recorded_sessions SET session_model = ?
+             WHERE session_id = ? AND (session_model IS NULL OR session_model = '')`
+          ).run(event.data.model, event.sessionId);
+        }
       } catch {
         // Non-fatal: recording failure should not disrupt the live session
       }

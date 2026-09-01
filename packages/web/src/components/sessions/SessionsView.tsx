@@ -2,11 +2,13 @@ import React, { useState, useCallback, useEffect, useRef, useMemo, Suspense, laz
 import { useSessionStore, fetchSessionEvents } from '../../stores/sessionStore.js';
 import { EventStream } from '../layout/EventStream.js';
 import { InvestigationPanel } from '../layout/InvestigationPanel.js';
-import { SearchInput, SegmentedControl, SECTION_LABEL_STYLE, CollapsibleFolderHeader, NewFolderRow, ConfirmDialog, CopyLinkButton } from '../primitives/index.js';
+import { SearchInput, SegmentedControl, SECTION_LABEL_STYLE, CollapsibleFolderHeader, FolderSectionHeader, ConfirmDialog, CopyLinkButton } from '../primitives/index.js';
 import { useDragReorder } from '../../hooks/useDragReorder.js';
 import { useOptimisticOrder } from '../../hooks/useOptimisticOrder.js';
 import { useFolderDrag, reorderIds, type FolderDragSource, type FolderDropTarget } from '../../hooks/useFolderDrag.js';
 import { useFolderCrud } from '../../hooks/useFolderCrud.js';
+import { useExpandedSections } from '../../hooks/useExpandedSections.js';
+import { useInlineEdit } from '../../hooks/useInlineEdit.js';
 import { sessionDisplayName } from '../../lib/session-state.js';
 import type { ClientMessage } from '../../lib/ws-protocol.js';
 import type { RecordedSession } from '../../lib/types.js';
@@ -17,6 +19,16 @@ const FlowchartView = lazy(() =>
 
 interface SessionsViewProps {
   onSend: (msg: ClientMessage) => void;
+}
+
+// Sentinel section id for the non-folder "Unfiled" group, so it can share the
+// single expanded-set hook backing this sidebar's collapsible sections.
+const UNFILED_SECTION_KEY = '__unfiled__';
+
+interface BookmarkedItem {
+  session: RecordedSession;
+  bookmarkId: string;
+  bookmarkName: string;
 }
 
 function formatDateShort(ts: number): string {
@@ -66,6 +78,17 @@ export function SessionsView({ onSend }: SessionsViewProps) {
     () => [...bookmarkFolders].sort((a, b) => a.sortOrder - b.sortOrder),
     [bookmarkFolders]
   );
+
+  // Collapsed by default; expanded sections (folders + "Unfiled") are remembered.
+  const { isExpanded, toggle: toggleExpanded } = useExpandedSections('layman.sessions.expandedSections');
+
+  const handleRenameBookmark = useCallback((bookmarkId: string, name: string) => {
+    void fetch(`/api/bookmarks/${bookmarkId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name }),
+    }).catch(() => {});
+  }, []);
 
   // Divider drag
   useEffect(() => {
@@ -210,16 +233,16 @@ export function SessionsView({ onSend }: SessionsViewProps) {
   // Computed once per folder (not per render call site) since it's looked up from
   // both a `.map` and a `.some` check below.
   const folderSessionsMap = useMemo(() => {
-    const map = new Map<string, { session: RecordedSession; bookmarkId: string }[]>();
+    const map = new Map<string, BookmarkedItem[]>();
     for (const folder of sortedFolders) {
       map.set(folder.id, bookmarks
         .filter((b) => b.folderId === folder.id)
         .sort((a, b) => a.sortOrder - b.sortOrder)
         .map((b) => {
           const session = recordedSessions.find((s) => s.sessionId === b.sessionId);
-          return session ? { session, bookmarkId: b.id } : null;
+          return session ? { session, bookmarkId: b.id, bookmarkName: b.name } : null;
         })
-        .filter((item): item is { session: RecordedSession; bookmarkId: string } => item !== null)
+        .filter((item): item is BookmarkedItem => item !== null)
         .filter((item) => sessionMatches(item.session)));
     }
     return map;
@@ -231,9 +254,9 @@ export function SessionsView({ onSend }: SessionsViewProps) {
       .sort((a, b) => a.sortOrder - b.sortOrder)
       .map((b) => {
         const session = recordedSessions.find((s) => s.sessionId === b.sessionId);
-        return session ? { session, bookmarkId: b.id } : null;
+        return session ? { session, bookmarkId: b.id, bookmarkName: b.name } : null;
       })
-      .filter((item): item is { session: RecordedSession; bookmarkId: string } => item !== null)
+      .filter((item): item is BookmarkedItem => item !== null)
       .filter((item) => sessionMatches(item.session));
   }, [bookmarks, recordedSessions, sessionMatches]);
 
@@ -398,7 +421,7 @@ export function SessionsView({ onSend }: SessionsViewProps) {
           {/* Bookmark folders (create/rename/delete/reorder + drag sessions in) */}
           {filter === 'all' && (
             <>
-              <div style={sectionLabel}>Bookmarked</div>
+              <FolderSectionHeader label="Bookmarked" onCreate={handleCreateFolder} />
               {orderedFolders.map((folder) => {
                 const items = folderSessionsMap.get(folder.id) ?? [];
                 return (
@@ -407,12 +430,15 @@ export function SessionsView({ onSend }: SessionsViewProps) {
                     folderId={folder.id}
                     name={folder.name}
                     items={items}
+                    expanded={isExpanded(folder.id)}
+                    onToggle={() => toggleExpanded(folder.id)}
                     viewingSessionId={viewingSessionId}
                     liveSessionIds={liveSessionIds}
                     matchLabel={matchLabel}
                     onSelect={handleSelectSession}
                     onRename={(name) => handleRenameFolder(folder.id, name)}
                     onDelete={() => setDeleteConfirmFolderId(folder.id)}
+                    onRenameSession={handleRenameBookmark}
                     draggedItemId={draggedItemId}
                     dragOverContainerId={dragOverContainerId}
                     dragOverItemId={dragOverItemId}
@@ -431,39 +457,54 @@ export function SessionsView({ onSend }: SessionsViewProps) {
               <div
                 onDragOver={(e) => { e.preventDefault(); handleDragOverContainer('unfiled'); }}
                 style={{
-                  ...sectionLabel, paddingTop: 4,
+                  ...sectionLabel, paddingTop: 4, cursor: 'pointer',
                   background: dragOverContainerId === 'unfiled' && dragOverItemId === null ? 'var(--bg-selected)' : undefined,
                 }}
+                onClick={() => toggleExpanded(UNFILED_SECTION_KEY)}
               >
+                <span style={{ fontSize: 9, color: 'var(--text-faint)', flexShrink: 0 }}>
+                  {isExpanded(UNFILED_SECTION_KEY) ? '▼' : '▶'}
+                </span>
                 Unfiled
+                <span style={{
+                  fontSize: 9.5, fontFamily: 'var(--font-mono)', color: 'var(--text-faint)',
+                  background: 'var(--bg-card)', border: '1px solid var(--border)',
+                  borderRadius: 10, padding: '0 5px',
+                }}>
+                  {unfiledBookmarkedSessions.length}
+                </span>
               </div>
-              {unfiledBookmarkedSessions.length === 0 && (
-                <div
-                  onDragOver={(e) => { e.preventDefault(); handleDragOverContainer('unfiled'); }}
-                  style={{ padding: '4px 12px', fontSize: 10, color: 'var(--text-faint)', fontStyle: 'italic' }}
-                >
-                  Drop sessions here
-                </div>
+              {isExpanded(UNFILED_SECTION_KEY) && (
+                <>
+                  {unfiledBookmarkedSessions.length === 0 && (
+                    <div
+                      onDragOver={(e) => { e.preventDefault(); handleDragOverContainer('unfiled'); }}
+                      style={{ padding: '4px 12px', fontSize: 10, color: 'var(--text-faint)', fontStyle: 'italic' }}
+                    >
+                      Drop sessions here
+                    </div>
+                  )}
+                  {unfiledBookmarkedSessions.map(({ session, bookmarkId, bookmarkName }) => (
+                    <SidebarSessionRow
+                      key={session.sessionId}
+                      session={session}
+                      displayName={bookmarkName}
+                      isSelected={viewingSessionId === session.sessionId}
+                      isFocused={false}
+                      isLive={liveSessionIds.has(session.sessionId)}
+                      isBookmarked
+                      matchLabel={matchLabel(session.sessionId)}
+                      isDragOver={draggedItemId !== bookmarkId && dragOverContainerId === 'unfiled' && dragOverItemId === bookmarkId}
+                      onSelect={handleSelectSession}
+                      onRename={(name) => handleRenameBookmark(bookmarkId, name)}
+                      onDelete={() => setDeleteConfirmSessionId(session.sessionId)}
+                      onDragStart={() => handleItemDragStart({ id: bookmarkId, containerId: 'unfiled', bookmarked: true })}
+                      onDragOver={() => handleDragOverItem('unfiled', bookmarkId)}
+                      onDragEnd={handleItemDragEnd}
+                    />
+                  ))}
+                </>
               )}
-              {unfiledBookmarkedSessions.map(({ session, bookmarkId }) => (
-                <SidebarSessionRow
-                  key={session.sessionId}
-                  session={session}
-                  isSelected={viewingSessionId === session.sessionId}
-                  isFocused={false}
-                  isLive={liveSessionIds.has(session.sessionId)}
-                  isBookmarked
-                  matchLabel={matchLabel(session.sessionId)}
-                  isDragOver={draggedItemId !== bookmarkId && dragOverContainerId === 'unfiled' && dragOverItemId === bookmarkId}
-                  onSelect={handleSelectSession}
-                  onDelete={() => setDeleteConfirmSessionId(session.sessionId)}
-                  onDragStart={() => handleItemDragStart({ id: bookmarkId, containerId: 'unfiled', bookmarked: true })}
-                  onDragOver={() => handleDragOverItem('unfiled', bookmarkId)}
-                  onDragEnd={handleItemDragEnd}
-                />
-              ))}
-
-              <NewFolderRow onCreate={handleCreateFolder} />
             </>
           )}
 
@@ -535,12 +576,20 @@ export function SessionsView({ onSend }: SessionsViewProps) {
                     {bookmarks.find((b) => b.sessionId === viewingSessionId)?.name
                       ?? sessionDisplayName(viewingSession?.sessionName, viewingSession?.cwd, viewingSessionId)}
                   </span>
-                  {viewingSession?.cwd && (
+                  {(viewingSession?.cwd || viewingSession?.sessionModelDisplayName || viewingSession?.sessionModel) && (
                     <span style={{
                       fontSize: 10, color: 'var(--text-faint)', fontFamily: 'var(--font-mono)',
-                      display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                      display: 'flex', gap: 6, alignItems: 'center',
+                      overflow: 'hidden', whiteSpace: 'nowrap',
                     }}>
-                      {viewingSession.cwd}
+                      {viewingSession?.cwd && (
+                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>
+                          {viewingSession.cwd}
+                        </span>
+                      )}
+                      <span style={{ color: 'var(--info)', flexShrink: 0 }}>
+                        {viewingSession?.sessionModelDisplayName || viewingSession?.sessionModel || 'model unknown'}
+                      </span>
                     </span>
                   )}
                 </div>
@@ -654,13 +703,16 @@ export function SessionsView({ onSend }: SessionsViewProps) {
 interface SidebarFolderProps {
   folderId: string;
   name: string;
-  items: { session: RecordedSession; bookmarkId: string }[];
+  items: BookmarkedItem[];
+  expanded: boolean;
+  onToggle: () => void;
   viewingSessionId: string | null;
   liveSessionIds: Set<string>;
   matchLabel: (sessionId: string) => string | null;
   onSelect: (id: string) => void;
   onRename: (name: string) => void;
   onDelete: () => void;
+  onRenameSession: (bookmarkId: string, name: string) => void;
   draggedItemId: string | null;
   dragOverContainerId: string | null;
   dragOverItemId: string | null;
@@ -675,19 +727,17 @@ interface SidebarFolderProps {
 }
 
 function SidebarFolder({
-  folderId, name, items, viewingSessionId, liveSessionIds, matchLabel, onSelect,
-  onRename, onDelete,
+  folderId, name, items, expanded, onToggle, viewingSessionId, liveSessionIds, matchLabel, onSelect,
+  onRename, onDelete, onRenameSession,
   draggedItemId, dragOverContainerId, dragOverItemId,
   onItemDragStart, onItemDragOverItem, onItemDragOverContainer, onItemDragEnd,
   isFolderDragOver, onFolderDragStart, onFolderDragOver, onFolderDragEnd,
 }: SidebarFolderProps) {
-  const [expanded, setExpanded] = useState(true);
-
   return (
     <div>
       <CollapsibleFolderHeader
         expanded={expanded}
-        onToggle={() => setExpanded((v) => !v)}
+        onToggle={onToggle}
         name={name}
         count={items.length}
         onRename={onRename}
@@ -706,10 +756,11 @@ function SidebarFolder({
           Drop sessions here
         </div>
       )}
-      {expanded && items.map(({ session, bookmarkId }) => (
+      {expanded && items.map(({ session, bookmarkId, bookmarkName }) => (
         <SidebarSessionRow
           key={session.sessionId}
           session={session}
+          displayName={bookmarkName}
           isSelected={viewingSessionId === session.sessionId}
           isFocused={false}
           isLive={liveSessionIds.has(session.sessionId)}
@@ -718,6 +769,7 @@ function SidebarFolder({
           matchLabel={matchLabel(session.sessionId)}
           isDragOver={draggedItemId !== bookmarkId && dragOverContainerId === folderId && dragOverItemId === bookmarkId}
           onSelect={onSelect}
+          onRename={(name) => onRenameSession(bookmarkId, name)}
           onDragStart={() => onItemDragStart({ id: bookmarkId, containerId: folderId, bookmarked: true })}
           onDragOver={() => onItemDragOverItem(folderId, bookmarkId)}
           onDragEnd={onItemDragEnd}
@@ -731,6 +783,8 @@ function SidebarFolder({
 
 interface SidebarSessionRowProps {
   session: RecordedSession;
+  /** Overrides the derived session label (used to show a bookmark's own name). */
+  displayName?: string;
   isSelected: boolean;
   isFocused: boolean;
   isLive: boolean;
@@ -740,6 +794,7 @@ interface SidebarSessionRowProps {
   matchLabel?: string | null;
   onSelect: (id: string) => void;
   onBookmark?: () => void;
+  onRename?: (name: string) => void;
   onDelete?: () => void;
   onDragStart?: () => void;
   onDragOver?: () => void;
@@ -747,17 +802,24 @@ interface SidebarSessionRowProps {
 }
 
 function SidebarSessionRow({
-  session, isSelected, isFocused, isLive, isBookmarked, indent = false,
-  isDragOver = false, matchLabel, onSelect, onBookmark, onDelete,
+  session, displayName, isSelected, isFocused, isLive, isBookmarked, indent = false,
+  isDragOver = false, matchLabel, onSelect, onBookmark, onRename, onDelete,
   onDragStart, onDragOver, onDragEnd,
 }: SidebarSessionRowProps) {
   const [hovered, setHovered] = useState(false);
-  const label = sessionDisplayName(session.sessionName, session.cwd, session.sessionId);
+  const label = displayName || sessionDisplayName(session.sessionName, session.cwd, session.sessionId);
   const draggable = !!onDragStart;
+  const { editing, setEditing, editName, setEditName, commitRename, handleKeyDown, inputRef } =
+    useInlineEdit(label, (next) => onRename?.(next));
+
+  const startEditing = () => {
+    setEditName(label);
+    setEditing(true);
+  };
 
   return (
     <div
-      draggable={draggable}
+      draggable={draggable && !editing}
       onDragStart={(e) => { e.dataTransfer.effectAllowed = 'move'; onDragStart?.(); }}
       onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; onDragOver?.(); }}
       onDragEnd={onDragEnd}
@@ -767,7 +829,7 @@ function SidebarSessionRow({
       }}
     >
     <button
-      onClick={() => onSelect(session.sessionId)}
+      onClick={() => { if (!editing) onSelect(session.sessionId); }}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       title={session.cwd || session.sessionId}
@@ -802,13 +864,30 @@ function SidebarSessionRow({
 
       {/* Text */}
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{
-          fontSize: 11, fontWeight: 500, color: 'var(--text)',
-          fontFamily: 'var(--font-ui)',
-          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-        }}>
-          {label}
-        </div>
+        {editing ? (
+          <input
+            ref={inputRef}
+            value={editName}
+            onClick={(e) => e.stopPropagation()}
+            onChange={(e) => setEditName(e.target.value)}
+            onBlur={commitRename}
+            onKeyDown={(e) => { e.stopPropagation(); handleKeyDown(e); }}
+            style={{
+              width: '100%', fontSize: 11, fontFamily: 'var(--font-ui)',
+              background: 'var(--bg-card)', border: '1px solid var(--border-strong)',
+              borderRadius: 3, color: 'var(--text)', padding: '1px 4px', outline: 'none',
+              boxSizing: 'border-box',
+            }}
+          />
+        ) : (
+          <div style={{
+            fontSize: 11, fontWeight: 500, color: 'var(--text)',
+            fontFamily: 'var(--font-ui)',
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          }}>
+            {label}
+          </div>
+        )}
         <div style={{
           fontSize: 10, color: 'var(--text-faint)', fontFamily: 'var(--font-mono)',
           display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap',
@@ -831,7 +910,20 @@ function SidebarSessionRow({
       )}
 
       {/* Actions (visible on hover) */}
+      {!editing && (
       <div style={{ display: 'flex', gap: 3, flexShrink: 0, opacity: hovered ? 1 : 0, transition: 'opacity 0.1s' }}>
+        {onRename && (
+          <span
+            role="button"
+            onClick={(e) => { e.stopPropagation(); startEditing(); }}
+            title="Rename"
+            style={{ fontSize: 10, color: 'var(--text-faint)', cursor: 'pointer', padding: '1px 3px' }}
+            onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--text)')}
+            onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--text-faint)')}
+          >
+            ✎
+          </span>
+        )}
         {!isBookmarked && onBookmark && (
           <span
             role="button"
@@ -858,6 +950,7 @@ function SidebarSessionRow({
           </span>
         )}
       </div>
+      )}
     </button>
     </div>
   );

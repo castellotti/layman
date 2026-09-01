@@ -39,7 +39,7 @@ export function useInlineEdit(initialName: string, onCommit: (name: string) => v
       onCommit(trimmed);
     }
     // Always reset — on success this clears the field for the next time
-    // editing opens (relevant for callers like NewFolderRow whose
+    // editing opens (relevant for callers like FolderSectionHeader whose
     // initialName is always '' and don't reset it themselves); on cancel
     // it discards the abandoned edit.
     setEditName(initialName);

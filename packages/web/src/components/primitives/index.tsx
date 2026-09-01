@@ -288,52 +288,60 @@ export function CollapsibleFolderHeader({
   );
 }
 
-// ─── NewFolderRow ────────────────────────────────────────────────────────────
-// "+ New folder" affordance shared by the Sessions and Prompts sidebars —
-// collapses to a single button, expands to a name input on click.
+// ─── FolderSectionHeader ─────────────────────────────────────────────────────
+// Section label (e.g. "Bookmarked", "Folders") for the Sessions/Prompts sidebars
+// with a right-aligned "+" — vertically aligned with the per-folder count badges
+// — that reveals an inline name input to create a folder. Replaces the old
+// full-width "New folder" row, which sat awkwardly at the bottom of the list
+// (below History), reading as if it belonged to that section.
 
-interface NewFolderRowProps {
+interface FolderSectionHeaderProps {
+  label: React.ReactNode;
   onCreate: (name: string) => void;
 }
 
-export function NewFolderRow({ onCreate }: NewFolderRowProps) {
-  const { editing, setEditing, editName: value, setEditName: setValue, commitRename: commit, handleKeyDown, inputRef } =
+export function FolderSectionHeader({ label, onCreate }: FolderSectionHeaderProps) {
+  const { editing, setEditing, editName, setEditName, commitRename, handleKeyDown, inputRef } =
     useInlineEdit('', onCreate);
 
-  if (!editing) {
-    return (
-      <button
-        onClick={() => setEditing(true)}
-        style={{
-          width: '100%', display: 'flex', alignItems: 'center', gap: 6,
-          padding: '5px 12px', background: 'none', border: 'none', cursor: 'pointer',
-          color: 'var(--text-faint)', fontFamily: 'var(--font-ui)', fontSize: 11, textAlign: 'left',
-        }}
-        onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--text-muted)')}
-        onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--text-faint)')}
-      >
-        <span style={{ fontSize: 11 }}>+</span> New folder
-      </button>
-    );
-  }
-
   return (
-    <div style={{ padding: '4px 12px' }}>
-      <input
-        ref={inputRef}
-        value={value}
-        placeholder="Folder name…"
-        onChange={(e) => setValue(e.target.value)}
-        onBlur={commit}
-        onKeyDown={handleKeyDown}
-        style={{
-          width: '100%', fontSize: 11, fontFamily: 'var(--font-ui)',
-          background: 'var(--bg-card)', border: '1px solid var(--border-strong)',
-          borderRadius: 4, color: 'var(--text)', padding: '3px 6px', outline: 'none',
-          boxSizing: 'border-box',
-        }}
-      />
-    </div>
+    <>
+      <div style={{ ...SECTION_LABEL_STYLE, justifyContent: 'space-between' }}>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>{label}</span>
+        <button
+          onClick={() => setEditing(true)}
+          title="New folder"
+          aria-label="New folder"
+          style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            background: 'none', border: 'none', cursor: 'pointer', padding: 0,
+            color: 'var(--text-faint)', fontSize: 14, lineHeight: 1, flexShrink: 0,
+          }}
+          onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--text)')}
+          onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--text-faint)')}
+        >
+          +
+        </button>
+      </div>
+      {editing && (
+        <div style={{ padding: '4px 12px' }}>
+          <input
+            ref={inputRef}
+            value={editName}
+            placeholder="Folder name…"
+            onChange={(e) => setEditName(e.target.value)}
+            onBlur={commitRename}
+            onKeyDown={handleKeyDown}
+            style={{
+              width: '100%', fontSize: 11, fontFamily: 'var(--font-ui)',
+              background: 'var(--bg-card)', border: '1px solid var(--border-strong)',
+              borderRadius: 4, color: 'var(--text)', padding: '3px 6px', outline: 'none',
+              boxSizing: 'border-box',
+            }}
+          />
+        </div>
+      )}
+    </>
   );
 }
 
