@@ -47,25 +47,59 @@ Layman is a pnpm monorepo with two packages:
 | Cline | Shell-script hooks in `~/Documents/Cline/Hooks/` | `/layman` workflow in Cline |
 | pi | TypeScript extension at `~/.pi/agent/extensions/layman/index.ts` | `/layman` slash command or auto-activate |
 
+Per-harness installation, activation, capabilities, and the architecture/implementation detail are
+in **`docs/harnesses/<harness>.md`** (each has an "Architecture & implementation notes" section that
+holds the deep detail this file used to carry). The passive **glove** sandbox monitor — a read-only
+extension, not a harness — is documented in **`docs/extensions/glove.md`**. Keep harness- and
+glove-specific detail in those files; this file keeps only the shared pipeline and cross-cutting
+decisions, with pointers.
+
 ### How data flows
 
-1. **Claude Code hooks**: Claude Code fires HTTP POSTs to `/hooks/:eventName`. Layman registers for 26 claude-code hook events: `PreToolUse`, `PostToolUse`, `PostToolUseFailure`, `PermissionRequest`, `Notification`, `SessionStart`, `SessionEnd`, `Stop`, `UserPromptSubmit`, `SubagentStart`, `SubagentStop`, `StopFailure`, `PreCompact`, `PostCompact`, `Elicitation`, `ElicitationResult`, `Setup`, `ConfigChange`, `InstructionsLoaded`, `TaskCreated`, `TaskCompleted`, `TeammateIdle`, `WorktreeCreate`, `WorktreeRemove`, `CwdChanged`, `FileChanged`. (`PermissionDenied` requires claude-code ≥ 2.1.89 and is not yet registered.) The hook handler in `packages/server/src/hooks/handler.ts` processes each event type, calls `EventStore.add()`, and for blocking hooks (`PreToolUse`, `PermissionRequest`) calls `PendingApprovalManager.createAndWait()` which suspends until the user decides.
+Each harness reaches Layman by a different mechanism. The summaries below are the shared pipeline;
+per-harness event lists, blocking timeouts, and implementation/design notes are in the harness docs
+linked above.
 
-1b. **Claude Code StatusLine**: A separate data channel from hooks. Layman installs a relay script (`~/.claude/hooks/layman/statusline.sh`) that receives JSON on stdin after every assistant turn (debounced 300ms by claude-code) and POSTs it to `/hooks/StatusLine`. This carries session metrics unavailable through hooks: cumulative cost, token counts, context window fill %, rate limits, model info, and lines changed. The handler creates `session_metrics` events which are stored in a dedicated per-session map (not the timeline) and displayed in the `SessionMetricsBar` component. If the user has an existing `statusLine` command, the relay script chains to it (preserving their status bar text).
+1. **Claude Code** (`docs/harnesses/claude-code.md`): HTTP POSTs to `/hooks/:eventName` (26
+   registered event types) plus a StatusLine relay for session metrics. The hook handler in
+   `packages/server/src/hooks/handler.ts` processes each event, calls `EventStore.add()`, and for
+   blocking hooks (`PreToolUse`, `PermissionRequest`) calls `PendingApprovalManager.createAndWait()`
+   which suspends until the user decides.
 
-2. **Codex hooks** (`packages/server/hooks/codex/`): Codex reads hook config from `~/.codex/hooks.json` and runs shell scripts from `~/.codex/hooks/layman/`. These scripts read hook JSON from stdin, inject `agent_type: "codex"`, and POST to the existing `/hooks/:eventName` handler via curl. The hook format is Claude Code-compatible — same field names and event names — so no separate handler is needed. `PreToolUse` blocks for up to 58 seconds. The `Stop` hook payload includes `last_assistant_message` which the handler uses to emit the agent's final response. Sessions activate when the user types `@layman` — detected via `UserPromptSubmit` hook before the gate check. Codex supports 5 hook events: `PreToolUse`, `PostToolUse`, `SessionStart`, `UserPromptSubmit`, `Stop`. Async hooks are not supported by Codex.
+2. **Codex** (`docs/harnesses/codex.md`): shell-script hooks (`packages/server/hooks/codex/`,
+   installed to `~/.codex/hooks/layman/`) that inject `agent_type: "codex"` and POST
+   Claude-Code-compatible payloads to the same `/hooks/:eventName` handler — no separate handler
+   needed.
 
-3. **Cline hooks** (`packages/server/src/cline/`): Cline runs bash scripts from `~/Documents/Cline/Hooks/` that pipe JSON stdin to `POST /hooks/cline/:hookName`. The Cline handler (`handler.ts`) translates Cline's field/tool-name format to Layman's internal types via a translator (`translator.ts`), then reuses the same event pipeline. PreToolUse blocks for up to 25 seconds (Cline's hardcoded limit is 30s). Sessions require `/layman` activation, tracked by workspace directory (cwd) so activation survives Plan/Act mode switches.
+3. **Cline** (`docs/harnesses/cline.md`): bash hooks POST to `POST /hooks/cline/:hookName`; the
+   handler and translator in `packages/server/src/cline/` map Cline's format to Layman's internal
+   types, then reuse the same pipeline.
 
-4. **Mistral Vibe watcher** (`packages/server/src/vibe/watcher.ts`): Polls `<root>/<dir>/messages.jsonl` every 2 seconds from a tracked byte offset. Translates Vibe's JSONL message format to Layman events. Sessions require `/layman` activation; sessions idle for 15+ minutes are treated as ended. Sessions within a 5-minute replay window are read from the beginning. The watch roots are not hardcoded — they come from a list of `MonitorSource`s (see item 4b), re-queried on every scan tick, so several roots are watched at once and each session inherits its root's agent type and optional sandbox label.
+4. **Mistral Vibe** (`docs/harnesses/vibe.md`): passive watcher (`packages/server/src/vibe/watcher.ts`)
+   polling Vibe's session JSONL. Watch roots come from `MonitorSource`s (item 4b), not hardcoded.
 
-4b. **Monitor sources** (`packages/server/src/monitor/sources.ts`): A `MonitorSource` enumerates `WatchRoot`s (a harness log dir plus the agent type and an optional sandbox `label`) for the passive watchers, on demand. `NativeVibeSource` returns the historical single `~/.vibe` root and `NativePiSource` the native `~/.pi/agent/sessions` root; `GloveSource` globs `~/.glove/envs/*/home/` and returns a labelled root for each harness log tree it finds there — a Vibe root (`.vibe/logs/session`) and/or a pi root (`.pi/agent/sessions`), so one sandbox can yield both. Native precedes glove in the list, so it wins any path collision. Each root declares its own `agentType`; the interface separates *where* to watch (a source) from *how* to parse (a per-format watcher). There are two passive watchers today — `VibeSessionWatcher` and `PiSessionWatcher` — and **each filters `roots()` down to the agent type it parses** (Vibe drops pi roots and vice versa), so the single shared `GloveSource` instance feeds both. A future passive harness adds a source (or a branch in `GloveSource`) plus a watcher and nothing else changes.
+4b. **Monitor sources** (`packages/server/src/monitor/sources.ts`): a `MonitorSource` enumerates
+   `WatchRoot`s (a harness log dir plus the agent type and an optional sandbox `label`) for the
+   passive watchers, on demand, separating *where* to watch (a source) from *how* to parse (a
+   per-format watcher). `NativeVibeSource`, `NativePiSource`, and `GloveSource` implement it; each of
+   the two passive watchers (`VibeSessionWatcher`, `PiSessionWatcher`) filters `roots()` down to the
+   agent type it parses, so the single shared `GloveSource` instance feeds both. A future passive
+   harness adds a source plus a watcher and nothing else changes. Glove specifics:
+   `docs/extensions/glove.md`.
 
-4c. **pi passive watcher** (`packages/server/src/pi/watcher.ts`): tails pi's format-version-3 JSONL transcripts for glove-sandboxed pi (which cannot reach Layman over the network) and native pi with no live extension. Unlike Vibe (`<root>/<dir>/messages.jsonl`, byte-appended), pi writes `<root>/<encoded-cwd>/<ts>_<sessionId>.jsonl` — one level deeper, and a *tree* re-parsed on each poll via the shared `parsePiTranscript()` rather than a flat log. So it is a sibling class, not a shared base: a session is a file not a dir, there is no local process to detect (a gloved pi runs in a container), and incremental emission is by *committed event id*, not byte offset. It deliberately **never emits a trailing `tool_call_pending`** while tailing — an in-flight tool becomes `tool_call_completed` once its result lands, and a pending shares its deterministic id with the completion that replaces it. Emission dedupes on that id (a `Set` per session, not a running count), so a pending is simply withheld until it completes, and a re-parse that reorders already-committed events — as parallel tool calls finishing out of order can — can neither duplicate nor drop one. (Keying by array position would; that was the original approach.) It uses the store's live path (`add()`, fresh id) exactly as the Vibe watcher does, so a passively-tailed session is a `live` source and history import won't double-record it (see the recovery note below). The reliability patterns are reused verbatim: scan-tick reconciliation (fs.watch is unreliable on Docker bind mounts, and pi's files sit below the watched root anyway), the recent/idle windows, replay-from-start for young sessions, and **resurrection of a tombstoned session** — an idle-timed-out session left in the map with no poll timer is revived by `cleanupEndedSessions` (via `tryResumeSession`) the moment its transcript grows again, emitting a `resumed` session_start before catch-up, exactly as `VibeSessionWatcher` does; `scanExistingSessions` skips paths already in the map, so this is the *only* path back for a resumed session.
+4c. **pi passive watcher** (`packages/server/src/pi/watcher.ts`): tails pi's format-version-3 JSONL
+   transcripts for glove-sandboxed pi (which cannot reach Layman over the network) and native pi with
+   no live extension. Design and reliability notes (why it never emits a trailing `tool_call_pending`,
+   dedupe by committed id, tombstone resurrection) are in `docs/harnesses/pi.md`.
 
-5. **OpenCode plugin** (`packages/opencode-plugin`): A bidirectional plugin that receives events from OpenCode and can send prompts back. Registered in `~/.config/opencode/opencode.json`.
+5. **OpenCode plugin** (`docs/harnesses/opencode.md`): a bidirectional plugin (`packages/opencode-plugin`)
+   that receives events from OpenCode and can send prompts back, registered in
+   `~/.config/opencode/opencode.json`.
 
-5b. **pi extension** (`packages/pi-extension`): A single TypeScript file that the installer copies verbatim to `~/.pi/agent/extensions/layman/index.ts`, where pi auto-discovers it and loads it through jiti — no build step, no `node_modules` beside it. It translates pi's event API to the same `/hooks/:eventName` payloads every other client posts (`agent_type: "pi"`), so no separate handler is needed. It is bidirectional: it polls `/api/prompts/pending` and injects via `pi.sendUserMessage()`. It is also the richest source Layman has — pi separates reasoning from response text at the protocol level, so `data.thinking` is populated directly, and `message_update` feeds the live token channel. `/layman` calls `POST /api/activate` directly rather than smuggling an `echo layman:activate` through a bash tool call, because pi dispatches extension commands before the prompt reaches the model.
+5b. **pi extension** (`docs/harnesses/pi.md`): a single TypeScript file
+   (`packages/pi-extension`) pi auto-discovers at `~/.pi/agent/extensions/layman/index.ts` and loads
+   through jiti. It posts the same `/hooks/:eventName` payloads (`agent_type: "pi"`), is bidirectional,
+   and is Layman's richest source (reasoning separated at the protocol level, live token streaming).
 
 6. **EventStore** (`packages/server/src/events/store.ts`) — in-memory, max 10,000 events, emits `event:new` / `event:update` / `sessions:changed`. Also tracks active sessions (sessionId → cwd) via `trackSession()`. Events passing through the store are automatically scanned by the PII filter before storage.
 
@@ -248,12 +282,6 @@ tested in node, where there is no `Audio` and no `URL.createObjectURL`.
 
 - **Session tracking**: Sessions are derived from `trackSession(sessionId, cwd)` called on every incoming hook. If the sessions map is empty on connect (server just started), `getSessions()` falls back to scanning event history for unique sessionIds (cwd will be empty until the next hook fires).
 
-- **Cline cwd-keyed activation**: Cline may change its `taskId` when switching Plan/Act modes while keeping the same workspace. Layman tracks activated workspace directories (`activatedCwds` Set in `cline/handler.ts`) so new taskIds in an already-activated workspace auto-activate without requiring `/layman` again.
-
-- **Vibe session end detection**: Vibe sets `end_time` on every `save_interaction()` call (not just on close), so `end_time` is not a reliable signal. Sessions are instead considered ended after 15 minutes of log file inactivity.
-
-- **Cline agent responses**: Cline routes all final AI responses through the `attempt_completion` tool. Layman captures the `result` parameter from `PostToolUse(attempt_completion)` and emits it as an `agent_response` event.
-
 - **Type duplication**: `EventData`, `TimelineEvent`, `AnalysisResult`, and the WebSocket protocol types exist in both the server (`packages/server/src/`) and the client (`packages/web/src/lib/types.ts`, `ws-protocol.ts`). They must be kept in sync manually — there is no shared package.
 
 - **`resolveId()` prefix matching is a range scan, not `LIKE`**: `TurnStore.lookup()` (`turns/store.ts`) resolves a prefix with `col >= prefix AND col < successor(prefix)` rather than `col LIKE 'prefix%'`. SQLite's LIKE-to-index-range-scan optimization is disabled by default whenever the pattern contains letters, because `LIKE` is case-insensitive by default and a BINARY-collated index can't satisfy that without `PRAGMA case_sensitive_like`. Since ids are opaque hex/uuid strings, a plain range comparison is both index-eligible unconditionally and the correct (case-sensitive) semantics — don't revert this to `LIKE` for readability.
@@ -276,10 +304,6 @@ tested in node, where there is no `Audio` and no `URL.createObjectURL`.
   depend on that harness still being installed: history for a removed harness is preserved, and the
   setup-status route surfaces it as "N recorded sessions kept" via `countRecordedSessionsByAgentType`.
 
-- **glove monitoring is read-only by design** (`monitor/sources.ts`, `GloveConfigSchema`): glove sandboxes a harness in a container and persists its fake home on the host under `~/.glove/envs/<env-id>/home/` (bind-mounted to `/home/agent` inside the container — glove v2 runs the harness non-root, but Layman reads the persisted *host* files so the in-container path is irrelevant); Layman tails those already-persisted logs from outside. The feature adds nothing to what the sandboxed agent can see — no new mount into the container, no egress — which is a deliberate fit for glove's security model, and the reason the mount is `:ro`. It is off by default (`glove.enabled`), and enabling or disabling it never affects native monitoring. Only harnesses that persist a tailable transcript are discoverable this way (Vibe and pi); a network-hook harness inside a net-restricted sandbox cannot reach Layman and persists nothing to tail, so it needs a different mechanism (a glove-provided forwarder), not `GloveSource`. Interception/blocking of a sandboxed harness is that same separate mechanism — this watcher is logging only. **glove v2 also ships an experimental `claude-code` harness**, but `GloveSource` does not discover it: native Claude Code uses live hooks and Layman has no *passive* Claude Code tail-watcher, so a gloved Claude Code session would need one built (a new watcher, not just a `GloveSource` branch). glove is aware of this integration and cooperates with it — its Vibe renderer pre-creates `home/.vibe/logs/session/` on launch *specifically so an external monitor can attach before the first turn* (`glove/harnessconfig.py`); pi's `home/.pi/agent/sessions/` is not pre-created and appears on pi's first turn instead, which `GloveSource` picks up on the next scan tick.
-
-- **glove's on-disk unit is an *environment*, not a session** (`monitor/sources.ts`, glove `registry.py`): an env is the pair `(invocation_dir, harness)` bound to a stable `env-id` (invocation-dir basename, or `<base>-<harness>` for a second harness in one dir, or `<base>-<shorthash>` on a cross-dir basename collision). All env state lives under `~/.glove/envs/<env-id>/`, which contains `glove.yaml`, the `home/` tree Layman tails, **and** a `sessions/<name>/` subtree per `glove run --name` (compose file, rendered enforcer policies, browser media) — none of which holds transcripts. Because transcripts live in the shared `home/`, several named glove sessions of one env write into one `home/.pi/agent/sessions` (or `.vibe/logs/session`) and are all tagged with the *env-id*, not the glove session name — a deliberate fidelity trade-off, not a bug. `GloveSource` reads only `<env-id>/home/…`; the sibling `glove.yaml`, `sessions/`, `registry.json`, and a stray `.DS_Store` are ignored (`statSync().isDirectory()` guards the readdir). A power-user `config_home_source` override in `glove.yaml` relocates `home/` outside `~/.glove/envs/`, where Layman's single-dir glob would not find it.
-
 - **`handler.ts`'s agent-type allow-list is a required edit for every new harness.**
   `handler.ts:96-107` resolves `agent_type` through a hardcoded chain that falls through to
   `'claude-code'`. An unrecognised value is **not** an error: sessions appear, events flow, and
@@ -288,42 +312,11 @@ tested in node, where there is no `Audio` and no `URL.createObjectURL`.
   fails loudly, so this is the single easiest thing to miss when adding a harness. It is the reason
   `handler.pi.test.ts` asserts `agent_type: 'pi'` resolves to `'pi'` and not to `'claude-code'`.
 
-- **pi gets a TypeScript extension, not shell hooks.** Codex and Cline get `curl`-in-`bash` scripts
-  because that is the only surface those harnesses expose. pi exposes a first-class typed event API
-  and explicitly positions itself as "aggressively extensible so it doesn't have to dictate your
-  workflow"; writing shell hooks against it would be writing *against* pi rather than with it. The
-  extension is deliberately **one file with no imports at all** — not even `import type`. jiti
-  erases type imports, so they would work at runtime, but they would also make `pnpm -r typecheck`
-  depend on `@earendil-works/pi-coding-agent`, a package this repo has no other reason to install.
-  The pi API surface is instead restated structurally at the top of the file. The cost is that pi
-  API drift shows up in manual testing rather than at compile time; the benefit is that the
-  installed file has no resolution requirements whatsoever. One file (rather than a directory) is
-  what lets it reuse `installOptionalClientCommands`' content-hash machinery, which gives
-  install / update-available / uninstall detection for free.
-
-- **`NativePiSource` yields no root when the pi extension is installed** (`monitor/sources.ts`).
-  Native pi is the one passively-watched harness that *also* has a live integration — the pi
-  extension, which records the same session over hooks. If both ran, every native pi turn would be
-  recorded twice: the passive path mints fresh ids (like the Vibe watcher), so the `source === 'live'`
-  dedupe that protects history import can't collapse two live producers. The guard is structural, not
-  a runtime session check: `NativePiSource` looks for the extension file
-  (`~/.pi/agent/extensions/layman/index.ts`, Docker `/root/...` first) and returns `[]` when present,
-  so the extension owns native pi and the watcher only tails native pi *without* it. Glove pi is
-  unaffected — those roots come from `GloveSource`, a sandbox never runs the host's extension, and a
-  sandboxed pi can't reach Layman over the network anyway, which is the whole reason it must be
-  tailed. This mirrors why the docstring says "native pi with no live extension"; nothing else
-  enforced it before.
-
-- **Tool-call blocking is opt-in for pi, and gated server-side.** pi's documented position is "no
-  permission popups — run in a container, or build your own confirmation flow with extensions".
-  Blocking pi by default would override that on the user's behalf; offering it as a toggle is a
-  faithful reading of the same position. `OPT_IN_BLOCKING_CLIENTS` in `handler.ts` names the
-  harnesses this applies to, mirrored by `OPT_IN_APPROVAL_CLIENTS` in `HarnessSection.tsx` so only
-  those grow a toggle. The decision is evaluated **per tool call on the server**, not cached and not
-  told to the extension at startup, which is what makes flipping the toggle take effect without
-  restarting pi. Note the drift monitor's red-level block goes through `PendingApprovalManager` too
-  and is gated by the same check — otherwise it would suspend pi through a second door while the
-  approvals toggle read "off".
+- **pi-specific design decisions live in `docs/harnesses/pi.md`** — why pi gets a TypeScript
+  extension rather than shell hooks, why `NativePiSource` yields no root when the extension is
+  installed, why tool-call blocking is opt-in and server-gated, how the live stream is bracketed,
+  and what the extension awaits. The drift/blocking interaction below is the one piece that stays
+  here because it is cross-cutting.
 
 - **"Cannot block" is a kind of auto-allow, and must be handled as one everywhere.** The orange-level
   drift reminder rides back on `permissionDecisionReason`, which is only ever set on a branch that
@@ -341,27 +334,6 @@ tested in node, where there is no `Audio` and no `URL.createObjectURL`.
   got a reminder at orange and silence at red. `handlePreToolUse` therefore demotes an unhonourable
   block to a reminder explicitly, recording the `drift_alert` the block branch would have. Losing
   the block is the point of the toggle; losing the signal never was.
-
-- **A partial `StatusLine` payload blanks the metrics bar.** `handleStatusLine` builds a
-  `session_metrics` event from whatever arrives and the client *replaces* its map entry rather than
-  merging, so posting one field clears every other. pi's `session_info_changed` (which fires shortly
-  after the first turn, just as the bar fills) therefore sends the whole `statusLinePayload(ctx)`
-  with the name substituted, not a name-only body. Any future partial-update source needs the same
-  treatment or a merging store.
-
-- **pi brackets a live stream on `message_start`/`message_end`, not on `assistantMessageEvent`'s
-  `start`/`done`.** Those two variants exist in pi's stream protocol type, which makes them look
-  like the obvious choice, but the agent core consumes them to emit the `message_start` and
-  `message_end` extension events and does not forward them: subscribing to `message_update` on pi
-  0.84.2 yields only `{thinking,text,toolcall}_{start,delta,end}`. Getting this wrong fails
-  *quietly* — deltas still accumulate and text still appears — but the buffer never resets between
-  the several assistant messages in one turn and the live row only clears via the 60 s idle sweep.
-
-- **The pi extension awaits exactly two things.** Everything is fire-and-forget so a dead or slow
-  Layman degrades to "pi works, nothing is recorded" rather than a stalled TUI. The exceptions are
-  `tool_call`, whose response can block, and `session_shutdown` — where the process exits before an
-  un-awaited `fetch` is ever flushed, losing `SessionEnd` entirely. The shutdown post therefore has
-  its own much shorter timeout (800 ms): a delayed exit is a worse failure than a missing end event.
 
 - **Auto-activate**: The `autoActivateClients` config array (in `~/.local/share/layman/layman.json`) lists client agent types (e.g. `'claude-code'`) whose sessions should auto-activate without requiring `/layman`. When a hook event arrives from a matching agent, `handler.ts` calls `gate.activate()` before the gate check, so events flow immediately. The toggle is in Settings → Client Setup on each client's row. Off by default.
 
@@ -388,35 +360,10 @@ tested in node, where there is no `Audio` and no `URL.createObjectURL`.
   the recorded ids explicitly. A test that seeds "live" events using the *parser's* ids proves
   nothing; it hands the upsert something to collide with and hides the bug.
 
-- **A transcript is identified by the session id in its contents, not its filename**
-  (`recovery.ts`, `TranscriptSource.resolveSessionId`). Claude Code writes a resume/fork transcript
-  as `<new-uuid>.jsonl` but stamps every line with the *original* `sessionId`. Keying by filename
-  minted a phantom session whose deterministic event ids all collided (`INSERT OR IGNORE`) with the
-  original that already owned them — a 0-event row whose `MAX(timestamp)` was 0, so every subsequent
-  scan re-parsed the whole file and "enriched" the same colliding events forever (reported as
-  `enriched N` with 0 discovered, in a loop). `importHistoricalSessions()` now resolves each file's
-  session id from its lines (`resolveSessionId`, implemented for claude-code, absent for pi whose
-  filenames already match), so a resume file resolves to its real session and is skipped by the same
-  `parseAfter` cutoff / live-skip that protects any already-recorded session. Two consequences worth
-  keeping: the pre-loop `existingSessions` snapshot is updated after a discover so a same-scan sibling
-  file (the resume and its original both present) enriches rather than re-imports; and a one-time
-  `DELETE` at the start of each scan removes existing 0-event `imported` phantoms (reported as
-  `removedPhantoms`) — safe because `importSession()` returns early on empty input, so a 0-event
-  `imported` row can only be such a phantom.
-
-- **History import discovers glove pi sessions too** (`recovery.ts`, `transcript-pi.ts`).
-  `discoverTranscriptFiles(gloveRoots)` scans, in addition to the native `~/.pi/agent/sessions`
-  root, every *pi* root the passive watchers report (`gloveSource.roots()` threaded from the two
-  `importHistoricalSessions()` call sites in `server.ts`), so a gloved pi run that was never
-  monitored live is still importable from **Settings → Data → Import session history**. Only pi is
-  imported from a sandbox: glove v2 adds an experimental claude-code harness but Layman does not tail
-  it (no passive Claude Code watcher — see the glove read-only note above), and Vibe has no history
-  importer at all — so non-pi roots are filtered out, and `gloveRoots` is empty when glove is disabled, leaving
-  native import byte-for-byte unchanged. The env id rides through `DiscoveredTranscript.label` into
-  `importSession(..., sessionName)` so a gloved import is tagged exactly like a passively-watched
-  gloved session. Double-import against the live watcher is prevented by the live-source rule above:
-  a session the pi watcher recorded is `source === 'live'` and is skipped (or, when unknown, the
-  `existingSessions` check skips it before parse).
+  Two harness-specific enrichment details moved out of this file: how a resume/fork transcript is
+  keyed by the session id in its contents rather than its filename (claude-code) is in
+  `docs/harnesses/claude-code.md`, and how history import discovers glove pi sessions is in
+  `docs/extensions/glove.md`.
 
 - **`toolFilePath()` takes an optional `toolName` because `path` is overloaded** (`events/tool-input.ts`,
   mirrored in the web copy). pi names its file argument `path`, and claude-code's `Grep`/`Glob` use
@@ -426,15 +373,10 @@ tested in node, where there is no `Audio` and no `URL.createObjectURL`.
   call site that renders a summary. Access tracking does not need it: `extractAccess()` switches on
   the tool name and handles `Grep`/`Glob` explicitly.
 
-- **Hook identity is structural, not tagged**: `buildLaymanHooks()` writes `_layman: true`, but **claude-code strips unknown keys when it rewrites `settings.json`**, so the tag does not survive and cannot be relied on. `isLaymanHook()` therefore matches on URL *shape* — any `{origin}/hooks/{KnownLaymanEvent}` — rather than on the tag or on the configured `serverUrl`. This matters because matching `serverUrl` alone meant that any URL change (port, `--hook-url`, `localhost` vs `host.docker.internal`) stopped matching the old entries and **appended a duplicate hook set**, causing every event to fire twice. Structural matching makes `install()` idempotent and self-healing across URL changes.
-
-- **Hook removal filters within matchers**: `stripLaymanHooks()` removes individual hook entries rather than dropping whole matcher objects, so a matcher holding both a Layman hook and a user's own hook does not take the user's hook down with it.
-
-- **Project-level hooks are orphans**: Layman has installed globally (`~/.claude/settings.json`) since the multi-project change; claude-code merges any project-level `.claude/settings.local.json` hooks *on top of* the global set, so leftovers from before that change double every event. `findOrphanedProjectHooks()` / `repairOrphanedProjectHooks()` detect and remove them, scoped strictly to a named directory. Exposed as **`layman repair-hooks [dir] [--dry-run]`** — a CLI command rather than an HTTP route, because the Docker container mounts only `~/.claude` and friends and cannot see a project's `.claude` directory. The `GET /api/setup/orphaned-hooks` / `POST /api/setup/repair-hooks` routes exist for native (non-Docker) installs and are restricted to directories Layman is actively tracking.
-
-- **StatusLine is a single slot**: Claude-code's `statusLine` config accepts exactly one command. If the user already has a custom statusLine, the installer composes by setting `LAYMAN_ORIGINAL_STATUSLINE` in the relay script and piping input to both. Uninstall restores the original command.
-
-- **`session_metrics` events**: StatusLine events fire after every assistant turn (high frequency). They are routed to a dedicated `sessionMetrics: Map<sessionId, SessionMetrics>` in the Zustand store rather than the timeline events array, to avoid flooding the timeline. The `SessionMetricsBar` component reads this map.
+- **Claude Code hook & StatusLine design decisions live in `docs/harnesses/claude-code.md`** —
+  structural (not tagged) hook identity and self-healing idempotent install, per-matcher hook
+  removal, orphaned project-level hooks (`layman repair-hooks`), the single-slot StatusLine
+  composition, `session_metrics` routing, and partial-payload handling.
 
 - **Drift monitoring design**: Drift scores use EMA smoothing (alpha 0.3) so a single LLM spike doesn't trigger alerts. Blocking at red level reuses `PendingApprovalManager` (same as tool approval). The two algorithms run in parallel via `Promise.all`. Cumulative prompt scope means every user message expands the session goal — only agent-initiated scope creep counts as drift. Per-item false-positive dismissals are injected into the LLM prompt to prevent re-flagging without resetting scores.
 

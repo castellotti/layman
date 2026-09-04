@@ -6,12 +6,17 @@ Template for `docs/harnesses/*.md`. Copy this file, rename it to the harness id
 
 These pages answer one question for a user who already has Layman running:
 "how do I get *this* harness into the dashboard, and what will and won't work
-once it's there?" They are not architecture docs — the mechanism belongs in the
-root `CLAUDE.md` and any design rationale belongs in `docs/plans/`.
+once it's there?" Keep that user-facing part (everything above the
+"Architecture & implementation notes" heading) to roughly 25–40 lines and one
+screen.
 
-Keep it to roughly 25–40 lines. Every existing harness page fits in one screen;
-that is deliberate, and a page that outgrows it is usually hiding a design note
-that wants to live somewhere else.
+Deep mechanism and design rationale now live in these pages too, under a final
+"## Architecture & implementation notes" section (see `claude-code.md` /
+`pi.md`), because the root `CLAUDE.md` has a size limit and harness-specific
+detail was pushing it over. The root file keeps only the shared pipeline and
+cross-cutting decisions, with a pointer to `docs/harnesses/<harness>.md`. Add
+that section when you have detail that belongs to one harness; leave it off for
+a genuinely simple integration.
 -->
 
 <!--
@@ -86,7 +91,19 @@ which has not yet been true of any harness.
 ## Notes
 
 <!--
-Optional. Version requirements, upstream feature flags, known-flaky behaviour,
-and links to the relevant `docs/plans/` document for anyone who needs the
-rationale rather than the instructions. Delete if empty.
+Optional. Version requirements, upstream feature flags, known-flaky behaviour.
+Deep mechanism and design rationale go in the "Architecture & implementation
+notes" section below rather than here. Delete if empty.
+-->
+
+## Architecture & implementation notes
+
+<!--
+Optional, and the only part of this page that is not user-facing. The mechanism
+and the "why", moved out of the root `CLAUDE.md` because it has a size limit:
+how the integration wires into Layman, the non-obvious design decisions, and the
+bugs each one prevents. Lead with a one-line note that it moved from `CLAUDE.md`
+(see `claude-code.md` / `pi.md` for the shape). The root file keeps only a
+one-line pointer to this section. Delete for a genuinely simple integration that
+has no detail of its own.
 -->
