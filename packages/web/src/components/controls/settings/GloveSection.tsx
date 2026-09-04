@@ -22,7 +22,7 @@ export function GloveSection({
 
   return (
     <>
-      <SectionTitle>Glove</SectionTitle>
+      <SectionTitle><a href="https://github.com/castellotti/glove" target="_blank" rel="noopener noreferrer" style={{ color: 'inherit', textDecoration: 'none', borderBottom: '1px solid currentColor' }}>Glove</a></SectionTitle>
 
       <ToggleRow
         label="Monitor sandboxed sessions"
