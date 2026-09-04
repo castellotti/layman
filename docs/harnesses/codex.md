@@ -25,3 +25,17 @@ First time or after a Layman update:
 - Tool approval/denial from the Layman UI is supported for `PreToolUse` events.
 - Prompt submission from the Layman UI is not yet supported for Codex sessions.
 - The hook scripts require `jq` on the host (`/usr/bin/jq` works); a `sed` fallback is used if `jq` is not available.
+
+## Architecture & implementation notes
+
+> Moved here from the root `CLAUDE.md` to keep it under its size limit.
+
+Codex reads hook config from `~/.codex/hooks.json` and runs shell scripts from
+`~/.codex/hooks/layman/` (`packages/server/hooks/codex/`). These scripts read hook JSON from stdin,
+inject `agent_type: "codex"`, and POST to the existing `/hooks/:eventName` handler via curl. The hook
+format is Claude Code-compatible — same field names and event names — so no separate handler is
+needed. `PreToolUse` blocks for up to 58 seconds. The `Stop` hook payload includes
+`last_assistant_message` which the handler uses to emit the agent's final response. Sessions activate
+when the user types `@layman` — detected via `UserPromptSubmit` hook before the gate check. Codex
+supports 5 hook events: `PreToolUse`, `PostToolUse`, `SessionStart`, `UserPromptSubmit`, `Stop`.
+Async hooks are not supported by Codex.
