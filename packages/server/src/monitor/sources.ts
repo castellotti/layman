@@ -111,19 +111,31 @@ export class NativePiSource implements MonitorSource {
 /**
  * Sandboxed harness logs produced by glove (github.com/castellotti/glove).
  *
- * glove runs each harness inside a container with a fake home persisted on the
- * host at `<sessionsDir>/<env-id>/home/`, mirroring the real dotfile layout.
- * So a gloved Vibe writes `<sessionsDir>/<env-id>/home/.vibe/logs/session/...`
- * and a gloved pi writes `<sessionsDir>/<env-id>/home/.pi/agent/sessions/...`
- * — exactly the layouts the passive watchers already understand, only rooted
- * elsewhere.
+ * glove's unit of identity is an *environment* — the pair `(invocation_dir,
+ * harness)` bound to a stable `env-id` — and all its state lives under
+ * `<sessionsDir>/<env-id>/` (glove v2's `~/.glove/envs/<env-id>/`). That dir
+ * holds `glove.yaml`, per-run `sessions/<name>/` subtrees (compose file,
+ * enforcer policies, browser media — no transcripts), and a `home/` tree that
+ * glove bind-mounts as the harness home. Transcripts live in `home/`, mirroring
+ * the real dotfile layout: a gloved Vibe writes
+ * `<sessionsDir>/<env-id>/home/.vibe/logs/session/...` and a gloved pi writes
+ * `<sessionsDir>/<env-id>/home/.pi/agent/sessions/...` — exactly the layouts the
+ * passive watchers already understand, only rooted elsewhere. glove pre-creates
+ * the Vibe log dir on launch so a monitor can attach before the first turn; pi's
+ * sessions dir appears at runtime and is picked up on the next scan tick.
  *
  * This source globs one level of environment directories and returns a root for
- * each harness log tree it finds, labelled with the env id (`pi-local`) so its
- * sessions are tagged in the UI. A single sandbox may run both harnesses, so it
- * can yield a vibe root *and* a pi root. It reads only what the sandbox already
- * persisted: no new mount into the container, no egress, nothing added to what
- * the sandboxed agent can see — read-only "outside looking in".
+ * each harness log tree it finds under `<env-id>/home/`, labelled with the env
+ * id (e.g. `pi-local`, or `myrepo-pi` / `myrepo-1a2b3c` when glove disambiguates
+ * a name clash) so its sessions are tagged in the UI. Because several named glove
+ * sessions of one env share that one `home/`, they all carry the env-id label
+ * rather than the glove session name. A single env may run both harnesses, so it
+ * can yield a vibe root *and* a pi root. Non-`home/` siblings (`glove.yaml`,
+ * `sessions/`, a stray `.DS_Store`) are ignored — the `statSync().isDirectory()`
+ * guard skips non-dirs, and only the two known subpaths are probed. It reads
+ * only what the sandbox already persisted: no new mount into the container, no
+ * egress, nothing added to what the sandboxed agent can see — read-only "outside
+ * looking in".
  *
  * Vibe and pi are discovered because both persist a tailable transcript on the
  * host. The other network-hook harnesses (codex, cline, opencode) POST *to*
