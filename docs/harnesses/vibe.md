@@ -16,3 +16,19 @@ The `/layman` skill file is installed to `~/.vibe/skills/layman/` for informatio
 ## Limitations
 
 - Monitoring is passive - tool approval and prompt submission from the Layman UI are not available.
+
+## Architecture & implementation notes
+
+> Moved here from the root `CLAUDE.md` to keep it under its size limit.
+
+The watcher (`packages/server/src/vibe/watcher.ts`) polls `<root>/<dir>/messages.jsonl` every 2
+seconds from a tracked byte offset. It translates Vibe's JSONL message format to Layman events.
+Sessions require `/layman` activation; sessions idle for 15+ minutes are treated as ended. Sessions
+within a 5-minute replay window are read from the beginning. The watch roots are not hardcoded — they
+come from a list of `MonitorSource`s (see the root `CLAUDE.md` "Monitor sources" note and
+`docs/extensions/glove.md`), re-queried on every scan tick, so several roots are watched at once and
+each session inherits its root's agent type and optional sandbox label.
+
+- **Vibe session end detection.** Vibe sets `end_time` on every `save_interaction()` call (not just
+  on close), so `end_time` is not a reliable signal. Sessions are instead considered ended after 15
+  minutes of log file inactivity.
