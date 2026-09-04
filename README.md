@@ -120,7 +120,8 @@ Or build and run the container locally: `make docker-run` (see [Makefile](Makefi
 |---|---|
 | [Installation & operation](docs/installation.md) | Quick start details, what gets mounted, port binding, updating, stopping, adding clients |
 | [Features in depth](docs/features.md) | Risk analysis, drift monitoring, PII filter, access tracking, metrics, historical import |
-| [Claude Code](docs/harnesses/claude-code.md) · [Codex](docs/harnesses/codex.md) · [OpenCode](docs/harnesses/opencode.md) · [Vibe](docs/harnesses/vibe.md) · [Cline](docs/harnesses/cline.md) · [pi](docs/harnesses/pi.md) · [Open WebUI](docs/harnesses/open-webui.md) | Per-harness installation, activation, and capability notes |
+| [Claude Code](docs/harnesses/claude-code.md) · [Codex](docs/harnesses/codex.md) · [OpenCode](docs/harnesses/opencode.md) · [Vibe](docs/harnesses/vibe.md) · [Cline](docs/harnesses/cline.md) · [pi](docs/harnesses/pi.md) · [Open WebUI](docs/harnesses/open-webui.md) | Per-harness installation, activation, capability, and architecture notes |
+| [glove](docs/extensions/glove.md) | Read-only passive monitoring of glove-sandboxed sessions |
 | [Development](docs/development.md) | Building from source, workspace layout, testing, contributing |
 | [CHANGELOG.md](CHANGELOG.md) | Release history |
 
