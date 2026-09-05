@@ -92,6 +92,18 @@ Fidelity depends on what each harness exposes. Where there is no streaming hook,
 
 Two toggles in **Settings -> Stream behavior**: **Live tokens** turns the channel off entirely, and **Live thinking** drops just the reasoning stream. Both take effect on the server, so turning them off stops the data being sent rather than merely hidden. Streamed text passes through the same PII filter as recorded events.
 
+## Multi-host sync
+
+Run Layman on more than one machine and bring their sessions together. One instance acts as the **central** store; each other machine runs as a **remote** that keeps recording locally, exactly as a standalone install does, and **pushes** its data to central whenever it is reachable. Interruptions recover with no loss or duplicates — a dropped connection simply re-sends from where it left off.
+
+Central shows every remote's sessions in **Sessions**, **Prompts** and search, each tagged with a **host chip** naming the machine it came from, and surfaces a remote's *live* session on the **Dashboard** — a read-only row with a running indicator and its last few events — within a few seconds. No approvals and no live token streams cross hosts. Bookmarks, folders and highlights sync too, and stay **read-only on any machine that did not create them** (the chip is shown, the rename/delete/drag affordances are not).
+
+An optional **Mirror** mode on a remote pulls central's full history — every *other* host's data — so it can be browsed and searched offline. Settings → Multi-host sync carries per-host statistics (sessions, events, content size, last seen), token issuance for enrolling remotes, and the Mirror and danger-zone controls.
+
+Set up in **Settings → Connection → Multi-host sync**. The network model is a private LAN / Tailscale / VPN with per-host bearer tokens over plain HTTP; **the dashboard itself has no authentication and must not be exposed to the public internet**. See [installation.md → Running a central instance](installation.md#running-a-central-instance) for the deployment steps.
+
+![Multi-host sync settings](images/multi-host-sync.png)
+
 ## Setup wizard
 
 First-run setup is guided by a wizard that detects installed AI clients and walks through configuration options.

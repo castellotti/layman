@@ -57,19 +57,46 @@ export interface SyncRouteDeps {
 export async function registerSyncRoutes(fastify: FastifyInstance, deps: SyncRouteDeps): Promise<void> {
   const { db, getConfig, journal, applier, peers, getPusher } = deps;
 
+  // In-memory per-IP failed-auth throttle: 10 failures/minute → 429. Cheap
+  // brute-force protection for the one route reachable with a guessable secret.
+  const authFailures = new Map<string, { count: number; resetAt: number }>();
+  const AUTH_FAIL_LIMIT = 10;
+  const AUTH_FAIL_WINDOW_MS = 60_000;
+  function isRateLimited(ip: string): boolean {
+    const now = Date.now();
+    const entry = authFailures.get(ip);
+    if (!entry || now > entry.resetAt) return false;
+    return entry.count >= AUTH_FAIL_LIMIT;
+  }
+  function recordAuthFailure(ip: string): void {
+    const now = Date.now();
+    const entry = authFailures.get(ip);
+    if (!entry || now > entry.resetAt) {
+      authFailures.set(ip, { count: 1, resetAt: now + AUTH_FAIL_WINDOW_MS });
+    } else {
+      entry.count++;
+    }
+  }
+
   await fastify.register(async (scope) => {
     // Decompress gzip request bodies (push batches); scoped to this plugin only.
     await scope.register(compress, { global: true, requestEncodings: ['gzip'], threshold: 1024 });
 
     /** Bearer-token gate for the peer-facing routes. */
     function requireToken(request: FastifyRequest, reply: FastifyReply, done: (err?: Error) => void): void {
+      if (isRateLimited(request.ip)) {
+        reply.code(429).send({ error: 'too many failed auth attempts, try again shortly' });
+        return;
+      }
       const header = request.headers.authorization;
       if (!header || !header.startsWith('Bearer ')) {
+        recordAuthFailure(request.ip);
         reply.code(401).send({ error: 'missing bearer token' });
         return;
       }
       const peer = peers.authenticate(header.slice(7));
       if (!peer) {
+        recordAuthFailure(request.ip);
         reply.code(401).send({ error: 'invalid or revoked token' });
         return;
       }
@@ -127,6 +154,13 @@ export async function registerSyncRoutes(fastify: FastifyInstance, deps: SyncRou
         `INSERT OR IGNORE INTO sync_hosts (host_id, name, kind, first_seen, last_seen)
          VALUES (?, ?, 'remote', ?, ?)`,
       ).run(batch.hostId, peer.name, Date.now(), Date.now());
+
+      // The applier writes regardless of the recording toggle (recording only
+      // gates the *live* recorder), but a central accepting pushes with recording
+      // off is almost certainly a misconfiguration worth surfacing in the log.
+      if (!getConfig().sessionRecording) {
+        request.log.warn('sync: received a push while session recording is off');
+      }
 
       const { applied, conflicts } = applier.apply(batch.hostId, batch.entries, { piiFilter: getConfig().piiFilter });
 
