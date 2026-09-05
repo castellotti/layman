@@ -4,7 +4,7 @@ import type { LaymanConfig, PeerDTO, HostStats, SyncStatus } from '../../../lib/
 import { useSessionStore } from '../../../stores/sessionStore.js';
 import { formatContentBytes } from '../../../lib/host.js';
 import {
-  SectionTitle, SectionIntro, FieldRow, InfoRow, SegmentRow, ActionRow, CustomRow,
+  SectionTitle, SectionIntro, FieldRow, InfoRow, SegmentRow, ActionRow, ToggleRow, CustomRow,
 } from './primitives.js';
 
 type Role = 'standalone' | 'central' | 'remote';
@@ -152,12 +152,55 @@ function RemotePanel({
 
       <ActionRow label="Sync now" onClick={() => void fetch('/api/sync/now', { method: 'POST' })} />
 
+      {/* Mirror: pull the rest of central's history to this host (§3.10). */}
+      <ToggleRow
+        label="Mirror central history to this host"
+        desc="Download every other host's sessions and search them offline. Read-only here."
+        checked={sync.mirror}
+        onChange={() => update({ mirror: !sync.mirror })}
+      />
+      {sync.mirror && status?.pull && (
+        <InfoRow
+          label="Mirror"
+          dotColor={STATE_COLOR[status.pull.state === 'incremental' || status.pull.state === 'snapshot' ? 'syncing' : status.pull.state === 'idle' ? 'idle' : status.pull.state]}
+          value={
+            status.pull.state === 'snapshot'
+              ? `Downloading snapshot${status.pull.snapshotKind ? ` (${status.pull.snapshotKind})` : ''}…`
+              : status.pull.state === 'idle'
+                ? 'Up to date'
+                : status.pull.state
+          }
+        />
+      )}
+      {sync.mirror && (
+        <FieldRow
+          label="Mirror interval (s)"
+          type="number"
+          value={String(sync.mirrorIntervalSeconds)}
+          onChange={(v) => { const n = parseInt(v, 10); if (n >= 15 && n <= 3600) update({ mirrorIntervalSeconds: n }); }}
+        />
+      )}
+
       <SectionIntro>Danger zone</SectionIntro>
       <ActionRow
         label="Re-send everything"
         variant="danger"
         hint="Clears push cursors → full backfill on next tick"
         onClick={() => { if (confirm('Re-send all local data to central?')) void fetch('/api/sync/reset-push', { method: 'POST' }); }}
+      />
+      {sync.mirror && (
+        <ActionRow
+          label="Re-download mirror"
+          variant="danger"
+          hint="Clears pull cursors → full snapshot on next tick"
+          onClick={() => { if (confirm('Re-download all mirrored data from central?')) void fetch('/api/sync/reset-pull', { method: 'POST' }); }}
+        />
+      )}
+      <ActionRow
+        label="Forget suppressions"
+        variant="danger"
+        hint="Lets the origin resurrect sessions you deleted locally"
+        onClick={() => { if (confirm('Forget deletion suppressions?')) void fetch('/api/sync/suppressions', { method: 'DELETE' }); }}
       />
     </>
   );

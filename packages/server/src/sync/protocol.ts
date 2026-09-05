@@ -84,6 +84,27 @@ export interface HelloResponse {
   headSeq: number;
 }
 
+/** One page of a mirror bootstrap snapshot (docs/planning/multi-host-sync.md §3.10). */
+export interface SnapshotPage {
+  kind: SyncKind;
+  entries: PushEntry[];
+  /** Id to resume after, or null when this kind is exhausted. */
+  nextCursor: string | null;
+  /** Central's journal head at the time of the call, for pull_snapshot_head. */
+  headSeq: number;
+  /** Host rows so a mirror can label chips for hosts it has never met. */
+  hosts: HostStats[];
+}
+
+/** Incremental mirror changes since a seq, or a resync signal. */
+export interface ChangesResponse {
+  resync?: boolean;
+  entries: PushEntry[];
+  /** The highest seq covered; the puller advances pull_acked_seq to it. */
+  headSeq: number;
+  hosts: HostStats[];
+}
+
 export interface HostStats {
   hostId: string;
   name: string;
@@ -113,6 +134,16 @@ export interface PeerDTO {
 }
 
 export type SyncRunState = 'idle' | 'syncing' | 'backfill' | 'backoff' | 'error' | 'paused';
+export type PullRunState = 'idle' | 'snapshot' | 'incremental' | 'backoff' | 'error' | 'paused';
+
+export interface PullStatus {
+  enabled: boolean;
+  state: PullRunState;
+  pullAckedSeq: number | null;
+  snapshotKind: SyncKind | null;
+  lastSuccessAt: number | null;
+  lastError: string | null;
+}
 
 export interface SyncStatus {
   role: 'standalone' | 'central' | 'remote';
@@ -126,4 +157,6 @@ export interface SyncStatus {
   backfillKind: SyncKind | null;
   lastSuccessAt: number | null;
   lastError: string | null;
+  /** Mirror pull status when role === 'remote' && mirror; absent otherwise. */
+  pull?: PullStatus;
 }
