@@ -43,6 +43,7 @@ export function EventStream({ onSend, archived = false, archivedDate, turnRuler 
     bookmarksScrollToEventId, setBookmarksScrollToEventId,
   } = useSessionStore();
   const historicalEventsFromStore = useSessionStore((s) => s.historicalEvents);
+  const loadingHistorical = useSessionStore((s) => s.loadingHistorical);
 
   const autoScroll = config?.autoScroll ?? true;
 
@@ -457,21 +458,44 @@ export function EventStream({ onSend, archived = false, archivedDate, turnRuler 
               justifyContent: 'center', height: '100%', gap: 12, textAlign: 'center',
               padding: '0 32px',
             }}>
-              <div style={{ fontSize: 36 }}>👁</div>
-              <p style={{ fontFamily: 'var(--font-ui)', fontSize: 13, fontWeight: 500, color: 'var(--text)', margin: 0 }}>
-                Waiting for events…
-              </p>
-              <p style={{ fontFamily: 'var(--font-ui)', fontSize: 11, color: 'var(--text-muted)', margin: 0 }}>
-                Hooks are installed. Start a Claude Code, Codex, Cline, OpenCode, or Mistral Vibe session to see events here.
-              </p>
-              <div style={{
-                marginTop: 8, fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-faint)',
-                background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 6,
-                padding: '10px 16px', textAlign: 'left',
-              }}>
-                <p style={{ color: 'var(--text-muted)', margin: '0 0 4px 0' }}># In your AI agent:</p>
-                <p style={{ margin: 0 }}>type /layman to begin</p>
-              </div>
+              {archived ? (
+                // An archived/recorded session: its events already exist, they're
+                // just being fetched (or, rarely, none were recorded). The live
+                // "start a session / type /layman" guidance would be misleading
+                // here — show a clean loading indicator or an empty note instead.
+                loadingHistorical ? (
+                  <>
+                    <div style={{ width: 180, height: 3, borderRadius: 3, overflow: 'hidden', background: 'var(--bg-card)' }}>
+                      <div className="layman-indeterminate" style={{ height: '100%', width: '40%', background: 'var(--accent)', borderRadius: 3 }} />
+                    </div>
+                    <p style={{ fontFamily: 'var(--font-ui)', fontSize: 12, color: 'var(--text-muted)', margin: 0 }}>
+                      Loading session…
+                    </p>
+                  </>
+                ) : (
+                  <p style={{ fontFamily: 'var(--font-ui)', fontSize: 12, color: 'var(--text-muted)', margin: 0 }}>
+                    No events recorded for this session.
+                  </p>
+                )
+              ) : (
+                // Live Logs view with nothing yet — the guidance is appropriate here.
+                <>
+                  <p style={{ fontFamily: 'var(--font-ui)', fontSize: 13, fontWeight: 500, color: 'var(--text)', margin: 0 }}>
+                    Waiting for events…
+                  </p>
+                  <p style={{ fontFamily: 'var(--font-ui)', fontSize: 11, color: 'var(--text-muted)', margin: 0 }}>
+                    Hooks are installed. Start a Claude Code, Codex, Cline, OpenCode, or Mistral Vibe session to see events here.
+                  </p>
+                  <div style={{
+                    marginTop: 8, fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-faint)',
+                    background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 6,
+                    padding: '10px 16px', textAlign: 'left',
+                  }}>
+                    <p style={{ color: 'var(--text-muted)', margin: '0 0 4px 0' }}># In your AI agent:</p>
+                    <p style={{ margin: 0 }}>type /layman to begin</p>
+                  </div>
+                </>
+              )}
             </div>
           ) : (
             displayEvents.map((event, i) => {
