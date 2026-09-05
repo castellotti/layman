@@ -114,7 +114,7 @@ export class SyncPuller {
       // stresses the mount enough to matter (see db/database.ts). Warn once so a
       // corruption is diagnosable; the pacing + deferred stats below mitigate it.
       if (detectContainer()) {
-        this.opts.log?.('sync: starting mirror snapshot; bulk import over a bind-mounted DB is paced to protect it');
+        this.opts.log?.('sync: starting mirror snapshot; bulk import over a bind-mounted DB is paced to reduce (not eliminate) corruption risk — see docs/planning/multihost-sync-durability-followup.md');
       }
     }
     let cursor: { kind: SyncKind; lastId: string } | null = this.readCursor();

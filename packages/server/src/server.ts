@@ -32,7 +32,7 @@ import { SyncPusher, createHttpSyncClient, type SyncClient } from './sync/pusher
 import { SyncPuller } from './sync/puller.js';
 import { SyncState } from './sync/state.js';
 import { registerSyncRoutes } from './sync/routes.js';
-import { hostsWithStats } from './sync/stats.js';
+import { hostsWithStats, updateHostStats } from './sync/stats.js';
 import { RemoteSessionRegistry } from './sync/presence.js';
 import type { PresencePayload } from './sync/protocol.js';
 import { SessionRecorder, countRecordedSessionsByAgentType } from './db/recorder.js';
@@ -314,9 +314,21 @@ export function createServer(config: LaymanConfig): LaymanServer {
       broadcast({ type: 'sync:hosts', hosts: hostsWithStats(db) });
     }, 5000);
   }
+  // The push apply defers per-batch stats (deferStats) to avoid an O(n²) recompute
+  // during a large remote's backfill. Refresh the pushing host's counters on a
+  // per-host debounce instead, so a burst of batches recomputes once, not per batch.
+  const hostStatsTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  function scheduleHostStats(hostId: string): void {
+    if (hostStatsTimers.has(hostId)) return;
+    hostStatsTimers.set(hostId, setTimeout(() => {
+      hostStatsTimers.delete(hostId);
+      try { updateHostStats(db, hostId); } catch { /* non-fatal */ }
+      broadcastSyncHosts();
+    }, 3000));
+  }
   // A remote applying central's data and a central applying a push both change
-  // host counters; refresh the dashboard's hosts table either way.
-  syncApplier.on('applied', () => broadcastSyncHosts());
+  // host counters; refresh the pushing host's counters (throttled) and the table.
+  syncApplier.on('applied', (info: { originHostId: string }) => scheduleHostStats(info.originHostId));
 
   // Remote presence changes (a session appearing, its lastSeen advancing, and
   // above all the active→idle flip once a stale remote stops pushing) reach an
@@ -1961,6 +1973,8 @@ export function createServer(config: LaymanConfig): LaymanServer {
       if (syncStatusTimer) { clearTimeout(syncStatusTimer); syncStatusTimer = null; }
       if (syncHostsTimer) { clearTimeout(syncHostsTimer); syncHostsTimer = null; }
       if (remotePresenceTimer) { clearTimeout(remotePresenceTimer); remotePresenceTimer = null; }
+      for (const t of hostStatsTimers.values()) clearTimeout(t);
+      hostStatsTimers.clear();
       await fastify.close();
     },
 

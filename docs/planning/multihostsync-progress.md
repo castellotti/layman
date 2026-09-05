@@ -57,17 +57,39 @@ bind mount with **`integrity_check ok`, no duplicates, no crash**; 657
 central-origin sessions attributed to `Nyx.local`; offline search over mirrored
 data returned 46 k matches from the client.
 
-### Open risk worth noting
+### Push side now also defers stats (`8dc64e5` + follow-up)
 
-The *receiving* side of any bulk transfer over a FUSE bind-mounted DB is the
-hazard, not just mirror. A **large remote's first backfill-push onto a central**
-has the same shape; the central applies it per-batch with the same
-`updateHostStats` per batch. In this test the client was tiny so it never showed,
-but a central on a FUSE mount receiving a months-large remote could hit it.
-`deferStats` is not yet applied on the central push path (pushes are streaming,
-with no clean "end" to recompute at). Options: pace/deferring on the central
-apply too, or documenting that a central should keep `layman.db` on a real volume
-rather than a FUSE bind mount for large fleets. Left as a follow-up.
+The *receiving* side of **any** bulk transfer over a FUSE bind-mounted DB is the
+hazard, not just mirror — a large remote's first backfill-push onto a central has
+the same shape. The push receive path now also applies with `deferStats: true`,
+and `server.ts` recomputes the pushing host's counters on a per-host 3 s debounce
+(`scheduleHostStats`) instead of per batch. So the O(n²) stats amplifier is gone
+in **both** directions.
+
+### Honest framing of what this fix is and is not
+
+**Do not call this "corruption-proof."** Of the changes:
+
+- **`deferStats`** (both directions) is a genuine fix — it removes an accidental
+  O(n²): the applier was running a full `COUNT`/`SUM` over `recorded_events` on
+  every page. Worth keeping on its own merits.
+- **Pacing** (pull only) is a *mitigation* — it lowers the sustained write rate,
+  reducing probability, not eliminating the failure.
+- **Neither touches the substrate.** SQLite in DELETE journal mode over a FUSE
+  bind mount remains fragile under bulk writes. The single-process `fsync`
+  ordering failure mode is not addressed at all.
+- The passing 180k re-test changed **two variables** (added the fix *and* removed
+  the concurrent host-side `sqlite3` reader), so it proves the fix helps but does
+  not isolate cause or prove durability under a second reader / mechanism B.
+
+**The complete fix is deferred to a dedicated future effort** (single-owner
+datastore and/or storage placement off the FUSE mount), to be planned by a
+separate agent from a clean context **after all PRs are merged and the feature is
+working with reasonable reliability**. The full problem brief — every perspective
+discussed (bidirectional hazard, the two corruption mechanisms, the storage-
+placement options, the reframed sidecar/single-owner idea, invariants to
+preserve, the decisive experiment to run first, and acceptance criteria) — is in
+[`multihost-sync-durability-followup.md`](multihost-sync-durability-followup.md).
 
 ---
 
