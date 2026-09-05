@@ -2,7 +2,9 @@
 
 Full reference for running Layman. For the one-command start, see the [README](../README.md#quick-start).
 
-Requires [Docker](https://docs.docker.com/get-started/get-docker/).
+Requires [Docker](https://docs.docker.com/get-started/get-docker/) or [Podman](https://podman.io/).
+The commands below use `docker`; if you run Podman, substitute `podman` (its `podman compose`
+runs the same compose files unchanged). See [Podman](#podman) below.
 
 ## Quick start
 
@@ -67,6 +69,31 @@ Layman runs in Docker but needs read/write access to several directories on your
 Layman only writes inside these directories when you explicitly click **Install** in Settings. Nothing is written automatically on startup.
 
 Note that your **project directories are not mounted**. The container can reach `~/.claude` but not `<your-project>/.claude`, which is why the repair command below runs on the host rather than through the web UI.
+
+## Podman
+
+Layman runs under [Podman](https://podman.io/) as an alternative to Docker — the image, the
+compose files, and the bind mounts are all the same. Replace `docker` with `podman` in any command
+on this page:
+
+```bash
+# Quick start (pre-built image)
+mkdir -p ~/layman && curl -fsSL https://raw.githubusercontent.com/castellotti/layman/main/docker-compose.ghcr.yml -o ~/layman/docker-compose.yml && podman compose -f ~/layman/docker-compose.yml up -d
+```
+
+If you cloned the repo, the Make targets detect Podman automatically when Docker is not installed;
+force it with `make start CONTAINER_ENGINE=podman` (or `make docker-run CONTAINER_ENGINE=podman` to
+build from source). `podman compose` requires the compose provider (either the `podman-compose`
+package or the Docker Compose CLI) to be installed.
+
+**Rootless Podman** (the default) maps the container's `root` user to your host user, so the volume
+paths in the compose file — all under `/root/...` inside the container — resolve to your host home
+directory, and files Layman writes through them (hooks, commands) are owned by you, not by root.
+
+Reaching a **host-run service** (an analysis model, or speaches for text-to-speech) works the same
+way it does under Docker: leave the endpoint as `http://localhost:...` and Layman rewrites it to
+reach the host. It detects Podman via `/run/.containerenv` and uses the `host.docker.internal`
+alias, which Podman 4.7+ provides.
 
 ## Troubleshooting: every event recorded twice
 

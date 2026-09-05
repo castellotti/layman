@@ -18,11 +18,11 @@ Layman watches [Claude Code](https://github.com/anthropics/claude-code), [Codex]
 - **Approve** - intercept tool calls before execution (Claude Code, Codex, OpenCode, Cline; opt-in for pi)
 - **Record** - opt-in session recording to local SQLite, PII redacted by default; bookmarks, folders, full-content search; historical import from Claude Code JSONL transcripts
 
-Runs in Docker, binds to `127.0.0.1:8880` only. No accounts, no telemetry, no data leaves your machine.
+Runs in a container (Docker or Podman), binds to `127.0.0.1:8880` only. No accounts, no telemetry, no data leaves your machine.
 
 ## Quick start
 
-Requires [Docker](https://docs.docker.com/get-started/get-docker/).
+Requires [Docker](https://docs.docker.com/get-started/get-docker/) or [Podman](https://podman.io/) (substitute `podman` for `docker` below; see [docs/installation.md](docs/installation.md#podman)).
 
 ```bash
 # macOS / Linux
