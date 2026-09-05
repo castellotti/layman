@@ -270,6 +270,7 @@ export function createServer(config: LaymanConfig): LaymanServer {
       syncPuller = new SyncPuller(db, client, getConfig, {
         laymanVersion: SERVER_VERSION,
         onStatus: () => broadcastSyncStatus(),
+        log: (msg) => console.log(`[sync] ${msg}`),
       });
       syncPuller.start();
     } else if (!wantMirror && syncPuller) {

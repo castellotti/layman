@@ -140,4 +140,16 @@ describe('SyncApplier', () => {
     const host = db.prepare('SELECT session_count, event_count FROM sync_hosts WHERE host_id = ?').get(REMOTE) as { session_count: number; event_count: number };
     expect(host).toEqual({ session_count: 1, event_count: 1 });
   });
+
+  it('deferStats skips the per-batch counter refresh (rows still applied)', () => {
+    applier.apply(REMOTE, [
+      upsert('session', 's1', sessionRow('s1', REMOTE)),
+      upsert('event', 'e1', eventRow('e1', 's1')),
+    ], { deferStats: true });
+    // Rows landed…
+    expect(db.prepare("SELECT COUNT(*) AS n FROM recorded_sessions").get()).toEqual({ n: 1 });
+    // …but the counters were not recomputed (the caller does it once at the end).
+    const host = db.prepare('SELECT session_count, event_count FROM sync_hosts WHERE host_id = ?').get(REMOTE) as { session_count: number; event_count: number };
+    expect(host).toEqual({ session_count: 0, event_count: 0 });
+  });
 });
