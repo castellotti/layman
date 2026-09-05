@@ -3,11 +3,23 @@ import OpenAI from 'openai';
 import type { AnalysisConfig, RawLLMResponse } from '../types.js';
 
 /**
- * When running inside Docker, `localhost` resolves to the container itself.
+ * True when we are running inside a container. Docker writes `/.dockerenv`;
+ * Podman (which Layman also supports as a container engine) writes
+ * `/run/.containerenv` instead and never creates `/.dockerenv`, so both must
+ * be checked or the host-rewrite below silently no-ops under Podman.
+ */
+function isContainerised(): boolean {
+  return existsSync('/.dockerenv') || existsSync('/run/.containerenv');
+}
+
+/**
+ * When running inside a container, `localhost` resolves to the container itself.
  * Rewrite localhost/127.0.0.1 to host.docker.internal so requests reach the host.
+ * Podman 4.7+ provides the same `host.docker.internal` alias (in addition to
+ * `host.containers.internal`), so one target works for both engines.
  */
 function resolveEndpoint(url: string): string {
-  if (!existsSync('/.dockerenv')) return url;
+  if (!isContainerised()) return url;
   return url.replace(/^(https?:\/\/)(localhost|127\.0\.0\.1)(?=[:\/]|$)/, '$1host.docker.internal');
 }
 
