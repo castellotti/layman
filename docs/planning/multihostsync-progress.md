@@ -5,7 +5,69 @@ the branch/commit layout, test status, and — most importantly — every place 
 implementation deviated from the plan, so the plan can be corrected.
 
 **Status:** all five implementation phases (0–5) complete on stacked branches,
-none merged yet. Last updated after Phase 5.
+none merged yet, plus a follow-up mirror fix on `sync/phase-4-fix-mirror-fuse`
+(`8dc64e5`) after live two-machine testing. Last updated after that fix.
+
+---
+
+## Live two-machine test (2026-09-05) — central `Nyx.local`, client `Odyssey.local`
+
+Central = an existing install with **657 sessions / 180,404 events / 158 MB**
+(docker); client = **12 sessions** (podman on macOS). Central was moved onto a
+new branch `test/multihost-sync` at commit `c2b16ae` via a local git bundle
+(no GitHub access on that host), bound `0.0.0.0`, role Central. Client ran
+`sync/phase-5`, role Remote.
+
+**Passed:** migration/identity, token enrolment (TOFU bind), test-connection,
+push (client→central backfill, no duplicate events), host attribution
+(`?host=`, resolve, search `hostIds`), deletion + suppression (deleted on
+central, kept on client, not resurrected after re-push).
+
+**Found a real defect — mirror pull corrupted the client DB.** Enabling Mirror
+made the client snapshot central's full history; around ~68 k of 180 k events
+the client's `layman.db` corrupted (`PRAGMA integrity_check` → invalid btree
+page numbers) and the server crash-looped. This is the FUSE / bind-mount failure
+class `db/database.ts` documents. Root cause, in order of impact:
+
+1. `SyncApplier` ran a full `COUNT`/`SUM` over `recorded_events` on **every
+   snapshot page** (`updateHostStats`) — hundreds of heavy scans interleaved
+   with the bulk writes on the FUSE mount.
+2. No pacing between the ~360 write transactions (one per 500-row page); DELETE
+   journal creates/deletes a rollback file per transaction over FUSE.
+3. Aggravating (test-only): a host-side `sqlite3` CLI polling the live DB file
+   during the import — a second process over a mount whose cross-process advisory
+   locking is unreliable.
+
+Recovery: `sqlite3 .recover` produced a clean DB (integrity `ok`, **zero
+committed rows lost**); mirror disabled, cursors cleared, swapped back.
+
+### Fix (`sync/phase-4-fix-mirror-fuse`, `8dc64e5`)
+
+- `ApplierOptions.deferStats` — skip the per-batch counter refresh; the puller
+  sets it for snapshot applies and calls `recomputeHostStats` **once** at the end.
+  Removes the hundreds of heavy interleaved scans (cause 1).
+- Puller paces between snapshot pages (`LAYMAN_SYNC_SNAPSHOT_PACING_MS`, default
+  40 ms) so writes don't sustain back-to-back (cause 2).
+- Puller logs a warning at snapshot start inside a container.
+- Re-test avoided the host-side CLI reader, monitoring only via `/api/sync/*`
+  (cause 3).
+
+**Re-test result:** full **180,404-event** mirror completed on the podman FUSE
+bind mount with **`integrity_check ok`, no duplicates, no crash**; 657
+central-origin sessions attributed to `Nyx.local`; offline search over mirrored
+data returned 46 k matches from the client.
+
+### Open risk worth noting
+
+The *receiving* side of any bulk transfer over a FUSE bind-mounted DB is the
+hazard, not just mirror. A **large remote's first backfill-push onto a central**
+has the same shape; the central applies it per-batch with the same
+`updateHostStats` per batch. In this test the client was tiny so it never showed,
+but a central on a FUSE mount receiving a months-large remote could hit it.
+`deferStats` is not yet applied on the central push path (pushes are streaming,
+with no clean "end" to recompute at). Options: pace/deferring on the central
+apply too, or documenting that a central should keep `layman.db` on a real volume
+rather than a FUSE bind mount for large fleets. Left as a follow-up.
 
 ---
 
