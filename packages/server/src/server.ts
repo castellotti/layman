@@ -31,6 +31,7 @@ import { PeerStore } from './sync/tokens.js';
 import { SyncPusher, createHttpSyncClient, type SyncClient } from './sync/pusher.js';
 import { registerSyncRoutes } from './sync/routes.js';
 import { hostsWithStats } from './sync/stats.js';
+import { RemoteSessionRegistry } from './sync/presence.js';
 import type { PresencePayload } from './sync/protocol.js';
 import { SessionRecorder, countRecordedSessionsByAgentType } from './db/recorder.js';
 import { BookmarkStore } from './db/bookmarks.js';
@@ -220,6 +221,7 @@ export function createServer(config: LaymanConfig): LaymanServer {
   const syncJournal = new SyncJournal(db);
   const syncApplier = new SyncApplier(db);
   const syncPeers = new PeerStore(db);
+  const remoteRegistry = new RemoteSessionRegistry();
   let syncPusher: SyncPusher | null = null;
 
   function syncPresence(): PresencePayload {
@@ -345,11 +347,14 @@ export function createServer(config: LaymanConfig): LaymanServer {
 
   // Build sessions list annotated with active flag from the gate
   function buildSessionsList() {
-    return eventStore.getSessions().map(s => ({
+    const local = eventStore.getSessions().map(s => ({
       ...s,
       cwd: filterCwd(s.cwd),
       active: gate.isActive(s.sessionId),
     }));
+    // Merge live remote sessions reported by enrolled peers (central role). Local
+    // first, then remote by recency, so the dashboard leads with this machine.
+    return [...local, ...remoteRegistry.list()];
   }
 
   // ─── Full-session investigation context ───────────────────────────────────
@@ -469,6 +474,13 @@ export function createServer(config: LaymanConfig): LaymanServer {
       applier: syncApplier,
       peers: syncPeers,
       getPusher: () => syncPusher,
+      registry: remoteRegistry,
+      // Remote live-tail events ride the same event:new frame as local ones; the
+      // client looks host up via the session, so TimelineEvent stays unchanged.
+      onLiveEvents: (events) => {
+        for (const event of events) broadcast({ type: 'event:new', event });
+        broadcast({ type: 'sessions:list', sessions: buildSessionsList() });
+      },
       laymanVersion: SERVER_VERSION,
     });
 
@@ -1541,6 +1553,12 @@ export function createServer(config: LaymanConfig): LaymanServer {
           100
         );
         for (const event of recentEvents) {
+          ws.send(JSON.stringify({ type: 'event:new', event } satisfies ServerMessage));
+        }
+
+        // Replay each active remote session's ring after the local replay, so a
+        // dashboard opened mid-remote-session shows its last few events too.
+        for (const event of remoteRegistry.replayEvents()) {
           ws.send(JSON.stringify({ type: 'event:new', event } satisfies ServerMessage));
         }
 

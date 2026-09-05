@@ -8,6 +8,7 @@ import { SyncState } from './state.js';
 import { SyncJournal } from './journal.js';
 import { SyncApplier } from './applier.js';
 import { PeerStore } from './tokens.js';
+import { RemoteSessionRegistry } from './presence.js';
 import { registerSyncRoutes } from './routes.js';
 import { LaymanConfigSchema, type LaymanConfig } from '../config/schema.js';
 import { SYNC_PROTOCOL_VERSION, type PushBatch } from './protocol.js';
@@ -39,6 +40,8 @@ beforeEach(async () => {
     applier: new SyncApplier(db),
     peers,
     getPusher: () => null,
+    registry: new RemoteSessionRegistry(),
+    onLiveEvents: () => {},
     laymanVersion: '9.9.9',
   });
   await app.ready();
