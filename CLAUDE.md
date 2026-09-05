@@ -20,13 +20,17 @@ pnpm -r test            # or: make test
 # Run a single test file
 cd packages/server && pnpm test -- src/events/classifier.test.ts
 
-# Docker workflow (primary way to run Layman against a real session)
+# Container workflow (primary way to run Layman against a real session)
 make docker-stop docker-build docker-run   # rebuild and restart
 make docker-logs                           # follow container logs
 make docker-status                         # check container state
 ```
 
-After any server or web change, you must rebuild the Docker image for changes to take effect — the container runs from built artifacts, not source.
+These targets drive Docker or Podman: `CONTAINER_ENGINE` auto-detects (Docker preferred when
+both are installed, Podman otherwise) and is overridable, e.g. `make docker-run CONTAINER_ENGINE=podman`.
+See `docs/development.md` → Container engine.
+
+After any server or web change, you must rebuild the container image for changes to take effect — the container runs from built artifacts, not source.
 
 ## Architecture
 

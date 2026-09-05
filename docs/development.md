@@ -6,7 +6,7 @@ Building, testing, and contributing to Layman.
 
 - Node.js 22+
 - pnpm 10 (`corepack enable && corepack prepare pnpm@10.29.3 --activate`)
-- Docker (for container builds)
+- Docker **or** Podman (for container builds — see [Container engine](#container-engine) below)
 
 ## Workspace layout
 
@@ -215,9 +215,10 @@ curl -X POST http://localhost:8000/v1/models/speaches-ai/Kokoro-82M-v1.0-ONNX
 Kokoro ships 54 voices. `GET /api/tts/voices` lists whatever is actually installed - never hardcode
 a voice list, it depends entirely on which models the user downloaded.
 
-Layman running in Docker reaches a host-run speaches automatically: `resolveEndpoint()`
-(`analysis/providers/openai-compat.ts`) rewrites `localhost` to `host.docker.internal` when
-`/.dockerenv` exists. Use that helper rather than writing a second copy of the rewrite.
+Layman running in a container reaches a host-run speaches automatically: `resolveEndpoint()`
+(`analysis/providers/openai-compat.ts`) rewrites `localhost` to `host.docker.internal` when it
+detects it is containerised — `/.dockerenv` (Docker) or `/run/.containerenv` (Podman). Use that
+helper rather than writing a second copy of the rewrite.
 
 ### Where the pieces live
 
@@ -275,10 +276,10 @@ only `~/.claude` and friends and cannot see project directories. The
 and are restricted to directories Layman is actively tracking, so they can't rewrite arbitrary
 paths.
 
-## Running from source in Docker
+## Running from source in a container
 
 ```bash
-make docker-build   # docker build -t layman .
+make docker-build   # $(CONTAINER_ENGINE) build -t layman .
 make docker-run     # build + compose up, hooks scoped to the current directory
 make docker-logs    # follow logs
 make docker-stop
@@ -287,6 +288,38 @@ make docker-stop
 `make docker-run` points Layman at the current working directory's `.claude` folder; override with `LAYMAN_PROJECT_DIR=/path/to/project`.
 
 The image builds on `node:22-slim`; `better-sqlite3` is a native module compiled during the image build (python3/make/g++ are installed in the build stage).
+
+### Container engine
+
+The `docker-*`, `start`, `stop`, and `update` Make targets drive whichever container
+engine is installed. Both Docker and Podman expose the same `build` and `compose`
+verbs, so a single detected `CONTAINER_ENGINE` variable stands in for either:
+
+```makefile
+CONTAINER_ENGINE ?= $(shell if command -v docker …; then echo docker; elif command -v podman …; then echo podman; …)
+COMPOSE          ?= $(CONTAINER_ENGINE) compose
+```
+
+Docker is preferred when both are present (existing setups are unchanged); Podman is
+picked up automatically otherwise. Force one explicitly:
+
+```bash
+make docker-run CONTAINER_ENGINE=podman
+```
+
+`scripts/build.sh` honours the same `CONTAINER_ENGINE` environment variable.
+
+Podman runs the same `docker-compose.yml` unchanged. Two engine differences are worth
+knowing:
+
+- **Container detection.** The server rewrites `localhost` → `host.docker.internal` for
+  host-run services (analysis models, speaches) only when it detects it is containerised.
+  Docker signals this with `/.dockerenv`; Podman uses `/run/.containerenv`. `resolveEndpoint()`
+  (`analysis/providers/openai-compat.ts`) checks both. Podman 4.7+ provides the
+  `host.docker.internal` alias too, so the rewrite target is the same for both engines.
+- **Rootless Podman** maps the container's `root` to your host user, so the bind mounts
+  in `docker-compose.yml` (all under `/root/...` inside the container) resolve to your
+  host home directory exactly as they do under Docker.
 
 ## Frontend conventions
 
