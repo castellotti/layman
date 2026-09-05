@@ -8,6 +8,7 @@ interface RawFolder {
   name: string;
   sort_order: number;
   created_at: number;
+  host_id?: string | null;
 }
 
 interface RawBookmark {
@@ -17,6 +18,7 @@ interface RawBookmark {
   name: string;
   sort_order: number;
   created_at: number;
+  host_id?: string | null;
 }
 
 interface RawSession {
@@ -65,6 +67,7 @@ function toFolder(row: RawFolder): BookmarkFolder {
     name: row.name,
     sortOrder: row.sort_order,
     createdAt: row.created_at,
+    hostId: row.host_id ?? undefined,
   };
 }
 
@@ -76,6 +79,7 @@ function toBookmark(row: RawBookmark): Bookmark {
     name: row.name,
     sortOrder: row.sort_order,
     createdAt: row.created_at,
+    hostId: row.host_id ?? undefined,
   };
 }
 

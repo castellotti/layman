@@ -1,7 +1,9 @@
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { useSessionStore } from '../../stores/sessionStore.js';
-import type { Highlight, HighlightFolder, TimelineEvent } from '../../lib/types.js';
+import type { Highlight, HighlightFolder, TimelineEvent, RecordedSession } from '../../lib/types.js';
+import { HostChip } from '../shared/HostChip.js';
+import { isEditableCuration } from '../../lib/host.js';
 import { SearchInput, FilterChip, SECTION_LABEL_STYLE, CollapsibleFolderHeader, FolderSectionHeader, InlineRenameInput, RenameButton, ConfirmDialog, CopyLinkButton } from '../primitives/index.js';
 import { getEffectiveAgentContent } from '../../lib/reasoning.js';
 import { isMarkdown, MARKDOWN_PROSE_COMPACT, REMARK_PLUGINS } from '../../lib/markdown.js';
@@ -66,6 +68,7 @@ interface SidebarHighlightRowProps {
   isSelected: boolean;
   indent?: boolean;
   sessionLabel?: string;
+  hostInfo?: { hostId?: string; hostName?: string };
   isDragOver?: boolean;
   onSelect: (h: Highlight) => void;
   onRename?: (name: string) => void;
@@ -75,7 +78,7 @@ interface SidebarHighlightRowProps {
 }
 
 function SidebarHighlightRow({
-  highlight, isSelected, indent = false, sessionLabel, isDragOver = false,
+  highlight, isSelected, indent = false, sessionLabel, hostInfo, isDragOver = false,
   onSelect, onRename, onDragStart, onDragOver, onDragEnd,
 }: SidebarHighlightRowProps) {
   const [hovered, setHovered] = useState(false);
@@ -139,8 +142,9 @@ function SidebarHighlightRow({
             {highlight.name}
           </div>
         )}
-        <div style={{ fontSize: 10, color: 'var(--text-faint)', fontFamily: 'var(--font-mono)' }}>
-          {sessionLabel ? `${sessionLabel} · ${date}` : date}
+        <div style={{ fontSize: 10, color: 'var(--text-faint)', fontFamily: 'var(--font-mono)', display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap' }}>
+          <span>{sessionLabel ? `${sessionLabel} · ${date}` : date}</span>
+          <HostChip hostId={hostInfo?.hostId} hostName={hostInfo?.hostName} />
         </div>
       </div>
       {!editing && onRename && (
@@ -164,9 +168,14 @@ interface SidebarFolderProps {
   onToggle: () => void;
   selectedHighlightId: string | null;
   sessionLabelById: Map<string, string>;
+  sessionHostById: Map<string, { hostId?: string; hostName?: string }>;
+  /** Whether the folder itself is local (remote → read-only). */
+  editable: boolean;
+  /** Local host id, so each highlight row's own editability can be judged. */
+  localHostId: string;
   onSelect: (h: Highlight) => void;
-  onRename: (name: string) => void;
-  onDelete: () => void;
+  onRename?: (name: string) => void;
+  onDelete?: () => void;
   onRenameHighlight: (id: string, name: string) => void;
   draggedItemId: string | null;
   dragOverContainerId: string | null;
@@ -182,7 +191,7 @@ interface SidebarFolderProps {
 }
 
 function SidebarFolder({
-  folder, highlights, expanded, onToggle, selectedHighlightId, sessionLabelById, onSelect,
+  folder, highlights, editable, localHostId, expanded, onToggle, selectedHighlightId, sessionLabelById, sessionHostById, onSelect,
   onRename, onDelete, onRenameHighlight,
   draggedItemId, dragOverContainerId, dragOverItemId,
   onItemDragStart, onItemDragOverItem, onItemDragOverContainer, onItemDragEnd,
@@ -199,7 +208,7 @@ function SidebarFolder({
         onDelete={onDelete}
         draggable
         isDragOver={isFolderDragOver || (dragOverContainerId === folder.id && dragOverItemId === null)}
-        onDragStart={onFolderDragStart}
+        onDragStart={editable ? onFolderDragStart : undefined}
         onDragOver={() => { onFolderDragOver(); onItemDragOverContainer(folder.id); }}
         onDragEnd={onFolderDragEnd}
       />
@@ -211,21 +220,25 @@ function SidebarFolder({
           Drop highlights here
         </div>
       )}
-      {expanded && highlights.map((h) => (
+      {expanded && highlights.map((h) => {
+        const rowEditable = isEditableCuration(h, localHostId);
+        return (
         <SidebarHighlightRow
           key={h.id}
           highlight={h}
           isSelected={selectedHighlightId === h.id}
           indent
           sessionLabel={sessionLabelById.get(h.sessionId)}
+          hostInfo={sessionHostById.get(h.sessionId)}
           isDragOver={draggedItemId !== h.id && dragOverContainerId === folder.id && dragOverItemId === h.id}
           onSelect={onSelect}
-          onRename={(name) => onRenameHighlight(h.id, name)}
-          onDragStart={() => onItemDragStart({ id: h.id, containerId: folder.id, bookmarked: true })}
+          onRename={rowEditable ? (name) => onRenameHighlight(h.id, name) : undefined}
+          onDragStart={rowEditable ? () => onItemDragStart({ id: h.id, containerId: folder.id, bookmarked: true }) : undefined}
           onDragOver={() => onItemDragOverItem(folder.id, h.id)}
           onDragEnd={onItemDragEnd}
         />
-      ))}
+        );
+      })}
     </div>
   );
 }
@@ -234,6 +247,7 @@ function SidebarFolder({
 
 export function PromptsView() {
   const { highlightFolders, highlights, sessions, navigateFromPromptsToSession, setSelectedEvent, setInvestigationOpen } = useSessionStore();
+  const localHostId = useSessionStore((s) => s.config?.sync?.hostId ?? '');
 
   // Selection lives in the store, not locally, because it is addressable: /h/<id>
   // hydrates it and the outbound URL sync reads it back (see useLaymanRoute).
@@ -244,13 +258,28 @@ export function PromptsView() {
   const [searchQuery, setSearchQuery] = useState('');
   const [deleteConfirmFolderId, setDeleteConfirmFolderId] = useState<string | null>(null);
 
+  // Recorded sessions give labels (and host attribution) to highlights whose
+  // session is not live — the previous live-only map left those unlabelled.
+  const [recordedSessions, setRecordedSessions] = useState<RecordedSession[]>([]);
+  useEffect(() => {
+    void fetch('/api/bookmarks/sessions')
+      .then((r) => r.json())
+      .then((d: { sessions?: RecordedSession[] }) => setRecordedSessions(d.sessions ?? []))
+      .catch(() => {});
+  }, []);
+
   const sessionLabelById = useMemo(() => {
     const map = new Map<string, string>();
-    for (const s of sessions) {
-      map.set(s.sessionId, sessionDisplayName(s.sessionName, s.cwd, s.sessionId));
-    }
+    for (const s of recordedSessions) map.set(s.sessionId, sessionDisplayName(s.sessionName, s.cwd, s.sessionId));
+    for (const s of sessions) map.set(s.sessionId, sessionDisplayName(s.sessionName, s.cwd, s.sessionId));
     return map;
-  }, [sessions]);
+  }, [sessions, recordedSessions]);
+
+  const sessionHostById = useMemo(() => {
+    const map = new Map<string, { hostId?: string; hostName?: string }>();
+    for (const s of recordedSessions) map.set(s.sessionId, { hostId: s.hostId, hostName: s.hostName });
+    return map;
+  }, [recordedSessions]);
 
   const selectedHighlight = highlights.find((h) => h.id === selectedHighlightId) ?? null;
 
@@ -422,6 +451,7 @@ export function PromptsView() {
                     highlight={h}
                     isSelected={selectedHighlightId === h.id}
                     sessionLabel={sessionLabelById.get(h.sessionId)}
+                    hostInfo={sessionHostById.get(h.sessionId)}
                     onSelect={handleSelectHighlight}
                     onRename={(name) => handleRenameHighlight(h.id, name)}
                   />
@@ -433,18 +463,22 @@ export function PromptsView() {
               <FolderSectionHeader label="Folders" onCreate={handleCreateFolder} />
               {orderedFolders.map((folder) => {
                 const items = folderHighlightsMap.get(folder.id) ?? [];
+                const folderEditable = isEditableCuration(folder, localHostId);
                 return (
                   <SidebarFolder
                     key={folder.id}
                     folder={folder}
                     highlights={items}
+                    editable={folderEditable}
+                    localHostId={localHostId}
                     expanded={isExpanded(folder.id)}
                     onToggle={() => toggleExpanded(folder.id)}
                     selectedHighlightId={selectedHighlightId}
                     sessionLabelById={sessionLabelById}
+                    sessionHostById={sessionHostById}
                     onSelect={handleSelectHighlight}
-                    onRename={(name) => handleRenameFolder(folder.id, name)}
-                    onDelete={() => setDeleteConfirmFolderId(folder.id)}
+                    onRename={folderEditable ? (name) => handleRenameFolder(folder.id, name) : undefined}
+                    onDelete={folderEditable ? () => setDeleteConfirmFolderId(folder.id) : undefined}
                     onRenameHighlight={handleRenameHighlight}
                     draggedItemId={draggedItemId}
                     dragOverContainerId={dragOverContainerId}
@@ -491,20 +525,24 @@ export function PromptsView() {
                       Drop highlights here
                     </div>
                   )}
-                  {unfiledHighlights.map((h) => (
+                  {unfiledHighlights.map((h) => {
+                    const rowEditable = isEditableCuration(h, localHostId);
+                    return (
                     <SidebarHighlightRow
                       key={h.id}
                       highlight={h}
                       isSelected={selectedHighlightId === h.id}
                       sessionLabel={sessionLabelById.get(h.sessionId)}
+                      hostInfo={sessionHostById.get(h.sessionId)}
                       isDragOver={draggedItemId !== h.id && dragOverContainerId === 'unfiled' && dragOverItemId === h.id}
                       onSelect={handleSelectHighlight}
-                      onRename={(name) => handleRenameHighlight(h.id, name)}
-                      onDragStart={() => handleItemDragStart({ id: h.id, containerId: 'unfiled', bookmarked: true })}
+                      onRename={rowEditable ? (name) => handleRenameHighlight(h.id, name) : undefined}
+                      onDragStart={rowEditable ? () => handleItemDragStart({ id: h.id, containerId: 'unfiled', bookmarked: true }) : undefined}
                       onDragOver={() => handleDragOverItem('unfiled', h.id)}
                       onDragEnd={handleItemDragEnd}
                     />
-                  ))}
+                    );
+                  })}
                 </>
               )}
             </>

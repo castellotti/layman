@@ -3,6 +3,8 @@ export interface BookmarkFolder {
   name: string;
   sortOrder: number;
   createdAt: number;
+  /** Origin host id (multi-host sync). Curation is editable only on its origin. */
+  hostId?: string;
 }
 
 export interface Bookmark {
@@ -12,6 +14,7 @@ export interface Bookmark {
   name: string;
   sortOrder: number;
   createdAt: number;
+  hostId?: string;
 }
 
 export interface RecordedSession {
@@ -36,6 +39,7 @@ export interface HighlightFolder {
   name: string;
   sortOrder: number;
   createdAt: number;
+  hostId?: string;
 }
 
 export interface Highlight {
@@ -47,6 +51,7 @@ export interface Highlight {
   name: string;
   sortOrder: number;
   createdAt: number;
+  hostId?: string;
 }
 
 export interface QAEntry {

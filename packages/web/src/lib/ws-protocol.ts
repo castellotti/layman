@@ -12,6 +12,8 @@ import type {
   Highlight,
   DriftState,
   LiveStream,
+  SyncStatus,
+  HostStats,
 } from './types.js';
 
 export interface SessionInfo {
@@ -22,6 +24,11 @@ export interface SessionInfo {
   active?: boolean;
   opencodeUrl?: string;
   sessionName?: string;
+  /** Origin host (multi-host sync). Absent/local for own sessions. */
+  hostId?: string;
+  hostName?: string;
+  /** True for a session surfaced from a remote via central's presence registry. */
+  remote?: boolean;
 }
 
 export type ServerMessage =
@@ -57,7 +64,9 @@ export type ServerMessage =
   | { type: 'highlights:deleted'; highlightId: string }
   | { type: 'drift:update'; sessionId: string; state: DriftState }
   | { type: 'stream:update'; sessionId: string; stream: LiveStream }
-  | { type: 'stream:end'; sessionId: string };
+  | { type: 'stream:end'; sessionId: string }
+  | { type: 'sync:status'; status: SyncStatus }
+  | { type: 'sync:hosts'; hosts: HostStats[] };
 
 export type ClientMessage =
   | { type: 'approval:decide'; approvalId: string; decision: ApprovalDecision }

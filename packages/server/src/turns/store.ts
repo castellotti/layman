@@ -14,6 +14,8 @@ export interface ResolvedId {
   sessionId?: string;
   /** Present for highlights — the turn they name, so /h/:id can open that turn. */
   promptEventId?: string;
+  /** Origin host for sessions, bookmarks and highlights (multi-host sync). */
+  hostId?: string;
 }
 
 export interface AmbiguousId {
@@ -35,12 +37,12 @@ function prefixUpperBound(prefix: string): string {
  * without its session.
  */
 const RESOLVE_TABLES: Array<{ table: string; column: string; kind: ResolvedKind; extra?: string[] }> = [
-  { table: 'recorded_sessions', column: 'session_id', kind: 'session' },
+  { table: 'recorded_sessions', column: 'session_id', kind: 'session', extra: ['host_id'] },
   { table: 'recorded_events', column: 'id', kind: 'event', extra: ['session_id'] },
-  { table: 'highlights', column: 'id', kind: 'highlight', extra: ['session_id', 'prompt_event_id'] },
-  { table: 'bookmarks', column: 'id', kind: 'bookmark', extra: ['session_id'] },
-  { table: 'bookmark_folders', column: 'id', kind: 'folder' },
-  { table: 'highlight_folders', column: 'id', kind: 'highlight_folder' },
+  { table: 'highlights', column: 'id', kind: 'highlight', extra: ['session_id', 'prompt_event_id', 'host_id'] },
+  { table: 'bookmarks', column: 'id', kind: 'bookmark', extra: ['session_id', 'host_id'] },
+  { table: 'bookmark_folders', column: 'id', kind: 'folder', extra: ['host_id'] },
+  { table: 'highlight_folders', column: 'id', kind: 'highlight_folder', extra: ['host_id'] },
 ];
 
 export class TurnStore {
@@ -158,13 +160,14 @@ export class TurnStore {
         : this.db.prepare(`SELECT ${columns} FROM ${table} WHERE ${column} >= ? AND ${column} < ? LIMIT 5`);
 
       const rows = (exact ? stmt.all(value) : stmt.all(value, prefixUpperBound(value))) as
-        Array<{ id: string; session_id?: string; prompt_event_id?: string }>;
+        Array<{ id: string; session_id?: string; prompt_event_id?: string; host_id?: string | null }>;
       for (const row of rows) {
         results.push({
           kind,
           id: row.id,
           ...(row.session_id ? { sessionId: row.session_id } : {}),
           ...(row.prompt_event_id ? { promptEventId: row.prompt_event_id } : {}),
+          ...(row.host_id ? { hostId: row.host_id } : {}),
         });
       }
     }
