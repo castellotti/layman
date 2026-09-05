@@ -3,11 +3,18 @@
 # ── Container engine ──────────────────────────────────────────────────────────
 # Layman runs from a container image; either Docker or Podman drives it. Both
 # expose the same `build` and `compose` verbs, so a single detected variable
-# stands in for whichever one is installed. Docker wins when both are present
-# (existing setups are unchanged); Podman is picked up automatically otherwise.
-# Override explicitly with e.g. `make docker-run CONTAINER_ENGINE=podman`.
-CONTAINER_ENGINE ?= $(shell if command -v docker >/dev/null 2>&1; then echo docker; elif command -v podman >/dev/null 2>&1; then echo podman; else echo docker; fi)
-COMPOSE ?= $(CONTAINER_ENGINE) compose
+# stands in for whichever one is installed. Docker wins when its daemon is
+# actually reachable — a lingering docker CLI with no running daemon (common on
+# Podman-primary hosts) falls back to Podman rather than failing at build time.
+# Docker is the last-resort default so error messages name a real engine.
+# `:=` evaluates the detection once; a command-line override (e.g.
+# `make docker-run CONTAINER_ENGINE=podman`) skips it entirely.
+CONTAINER_ENGINE := $(shell \
+	if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then echo docker; \
+	elif command -v podman >/dev/null 2>&1; then echo podman; \
+	elif command -v docker >/dev/null 2>&1; then echo docker; \
+	else echo docker; fi)
+COMPOSE := $(CONTAINER_ENGINE) compose
 
 # ── Local development ─────────────────────────────────────────────────────────
 
