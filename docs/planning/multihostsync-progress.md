@@ -5,7 +5,91 @@ the branch/commit layout, test status, and — most importantly — every place 
 implementation deviated from the plan, so the plan can be corrected.
 
 **Status:** all five implementation phases (0–5) complete on stacked branches,
-none merged yet. Last updated after Phase 5.
+none merged yet, plus a follow-up mirror fix on `sync/phase-4-fix-mirror-fuse`
+(`8dc64e5`) after live two-machine testing. Last updated after that fix.
+
+---
+
+## Live two-machine test (2026-09-05) — central `Nyx.local`, client `Odyssey.local`
+
+Central = an existing install with **657 sessions / 180,404 events / 158 MB**
+(docker); client = **12 sessions** (podman on macOS). Central was moved onto a
+new branch `test/multihost-sync` at commit `c2b16ae` via a local git bundle
+(no GitHub access on that host), bound `0.0.0.0`, role Central. Client ran
+`sync/phase-5`, role Remote.
+
+**Passed:** migration/identity, token enrolment (TOFU bind), test-connection,
+push (client→central backfill, no duplicate events), host attribution
+(`?host=`, resolve, search `hostIds`), deletion + suppression (deleted on
+central, kept on client, not resurrected after re-push).
+
+**Found a real defect — mirror pull corrupted the client DB.** Enabling Mirror
+made the client snapshot central's full history; around ~68 k of 180 k events
+the client's `layman.db` corrupted (`PRAGMA integrity_check` → invalid btree
+page numbers) and the server crash-looped. This is the FUSE / bind-mount failure
+class `db/database.ts` documents. Root cause, in order of impact:
+
+1. `SyncApplier` ran a full `COUNT`/`SUM` over `recorded_events` on **every
+   snapshot page** (`updateHostStats`) — hundreds of heavy scans interleaved
+   with the bulk writes on the FUSE mount.
+2. No pacing between the ~360 write transactions (one per 500-row page); DELETE
+   journal creates/deletes a rollback file per transaction over FUSE.
+3. Aggravating (test-only): a host-side `sqlite3` CLI polling the live DB file
+   during the import — a second process over a mount whose cross-process advisory
+   locking is unreliable.
+
+Recovery: `sqlite3 .recover` produced a clean DB (integrity `ok`, **zero
+committed rows lost**); mirror disabled, cursors cleared, swapped back.
+
+### Fix (`sync/phase-4-fix-mirror-fuse`, `8dc64e5`)
+
+- `ApplierOptions.deferStats` — skip the per-batch counter refresh; the puller
+  sets it for snapshot applies and calls `recomputeHostStats` **once** at the end.
+  Removes the hundreds of heavy interleaved scans (cause 1).
+- Puller paces between snapshot pages (`LAYMAN_SYNC_SNAPSHOT_PACING_MS`, default
+  40 ms) so writes don't sustain back-to-back (cause 2).
+- Puller logs a warning at snapshot start inside a container.
+- Re-test avoided the host-side CLI reader, monitoring only via `/api/sync/*`
+  (cause 3).
+
+**Re-test result:** full **180,404-event** mirror completed on the podman FUSE
+bind mount with **`integrity_check ok`, no duplicates, no crash**; 657
+central-origin sessions attributed to `Nyx.local`; offline search over mirrored
+data returned 46 k matches from the client.
+
+### Push side now also defers stats (`8dc64e5` + follow-up)
+
+The *receiving* side of **any** bulk transfer over a FUSE bind-mounted DB is the
+hazard, not just mirror — a large remote's first backfill-push onto a central has
+the same shape. The push receive path now also applies with `deferStats: true`,
+and `server.ts` recomputes the pushing host's counters on a per-host 3 s debounce
+(`scheduleHostStats`) instead of per batch. So the O(n²) stats amplifier is gone
+in **both** directions.
+
+### Honest framing of what this fix is and is not
+
+**Do not call this "corruption-proof."** Of the changes:
+
+- **`deferStats`** (both directions) is a genuine fix — it removes an accidental
+  O(n²): the applier was running a full `COUNT`/`SUM` over `recorded_events` on
+  every page. Worth keeping on its own merits.
+- **Pacing** (pull only) is a *mitigation* — it lowers the sustained write rate,
+  reducing probability, not eliminating the failure.
+- **Neither touches the substrate.** SQLite in DELETE journal mode over a FUSE
+  bind mount remains fragile under bulk writes. The single-process `fsync`
+  ordering failure mode is not addressed at all.
+- The passing 180k re-test changed **two variables** (added the fix *and* removed
+  the concurrent host-side `sqlite3` reader), so it proves the fix helps but does
+  not isolate cause or prove durability under a second reader / mechanism B.
+
+**The complete fix is deferred to a dedicated future effort** (single-owner
+datastore and/or storage placement off the FUSE mount), to be planned by a
+separate agent from a clean context **after all PRs are merged and the feature is
+working with reasonable reliability**. The full problem brief — every perspective
+discussed (bidirectional hazard, the two corruption mechanisms, the storage-
+placement options, the reframed sidecar/single-owner idea, invariants to
+preserve, the decisive experiment to run first, and acceptance criteria) — is in
+[`multihost-sync-durability-followup.md`](multihost-sync-durability-followup.md).
 
 ---
 

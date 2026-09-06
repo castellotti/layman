@@ -2,7 +2,8 @@ import type { Database } from '../db/database.js';
 import type { LaymanConfig } from '../config/schema.js';
 import { SyncState } from './state.js';
 import { SyncApplier } from './applier.js';
-import { upsertRemoteHost } from './stats.js';
+import { upsertRemoteHost, recomputeHostStats } from './stats.js';
+import { detectContainer } from './identity.js';
 import { SYNC_ENTITIES_ORDERED } from './entities.js';
 import { PusherError, isFatalPause, type PullClient } from './pusher.js';
 import { SYNC_PROTOCOL_VERSION, type HostStats, type SyncKind, type PullStatus, type PullRunState } from './protocol.js';
@@ -11,6 +12,20 @@ const PAGE_LIMIT = 500;
 const CHANGES_LIMIT = 1000;
 const BACKOFF_MIN_MS = 2000;
 const BACKOFF_MAX_MS = 60_000;
+
+/**
+ * Pace between snapshot pages so the bulk import does not sustain back-to-back
+ * write transactions. On a container's FUSE-backed bind-mounted DB (DELETE
+ * journal), hundreds of rapid journal create/delete cycles can corrupt the btree
+ * (see `db/database.ts`); a short breather between pages lets the mount settle.
+ * Overridable via `LAYMAN_SYNC_SNAPSHOT_PACING_MS` for tuning.
+ */
+const SNAPSHOT_PACING_MS = (() => {
+  const raw = Number(process.env.LAYMAN_SYNC_SNAPSHOT_PACING_MS);
+  return Number.isFinite(raw) && raw >= 0 ? raw : 40;
+})();
+
+const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
 /**
  * Pulls every *other* host's data from central onto a mirror
@@ -39,7 +54,7 @@ export class SyncPuller {
     private db: Database,
     private client: PullClient,
     private getConfig: () => LaymanConfig,
-    private opts: { onStatus?: () => void; laymanVersion?: string } = {},
+    private opts: { onStatus?: () => void; laymanVersion?: string; log?: (msg: string) => void } = {},
   ) {
     this.state = new SyncState(db);
     this.applier = new SyncApplier(db);
@@ -95,6 +110,12 @@ export class SyncPuller {
     this.runState = 'snapshot';
     if (this.state.get('pull_snapshot_head') === null) {
       this.state.set('pull_snapshot_head', String(headSeq));
+      // Bulk import onto a FUSE-backed bind-mounted DB is the one path that
+      // stresses the mount enough to matter (see db/database.ts). Warn once so a
+      // corruption is diagnosable; the pacing + deferred stats below mitigate it.
+      if (detectContainer()) {
+        this.opts.log?.('sync: starting mirror snapshot; bulk import over a bind-mounted DB is paced to reduce (not eliminate) corruption risk — see docs/planning/multihost-sync-durability-followup.md');
+      }
     }
     let cursor: { kind: SyncKind; lastId: string } | null = this.readCursor();
     let applied = 0;
@@ -104,7 +125,9 @@ export class SyncPuller {
       const page = await this.client.snapshot(cursor.kind, cursor.lastId, PAGE_LIMIT);
       this.applyHosts(page.hosts);
       if (page.entries.length > 0) {
-        const res = this.applier.apply(this.getConfig().sync.hostId, page.entries, { trustRowOrigin: true, piiFilter: this.getConfig().piiFilter });
+        // deferStats: skip the per-page COUNT/SUM over recorded_events — hundreds
+        // of heavy scans interleaved with the writes is the real FUSE hazard.
+        const res = this.applier.apply(this.getConfig().sync.hostId, page.entries, { trustRowOrigin: true, piiFilter: this.getConfig().piiFilter, deferStats: true });
         applied += res.applied;
       }
       if (page.nextCursor === null) {
@@ -113,7 +136,11 @@ export class SyncPuller {
         cursor = { kind: cursor.kind, lastId: page.nextCursor };
       }
       this.writeCursor(cursor);
+      if (SNAPSHOT_PACING_MS > 0) await sleep(SNAPSHOT_PACING_MS);
     }
+
+    // Counters were deferred during the bulk apply; rebuild them once now.
+    recomputeHostStats(this.db);
 
     const head = this.getNum('pull_snapshot_head') ?? headSeq;
     this.state.set('pull_acked_seq', String(head));

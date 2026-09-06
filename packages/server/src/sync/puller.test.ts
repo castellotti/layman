@@ -107,6 +107,8 @@ describe('SyncPuller', () => {
     expect(other.host_id).toBe(OTHER); // origin preserved, not rewritten to central
     // Host rows learned so chips can render.
     expect(mdb.prepare("SELECT name FROM sync_hosts WHERE host_id=?").get(OTHER)).toEqual({ name: 'Other' });
+    // Counters were deferred per-page but recomputed once when the snapshot ended.
+    expect(mdb.prepare("SELECT session_count FROM sync_hosts WHERE host_id=?").get(CENTRAL)).toEqual({ session_count: 1 });
     // Snapshot complete → cursors cleared.
     expect(new SyncState(mdb).get('pull_snapshot_cursor')).toBeNull();
     expect(new SyncState(mdb).get('pull_acked_seq')).not.toBeNull();

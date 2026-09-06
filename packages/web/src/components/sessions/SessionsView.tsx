@@ -45,6 +45,7 @@ export function SessionsView({ onSend }: SessionsViewProps) {
     viewingSessionId,
     setViewingSession,
     setHistoricalEvents,
+    setLoadingHistorical,
     historicalEvents,
     setSessionTimeMetrics,
     investigationOpen,
@@ -156,18 +157,19 @@ export function SessionsView({ onSend }: SessionsViewProps) {
     setSelectedEvent(null);
     setViewingSession(sessionId);
     setHistoricalEvents([]);
+    setLoadingHistorical(true);
     setShowFlowchart(false);
     // Same fetch+fallback as route hydration's openSession() (sessionStore.ts):
     // a live session with sessionRecording off exists only in memory, so an
     // empty recorded-events response falls back to the live store rather than
     // showing nothing.
-    const { events: recorded, metrics } = await fetchSessionEvents(sessionId);
+    const { events: recorded, metrics } = await fetchSessionEvents(sessionId).finally(() => setLoadingHistorical(false));
     const resolvedEvents = recorded.length > 0
       ? recorded
       : useSessionStore.getState().events.filter((e) => e.sessionId === sessionId);
     setHistoricalEvents(resolvedEvents);
     setSessionTimeMetrics(metrics);
-  }, [viewingSessionId, setViewingSession, setHistoricalEvents, setSessionTimeMetrics, setSelectedEvent]);
+  }, [viewingSessionId, setViewingSession, setHistoricalEvents, setLoadingHistorical, setSessionTimeMetrics, setSelectedEvent]);
 
   const handleCloseSession = useCallback(() => {
     setSelectedEvent(null);

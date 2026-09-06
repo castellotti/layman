@@ -220,12 +220,19 @@ export class BookmarkStore {
   // ── Recorded Sessions ──────────────────────────────────────────────────────
 
   listRecordedSessions(): RecordedSession[] {
+    // event_count via a correlated COUNT rather than a LEFT JOIN + GROUP BY over
+    // the whole recorded_events table. The join form materialises every event row
+    // (data_json can be KB each) to count them; the subquery is an index-only
+    // range count on idx_recorded_events_session(session_id, timestamp). On a
+    // large DB read over a FUSE bind mount (the container deployment) the join
+    // form measured 10–27 s and blocked the single synchronous SQLite thread for
+    // the whole server; the subquery form touches only index pages.
     const rows = this.db.prepare(`
-      SELECT rs.*, COUNT(re.id) as event_count, sh.name as host_name
+      SELECT rs.*,
+        (SELECT COUNT(*) FROM recorded_events re WHERE re.session_id = rs.session_id) AS event_count,
+        sh.name AS host_name
       FROM recorded_sessions rs
-      LEFT JOIN recorded_events re ON re.session_id = rs.session_id
       LEFT JOIN sync_hosts sh ON sh.host_id = rs.host_id
-      GROUP BY rs.session_id
       ORDER BY rs.last_seen DESC
     `).all() as RawSession[];
     return rows.map(toSession);

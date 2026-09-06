@@ -174,7 +174,13 @@ export async function registerSyncRoutes(fastify: FastifyInstance, deps: SyncRou
         request.log.warn('sync: received a push while session recording is off');
       }
 
-      const { applied, conflicts } = applier.apply(batch.hostId, batch.entries, { piiFilter: getConfig().piiFilter });
+      // deferStats: the receiving side of a bulk transfer is the corruption
+      // hazard (see docs/planning/multihost-sync-durability-followup.md), and a
+      // large remote's first backfill applies here in the same tight loop as a
+      // mirror snapshot. Skip the per-batch counter recompute (an accidental
+      // O(n²) over recorded_events) and let the applier's 'applied' listener
+      // refresh the pushing host's counters on a throttle instead.
+      const { applied, conflicts } = applier.apply(batch.hostId, batch.entries, { piiFilter: getConfig().piiFilter, deferStats: true });
 
       // Live-tail: surface active remote sessions and their recent events on the
       // Dashboard. Presence is updated from batch.live; ring events broadcast as

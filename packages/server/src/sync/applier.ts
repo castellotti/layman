@@ -22,6 +22,15 @@ export interface ApplierOptions {
    * true (central relays many hosts' rows, each with its true origin).
    */
   trustRowOrigin?: boolean;
+  /**
+   * Skip the per-batch `sync_hosts` counter refresh. During a mirror **snapshot**
+   * that recompute is a full `COUNT`/`SUM` over `recorded_events` on *every* page
+   * — hundreds of heavy scans interleaved with the bulk writes, which over a
+   * FUSE-backed bind-mounted DB is a documented corruption trigger (see
+   * `db/database.ts`). The puller sets this and calls `recomputeHostStats` once
+   * when the snapshot completes instead.
+   */
+  deferStats?: boolean;
 }
 
 const KIND_ORDER: Record<string, number> = {
@@ -98,9 +107,12 @@ export class SyncApplier extends EventEmitter {
     tx();
 
     // Refresh counters for the pusher and every distinct origin the batch touched
-    // (a mirror pull relays rows from many hosts).
-    touchedOrigins.add(originHostId);
-    for (const origin of touchedOrigins) updateHostStats(this.db, origin);
+    // (a mirror pull relays rows from many hosts). Skipped during a bulk snapshot
+    // — the caller recomputes once at the end (see ApplierOptions.deferStats).
+    if (!opts.deferStats) {
+      touchedOrigins.add(originHostId);
+      for (const origin of touchedOrigins) updateHostStats(this.db, origin);
+    }
     if (applied > 0) this.emit('applied', { originHostId, entries: ordered });
     return { applied, conflicts };
   }
