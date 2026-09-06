@@ -1,4 +1,5 @@
 import type { Database } from '../db/database.js';
+import type { HostStats } from './protocol.js';
 
 /**
  * Per-host statistics maintained in `sync_hosts` (docs/planning/multi-host-sync.md
@@ -65,4 +66,70 @@ export function recomputeHostStats(db: Database): void {
     }
   });
   tx();
+}
+
+/** Recompute and write counters for a single host (used per applied push batch). */
+export function updateHostStats(db: Database, hostId: string): void {
+  const c = computeHostStats(db, hostId);
+  db.prepare(
+    `UPDATE sync_hosts SET session_count = ?, event_count = ?, content_bytes = ?,
+       first_activity = ?, last_activity = ? WHERE host_id = ?`,
+  ).run(c.sessionCount, c.eventCount, c.contentBytes, c.firstActivity, c.lastActivity, hostId);
+}
+
+/**
+ * Ensure a `sync_hosts` row exists for a remote peer, refreshing its descriptive
+ * fields (never downgrading a 'local' row's kind). Counters are updated
+ * separately by {@link updateHostStats} after a batch applies.
+ */
+export function upsertRemoteHost(
+  db: Database,
+  info: { hostId: string; name: string; platform?: string | null; laymanVersion?: string | null },
+): void {
+  const now = Date.now();
+  db.prepare(
+    `INSERT INTO sync_hosts (host_id, name, kind, platform, layman_version, first_seen, last_seen)
+     VALUES (?, ?, 'remote', ?, ?, ?, ?)
+     ON CONFLICT(host_id) DO UPDATE SET
+       name = excluded.name,
+       platform = COALESCE(excluded.platform, sync_hosts.platform),
+       layman_version = COALESCE(excluded.layman_version, sync_hosts.layman_version),
+       last_seen = excluded.last_seen`,
+  ).run(info.hostId, info.name, info.platform ?? null, info.laymanVersion ?? null, now, now);
+}
+
+interface RawHostStats {
+  host_id: string;
+  name: string;
+  kind: string;
+  platform: string | null;
+  layman_version: string | null;
+  first_seen: number;
+  last_seen: number;
+  session_count: number;
+  event_count: number;
+  content_bytes: number;
+  first_activity: number | null;
+  last_activity: number | null;
+}
+
+/** All known hosts with their statistics, local first then by name. */
+export function hostsWithStats(db: Database): HostStats[] {
+  const rows = db
+    .prepare(`SELECT * FROM sync_hosts ORDER BY (kind = 'local') DESC, name ASC`)
+    .all() as RawHostStats[];
+  return rows.map((r) => ({
+    hostId: r.host_id,
+    name: r.name,
+    kind: r.kind,
+    platform: r.platform,
+    laymanVersion: r.layman_version,
+    firstSeen: r.first_seen,
+    lastSeen: r.last_seen,
+    sessionCount: r.session_count,
+    eventCount: r.event_count,
+    contentBytes: r.content_bytes,
+    firstActivity: r.first_activity,
+    lastActivity: r.last_activity,
+  }));
 }
