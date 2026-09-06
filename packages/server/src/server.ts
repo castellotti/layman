@@ -298,6 +298,30 @@ export function createServer(config: LaymanConfig): LaymanServer {
   // change host counters; refresh the dashboard's hosts table either way.
   syncApplier.on('applied', () => broadcastSyncHosts());
 
+  // Remote presence changes (a session appearing, its lastSeen advancing, and
+  // above all the active→idle flip once a stale remote stops pushing) reach an
+  // already-connected dashboard only if central re-sends the sessions list. A
+  // push drives the first two, but the idle flip fires purely on elapsed time
+  // with no push behind it, so a sweep re-evaluates it. Signature-guarded so an
+  // unchanged sweep emits nothing, and self-terminating once no remote session
+  // is active (a later push restarts it).
+  const REMOTE_PRESENCE_SWEEP_MS = 2000;
+  let remotePresenceTimer: ReturnType<typeof setTimeout> | null = null;
+  let lastRemoteSig = '';
+  function refreshRemotePresence(): void {
+    const sessions = buildSessionsList();
+    const remote = sessions.filter(s => s.remote);
+    const sig = remote.map(s => `${s.hostId}:${s.sessionId}:${s.active ? 1 : 0}:${s.lastSeen}`).join('|');
+    if (sig !== lastRemoteSig) {
+      lastRemoteSig = sig;
+      broadcast({ type: 'sessions:list', sessions });
+    }
+    if (remotePresenceTimer) { clearTimeout(remotePresenceTimer); remotePresenceTimer = null; }
+    if (remote.some(s => s.active)) {
+      remotePresenceTimer = setTimeout(refreshRemotePresence, REMOTE_PRESENCE_SWEEP_MS);
+    }
+  }
+
   // ─── Live token streaming ─────────────────────────────────────────────────
   const liveStreams = new LiveStreamStore();
   // Deltas never pass through EventStore, so they never meet its PII filter.
@@ -479,7 +503,7 @@ export function createServer(config: LaymanConfig): LaymanServer {
       // client looks host up via the session, so TimelineEvent stays unchanged.
       onLiveEvents: (events) => {
         for (const event of events) broadcast({ type: 'event:new', event });
-        broadcast({ type: 'sessions:list', sessions: buildSessionsList() });
+        refreshRemotePresence();
       },
       laymanVersion: SERVER_VERSION,
     });
@@ -1895,6 +1919,7 @@ export function createServer(config: LaymanConfig): LaymanServer {
       syncPusher?.stop();
       if (syncStatusTimer) { clearTimeout(syncStatusTimer); syncStatusTimer = null; }
       if (syncHostsTimer) { clearTimeout(syncHostsTimer); syncHostsTimer = null; }
+      if (remotePresenceTimer) { clearTimeout(remotePresenceTimer); remotePresenceTimer = null; }
       await fastify.close();
     },
 

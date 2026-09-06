@@ -126,7 +126,10 @@ export async function registerSyncRoutes(fastify: FastifyInstance, deps: SyncRou
       // Dashboard. Presence is updated from batch.live; ring events broadcast as
       // event:new. Remote events never enter EventStore (see §3.8).
       const emitted = deps.registry.ingestPush(batch.hostId, peer.name, batch);
-      if (emitted.length > 0) deps.onLiveEvents(emitted);
+      // Fire on any presence-bearing push, not only when in-window events were
+      // emitted: a session appearing or going idle carries no event of its own,
+      // and onLiveEvents also re-sends the sessions list so the dashboard tracks it.
+      if (emitted.length > 0 || batch.live) deps.onLiveEvents(emitted);
 
       const ackSeq = batch.upToSeq ?? null;
       peers.touch(peer.token_hash, {
