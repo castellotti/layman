@@ -278,6 +278,40 @@ must outlive the component that started it. It exposes a `useSyncExternalStore`-
 `subscribe`/`getState`. Its audio layer is injected (`TtsRuntime`) so the queue semantics can be
 tested in node, where there is no `Audio` and no `URL.createObjectURL`.
 
+### Multi-host sync
+
+A **central** instance collects recorded data from many **remote** instances; each remote keeps
+recording locally and pushes to central, optionally **mirroring** (pulling) everything else back.
+`sync.role` is `standalone` (default) | `central` | `remote`. Full design in
+[`docs/planning/multi-host-sync.md`](docs/planning/multi-host-sync.md); user-facing summary in
+[`docs/features.md`](docs/features.md#multi-host-sync). The pieces live in `packages/server/src/sync/`
+(`identity`, `state`, `entities`, `journal`, `tokens`, `applier`, `pusher`, `puller`, `presence`,
+`stats`, `routes`, `protocol`), wired from `server.ts` by `reconcileSync()` on config change.
+
+Four rules that must not be relaxed casually:
+
+- **The journal is written by SQLite triggers, never by application code** (§3.4, migration 2 in
+  `db/database.ts`). Every recorded-data write — the recorder, bookmark/highlight stores, the raw
+  `UPDATE`s in `server.ts` and `pii/purge.ts` — is captured into `sync_log` by `AFTER
+  INSERT/UPDATE/DELETE` triggers. A new recorded-data write site therefore needs no instrumentation,
+  but a new *table* worth syncing needs a trigger plus a `SYNC_ENTITIES` entry. A session delete
+  journals one cascade row, not one per event.
+
+- **Remote data never goes through `EventStore`** (§3.8). `SyncApplier` writes straight through the
+  entity tables; feeding remote rows through `EventStore.add()` would re-record them and a historical
+  backfill would evict every live event. Live remote presence rides `RemoteSessionRegistry` +
+  ordinary `event:new` frames, not the store.
+
+- **Origin ownership.** A row's `host_id` is its origin. Sessions/events/qa are edited only by their
+  origin; curation (bookmarks, folders, highlights) is editable only on the host that created it and
+  read-only elsewhere (server returns 403, client hides affordances). Push forces the authenticated
+  pusher's origin; **pull passes `trustRowOrigin` so a mirrored row keeps its true origin** — do not
+  drop that flag or central becomes the apparent author of everyone's data.
+
+- **Identity is established before any recorded-data write** (`ensureHostIdentity` after
+  `openDatabase`), because the triggers read `sync_state.hostId`. `sync.hostId` is deep-merged in
+  `config.ts` so a partial Settings update can never blank it and orphan every row.
+
 ### Key design decisions
 
 - **Blocking hooks**: `PreToolUse` and `PermissionRequest` (Claude Code) and `PreToolUse` (Cline) suspend the agent process until `PendingApprovalManager.resolveApproval()` is called. Claude Code's timeout is 300s (configurable); Cline's is 25s (Cline hardcodes 30s).
