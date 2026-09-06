@@ -24,6 +24,7 @@ import { PII_CATEGORIES, PII_GROUPS } from './pii/categories.js';
 import { scanPii, executePurge } from './pii/purge.js';
 import { updateConfig, saveConfig } from './config/config.js';
 import { openDatabase } from './db/database.js';
+import { ensureHostIdentity } from './sync/identity.js';
 import { SessionRecorder, countRecordedSessionsByAgentType } from './db/recorder.js';
 import { BookmarkStore } from './db/bookmarks.js';
 import { HighlightStore } from './db/highlights.js';
@@ -179,6 +180,9 @@ export function createServer(config: LaymanConfig): LaymanServer {
 
   // Persistent storage
   const db = openDatabase();
+  // Establish this host's identity before any recorded-data write, so the sync
+  // journal triggers can stamp rows with the local host id (see sync/identity.ts).
+  ensureHostIdentity(config, db);
   const bookmarkStore = new BookmarkStore(db);
   const highlightStore = new HighlightStore(db);
   const turnStore = new TurnStore(db, eventStore, bookmarkStore);

@@ -25,6 +25,10 @@ export interface RecordedSession {
   sessionName?: string;
   source?: string;
   eventCount?: number;
+  /** Origin host id (see multi-host sync). Local host until enrolment. */
+  hostId?: string;
+  /** Display name of the origin host, joined from `sync_hosts`. */
+  hostName?: string;
 }
 
 export interface HighlightFolder {

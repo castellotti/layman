@@ -91,6 +91,28 @@ export const GloveConfigSchema = z.object({
   sessionsDir: z.string().default('~/.glove/envs'),
 });
 
+/**
+ * Multi-host sync (see docs/planning/multi-host-sync.md).
+ *
+ * `standalone` (default) is exactly today's behaviour — nothing new runs. A
+ * `central` accepts pushes from enrolled remotes; a `remote` pushes its own data
+ * to `centralUrl` and optionally mirrors everything else back. `hostId` is minted
+ * once by `ensureHostIdentity()` and must never be edited by the UI — it is the
+ * stable origin stamped onto every row, so the deep-merge in config.ts protects
+ * it from a partial Settings update blanking it (which would orphan every row).
+ */
+export const SyncConfigSchema = z.object({
+  role: z.enum(['standalone', 'central', 'remote']).default('standalone'),
+  hostId: z.string().default(''),          // filled by ensureHostIdentity(); never edited by UI
+  hostName: z.string().default(''),
+  centralUrl: z.string().default(''),      // remote only
+  token: z.string().default(''),           // remote only; plaintext, same trust level as apiKey
+  intervalSeconds: z.number().int().min(2).max(300).default(5),
+  mirror: z.boolean().default(false),      // remote only: pull everything else from central
+  mirrorIntervalSeconds: z.number().int().min(15).max(3600).default(60),
+  logRetentionDays: z.number().int().min(1).max(365).default(30),
+});
+
 export const LaymanConfigSchema = z.object({
   port: z.number().int().min(1).max(65535).default(8880),
   host: z.string().default('localhost'),
@@ -145,6 +167,7 @@ export const LaymanConfigSchema = z.object({
   driftMonitoring: DriftMonitoringConfigSchema.default({}),
   liveTokens: LiveTokensConfigSchema.default({}),
   glove: GloveConfigSchema.default({}),
+  sync: SyncConfigSchema.default({}),
   tts: TtsConfigSchema.default({}),
   setupWizardComplete: z.boolean().default(false),
   openWebUiUrl: z.string().default(''),
@@ -152,6 +175,7 @@ export const LaymanConfigSchema = z.object({
 });
 
 export type LaymanConfig = z.infer<typeof LaymanConfigSchema>;
+export type SyncConfig = z.infer<typeof SyncConfigSchema>;
 export type LiveTokensConfig = z.infer<typeof LiveTokensConfigSchema>;
 export type GloveConfig = z.infer<typeof GloveConfigSchema>;
 export type AnalysisConfigType = z.infer<typeof AnalysisConfigSchema>;
