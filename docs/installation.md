@@ -183,6 +183,24 @@ http://localhost:8880/s/{sessionId}/t/{promptEventId}?play=1
 
 The default config binds to `127.0.0.1:8880`, so the dashboard is only reachable from your local machine. Do not change this to `0.0.0.0` unless you have a specific reason and understand the implications - Layman has no authentication.
 
+## Running a central instance
+
+To collect sessions from several machines, pick one to be the **central** store. It is an ordinary Layman install with two changes.
+
+1. **Bind it to your private network, never the public internet.** The default `127.0.0.1:8880` is only reachable from the central machine itself, so remotes cannot connect. Change the port mapping in the compose file to your LAN or Tailscale/VPN address — for example `100.x.y.z:8880:8880` — and **never** `0.0.0.0:8880` on a machine with a public interface. The sync routes use per-host bearer tokens, but **the dashboard has no authentication**: anyone who can reach the port can read everything.
+
+2. **Name the machine.** `make docker-run` / `make start` set `LAYMAN_HOST_NAME=$(hostname)` for you. If you start the container by hand, pass `LAYMAN_HOST_NAME=central-box` in the environment — inside a container `os.hostname()` is only the container id, so without this the host shows as `layman-<id>` until you rename it in Settings.
+
+Then, in the dashboard: **Settings → Connection → Multi-host sync → role Central**. Click **Add remote host**, give it the remote machine's name, and copy the token it shows **once**. Session recording must be on (Settings → Data → Recording & import) for sync to have anything to read.
+
+## Syncing a remote to central
+
+On the other machine, run Layman as usual (session recording on). Then **Settings → Connection → Multi-host sync → role Remote**, enter the central URL (`http://<central-lan-ip>:8880`), paste the token, and click **Test connection** — it should report central's host name. The status block walks through "Backfilling…" and settles on "Up to date"; new sessions then appear on central within a few seconds.
+
+Turn on **Mirror central history to this host** if you also want this machine to download and search every other host's sessions offline.
+
+`LAYMAN_HOST_NAME` applies to remotes too — set it (or let `make` set it) so the remote is labelled by its real machine name on central.
+
 ## AI analysis (optional)
 
 Layman can use an AI model to classify the risk level of each action and explain it in plain language. To enable this, pass your API key when starting the container:

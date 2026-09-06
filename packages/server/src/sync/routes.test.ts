@@ -71,6 +71,16 @@ describe('sync routes — auth', () => {
     const res = await app.inject({ method: 'POST', url: '/api/sync/hello', headers: bearer(token), payload: { hostId: 'r', hostName: 'r', protocolVersion: 1 } });
     expect(res.statusCode).toBe(401);
   });
+
+  it('rate-limits repeated failed auth to 429', async () => {
+    const bad = { method: 'POST' as const, url: '/api/sync/hello', headers: bearer('lmk_wrong'), payload: { hostId: 'r', hostName: 'r', protocolVersion: 1 } };
+    let sawTooMany = false;
+    for (let i = 0; i < 12; i++) {
+      const res = await app.inject(bad);
+      if (res.statusCode === 429) { sawTooMany = true; break; }
+    }
+    expect(sawTooMany).toBe(true);
+  });
 });
 
 describe('sync routes — hello', () => {
