@@ -30,6 +30,8 @@ interface RawSession {
   session_name: string | null;
   source: string | null;
   event_count?: number;
+  host_id?: string | null;
+  host_name?: string | null;
 }
 
 interface RawEvent {
@@ -89,6 +91,8 @@ function toSession(row: RawSession): RecordedSession {
     sessionName: row.session_name ?? undefined,
     source: row.source ?? undefined,
     eventCount: row.event_count ?? undefined,
+    hostId: row.host_id ?? undefined,
+    hostName: row.host_name ?? undefined,
   };
 }
 
@@ -213,9 +217,10 @@ export class BookmarkStore {
 
   listRecordedSessions(): RecordedSession[] {
     const rows = this.db.prepare(`
-      SELECT rs.*, COUNT(re.id) as event_count
+      SELECT rs.*, COUNT(re.id) as event_count, sh.name as host_name
       FROM recorded_sessions rs
       LEFT JOIN recorded_events re ON re.session_id = rs.session_id
+      LEFT JOIN sync_hosts sh ON sh.host_id = rs.host_id
       GROUP BY rs.session_id
       ORDER BY rs.last_seen DESC
     `).all() as RawSession[];
@@ -223,7 +228,12 @@ export class BookmarkStore {
   }
 
   getRecordedSession(sessionId: string): RecordedSession | null {
-    const row = this.db.prepare('SELECT * FROM recorded_sessions WHERE session_id = ?').get(sessionId) as RawSession | undefined;
+    const row = this.db.prepare(`
+      SELECT rs.*, sh.name as host_name
+      FROM recorded_sessions rs
+      LEFT JOIN sync_hosts sh ON sh.host_id = rs.host_id
+      WHERE rs.session_id = ?
+    `).get(sessionId) as RawSession | undefined;
     return row ? toSession(row) : null;
   }
 

@@ -113,6 +113,14 @@ export async function loadConfig(
       ...runtimeFile.autoAllow,
       ...cliFlags.autoAllow,
     },
+    // Deep-merge sync so a partial runtime/file config can never blank the
+    // persisted hostId (which would orphan every row stamped with it).
+    sync: {
+      ...envConfig.sync,
+      ...fileConfig.sync,
+      ...runtimeFile.sync,
+      ...cliFlags.sync,
+    },
   };
 
   return LaymanConfigSchema.parse(merged);
@@ -136,6 +144,9 @@ export function updateConfig(updates: Partial<LaymanConfig>): LaymanConfig {
     ...updates,
     analysis: { ...runtimeConfig.analysis, ...updates.analysis },
     autoAllow: { ...runtimeConfig.autoAllow, ...updates.autoAllow },
+    // Deep-merge so a Settings update that omits sync.hostId (or sends only a
+    // role change) keeps the persisted identity instead of minting a new one.
+    sync: { ...runtimeConfig.sync, ...updates.sync },
   });
   return runtimeConfig;
 }
