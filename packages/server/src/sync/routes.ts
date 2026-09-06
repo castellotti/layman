@@ -72,11 +72,17 @@ export async function registerSyncRoutes(fastify: FastifyInstance, deps: SyncRou
         return reply.code(426).send({ error: 'protocol version mismatch', expected: SYNC_PROTOCOL_VERSION, got: body.protocolVersion });
       }
       const peer = peerOf(request);
+      const firstBind = !peer.host_id;
       if (!peers.bindHost(peer.token_hash, body.hostId)) {
         return reply.code(409).send({ error: 'token already bound to a different host' });
       }
       upsertRemoteHost(db, { hostId: body.hostId, name: body.hostName, platform: body.platform, laymanVersion: body.laymanVersion });
-      updateHostStats(db, body.hostId);
+      // hello fires at the start of every push (and, in later phases, every mirror
+      // pass), so re-running the O(n) COUNT+SUM over recorded_events here on every
+      // call would be an accidental hot-path scan. Recompute only on the first bind
+      // (cheap when empty, and it refreshes a re-tokenised host whose data predates
+      // the new token); steady-state counter freshness rides the per-batch update.
+      if (firstBind) updateHostStats(db, body.hostId);
       peers.touch(peer.token_hash, { lastSeenAt: Date.now() });
       const cfg = getConfig();
       const bound = peers.byHash(peer.token_hash);
