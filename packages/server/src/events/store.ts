@@ -11,6 +11,11 @@ export interface SessionInfo {
   active?: boolean;
   opencodeUrl?: string;
   sessionName?: string;
+  /** Origin host (multi-host sync). Absent/local for own sessions. */
+  hostId?: string;
+  hostName?: string;
+  /** True for sessions surfaced from a remote via central's presence registry. */
+  remote?: boolean;
 }
 
 export class EventStore extends EventEmitter {

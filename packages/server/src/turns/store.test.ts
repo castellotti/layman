@@ -193,6 +193,19 @@ describe('TurnStore.resolveId', () => {
     });
   });
 
+  it('reports the origin host of a session/bookmark/highlight when present', () => {
+    const withHosts = makeStore({
+      recorded_sessions: [{ session_id: 'abcdefgh-remote-sess', host_id: 'remote-host' }],
+      bookmarks: [{ id: 'bookmark-remote-1', session_id: 'sess-bm', host_id: 'remote-host' }],
+    });
+    expect(withHosts.resolveId('abcdefgh-remote-sess')).toEqual({
+      kind: 'session', id: 'abcdefgh-remote-sess', hostId: 'remote-host',
+    });
+    expect(withHosts.resolveId('bookmark-remote-1')).toEqual({
+      kind: 'bookmark', id: 'bookmark-remote-1', sessionId: 'sess-bm', hostId: 'remote-host',
+    });
+  });
+
   it('rejects prefixes shorter than the minimum', () => {
     expect(store.resolveId('abcdef')).toBeNull();
   });

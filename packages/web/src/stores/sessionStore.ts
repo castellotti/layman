@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { TimelineEvent, PendingApprovalDTO, LaymanConfig, SessionStatus, SetupStatus, BookmarkFolder, Bookmark, HighlightFolder, Highlight, SessionTimeMetrics, SessionAccessLog, SessionMetrics, DriftState, LiveStream, ResolvedId } from '../lib/types.js';
+import type { TimelineEvent, PendingApprovalDTO, LaymanConfig, SessionStatus, SetupStatus, BookmarkFolder, Bookmark, HighlightFolder, Highlight, SessionTimeMetrics, SessionAccessLog, SessionMetrics, DriftState, LiveStream, ResolvedId, SyncStatus, HostStats } from '../lib/types.js';
 import type { SessionInfo } from '../lib/ws-protocol.js';
 import type { LaymanRoute, RouteOptions, ViewName } from '../lib/layman-url.js';
 import { extractTurn } from '../lib/turns.js';
@@ -211,6 +211,10 @@ export interface SessionState {
   sessions: SessionInfo[];
   activeSessionId: string | null;
 
+  // Multi-host sync
+  syncStatus: SyncStatus | null;
+  syncHosts: HostStats[];
+
   // Setup status
   setupStatus: SetupStatus | null;
   setupBannerDismissed: boolean;
@@ -361,6 +365,8 @@ export interface SessionState {
   clearSessionSummary: () => void;
   clearSessionSummaryError: () => void;
   setDriftState: (sessionId: string, state: DriftState) => void;
+  setSyncStatus: (status: SyncStatus) => void;
+  setSyncHosts: (hosts: HostStats[]) => void;
   setLiveStream: (sessionId: string, stream: LiveStream) => void;
   clearLiveStream: (sessionId: string) => void;
   markSessionInvestigated: (sessionId: string) => void;
@@ -398,6 +404,9 @@ export const useSessionStore = create<SessionState>((set, get) => ({
 
   sessions: [],
   activeSessionId: null,
+
+  syncStatus: null,
+  syncHosts: [],
 
   setupStatus: null,
   setupBannerDismissed: false,
@@ -1116,6 +1125,9 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       newMap.set(sessionId, driftData);
       return { driftState: newMap };
     }),
+
+  setSyncStatus: (status) => set({ syncStatus: status }),
+  setSyncHosts: (hosts) => set({ syncHosts: hosts }),
 
   setLiveStream: (sessionId, stream) =>
     set((prev) => {

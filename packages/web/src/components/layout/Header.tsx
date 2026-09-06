@@ -233,7 +233,7 @@ export function Header() {
                   const investigated = investigatedSessions.has(s.sessionId);
                   return (
                     <option key={s.sessionId} value={s.sessionId}>
-                      {investigated ? '⊙ ' : ''}{getSessionName(s.cwd, s.sessionId, s.agentType, showAgentPrefix, effectiveName)}{s.cwd ? ` · ${s.sessionId.slice(0, 6)}` : ''}
+                      {investigated ? '⊙ ' : ''}{s.remote && s.hostName ? `${s.hostName} · ` : ''}{getSessionName(s.cwd, s.sessionId, s.agentType, showAgentPrefix, effectiveName)}{s.cwd ? ` · ${s.sessionId.slice(0, 6)}` : ''}
                     </option>
                   );
                 })}

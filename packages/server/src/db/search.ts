@@ -61,6 +61,8 @@ export interface SearchRequest {
   fields?: SearchField[];
   sessionIds?: string[];
   eventTypes?: string[];
+  /** Restrict to events whose owning session belongs to one of these hosts. */
+  hostIds?: string[];
   limit?: number;
   offset?: number;
 }
@@ -72,6 +74,8 @@ export interface SearchSessionSummary {
   startedAt: number;
   lastSeen: number;
   matchCount: number;
+  hostId?: string;
+  hostName?: string;
 }
 
 export interface SearchResultEvent extends TimelineEvent {
@@ -141,10 +145,11 @@ export function searchEvents(db: Database, request: SearchRequest): SearchResult
     }
   }
 
-  // Session scoping
+  // Session scoping. Qualified as e.session_id: the session-summary query joins
+  // recorded_sessions (which also has session_id), so a bare column is ambiguous.
   if (request.sessionIds && request.sessionIds.length > 0) {
     const placeholders = request.sessionIds.map(() => '?').join(', ');
-    conditions.push(`session_id IN (${placeholders})`);
+    conditions.push(`e.session_id IN (${placeholders})`);
     params.push(...request.sessionIds);
   }
 
@@ -155,10 +160,20 @@ export function searchEvents(db: Database, request: SearchRequest): SearchResult
     params.push(...request.eventTypes);
   }
 
+  // Host scoping — events inherit their host through the owning session.
+  if (request.hostIds && request.hostIds.length > 0) {
+    const placeholders = request.hostIds.map(() => '?').join(', ');
+    conditions.push(
+      `e.session_id IN (SELECT session_id FROM recorded_sessions WHERE host_id IN (${placeholders}))`,
+    );
+    params.push(...request.hostIds);
+  }
+
   const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 
-  // Count total matches
-  const countSql = `SELECT COUNT(*) as total FROM recorded_events ${whereClause}`;
+  // Count total matches. Aliased `e` so the shared whereClause (which qualifies
+  // session_id as e.session_id for the join-bearing summary query) is valid here too.
+  const countSql = `SELECT COUNT(*) as total FROM recorded_events e ${whereClause}`;
   const countRow = db.prepare(countSql).get(...params) as { total: number } | undefined;
   const totalMatches = countRow?.total ?? 0;
 
@@ -174,19 +189,23 @@ export function searchEvents(db: Database, request: SearchRequest): SearchResult
       COALESCE(s.agent_type, 'claude-code') as agentType,
       COALESCE(s.started_at, 0) as startedAt,
       COALESCE(s.last_seen, 0) as lastSeen,
+      s.host_id as hostId,
+      sh.name as hostName,
       COUNT(*) as matchCount
     FROM recorded_events e
     LEFT JOIN recorded_sessions s ON e.session_id = s.session_id
+    LEFT JOIN sync_hosts sh ON sh.host_id = s.host_id
     ${whereClause}
     GROUP BY e.session_id
     ORDER BY MAX(e.timestamp) DESC
   `;
-  const sessions = db.prepare(sessionSql).all(...params) as SearchSessionSummary[];
+  const sessions = (db.prepare(sessionSql).all(...params) as Array<SearchSessionSummary & { hostId: string | null; hostName: string | null }>)
+    .map((s) => ({ ...s, hostId: s.hostId ?? undefined, hostName: s.hostName ?? undefined }));
 
   // Get matching events
   const eventsSql = `
     SELECT id, session_id, type, timestamp, agent_type, data_json, analysis_json, laymans_json, risk_level
-    FROM recorded_events
+    FROM recorded_events e
     ${whereClause}
     ORDER BY timestamp DESC
     LIMIT ? OFFSET ?

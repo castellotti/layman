@@ -376,6 +376,8 @@ export interface HighlightFolder {
   name: string;
   sortOrder: number;
   createdAt: number;
+  /** Origin host (multi-host sync); editable only on its origin. */
+  hostId?: string;
 }
 
 export interface Highlight {
@@ -387,6 +389,7 @@ export interface Highlight {
   name: string;
   sortOrder: number;
   createdAt: number;
+  hostId?: string;
 }
 
 export interface BookmarkFolder {
@@ -394,6 +397,7 @@ export interface BookmarkFolder {
   name: string;
   sortOrder: number;
   createdAt: number;
+  hostId?: string;
 }
 
 export interface Bookmark {
@@ -403,6 +407,7 @@ export interface Bookmark {
   name: string;
   sortOrder: number;
   createdAt: number;
+  hostId?: string;
 }
 
 export interface RecordedSession {
@@ -581,4 +586,49 @@ export interface ResolvedId {
   sessionId?: string;
   /** Present for highlights — the turn they name. */
   promptEventId?: string;
+  /** Origin host for sessions, bookmarks and highlights (multi-host sync). */
+  hostId?: string;
+}
+
+/** Mirrors SyncStatus in server sync/protocol.ts. */
+export interface SyncStatus {
+  role: 'standalone' | 'central' | 'remote';
+  hostId: string;
+  hostName: string;
+  state: 'idle' | 'syncing' | 'backfill' | 'backoff' | 'error' | 'paused';
+  backlog: number;
+  pushAckedSeq: number | null;
+  backfillKind: string | null;
+  lastSuccessAt: number | null;
+  lastError: string | null;
+}
+
+/** Mirrors HostStats in server sync/protocol.ts. */
+export interface HostStats {
+  hostId: string;
+  name: string;
+  kind: string;
+  platform: string | null;
+  laymanVersion: string | null;
+  firstSeen: number;
+  lastSeen: number;
+  sessionCount: number;
+  eventCount: number;
+  contentBytes: number;
+  firstActivity: number | null;
+  lastActivity: number | null;
+}
+
+/** Mirrors PeerDTO in server sync/protocol.ts. */
+export interface PeerDTO {
+  tokenHash: string;
+  name: string;
+  hostId: string | null;
+  createdAt: number;
+  lastSeenAt: number | null;
+  lastPushSeq: number | null;
+  lastPullSeq: number | null;
+  intervalSeconds: number | null;
+  revokedAt: number | null;
+  lastError: string | null;
 }

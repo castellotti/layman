@@ -5,6 +5,7 @@ import type { LaymanConfig } from '../../lib/types.js';
 import { HarnessSection } from './settings/HarnessSection.js';
 import { WebUISection } from './settings/WebUISection.js';
 import { GloveSection } from './settings/GloveSection.js';
+import { SyncSection } from './settings/SyncSection.js';
 import { AnalysisModelSection } from './settings/AnalysisModelSection.js';
 import { AutoExplainSection } from './settings/AutoExplainSection.js';
 import { AutoAnalysisSection } from './settings/AutoAnalysisSection.js';
@@ -37,6 +38,11 @@ const SECTIONS: SectionDef[] = [
     key: 'webui', group: 'Connection', label: 'Open WebUI',
     searchTerms: ['Open WebUI', 'filter'],
     render: (_config, onSend) => <WebUISection onSend={onSend} />,
+  },
+  {
+    key: 'sync', group: 'Connection', label: 'Multi-host sync',
+    searchTerms: ['sync', 'central', 'remote', 'host', 'mirror', 'token', 'multi-host', 'replicate'],
+    render: (config, onSend) => <SyncSection config={config} onSend={onSend} />,
   },
   {
     key: 'model', group: 'Automation', label: 'Analysis model',

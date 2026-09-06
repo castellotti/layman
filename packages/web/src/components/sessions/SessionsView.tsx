@@ -10,6 +10,8 @@ import { useFolderCrud } from '../../hooks/useFolderCrud.js';
 import { useExpandedSections, UNFILED_SECTION_KEY } from '../../hooks/useExpandedSections.js';
 import { useInlineEdit } from '../../hooks/useInlineEdit.js';
 import { sessionDisplayName } from '../../lib/session-state.js';
+import { HostChip } from '../shared/HostChip.js';
+import { isEditableCuration } from '../../lib/host.js';
 import type { ClientMessage } from '../../lib/ws-protocol.js';
 import type { RecordedSession } from '../../lib/types.js';
 
@@ -25,6 +27,8 @@ interface BookmarkedItem {
   session: RecordedSession;
   bookmarkId: string;
   bookmarkName: string;
+  /** False when the bookmark belongs to another host (read-only here). */
+  editable: boolean;
 }
 
 function formatDateShort(ts: number): string {
@@ -50,9 +54,13 @@ export function SessionsView({ onSend }: SessionsViewProps) {
     sessionsSearchSeed,
     setSessionsSearchSeed,
   } = useSessionStore();
+  const syncHosts = useSessionStore((s) => s.syncHosts);
+  const localHostId = useSessionStore((s) => s.config?.sync?.hostId ?? '');
 
   const [recordedSessions, setRecordedSessions] = useState<RecordedSession[]>([]);
   const [filter, setFilter] = useState<'all' | 'bookmarked'>('all');
+  // Host attribution filter: 'all', or a specific host id (multi-host sync).
+  const [hostFilter, setHostFilter] = useState<string>('all');
   const [sidebarSearch, setSidebarSearch] = useState('');
   const [deleteConfirmSessionId, setDeleteConfirmSessionId] = useState<string | null>(null);
   const [deleteConfirmFolderId, setDeleteConfirmFolderId] = useState<string | null>(null);
@@ -104,13 +112,14 @@ export function SessionsView({ onSend }: SessionsViewProps) {
   }, []);
 
   const refreshRecordedSessions = useCallback(() => {
-    void fetch('/api/bookmarks/sessions')
+    const qs = hostFilter === 'all' ? '' : `?host=${encodeURIComponent(hostFilter)}`;
+    void fetch(`/api/bookmarks/sessions${qs}`)
       .then((r) => r.json())
       .then((d: { sessions?: RecordedSession[] }) => {
         setRecordedSessions(d.sessions ?? []);
       })
       .catch(() => {});
-  }, []);
+  }, [hostFilter]);
 
   useEffect(() => {
     refreshRecordedSessions();
@@ -128,7 +137,8 @@ export function SessionsView({ onSend }: SessionsViewProps) {
     }
     let cancelled = false;
     const t = setTimeout(() => {
-      void fetch(`/api/bookmarks/search?q=${encodeURIComponent(q)}`)
+      const hostQs = hostFilter === 'all' ? '' : `&host=${encodeURIComponent(hostFilter)}`;
+      void fetch(`/api/bookmarks/search?q=${encodeURIComponent(q)}${hostQs}`)
         .then((r) => r.json())
         .then((d: { results?: { sessionId: string; matchCount: number }[] }) => {
           if (cancelled) return;
@@ -139,7 +149,7 @@ export function SessionsView({ onSend }: SessionsViewProps) {
         });
     }, 200);
     return () => { cancelled = true; clearTimeout(t); };
-  }, [sidebarSearch]);
+  }, [sidebarSearch, hostFilter]);
 
   const handleSelectSession = useCallback(async (sessionId: string) => {
     if (viewingSessionId === sessionId) return;
@@ -244,13 +254,13 @@ export function SessionsView({ onSend }: SessionsViewProps) {
         .sort((a, b) => a.sortOrder - b.sortOrder)
         .map((b) => {
           const session = recordedSessions.find((s) => s.sessionId === b.sessionId);
-          return session ? { session, bookmarkId: b.id, bookmarkName: b.name } : null;
+          return session ? { session, bookmarkId: b.id, bookmarkName: b.name, editable: isEditableCuration(b, localHostId) } : null;
         })
         .filter((item): item is BookmarkedItem => item !== null)
         .filter((item) => sessionMatches(item.session)));
     }
     return map;
-  }, [sortedFolders, bookmarks, recordedSessions, sessionMatches]);
+  }, [sortedFolders, bookmarks, recordedSessions, sessionMatches, localHostId]);
 
   const unfiledBookmarkedSessions = useMemo(() => {
     return bookmarks
@@ -258,11 +268,11 @@ export function SessionsView({ onSend }: SessionsViewProps) {
       .sort((a, b) => a.sortOrder - b.sortOrder)
       .map((b) => {
         const session = recordedSessions.find((s) => s.sessionId === b.sessionId);
-        return session ? { session, bookmarkId: b.id, bookmarkName: b.name } : null;
+        return session ? { session, bookmarkId: b.id, bookmarkName: b.name, editable: isEditableCuration(b, localHostId) } : null;
       })
       .filter((item): item is BookmarkedItem => item !== null)
       .filter((item) => sessionMatches(item.session));
-  }, [bookmarks, recordedSessions, sessionMatches]);
+  }, [bookmarks, recordedSessions, sessionMatches, localHostId]);
 
   // Folder CRUD — the server already supports all of this (create/rename/delete/
   // reorder), it was just never wired up in the UI.
@@ -418,6 +428,23 @@ export function SessionsView({ onSend }: SessionsViewProps) {
             value={filter}
             onChange={setFilter}
           />
+          {syncHosts.length > 1 && (
+            <select
+              value={hostFilter}
+              onChange={(e) => setHostFilter(e.target.value)}
+              title="Filter by host"
+              style={{
+                marginLeft: 'auto', fontSize: 10.5, fontFamily: 'var(--font-mono)',
+                background: 'var(--bg-card)', border: '1px solid var(--border-strong)',
+                borderRadius: 5, color: 'var(--text)', outline: 'none', padding: '2px 6px', maxWidth: 130,
+              }}
+            >
+              <option value="all">All hosts</option>
+              {syncHosts.map((h) => (
+                <option key={h.hostId} value={h.hostId}>{h.name}{h.kind === 'local' ? ' (local)' : ''}</option>
+              ))}
+            </select>
+          )}
         </div>
 
         {/* Session list */}
@@ -428,20 +455,22 @@ export function SessionsView({ onSend }: SessionsViewProps) {
               <FolderSectionHeader label="Bookmarked" onCreate={handleCreateFolder} />
               {orderedFolders.map((folder) => {
                 const items = folderSessionsMap.get(folder.id) ?? [];
+                const folderEditable = isEditableCuration(folder, localHostId);
                 return (
                   <SidebarFolder
                     key={folder.id}
                     folderId={folder.id}
                     name={folder.name}
                     items={items}
+                    editable={folderEditable}
                     expanded={sectionExpanded(folder.id)}
                     onToggle={() => toggleExpanded(folder.id)}
                     viewingSessionId={viewingSessionId}
                     liveSessionIds={liveSessionIds}
                     matchLabel={matchLabel}
                     onSelect={handleSelectSession}
-                    onRename={(name) => handleRenameFolder(folder.id, name)}
-                    onDelete={() => setDeleteConfirmFolderId(folder.id)}
+                    onRename={folderEditable ? (name) => handleRenameFolder(folder.id, name) : undefined}
+                    onDelete={folderEditable ? () => setDeleteConfirmFolderId(folder.id) : undefined}
                     onRenameSession={handleRenameBookmark}
                     draggedItemId={draggedItemId}
                     dragOverContainerId={dragOverContainerId}
@@ -488,7 +517,7 @@ export function SessionsView({ onSend }: SessionsViewProps) {
                       Drop sessions here
                     </div>
                   )}
-                  {unfiledBookmarkedSessions.map(({ session, bookmarkId, bookmarkName }) => (
+                  {unfiledBookmarkedSessions.map(({ session, bookmarkId, bookmarkName, editable }) => (
                     <SidebarSessionRow
                       key={session.sessionId}
                       session={session}
@@ -500,9 +529,9 @@ export function SessionsView({ onSend }: SessionsViewProps) {
                       matchLabel={matchLabel(session.sessionId)}
                       isDragOver={draggedItemId !== bookmarkId && dragOverContainerId === 'unfiled' && dragOverItemId === bookmarkId}
                       onSelect={handleSelectSession}
-                      onRename={(name) => handleRenameBookmark(bookmarkId, name)}
-                      onDelete={() => setDeleteConfirmSessionId(session.sessionId)}
-                      onDragStart={() => handleItemDragStart({ id: bookmarkId, containerId: 'unfiled', bookmarked: true })}
+                      onRename={editable ? (name) => handleRenameBookmark(bookmarkId, name) : undefined}
+                      onDelete={editable ? () => setDeleteConfirmSessionId(session.sessionId) : undefined}
+                      onDragStart={editable ? () => handleItemDragStart({ id: bookmarkId, containerId: 'unfiled', bookmarked: true }) : undefined}
                       onDragOver={() => handleDragOverItem('unfiled', bookmarkId)}
                       onDragEnd={handleItemDragEnd}
                     />
@@ -594,6 +623,7 @@ export function SessionsView({ onSend }: SessionsViewProps) {
                       <span style={{ color: 'var(--info)', flexShrink: 0 }}>
                         {viewingSession?.sessionModelDisplayName || viewingSession?.sessionModel || 'model unknown'}
                       </span>
+                      <HostChip hostId={viewingSession?.hostId} hostName={viewingSession?.hostName} />
                     </span>
                   )}
                 </div>
@@ -708,14 +738,16 @@ interface SidebarFolderProps {
   folderId: string;
   name: string;
   items: BookmarkedItem[];
+  /** Whether the folder itself is owned by the local host (remote → read-only). */
+  editable: boolean;
   expanded: boolean;
   onToggle: () => void;
   viewingSessionId: string | null;
   liveSessionIds: Set<string>;
   matchLabel: (sessionId: string) => string | null;
   onSelect: (id: string) => void;
-  onRename: (name: string) => void;
-  onDelete: () => void;
+  onRename?: (name: string) => void;
+  onDelete?: () => void;
   onRenameSession: (bookmarkId: string, name: string) => void;
   draggedItemId: string | null;
   dragOverContainerId: string | null;
@@ -731,7 +763,7 @@ interface SidebarFolderProps {
 }
 
 function SidebarFolder({
-  folderId, name, items, expanded, onToggle, viewingSessionId, liveSessionIds, matchLabel, onSelect,
+  folderId, name, items, editable, expanded, onToggle, viewingSessionId, liveSessionIds, matchLabel, onSelect,
   onRename, onDelete, onRenameSession,
   draggedItemId, dragOverContainerId, dragOverItemId,
   onItemDragStart, onItemDragOverItem, onItemDragOverContainer, onItemDragEnd,
@@ -748,7 +780,7 @@ function SidebarFolder({
         onDelete={onDelete}
         draggable
         isDragOver={isFolderDragOver || (dragOverContainerId === folderId && dragOverItemId === null)}
-        onDragStart={onFolderDragStart}
+        onDragStart={editable ? onFolderDragStart : undefined}
         onDragOver={() => { onFolderDragOver(); onItemDragOverContainer(folderId); }}
         onDragEnd={onFolderDragEnd}
       />
@@ -760,7 +792,7 @@ function SidebarFolder({
           Drop sessions here
         </div>
       )}
-      {expanded && items.map(({ session, bookmarkId, bookmarkName }) => (
+      {expanded && items.map(({ session, bookmarkId, bookmarkName, editable: itemEditable }) => (
         <SidebarSessionRow
           key={session.sessionId}
           session={session}
@@ -773,8 +805,8 @@ function SidebarFolder({
           matchLabel={matchLabel(session.sessionId)}
           isDragOver={draggedItemId !== bookmarkId && dragOverContainerId === folderId && dragOverItemId === bookmarkId}
           onSelect={onSelect}
-          onRename={(name) => onRenameSession(bookmarkId, name)}
-          onDragStart={() => onItemDragStart({ id: bookmarkId, containerId: folderId, bookmarked: true })}
+          onRename={itemEditable ? (name) => onRenameSession(bookmarkId, name) : undefined}
+          onDragStart={itemEditable ? () => onItemDragStart({ id: bookmarkId, containerId: folderId, bookmarked: true }) : undefined}
           onDragOver={() => onItemDragOverItem(folderId, bookmarkId)}
           onDragEnd={onItemDragEnd}
         />
@@ -897,6 +929,7 @@ function SidebarSessionRow({
           {session.eventCount !== undefined && session.eventCount > 0 && (
             <span style={{ color: 'var(--text-faint)' }}>· {session.eventCount} events</span>
           )}
+          <HostChip hostId={session.hostId} hostName={session.hostName} />
         </div>
       </div>
 

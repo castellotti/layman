@@ -38,6 +38,8 @@ export function useWebSocket(): { send: (msg: ClientMessage) => void } {
     upsertHighlight,
     removeHighlight,
     setDriftState,
+    setSyncStatus,
+    setSyncHosts,
     setLiveStream,
     clearLiveStream,
   } = useSessionStore();
@@ -175,9 +177,17 @@ export function useWebSocket(): { send: (msg: ClientMessage) => void } {
         case 'stream:end':
           clearLiveStream(message.sessionId);
           break;
+
+        case 'sync:status':
+          setSyncStatus(message.status);
+          break;
+
+        case 'sync:hosts':
+          setSyncHosts(message.hosts);
+          break;
       }
     },
-    [addEvent, addPendingApproval, removePendingApproval, setAnalyzing, setAnalysisError, setLaymans, setLaymansError, setConfig, setServerVersion, setSessionStatus, setSessions, markSessionActive, markSessionInactive, updateEvent, setBookmarks, upsertFolder, removeFolder, upsertBookmark, removeBookmark, setHighlights, upsertHighlightFolder, removeHighlightFolder, upsertHighlight, removeHighlight, setDriftState, setLiveStream, clearLiveStream]
+    [addEvent, addPendingApproval, removePendingApproval, setAnalyzing, setAnalysisError, setLaymans, setLaymansError, setConfig, setServerVersion, setSessionStatus, setSessions, markSessionActive, markSessionInactive, updateEvent, setBookmarks, upsertFolder, removeFolder, upsertBookmark, removeBookmark, setHighlights, upsertHighlightFolder, removeHighlightFolder, upsertHighlight, removeHighlight, setDriftState, setSyncStatus, setSyncHosts, setLiveStream, clearLiveStream]
   );
 
   const connect = useCallback(() => {
