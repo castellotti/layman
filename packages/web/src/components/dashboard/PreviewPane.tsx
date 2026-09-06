@@ -7,6 +7,7 @@ import type { SessionMetrics } from '../../lib/types.js';
 import { deriveSessionState, getSessionDisplayName, contextPctColor } from '../../lib/session-state.js';
 import { formatTime, formatDuration as formatElapsed, cwdBasename } from '../../lib/format.js';
 import { EVENT_KIND_COLOR, kindLabel, eventDetail, withThinkingRows, baseEventId } from '../../lib/event-styles.js';
+import { HostChip } from '../shared/HostChip.js';
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
@@ -310,6 +311,10 @@ export const PreviewPane = React.memo(function PreviewPane({
   const model = metrics?.modelDisplayName;
   const cwd = session.cwd;
   const tailScrollRef = useRef<HTMLDivElement>(null);
+  // Remote sessions have no local approvals, and analysing a remote event would
+  // run on central's model against central's copy — out of scope for v1. Hide the
+  // Investigate/analyze affordance for them (§8.2).
+  const analyzeHandler = session.remote ? undefined : onSendAnalyze;
 
   return (
     <div
@@ -339,6 +344,7 @@ export const PreviewPane = React.memo(function PreviewPane({
         title="Double-click to open in Logs"
       >
         <StatusDot state={dotState} />
+        <HostChip hostId={session.hostId} hostName={session.hostName} />
         <span style={{ fontFamily: 'var(--font-ui)', fontSize: 12.5, fontWeight: 600, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 0 }}>
           {getSessionDisplayName(session)}
         </span>
@@ -390,7 +396,7 @@ export const PreviewPane = React.memo(function PreviewPane({
           events={events}
           onOpenInLogs={onOpenInLogs}
           sessionId={session.sessionId}
-          onSendAnalyze={onSendAnalyze}
+          onSendAnalyze={analyzeHandler}
         />
       </div>
 

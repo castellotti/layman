@@ -8,9 +8,11 @@ import { SyncState } from './state.js';
 import { SyncJournal } from './journal.js';
 import { SyncApplier } from './applier.js';
 import { PeerStore } from './tokens.js';
+import { RemoteSessionRegistry } from './presence.js';
 import { registerSyncRoutes } from './routes.js';
 import { LaymanConfigSchema, type LaymanConfig } from '../config/schema.js';
 import { SYNC_PROTOCOL_VERSION, type PushBatch } from './protocol.js';
+import type { TimelineEvent } from '../events/types.js';
 
 const CENTRAL = 'central-host';
 
@@ -18,6 +20,7 @@ let db: Database;
 let app: FastifyInstance;
 let peers: PeerStore;
 let config: LaymanConfig;
+let liveCalls: TimelineEvent[][];
 
 function bearer(token: string): Record<string, string> {
   return { authorization: `Bearer ${token}` };
@@ -31,6 +34,7 @@ beforeEach(async () => {
   peers = new PeerStore(db);
   config = LaymanConfigSchema.parse({ sync: { role: 'central', hostId: CENTRAL, hostName: 'central' } });
 
+  liveCalls = [];
   app = Fastify();
   await registerSyncRoutes(app, {
     db,
@@ -39,6 +43,8 @@ beforeEach(async () => {
     applier: new SyncApplier(db),
     peers,
     getPusher: () => null,
+    registry: new RemoteSessionRegistry(),
+    onLiveEvents: (events) => liveCalls.push(events),
     laymanVersion: '9.9.9',
   });
   await app.ready();
@@ -134,6 +140,26 @@ describe('sync routes — push', () => {
     const token = await enrol();
     const res = await app.inject({ method: 'POST', url: '/api/sync/push', headers: bearer(token), payload: { ...batch(), hostId: 'someone-else' } });
     expect(res.statusCode).toBe(409);
+  });
+
+  it('does not fire onLiveEvents for a batch with neither presence nor recent events', async () => {
+    const token = await enrol();
+    // The default batch's event is timestamped in the distant past and carries no
+    // `live` payload, so there is nothing live to surface.
+    await app.inject({ method: 'POST', url: '/api/sync/push', headers: bearer(token), payload: batch() });
+    expect(liveCalls).toHaveLength(0);
+  });
+
+  it('fires onLiveEvents for a presence-only push even with no emittable events', async () => {
+    const token = await enrol();
+    // Presence marks a session active, but the only event is too old to emit. The
+    // dashboard must still be told the session exists / is active.
+    await app.inject({
+      method: 'POST', url: '/api/sync/push', headers: bearer(token),
+      payload: { ...batch(), live: { activeSessionIds: ['s1'], sessions: [{ sessionId: 's1', cwd: '/w', agentType: 'claude-code', lastSeen: Date.now() }] } },
+    });
+    expect(liveCalls).toHaveLength(1);
+    expect(liveCalls[0]).toEqual([]);
   });
 });
 

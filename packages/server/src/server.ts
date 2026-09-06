@@ -31,6 +31,7 @@ import { PeerStore } from './sync/tokens.js';
 import { SyncPusher, createHttpSyncClient, type SyncClient } from './sync/pusher.js';
 import { registerSyncRoutes } from './sync/routes.js';
 import { hostsWithStats } from './sync/stats.js';
+import { RemoteSessionRegistry } from './sync/presence.js';
 import type { PresencePayload } from './sync/protocol.js';
 import { SessionRecorder, countRecordedSessionsByAgentType } from './db/recorder.js';
 import { BookmarkStore } from './db/bookmarks.js';
@@ -220,6 +221,7 @@ export function createServer(config: LaymanConfig): LaymanServer {
   const syncJournal = new SyncJournal(db);
   const syncApplier = new SyncApplier(db);
   const syncPeers = new PeerStore(db);
+  const remoteRegistry = new RemoteSessionRegistry();
   let syncPusher: SyncPusher | null = null;
 
   function syncPresence(): PresencePayload {
@@ -296,6 +298,30 @@ export function createServer(config: LaymanConfig): LaymanServer {
   // change host counters; refresh the dashboard's hosts table either way.
   syncApplier.on('applied', () => broadcastSyncHosts());
 
+  // Remote presence changes (a session appearing, its lastSeen advancing, and
+  // above all the active→idle flip once a stale remote stops pushing) reach an
+  // already-connected dashboard only if central re-sends the sessions list. A
+  // push drives the first two, but the idle flip fires purely on elapsed time
+  // with no push behind it, so a sweep re-evaluates it. Signature-guarded so an
+  // unchanged sweep emits nothing, and self-terminating once no remote session
+  // is active (a later push restarts it).
+  const REMOTE_PRESENCE_SWEEP_MS = 2000;
+  let remotePresenceTimer: ReturnType<typeof setTimeout> | null = null;
+  let lastRemoteSig = '';
+  function refreshRemotePresence(): void {
+    const sessions = buildSessionsList();
+    const remote = sessions.filter(s => s.remote);
+    const sig = remote.map(s => `${s.hostId}:${s.sessionId}:${s.active ? 1 : 0}:${s.lastSeen}`).join('|');
+    if (sig !== lastRemoteSig) {
+      lastRemoteSig = sig;
+      broadcast({ type: 'sessions:list', sessions });
+    }
+    if (remotePresenceTimer) { clearTimeout(remotePresenceTimer); remotePresenceTimer = null; }
+    if (remote.some(s => s.active)) {
+      remotePresenceTimer = setTimeout(refreshRemotePresence, REMOTE_PRESENCE_SWEEP_MS);
+    }
+  }
+
   // ─── Live token streaming ─────────────────────────────────────────────────
   const liveStreams = new LiveStreamStore();
   // Deltas never pass through EventStore, so they never meet its PII filter.
@@ -345,11 +371,14 @@ export function createServer(config: LaymanConfig): LaymanServer {
 
   // Build sessions list annotated with active flag from the gate
   function buildSessionsList() {
-    return eventStore.getSessions().map(s => ({
+    const local = eventStore.getSessions().map(s => ({
       ...s,
       cwd: filterCwd(s.cwd),
       active: gate.isActive(s.sessionId),
     }));
+    // Merge live remote sessions reported by enrolled peers (central role). Local
+    // first, then remote by recency, so the dashboard leads with this machine.
+    return [...local, ...remoteRegistry.list()];
   }
 
   // ─── Full-session investigation context ───────────────────────────────────
@@ -469,6 +498,13 @@ export function createServer(config: LaymanConfig): LaymanServer {
       applier: syncApplier,
       peers: syncPeers,
       getPusher: () => syncPusher,
+      registry: remoteRegistry,
+      // Remote live-tail events ride the same event:new frame as local ones; the
+      // client looks host up via the session, so TimelineEvent stays unchanged.
+      onLiveEvents: (events) => {
+        for (const event of events) broadcast({ type: 'event:new', event });
+        refreshRemotePresence();
+      },
       laymanVersion: SERVER_VERSION,
     });
 
@@ -1544,6 +1580,12 @@ export function createServer(config: LaymanConfig): LaymanServer {
           ws.send(JSON.stringify({ type: 'event:new', event } satisfies ServerMessage));
         }
 
+        // Replay each active remote session's ring after the local replay, so a
+        // dashboard opened mid-remote-session shows its last few events too.
+        for (const event of remoteRegistry.replayEvents()) {
+          ws.send(JSON.stringify({ type: 'event:new', event } satisfies ServerMessage));
+        }
+
         // Send pending approvals
         for (const approval of pendingManager.getPendingDTO()) {
           ws.send(JSON.stringify({ type: 'approval:pending', approval } satisfies ServerMessage));
@@ -1877,6 +1919,7 @@ export function createServer(config: LaymanConfig): LaymanServer {
       syncPusher?.stop();
       if (syncStatusTimer) { clearTimeout(syncStatusTimer); syncStatusTimer = null; }
       if (syncHostsTimer) { clearTimeout(syncHostsTimer); syncHostsTimer = null; }
+      if (remotePresenceTimer) { clearTimeout(remotePresenceTimer); remotePresenceTimer = null; }
       await fastify.close();
     },
 
