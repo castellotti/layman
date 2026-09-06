@@ -6,6 +6,8 @@ import { SyncJournal } from './journal.js';
 import { SyncApplier } from './applier.js';
 import { PeerStore } from './tokens.js';
 import { createHttpSyncClient, type SyncPusher } from './pusher.js';
+import type { RemoteSessionRegistry } from './presence.js';
+import type { TimelineEvent } from '../events/types.js';
 import { hostsWithStats, recomputeHostStats, upsertRemoteHost, updateHostStats } from './stats.js';
 import {
   SYNC_PROTOCOL_VERSION,
@@ -30,6 +32,10 @@ export interface SyncRouteDeps {
   peers: PeerStore;
   /** The running pusher when role === 'remote', else null. Re-read each call. */
   getPusher: () => SyncPusher | null;
+  /** Central-side live-session presence, fed from each push's `live` payload. */
+  registry: RemoteSessionRegistry;
+  /** Broadcast recent remote-origin events to dashboard clients as `event:new`. */
+  onLiveEvents: (events: TimelineEvent[]) => void;
   laymanVersion?: string;
 }
 
@@ -115,6 +121,15 @@ export async function registerSyncRoutes(fastify: FastifyInstance, deps: SyncRou
       ).run(batch.hostId, peer.name, Date.now(), Date.now());
 
       const { applied, conflicts } = applier.apply(batch.hostId, batch.entries, { piiFilter: getConfig().piiFilter });
+
+      // Live-tail: surface active remote sessions and their recent events on the
+      // Dashboard. Presence is updated from batch.live; ring events broadcast as
+      // event:new. Remote events never enter EventStore (see §3.8).
+      const emitted = deps.registry.ingestPush(batch.hostId, peer.name, batch);
+      // Fire on any presence-bearing push, not only when in-window events were
+      // emitted: a session appearing or going idle carries no event of its own,
+      // and onLiveEvents also re-sends the sessions list so the dashboard tracks it.
+      if (emitted.length > 0 || batch.live) deps.onLiveEvents(emitted);
 
       const ackSeq = batch.upToSeq ?? null;
       peers.touch(peer.token_hash, {
