@@ -590,6 +590,16 @@ export interface ResolvedId {
   hostId?: string;
 }
 
+/** Mirrors PullStatus in server sync/protocol.ts. */
+export interface PullStatus {
+  enabled: boolean;
+  state: 'idle' | 'snapshot' | 'incremental' | 'backoff' | 'error' | 'paused';
+  pullAckedSeq: number | null;
+  snapshotKind: string | null;
+  lastSuccessAt: number | null;
+  lastError: string | null;
+}
+
 /** Mirrors SyncStatus in server sync/protocol.ts. */
 export interface SyncStatus {
   role: 'standalone' | 'central' | 'remote';
@@ -601,6 +611,8 @@ export interface SyncStatus {
   backfillKind: string | null;
   lastSuccessAt: number | null;
   lastError: string | null;
+  /** Mirror pull status when role === 'remote' && mirror. */
+  pull?: PullStatus;
 }
 
 /** Mirrors HostStats in server sync/protocol.ts. */
