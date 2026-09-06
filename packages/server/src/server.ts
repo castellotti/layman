@@ -25,6 +25,12 @@ import { scanPii, executePurge } from './pii/purge.js';
 import { updateConfig, saveConfig } from './config/config.js';
 import { openDatabase } from './db/database.js';
 import { ensureHostIdentity } from './sync/identity.js';
+import { SyncJournal } from './sync/journal.js';
+import { SyncApplier } from './sync/applier.js';
+import { PeerStore } from './sync/tokens.js';
+import { SyncPusher, createHttpSyncClient, type SyncClient } from './sync/pusher.js';
+import { registerSyncRoutes } from './sync/routes.js';
+import type { PresencePayload } from './sync/protocol.js';
 import { SessionRecorder, countRecordedSessionsByAgentType } from './db/recorder.js';
 import { BookmarkStore } from './db/bookmarks.js';
 import { HighlightStore } from './db/highlights.js';
@@ -192,6 +198,50 @@ export function createServer(config: LaymanConfig): LaymanServer {
     () => getConfig().piiFilter,
   );
   recorder.attach(eventStore);
+
+  // ─── Multi-host sync ──────────────────────────────────────────────────────
+  // Journal reads and applier writes go straight through SQLite (never through
+  // EventStore); the pusher runs only in the 'remote' role. See docs/planning.
+  const syncJournal = new SyncJournal(db);
+  const syncApplier = new SyncApplier(db);
+  const syncPeers = new PeerStore(db);
+  let syncPusher: SyncPusher | null = null;
+
+  function syncPresence(): PresencePayload {
+    const sessions = eventStore.getSessions();
+    return {
+      activeSessionIds: sessions.filter((s) => gate.isActive(s.sessionId)).map((s) => s.sessionId),
+      sessions: sessions.map((s) => ({
+        sessionId: s.sessionId,
+        cwd: filterCwd(s.cwd),
+        agentType: s.agentType,
+        sessionName: s.sessionName,
+        lastSeen: s.lastSeen,
+      })),
+    };
+  }
+
+  // Injectable so tests can drive the pusher without a network; overridden in
+  // reconcileSync() to a real HTTP client bound to the current config.
+  let makeSyncClient: (() => SyncClient) | null = null;
+
+  function reconcileSync(): void {
+    const wantRemote = getConfig().sync.role === 'remote'
+      && !!getConfig().sync.centralUrl
+      && !!getConfig().sync.token
+      && getConfig().sessionRecording;
+    if (wantRemote && !syncPusher) {
+      const client = (makeSyncClient ?? (() => createHttpSyncClient(getConfig, SERVER_VERSION)))();
+      syncPusher = new SyncPusher(db, client, getConfig, {
+        laymanVersion: SERVER_VERSION,
+        getPresence: syncPresence,
+      });
+      syncPusher.start();
+    } else if (!wantRemote && syncPusher) {
+      syncPusher.stop();
+      syncPusher = null;
+    }
+  }
 
   // Track connected WebSocket clients (@fastify/websocket v10: handler arg is the socket directly)
   const wsClients = new Set<{ readyState: number; send: (data: string) => void }>();
@@ -373,6 +423,17 @@ export function createServer(config: LaymanConfig): LaymanServer {
 
     await fastify.register(websocket);
 
+    // Multi-host sync routes (gzip request decompression scoped to them).
+    await registerSyncRoutes(fastify, {
+      db,
+      getConfig,
+      journal: syncJournal,
+      applier: syncApplier,
+      peers: syncPeers,
+      getPusher: () => syncPusher,
+      laymanVersion: SERVER_VERSION,
+    });
+
     // Serve static web UI
     const webDistPath = join(__dirname, '..', '..', '..', 'web-dist');
     const fallbackPath = join(__dirname, '..', 'web-dist');
@@ -548,6 +609,7 @@ export function createServer(config: LaymanConfig): LaymanServer {
       analysisEngine.configure(activeConfig.analysis);
       pendingManager.setHookTimeout(activeConfig.hookTimeout);
       saveConfig(activeConfig);
+      reconcileSync();
       broadcast({ type: 'session:config', config: activeConfig });
       return activeConfig;
     });
@@ -1637,6 +1699,8 @@ export function createServer(config: LaymanConfig): LaymanServer {
         analysisEngine.configure(activeConfig.analysis);
         pendingManager.setHookTimeout(activeConfig.hookTimeout);
         saveConfig(activeConfig);
+        // Start/stop the push loop when role, credentials or recording change.
+        reconcileSync();
         broadcast({ type: 'session:config', config: activeConfig });
         // Release drift blocks if drift blocking was effectively disabled
         const wasDriftBlocking = prevDriftEnabled && prevBlockOnRed;
@@ -1709,6 +1773,7 @@ export function createServer(config: LaymanConfig): LaymanServer {
       registerRoutes();
       vibeWatcher.start();
       piWatcher.start();
+      reconcileSync();
 
       if (getConfig().recordingRecovery && getConfig().sessionRecording) {
         void recoverSessionGaps(db, eventStore).then(({ events, sessions }) => {
@@ -1742,6 +1807,7 @@ export function createServer(config: LaymanConfig): LaymanServer {
       vibeWatcher.stop();
       piWatcher.stop();
       liveStreams.stop();
+      syncPusher?.stop();
       await fastify.close();
     },
 
