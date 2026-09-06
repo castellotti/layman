@@ -48,6 +48,9 @@ services:
       # to write correct absolute paths into ~/.codex/hooks.json — Codex runs on the host
       # and executes those paths literally, so they must be host paths, not /root/... paths.
       - HOST_HOME=${HOME}
+      # Display name for this machine in multi-host sync. `make docker-run` sets it
+      # to $(hostname); inside the container os.hostname() is only the container id.
+      - LAYMAN_HOST_NAME=${LAYMAN_HOST_NAME:-}
     command: >
       node packages/server/dist/index.js start
       --host 0.0.0.0

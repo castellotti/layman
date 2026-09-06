@@ -259,6 +259,20 @@ export interface TtsConfig {
   maxChars: number;
 }
 
+/** Multi-host sync config. Mirrors SyncConfigSchema on the server. */
+export interface SyncConfig {
+  role: 'standalone' | 'central' | 'remote';
+  /** Stable origin id, minted server-side; never edited by the UI. */
+  hostId: string;
+  hostName: string;
+  centralUrl: string;
+  token: string;
+  intervalSeconds: number;
+  mirror: boolean;
+  mirrorIntervalSeconds: number;
+  logRetentionDays: number;
+}
+
 export interface LaymanConfig {
   port: number;
   host: string;
@@ -304,6 +318,8 @@ export interface LaymanConfig {
   liveTokens: { enabled: boolean; showThinking: boolean };
   /** Passive monitoring of glove-sandboxed harnesses. Mirrors GloveConfigSchema. */
   glove: { enabled: boolean; sessionsDir: string };
+  /** Multi-host sync. Mirrors SyncConfigSchema on the server. */
+  sync: SyncConfig;
   driftMonitoring: DriftMonitoringConfig;
   tts: TtsConfig;
   setupWizardComplete: boolean;
@@ -400,6 +416,10 @@ export interface RecordedSession {
   sessionName?: string;
   source?: string;
   eventCount?: number;
+  /** Origin host id (multi-host sync). Local host until enrolment. */
+  hostId?: string;
+  /** Display name of the origin host. */
+  hostName?: string;
 }
 
 export interface QAEntry {

@@ -41,6 +41,7 @@ clean:
 start:
 	@mkdir -p "$${HOME}/.local/share/layman"
 	$(COMPOSE) -f docker-compose.ghcr.yml pull
+	LAYMAN_HOST_NAME="$${LAYMAN_HOST_NAME:-$$(hostname)}" \
 	$(COMPOSE) -f docker-compose.ghcr.yml up -d
 	@echo ""
 	@echo "Layman running at http://localhost:8880"
@@ -52,6 +53,7 @@ stop:
 update:
 	@mkdir -p "$${HOME}/.local/share/layman"
 	$(COMPOSE) -f docker-compose.ghcr.yml pull
+	LAYMAN_HOST_NAME="$${LAYMAN_HOST_NAME:-$$(hostname)}" \
 	$(COMPOSE) -f docker-compose.ghcr.yml up -d
 	@echo "Layman updated and restarted."
 
@@ -66,6 +68,7 @@ docker-build:
 docker-run: docker-build
 	@mkdir -p "$${HOME}/.local/share/layman"
 	LAYMAN_PROJECT_DIR=$(or $(LAYMAN_PROJECT_DIR),$(CURDIR)) \
+	LAYMAN_HOST_NAME="$${LAYMAN_HOST_NAME:-$$(hostname)}" \
 	$(COMPOSE) up -d
 	@echo ""
 	@echo "Layman running at http://localhost:8880"

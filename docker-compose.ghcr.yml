@@ -20,6 +20,8 @@ services:
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - LAYMAN_API_KEY=${LAYMAN_API_KEY:-}
       - HOST_HOME=${HOME}
+      # Display name for this machine in multi-host sync (see docker-compose.yml).
+      - LAYMAN_HOST_NAME=${LAYMAN_HOST_NAME:-}
     command: >
       node packages/server/dist/index.js start
       --host 0.0.0.0
