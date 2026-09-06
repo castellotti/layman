@@ -13,9 +13,17 @@ export function RouteErrorPanel() {
   const clearRouteError = useSessionStore((s) => s.clearRouteError);
   const setViewMode = useSessionStore((s) => s.setViewMode);
   const setSessionsSearchSeed = useSessionStore((s) => s.setSessionsSearchSeed);
+  const config = useSessionStore((s) => s.config);
   const [query, setQuery] = useState('');
 
   if (!routeError) return null;
+
+  // On a mirror/remote, the same id may exist on central (ids are global; only
+  // this instance's publicUrl differs). Offer to open the same path there.
+  const centralUrl = config?.sync?.role === 'remote' ? config.sync.centralUrl : '';
+  const openOnCentral = centralUrl
+    ? () => window.open(centralUrl.replace(/\/$/, '') + window.location.pathname + window.location.search, '_blank', 'noopener')
+    : null;
 
   const search = () => {
     setSessionsSearchSeed(query.trim());
@@ -91,15 +99,28 @@ export function RouteErrorPanel() {
           </button>
         </div>
 
-        <button
-          onClick={goDashboard}
-          style={{
-            alignSelf: 'flex-start', background: 'none', border: 'none', padding: 0,
-            fontSize: 10.5, color: 'var(--text-faint)', cursor: 'pointer', fontFamily: 'inherit',
-          }}
-        >
-          Go to dashboard
-        </button>
+        <div style={{ display: 'flex', gap: 14, alignItems: 'center' }}>
+          <button
+            onClick={goDashboard}
+            style={{
+              background: 'none', border: 'none', padding: 0,
+              fontSize: 10.5, color: 'var(--text-faint)', cursor: 'pointer', fontFamily: 'inherit',
+            }}
+          >
+            Go to dashboard
+          </button>
+          {openOnCentral && (
+            <button
+              onClick={openOnCentral}
+              style={{
+                background: 'none', border: 'none', padding: 0,
+                fontSize: 10.5, color: 'var(--info)', cursor: 'pointer', fontFamily: 'inherit',
+              }}
+            >
+              Open on central ↗
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );

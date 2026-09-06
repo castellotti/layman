@@ -15,6 +15,13 @@ export interface ApplyResult {
 export interface ApplierOptions {
   /** When true, event payloads are re-redacted on ingest (defence in depth). */
   piiFilter?: boolean;
+  /**
+   * When true, each row keeps the origin carried in its own `host_id` rather
+   * than being forced to `originHostId`. Push sets this false (a peer may only
+   * push its own data, so the authenticated origin wins); mirror pull sets it
+   * true (central relays many hosts' rows, each with its true origin).
+   */
+  trustRowOrigin?: boolean;
 }
 
 const KIND_ORDER: Record<string, number> = {
@@ -48,6 +55,8 @@ export class SyncApplier extends EventEmitter {
       (a, b) => (KIND_ORDER[a.kind] ?? 99) - (KIND_ORDER[b.kind] ?? 99),
     );
 
+    const touchedOrigins = new Set<string>();
+
     const tx = this.db.transaction(() => {
       for (const entry of ordered) {
         const entity = SYNC_ENTITIES[entry.kind];
@@ -62,16 +71,22 @@ export class SyncApplier extends EventEmitter {
         if (this.journal.isSuppressed(entry.kind, entry.id)) continue;
 
         const row: WireRow = { ...entry.row };
+        // On pull, honour the row's own origin; on push, force the pusher's.
+        const rowOrigin = opts.trustRowOrigin && typeof row.host_id === 'string' && row.host_id
+          ? row.host_id
+          : originHostId;
 
         if (entry.kind === 'session') {
           const existing = entity.load(this.db, [entry.id])[0] as { host_id?: string } | undefined;
-          if (existing && existing.host_id && existing.host_id !== originHostId) {
+          if (existing && existing.host_id && existing.host_id !== rowOrigin) {
             conflicts++;
             continue; // collision: never overwrite another host's session
           }
-          row.host_id = originHostId;
+          row.host_id = rowOrigin;
+          touchedOrigins.add(rowOrigin);
         } else if (CURATION_KINDS.has(entry.kind)) {
-          row.host_id = originHostId; // curation is owned by whoever pushed it
+          row.host_id = rowOrigin; // curation is owned by whoever created it
+          touchedOrigins.add(rowOrigin);
         } else if (entry.kind === 'event' && opts.piiFilter) {
           redactEventRow(row);
         }
@@ -82,7 +97,10 @@ export class SyncApplier extends EventEmitter {
     });
     tx();
 
-    updateHostStats(this.db, originHostId);
+    // Refresh counters for the pusher and every distinct origin the batch touched
+    // (a mirror pull relays rows from many hosts).
+    touchedOrigins.add(originHostId);
+    for (const origin of touchedOrigins) updateHostStats(this.db, origin);
     if (applied > 0) this.emit('applied', { originHostId, entries: ordered });
     return { applied, conflicts };
   }

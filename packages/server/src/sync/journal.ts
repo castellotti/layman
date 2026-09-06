@@ -87,4 +87,52 @@ export class SyncJournal {
   clearSuppressions(): number {
     return this.db.prepare('DELETE FROM sync_suppressions').run().changes;
   }
+
+  /** Lowest seq still in the log, or null when empty. */
+  oldestSeq(): number | null {
+    const row = this.db.prepare('SELECT MIN(seq) AS s FROM sync_log').get() as { s: number | null };
+    return row.s;
+  }
+
+  /**
+   * Compaction (§3.10). Never touches entity tables, only the journal:
+   *  - collapse duplicate entries for the same (kind, entity_id) to the newest;
+   *  - on a remote, drop own-origin entries already acked by central;
+   *  - on a central, drop entries older than the retention window.
+   * A remote's unacked own-origin entries are always kept (ackedSeq gates them),
+   * so nothing pending is ever lost.
+   */
+  compact(opts: {
+    localHostId: string;
+    pushAckedSeq?: number | null;
+    retentionMs?: number;
+  }): number {
+    let removed = 0;
+    const tx = this.db.transaction(() => {
+      // 1. Keep only the newest entry per (kind, entity_id).
+      removed += this.db
+        .prepare(
+          `DELETE FROM sync_log WHERE seq NOT IN (
+             SELECT MAX(seq) FROM sync_log GROUP BY kind, entity_id
+           )`,
+        )
+        .run().changes;
+
+      // 2. Remote: own-origin entries already confirmed by central.
+      if (opts.pushAckedSeq != null) {
+        removed += this.db
+          .prepare('DELETE FROM sync_log WHERE origin_host_id = ? AND seq <= ?')
+          .run(opts.localHostId, opts.pushAckedSeq).changes;
+      }
+
+      // 3. Central: entries older than the retention window.
+      if (opts.retentionMs != null) {
+        removed += this.db
+          .prepare('DELETE FROM sync_log WHERE created_at < ?')
+          .run(Date.now() - opts.retentionMs).changes;
+      }
+    });
+    tx();
+    return removed;
+  }
 }

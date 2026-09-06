@@ -12,6 +12,8 @@ import {
   type PushEntry,
   type PushResponse,
   type PresencePayload,
+  type SnapshotPage,
+  type ChangesResponse,
   type SyncKind,
   type SyncStatus,
   type WireRow,
@@ -37,11 +39,18 @@ export function isFatalPause(code: PusherErrorCode): boolean {
   return code === 'revoked' || code === 'host_mismatch' || code === 'protocol';
 }
 
-/** Transport to central. Injected so the pusher is testable without a network. */
+/** Transport to central. Injected so the pusher/puller are testable without a network. */
 export interface SyncClient {
   hello(req: HelloRequest): Promise<HelloResponse>;
   push(batch: PushBatch): Promise<PushResponse>;
+  snapshot(kind: SyncKind, cursor: string, limit: number): Promise<SnapshotPage>;
+  changes(since: number, limit: number): Promise<ChangesResponse>;
 }
+
+/** What the pusher needs — lets a test fake omit the pull methods. */
+export type PushClient = Pick<SyncClient, 'hello' | 'push'>;
+/** What the puller needs. */
+export type PullClient = Pick<SyncClient, 'hello' | 'snapshot' | 'changes'>;
 
 /** Maps an HTTP status from a sync route to a pusher error code. */
 export function codeForStatus(status: number): PusherErrorCode {
@@ -79,12 +88,30 @@ export function createHttpSyncClient(
     return res.json();
   }
 
+  async function get(path: string): Promise<unknown> {
+    let res: Response;
+    try {
+      res = await fetch(base() + path, { method: 'GET', headers: auth() });
+    } catch (err) {
+      throw new PusherError('network', String(err));
+    }
+    if (!res.ok) throw new PusherError(codeForStatus(res.status), `${path} → ${res.status}`);
+    return res.json();
+  }
+
   return {
     async hello(req) {
       return (await call('/api/sync/hello', req, false)) as HelloResponse;
     },
     async push(batch) {
       return (await call('/api/sync/push', batch, true)) as PushResponse;
+    },
+    async snapshot(kind, cursor, limit) {
+      const q = `?kind=${encodeURIComponent(kind)}&cursor=${encodeURIComponent(cursor)}&limit=${limit}`;
+      return (await get('/api/sync/snapshot' + q)) as SnapshotPage;
+    },
+    async changes(since, limit) {
+      return (await get(`/api/sync/changes?since=${since}&limit=${limit}`)) as ChangesResponse;
     },
   };
 }
@@ -117,7 +144,7 @@ export class SyncPusher {
 
   constructor(
     private db: Database,
-    private client: SyncClient,
+    private client: PushClient,
     private getConfig: () => LaymanConfig,
     private opts: { laymanVersion?: string; getPresence?: () => PresencePayload; onStatus?: () => void } = {},
   ) {

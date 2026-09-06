@@ -163,6 +163,69 @@ describe('sync routes — push', () => {
   });
 });
 
+describe('sync routes — pull (snapshot/changes)', () => {
+  async function enrol(hostId = 'remote-1'): Promise<string> {
+    const { token } = peers.create('remote');
+    await app.inject({ method: 'POST', url: '/api/sync/hello', headers: bearer(token), payload: { hostId, hostName: 'R', protocolVersion: SYNC_PROTOCOL_VERSION } });
+    return token;
+  }
+
+  function seed(host: string, sessionId: string): void {
+    db.prepare("INSERT INTO recorded_sessions (session_id, cwd, agent_type, started_at, last_seen, host_id, updated_at) VALUES (?, '', 'pi', 1, 2, ?, 2)").run(sessionId, host);
+  }
+
+  it('snapshot returns rows the requester does not own', async () => {
+    const token = await enrol();
+    db.prepare("INSERT INTO sync_hosts (host_id, name, kind, first_seen, last_seen) VALUES ('other', 'Other', 'remote', 1, 1)").run();
+    seed(CENTRAL, 's-central');
+    seed('other', 's-other');
+    seed('remote-1', 's-mine'); // requester's own — excluded
+
+    const res = await app.inject({ method: 'GET', url: '/api/sync/snapshot?kind=session&cursor=&limit=500', headers: bearer(token) });
+    expect(res.statusCode).toBe(200);
+    const page = res.json();
+    const ids = page.entries.map((e: { id: string }) => e.id).sort();
+    expect(ids).toEqual(['s-central', 's-other']);
+    expect(page.hosts.length).toBeGreaterThan(0);
+  });
+
+  it('changes excludes own-origin entries', async () => {
+    const token = await enrol();
+    seed(CENTRAL, 's-central');
+    seed('remote-1', 's-mine');
+    const res = await app.inject({ method: 'GET', url: '/api/sync/changes?since=0&limit=1000', headers: bearer(token) });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    const kinds = body.entries.filter((e: { kind: string }) => e.kind === 'session').map((e: { id: string }) => e.id);
+    expect(kinds).toContain('s-central');
+    expect(kinds).not.toContain('s-mine');
+  });
+
+  it('changes signals resync when the cursor is behind retained history', async () => {
+    const token = await enrol();
+    seed(CENTRAL, 's1');
+    // Push the log far ahead so oldestSeq > since + 1.
+    db.prepare('UPDATE sync_log SET seq = seq + 1000').run();
+    const res = await app.inject({ method: 'GET', url: '/api/sync/changes?since=1&limit=1000', headers: bearer(token) });
+    expect(res.json().resync).toBe(true);
+  });
+});
+
+describe('sync routes — pull management (local)', () => {
+  it('reset-pull clears pull cursors', async () => {
+    new SyncState(db).set('pull_acked_seq', '42');
+    await app.inject({ method: 'POST', url: '/api/sync/reset-pull' });
+    expect(new SyncState(db).get('pull_acked_seq')).toBeNull();
+  });
+
+  it('forget suppressions clears the table', async () => {
+    new SyncJournal(db).suppress('session', 's1');
+    const res = await app.inject({ method: 'DELETE', url: '/api/sync/suppressions' });
+    expect(res.json().removed).toBe(1);
+    expect(new SyncJournal(db).isSuppressed('session', 's1')).toBe(false);
+  });
+});
+
 describe('sync routes — management (local)', () => {
   it('creates, lists, revokes and removes peers', async () => {
     const created = await app.inject({ method: 'POST', url: '/api/sync/peers', payload: { name: 'laptop' } });

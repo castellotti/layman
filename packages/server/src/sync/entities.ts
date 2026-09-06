@@ -14,8 +14,10 @@ export interface SyncEntity {
   idColumn: string;
   /** Load current state for the given ids (skips missing rows). */
   load(db: Database, ids: string[]): WireRow[];
-  /** Page own-origin rows for backfill/snapshot, keyset-ordered by `idColumn`. */
+  /** Page own-origin rows for backfill, keyset-ordered by `idColumn`. */
   page(db: Database, opts: { afterId?: string; limit: number; originHostId: string }): WireRow[];
+  /** Page rows *not* owned by a host (mirror snapshot), keyset-ordered. */
+  pageExcludingOrigin(db: Database, opts: { afterId?: string; limit: number; excludeHostId: string }): WireRow[];
   /** Idempotent upsert of a whole wire row (INSERT … ON CONFLICT DO UPDATE). */
   upsert(db: Database, row: WireRow): void;
   /** Remove by id (session cascades to its events and qa). */
@@ -28,6 +30,13 @@ function originPredicate(entity: { table: string }, hasHostColumn: boolean): str
   return hasHostColumn
     ? 'host_id = ?'
     : 'session_id IN (SELECT session_id FROM recorded_sessions WHERE host_id = ?)';
+}
+
+/** The inverse: everything a host does *not* own (mirror snapshot). */
+function excludeOriginPredicate(hasHostColumn: boolean): string {
+  return hasHostColumn
+    ? '(host_id IS NULL OR host_id != ?)'
+    : 'session_id IN (SELECT session_id FROM recorded_sessions WHERE host_id IS NULL OR host_id != ?)';
 }
 
 function makeEntity(spec: {
@@ -70,6 +79,16 @@ function makeEntity(spec: {
            ORDER BY ${idColumn} ASC LIMIT ?`,
         )
         .all(originHostId, afterId, limit) as WireRow[];
+    },
+    pageExcludingOrigin(db, { afterId = '', limit, excludeHostId }) {
+      const pred = excludeOriginPredicate(hasHostColumn);
+      return db
+        .prepare(
+          `SELECT ${colList} FROM ${table}
+           WHERE ${pred} AND ${idColumn} > ?
+           ORDER BY ${idColumn} ASC LIMIT ?`,
+        )
+        .all(excludeHostId, afterId, limit) as WireRow[];
     },
     upsert(db, row) {
       const values = columns.map((c) => (row[c] === undefined ? null : row[c]));
