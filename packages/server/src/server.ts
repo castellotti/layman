@@ -1875,6 +1875,8 @@ export function createServer(config: LaymanConfig): LaymanServer {
       piWatcher.stop();
       liveStreams.stop();
       syncPusher?.stop();
+      if (syncStatusTimer) { clearTimeout(syncStatusTimer); syncStatusTimer = null; }
+      if (syncHostsTimer) { clearTimeout(syncHostsTimer); syncHostsTimer = null; }
       await fastify.close();
     },
 
