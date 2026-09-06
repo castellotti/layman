@@ -7,6 +7,7 @@ interface RawFolder {
   name: string;
   sort_order: number;
   created_at: number;
+  host_id?: string | null;
 }
 
 interface RawHighlight {
@@ -18,6 +19,7 @@ interface RawHighlight {
   name: string;
   sort_order: number;
   created_at: number;
+  host_id?: string | null;
 }
 
 function toFolder(row: RawFolder): HighlightFolder {
@@ -26,6 +28,7 @@ function toFolder(row: RawFolder): HighlightFolder {
     name: row.name,
     sortOrder: row.sort_order,
     createdAt: row.created_at,
+    hostId: row.host_id ?? undefined,
   };
 }
 
@@ -39,6 +42,7 @@ function toHighlight(row: RawHighlight): Highlight {
     name: row.name,
     sortOrder: row.sort_order,
     createdAt: row.created_at,
+    hostId: row.host_id ?? undefined,
   };
 }
 

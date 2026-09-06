@@ -35,6 +35,7 @@ import type { SessionInfo } from '../events/store.js';
 import type { BookmarkFolder, Bookmark, HighlightFolder, Highlight } from '../db/types.js';
 import type { DriftState } from '../drift/types.js';
 import type { LiveStream } from '../stream/live.js';
+import type { SyncStatus, HostStats } from '../sync/protocol.js';
 
 export interface SessionStatus {
   connected: boolean;
@@ -105,7 +106,9 @@ export type ServerMessage =
   | { type: 'highlights:deleted'; highlightId: string }
   | { type: 'drift:update'; sessionId: string; state: DriftState }
   | { type: 'stream:update'; sessionId: string; stream: LiveStream }
-  | { type: 'stream:end'; sessionId: string };
+  | { type: 'stream:end'; sessionId: string }
+  | { type: 'sync:status'; status: SyncStatus }
+  | { type: 'sync:hosts'; hosts: HostStats[] };
 
 export type ClientMessage =
   | { type: 'approval:decide'; approvalId: string; decision: ApprovalDecision }
