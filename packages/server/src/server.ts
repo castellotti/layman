@@ -30,6 +30,7 @@ import { SyncApplier } from './sync/applier.js';
 import { PeerStore } from './sync/tokens.js';
 import { SyncPusher, createHttpSyncClient, type SyncClient } from './sync/pusher.js';
 import { registerSyncRoutes } from './sync/routes.js';
+import { hostsWithStats } from './sync/stats.js';
 import type { PresencePayload } from './sync/protocol.js';
 import { SessionRecorder, countRecordedSessionsByAgentType } from './db/recorder.js';
 import { BookmarkStore } from './db/bookmarks.js';
@@ -122,6 +123,20 @@ export function createServer(config: LaymanConfig): LaymanServer {
   // consumers (e.g. the OpenCode prompt relay) need the literal filesystem
   // path to function and must not be redacted.
   const filterCwd = (cwd: string): string => getConfig().piiFilter ? redactString(cwd) : cwd;
+
+  // Curation (folders, bookmarks, highlights) is editable only on its origin
+  // host (multi-host sync §3.6). A null host_id is a pre-sync local row and is
+  // treated as local; a not-yet-recorded id lets the route's own 404 answer.
+  const isLocalCuration = (
+    table: 'bookmarks' | 'bookmark_folders' | 'highlights' | 'highlight_folders',
+    id: string,
+  ): boolean => {
+    const row = db.prepare(`SELECT host_id FROM ${table} WHERE id = ?`).get(id) as { host_id: string | null } | undefined;
+    if (!row) return true;
+    return !row.host_id || row.host_id === getConfig().sync.hostId;
+  };
+  const READONLY_CURATION = { error: 'This item belongs to another host and is read-only here' };
+
   const resolvedServerUrl = (): string =>
     activeConfig.hookUrl ?? `http://${activeConfig.host}:${activeConfig.port}`;
 
@@ -235,6 +250,7 @@ export function createServer(config: LaymanConfig): LaymanServer {
       syncPusher = new SyncPusher(db, client, getConfig, {
         laymanVersion: SERVER_VERSION,
         getPresence: syncPresence,
+        onStatus: () => broadcastSyncStatus(),
       });
       syncPusher.start();
     } else if (!wantRemote && syncPusher) {
@@ -257,6 +273,28 @@ export function createServer(config: LaymanConfig): LaymanServer {
 
   // Now that broadcast exists, create the DriftMonitor
   driftMonitor = new DriftMonitor(eventStore, analysisEngine, pendingManager, getConfig, broadcast);
+
+  // ─── Sync status/host broadcasts (throttled) ──────────────────────────────
+  // Status is high-churn during a backfill; hosts change per applied batch.
+  let syncStatusTimer: ReturnType<typeof setTimeout> | null = null;
+  function broadcastSyncStatus(): void {
+    if (syncStatusTimer) return;
+    syncStatusTimer = setTimeout(() => {
+      syncStatusTimer = null;
+      if (syncPusher) broadcast({ type: 'sync:status', status: syncPusher.status() });
+    }, 1000);
+  }
+  let syncHostsTimer: ReturnType<typeof setTimeout> | null = null;
+  function broadcastSyncHosts(): void {
+    if (syncHostsTimer) return;
+    syncHostsTimer = setTimeout(() => {
+      syncHostsTimer = null;
+      broadcast({ type: 'sync:hosts', hosts: hostsWithStats(db) });
+    }, 5000);
+  }
+  // A remote applying central's data (Phase 4) and a central applying a push both
+  // change host counters; refresh the dashboard's hosts table either way.
+  syncApplier.on('applied', () => broadcastSyncHosts());
 
   // ─── Live token streaming ─────────────────────────────────────────────────
   const liveStreams = new LiveStreamStore();
@@ -1130,6 +1168,7 @@ export function createServer(config: LaymanConfig): LaymanServer {
     fastify.patch<{ Params: { id: string }; Body: { name?: string } }>('/api/bookmarks/folders/:id', async (request, reply) => {
       const { id } = request.params;
       const { name } = request.body;
+      if (!isLocalCuration('bookmark_folders', id)) return reply.status(403).send(READONLY_CURATION);
       if (name !== undefined) {
         const folder = bookmarkStore.renameFolder(id, name);
         if (!folder) return reply.status(404).send({ error: 'Folder not found' });
@@ -1139,7 +1178,8 @@ export function createServer(config: LaymanConfig): LaymanServer {
       return reply.status(400).send({ error: 'No valid fields to update' });
     });
 
-    fastify.delete<{ Params: { id: string } }>('/api/bookmarks/folders/:id', async (request) => {
+    fastify.delete<{ Params: { id: string } }>('/api/bookmarks/folders/:id', async (request, reply) => {
+      if (!isLocalCuration('bookmark_folders', request.params.id)) return reply.status(403).send(READONLY_CURATION);
       bookmarkStore.deleteFolder(request.params.id);
       // Bookmarks that were inside this folder are now unfiled (folder_id set to
       // NULL server-side via ON DELETE SET NULL). Clients reassign folderId
@@ -1175,6 +1215,7 @@ export function createServer(config: LaymanConfig): LaymanServer {
     }>('/api/bookmarks/:id', async (request, reply) => {
       const { id } = request.params;
       const { name, folderId, sortOrder } = request.body;
+      if (!isLocalCuration('bookmarks', id)) return reply.status(403).send(READONLY_CURATION);
       let bookmark = null;
       if (name !== undefined) {
         bookmark = bookmarkStore.renameBookmark(id, name);
@@ -1187,7 +1228,8 @@ export function createServer(config: LaymanConfig): LaymanServer {
       return { bookmark };
     });
 
-    fastify.delete<{ Params: { id: string } }>('/api/bookmarks/:id', async (request) => {
+    fastify.delete<{ Params: { id: string } }>('/api/bookmarks/:id', async (request, reply) => {
+      if (!isLocalCuration('bookmarks', request.params.id)) return reply.status(403).send(READONLY_CURATION);
       bookmarkStore.deleteBookmark(request.params.id);
       broadcast({ type: 'bookmarks:deleted', bookmarkId: request.params.id });
       return { ok: true };
@@ -1202,9 +1244,13 @@ export function createServer(config: LaymanConfig): LaymanServer {
       return { ok: true };
     });
 
-    // Recorded sessions
-    fastify.get('/api/bookmarks/sessions', async () => {
-      return { sessions: bookmarkStore.listRecordedSessions() };
+    // Recorded sessions. `?host=<hostId|local>` filters by origin host.
+    fastify.get<{ Querystring: { host?: string } }>('/api/bookmarks/sessions', async (request) => {
+      const sessions = bookmarkStore.listRecordedSessions();
+      const host = request.query.host;
+      if (!host) return { sessions };
+      const wanted = host === 'local' ? getConfig().sync.hostId : host;
+      return { sessions: sessions.filter((s) => (s.hostId ?? getConfig().sync.hostId) === wanted) };
     });
 
     fastify.get<{ Params: { sessionId: string } }>('/api/bookmarks/sessions/:sessionId/events', async (request, reply) => {
@@ -1233,6 +1279,12 @@ export function createServer(config: LaymanConfig): LaymanServer {
       const { sessionId } = request.params;
       const session = bookmarkStore.getRecordedSession(sessionId);
       if (!session) return reply.status(404).send({ error: 'Session not found' });
+      // Deleting a non-origin session locally: write a suppression so the origin's
+      // next push does not resurrect it (§3.9). The delete itself still journals,
+      // so other mirrors follow it.
+      if (session.hostId && session.hostId !== getConfig().sync.hostId) {
+        syncJournal.suppress('session', sessionId);
+      }
       bookmarkStore.deleteSession(sessionId);
       broadcast({ type: 'bookmarks:state', folders: bookmarkStore.listFolders(), bookmarks: bookmarkStore.listAllBookmarks() });
       return { ok: true };
@@ -1249,15 +1301,20 @@ export function createServer(config: LaymanConfig): LaymanServer {
 
     // Lightweight per-session match counts for the Sessions sidebar search — matches session
     // name, cwd, AND recorded event content (reuses the same LIKE-based search as /api/search).
-    fastify.get<{ Querystring: { q?: string } }>('/api/bookmarks/search', async (request) => {
+    fastify.get<{ Querystring: { q?: string; host?: string } }>('/api/bookmarks/search', async (request) => {
       const q = (request.query.q ?? '').trim();
       if (!q) return { results: [] };
 
-      const eventMatches = searchEvents(db, { query: q, fields: ['allText'], limit: 1 }).sessions;
+      const host = request.query.host;
+      const hostIds = host ? [host === 'local' ? getConfig().sync.hostId : host] : undefined;
+
+      const eventMatches = searchEvents(db, { query: q, fields: ['allText'], limit: 1, hostIds }).sessions;
       const matchCounts = new Map<string, number>(eventMatches.map((s) => [s.sessionId, s.matchCount]));
 
       const terms = parseSearchQuery(q);
+      const localHost = getConfig().sync.hostId;
       for (const session of bookmarkStore.listRecordedSessions()) {
+        if (hostIds && (session.hostId ?? localHost) !== hostIds[0]) continue;
         const nameMatch = matchesSearchTerms(session.sessionName ?? '', terms);
         const cwdMatch = matchesSearchTerms(session.cwd ?? '', terms);
         if (nameMatch || cwdMatch) {
@@ -1374,13 +1431,15 @@ export function createServer(config: LaymanConfig): LaymanServer {
       const { id } = request.params;
       const name = (request.body.name ?? '').trim();
       if (!name) return reply.status(400).send({ error: 'name is required' });
+      if (!isLocalCuration('highlight_folders', id)) return reply.status(403).send(READONLY_CURATION);
       const folder = highlightStore.renameFolder(id, name);
       if (!folder) return reply.status(404).send({ error: 'Folder not found' });
       broadcast({ type: 'highlights:folder:updated', folder });
       return { folder };
     });
 
-    fastify.delete<{ Params: { id: string } }>('/api/highlights/folders/:id', async (request) => {
+    fastify.delete<{ Params: { id: string } }>('/api/highlights/folders/:id', async (request, reply) => {
+      if (!isLocalCuration('highlight_folders', request.params.id)) return reply.status(403).send(READONLY_CURATION);
       highlightStore.deleteFolder(request.params.id);
       // Same as bookmarks: highlights that were inside this folder are now
       // unfiled via ON DELETE SET NULL. Clients already reassign folderId
@@ -1421,13 +1480,15 @@ export function createServer(config: LaymanConfig): LaymanServer {
       const { folderId, sortOrder } = request.body;
       const name = request.body.name !== undefined ? request.body.name.trim() : undefined;
       if (name !== undefined && name === '') return reply.status(400).send({ error: 'name cannot be empty' });
+      if (!isLocalCuration('highlights', id)) return reply.status(403).send(READONLY_CURATION);
       const highlight = highlightStore.updateHighlight(id, { name, folderId, sortOrder });
       if (!highlight) return reply.status(404).send({ error: 'Highlight not found' });
       broadcast({ type: 'highlights:updated', highlight });
       return { highlight };
     });
 
-    fastify.delete<{ Params: { id: string } }>('/api/highlights/:id', async (request) => {
+    fastify.delete<{ Params: { id: string } }>('/api/highlights/:id', async (request, reply) => {
+      if (!isLocalCuration('highlights', request.params.id)) return reply.status(403).send(READONLY_CURATION);
       highlightStore.deleteHighlight(request.params.id);
       broadcast({ type: 'highlights:deleted', highlightId: request.params.id });
       return { ok: true };
@@ -1508,6 +1569,12 @@ export function createServer(config: LaymanConfig): LaymanServer {
           folders: allHighlights.folders,
           highlights: allHighlights.highlights,
         } satisfies ServerMessage));
+
+        // Send multi-host sync status and the hosts table on connect.
+        if (syncPusher) {
+          ws.send(JSON.stringify({ type: 'sync:status', status: syncPusher.status() } satisfies ServerMessage));
+        }
+        ws.send(JSON.stringify({ type: 'sync:hosts', hosts: hostsWithStats(db) } satisfies ServerMessage));
 
         // Send current drift state for active sessions
         for (const session of buildSessionsList()) {
@@ -1808,6 +1875,8 @@ export function createServer(config: LaymanConfig): LaymanServer {
       piWatcher.stop();
       liveStreams.stop();
       syncPusher?.stop();
+      if (syncStatusTimer) { clearTimeout(syncStatusTimer); syncStatusTimer = null; }
+      if (syncHostsTimer) { clearTimeout(syncHostsTimer); syncHostsTimer = null; }
       await fastify.close();
     },
 

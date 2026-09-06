@@ -6,6 +6,7 @@ import type { SessionInfo } from '../../lib/ws-protocol.js';
 import type { SessionMetrics } from '../../lib/types.js';
 import { deriveSessionState, getSessionDisplayName, contextPctColor } from '../../lib/session-state.js';
 import { cwdBasename } from '../../lib/format.js';
+import { HostChip } from '../shared/HostChip.js';
 
 function getTimeSince(timestamp: number, now: number): string {
   const delta = now - timestamp;
@@ -101,6 +102,9 @@ export const SessionListRow = React.memo(function SessionListRow({
 
       {/* Status dot */}
       <StatusDot state={dotState} />
+
+      {/* Host chip (remote sessions surfaced by central; nothing for local) */}
+      <HostChip hostId={session.hostId} hostName={session.hostName} />
 
       {/* Name + cwd */}
       <div style={{ flex: 1, minWidth: 0 }}>
