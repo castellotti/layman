@@ -63,6 +63,14 @@
 @keyframes layman-blink {
   to { visibility: hidden; }
 }
+/* Indeterminate progress bar — see components/layout/EventStream.tsx (loading a session) */
+@keyframes layman-indeterminate {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(350%); }
+}
+.layman-indeterminate {
+  animation: layman-indeterminate 1.1s ease-in-out infinite;
+}
 
 * {
   box-sizing: border-box;

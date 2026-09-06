@@ -230,6 +230,8 @@ export interface SessionState {
   bookmarks: Bookmark[];
   viewingSessionId: string | null;
   historicalEvents: TimelineEvent[];
+  /** True while a viewed session's recorded events are being fetched. */
+  loadingHistorical: boolean;
   sessionTimeMetrics: SessionTimeMetrics | null;
   bookmarksScrollToEventId: string | null;
 
@@ -337,6 +339,7 @@ export interface SessionState {
   removeBookmark: (bookmarkId: string) => void;
   setViewingSession: (sessionId: string | null) => void;
   setHistoricalEvents: (events: TimelineEvent[]) => void;
+  setLoadingHistorical: (loading: boolean) => void;
   setSessionTimeMetrics: (metrics: SessionTimeMetrics | null) => void;
   setBookmarksScrollToEventId: (eventId: string | null) => void;
   setHighlights: (folders: HighlightFolder[], highlights: Highlight[]) => void;
@@ -420,6 +423,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   bookmarks: [],
   viewingSessionId: null,
   historicalEvents: [],
+  loadingHistorical: false,
   sessionTimeMetrics: null,
   bookmarksScrollToEventId: null,
 
@@ -857,7 +861,8 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       sessionId: string,
       focus: { promptEventId?: string; eventId?: string },
     ): Promise<void> => {
-      const { events: recorded, metrics } = await fetchSessionEvents(sessionId);
+      set({ loadingHistorical: true });
+      const { events: recorded, metrics } = await fetchSessionEvents(sessionId).finally(() => set({ loadingHistorical: false }));
       // A live session with sessionRecording off exists only in memory.
       const events = recorded.length > 0
         ? recorded
@@ -1011,6 +1016,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     })),
 
   setHistoricalEvents: (historicalEvents) => set({ historicalEvents }),
+  setLoadingHistorical: (loadingHistorical) => set({ loadingHistorical }),
 
   setSessionTimeMetrics: (sessionTimeMetrics) => set({ sessionTimeMetrics }),
 
