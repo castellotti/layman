@@ -62,6 +62,17 @@ export async function registerSyncRoutes(fastify: FastifyInstance, deps: SyncRou
   const authFailures = new Map<string, { count: number; resetAt: number }>();
   const AUTH_FAIL_LIMIT = 10;
   const AUTH_FAIL_WINDOW_MS = 60_000;
+  // Drop expired entries so a network-reachable central being scanned by a churn
+  // of distinct IPs can't leak one Map entry per IP forever. Guarded to at most
+  // once per window so a flood can't turn each failure into an O(n) sweep.
+  let lastAuthSweep = Date.now();
+  function sweepAuthFailures(now: number): void {
+    if (now - lastAuthSweep < AUTH_FAIL_WINDOW_MS) return;
+    lastAuthSweep = now;
+    for (const [ip, entry] of authFailures) {
+      if (now > entry.resetAt) authFailures.delete(ip);
+    }
+  }
   function isRateLimited(ip: string): boolean {
     const now = Date.now();
     const entry = authFailures.get(ip);
@@ -70,6 +81,7 @@ export async function registerSyncRoutes(fastify: FastifyInstance, deps: SyncRou
   }
   function recordAuthFailure(ip: string): void {
     const now = Date.now();
+    sweepAuthFailures(now);
     const entry = authFailures.get(ip);
     if (!entry || now > entry.resetAt) {
       authFailures.set(ip, { count: 1, resetAt: now + AUTH_FAIL_WINDOW_MS });
