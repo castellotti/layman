@@ -29,6 +29,8 @@ import { SyncJournal } from './sync/journal.js';
 import { SyncApplier } from './sync/applier.js';
 import { PeerStore } from './sync/tokens.js';
 import { SyncPusher, createHttpSyncClient, type SyncClient } from './sync/pusher.js';
+import { SyncPuller } from './sync/puller.js';
+import { SyncState } from './sync/state.js';
 import { registerSyncRoutes } from './sync/routes.js';
 import { hostsWithStats } from './sync/stats.js';
 import { RemoteSessionRegistry } from './sync/presence.js';
@@ -223,6 +225,7 @@ export function createServer(config: LaymanConfig): LaymanServer {
   const syncPeers = new PeerStore(db);
   const remoteRegistry = new RemoteSessionRegistry();
   let syncPusher: SyncPusher | null = null;
+  let syncPuller: SyncPuller | null = null;
 
   function syncPresence(): PresencePayload {
     const sessions = eventStore.getSessions();
@@ -259,6 +262,20 @@ export function createServer(config: LaymanConfig): LaymanServer {
       syncPusher.stop();
       syncPusher = null;
     }
+
+    // Mirror pull runs only for a remote with mirror enabled.
+    const wantMirror = wantRemote && getConfig().sync.mirror;
+    if (wantMirror && !syncPuller) {
+      const client = (makeSyncClient ?? (() => createHttpSyncClient(getConfig, SERVER_VERSION)))();
+      syncPuller = new SyncPuller(db, client, getConfig, {
+        laymanVersion: SERVER_VERSION,
+        onStatus: () => broadcastSyncStatus(),
+      });
+      syncPuller.start();
+    } else if (!wantMirror && syncPuller) {
+      syncPuller.stop();
+      syncPuller = null;
+    }
   }
 
   // Track connected WebSocket clients (@fastify/websocket v10: handler arg is the socket directly)
@@ -283,7 +300,9 @@ export function createServer(config: LaymanConfig): LaymanServer {
     if (syncStatusTimer) return;
     syncStatusTimer = setTimeout(() => {
       syncStatusTimer = null;
-      if (syncPusher) broadcast({ type: 'sync:status', status: syncPusher.status() });
+      if (!syncPusher) return;
+      const pull = syncPuller?.status();
+      broadcast({ type: 'sync:status', status: { ...syncPusher.status(), ...(pull ? { pull } : {}) } });
     }, 1000);
   }
   let syncHostsTimer: ReturnType<typeof setTimeout> | null = null;
@@ -294,8 +313,8 @@ export function createServer(config: LaymanConfig): LaymanServer {
       broadcast({ type: 'sync:hosts', hosts: hostsWithStats(db) });
     }, 5000);
   }
-  // A remote applying central's data (Phase 4) and a central applying a push both
-  // change host counters; refresh the dashboard's hosts table either way.
+  // A remote applying central's data and a central applying a push both change
+  // host counters; refresh the dashboard's hosts table either way.
   syncApplier.on('applied', () => broadcastSyncHosts());
 
   // Remote presence changes (a session appearing, its lastSeen advancing, and
@@ -319,6 +338,23 @@ export function createServer(config: LaymanConfig): LaymanServer {
     if (remotePresenceTimer) { clearTimeout(remotePresenceTimer); remotePresenceTimer = null; }
     if (remote.some(s => s.active)) {
       remotePresenceTimer = setTimeout(refreshRemotePresence, REMOTE_PRESENCE_SWEEP_MS);
+    }
+  }
+
+  // ─── Sync log compaction/retention (both roles, every 10 min) ─────────────
+  // Never touches entity tables. On a remote, drops own-origin entries already
+  // acked by central; on a central, drops entries past the retention window.
+  const SYNC_MAINTENANCE_MS = 10 * 60 * 1000;
+  let syncMaintenanceTimer: ReturnType<typeof setInterval> | null = null;
+  function runSyncMaintenance(): void {
+    const cfg = getConfig();
+    if (cfg.sync.role === 'standalone') return;
+    const localHostId = cfg.sync.hostId;
+    if (cfg.sync.role === 'remote') {
+      const acked = new SyncState(db).get('push_acked_seq');
+      syncJournal.compact({ localHostId, pushAckedSeq: acked === null ? null : Number(acked) });
+    } else if (cfg.sync.role === 'central') {
+      syncJournal.compact({ localHostId, retentionMs: cfg.sync.logRetentionDays * 24 * 60 * 60 * 1000 });
     }
   }
 
@@ -498,6 +534,7 @@ export function createServer(config: LaymanConfig): LaymanServer {
       applier: syncApplier,
       peers: syncPeers,
       getPusher: () => syncPusher,
+      getPuller: () => syncPuller,
       registry: remoteRegistry,
       // Remote live-tail events ride the same event:new frame as local ones; the
       // client looks host up via the session, so TimelineEvent stays unchanged.
@@ -1883,6 +1920,7 @@ export function createServer(config: LaymanConfig): LaymanServer {
       vibeWatcher.start();
       piWatcher.start();
       reconcileSync();
+      syncMaintenanceTimer = setInterval(runSyncMaintenance, SYNC_MAINTENANCE_MS);
 
       if (getConfig().recordingRecovery && getConfig().sessionRecording) {
         void recoverSessionGaps(db, eventStore).then(({ events, sessions }) => {
@@ -1917,6 +1955,8 @@ export function createServer(config: LaymanConfig): LaymanServer {
       piWatcher.stop();
       liveStreams.stop();
       syncPusher?.stop();
+      syncPuller?.stop();
+      if (syncMaintenanceTimer) clearInterval(syncMaintenanceTimer);
       if (syncStatusTimer) { clearTimeout(syncStatusTimer); syncStatusTimer = null; }
       if (syncHostsTimer) { clearTimeout(syncHostsTimer); syncHostsTimer = null; }
       if (remotePresenceTimer) { clearTimeout(remotePresenceTimer); remotePresenceTimer = null; }

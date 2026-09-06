@@ -4,7 +4,7 @@ import type { Database } from '../db/database.js';
 import { applyMigrations } from '../db/database.js';
 import { SyncState } from './state.js';
 import { SyncApplier } from './applier.js';
-import { SyncPusher, PusherError, type SyncClient } from './pusher.js';
+import { SyncPusher, PusherError, type PushClient } from './pusher.js';
 import { LaymanConfigSchema, type LaymanConfig } from '../config/schema.js';
 import type { HelloResponse, PushBatch, PushResponse } from './protocol.js';
 
@@ -41,7 +41,7 @@ function config(overrides: Partial<LaymanConfig['sync']> = {}): LaymanConfig {
 }
 
 /** A fake client that applies batches into a real central database. */
-class FakeCentral implements SyncClient {
+class FakeCentral implements PushClient {
   applier: SyncApplier;
   journal = () => this.central.prepare('SELECT COALESCE(MAX(seq),0) AS s FROM sync_log').get() as { s: number };
   helloCalls = 0;
@@ -105,7 +105,7 @@ describe('SyncPusher', () => {
 
   it('resumes an interrupted backfill from the persisted cursor', async () => {
     seed(rdb, 2, 1);
-    const failing: SyncClient = {
+    const failing: PushClient = {
       async hello() { return { centralHostId: CENTRAL, centralHostName: 'c', protocolVersion: 1, lastAckedSeq: null, headSeq: 0 }; },
       async push() { throw new PusherError('network', 'boom'); },
     };
@@ -132,7 +132,7 @@ describe('SyncPusher', () => {
 
     // New entry, but pushing now fails.
     rdb.prepare("INSERT INTO recorded_sessions (session_id, cwd, agent_type, started_at, last_seen) VALUES ('s2','', 'pi', 7, 8)").run();
-    const failing: SyncClient = {
+    const failing: PushClient = {
       async hello() { return { centralHostId: CENTRAL, centralHostName: 'c', protocolVersion: 1, lastAckedSeq: null, headSeq: 0 }; },
       async push() { throw new PusherError('network', 'down'); },
     };
@@ -144,7 +144,7 @@ describe('SyncPusher', () => {
 
   it('reports a fatal state and pauses on a 401 (revoked)', async () => {
     seed(rdb, 1, 0);
-    const revoked: SyncClient = {
+    const revoked: PushClient = {
       async hello() { throw new PusherError('revoked', '401'); },
       async push() { throw new PusherError('revoked', '401'); },
     };

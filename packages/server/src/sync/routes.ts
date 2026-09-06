@@ -6,8 +6,10 @@ import { SyncJournal } from './journal.js';
 import { SyncApplier } from './applier.js';
 import { PeerStore } from './tokens.js';
 import { createHttpSyncClient, type SyncPusher } from './pusher.js';
+import type { SyncPuller } from './puller.js';
 import type { RemoteSessionRegistry } from './presence.js';
 import type { TimelineEvent } from '../events/types.js';
+import { SYNC_ENTITIES } from './entities.js';
 import { hostsWithStats, recomputeHostStats, upsertRemoteHost, updateHostStats } from './stats.js';
 import {
   SYNC_PROTOCOL_VERSION,
@@ -15,6 +17,10 @@ import {
   type HelloResponse,
   type PushBatch,
   type PushResponse,
+  type PushEntry,
+  type SnapshotPage,
+  type ChangesResponse,
+  type SyncKind,
   type SyncStatus,
 } from './protocol.js';
 
@@ -36,6 +42,8 @@ export interface SyncRouteDeps {
   registry: RemoteSessionRegistry;
   /** Broadcast recent remote-origin events to dashboard clients as `event:new`. */
   onLiveEvents: (events: TimelineEvent[]) => void;
+  /** The running puller when role === 'remote' && mirror, else null. */
+  getPuller?: () => SyncPuller | null;
   laymanVersion?: string;
 }
 
@@ -141,23 +149,96 @@ export async function registerSyncRoutes(fastify: FastifyInstance, deps: SyncRou
       return reply.send(response);
     });
 
+    // ── GET /api/sync/snapshot (token) — mirror bootstrap, §3.10 ──────────────
+    scope.get<{ Querystring: { kind?: string; cursor?: string; limit?: string } }>(
+      '/api/sync/snapshot',
+      { preHandler: requireToken },
+      (request, reply) => {
+        const peer = peerOf(request);
+        if (!peer.host_id) return reply.code(409).send({ error: 'call hello first' });
+        const kind = request.query.kind as SyncKind | undefined;
+        const entity = kind ? SYNC_ENTITIES[kind] : undefined;
+        if (!entity) return reply.code(400).send({ error: 'unknown kind' });
+
+        const limit = Math.min(Math.max(parseInt(request.query.limit ?? '500', 10) || 500, 1), 1000);
+        const cursor = request.query.cursor ?? '';
+        const rows = entity.pageExcludingOrigin(db, { afterId: cursor, limit, excludeHostId: peer.host_id });
+        const entries: PushEntry[] = rows.map((row) => ({
+          op: 'upsert', kind: entity.kind, id: String(row[entity.idColumn]), row,
+        }));
+        const nextCursor = rows.length === limit ? String(rows[rows.length - 1][entity.idColumn]) : null;
+
+        const page: SnapshotPage = { kind: entity.kind, entries, nextCursor, headSeq: journal.headSeq(), hosts: hostsWithStats(db) };
+        return reply.send(page);
+      },
+    );
+
+    // ── GET /api/sync/changes (token) — incremental mirror, §3.10 ─────────────
+    scope.get<{ Querystring: { since?: string; limit?: string } }>(
+      '/api/sync/changes',
+      { preHandler: requireToken },
+      (request, reply) => {
+        const peer = peerOf(request);
+        if (!peer.host_id) return reply.code(409).send({ error: 'call hello first' });
+
+        const since = Math.max(parseInt(request.query.since ?? '0', 10) || 0, 0);
+        const limit = Math.min(Math.max(parseInt(request.query.limit ?? '1000', 10) || 1000, 1), 1000);
+        const hosts = hostsWithStats(db);
+
+        // Behind central's retained history → tell the mirror to re-snapshot.
+        const oldest = journal.oldestSeq();
+        if (oldest !== null && since > 0 && since + 1 < oldest) {
+          const resync: ChangesResponse = { resync: true, entries: [], headSeq: journal.headSeq(), hosts };
+          return reply.send(resync);
+        }
+
+        const log = journal.readChangesSince(peer.host_id, since, limit);
+        // Dedupe to the newest entry per (kind, entity_id).
+        const byEntity = new Map<string, { kind: SyncKind; entityId: string; op: 'upsert' | 'delete' }>();
+        for (const e of log) byEntity.set(`${e.kind}:${e.entityId}`, { kind: e.kind, entityId: e.entityId, op: e.op });
+
+        const entries: PushEntry[] = [];
+        for (const e of byEntity.values()) {
+          if (e.op === 'delete') {
+            entries.push({ op: 'delete', kind: e.kind, id: e.entityId });
+            continue;
+          }
+          const entity = SYNC_ENTITIES[e.kind];
+          const row = entity?.load(db, [e.entityId])[0];
+          if (row) entries.push({ op: 'upsert', kind: e.kind, id: e.entityId, row });
+          // an upsert whose row is gone (deleted after journaling) is skipped
+        }
+
+        // A full scanned page may leave more behind `headSeq` even when dedup
+        // collapsed `entries` below `limit`; signal that explicitly so the mirror
+        // keeps pulling instead of stopping on the short deduped page.
+        const more = log.length >= limit;
+        // Caught up → advance to the true head; otherwise to the last seq scanned.
+        const headSeq = more ? log[log.length - 1].seq : journal.headSeq();
+        const response: ChangesResponse = { entries, headSeq, more, hosts };
+        return reply.send(response);
+      },
+    );
+
     // ── GET /api/sync/status (local) ──────────────────────────────────────────
     scope.get('/api/sync/status', () => {
       const pusher = getPusher();
-      if (pusher) return pusher.status();
+      const pull = deps.getPuller?.()?.status();
       const cfg = getConfig();
-      const status: SyncStatus = {
-        role: cfg.sync.role,
-        hostId: cfg.sync.hostId,
-        hostName: cfg.sync.hostName,
-        state: 'idle',
-        backlog: 0,
-        pushAckedSeq: null,
-        backfillKind: null,
-        lastSuccessAt: null,
-        lastError: null,
-      };
-      return status;
+      const base: SyncStatus = pusher
+        ? pusher.status()
+        : {
+            role: cfg.sync.role,
+            hostId: cfg.sync.hostId,
+            hostName: cfg.sync.hostName,
+            state: 'idle',
+            backlog: 0,
+            pushAckedSeq: null,
+            backfillKind: null,
+            lastSuccessAt: null,
+            lastError: null,
+          };
+      return { ...base, ...(pull ? { pull } : {}) };
     });
 
     // ── POST /api/sync/test (local) — dry-run hello against centralUrl+token ──
@@ -180,9 +261,10 @@ export async function registerSyncRoutes(fastify: FastifyInstance, deps: SyncRou
       }
     });
 
-    // ── POST /api/sync/now (local) — wake the pusher ──────────────────────────
+    // ── POST /api/sync/now (local) — wake the pusher (and puller if mirror) ───
     scope.post('/api/sync/now', () => {
       getPusher()?.kick();
+      deps.getPuller?.()?.kick();
       return { ok: true };
     });
 
@@ -193,6 +275,21 @@ export async function registerSyncRoutes(fastify: FastifyInstance, deps: SyncRou
       }
       getPusher()?.kick();
       return { ok: true };
+    });
+
+    // ── POST /api/sync/reset-pull (local) — clear cursors → re-snapshot next ──
+    scope.post('/api/sync/reset-pull', () => {
+      for (const key of ['pull_acked_seq', 'pull_snapshot_head', 'pull_snapshot_cursor'] as const) {
+        db.prepare('DELETE FROM sync_state WHERE key = ?').run(key);
+      }
+      deps.getPuller?.()?.kick();
+      return { ok: true };
+    });
+
+    // ── DELETE /api/sync/suppressions (local) — "Forget suppressions" ─────────
+    scope.delete('/api/sync/suppressions', () => {
+      const removed = journal.clearSuppressions();
+      return { ok: true, removed };
     });
 
     // ── Hosts (local) ─────────────────────────────────────────────────────────
