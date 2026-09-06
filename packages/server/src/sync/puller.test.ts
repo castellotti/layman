@@ -77,8 +77,9 @@ class FakeCentralPull implements PullClient {
       const row = SYNC_ENTITIES[e.kind].load(this.central, [e.entityId])[0];
       if (row) entries.push({ op: 'upsert', kind: e.kind, id: e.entityId, row });
     }
-    const headSeq = log.length < limit ? this.journal.headSeq() : log[log.length - 1].seq;
-    return { entries, headSeq, hosts: hostsWithStats(this.central) };
+    const more = log.length >= limit;
+    const headSeq = more ? log[log.length - 1].seq : this.journal.headSeq();
+    return { entries, headSeq, more, hosts: hostsWithStats(this.central) };
   }
 }
 
@@ -149,6 +150,33 @@ describe('SyncPuller', () => {
     // Resume completes without duplicates.
     await puller.drain();
     expect(mdb.prepare("SELECT COUNT(*) AS n FROM recorded_events").get()).toEqual({ n: 2 });
+  });
+
+  it('keeps pulling when central dedups a full page below the limit (more=true)', async () => {
+    // Skip the bootstrap snapshot so we exercise runIncremental directly.
+    new SyncState(mdb).set('pull_acked_seq', '0');
+    const sessionRow = (id: string) => ({
+      session_id: id, cwd: '', agent_type: 'pi', started_at: 1, last_seen: 2,
+      source: 'live', host_id: OTHER, updated_at: 2,
+    });
+    // First page: only one surviving entry (a full scanned page deduped away) but
+    // more=true; the old length<limit break would stop here and strand page two.
+    const pages: ChangesResponse[] = [
+      { entries: [{ op: 'upsert', kind: 'session', id: 's-a', row: sessionRow('s-a') }], headSeq: 500, more: true, hosts: [] },
+      { entries: [{ op: 'upsert', kind: 'session', id: 's-b', row: sessionRow('s-b') }], headSeq: 1000, more: false, hosts: [] },
+    ];
+    let calls = 0;
+    const client: PullClient = {
+      hello: async () => ({ centralHostId: CENTRAL, centralHostName: 'C', protocolVersion: 1, lastAckedSeq: null, headSeq: 1000 }),
+      snapshot: async () => { throw new Error('should not snapshot'); },
+      changes: async () => pages[calls++] ?? { entries: [], headSeq: 1000, more: false, hosts: [] },
+    };
+    const puller = new SyncPuller(mdb, client, () => cfg);
+    await puller.drain();
+
+    expect(calls).toBe(2); // did not stop after the short first page
+    expect(mdb.prepare("SELECT COUNT(*) AS n FROM recorded_sessions").get()).toEqual({ n: 2 });
+    expect(new SyncState(mdb).get('pull_acked_seq')).toBe('1000');
   });
 
   it('restarts the snapshot when central reports resync (behind retention)', async () => {

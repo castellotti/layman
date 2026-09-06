@@ -102,6 +102,14 @@ export interface ChangesResponse {
   entries: PushEntry[];
   /** The highest seq covered; the puller advances pull_acked_seq to it. */
   headSeq: number;
+  /**
+   * True when central scanned a full page of the log and more may remain past
+   * `headSeq`. The puller must key its "keep pulling" decision on this, not on
+   * `entries.length`: dedup can collapse a full page below the request limit,
+   * which would otherwise look "caught up" while a backlog sits unscanned.
+   * Optional for wire-compat with a central that predates it.
+   */
+  more?: boolean;
   hosts: HostStats[];
 }
 

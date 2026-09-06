@@ -143,7 +143,13 @@ export class SyncPuller {
       }
       // headSeq advances even on an empty response, so a quiet central is "up to date".
       this.state.set('pull_acked_seq', String(res.headSeq));
-      if (res.entries.length < CHANGES_LIMIT) break;
+      // Keep pulling while central still has a full page behind headSeq. Never key
+      // this on entries.length: dedup can shrink a full scanned page below the
+      // limit, which used to break the loop with a backlog still on central and
+      // leave the mirror stalled until the next interval. Fall back to the old
+      // heuristic for a central that doesn't send `more`.
+      const more = res.more ?? res.entries.length >= CHANGES_LIMIT;
+      if (!more) break;
     }
     return applied;
   }

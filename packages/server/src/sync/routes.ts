@@ -209,9 +209,13 @@ export async function registerSyncRoutes(fastify: FastifyInstance, deps: SyncRou
           // an upsert whose row is gone (deleted after journaling) is skipped
         }
 
+        // A full scanned page may leave more behind `headSeq` even when dedup
+        // collapsed `entries` below `limit`; signal that explicitly so the mirror
+        // keeps pulling instead of stopping on the short deduped page.
+        const more = log.length >= limit;
         // Caught up → advance to the true head; otherwise to the last seq scanned.
-        const headSeq = log.length < limit ? journal.headSeq() : log[log.length - 1].seq;
-        const response: ChangesResponse = { entries, headSeq, hosts };
+        const headSeq = more ? log[log.length - 1].seq : journal.headSeq();
+        const response: ChangesResponse = { entries, headSeq, more, hosts };
         return reply.send(response);
       },
     );
