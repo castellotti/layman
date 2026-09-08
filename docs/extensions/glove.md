@@ -59,19 +59,26 @@ ignored (`statSync().isDirectory()` guards the readdir). A power-user `config_ho
 `glove.yaml` relocates `home/` outside `~/.glove/envs/`, where Layman's single-dir glob would not find
 it.
 
-### History import discovers glove pi sessions too (`recovery.ts`, `transcript-pi.ts`)
+### History import discovers glove pi *and* Vibe sessions too (`recovery.ts`, `transcript-pi.ts`, `transcript-vibe.ts`)
 
-`discoverTranscriptFiles(gloveRoots)` scans, in addition to the native `~/.pi/agent/sessions` root,
-every *pi* root the passive watchers report (`gloveSource.roots()` threaded from the two
-`importHistoricalSessions()` call sites in `server.ts`), so a gloved pi run that was never monitored
-live is still importable from **Settings -> Data -> Import session history**. Only pi is imported from
-a sandbox: glove's experimental claude-code harness is not tailed (no passive Claude Code watcher —
-see above), and Vibe has no history importer at all — so non-pi roots are filtered out, and
-`gloveRoots` is empty when glove is disabled, leaving native import byte-for-byte unchanged. The env
-id rides through `DiscoveredTranscript.label` into `importSession(..., sessionName)` so a gloved import
-is tagged exactly like a passively-watched gloved session. Double-import against the live watcher is
-prevented by the live-source rule (see the root `CLAUDE.md` history-enrichment note): a session the pi
-watcher recorded is `source === 'live'` and is skipped.
+`discoverTranscriptFiles(gloveRoots)` scans, in addition to the native `~/.pi/agent/sessions` and
+`~/.vibe/logs/session` roots, every *pi* and *Vibe* root the passive watchers report
+(`gloveSource.roots()` threaded from the two `importHistoricalSessions()` call sites in `server.ts`),
+so a gloved pi or Vibe run that was never monitored live is still importable from **Settings -> Data ->
+Import session history**. Each importer filters `gloveRoots` down to the agent type it parses
+(`discoverGlovePiSessions` / `discoverGloveVibeSessions`), exactly as the passive watchers do; glove's
+experimental claude-code harness is still not imported (no passive Claude Code watcher — see above), so
+its roots are ignored. `gloveRoots` is empty when glove is disabled, leaving native import byte-for-byte
+unchanged. The env id rides through `DiscoveredTranscript.label` into `importSession(..., sessionName)`
+so a gloved import is tagged exactly like a passively-watched gloved session. Double-import against the
+live watcher is prevented by the live-source rule (see the root `CLAUDE.md` history-enrichment note): a
+session a watcher recorded is `source === 'live'` and is skipped.
+
+Vibe's transcript carries no per-message timestamp (the live watcher stamps `Date.now()`), so the Vibe
+importer reads each session's real span from `meta.json` (`start_time`/`end_time`) at discovery and
+spreads the imported events across it — otherwise every imported Vibe session would land on the import
+date rather than the day it ran. See the file header of `transcript-vibe.ts` for the discover→parse
+hand-off this relies on.
 
 ## Docker
 

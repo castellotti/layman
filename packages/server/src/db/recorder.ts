@@ -37,6 +37,7 @@ export class SessionRecorder {
   private updateEvent: BetterSqlite3.Statement<unknown[]>;
   private updateSessionCwd: BetterSqlite3.Statement<unknown[]>;
   private fillSessionModel: BetterSqlite3.Statement<unknown[]>;
+  private fillSessionName: BetterSqlite3.Statement<unknown[]>;
   private insertQA: BetterSqlite3.Statement<unknown[]>;
 
   constructor(
@@ -69,6 +70,11 @@ export class SessionRecorder {
     this.fillSessionModel = db.prepare(`
       UPDATE recorded_sessions SET session_model = ?
       WHERE session_id = ? AND (session_model IS NULL OR session_model = '')
+    `);
+
+    this.fillSessionName = db.prepare(`
+      UPDATE recorded_sessions SET session_name = ?
+      WHERE session_id = ? AND (session_name IS NULL OR session_name = '')
     `);
 
     this.insertQA = db.prepare(`
@@ -148,13 +154,23 @@ export class SessionRecorder {
       }
     });
 
-    store.on('sessions:changed', (sessions: Array<{ sessionId: string; cwd: string; agentType: string; lastSeen: number }>) => {
+    store.on('sessions:changed', (sessions: Array<{ sessionId: string; cwd: string; agentType: string; lastSeen: number; sessionName?: string }>) => {
       if (!this.getRecordingEnabled()) return;
       try {
         const piiFilter = this.getPiiFilterEnabled();
         for (const s of sessions) {
           if (s.cwd) {
             this.updateSessionCwd.run(piiFilter ? redactString(s.cwd) : s.cwd, s.agentType, s.lastSeen, s.sessionId);
+          }
+          // A passive watcher's sandbox label (glove env id) rides on the session
+          // map, not on any event, and the only event-carried session_name is the
+          // Claude Code StatusLine's session_metrics — which no passive harness
+          // emits. Persist it here (fill-if-empty, like session_model) so a
+          // live-recorded gloved session keeps its env-id tag in history, matching
+          // what importSession() already writes for imported ones. Backfills on the
+          // next tick if the session row didn't exist yet, exactly as cwd does.
+          if (s.sessionName) {
+            this.fillSessionName.run(s.sessionName, s.sessionId);
           }
         }
       } catch {

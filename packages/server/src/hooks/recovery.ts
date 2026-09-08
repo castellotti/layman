@@ -34,6 +34,7 @@ import type { SessionRecorder } from '../db/recorder.js';
 import type { DiscoveredTranscript, TranscriptMetadata, TranscriptSource } from './transcript-shared.js';
 import { buildEvent } from './transcript-shared.js';
 import { piTranscriptSource, discoverGlovePiSessions } from './transcript-pi.js';
+import { vibeTranscriptSource, discoverGloveVibeSessions } from './transcript-vibe.js';
 import type { WatchRoot } from '../monitor/sources.js';
 
 export type { DiscoveredTranscript, TranscriptMetadata, TranscriptSource } from './transcript-shared.js';
@@ -373,7 +374,7 @@ export function resolveClaudeCodeSessionId(lines: string[]): string | null {
   return null;
 }
 
-const TRANSCRIPT_SOURCES: TranscriptSource[] = [claudeCodeSource, piTranscriptSource];
+const TRANSCRIPT_SOURCES: TranscriptSource[] = [claudeCodeSource, piTranscriptSource, vibeTranscriptSource];
 
 // ---------------------------------------------------------------------------
 // Pre-activation recovery (called mid-session when /layman activates)
@@ -550,15 +551,17 @@ export interface ImportResult {
  * it, and every entry already carries the agentType that claimed it.
  *
  * `gloveRoots` (the passive watchers' current watch roots) extends discovery
- * into glove sandbox homes: any pi root among them is scanned too, so a gloved
- * pi run that was never monitored live is still importable. Empty when glove is
- * disabled. Only pi is imported from a sandbox — claude-code isn't run under
- * glove and Vibe has no history importer — so non-pi roots are ignored here.
+ * into glove sandbox homes: any pi or Vibe root among them is scanned too, so a
+ * gloved run that was never monitored live is still importable. Empty when glove
+ * is disabled. claude-code isn't run under glove, so its roots (if any) are
+ * ignored here — each importer filters `gloveRoots` down to the agent type it
+ * parses, exactly as the passive watchers do.
  */
 export function discoverTranscriptFiles(gloveRoots: WatchRoot[] = []): DiscoveredTranscript[] {
   const native = TRANSCRIPT_SOURCES.flatMap((source) => source.discover());
   const glovePi = discoverGlovePiSessions(gloveRoots.filter((r) => r.agentType === piTranscriptSource.agentType));
-  return [...native, ...glovePi];
+  const gloveVibe = discoverGloveVibeSessions(gloveRoots.filter((r) => r.agentType === vibeTranscriptSource.agentType));
+  return [...native, ...glovePi, ...gloveVibe];
 }
 
 /**
