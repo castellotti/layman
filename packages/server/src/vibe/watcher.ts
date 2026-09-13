@@ -367,8 +367,21 @@ export class VibeSessionWatcher {
 
     const sessionStartedMs = meta.start_time ? new Date(meta.start_time).getTime() : 0;
 
-    // Skip sessions that are too old to be worth replaying
-    if (Date.now() - sessionStartedMs > RECENT_SESSION_THRESHOLD_MS) return;
+    // Gate on recent *activity*, not just start_time. A native Vibe launch mints a
+    // fresh session dir per run, so start_time tracks liveness — but glove reuses one
+    // persistent env home across `glove vibe` invocations, freezing start_time at the
+    // env's first launch while the same session keeps producing messages. Keying the
+    // recency check off the message file's mtime (falling back to start_time when it
+    // doesn't exist yet) admits a long-lived-but-active gloved session while still
+    // excluding genuinely stale ones, and matches scanExistingSessions' dir-mtime gate.
+    const messagesPath = join(dirPath, 'messages.jsonl');
+    let lastActivityMs = sessionStartedMs;
+    try {
+      lastActivityMs = Math.max(lastActivityMs, statSync(messagesPath).mtimeMs);
+    } catch {
+      // messages.jsonl not written yet — fall back to start_time
+    }
+    if (Date.now() - lastActivityMs > RECENT_SESSION_THRESHOLD_MS) return;
 
     const sessionId = meta.session_id;
     const cwd = meta.environment?.working_directory ?? '';
@@ -396,8 +409,6 @@ export class VibeSessionWatcher {
     this.eventStore.add('session_start', sessionId, { source: 'startup' }, undefined, root.agentType);
     const tag = root.label ? ` [glove: ${root.label}]` : '';
     console.log(`[vibe] Tracking session ${sessionId.slice(0, 8)} (${basename(dirPath)})${tag}`);
-
-    const messagesPath = join(dirPath, 'messages.jsonl');
 
     // For sessions started recently, replay from the beginning so their messages appear.
     // For older sessions (e.g. ones that predate this Layman startup), skip history.
