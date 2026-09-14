@@ -95,6 +95,36 @@ describe('PiSessionWatcher', () => {
     expect(session.cwd).toBe(CWD);
   });
 
+  it('activates a glove (labelled) session even when autoActivateClients is empty', () => {
+    // A labelled root is a glove sandbox: /layman can't reach the host from inside
+    // it, so it has no other path onto the Dashboard and must always activate.
+    watcher.start();
+    expect(gate.isActive(SESSION_ID)).toBe(true);
+  });
+
+  it('does not activate a native (unlabelled) session unless its agent type is opted in', () => {
+    const nativeRoot = { path: sessionsRoot, agentType: 'pi' } as WatchRoot;
+
+    const offGate = new SessionGate();
+    const offWatcher = new PiSessionWatcher(new EventStore(), offGate, makeConfig(), [
+      new FixedSource(nativeRoot),
+    ]);
+    offWatcher.start();
+    expect(offGate.isActive(SESSION_ID)).toBe(false);
+    offWatcher.stop();
+
+    const onGate = new SessionGate();
+    const onWatcher = new PiSessionWatcher(
+      new EventStore(),
+      onGate,
+      makeConfig({ autoActivateClients: ['pi'] } as Partial<LaymanConfig>),
+      [new FixedSource(nativeRoot)],
+    );
+    onWatcher.start();
+    expect(onGate.isActive(SESSION_ID)).toBe(true);
+    onWatcher.stop();
+  });
+
   it('emits only newly-appended events on a subsequent poll', () => {
     watcher.start();
     const before = store.getAll().length;

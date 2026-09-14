@@ -215,7 +215,7 @@ export class PiSessionWatcher {
 
     // Register with the EventStore. The sandbox label (undefined for native)
     // rides through as the session name so gloved sessions are tagged in the UI.
-    if (this.getConfig().autoActivateClients.includes(root.agentType)) {
+    if (this.shouldActivate(root.agentType, root.label)) {
       this.gate.activate(sessionId);
     }
     this.eventStore.trackSession(sessionId, cwd, root.agentType, undefined, root.label);
@@ -382,7 +382,7 @@ export class PiSessionWatcher {
 
     this.eventStore.trackSession(session.sessionId, session.cwd, session.agentType, undefined, session.label);
     this.eventStore.add('session_start', session.sessionId, { source: 'resumed', gapMinutes }, undefined, session.agentType);
-    if (this.getConfig().autoActivateClients.includes(session.agentType)) {
+    if (this.shouldActivate(session.agentType, session.label)) {
       this.gate.activate(session.sessionId);
     }
 
@@ -390,6 +390,18 @@ export class PiSessionWatcher {
     session.lastActivityMs = resumedAt;
     session.pollTimer = setInterval(() => this.pollSession(session), SCAN_INTERVAL_MS);
     console.log(`[pi] Session ${session.sessionId.slice(0, 8)} resumed (gap ${gapMinutes}m)`);
+  }
+
+  /**
+   * Whether a tracked session should be gate-activated (i.e. surfaced live on the
+   * Dashboard). A glove-sandboxed session — one whose root carries a `label` — has
+   * no other activation path: `/layman` runs inside the sandbox and cannot reach the
+   * host, so `autoActivateClients` is the only switch, and a passively-tailed sandbox
+   * is observe-only by construction. Such sessions therefore always activate. Native
+   * roots (no label) keep the `autoActivateClients` gate.
+   */
+  private shouldActivate(agentType: string, label?: string): boolean {
+    return !!label || this.getConfig().autoActivateClients.includes(agentType);
   }
 
   private readLines(filePath: string): string[] | null {

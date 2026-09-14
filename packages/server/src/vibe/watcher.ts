@@ -317,6 +317,18 @@ export class VibeSessionWatcher {
     }
   }
 
+  /**
+   * Whether a tracked session should be gate-activated (i.e. surfaced live on the
+   * Dashboard). A glove-sandboxed session — one whose root carries a `label` — has
+   * no other activation path: `/layman` runs inside the sandbox and cannot reach the
+   * host, so `autoActivateClients` is the only switch, and a passively-tailed sandbox
+   * is observe-only by construction. Such sessions therefore always activate. Native
+   * roots (no label) keep the `autoActivateClients` gate.
+   */
+  private shouldActivate(agentType: string, label?: string): boolean {
+    return !!label || this.getConfig().autoActivateClients.includes(agentType);
+  }
+
   /** Returns true if any tracked or pending session already covers the given cwd. */
   private cwdCovered(cwd: string): boolean {
     for (const s of this.sessions.values()) if (s.cwd === cwd) return true;
@@ -397,9 +409,10 @@ export class VibeSessionWatcher {
       }
     }
 
-    // Auto-activate: if configured, activate Vibe sessions via the gate
-    const config = this.getConfig();
-    if (config.autoActivateClients.includes(root.agentType)) {
+    // Auto-activate. A glove-sandboxed session (labelled root) always activates —
+    // it has no other path onto the Dashboard (see shouldActivate); native roots
+    // keep the autoActivateClients gate.
+    if (this.shouldActivate(root.agentType, root.label)) {
       this.gate.activate(sessionId);
     }
 
@@ -592,6 +605,12 @@ private async pollSession(session: TrackedSession): Promise<void> {
             source: 'resumed',
             gapMinutes,
           }, undefined, session.agentType);
+          // Re-activate on resume: a tombstoned session dropped off the Dashboard on
+          // idle-timeout, so re-arm the gate under the same rule as tryAddSession or a
+          // resumed glove session would stay hidden.
+          if (this.shouldActivate(session.agentType, session.label)) {
+            this.gate.activate(session.sessionId);
+          }
 
           session.lastActivityMs = resumedAt;
           session.pollTimer = setInterval(() => void this.pollSession(session), POLL_INTERVAL_MS);
