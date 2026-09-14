@@ -55,9 +55,10 @@ export interface MonitorSource {
  *
  * Shared by both passive watchers (`VibeSessionWatcher`, `PiSessionWatcher`) so
  * this load-bearing rule lives in exactly one place. Note this governs only the
- * *initial* activation — resume re-activation is gated on the session's activation
- * state at tombstone time instead, so a manual deactivation survives an
- * idle-timeout+resume rather than being silently undone.
+ * *initial* activation — resume re-activation is handled by
+ * `SessionGate.suspend`/`resume`, which restore the activation state captured at
+ * tombstone time so a manual deactivation survives an idle-timeout+resume rather
+ * than being silently undone.
  */
 export function shouldActivateWatchedSession(
   agentType: string,
