@@ -127,14 +127,6 @@ interface TrackedSession {
   agentType: string;
   /** Sandbox label from the root (surfaced as session name); undefined for native. */
   label?: string;
-  /**
-   * Whether the session was gate-activated at the moment it tombstoned on idle
-   * timeout. Resume re-activates only if this was true, so a user's manual
-   * `POST /api/deactivate` (which leaves the gate off while polling continues)
-   * survives an idle-timeout+resume instead of being silently undone by the
-   * initial-activation rule.
-   */
-  wasActivated?: boolean;
 }
 
 /** A watch root the watcher is actively tailing, plus its fs.watch handle. */
@@ -602,13 +594,10 @@ private async pollSession(session: TrackedSession): Promise<void> {
             source: 'resumed',
             gapMinutes,
           }, undefined, session.agentType);
-          // Re-activate on resume only if the session was active when it tombstoned:
-          // a glove or auto-activated session dropped off the Dashboard on idle-timeout
-          // and should come back, but a session the user manually deactivated (gate off,
-          // polling still running) must stay hidden rather than reappear.
-          if (session.wasActivated) {
-            this.gate.activate(session.sessionId);
-          }
+          // Restore the pre-tombstone activation state: a glove or auto-activated
+          // session dropped off the Dashboard on idle-timeout comes back, but one the
+          // user manually deactivated stays hidden (see SessionGate.suspend/resume).
+          this.gate.resume(session.sessionId);
 
           session.lastActivityMs = resumedAt;
           session.pollTimer = setInterval(() => void this.pollSession(session), POLL_INTERVAL_MS);
@@ -637,10 +626,9 @@ private async pollSession(session: TrackedSession): Promise<void> {
       }
 
       this.eventStore.add('session_end', session.sessionId, {}, undefined, session.agentType);
-      // Remember activation state before deactivating so resume can restore it
-      // without clobbering a manual deactivation.
-      session.wasActivated = this.gate.isActive(session.sessionId);
-      this.gate.deactivate(session.sessionId);
+      // Suspend rather than deactivate: resume() restores the pre-tombstone
+      // activation state, so a manual deactivation isn't undone (see SessionGate).
+      this.gate.suspend(session.sessionId);
       clearInterval(session.pollTimer);
       session.pollTimer = null; // convert to tombstone
       console.log(`[vibe] Session ${session.sessionId.slice(0, 8)} ended (idle ${Math.round(idleMs / 60000)}m)`);
