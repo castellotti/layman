@@ -73,14 +73,6 @@ interface TrackedSession {
   lastSize: number;
   agentType: string;
   label?: string;
-  /**
-   * Whether the session was gate-activated at the moment it tombstoned on idle
-   * timeout. Resume re-activates only if this was true, so a user's manual
-   * `POST /api/deactivate` (which leaves the gate off while polling continues)
-   * survives an idle-timeout+resume instead of being silently undone by the
-   * initial-activation rule.
-   */
-  wasActivated?: boolean;
 }
 
 export class PiSessionWatcher {
@@ -357,10 +349,9 @@ export class PiSessionWatcher {
       }
 
       this.eventStore.add('session_end', session.sessionId, {}, undefined, session.agentType);
-      // Remember activation state before deactivating so resume can restore it
-      // without clobbering a manual deactivation.
-      session.wasActivated = this.gate.isActive(session.sessionId);
-      this.gate.deactivate(session.sessionId);
+      // Suspend rather than deactivate: resume() restores the pre-tombstone
+      // activation state, so a manual deactivation isn't undone (see SessionGate).
+      this.gate.suspend(session.sessionId);
       clearInterval(session.pollTimer);
       session.pollTimer = null; // tombstone; resurrected by tryResumeSession if it grows
       console.log(`[pi] Session ${session.sessionId.slice(0, 8)} ended (idle ${Math.round(idleMs / 60000)}m)`);
@@ -395,9 +386,7 @@ export class PiSessionWatcher {
 
     this.eventStore.trackSession(session.sessionId, session.cwd, session.agentType, undefined, session.label);
     this.eventStore.add('session_start', session.sessionId, { source: 'resumed', gapMinutes }, undefined, session.agentType);
-    if (session.wasActivated) {
-      this.gate.activate(session.sessionId);
-    }
+    this.gate.resume(session.sessionId);
 
     this.emitNew(session, committed);
     session.lastActivityMs = resumedAt;
