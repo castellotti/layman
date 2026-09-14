@@ -25,6 +25,21 @@ native wins any path collision. See the "Monitor sources" note in the root `CLAU
 
 > These moved here from the root `CLAUDE.md` to keep it under its size limit.
 
+### Gloved sessions always activate on the Dashboard (`pi/watcher.ts`, `vibe/watcher.ts`)
+
+Activation — the gate flag `buildSessionsList()` reads as a session's `active`, which the Dashboard
+filters on (`DashboardView.tsx`: `s.active !== false`) — is normally driven by `autoActivateClients`
+or the `/layman` slash command. A gloved session has neither path: `/layman` runs *inside* the
+sandbox and cannot reach the host, and the sandbox agent never posts hooks. So a passively-tailed
+session whose `WatchRoot` carries a `label` (i.e. it came from `GloveSource`) **always activates**,
+independent of `autoActivateClients`; native (unlabelled) roots keep the `autoActivateClients` gate.
+Both watchers apply this through a shared `shouldActivate(agentType, label)` helper, at add *and* at
+resume time — a session tombstoned by the 15-minute idle timeout re-activates when its transcript
+grows again, so it returns to the Dashboard on the next prompt rather than staying hidden. Without
+this, a gloved run recorded to Sessions history but never appeared live on the Dashboard unless its
+agent type happened to be in `autoActivateClients` — the reason gloved Vibe (in the list by default)
+worked while gloved pi did not.
+
 ### Read-only by design (`monitor/sources.ts`, `GloveConfigSchema`)
 
 glove persists the sandboxed home on the host (bind-mounted to `/home/agent` inside the container —

@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdtempSync, mkdirSync, rmSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
-import { GloveSource } from './sources.js';
+import { GloveSource, shouldActivateWatchedSession } from './sources.js';
 
 /** Create the glove Vibe log layout for a sandbox: <base>/<name>/home/.vibe/logs/session */
 function makeGloveVibeSandbox(base: string, name: string): string {
@@ -90,5 +90,18 @@ describe('GloveSource', () => {
 
     makeGloveVibeSandbox(base, 'vibe-local');
     expect(source.roots().map((r) => r.label)).toEqual(['vibe-local']);
+  });
+});
+
+describe('shouldActivateWatchedSession', () => {
+  it('always activates a labelled (glove-sandboxed) session, regardless of opt-in', () => {
+    expect(shouldActivateWatchedSession('pi', 'pi-local', [])).toBe(true);
+    expect(shouldActivateWatchedSession('mistral-vibe', 'myrepo-1a2b3c', [])).toBe(true);
+  });
+
+  it('gates a native (unlabelled) session on autoActivateClients', () => {
+    expect(shouldActivateWatchedSession('pi', undefined, [])).toBe(false);
+    expect(shouldActivateWatchedSession('pi', undefined, ['pi'])).toBe(true);
+    expect(shouldActivateWatchedSession('mistral-vibe', undefined, ['pi'])).toBe(false);
   });
 });
