@@ -181,6 +181,50 @@ describe('PiSessionWatcher', () => {
     expect(store.getAll().filter((e) => e.type === 'user_prompt')).toHaveLength(1);
   });
 
+  it('re-activates a still-active session on resume', () => {
+    // The default watcher tails a labelled (glove) root, so it activates on start
+    // and — never having been deactivated — must come back active after resume.
+    watcher.start();
+    expect(gate.isActive(SESSION_ID)).toBe(true);
+
+    vi.advanceTimersByTime(16 * 60 * 1000); // idle-timeout tombstone
+    expect(gate.isActive(SESSION_ID)).toBe(false); // dropped off the Dashboard
+
+    appendFileSync(transcript, APPENDED_LINE + '\n');
+    vi.advanceTimersByTime(2000); // scan tick revives it
+    expect(gate.isActive(SESSION_ID)).toBe(true);
+  });
+
+  it('does not re-activate on resume a session the user manually deactivated', () => {
+    // A native, opted-in session activates on start. If the user then hides it via
+    // deactivate, that choice must survive an idle-timeout+resume rather than being
+    // silently undone by the initial-activation rule.
+    const nativeRoot = { path: sessionsRoot, agentType: 'pi' } as WatchRoot;
+    const localGate = new SessionGate();
+    const localStore = new EventStore();
+    const localWatcher = new PiSessionWatcher(
+      localStore,
+      localGate,
+      makeConfig({ autoActivateClients: ['pi'] } as Partial<LaymanConfig>),
+      [new FixedSource(nativeRoot)],
+    );
+
+    localWatcher.start();
+    expect(localGate.isActive(SESSION_ID)).toBe(true);
+
+    // User hides the session; polling keeps running but the gate stays off.
+    localGate.deactivate(SESSION_ID);
+
+    vi.advanceTimersByTime(16 * 60 * 1000); // idle-timeout tombstone
+    appendFileSync(transcript, APPENDED_LINE + '\n');
+    vi.advanceTimersByTime(2000); // scan tick revives the session data-wise
+
+    // Data resumed, but the manual deactivation is respected.
+    expect(localStore.getAll().some((e) => e.data.source === 'resumed')).toBe(true);
+    expect(localGate.isActive(SESSION_ID)).toBe(false);
+    localWatcher.stop();
+  });
+
   it('emits each parallel tool result exactly once even when they land out of order', () => {
     // Two tool calls issued in one assistant message; the second result is on
     // disk at start, the first arrives on a later poll. Emission keyed by event

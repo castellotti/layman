@@ -32,6 +32,7 @@ import { join, basename } from 'path';
 import type { EventStore } from '../events/store.js';
 import type { SessionGate } from '../hooks/gate.js';
 import type { LaymanConfig } from '../config/schema.js';
+import { shouldActivateWatchedSession } from '../monitor/sources.js';
 import type { MonitorSource, WatchRoot } from '../monitor/sources.js';
 import type { TimelineEvent } from '../events/types.js';
 import { extractAccess } from '../events/access-extractor.js';
@@ -72,6 +73,14 @@ interface TrackedSession {
   lastSize: number;
   agentType: string;
   label?: string;
+  /**
+   * Whether the session was gate-activated at the moment it tombstoned on idle
+   * timeout. Resume re-activates only if this was true, so a user's manual
+   * `POST /api/deactivate` (which leaves the gate off while polling continues)
+   * survives an idle-timeout+resume instead of being silently undone by the
+   * initial-activation rule.
+   */
+  wasActivated?: boolean;
 }
 
 export class PiSessionWatcher {
@@ -215,7 +224,7 @@ export class PiSessionWatcher {
 
     // Register with the EventStore. The sandbox label (undefined for native)
     // rides through as the session name so gloved sessions are tagged in the UI.
-    if (this.shouldActivate(root.agentType, root.label)) {
+    if (shouldActivateWatchedSession(root.agentType, root.label, this.getConfig().autoActivateClients)) {
       this.gate.activate(sessionId);
     }
     this.eventStore.trackSession(sessionId, cwd, root.agentType, undefined, root.label);
@@ -348,6 +357,9 @@ export class PiSessionWatcher {
       }
 
       this.eventStore.add('session_end', session.sessionId, {}, undefined, session.agentType);
+      // Remember activation state before deactivating so resume can restore it
+      // without clobbering a manual deactivation.
+      session.wasActivated = this.gate.isActive(session.sessionId);
       this.gate.deactivate(session.sessionId);
       clearInterval(session.pollTimer);
       session.pollTimer = null; // tombstone; resurrected by tryResumeSession if it grows
@@ -359,7 +371,8 @@ export class PiSessionWatcher {
    * Bring a tombstoned (idle-timed-out) session back to life when its transcript
    * has new committed events. Emits a `resumed` session_start before catching up
    * so the marker lands at the right point in the timeline, restarts the poll
-   * timer, and re-applies auto-activation exactly as tryAddSession does.
+   * timer, and re-activates only if the session was active when it tombstoned —
+   * so a manual deactivation survives the resume rather than being undone.
    */
   private tryResumeSession(session: TrackedSession): void {
     // A tombstone stays in the map forever; short-circuit on unchanged size so an
@@ -382,7 +395,7 @@ export class PiSessionWatcher {
 
     this.eventStore.trackSession(session.sessionId, session.cwd, session.agentType, undefined, session.label);
     this.eventStore.add('session_start', session.sessionId, { source: 'resumed', gapMinutes }, undefined, session.agentType);
-    if (this.shouldActivate(session.agentType, session.label)) {
+    if (session.wasActivated) {
       this.gate.activate(session.sessionId);
     }
 
@@ -390,18 +403,6 @@ export class PiSessionWatcher {
     session.lastActivityMs = resumedAt;
     session.pollTimer = setInterval(() => this.pollSession(session), SCAN_INTERVAL_MS);
     console.log(`[pi] Session ${session.sessionId.slice(0, 8)} resumed (gap ${gapMinutes}m)`);
-  }
-
-  /**
-   * Whether a tracked session should be gate-activated (i.e. surfaced live on the
-   * Dashboard). A glove-sandboxed session — one whose root carries a `label` — has
-   * no other activation path: `/layman` runs inside the sandbox and cannot reach the
-   * host, so `autoActivateClients` is the only switch, and a passively-tailed sandbox
-   * is observe-only by construction. Such sessions therefore always activate. Native
-   * roots (no label) keep the `autoActivateClients` gate.
-   */
-  private shouldActivate(agentType: string, label?: string): boolean {
-    return !!label || this.getConfig().autoActivateClients.includes(agentType);
   }
 
   private readLines(filePath: string): string[] | null {

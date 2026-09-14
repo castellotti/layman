@@ -22,6 +22,7 @@ import type { FSWatcher } from 'fs';
 import type { EventStore } from '../events/store.js';
 import type { SessionGate } from '../hooks/gate.js';
 import type { LaymanConfig } from '../config/schema.js';
+import { shouldActivateWatchedSession } from '../monitor/sources.js';
 import type { MonitorSource, WatchRoot } from '../monitor/sources.js';
 import { classifyRisk } from '../events/classifier.js';
 import { extractAccess } from '../events/access-extractor.js';
@@ -126,6 +127,14 @@ interface TrackedSession {
   agentType: string;
   /** Sandbox label from the root (surfaced as session name); undefined for native. */
   label?: string;
+  /**
+   * Whether the session was gate-activated at the moment it tombstoned on idle
+   * timeout. Resume re-activates only if this was true, so a user's manual
+   * `POST /api/deactivate` (which leaves the gate off while polling continues)
+   * survives an idle-timeout+resume instead of being silently undone by the
+   * initial-activation rule.
+   */
+  wasActivated?: boolean;
 }
 
 /** A watch root the watcher is actively tailing, plus its fs.watch handle. */
@@ -294,7 +303,7 @@ export class VibeSessionWatcher {
       this.eventStore.trackSession(sessionId, cwd, AGENT_TYPE);
       this.eventStore.add('session_start', sessionId, { source: 'process-detected' }, undefined, AGENT_TYPE);
 
-      if (this.getConfig().autoActivateClients.includes(AGENT_TYPE)) {
+      if (shouldActivateWatchedSession(AGENT_TYPE, undefined, this.getConfig().autoActivateClients)) {
         this.gate.activate(sessionId);
       }
 
@@ -315,18 +324,6 @@ export class VibeSessionWatcher {
       this.gate.deactivate(pending.sessionId);
       console.log(`[vibe] Placeholder session ${pending.sessionId} closed (process PID ${pid} exited)`);
     }
-  }
-
-  /**
-   * Whether a tracked session should be gate-activated (i.e. surfaced live on the
-   * Dashboard). A glove-sandboxed session — one whose root carries a `label` — has
-   * no other activation path: `/layman` runs inside the sandbox and cannot reach the
-   * host, so `autoActivateClients` is the only switch, and a passively-tailed sandbox
-   * is observe-only by construction. Such sessions therefore always activate. Native
-   * roots (no label) keep the `autoActivateClients` gate.
-   */
-  private shouldActivate(agentType: string, label?: string): boolean {
-    return !!label || this.getConfig().autoActivateClients.includes(agentType);
   }
 
   /** Returns true if any tracked or pending session already covers the given cwd. */
@@ -410,9 +407,9 @@ export class VibeSessionWatcher {
     }
 
     // Auto-activate. A glove-sandboxed session (labelled root) always activates —
-    // it has no other path onto the Dashboard (see shouldActivate); native roots
-    // keep the autoActivateClients gate.
-    if (this.shouldActivate(root.agentType, root.label)) {
+    // it has no other path onto the Dashboard (see shouldActivateWatchedSession);
+    // native roots keep the autoActivateClients gate.
+    if (shouldActivateWatchedSession(root.agentType, root.label, this.getConfig().autoActivateClients)) {
       this.gate.activate(sessionId);
     }
 
@@ -605,10 +602,11 @@ private async pollSession(session: TrackedSession): Promise<void> {
             source: 'resumed',
             gapMinutes,
           }, undefined, session.agentType);
-          // Re-activate on resume: a tombstoned session dropped off the Dashboard on
-          // idle-timeout, so re-arm the gate under the same rule as tryAddSession or a
-          // resumed glove session would stay hidden.
-          if (this.shouldActivate(session.agentType, session.label)) {
+          // Re-activate on resume only if the session was active when it tombstoned:
+          // a glove or auto-activated session dropped off the Dashboard on idle-timeout
+          // and should come back, but a session the user manually deactivated (gate off,
+          // polling still running) must stay hidden rather than reappear.
+          if (session.wasActivated) {
             this.gate.activate(session.sessionId);
           }
 
@@ -639,6 +637,9 @@ private async pollSession(session: TrackedSession): Promise<void> {
       }
 
       this.eventStore.add('session_end', session.sessionId, {}, undefined, session.agentType);
+      // Remember activation state before deactivating so resume can restore it
+      // without clobbering a manual deactivation.
+      session.wasActivated = this.gate.isActive(session.sessionId);
       this.gate.deactivate(session.sessionId);
       clearInterval(session.pollTimer);
       session.pollTimer = null; // convert to tombstone

@@ -44,6 +44,29 @@ export interface MonitorSource {
   roots(): WatchRoot[];
 }
 
+/**
+ * Whether a freshly-tracked session should be gate-activated (i.e. surfaced live
+ * on the Dashboard). A glove-sandboxed session — one whose root carries a `label`
+ * — has no other activation path: `/layman` runs inside the sandbox and cannot
+ * reach the host, so `autoActivateClients` is the only switch, and a
+ * passively-tailed sandbox is observe-only by construction. Such sessions
+ * therefore always activate. Native roots (no label) keep the
+ * `autoActivateClients` gate.
+ *
+ * Shared by both passive watchers (`VibeSessionWatcher`, `PiSessionWatcher`) so
+ * this load-bearing rule lives in exactly one place. Note this governs only the
+ * *initial* activation — resume re-activation is gated on the session's activation
+ * state at tombstone time instead, so a manual deactivation survives an
+ * idle-timeout+resume rather than being silently undone.
+ */
+export function shouldActivateWatchedSession(
+  agentType: string,
+  label: string | undefined,
+  autoActivateClients: readonly string[],
+): boolean {
+  return !!label || autoActivateClients.includes(agentType);
+}
+
 const VIBE_AGENT_TYPE = 'mistral-vibe';
 /** Relative path from a home directory to the Vibe session-log dir. */
 const VIBE_SESSION_SUBPATH = join('.vibe', 'logs', 'session');
