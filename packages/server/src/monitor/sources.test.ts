@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdtempSync, mkdirSync, rmSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
-import { GloveSource, shouldActivateWatchedSession } from './sources.js';
+import { GloveSource, GLOVE_ROOTS_TTL_MS, shouldActivateWatchedSession } from './sources.js';
 
 /**
  * Current glove Vibe layout: a per-session home under
@@ -100,14 +100,31 @@ describe('GloveSource', () => {
     ]);
   });
 
-  it('re-globs on each call so sandboxes appearing later are picked up', () => {
+  it('re-globs once the cache TTL elapses so sandboxes appearing later are picked up', () => {
     const base = join(root, 'sessions');
     mkdirSync(base, { recursive: true });
-    const source = new GloveSource(() => base);
+    let now = 1000;
+    const source = new GloveSource(() => base, () => now);
     expect(source.roots()).toEqual([]);
 
     makeGloveVibeSandbox(base, 'vibe-local');
+    now += GLOVE_ROOTS_TTL_MS; // advance past the memo window
     expect(source.roots().map((r) => r.label)).toEqual(['vibe-local']);
+  });
+
+  it('serves repeated calls within the TTL from cache (one walk for both watchers)', () => {
+    const base = join(root, 'sessions');
+    makeGloveVibeSandbox(base, 'vibe-local');
+    let now = 1000;
+    const source = new GloveSource(() => base, () => now);
+    expect(source.roots().map((r) => r.label)).toEqual(['vibe-local']);
+
+    // A sandbox that vanishes within the TTL is still reported until the memo expires.
+    rmSync(join(base, 'vibe-local'), { recursive: true, force: true });
+    now += GLOVE_ROOTS_TTL_MS - 1;
+    expect(source.roots().map((r) => r.label)).toEqual(['vibe-local']);
+    now += 1;
+    expect(source.roots()).toEqual([]);
   });
 
   it('labels a named (non-default) session with glove\'s <env>-<name> token', () => {
@@ -126,6 +143,19 @@ describe('GloveSource', () => {
 
     expect(new GloveSource(() => base).roots()).toEqual([
       { path: legacyDir, agentType: 'mistral-vibe', label: 'vibe-local' },
+    ]);
+  });
+
+  it('still falls back to the env-level home when a per-session home exists but is empty', () => {
+    const base = join(root, 'sessions');
+    // A glove-upgraded env: older transcripts under the env-level home, plus a
+    // freshly-created per-session home that has no `.pi`/`.vibe` dir yet.
+    const legacyDir = makeLegacyGlovePiSandbox(base, 'pi-local');
+    mkdirSync(join(base, 'pi-local', 'sessions', 'pi-esde-favorites', 'home'), { recursive: true });
+
+    // The empty per-session home must not suppress the env-level transcripts.
+    expect(new GloveSource(() => base).roots()).toEqual([
+      { path: legacyDir, agentType: 'pi', label: 'pi-local' },
     ]);
   });
 

@@ -153,11 +153,15 @@ export class NativePiSource implements MonitorSource {
  * Older glove (and a `config_home_source` override) instead bind-mounted a single
  * env-level `<env-id>/home/`, and envs created under it still hold their
  * transcripts there. We therefore probe per-session homes first and fall back to
- * the env-level `home/` only when an env has no session home — never both for one
- * env, or a session present under both (a stale env-level copy plus its live
- * per-session copy, as happens after a glove upgrade) would be tailed twice and
- * every turn recorded twice, since the passive path mints fresh ids the live
- * dedupe can't collapse across two roots.
+ * the env-level `home/` only when per-session probing found *no transcripts* —
+ * not merely when a session dir is absent, since a session home can exist but be
+ * empty (pi's sessions dir appears only at runtime), and older env-level
+ * transcripts would otherwise be silently dropped. The fallback is never taken
+ * once a per-session home yields a transcript, so a session present under both (a
+ * stale env-level copy plus its live per-session copy, as happens after a glove
+ * upgrade) is tailed only once — never twice, which would record every turn twice
+ * since the passive path mints fresh ids the live dedupe can't collapse across
+ * two roots.
  *
  * This source globs one or two levels of directories and returns a root for each
  * harness log tree it finds, labelled with glove's session token — the env id for
@@ -176,16 +180,43 @@ export class NativePiSource implements MonitorSource {
  * tail — monitoring those from a sandbox is a separate mechanism (a
  * glove-provided forwarder), not this source.
  */
+/**
+ * How long a `GloveSource.roots()` result is reused before the tree is re-walked.
+ * The single shared instance feeds both passive watchers (`VibeSessionWatcher`
+ * and `PiSessionWatcher`), each polling every ~2s, so `roots()` is called about
+ * twice per scan tick — and each call now walks *two* directory levels
+ * (`readdir` + `statSync` per env and per session) against a read-only,
+ * FUSE-backed bind mount on macOS. Memoizing for a window well under the scan
+ * interval collapses those paired calls into one filesystem walk while keeping
+ * discovery dynamic: a sandbox that appears or disappears is still picked up
+ * within roughly one scan tick.
+ */
+export const GLOVE_ROOTS_TTL_MS = 1000;
+
 export class GloveSource implements MonitorSource {
   readonly id = 'glove';
   private getSessionsDir: () => string | null;
+  private now: () => number;
+  private cache: { at: number; roots: WatchRoot[] } | null = null;
 
-  /** @param getSessionsDir resolves the current glove sessions dir, or null when disabled. */
-  constructor(getSessionsDir: () => string | null) {
+  /**
+   * @param getSessionsDir resolves the current glove sessions dir, or null when disabled.
+   * @param now clock for the roots cache; injectable so tests can advance past the TTL.
+   */
+  constructor(getSessionsDir: () => string | null, now: () => number = Date.now) {
     this.getSessionsDir = getSessionsDir;
+    this.now = now;
   }
 
   roots(): WatchRoot[] {
+    const at = this.now();
+    if (this.cache && at - this.cache.at < GLOVE_ROOTS_TTL_MS) return this.cache.roots;
+    const roots = this.scan();
+    this.cache = { at, roots };
+    return roots;
+  }
+
+  private scan(): WatchRoot[] {
     const base = this.getSessionsDir();
     if (!base || !existsSync(base)) return [];
 
@@ -206,11 +237,18 @@ export class GloveSource implements MonitorSource {
       }
 
       // Current glove: one home per session under `<env>/sessions/<name>/home`.
-      const sessionHomes = this.sessionHomes(envDir, env);
-      if (sessionHomes.length > 0) {
-        for (const { home, label } of sessionHomes) this.probeHome(home, label, roots);
-        continue;
+      // Fall back to the env-level `home/` only when per-session probing found no
+      // transcripts — not merely when no session dir exists. A per-session home
+      // can be present but empty (pi's sessions dir appears only at runtime, and a
+      // fresh session's home has no `.vibe`/`.pi` yet), and older transcripts an
+      // upgrade left under the env-level `home/` would otherwise be silently
+      // dropped. Gating on roots *found* keeps the no-double-tail invariant: once a
+      // per-session home yields a transcript, the env-level copy is never tailed.
+      let foundPerSession = false;
+      for (const { home, label } of this.sessionHomes(envDir, env)) {
+        if (this.probeHome(home, label, roots)) foundPerSession = true;
       }
+      if (foundPerSession) continue;
 
       // Legacy / `config_home_source` override: a single env-level `home/`.
       this.probeHome(join(envDir, 'home'), env, roots);
@@ -246,15 +284,23 @@ export class GloveSource implements MonitorSource {
     return homes;
   }
 
-  /** Probe a harness home for tailable Vibe and pi transcript dirs, appending roots. */
-  private probeHome(home: string, label: string, roots: WatchRoot[]): void {
+  /**
+   * Probe a harness home for tailable Vibe and pi transcript dirs, appending
+   * roots. Returns whether it appended at least one — the caller uses that to
+   * decide the env-level fallback, so an empty home reads as "nothing here yet".
+   */
+  private probeHome(home: string, label: string, roots: WatchRoot[]): boolean {
+    let found = false;
     const vibeDir = join(home, VIBE_SESSION_SUBPATH);
     if (existsSync(vibeDir)) {
       roots.push({ path: vibeDir, agentType: VIBE_AGENT_TYPE, label });
+      found = true;
     }
     const piDir = join(home, PI_SESSION_SUBPATH);
     if (existsSync(piDir)) {
       roots.push({ path: piDir, agentType: PI_AGENT_TYPE, label });
+      found = true;
     }
+    return found;
   }
 }
