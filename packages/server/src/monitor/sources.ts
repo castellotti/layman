@@ -133,6 +133,19 @@ export class NativePiSource implements MonitorSource {
 }
 
 /**
+ * How long a `GloveSource.roots()` result is reused before the tree is re-walked.
+ * The single shared instance feeds both passive watchers (`VibeSessionWatcher`
+ * and `PiSessionWatcher`), each polling every ~2s, so `roots()` is called about
+ * twice per scan tick — and each call now walks *two* directory levels
+ * (`readdir` + `statSync` per env and per session) against a read-only,
+ * FUSE-backed bind mount on macOS. Memoizing for a window well under the scan
+ * interval collapses those paired calls into one filesystem walk while keeping
+ * discovery dynamic: a sandbox that appears or disappears is still picked up
+ * within roughly one scan tick.
+ */
+export const GLOVE_ROOTS_TTL_MS = 1000;
+
+/**
  * Sandboxed harness logs produced by glove (github.com/castellotti/glove).
  *
  * glove's unit of identity is an *environment* — the pair `(invocation_dir,
@@ -180,19 +193,6 @@ export class NativePiSource implements MonitorSource {
  * tail — monitoring those from a sandbox is a separate mechanism (a
  * glove-provided forwarder), not this source.
  */
-/**
- * How long a `GloveSource.roots()` result is reused before the tree is re-walked.
- * The single shared instance feeds both passive watchers (`VibeSessionWatcher`
- * and `PiSessionWatcher`), each polling every ~2s, so `roots()` is called about
- * twice per scan tick — and each call now walks *two* directory levels
- * (`readdir` + `statSync` per env and per session) against a read-only,
- * FUSE-backed bind mount on macOS. Memoizing for a window well under the scan
- * interval collapses those paired calls into one filesystem walk while keeping
- * discovery dynamic: a sandbox that appears or disappears is still picked up
- * within roughly one scan tick.
- */
-export const GLOVE_ROOTS_TTL_MS = 1000;
-
 export class GloveSource implements MonitorSource {
   readonly id = 'glove';
   private getSessionsDir: () => string | null;
@@ -248,10 +248,8 @@ export class GloveSource implements MonitorSource {
       for (const { home, label } of this.sessionHomes(envDir, env)) {
         if (this.probeHome(home, label, roots)) foundPerSession = true;
       }
-      if (foundPerSession) continue;
-
       // Legacy / `config_home_source` override: a single env-level `home/`.
-      this.probeHome(join(envDir, 'home'), env, roots);
+      if (!foundPerSession) this.probeHome(join(envDir, 'home'), env, roots);
     }
     return roots;
   }
