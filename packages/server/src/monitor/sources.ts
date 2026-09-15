@@ -133,33 +133,59 @@ export class NativePiSource implements MonitorSource {
 }
 
 /**
+ * How long a `GloveSource.roots()` result is reused before the tree is re-walked.
+ * The single shared instance feeds both passive watchers (`VibeSessionWatcher`
+ * and `PiSessionWatcher`), each polling every ~2s, so `roots()` is called about
+ * twice per scan tick — and each call now walks *two* directory levels
+ * (`readdir` + `statSync` per env and per session) against a read-only,
+ * FUSE-backed bind mount on macOS. Memoizing for a window well under the scan
+ * interval collapses those paired calls into one filesystem walk while keeping
+ * discovery dynamic: a sandbox that appears or disappears is still picked up
+ * within roughly one scan tick.
+ */
+export const GLOVE_ROOTS_TTL_MS = 1000;
+
+/**
  * Sandboxed harness logs produced by glove (github.com/castellotti/glove).
  *
  * glove's unit of identity is an *environment* — the pair `(invocation_dir,
  * harness)` bound to a stable `env-id` — and all its state lives under
  * `<sessionsDir>/<env-id>/` (glove v2's `~/.glove/envs/<env-id>/`). That dir
- * holds `glove.yaml`, per-run `sessions/<name>/` subtrees (compose file,
- * enforcer policies, browser media — no transcripts), and a `home/` tree that
- * glove bind-mounts as the harness home. Transcripts live in `home/`, mirroring
- * the real dotfile layout: a gloved Vibe writes
- * `<sessionsDir>/<env-id>/home/.vibe/logs/session/...` and a gloved pi writes
- * `<sessionsDir>/<env-id>/home/.pi/agent/sessions/...` — exactly the layouts the
- * passive watchers already understand, only rooted elsewhere. glove pre-creates
- * the Vibe log dir on launch so a monitor can attach before the first turn; pi's
- * sessions dir appears at runtime and is picked up on the next scan tick.
+ * holds `glove.yaml` and a per-run `sessions/<name>/` subtree (compose file,
+ * enforcer policies, browser media) that also carries the `home/` tree glove
+ * bind-mounts as the harness home. **The home is per-session, not per-env**:
+ * glove's `_home_dir()` resolves it to `<env-id>/sessions/<name>/home` because a
+ * rendered harness config embeds session-scoped values (its own LLM sidecar URL),
+ * so two live sessions of one env must not share a home. The default unnamed
+ * session is named after the env, so its home is `<env-id>/sessions/<env-id>/home`.
+ * Transcripts live under that home, mirroring the real dotfile layout: a gloved
+ * Vibe writes `.../home/.vibe/logs/session/...` and a gloved pi writes
+ * `.../home/.pi/agent/sessions/...` — exactly the layouts the passive watchers
+ * already understand, only rooted elsewhere.
  *
- * This source globs one level of environment directories and returns a root for
- * each harness log tree it finds under `<env-id>/home/`, labelled with the env
- * id (e.g. `pi-local`, or `myrepo-pi` / `myrepo-1a2b3c` when glove disambiguates
- * a name clash) so its sessions are tagged in the UI. Because several named glove
- * sessions of one env share that one `home/`, they all carry the env-id label
- * rather than the glove session name. A single env may run both harnesses, so it
- * can yield a vibe root *and* a pi root. Non-`home/` siblings (`glove.yaml`,
- * `sessions/`, a stray `.DS_Store`) are ignored — the `statSync().isDirectory()`
- * guard skips non-dirs, and only the two known subpaths are probed. It reads
- * only what the sandbox already persisted: no new mount into the container, no
- * egress, nothing added to what the sandboxed agent can see — read-only "outside
- * looking in".
+ * Older glove (and a `config_home_source` override) instead bind-mounted a single
+ * env-level `<env-id>/home/`, and envs created under it still hold their
+ * transcripts there. We therefore probe per-session homes first and fall back to
+ * the env-level `home/` only when per-session probing found *no transcripts* —
+ * not merely when a session dir is absent, since a session home can exist but be
+ * empty (pi's sessions dir appears only at runtime), and older env-level
+ * transcripts would otherwise be silently dropped. The fallback is never taken
+ * once a per-session home yields a transcript, so a session present under both (a
+ * stale env-level copy plus its live per-session copy, as happens after a glove
+ * upgrade) is tailed only once — never twice, which would record every turn twice
+ * since the passive path mints fresh ids the live dedupe can't collapse across
+ * two roots.
+ *
+ * This source globs one or two levels of directories and returns a root for each
+ * harness log tree it finds, labelled with glove's session token — the env id for
+ * the default session (e.g. `pi-local`), else `<env-id>-<name>` (e.g.
+ * `pi-local-myrepo`) — so its sessions are tagged and distinguishable in the UI. A
+ * single env may run both harnesses, so it can yield a vibe root *and* a pi root.
+ * Non-directory and unrelated siblings (`glove.yaml`, a stray `.DS_Store`) are
+ * ignored — the `statSync().isDirectory()` guard skips non-dirs, and only the two
+ * known subpaths are probed. It reads only what the sandbox already persisted: no
+ * new mount into the container, no egress, nothing added to what the sandboxed
+ * agent can see — read-only "outside looking in".
  *
  * Vibe and pi are discovered because both persist a tailable transcript on the
  * host. The other network-hook harnesses (codex, cline, opencode) POST *to*
@@ -170,40 +196,109 @@ export class NativePiSource implements MonitorSource {
 export class GloveSource implements MonitorSource {
   readonly id = 'glove';
   private getSessionsDir: () => string | null;
+  private now: () => number;
+  private cache: { at: number; roots: WatchRoot[] } | null = null;
 
-  /** @param getSessionsDir resolves the current glove sessions dir, or null when disabled. */
-  constructor(getSessionsDir: () => string | null) {
+  /**
+   * @param getSessionsDir resolves the current glove sessions dir, or null when disabled.
+   * @param now clock for the roots cache; injectable so tests can advance past the TTL.
+   */
+  constructor(getSessionsDir: () => string | null, now: () => number = Date.now) {
     this.getSessionsDir = getSessionsDir;
+    this.now = now;
   }
 
   roots(): WatchRoot[] {
+    const at = this.now();
+    if (this.cache && at - this.cache.at < GLOVE_ROOTS_TTL_MS) return this.cache.roots;
+    const roots = this.scan();
+    this.cache = { at, roots };
+    return roots;
+  }
+
+  private scan(): WatchRoot[] {
     const base = this.getSessionsDir();
     if (!base || !existsSync(base)) return [];
 
-    let sandboxes: string[];
+    let envs: string[];
     try {
-      sandboxes = readdirSync(base);
+      envs = readdirSync(base);
     } catch {
       return [];
     }
 
     const roots: WatchRoot[] = [];
-    for (const sandbox of sandboxes) {
-      const sandboxDir = join(base, sandbox);
+    for (const env of envs) {
+      const envDir = join(base, env);
       try {
-        if (!statSync(sandboxDir).isDirectory()) continue;
+        if (!statSync(envDir).isDirectory()) continue;
       } catch {
         continue; // vanished between readdir and stat
       }
-      const vibeDir = join(sandboxDir, 'home', VIBE_SESSION_SUBPATH);
-      if (existsSync(vibeDir)) {
-        roots.push({ path: vibeDir, agentType: VIBE_AGENT_TYPE, label: sandbox });
+
+      // Current glove: one home per session under `<env>/sessions/<name>/home`.
+      // Fall back to the env-level `home/` only when per-session probing found no
+      // transcripts — not merely when no session dir exists. A per-session home
+      // can be present but empty (pi's sessions dir appears only at runtime, and a
+      // fresh session's home has no `.vibe`/`.pi` yet), and older transcripts an
+      // upgrade left under the env-level `home/` would otherwise be silently
+      // dropped. Gating on roots *found* keeps the no-double-tail invariant: once a
+      // per-session home yields a transcript, the env-level copy is never tailed.
+      let foundPerSession = false;
+      for (const { home, label } of this.sessionHomes(envDir, env)) {
+        if (this.probeHome(home, label, roots)) foundPerSession = true;
       }
-      const piDir = join(sandboxDir, 'home', PI_SESSION_SUBPATH);
-      if (existsSync(piDir)) {
-        roots.push({ path: piDir, agentType: PI_AGENT_TYPE, label: sandbox });
-      }
+      // Legacy / `config_home_source` override: a single env-level `home/`.
+      if (!foundPerSession) this.probeHome(join(envDir, 'home'), env, roots);
     }
     return roots;
+  }
+
+  /**
+   * Per-session home dirs for an env: `<env>/sessions/<name>/home` for each
+   * session subdir that has one, each labelled with glove's session token (the
+   * env id for the default session named after the env, else `<env>-<name>`).
+   * Empty when the env has no `sessions/` tree or no session home yet — the
+   * caller then falls back to the env-level `home/`.
+   */
+  private sessionHomes(envDir: string, env: string): Array<{ home: string; label: string }> {
+    const sessionsRoot = join(envDir, 'sessions');
+    let names: string[];
+    try {
+      names = readdirSync(sessionsRoot);
+    } catch {
+      return []; // no sessions/ dir (or unreadable)
+    }
+    const homes: Array<{ home: string; label: string }> = [];
+    for (const name of names) {
+      const home = join(sessionsRoot, name, 'home');
+      try {
+        if (!statSync(home).isDirectory()) continue;
+      } catch {
+        continue;
+      }
+      homes.push({ home, label: name === env ? env : `${env}-${name}` });
+    }
+    return homes;
+  }
+
+  /**
+   * Probe a harness home for tailable Vibe and pi transcript dirs, appending
+   * roots. Returns whether it appended at least one — the caller uses that to
+   * decide the env-level fallback, so an empty home reads as "nothing here yet".
+   */
+  private probeHome(home: string, label: string, roots: WatchRoot[]): boolean {
+    let found = false;
+    const vibeDir = join(home, VIBE_SESSION_SUBPATH);
+    if (existsSync(vibeDir)) {
+      roots.push({ path: vibeDir, agentType: VIBE_AGENT_TYPE, label });
+      found = true;
+    }
+    const piDir = join(home, PI_SESSION_SUBPATH);
+    if (existsSync(piDir)) {
+      roots.push({ path: piDir, agentType: PI_AGENT_TYPE, label });
+      found = true;
+    }
+    return found;
   }
 }
