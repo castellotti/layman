@@ -87,7 +87,7 @@ export const LiveTokensConfigSchema = z.object({
  */
 export const GloveConfigSchema = z.object({
   enabled: z.boolean().default(false),
-  /** Host directory glove persists environment homes under (`<sessionsDir>/<env-id>/home/`). */
+  /** Host dir glove persists environments under; homes live at `<sessionsDir>/<env-id>/sessions/<name>/home/`. */
   sessionsDir: z.string().default('~/.glove/envs'),
 });
 

@@ -1,7 +1,7 @@
 # glove
 
 [glove](https://github.com/glovebox-ai/glove) sandboxes a coding harness inside a container and
-persists its fake home on the host under `~/.glove/envs/<env-id>/home/`. Layman monitors gloved
+persists its fake home on the host under `~/.glove/envs/<env-id>/sessions/<name>/home/`. Layman monitors gloved
 sessions **passively and read-only** by tailing those already-persisted transcript logs from
 outside the sandbox — it adds nothing to what the sandboxed agent can see. The feature is off by
 default (`glove.enabled`) and enabling or disabling it never affects native monitoring.
@@ -12,10 +12,14 @@ nothing to tail, so it needs a different mechanism (a glove-provided forwarder),
 
 ## How it works
 
-`GloveSource` (`packages/server/src/monitor/sources.ts`) globs `~/.glove/envs/*/home/` and returns a
-labelled `WatchRoot` for each harness log tree it finds there — a Vibe root (`.vibe/logs/session`)
-and/or a pi root (`.pi/agent/sessions`), so one sandbox can yield both. Each root declares its own
-`agentType` and an optional sandbox `label` (the env id). The passive watchers
+`GloveSource` (`packages/server/src/monitor/sources.ts`) globs `~/.glove/envs/*/sessions/*/home/` and
+returns a labelled `WatchRoot` for each harness log tree it finds there — a Vibe root
+(`.vibe/logs/session`) and/or a pi root (`.pi/agent/sessions`), so one sandbox can yield both. Each
+root declares its own `agentType` and an optional sandbox `label` (glove's session token — the env id
+for the default session, else `<env-id>-<name>`). For envs created by older glove (or a
+`config_home_source` override), which persist a single env-level `<env-id>/home/`, it falls back to
+that home when the env has no per-session home — never both, so a session that a glove upgrade left
+copied under both is not tailed and recorded twice. The passive watchers
 (`VibeSessionWatcher`, `PiSessionWatcher`) each filter `roots()` down to the agent type they parse,
 so the single shared `GloveSource` instance feeds both; native sources precede glove in the list, so
 native wins any path collision. See the "Monitor sources" note in the root `CLAUDE.md` for the
@@ -63,16 +67,19 @@ Claude Code session would need one built (a new watcher, not just a `GloveSource
 
 An env is the pair `(invocation_dir, harness)` bound to a stable `env-id` (invocation-dir basename,
 or `<base>-<harness>` for a second harness in one dir, or `<base>-<shorthash>` on a cross-dir basename
-collision). All env state lives under `~/.glove/envs/<env-id>/`, which contains `glove.yaml`, the
-`home/` tree Layman tails, **and** a `sessions/<name>/` subtree per `glove run --name` (compose file,
-rendered enforcer policies, browser media) — none of which holds transcripts. Because transcripts
-live in the shared `home/`, several named glove sessions of one env write into one
-`home/.pi/agent/sessions` (or `.vibe/logs/session`) and are all tagged with the *env-id*, not the
-glove session name — a deliberate fidelity trade-off, not a bug. `GloveSource` reads only
-`<env-id>/home/…`; the sibling `glove.yaml`, `sessions/`, `registry.json`, and a stray `.DS_Store` are
-ignored (`statSync().isDirectory()` guards the readdir). A power-user `config_home_source` override in
-`glove.yaml` relocates `home/` outside `~/.glove/envs/`, where Layman's single-dir glob would not find
-it.
+collision). All env state lives under `~/.glove/envs/<env-id>/`, which contains `glove.yaml` and a
+`sessions/<name>/` subtree per `glove run --name` (compose file, rendered enforcer policies, browser
+media) — **and the harness home Layman tails is inside that subtree**, at `sessions/<name>/home/`.
+glove's `_home_dir()` resolves the home per session, not per env, because the rendered harness config
+embeds session-scoped values (its own LLM sidecar URL) that two live sessions must not share; the
+default unnamed session is named after the env, so its home is `sessions/<env-id>/home/`. Each session
+is therefore tagged with glove's session token (`<env-id>` for the default, else `<env-id>-<name>`),
+not one shared env-id — a change from older glove, which bind-mounted a single env-level
+`<env-id>/home/` and where all of an env's sessions did share one home. `GloveSource` prefers the
+per-session homes and reads the env-level `home/` only as a fallback for legacy envs; sibling
+`glove.yaml`, `registry.json`, and a stray `.DS_Store` are ignored (`statSync().isDirectory()` guards
+each readdir). A power-user `config_home_source` override in `glove.yaml` relocates the home outside
+`~/.glove/envs/<env-id>/sessions/<name>/`, where Layman's glob would not find it.
 
 ### History import discovers glove pi *and* Vibe sessions too (`recovery.ts`, `transcript-pi.ts`, `transcript-vibe.ts`)
 
