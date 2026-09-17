@@ -1,8 +1,13 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtempSync, mkdirSync, rmSync } from 'fs';
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
-import { GloveSource, GLOVE_ROOTS_TTL_MS, shouldActivateWatchedSession } from './sources.js';
+import {
+  GloveSource,
+  GLOVE_ROOTS_TTL_MS,
+  rebaseGloveHome,
+  shouldActivateWatchedSession,
+} from './sources.js';
 
 /**
  * Current glove Vibe layout: a per-session home under
@@ -36,15 +41,34 @@ function makeLegacyGlovePiSandbox(base: string, env: string): string {
   return logDir;
 }
 
+/** Create a pi sessions dir under an arbitrary home root (a relocated home). */
+function makePiHome(home: string): string {
+  const logDir = join(home, '.pi', 'agent', 'sessions');
+  mkdirSync(logDir, { recursive: true });
+  return logDir;
+}
+
+/** Write glove's registry.json as a sibling of the sessions dir (`<root>/registry.json`). */
+function writeRegistry(root: string, entries: unknown[]): void {
+  writeFileSync(join(root, 'registry.json'), JSON.stringify(entries), 'utf8');
+}
+
 describe('GloveSource', () => {
   let root: string;
+  let savedHostHome: string | undefined;
 
   beforeEach(() => {
     root = mkdtempSync(join(tmpdir(), 'layman-glove-'));
+    // Isolate from any ambient HOST_HOME so registry host paths aren't rebased
+    // out from under the test's temp dirs.
+    savedHostHome = process.env.HOST_HOME;
+    delete process.env.HOST_HOME;
   });
 
   afterEach(() => {
     rmSync(root, { recursive: true, force: true });
+    if (savedHostHome === undefined) delete process.env.HOST_HOME;
+    else process.env.HOST_HOME = savedHostHome;
   });
 
   it('returns no roots when disabled (sessionsDir resolves to null)', () => {
@@ -110,6 +134,167 @@ describe('GloveSource', () => {
     makeGloveVibeSandbox(base, 'vibe-local');
     now += GLOVE_ROOTS_TTL_MS; // advance past the memo window
     expect(source.roots().map((r) => r.label)).toEqual(['vibe-local']);
+  });
+
+  it('follows a registry-recorded home relocated outside the sessions dir', () => {
+    const base = join(root, 'sessions');
+    // The env dir exists but has no home/ (config_home_source relocated it).
+    mkdirSync(join(base, 'pi-search'), { recursive: true });
+    const relocated = join(root, 'relocated-home');
+    const piDir = makePiHome(relocated);
+    writeRegistry(root, [{ env_id: 'pi-search', harness: 'pi', home: relocated }]);
+
+    expect(new GloveSource(() => base).roots()).toEqual([
+      { path: piDir, agentType: 'pi', label: 'pi-search' },
+    ]);
+  });
+
+  it('ignores a registry home that points inside the sessions dir (enumeration owns it)', () => {
+    const base = join(root, 'sessions');
+    // Enumeration already discovers this per-session home; a registry entry naming
+    // the very same tree must not add a second root and double-tail it.
+    const piDir = makeGlovePiSandbox(base, 'pi-local');
+    writeRegistry(root, [
+      { env_id: 'pi-local', home: join(base, 'pi-local', 'sessions', 'pi-local', 'home') },
+    ]);
+
+    expect(new GloveSource(() => base).roots()).toEqual([
+      { path: piDir, agentType: 'pi', label: 'pi-local' },
+    ]);
+  });
+
+  it('a relocated registry home wins over a stale env-level copy (no double-tail)', () => {
+    const base = join(root, 'sessions');
+    // A glove-upgraded, config_home_source-relocated env: a stale env-level home
+    // still lingers under base, and the registry records the canonical relocated
+    // home outside base. Only the relocated home is tailed — never both.
+    makeLegacyGlovePiSandbox(base, 'pi-search');
+    const relocated = join(root, 'relocated-home');
+    const piDir = makePiHome(relocated);
+    writeRegistry(root, [{ env_id: 'pi-search', home: relocated }]);
+
+    expect(new GloveSource(() => base).roots()).toEqual([
+      { path: piDir, agentType: 'pi', label: 'pi-search' },
+    ]);
+  });
+
+  it('still resolves a registry home that is not under a set HOST_HOME (no-op translation)', () => {
+    const base = join(root, 'sessions');
+    mkdirSync(join(base, 'pi-search'), { recursive: true });
+    // Docker sets HOST_HOME; a home outside it must translate to a no-op, not vanish.
+    // (Active rebasing math is covered by the rebaseGloveHome unit tests below —
+    // homedir() can't be redirected in-process to make a rebased path exist.)
+    process.env.HOST_HOME = join(root, 'host');
+    const relocated = join(root, 'elsewhere');
+    const piDir = makePiHome(relocated);
+    writeRegistry(root, [{ env_id: 'pi-search', home: relocated }]);
+
+    expect(new GloveSource(() => base).roots()).toEqual([
+      { path: piDir, agentType: 'pi', label: 'pi-search' },
+    ]);
+  });
+
+  it('falls back to enumeration when the registry is missing or malformed', () => {
+    const base = join(root, 'sessions');
+    const piDir = makeGlovePiSandbox(base, 'pi-local');
+    // Malformed registry must not throw or suppress enumeration-based discovery.
+    writeFileSync(join(root, 'registry.json'), '{ not json', 'utf8');
+
+    expect(new GloveSource(() => base).roots()).toEqual([
+      { path: piDir, agentType: 'pi', label: 'pi-local' },
+    ]);
+  });
+
+  it('ignores a registry entry whose recorded home does not exist', () => {
+    const base = join(root, 'sessions');
+    mkdirSync(base, { recursive: true });
+    writeRegistry(root, [{ env_id: 'ghost', home: join(root, 'never-created') }]);
+
+    expect(new GloveSource(() => base).roots()).toEqual([]);
+  });
+
+  it('keeps enumerating past a null (or non-object) registry element', () => {
+    const base = join(root, 'sessions');
+    const piDir = makeGlovePiSandbox(base, 'pi-local');
+    // A stray null / primitive in the array must not throw on entry.env_id;
+    // discovery degrades to enumeration for the valid parts.
+    writeRegistry(root, [null, 'oops', 42, { env_id: 'pi-local', home: join(base, 'pi-local', 'home') }]);
+
+    expect(new GloveSource(() => base).roots()).toEqual([
+      { path: piDir, agentType: 'pi', label: 'pi-local' },
+    ]);
+  });
+
+  it('does not let a nonexistent relocated registry home clobber a discovered home', () => {
+    const base = join(root, 'sessions');
+    // The per-session home exists and has pi sessions...
+    const piDir = makeGlovePiSandbox(base, 'pi-local');
+    // ...but the registry records a relocated home (outside base) that is not
+    // present here (stale / not mounted). The enumerated home must still show.
+    writeRegistry(root, [{ env_id: 'pi-local', home: join(root, 'not-mounted', 'home') }]);
+
+    expect(new GloveSource(() => base).roots()).toEqual([
+      { path: piDir, agentType: 'pi', label: 'pi-local' },
+    ]);
+  });
+
+  it('reads the registry even when the sessions dir does not exist', () => {
+    // Registry-only relocation: `envs/` was never created, yet the registry
+    // records a home living entirely outside it. The early return must not
+    // skip the registry.
+    const base = join(root, 'sessions'); // never created
+    const relocated = join(root, 'relocated-home');
+    const piDir = makePiHome(relocated);
+    writeRegistry(root, [{ env_id: 'pi-search', home: relocated }]);
+
+    expect(new GloveSource(() => base).roots()).toEqual([
+      { path: piDir, agentType: 'pi', label: 'pi-search' },
+    ]);
+  });
+});
+
+describe('rebaseGloveHome', () => {
+  it('returns the path unchanged when HOST_HOME is unset or equals the container home', () => {
+    expect(rebaseGloveHome('/Users/sc/.glove/homes/pi-search', undefined, '/root')).toBe(
+      '/Users/sc/.glove/homes/pi-search',
+    );
+    expect(rebaseGloveHome('/root/.glove/x', '/root', '/root')).toBe('/root/.glove/x');
+  });
+
+  it('rebases a host path under HOST_HOME onto the container home', () => {
+    expect(rebaseGloveHome('/Users/sc/.glove/homes/pi-search', '/Users/sc', '/root')).toBe(
+      '/root/.glove/homes/pi-search',
+    );
+    // Exact-home match maps to the container home itself.
+    expect(rebaseGloveHome('/Users/sc', '/Users/sc', '/root')).toBe('/root');
+  });
+
+  it('does not treat a sibling that merely shares a prefix as being under HOST_HOME', () => {
+    // `/Users/sc-other` starts with the string `/Users/sc` but is not under it.
+    expect(rebaseGloveHome('/Users/sc-other/x', '/Users/sc', '/root')).toBe(
+      '/Users/sc-other/x',
+    );
+  });
+
+  it('normalizes a trailing separator on HOST_HOME so rebasing still works', () => {
+    expect(rebaseGloveHome('/Users/sc/.glove/homes/pi-search', '/Users/sc/', '/root')).toBe(
+      '/root/.glove/homes/pi-search',
+    );
+    expect(rebaseGloveHome('/Users/sc', '/Users/sc/', '/root')).toBe('/root');
+    // A trailing-separator HOST_HOME equal to the container home is still a no-op.
+    expect(rebaseGloveHome('/root/.glove/x', '/root/', '/root')).toBe('/root/.glove/x');
+  });
+});
+
+describe('GloveSource cache and layout', () => {
+  let root: string;
+
+  beforeEach(() => {
+    root = mkdtempSync(join(tmpdir(), 'layman-glove-'));
+  });
+
+  afterEach(() => {
+    rmSync(root, { recursive: true, force: true });
   });
 
   it('serves repeated calls within the TTL from cache (one walk for both watchers)', () => {

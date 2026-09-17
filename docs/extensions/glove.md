@@ -25,6 +25,18 @@ so the single shared `GloveSource` instance feeds both; native sources precede g
 native wins any path collision. See the "Monitor sources" note in the root `CLAUDE.md` for the
 `MonitorSource` abstraction this plugs into.
 
+A `config_home_source` override can relocate a home **entirely outside** `~/.glove/envs/`, where the
+per-session/env-level globbing above structurally cannot reach it. glove records the run-time-resolved
+`home` per env in **`~/.glove/registry.json`** — the single canonical pointer — so `GloveSource` reads
+that registry and, for any env whose recorded home lies outside the sessions dir, probes it too (a
+registry home *inside* the sessions dir is left to enumeration, which already owns it, so it is never
+tailed twice). Registry `home` paths are absolute *host* paths; in the container they are rebased from
+`HOST_HOME` onto the container home before probing (native Layman leaves this a no-op). Reads are
+best-effort: a missing or malformed registry — including a stray non-object array element — degrades
+to enumeration. The full design — the glove-side registry field, the host→container translation, and
+the mount contract (a relocated home that a containerized Layman watches lives under `~/.glove`) — is
+in [`docs/planning/glove-session-discovery.md`](../planning/glove-session-discovery.md).
+
 ## Design notes
 
 > These moved here from the root `CLAUDE.md` to keep it under its size limit.
@@ -78,8 +90,12 @@ not one shared env-id — a change from older glove, which bind-mounted a single
 `<env-id>/home/` and where all of an env's sessions did share one home. `GloveSource` prefers the
 per-session homes and reads the env-level `home/` only as a fallback for legacy envs; sibling
 `glove.yaml`, `registry.json`, and a stray `.DS_Store` are ignored (`statSync().isDirectory()` guards
-each readdir). A power-user `config_home_source` override in `glove.yaml` relocates the home outside
-`~/.glove/envs/<env-id>/sessions/<name>/`, where Layman's glob would not find it.
+each readdir). A power-user `config_home_source` override relocates the home outside
+`~/.glove/envs/<env-id>/`; when the relocated home lands outside the sessions dir, where the glob
+cannot find it, `GloveSource` follows it via the resolved `home` glove records in
+`~/.glove/registry.json` (see [`glove-session-discovery.md`](../planning/glove-session-discovery.md)),
+translating the host path onto the container home and requiring — for a containerized Layman — that
+the relocated home live under `~/.glove`.
 
 ### History import discovers glove pi *and* Vibe sessions too (`recovery.ts`, `transcript-pi.ts`, `transcript-vibe.ts`)
 
