@@ -2,18 +2,41 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
-import { GloveSource, rebaseGloveHome, shouldActivateWatchedSession } from './sources.js';
+import {
+  GloveSource,
+  GLOVE_ROOTS_TTL_MS,
+  rebaseGloveHome,
+  shouldActivateWatchedSession,
+} from './sources.js';
 
-/** Create the glove Vibe log layout for a sandbox: <base>/<name>/home/.vibe/logs/session */
-function makeGloveVibeSandbox(base: string, name: string): string {
-  const logDir = join(base, name, 'home', '.vibe', 'logs', 'session');
+/**
+ * Current glove Vibe layout: a per-session home under
+ * `<base>/<env>/sessions/<session>/home/.vibe/logs/session`. `session` defaults
+ * to the env id (the default unnamed session).
+ */
+function makeGloveVibeSandbox(base: string, env: string, session = env): string {
+  const logDir = join(base, env, 'sessions', session, 'home', '.vibe', 'logs', 'session');
   mkdirSync(logDir, { recursive: true });
   return logDir;
 }
 
-/** Create the glove pi log layout for a sandbox: <base>/<name>/home/.pi/agent/sessions */
-function makeGlovePiSandbox(base: string, name: string): string {
-  const logDir = join(base, name, 'home', '.pi', 'agent', 'sessions');
+/** Current glove pi layout: `<base>/<env>/sessions/<session>/home/.pi/agent/sessions`. */
+function makeGlovePiSandbox(base: string, env: string, session = env): string {
+  const logDir = join(base, env, 'sessions', session, 'home', '.pi', 'agent', 'sessions');
+  mkdirSync(logDir, { recursive: true });
+  return logDir;
+}
+
+/** Legacy glove layout: a single env-level home at `<base>/<env>/home/...`. */
+function makeLegacyGloveVibeSandbox(base: string, env: string): string {
+  const logDir = join(base, env, 'home', '.vibe', 'logs', 'session');
+  mkdirSync(logDir, { recursive: true });
+  return logDir;
+}
+
+/** Legacy glove pi layout: a single env-level home at `<base>/<env>/home/.pi/...`. */
+function makeLegacyGlovePiSandbox(base: string, env: string): string {
+  const logDir = join(base, env, 'home', '.pi', 'agent', 'sessions');
   mkdirSync(logDir, { recursive: true });
   return logDir;
 }
@@ -101,13 +124,15 @@ describe('GloveSource', () => {
     ]);
   });
 
-  it('re-globs on each call so sandboxes appearing later are picked up', () => {
+  it('re-globs once the cache TTL elapses so sandboxes appearing later are picked up', () => {
     const base = join(root, 'sessions');
     mkdirSync(base, { recursive: true });
-    const source = new GloveSource(() => base);
+    let now = 1000;
+    const source = new GloveSource(() => base, () => now);
     expect(source.roots()).toEqual([]);
 
     makeGloveVibeSandbox(base, 'vibe-local');
+    now += GLOVE_ROOTS_TTL_MS; // advance past the memo window
     expect(source.roots().map((r) => r.label)).toEqual(['vibe-local']);
   });
 
@@ -124,15 +149,32 @@ describe('GloveSource', () => {
     ]);
   });
 
-  it("registry home overrides the default layout without emitting a duplicate root", () => {
+  it('ignores a registry home that points inside the sessions dir (enumeration owns it)', () => {
     const base = join(root, 'sessions');
-    // Default enumeration would find <base>/pi-local/home; the registry records
-    // the very same home. The env must yield exactly one pi root, not two.
+    // Enumeration already discovers this per-session home; a registry entry naming
+    // the very same tree must not add a second root and double-tail it.
     const piDir = makeGlovePiSandbox(base, 'pi-local');
-    writeRegistry(root, [{ env_id: 'pi-local', home: join(base, 'pi-local', 'home') }]);
+    writeRegistry(root, [
+      { env_id: 'pi-local', home: join(base, 'pi-local', 'sessions', 'pi-local', 'home') },
+    ]);
 
     expect(new GloveSource(() => base).roots()).toEqual([
       { path: piDir, agentType: 'pi', label: 'pi-local' },
+    ]);
+  });
+
+  it('a relocated registry home wins over a stale env-level copy (no double-tail)', () => {
+    const base = join(root, 'sessions');
+    // A glove-upgraded, config_home_source-relocated env: a stale env-level home
+    // still lingers under base, and the registry records the canonical relocated
+    // home outside base. Only the relocated home is tailed — never both.
+    makeLegacyGlovePiSandbox(base, 'pi-search');
+    const relocated = join(root, 'relocated-home');
+    const piDir = makePiHome(relocated);
+    writeRegistry(root, [{ env_id: 'pi-search', home: relocated }]);
+
+    expect(new GloveSource(() => base).roots()).toEqual([
+      { path: piDir, agentType: 'pi', label: 'pi-search' },
     ]);
   });
 
@@ -183,12 +225,12 @@ describe('GloveSource', () => {
     ]);
   });
 
-  it('does not let a nonexistent registry home clobber an existing default home', () => {
+  it('does not let a nonexistent relocated registry home clobber a discovered home', () => {
     const base = join(root, 'sessions');
-    // The default layout home exists and has pi sessions...
+    // The per-session home exists and has pi sessions...
     const piDir = makeGlovePiSandbox(base, 'pi-local');
-    // ...but the registry records a relocated home that is not present here
-    // (stale / not mounted). The default must still be discovered.
+    // ...but the registry records a relocated home (outside base) that is not
+    // present here (stale / not mounted). The enumerated home must still show.
     writeRegistry(root, [{ env_id: 'pi-local', home: join(root, 'not-mounted', 'home') }]);
 
     expect(new GloveSource(() => base).roots()).toEqual([
@@ -241,6 +283,77 @@ describe('rebaseGloveHome', () => {
     expect(rebaseGloveHome('/Users/sc', '/Users/sc/', '/root')).toBe('/root');
     // A trailing-separator HOST_HOME equal to the container home is still a no-op.
     expect(rebaseGloveHome('/root/.glove/x', '/root/', '/root')).toBe('/root/.glove/x');
+  });
+});
+
+describe('GloveSource cache and layout', () => {
+  let root: string;
+
+  beforeEach(() => {
+    root = mkdtempSync(join(tmpdir(), 'layman-glove-'));
+  });
+
+  afterEach(() => {
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  it('serves repeated calls within the TTL from cache (one walk for both watchers)', () => {
+    const base = join(root, 'sessions');
+    makeGloveVibeSandbox(base, 'vibe-local');
+    let now = 1000;
+    const source = new GloveSource(() => base, () => now);
+    expect(source.roots().map((r) => r.label)).toEqual(['vibe-local']);
+
+    // A sandbox that vanishes within the TTL is still reported until the memo expires.
+    rmSync(join(base, 'vibe-local'), { recursive: true, force: true });
+    now += GLOVE_ROOTS_TTL_MS - 1;
+    expect(source.roots().map((r) => r.label)).toEqual(['vibe-local']);
+    now += 1;
+    expect(source.roots()).toEqual([]);
+  });
+
+  it('labels a named (non-default) session with glove\'s <env>-<name> token', () => {
+    const base = join(root, 'sessions');
+    // pi-local env with a named session `pi-esde-favorites` (not the default).
+    const piDir = makeGlovePiSandbox(base, 'pi-local', 'pi-esde-favorites');
+
+    expect(new GloveSource(() => base).roots()).toEqual([
+      { path: piDir, agentType: 'pi', label: 'pi-local-pi-esde-favorites' },
+    ]);
+  });
+
+  it('falls back to the legacy env-level home when there is no per-session home', () => {
+    const base = join(root, 'sessions');
+    const legacyDir = makeLegacyGloveVibeSandbox(base, 'vibe-local');
+
+    expect(new GloveSource(() => base).roots()).toEqual([
+      { path: legacyDir, agentType: 'mistral-vibe', label: 'vibe-local' },
+    ]);
+  });
+
+  it('still falls back to the env-level home when a per-session home exists but is empty', () => {
+    const base = join(root, 'sessions');
+    // A glove-upgraded env: older transcripts under the env-level home, plus a
+    // freshly-created per-session home that has no `.pi`/`.vibe` dir yet.
+    const legacyDir = makeLegacyGlovePiSandbox(base, 'pi-local');
+    mkdirSync(join(base, 'pi-local', 'sessions', 'pi-esde-favorites', 'home'), { recursive: true });
+
+    // The empty per-session home must not suppress the env-level transcripts.
+    expect(new GloveSource(() => base).roots()).toEqual([
+      { path: legacyDir, agentType: 'pi', label: 'pi-local' },
+    ]);
+  });
+
+  it('prefers the per-session home and does not also tail a stale env-level copy', () => {
+    const base = join(root, 'sessions');
+    // A glove-upgraded env: a stale env-level pi home AND the live per-session one.
+    makeLegacyGlovePiSandbox(base, 'pi-local');
+    const liveDir = makeGlovePiSandbox(base, 'pi-local', 'pi-esde-favorites');
+
+    // Only the per-session root — never both, or every turn records twice.
+    expect(new GloveSource(() => base).roots()).toEqual([
+      { path: liveDir, agentType: 'pi', label: 'pi-local-pi-esde-favorites' },
+    ]);
   });
 });
 
