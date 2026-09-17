@@ -170,6 +170,45 @@ describe('GloveSource', () => {
 
     expect(new GloveSource(() => base).roots()).toEqual([]);
   });
+
+  it('keeps enumerating past a null (or non-object) registry element', () => {
+    const base = join(root, 'sessions');
+    const piDir = makeGlovePiSandbox(base, 'pi-local');
+    // A stray null / primitive in the array must not throw on entry.env_id;
+    // discovery degrades to enumeration for the valid parts.
+    writeRegistry(root, [null, 'oops', 42, { env_id: 'pi-local', home: join(base, 'pi-local', 'home') }]);
+
+    expect(new GloveSource(() => base).roots()).toEqual([
+      { path: piDir, agentType: 'pi', label: 'pi-local' },
+    ]);
+  });
+
+  it('does not let a nonexistent registry home clobber an existing default home', () => {
+    const base = join(root, 'sessions');
+    // The default layout home exists and has pi sessions...
+    const piDir = makeGlovePiSandbox(base, 'pi-local');
+    // ...but the registry records a relocated home that is not present here
+    // (stale / not mounted). The default must still be discovered.
+    writeRegistry(root, [{ env_id: 'pi-local', home: join(root, 'not-mounted', 'home') }]);
+
+    expect(new GloveSource(() => base).roots()).toEqual([
+      { path: piDir, agentType: 'pi', label: 'pi-local' },
+    ]);
+  });
+
+  it('reads the registry even when the sessions dir does not exist', () => {
+    // Registry-only relocation: `envs/` was never created, yet the registry
+    // records a home living entirely outside it. The early return must not
+    // skip the registry.
+    const base = join(root, 'sessions'); // never created
+    const relocated = join(root, 'relocated-home');
+    const piDir = makePiHome(relocated);
+    writeRegistry(root, [{ env_id: 'pi-search', home: relocated }]);
+
+    expect(new GloveSource(() => base).roots()).toEqual([
+      { path: piDir, agentType: 'pi', label: 'pi-search' },
+    ]);
+  });
 });
 
 describe('rebaseGloveHome', () => {
@@ -193,6 +232,15 @@ describe('rebaseGloveHome', () => {
     expect(rebaseGloveHome('/Users/sc-other/x', '/Users/sc', '/root')).toBe(
       '/Users/sc-other/x',
     );
+  });
+
+  it('normalizes a trailing separator on HOST_HOME so rebasing still works', () => {
+    expect(rebaseGloveHome('/Users/sc/.glove/homes/pi-search', '/Users/sc/', '/root')).toBe(
+      '/root/.glove/homes/pi-search',
+    );
+    expect(rebaseGloveHome('/Users/sc', '/Users/sc/', '/root')).toBe('/root');
+    // A trailing-separator HOST_HOME equal to the container home is still a no-op.
+    expect(rebaseGloveHome('/root/.glove/x', '/root/', '/root')).toBe('/root/.glove/x');
   });
 });
 

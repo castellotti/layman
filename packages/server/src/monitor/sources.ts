@@ -207,7 +207,7 @@ export class GloveSource implements MonitorSource {
 
   roots(): WatchRoot[] {
     const base = this.getSessionsDir();
-    if (!base || !existsSync(base)) return [];
+    if (!base) return [];
 
     // env-id -> resolved home dir (container path). Enumeration supplies the
     // default `<env-id>/home`; the registry's recorded home overrides it and
@@ -215,12 +215,15 @@ export class GloveSource implements MonitorSource {
     // case where both name the same directory.
     const homes = new Map<string, string>();
 
-    // Default layout: every env dir directly under the sessions dir.
+    // Default layout: every env dir directly under the sessions dir. `base` may
+    // not exist at all (registry-only relocation, or `envs/` not yet created);
+    // enumeration then yields nothing and the registry carries discovery, so a
+    // missing/unreadable dir is not an early return.
     let sandboxes: string[] = [];
     try {
       sandboxes = readdirSync(base);
     } catch {
-      sandboxes = []; // unreadable dir; the registry may still supply homes
+      sandboxes = []; // missing/unreadable dir; the registry may still supply homes
     }
     for (const sandbox of sandboxes) {
       const sandboxDir = join(base, sandbox);
@@ -232,10 +235,14 @@ export class GloveSource implements MonitorSource {
       homes.set(sandbox, join(sandboxDir, 'home'));
     }
 
-    // Registry: glove's canonical, run-time-resolved home per env (wins).
+    // Registry: glove's canonical, run-time-resolved home per env (wins) — but
+    // only when that home is actually readable from this process. A stale,
+    // unmounted, or not-yet-created registry home must not clobber a default
+    // `<env-id>/home` that does exist, or a discoverable session disappears.
     for (const entry of this.readRegistry(base)) {
       if (entry.env_id && entry.home) {
-        homes.set(entry.env_id, this.toContainerPath(entry.home));
+        const home = this.toContainerPath(entry.home);
+        if (existsSync(home)) homes.set(entry.env_id, home);
       }
     }
 
@@ -269,7 +276,13 @@ export class GloveSource implements MonitorSource {
     }
     try {
       const data = JSON.parse(raw);
-      return Array.isArray(data) ? (data as GloveRegistryEntry[]) : [];
+      if (!Array.isArray(data)) return [];
+      // Keep only object entries: a stray `null` or primitive in the array would
+      // otherwise throw on `entry.env_id` in roots(), which runs on every scan
+      // tick — a bad element must degrade to enumeration, not crash the scan.
+      return data.filter(
+        (e): e is GloveRegistryEntry => typeof e === 'object' && e !== null,
+      );
     } catch {
       return []; // malformed JSON — don't let it break discovery
     }
@@ -291,17 +304,22 @@ export class GloveSource implements MonitorSource {
  * rebased onto the container home. Native Layman (no `HOST_HOME`, or
  * `HOST_HOME === homedir()`) returns the path unchanged. The match is
  * path-boundary aware so `/Users/sc-other` is never treated as living under
- * `/Users/sc`. Exported for direct testing.
+ * `/Users/sc`. A trailing separator on `hostHome` is normalized away so the
+ * translation does not depend on how `HOST_HOME` happens to be spelled.
+ * Exported for direct testing.
  */
 export function rebaseGloveHome(
   hostPath: string,
   hostHome: string | undefined,
   containerHome: string,
 ): string {
-  if (!hostHome || hostHome === containerHome) return hostPath;
-  if (hostPath === hostHome) return containerHome;
-  if (hostPath.startsWith(hostHome + sep)) {
-    return join(containerHome, hostPath.slice(hostHome.length + 1));
+  if (!hostHome) return hostPath;
+  let home = hostHome;
+  while (home.length > 1 && home.endsWith(sep)) home = home.slice(0, -sep.length);
+  if (home === containerHome) return hostPath;
+  if (hostPath === home) return containerHome;
+  if (hostPath.startsWith(home + sep)) {
+    return join(containerHome, hostPath.slice(home.length + 1));
   }
   return hostPath;
 }
