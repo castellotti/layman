@@ -10,6 +10,7 @@ web-dist/
 .vscode/
 
 docs/plans/
+docs/planning/
 
 # Recorded-session database. Lives at ~/.claude/layman.db, but a stray copy or a
 # backup pulled into the repo must never be committed — it contains full session
