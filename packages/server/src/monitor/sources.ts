@@ -18,8 +18,8 @@
  * scan without a restart.
  */
 
-import { existsSync, readdirSync, statSync } from 'fs';
-import { join } from 'path';
+import { existsSync, readdirSync, readFileSync, statSync } from 'fs';
+import { dirname, join, sep } from 'path';
 import { homedir } from 'os';
 
 /** A single directory the watcher should tail, plus how to attribute what it finds. */
@@ -148,18 +148,37 @@ export class NativePiSource implements MonitorSource {
  * the Vibe log dir on launch so a monitor can attach before the first turn; pi's
  * sessions dir appears at runtime and is picked up on the next scan tick.
  *
- * This source globs one level of environment directories and returns a root for
- * each harness log tree it finds under `<env-id>/home/`, labelled with the env
- * id (e.g. `pi-local`, or `myrepo-pi` / `myrepo-1a2b3c` when glove disambiguates
- * a name clash) so its sessions are tagged in the UI. Because several named glove
- * sessions of one env share that one `home/`, they all carry the env-id label
- * rather than the glove session name. A single env may run both harnesses, so it
- * can yield a vibe root *and* a pi root. Non-`home/` siblings (`glove.yaml`,
- * `sessions/`, a stray `.DS_Store`) are ignored — the `statSync().isDirectory()`
- * guard skips non-dirs, and only the two known subpaths are probed. It reads
- * only what the sandbox already persisted: no new mount into the container, no
- * egress, nothing added to what the sandboxed agent can see — read-only "outside
- * looking in".
+ * A home is not always the env's own `home/`. A config can set
+ * `config_home_source` to relocate it (glove's `_home_dir()`), and glove records
+ * the *resolved* home per env in `~/.glove/registry.json` — the single canonical
+ * pointer this source reads (see `docs/planning/glove-session-discovery.md`).
+ * `roots()` therefore resolves each env's home from two places and lets the
+ * registry win:
+ *   - **enumeration** of `<sessionsDir>/<env-id>/home` — the default layout, and
+ *     the back-compat path for an old glove whose registry lacks the `home` field
+ *     or an env not yet re-run since glove started recording it; and
+ *   - the **registry's** recorded `home`, which overrides the default and also
+ *     contributes envs whose home is relocated outside `<sessionsDir>`.
+ * Each resolved home is probed for the two known subpaths and labelled with the
+ * env id (e.g. `pi-local`, or `myrepo-pi` / `myrepo-1a2b3c` when glove
+ * disambiguates a name clash). Because several named glove sessions of one env
+ * share one home, they all carry the env-id label rather than the glove session
+ * name; a single env may run both harnesses, so it can yield a vibe root *and* a
+ * pi root. Non-`home/` siblings (`glove.yaml`, `sessions/`, a stray `.DS_Store`)
+ * are ignored — the `statSync().isDirectory()` guard skips non-dirs, and only the
+ * two known subpaths are probed. It reads only what the sandbox already
+ * persisted: no new mount into the container, no egress, nothing added to what
+ * the sandboxed agent can see — read-only "outside looking in".
+ *
+ * The registry records **absolute host paths** (`/Users/you/.glove/...`), but in
+ * the Docker deployment the same tree is mounted at `/root/.glove/...`, so a
+ * registry `home` is translated from the host home prefix (`HOST_HOME`, the env
+ * var Layman already receives for exactly this) to the container home
+ * (`homedir()`) before probing. Native Layman leaves `HOST_HOME` unset (or equal
+ * to `homedir()`), so the translation is a no-op. A translated path that isn't
+ * under a mount simply won't exist and yields no root — the same graceful outcome
+ * as a missing `home/`. The mount contract (relocated homes that a containerized
+ * Layman watches live under `~/.glove`) is documented in the planning doc.
  *
  * Vibe and pi are discovered because both persist a tailable transcript on the
  * host. The other network-hook harnesses (codex, cline, opencode) POST *to*
@@ -167,6 +186,16 @@ export class NativePiSource implements MonitorSource {
  * tail — monitoring those from a sandbox is a separate mechanism (a
  * glove-provided forwarder), not this source.
  */
+
+/** One entry of glove's `registry.json`. Extra fields tolerated; `home` is new. */
+interface GloveRegistryEntry {
+  env_id?: string;
+  harness?: string;
+  dir?: string;
+  /** Absolute, realpath-resolved harness home; absent on pre-upgrade glove. */
+  home?: string;
+}
+
 export class GloveSource implements MonitorSource {
   readonly id = 'glove';
   private getSessionsDir: () => string | null;
@@ -180,14 +209,19 @@ export class GloveSource implements MonitorSource {
     const base = this.getSessionsDir();
     if (!base || !existsSync(base)) return [];
 
-    let sandboxes: string[];
+    // env-id -> resolved home dir (container path). Enumeration supplies the
+    // default `<env-id>/home`; the registry's recorded home overrides it and
+    // adds envs whose home is relocated outside `base`. A Map dedupes the common
+    // case where both name the same directory.
+    const homes = new Map<string, string>();
+
+    // Default layout: every env dir directly under the sessions dir.
+    let sandboxes: string[] = [];
     try {
       sandboxes = readdirSync(base);
     } catch {
-      return [];
+      sandboxes = []; // unreadable dir; the registry may still supply homes
     }
-
-    const roots: WatchRoot[] = [];
     for (const sandbox of sandboxes) {
       const sandboxDir = join(base, sandbox);
       try {
@@ -195,15 +229,79 @@ export class GloveSource implements MonitorSource {
       } catch {
         continue; // vanished between readdir and stat
       }
-      const vibeDir = join(sandboxDir, 'home', VIBE_SESSION_SUBPATH);
-      if (existsSync(vibeDir)) {
-        roots.push({ path: vibeDir, agentType: VIBE_AGENT_TYPE, label: sandbox });
+      homes.set(sandbox, join(sandboxDir, 'home'));
+    }
+
+    // Registry: glove's canonical, run-time-resolved home per env (wins).
+    for (const entry of this.readRegistry(base)) {
+      if (entry.env_id && entry.home) {
+        homes.set(entry.env_id, this.toContainerPath(entry.home));
       }
-      const piDir = join(sandboxDir, 'home', PI_SESSION_SUBPATH);
+    }
+
+    const roots: WatchRoot[] = [];
+    for (const [label, home] of homes) {
+      const vibeDir = join(home, VIBE_SESSION_SUBPATH);
+      if (existsSync(vibeDir)) {
+        roots.push({ path: vibeDir, agentType: VIBE_AGENT_TYPE, label });
+      }
+      const piDir = join(home, PI_SESSION_SUBPATH);
       if (existsSync(piDir)) {
-        roots.push({ path: piDir, agentType: PI_AGENT_TYPE, label: sandbox });
+        roots.push({ path: piDir, agentType: PI_AGENT_TYPE, label });
       }
     }
     return roots;
   }
+
+  /**
+   * Reads `<glove-home>/registry.json` (a sibling of the sessions dir), the
+   * single file glove uses to bind each env to its identity and — since the
+   * registry-resolved-home change — its resolved home. Best-effort: a missing or
+   * malformed registry yields `[]`, leaving enumeration to carry discovery.
+   */
+  private readRegistry(base: string): GloveRegistryEntry[] {
+    const path = join(dirname(base), 'registry.json');
+    let raw: string;
+    try {
+      raw = readFileSync(path, 'utf8');
+    } catch {
+      return []; // no registry (or unreadable) — enumeration still works
+    }
+    try {
+      const data = JSON.parse(raw);
+      return Array.isArray(data) ? (data as GloveRegistryEntry[]) : [];
+    } catch {
+      return []; // malformed JSON — don't let it break discovery
+    }
+  }
+
+  /**
+   * Translates an absolute host path from the registry into the path this
+   * process can read, using this process's `HOST_HOME` and `homedir()`.
+   */
+  private toContainerPath(hostPath: string): string {
+    return rebaseGloveHome(hostPath, process.env.HOST_HOME, homedir());
+  }
+}
+
+/**
+ * Rebases an absolute host path onto the container home. In Docker the host home
+ * (`hostHome`, from `HOST_HOME`) is bind-mounted at the container home
+ * (`containerHome`, `homedir()`), so a registry `home` recorded as a host path is
+ * rebased onto the container home. Native Layman (no `HOST_HOME`, or
+ * `HOST_HOME === homedir()`) returns the path unchanged. The match is
+ * path-boundary aware so `/Users/sc-other` is never treated as living under
+ * `/Users/sc`. Exported for direct testing.
+ */
+export function rebaseGloveHome(
+  hostPath: string,
+  hostHome: string | undefined,
+  containerHome: string,
+): string {
+  if (!hostHome || hostHome === containerHome) return hostPath;
+  if (hostPath === hostHome) return containerHome;
+  if (hostPath.startsWith(hostHome + sep)) {
+    return join(containerHome, hostPath.slice(hostHome.length + 1));
+  }
+  return hostPath;
 }

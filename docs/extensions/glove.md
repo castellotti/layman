@@ -12,14 +12,24 @@ nothing to tail, so it needs a different mechanism (a glove-provided forwarder),
 
 ## How it works
 
-`GloveSource` (`packages/server/src/monitor/sources.ts`) globs `~/.glove/envs/*/home/` and returns a
-labelled `WatchRoot` for each harness log tree it finds there — a Vibe root (`.vibe/logs/session`)
+`GloveSource` (`packages/server/src/monitor/sources.ts`) resolves each env's harness home and returns
+a labelled `WatchRoot` for each harness log tree it finds there — a Vibe root (`.vibe/logs/session`)
 and/or a pi root (`.pi/agent/sessions`), so one sandbox can yield both. Each root declares its own
 `agentType` and an optional sandbox `label` (the env id). The passive watchers
 (`VibeSessionWatcher`, `PiSessionWatcher`) each filter `roots()` down to the agent type they parse,
 so the single shared `GloveSource` instance feeds both; native sources precede glove in the list, so
 native wins any path collision. See the "Monitor sources" note in the root `CLAUDE.md` for the
 `MonitorSource` abstraction this plugs into.
+
+A home is not always the env's own `home/`. It resolves each env's home from two places, letting the
+registry win: **enumeration** of `~/.glove/envs/<env-id>/home` (the default layout and the back-compat
+path for an old glove), and glove's **`~/.glove/registry.json`**, which records the run-time-resolved
+`home` per env — the single canonical pointer for a home a config relocated via `config_home_source`.
+Registry `home` paths are absolute *host* paths; in the container they are rebased from `HOST_HOME`
+onto the container home before probing (native Layman leaves this a no-op). The full design — the
+glove-side registry field, the host→container translation, and the mount contract (a relocated home
+that a containerized Layman watches lives under `~/.glove`) — is in
+[`docs/planning/glove-session-discovery.md`](../planning/glove-session-discovery.md).
 
 ## Design notes
 
@@ -69,10 +79,12 @@ rendered enforcer policies, browser media) — none of which holds transcripts. 
 live in the shared `home/`, several named glove sessions of one env write into one
 `home/.pi/agent/sessions` (or `.vibe/logs/session`) and are all tagged with the *env-id*, not the
 glove session name — a deliberate fidelity trade-off, not a bug. `GloveSource` reads only
-`<env-id>/home/…`; the sibling `glove.yaml`, `sessions/`, `registry.json`, and a stray `.DS_Store` are
-ignored (`statSync().isDirectory()` guards the readdir). A power-user `config_home_source` override in
-`glove.yaml` relocates `home/` outside `~/.glove/envs/`, where Layman's single-dir glob would not find
-it.
+`<env-id>/home/…`; the sibling `glove.yaml`, `sessions/`, and a stray `.DS_Store` are ignored
+(`statSync().isDirectory()` guards the readdir). A power-user `config_home_source` override relocates
+`home/` outside `~/.glove/envs/`; `GloveSource` follows it via the resolved `home` glove records in
+`~/.glove/registry.json` (see [`glove-session-discovery.md`](../planning/glove-session-discovery.md)),
+translating the host path onto the container home and requiring — for a containerized Layman — that
+the relocated home live under `~/.glove`.
 
 ### History import discovers glove pi *and* Vibe sessions too (`recovery.ts`, `transcript-pi.ts`, `transcript-vibe.ts`)
 

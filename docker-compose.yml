@@ -33,12 +33,16 @@ services:
       # extension to ~/.pi/agent/extensions/layman/index.ts, which pi
       # auto-discovers. Nothing else in ~/.pi is touched.
       - ${HOME}/.pi:/root/.pi
-      # glove sandbox homes (read-only). When `glove.enabled` is set, the passive
-      # watchers tail harness logs (Vibe and pi) under ~/.glove/envs/<env-id>/home/
-      # to monitor sandboxed sessions live. Read-only: Layman never writes into a
-      # sandbox, and the mount adds nothing to what the sandboxed agent can see.
-      # Off by default; native monitoring is unaffected whether or not glove is enabled.
-      - ${HOME}/.glove/envs:/root/.glove/envs:ro
+      # glove state (read-only). When `glove.enabled` is set, the passive watchers
+      # tail harness logs (Vibe and pi) under each env's resolved home to monitor
+      # sandboxed sessions live. The whole ~/.glove is mounted (not just envs/) so
+      # GloveSource can read ~/.glove/registry.json — glove's single canonical
+      # record of each env's resolved home — and so a home relocated under ~/.glove
+      # (the mount contract for relocated homes; see docs/planning/glove-session-
+      # discovery.md) is reachable. Read-only: Layman never writes into a sandbox,
+      # and the mount adds nothing to what the sandboxed agent can see. Off by
+      # default; native monitoring is unaffected whether or not glove is enabled.
+      - ${HOME}/.glove:/root/.glove:ro
     environment:
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
