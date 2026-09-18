@@ -53,6 +53,14 @@ function writeRegistry(root: string, entries: unknown[]): void {
   writeFileSync(join(root, 'registry.json'), JSON.stringify(entries), 'utf8');
 }
 
+/**
+ * A pi home relocated under the `<glove-home>/homes/<env>/` convention dir — the
+ * layout glove's launcher scripts produce for a `--env X --config Y` one-off.
+ */
+function makeHomesConventionPi(gloveHome: string, env: string): string {
+  return makePiHome(join(gloveHome, 'homes', env));
+}
+
 describe('GloveSource', () => {
   let root: string;
   let savedHostHome: string | undefined;
@@ -235,6 +243,99 @@ describe('GloveSource', () => {
 
     expect(new GloveSource(() => base).roots()).toEqual([
       { path: piDir, agentType: 'pi', label: 'pi-local' },
+    ]);
+  });
+
+  it('discovers a home under the ~/.glove/homes/<env> convention with no registry entry', () => {
+    // The `glove <h> --env X --config Y` one-off case: a forced --env is never
+    // registered, so the registry has no `home` for it, but the launcher relocated
+    // the home under `<glove-home>/homes/<env>/`. Enumerating that dir finds it.
+    const base = join(root, 'sessions'); // may not even exist
+    const piDir = makeHomesConventionPi(root, 'pi-rag');
+
+    expect(new GloveSource(() => base).roots()).toEqual([
+      { path: piDir, agentType: 'pi', label: 'pi-rag' },
+    ]);
+  });
+
+  it('tails a homes/<env> home once even when the registry also records it (no double-tail)', () => {
+    const base = join(root, 'sessions');
+    mkdirSync(join(base, 'pi-rag'), { recursive: true }); // env dir, home relocated away
+    const relocated = join(root, 'homes', 'pi-rag');
+    const piDir = makePiHome(relocated);
+    // Both the registry (relocated, outside base) and the homes/ convention name
+    // the very same tree — it must be tailed exactly once.
+    writeRegistry(root, [{ env_id: 'pi-rag', harness: 'pi', home: relocated }]);
+
+    expect(new GloveSource(() => base).roots()).toEqual([
+      { path: piDir, agentType: 'pi', label: 'pi-rag' },
+    ]);
+  });
+
+  it('discovers a homes/<env> relocation alongside a normally-enumerated env', () => {
+    const base = join(root, 'sessions');
+    const enumeratedPi = makeGlovePiSandbox(base, 'pi-local');
+    const relocatedPi = makeHomesConventionPi(root, 'pi-rag');
+
+    const roots = new GloveSource(() => base).roots();
+    expect(roots).toContainEqual({ path: enumeratedPi, agentType: 'pi', label: 'pi-local' });
+    expect(roots).toContainEqual({ path: relocatedPi, agentType: 'pi', label: 'pi-rag' });
+    expect(roots).toHaveLength(2);
+  });
+
+  it('ignores a non-directory entry under homes/', () => {
+    const base = join(root, 'sessions');
+    mkdirSync(join(root, 'homes'), { recursive: true });
+    writeFileSync(join(root, 'homes', '.DS_Store'), '', 'utf8');
+    const piDir = makeHomesConventionPi(root, 'pi-rag');
+
+    expect(new GloveSource(() => base).roots()).toEqual([
+      { path: piDir, agentType: 'pi', label: 'pi-rag' },
+    ]);
+  });
+
+  it('dedups a registry home recorded with a trailing slash against its convention twin', () => {
+    // The registry and the homes/ convention name the identical tree, but glove
+    // recorded `home` with a trailing slash. Canonicalizing the registry home
+    // where the `relocated` map is built strips that slash, and `handledEnvs` then
+    // drops the convention twin — so the tree is tailed exactly once.
+    const base = join(root, 'sessions');
+    mkdirSync(join(base, 'pi-rag'), { recursive: true }); // env dir, home relocated away
+    const piDir = makeHomesConventionPi(root, 'pi-rag'); // <root>/homes/pi-rag/.pi/...
+    writeRegistry(root, [{ env_id: 'pi-rag', home: join(root, 'homes', 'pi-rag') + '/' }]);
+
+    expect(new GloveSource(() => base).roots()).toEqual([
+      { path: piDir, agentType: 'pi', label: 'pi-rag' },
+    ]);
+  });
+
+  it('suppresses a stale homes/<env> when the registry relocated that env elsewhere', () => {
+    // pi-rag's real home is relocated (registry) to a path *outside* homes/, while
+    // a stale homes/pi-rag lingers from a prior one-off. The two are different
+    // trees under the same label — `probed` cannot collapse them — so the
+    // handledEnvs guard must drop the stale convention copy, leaving one root.
+    const base = join(root, 'sessions');
+    mkdirSync(join(base, 'pi-rag'), { recursive: true });
+    makeHomesConventionPi(root, 'pi-rag'); // stale dir, must NOT be tailed
+    const relocated = join(root, 'relocated-home');
+    const realPi = makePiHome(relocated);
+    writeRegistry(root, [{ env_id: 'pi-rag', harness: 'pi', home: relocated }]);
+
+    expect(new GloveSource(() => base).roots()).toEqual([
+      { path: realPi, agentType: 'pi', label: 'pi-rag' },
+    ]);
+  });
+
+  it('suppresses a stale homes/<env> that collides with a normally-enumerated env', () => {
+    // pi-local is enumerated under base; a stale homes/pi-local also exists. The
+    // enumerated home is authoritative, so the convention copy is skipped and no
+    // duplicate-labelled root appears.
+    const base = join(root, 'sessions');
+    const enumeratedPi = makeGlovePiSandbox(base, 'pi-local');
+    makeHomesConventionPi(root, 'pi-local'); // stale, must NOT be tailed
+
+    expect(new GloveSource(() => base).roots()).toEqual([
+      { path: enumeratedPi, agentType: 'pi', label: 'pi-local' },
     ]);
   });
 
