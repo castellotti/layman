@@ -53,6 +53,14 @@ function writeRegistry(root: string, entries: unknown[]): void {
   writeFileSync(join(root, 'registry.json'), JSON.stringify(entries), 'utf8');
 }
 
+/**
+ * A pi home relocated under the `<glove-home>/homes/<env>/` convention dir — the
+ * layout glove's launcher scripts produce for a `--env X --config Y` one-off.
+ */
+function makeHomesConventionPi(gloveHome: string, env: string): string {
+  return makePiHome(join(gloveHome, 'homes', env));
+}
+
 describe('GloveSource', () => {
   let root: string;
   let savedHostHome: string | undefined;
@@ -235,6 +243,54 @@ describe('GloveSource', () => {
 
     expect(new GloveSource(() => base).roots()).toEqual([
       { path: piDir, agentType: 'pi', label: 'pi-local' },
+    ]);
+  });
+
+  it('discovers a home under the ~/.glove/homes/<env> convention with no registry entry', () => {
+    // The `glove <h> --env X --config Y` one-off case: a forced --env is never
+    // registered, so the registry has no `home` for it, but the launcher relocated
+    // the home under `<glove-home>/homes/<env>/`. Enumerating that dir finds it.
+    const base = join(root, 'sessions'); // may not even exist
+    const piDir = makeHomesConventionPi(root, 'pi-rag');
+
+    expect(new GloveSource(() => base).roots()).toEqual([
+      { path: piDir, agentType: 'pi', label: 'pi-rag' },
+    ]);
+  });
+
+  it('tails a homes/<env> home once even when the registry also records it (no double-tail)', () => {
+    const base = join(root, 'sessions');
+    mkdirSync(join(base, 'pi-rag'), { recursive: true }); // env dir, home relocated away
+    const relocated = join(root, 'homes', 'pi-rag');
+    const piDir = makePiHome(relocated);
+    // Both the registry (relocated, outside base) and the homes/ convention name
+    // the very same tree — it must be tailed exactly once.
+    writeRegistry(root, [{ env_id: 'pi-rag', harness: 'pi', home: relocated }]);
+
+    expect(new GloveSource(() => base).roots()).toEqual([
+      { path: piDir, agentType: 'pi', label: 'pi-rag' },
+    ]);
+  });
+
+  it('discovers a homes/<env> relocation alongside a normally-enumerated env', () => {
+    const base = join(root, 'sessions');
+    const enumeratedPi = makeGlovePiSandbox(base, 'pi-local');
+    const relocatedPi = makeHomesConventionPi(root, 'pi-rag');
+
+    const roots = new GloveSource(() => base).roots();
+    expect(roots).toContainEqual({ path: enumeratedPi, agentType: 'pi', label: 'pi-local' });
+    expect(roots).toContainEqual({ path: relocatedPi, agentType: 'pi', label: 'pi-rag' });
+    expect(roots).toHaveLength(2);
+  });
+
+  it('ignores a non-directory entry under homes/', () => {
+    const base = join(root, 'sessions');
+    mkdirSync(join(root, 'homes'), { recursive: true });
+    writeFileSync(join(root, 'homes', '.DS_Store'), '', 'utf8');
+    const piDir = makeHomesConventionPi(root, 'pi-rag');
+
+    expect(new GloveSource(() => base).roots()).toEqual([
+      { path: piDir, agentType: 'pi', label: 'pi-rag' },
     ]);
   });
 

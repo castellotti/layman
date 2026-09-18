@@ -195,6 +195,15 @@ export const GLOVE_ROOTS_TTL_MS = 1000;
  * documented in the planning doc. Reads are best-effort: a missing or malformed
  * registry (including a stray non-object array element) degrades to enumeration.
  *
+ * As a registry-independent fallback, this source also enumerates
+ * `<glove-home>/homes/<env-id>/` directly (a sibling of `<sessionsDir>`). glove's
+ * launcher scripts relocate a home there and the mount contract keeps any watched
+ * relocated home under `~/.glove`, so a session is still discovered when glove
+ * never recorded its `home` — which is exactly what a `glove <h> --env X --config
+ * Y` one-off produces, since a forced `--env` is not registered and so no home is
+ * ever written. This overlaps the registry deliberately; the same `probed` set
+ * that guards the enumeration paths collapses a home found twice to a single tail.
+ *
  * Each root is labelled with glove's session token — the env id for the default
  * session (e.g. `pi-local`), else `<env-id>-<name>` (e.g. `pi-local-myrepo`), and
  * the env id for a registry-relocated home — so its sessions are tagged and
@@ -313,6 +322,22 @@ export class GloveSource implements MonitorSource {
       if (existsSync(home)) probe(home, env);
     }
 
+    // Convention-based fallback: relocated homes under `<glove-home>/homes/<env-id>/`.
+    // The mount contract already requires a relocated home a containerized Layman
+    // watches to live under `~/.glove`, and glove's launcher scripts standardize on
+    // the `homes/` subdir for it (`config_home_source: ~/.glove/homes/<env-id>`).
+    // Enumerating that dir directly discovers such a session even when glove's
+    // registry has no entry for it — which happens for a `glove <h> --env X
+    // --config Y` one-off, whose forced env is not registered, so no `home` is ever
+    // recorded (see docs/planning/glove-session-discovery.md). This is redundant
+    // with the registry on purpose: the `probed` set collapses a home found by both
+    // to a single tail, preserving the no-double-tail invariant. These paths are
+    // already container-local (a sibling of `base`), so no host→container rebasing
+    // is needed. Reads are best-effort — a missing `homes/` yields nothing.
+    for (const { home, label } of this.conventionHomes(dirname(base))) {
+      if (existsSync(home)) probe(home, label);
+    }
+
     return roots;
   }
 
@@ -378,6 +403,36 @@ export class GloveSource implements MonitorSource {
       homes.push({ home, label: name === env ? env : `${env}-${name}` });
     }
     return homes;
+  }
+
+  /**
+   * Relocated harness homes discovered by convention, one per subdir of
+   * `<glove-home>/homes/`, each labelled with its dir name (the env id). glove's
+   * launcher scripts relocate a home there (`config_home_source:
+   * ~/.glove/homes/<env-id>`) and the mount contract keeps any watched relocated
+   * home under `~/.glove`, so enumerating this sibling of the sessions dir finds a
+   * relocated session that the registry never recorded. Empty when there is no
+   * `homes/` dir (the common case: no env relocates a home).
+   */
+  private conventionHomes(gloveHome: string): Array<{ home: string; label: string }> {
+    const homesRoot = join(gloveHome, 'homes');
+    let names: string[];
+    try {
+      names = readdirSync(homesRoot);
+    } catch {
+      return []; // no homes/ dir (or unreadable)
+    }
+    const out: Array<{ home: string; label: string }> = [];
+    for (const name of names) {
+      const home = join(homesRoot, name);
+      try {
+        if (!statSync(home).isDirectory()) continue;
+      } catch {
+        continue; // vanished between readdir and stat, or unreadable
+      }
+      out.push({ home, label: name });
+    }
+    return out;
   }
 
   /**
