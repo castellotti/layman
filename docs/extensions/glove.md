@@ -45,9 +45,15 @@ That is exactly what a `glove <harness> --env X --config Y` one-off produces: a 
 `--config` (no prior `glove init`) is *not registered*, so `record_home` finds no registry row to
 update and writes nothing — leaving the registry blind to the session. Enumerating `homes/` closes
 that gap without depending on the registry being complete. It is redundant with the registry on
-purpose; the same in-scan `probed` set that guards enumeration collapses a home found by both paths to
-a single tail, so the no-double-tail invariant holds. The paired glove-side fix — registering the
-forced `--env` so the registry stays complete for every consumer — lives in the glove repo.
+purpose, and the no-double-tail invariant holds through two guards. When the registry and the
+convention name the **same** tree, the in-scan `probed` set collapses them — keyed on the
+separator-normalized path, since the registry path passes through `path.join` (which keeps a trailing
+slash) while the convention path is built without one, so a `home` recorded as `…/homes/<env>/` still
+dedups. When the env's real home is **elsewhere** but a stale `homes/<env>` lingers from a prior
+one-off (a different path `probed` cannot collapse), a `handledEnvs` set — every env id the registry
+or enumeration already resolved — suppresses the convention copy so the dead session is not
+re-surfaced under a duplicate label. The paired glove-side fix — registering the forced `--env` so the
+registry stays complete for every consumer — lives in the glove repo.
 
 ## Design notes
 
