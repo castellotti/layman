@@ -296,9 +296,9 @@ describe('GloveSource', () => {
 
   it('dedups a registry home recorded with a trailing slash against its convention twin', () => {
     // The registry and the homes/ convention name the identical tree, but glove
-    // recorded `home` with a trailing slash. `path.join` preserves that slash, so
-    // the two independently-built paths differ as raw strings; the separator-
-    // normalized `probed` key must still collapse them to a single tail.
+    // recorded `home` with a trailing slash. Canonicalizing the registry home
+    // where the `relocated` map is built strips that slash, and `handledEnvs` then
+    // drops the convention twin — so the tree is tailed exactly once.
     const base = join(root, 'sessions');
     mkdirSync(join(base, 'pi-rag'), { recursive: true }); // env dir, home relocated away
     const piDir = makeHomesConventionPi(root, 'pi-rag'); // <root>/homes/pi-rag/.pi/...

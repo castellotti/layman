@@ -201,8 +201,9 @@ export const GLOVE_ROOTS_TTL_MS = 1000;
  * relocated home under `~/.glove`, so a session is still discovered when glove
  * never recorded its `home` — which is exactly what a `glove <h> --env X --config
  * Y` one-off produces, since a forced `--env` is not registered and so no home is
- * ever written. This overlaps the registry deliberately; the same `probed` set
- * that guards the enumeration paths collapses a home found twice to a single tail.
+ * ever written. This overlaps the registry deliberately; a `handledEnvs` set of
+ * env ids already resolved by the registry or enumeration suppresses the
+ * convention copy of any such env, so an env is never tailed twice.
  *
  * Each root is labelled with glove's session token — the env id for the default
  * session (e.g. `pi-local`), else `<env-id>-<name>` (e.g. `pi-local-myrepo`), and
@@ -264,15 +265,12 @@ export class GloveSource implements MonitorSource {
     // can't collapse across two roots).
     const probed = new Set<string>();
     const probe = (home: string, label: string): boolean => {
-      // Key on the separator-normalized path, not the raw string: a
-      // registry-relocated home and its convention twin are built independently
-      // (`toContainerPath(entry.home)` vs `join(dirname(base), 'homes', name)`),
-      // so glove recording `home` with a trailing slash — which `path.join`
-      // preserves on its last segment — would slip past a raw-string check and
-      // double-tail the same tree. `normalizeHome` collapses that difference.
-      const key = normalizeHome(home);
-      if (probed.has(key)) return false;
-      probed.add(key);
+      // Every home reaching here is separator-normalized: registry homes are
+      // canonicalized where the `relocated` map is built (the one site a trailing
+      // slash enters, since every other home is `join`ed from slash-free
+      // segments), so a plain raw-path dedup is sound.
+      if (probed.has(home)) return false;
+      probed.add(home);
       return this.probeHome(home, label, roots);
     };
 
@@ -284,7 +282,11 @@ export class GloveSource implements MonitorSource {
     const relocated = new Map<string, string>();
     for (const entry of this.readRegistry(base)) {
       if (!entry.env_id || !entry.home) continue;
-      const home = this.toContainerPath(entry.home);
+      // Canonicalize here — the one site a trailing slash enters the pipeline
+      // (glove may record `home` with one; every other home is `join`ed from
+      // slash-free segments) — so all downstream path comparisons stay
+      // spelling-agnostic without a per-probe workaround.
+      const home = normalizeHome(this.toContainerPath(entry.home));
       if (!isUnder(home, base)) relocated.set(entry.env_id, home);
     }
 
@@ -348,17 +350,17 @@ export class GloveSource implements MonitorSource {
     // Enumerating that dir directly discovers such a session even when glove's
     // registry has no entry for it — which happens for a `glove <h> --env X
     // --config Y` one-off, whose forced env is not registered, so no `home` is ever
-    // recorded (see docs/planning/glove-session-discovery.md). Two guards keep the
-    // no-double-tail invariant: `handledEnvs` skips an env whose home the registry
-    // or enumeration already resolved (its `homes/<env>` is then a *different*,
-    // stale path `probed` could not collapse), and for the same-tree case where
-    // registry and convention name the identical home, the `probed` set collapses
-    // it to one tail. These paths are already container-local (a sibling of
-    // `base`), so no host→container rebasing is needed. Reads are best-effort — a
-    // missing `homes/` yields nothing.
-    for (const { home, label } of this.conventionHomes(dirname(base))) {
-      if (handledEnvs.has(label)) continue;
-      if (existsSync(home)) probe(home, label);
+    // recorded (see docs/planning/glove-session-discovery.md). `conventionHomes`
+    // takes `handledEnvs` and skips (before statting) any env the registry or
+    // enumeration already resolved authoritatively, so a stale `homes/<env>` left
+    // beside an env's real home — a *different* path `probed` could not collapse —
+    // is not re-tailed under a duplicate label; that same skip also drops the
+    // registry-relocated same-tree twin. What survives has already been
+    // `statSync`'d as a directory, so probe directly. These paths are
+    // container-local (a sibling of `base`), so no host→container rebasing is
+    // needed. Reads are best-effort — a missing `homes/` yields nothing.
+    for (const { home, label } of this.conventionHomes(dirname(base), handledEnvs)) {
+      probe(home, label);
     }
 
     return roots;
@@ -436,8 +438,16 @@ export class GloveSource implements MonitorSource {
    * home under `~/.glove`, so enumerating this sibling of the sessions dir finds a
    * relocated session that the registry never recorded. Empty when there is no
    * `homes/` dir (the common case: no env relocates a home).
+   *
+   * `handled` is the set of env ids already resolved authoritatively (registry or
+   * enumeration); those are skipped *before* the per-entry `statSync`, so a stale
+   * `homes/<env>` left beside an env's real home costs no filesystem call on the
+   * read-only FUSE mount and is never re-tailed under a duplicate label.
    */
-  private conventionHomes(gloveHome: string): Array<{ home: string; label: string }> {
+  private conventionHomes(
+    gloveHome: string,
+    handled: ReadonlySet<string>,
+  ): Array<{ home: string; label: string }> {
     const homesRoot = join(gloveHome, 'homes');
     let names: string[];
     try {
@@ -447,6 +457,7 @@ export class GloveSource implements MonitorSource {
     }
     const out: Array<{ home: string; label: string }> = [];
     for (const name of names) {
+      if (handled.has(name)) continue; // env already resolved — skip before statting
       const home = join(homesRoot, name);
       try {
         if (!statSync(home).isDirectory()) continue;
@@ -485,17 +496,17 @@ export class GloveSource implements MonitorSource {
  * being under `.../envs`. A trailing separator on `base` is normalized away.
  */
 function isUnder(p: string, base: string): boolean {
-  let b = base;
-  while (b.length > 1 && b.endsWith(sep)) b = b.slice(0, -sep.length);
+  const b = normalizeHome(base);
   return p === b || p.startsWith(b + sep);
 }
 
 /**
  * Strips trailing path separators so two spellings of the same directory —
- * `.../homes/pi-rag` and `.../homes/pi-rag/` — key identically in the
- * `probed` set. `path.join` preserves a trailing slash on its final segment,
- * so a registry `home` recorded with one would otherwise evade the
- * no-double-tail dedup against a convention path built without one.
+ * `.../homes/pi-rag` and `.../homes/pi-rag/` — compare equal. Shared by
+ * `isUnder`, `rebaseGloveHome`, and the registry-home canonicalization in
+ * `GloveSource.scan`: glove may record a `home` with a trailing slash (which
+ * `path.join` preserves on its final segment), and normalizing it at the one
+ * site it enters keeps every downstream path comparison spelling-agnostic.
  */
 function normalizeHome(p: string): string {
   let s = p;
@@ -520,8 +531,7 @@ export function rebaseGloveHome(
   containerHome: string,
 ): string {
   if (!hostHome) return hostPath;
-  let home = hostHome;
-  while (home.length > 1 && home.endsWith(sep)) home = home.slice(0, -sep.length);
+  const home = normalizeHome(hostHome);
   if (home === containerHome) return hostPath;
   if (hostPath === home) return containerHome;
   if (hostPath.startsWith(home + sep)) {

@@ -45,15 +45,16 @@ That is exactly what a `glove <harness> --env X --config Y` one-off produces: a 
 `--config` (no prior `glove init`) is *not registered*, so `record_home` finds no registry row to
 update and writes nothing — leaving the registry blind to the session. Enumerating `homes/` closes
 that gap without depending on the registry being complete. It is redundant with the registry on
-purpose, and the no-double-tail invariant holds through two guards. When the registry and the
-convention name the **same** tree, the in-scan `probed` set collapses them — keyed on the
-separator-normalized path, since the registry path passes through `path.join` (which keeps a trailing
-slash) while the convention path is built without one, so a `home` recorded as `…/homes/<env>/` still
-dedups. When the env's real home is **elsewhere** but a stale `homes/<env>` lingers from a prior
-one-off (a different path `probed` cannot collapse), a `handledEnvs` set — every env id the registry
-or enumeration already resolved — suppresses the convention copy so the dead session is not
-re-surfaced under a duplicate label. The paired glove-side fix — registering the forced `--env` so the
-registry stays complete for every consumer — lives in the glove repo.
+purpose, and the no-double-tail invariant is held by a single `handledEnvs` set — every env id the
+registry or enumeration already resolved authoritatively. The convention loop skips any env in that
+set, which covers both overlap shapes at once: the **same-tree** case (registry and convention name
+the identical home) and the **stale** case (the env's real home is elsewhere but a dead `homes/<env>`
+lingers from a prior one-off, a different path a raw dedup could not collapse). Because the env id is
+the `homes/<env>` dir name, the skip lands before the twin is ever probed. Registry homes are
+canonicalized where they are read (glove may record a `home` with a trailing slash, which `path.join`
+preserves; every other home is built from slash-free segments), so the `probed` path dedup stays
+spelling-agnostic without a per-probe workaround. The paired glove-side fix — registering the forced
+`--env` so the registry stays complete for every consumer — lives in the glove repo.
 
 ## Design notes
 
