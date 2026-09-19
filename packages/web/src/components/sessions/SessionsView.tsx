@@ -72,7 +72,16 @@ export function SessionsView({ onSend }: SessionsViewProps) {
   const sidebarRef = useRef<HTMLDivElement>(null);
   const dividerDragging = useRef(false);
 
-  const liveSessionIds = useMemo(() => new Set(sessions.map((s) => s.sessionId)), [sessions]);
+  // "Live" here means the same thing the Dashboard means by it: a session the
+  // gate still considers active. A session that has idle-tombstoned (e.g. a glove
+  // pi run suspended after 15m of transcript silence) stays in `sessions` with
+  // `active: false` so it can resume, but it is NOT live — mirroring `active !==
+  // false` everywhere else (DashboardView, SessionListRow, SessionMetricsBar) so
+  // the green dot can't claim a session is live while the Dashboard has dropped it.
+  const liveSessionIds = useMemo(
+    () => new Set(sessions.filter((s) => s.active !== false).map((s) => s.sessionId)),
+    [sessions],
+  );
   const bookmarkedSessionIds = useMemo(() => new Set(bookmarks.map((b) => b.sessionId)), [bookmarks]);
   const bookmarkIdBySessionId = useMemo(() => new Map(bookmarks.map((b) => [b.sessionId, b.id])), [bookmarks]);
   const bookmarkIdForSession = useCallback(

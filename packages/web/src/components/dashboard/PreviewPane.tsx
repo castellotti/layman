@@ -1,6 +1,7 @@
-import React, { useEffect, useMemo, useRef } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { StatusDot, Meter, StateChip } from '../primitives/index.js';
 import { useNow } from '../../hooks/useNow.js';
+import { fetchSessionEvents } from '../../stores/sessionStore.js';
 import type { TimelineEvent, DriftState } from '../../lib/types.js';
 import type { SessionInfo } from '../../lib/ws-protocol.js';
 import type { SessionMetrics } from '../../lib/types.js';
@@ -284,6 +285,62 @@ function DriftIndicator({
   );
 }
 
+// ─── recorded-history merge ────────────────────────────────────────────────────
+// The Dashboard is fed by the live EventStore, which holds only what the server
+// has seen since it started. A *resumed* session — e.g. a glove pi run picked
+// back up after an idle tombstone, or any session continued across a Layman
+// restart — has its earlier turns only in SQLite: the passive watcher deliberately
+// does NOT re-emit already-recorded history on resume (that would double-record it,
+// since the live path mints fresh ids the recorder can't dedupe). So the live tail
+// alone shows just "start" + the new turn, while the Sessions tab, which reads
+// SQLite, shows the whole thread. This hook closes that gap for the preview: it
+// fetches the session's recorded events once and merges them under the live tail,
+// so the pane shows the full continued session and auto-scrolls to the latest.
+//
+// Merge is order-preserving, not a timestamp re-sort: recorded rows come back
+// chronological and any live row already persisted is deduped by id (the live copy
+// wins, so an in-place event:update is not lost); live rows not yet in the recorded
+// snapshot are strictly newer, so they append after it. Recording-off and
+// brand-new sessions return no recorded rows and fall straight through to the live
+// tail, unchanged. Skipped for remote (multi-host) sessions, whose live presence is
+// deliberately a 10-minute window on central — backfilling their full history onto
+// the Dashboard is out of scope here.
+export function mergeRecordedWithLive(
+  recorded: TimelineEvent[],
+  live: TimelineEvent[],
+): TimelineEvent[] {
+  if (recorded.length === 0) return live;
+  const liveById = new Map(live.map((e) => [e.id, e]));
+  const recordedIds = new Set(recorded.map((e) => e.id));
+  return [
+    ...recorded.map((e) => liveById.get(e.id) ?? e),
+    ...live.filter((e) => !recordedIds.has(e.id)),
+  ];
+}
+
+function useHistoryMergedEvents(
+  sessionId: string,
+  live: TimelineEvent[],
+  enabled: boolean,
+): TimelineEvent[] {
+  const [recorded, setRecorded] = useState<TimelineEvent[]>([]);
+
+  useEffect(() => {
+    if (!enabled) {
+      setRecorded([]);
+      return;
+    }
+    let cancelled = false;
+    setRecorded([]);
+    void fetchSessionEvents(sessionId)
+      .then(({ events }) => { if (!cancelled) setRecorded(events); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [sessionId, enabled]);
+
+  return useMemo(() => mergeRecordedWithLive(recorded, live), [recorded, live]);
+}
+
 // ─── PreviewPane ─────────────────────────────────────────────────────────────
 
 interface PreviewPaneProps {
@@ -303,9 +360,12 @@ export const PreviewPane = React.memo(function PreviewPane({
   session, events, metrics, driftState, driftEnabled, onClose, onOpenInLogs, onOpenEventInLogs, onSendAnalyze, minHeight = 240,
 }: PreviewPaneProps) {
   const isActive = session.active !== false;
+  // Full continued thread = recorded history under the live tail (see hook). Local
+  // sessions only; a remote's history isn't backfilled onto the Dashboard.
+  const mergedEvents = useHistoryMergedEvents(session.sessionId, events, !session.remote);
   const { dotState, chipVariant } = useMemo(
-    () => deriveSessionState(events, isActive),
-    [events, isActive]
+    () => deriveSessionState(mergedEvents, isActive),
+    [mergedEvents, isActive]
   );
   const ctxPct = metrics?.contextUsedPct;
   const model = metrics?.modelDisplayName;
@@ -383,7 +443,7 @@ export const PreviewPane = React.memo(function PreviewPane({
       {driftEnabled && driftState && (
         <DriftIndicator
           driftState={driftState}
-          events={events}
+          events={mergedEvents}
           sessionId={session.sessionId}
           onOpenInLogs={onOpenInLogs}
           onOpenEventInLogs={onOpenEventInLogs}
@@ -393,7 +453,7 @@ export const PreviewPane = React.memo(function PreviewPane({
       {/* Activity strip */}
       <div style={{ paddingTop: 6, flexShrink: 0 }}>
         <ActivityStrip
-          events={events}
+          events={mergedEvents}
           onOpenInLogs={onOpenInLogs}
           sessionId={session.sessionId}
           onSendAnalyze={analyzeHandler}
@@ -403,7 +463,7 @@ export const PreviewPane = React.memo(function PreviewPane({
       {/* Recent tail */}
       <div ref={tailScrollRef} style={{ flex: 1, overflowY: 'auto', paddingBottom: 4 }}>
         <RecentTail
-          events={events}
+          events={mergedEvents}
           onOpenInLogs={onOpenEventInLogs}
           sessionId={session.sessionId}
           scrollRef={tailScrollRef}
