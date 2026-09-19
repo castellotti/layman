@@ -1339,11 +1339,19 @@ export function createServer(config: LaymanConfig): LaymanServer {
       return { sessions: sessions.filter((s) => (s.hostId ?? getConfig().sync.hostId) === wanted) };
     });
 
-    fastify.get<{ Params: { sessionId: string } }>('/api/bookmarks/sessions/:sessionId/events', async (request, reply) => {
+    fastify.get<{ Params: { sessionId: string }; Querystring: { limit?: string } }>('/api/bookmarks/sessions/:sessionId/events', async (request, reply) => {
       const { sessionId } = request.params;
       const session = bookmarkStore.getRecordedSession(sessionId);
       if (!session) return reply.status(404).send({ error: 'Session not found' });
-      return { events: bookmarkStore.getEventsForSession(sessionId) };
+      // `?limit=N` returns only the most recent N events (oldest-first), for the
+      // Dashboard preview's bounded tail; omitted → the full session.
+      const parsedLimit = request.query.limit ? parseInt(request.query.limit, 10) : NaN;
+      const limit = Number.isFinite(parsedLimit) && parsedLimit > 0 ? Math.min(10000, parsedLimit) : undefined;
+      return {
+        events: limit
+          ? bookmarkStore.getRecentEventsForSession(sessionId, limit)
+          : bookmarkStore.getEventsForSession(sessionId),
+      };
     });
 
     fastify.get<{ Params: { sessionId: string } }>('/api/bookmarks/sessions/:sessionId/qa', async (request) => {

@@ -21,6 +21,16 @@ describe('mergeRecordedWithLive', () => {
     expect(merged.map((e) => e.id)).toEqual(['h1', 'h2', 'h3', 's', 'n1', 'n2']);
   });
 
+  it('orders by timestamp when the recorded slice is NEWER than the live-only slice', () => {
+    // Recording toggled on mid-session: SQLite holds only the later turns, while
+    // the earlier ones are live-only. An append (recorded-then-live) would order
+    // them backwards; the timestamp sort must interleave them correctly.
+    const recorded = [ev('late1', 'user_prompt', 5), ev('late2', 'agent_response', 6)];
+    const live = [ev('early1', 'user_prompt', 1), ev('early2', 'agent_response', 2), ev('late1', 'user_prompt', 5), ev('late2', 'agent_response', 6)];
+    const merged = mergeRecordedWithLive(recorded, live);
+    expect(merged.map((e) => e.id)).toEqual(['early1', 'early2', 'late1', 'late2']);
+  });
+
   it('dedupes by id and lets the live copy win (so an event:update is not lost)', () => {
     // The same event is in both snapshots; the live one carries a later update.
     const recorded = [ev('h1', 'user_prompt', 1), ev('shared', 'tool_call_pending', 2)];
