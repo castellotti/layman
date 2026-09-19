@@ -142,6 +142,28 @@ export async function fetchSessionEvents(
   }
 }
 
+/**
+ * A session's recorded events only — no time-metrics — capped at the most recent
+ * `limit`. `fetchSessionEvents` pairs events with a `/time-metrics` request; the
+ * Dashboard preview backfill needs neither the metrics nor the full thread, so it
+ * uses this lighter, bounded fetch instead of discarding half of that one.
+ */
+export async function fetchRecordedSessionEventsTail(
+  sessionId: string,
+  limit: number,
+): Promise<TimelineEvent[]> {
+  try {
+    const res = await fetch(
+      `/api/bookmarks/sessions/${encodeURIComponent(sessionId)}/events?limit=${limit}`,
+    );
+    if (!res.ok) return [];
+    const data = await res.json() as { events?: TimelineEvent[] };
+    return data.events ?? [];
+  } catch {
+    return [];
+  }
+}
+
 interface ResolveOutcome {
   resolved: ResolvedId | null;
   /** Populated when the server returned 409 — the prefix names more than one entity. */
