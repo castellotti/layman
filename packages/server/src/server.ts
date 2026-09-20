@@ -1345,7 +1345,7 @@ export function createServer(config: LaymanConfig): LaymanServer {
       if (!session) return reply.status(404).send({ error: 'Session not found' });
       // `?limit=N` returns only the most recent N events (oldest-first), for the
       // Dashboard preview's bounded tail; omitted → the full session.
-      const parsedLimit = request.query.limit ? parseInt(request.query.limit, 10) : NaN;
+      const parsedLimit = parseInt(request.query.limit ?? '', 10);
       const limit = Number.isFinite(parsedLimit) && parsedLimit > 0 ? Math.min(10000, parsedLimit) : undefined;
       return {
         events: limit

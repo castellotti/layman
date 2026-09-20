@@ -5,7 +5,7 @@ import { fetchRecordedSessionEventsTail } from '../../stores/sessionStore.js';
 import type { TimelineEvent, DriftState } from '../../lib/types.js';
 import type { SessionInfo } from '../../lib/ws-protocol.js';
 import type { SessionMetrics } from '../../lib/types.js';
-import { deriveSessionState, getSessionDisplayName, contextPctColor } from '../../lib/session-state.js';
+import { deriveSessionState, getSessionDisplayName, contextPctColor, isSessionLive } from '../../lib/session-state.js';
 import { formatTime, formatDuration as formatElapsed, cwdBasename } from '../../lib/format.js';
 import { EVENT_KIND_COLOR, kindLabel, eventDetail, withThinkingRows, baseEventId } from '../../lib/event-styles.js';
 import { HostChip } from '../shared/HostChip.js';
@@ -387,7 +387,7 @@ interface PreviewPaneProps {
 export const PreviewPane = React.memo(function PreviewPane({
   session, events, metrics, driftState, driftEnabled, onClose, onOpenInLogs, onOpenEventInLogs, onSendAnalyze, minHeight = 240,
 }: PreviewPaneProps) {
-  const isActive = session.active !== false;
+  const isActive = isSessionLive(session);
   // Full continued thread = recorded history under the live tail (see hook). Local
   // sessions only; a remote's history isn't backfilled onto the Dashboard.
   const mergedEvents = useHistoryMergedEvents(session.sessionId, events, !session.remote);

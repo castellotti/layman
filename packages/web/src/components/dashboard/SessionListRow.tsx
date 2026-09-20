@@ -4,7 +4,7 @@ import { useNow } from '../../hooks/useNow.js';
 import type { TimelineEvent } from '../../lib/types.js';
 import type { SessionInfo } from '../../lib/ws-protocol.js';
 import type { SessionMetrics } from '../../lib/types.js';
-import { deriveSessionState, getSessionDisplayName, contextPctColor } from '../../lib/session-state.js';
+import { deriveSessionState, getSessionDisplayName, contextPctColor, isSessionLive } from '../../lib/session-state.js';
 import { cwdBasename } from '../../lib/format.js';
 import { HostChip } from '../shared/HostChip.js';
 
@@ -44,7 +44,7 @@ export const SessionListRow = React.memo(function SessionListRow({
   session, events, metrics, isOpen, isDragging, isDragOver,
   onToggle, onOpenInLogs, onDragStart, onDragOver, onDragEnd,
 }: SessionListRowProps) {
-  const isActive = session.active !== false;
+  const isActive = isSessionLive(session);
 
   const { dotState, lastEvent: lastMeaningful } = useMemo(
     () => deriveSessionState(events, isActive),

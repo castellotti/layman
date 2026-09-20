@@ -9,7 +9,7 @@ import { useFolderDrag, reorderIds, type FolderDragSource, type FolderDropTarget
 import { useFolderCrud } from '../../hooks/useFolderCrud.js';
 import { useExpandedSections, UNFILED_SECTION_KEY } from '../../hooks/useExpandedSections.js';
 import { useInlineEdit } from '../../hooks/useInlineEdit.js';
-import { sessionDisplayName } from '../../lib/session-state.js';
+import { sessionDisplayName, isSessionLive } from '../../lib/session-state.js';
 import { HostChip } from '../shared/HostChip.js';
 import { isEditableCuration } from '../../lib/host.js';
 import type { ClientMessage } from '../../lib/ws-protocol.js';
@@ -72,14 +72,14 @@ export function SessionsView({ onSend }: SessionsViewProps) {
   const sidebarRef = useRef<HTMLDivElement>(null);
   const dividerDragging = useRef(false);
 
-  // "Live" here means the same thing the Dashboard means by it: a session the
-  // gate still considers active. A session that has idle-tombstoned (e.g. a glove
-  // pi run suspended after 15m of transcript silence) stays in `sessions` with
-  // `active: false` so it can resume, but it is NOT live — mirroring `active !==
-  // false` everywhere else (DashboardView, SessionListRow, SessionMetricsBar) so
-  // the green dot can't claim a session is live while the Dashboard has dropped it.
+  // "Live" here means the same thing the Dashboard means by it, via the shared
+  // `isSessionLive` predicate: a session the gate still considers active. A
+  // session that has idle-tombstoned (e.g. a glove pi run suspended after 15m of
+  // transcript silence) stays in `sessions` with `active: false` so it can
+  // resume, but it is NOT live, so the green dot can't claim a session is live
+  // while the Dashboard has dropped it.
   const liveSessionIds = useMemo(
-    () => new Set(sessions.filter((s) => s.active !== false).map((s) => s.sessionId)),
+    () => new Set(sessions.filter(isSessionLive).map((s) => s.sessionId)),
     [sessions],
   );
   const bookmarkedSessionIds = useMemo(() => new Set(bookmarks.map((b) => b.sessionId)), [bookmarks]);

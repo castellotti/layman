@@ -1,5 +1,6 @@
 import React from 'react';
 import { useSessionStore } from '../../stores/sessionStore.js';
+import { isSessionLive } from '../../lib/session-state.js';
 import type { SessionMetrics } from '../../lib/types.js';
 
 function formatCost(usd: number): string {
@@ -58,7 +59,7 @@ export function SessionMetricsBar() {
 
   // Build set of currently-open session IDs for filtering
   const activeSessionIds = new Set(
-    sessions.filter((s) => s.active !== false).map((s) => s.sessionId)
+    sessions.filter(isSessionLive).map((s) => s.sessionId)
   );
 
   // Single session: show that session's metrics directly
