@@ -255,6 +255,19 @@ export class BookmarkStore {
     return rows.map(toEvent);
   }
 
+  /**
+   * The session's most recent `limit` events, returned oldest-first. The
+   * Dashboard preview renders only a bounded tail, so backfilling a resumed
+   * session's earlier turns never needs the whole thread — pulling the newest N
+   * keeps the fetch flat regardless of how long the session ran.
+   */
+  getRecentEventsForSession(sessionId: string, limit: number): TimelineEvent[] {
+    const rows = this.db.prepare(
+      'SELECT * FROM (SELECT * FROM recorded_events WHERE session_id = ? ORDER BY timestamp DESC LIMIT ?) ORDER BY timestamp ASC'
+    ).all(sessionId, limit) as RawEvent[];
+    return rows.map(toEvent);
+  }
+
   getEventById(eventId: string): TimelineEvent | null {
     const row = this.db.prepare(
       'SELECT * FROM recorded_events WHERE id = ?'

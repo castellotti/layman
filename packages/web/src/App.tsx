@@ -16,6 +16,7 @@ import { TTSBar } from './components/tts/TTSBar.js';
 import { BoltIcon } from './components/primitives/index.js';
 import { useSessionStore } from './stores/sessionStore.js';
 import type { SessionState } from './stores/sessionStore.js';
+import { isSessionLive } from './lib/session-state.js';
 import { useWebSocket } from './hooks/useWebSocket.js';
 import { useLaymanRoute } from './hooks/useLaymanRoute.js';
 import { useTTS } from './hooks/useTTS.js';
@@ -42,7 +43,7 @@ function StatusBar() {
         const dismissed = s.dashboardDismissedSessions;
         // Exclude inactive or user-dismissed sessions
         const activeSessions = s.sessions.filter(
-          (sess) => sess.active !== false && !dismissed.has(sess.sessionId)
+          (sess) => isSessionLive(sess) && !dismissed.has(sess.sessionId)
         );
 
         // Determine the single active harness (if unambiguous).
