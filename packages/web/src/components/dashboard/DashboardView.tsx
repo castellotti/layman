@@ -5,6 +5,7 @@ import { PreviewPane } from './PreviewPane.js';
 import { SearchInput } from '../primitives/index.js';
 import { PanelDivider } from '../layout/PanelDivider.js';
 import { saveAndBookmarkSession } from '../../lib/bookmarks-api.js';
+import { isSessionLive } from '../../lib/session-state.js';
 import { useDragReorder } from '../../hooks/useDragReorder.js';
 import type { ClientMessage } from '../../lib/ws-protocol.js';
 import './dashboard.css';
@@ -63,7 +64,7 @@ export function DashboardView({ onSend, sessionListWidth, onResizeSessionList }:
   // Filtered + sorted session list
   const orderedSessions = useMemo(() => {
     const activeSessions = sessions.filter(
-      s => s.active !== false && !dashboardDismissedSessions.has(s.sessionId)
+      s => isSessionLive(s) && !dashboardDismissedSessions.has(s.sessionId)
     );
 
     let filtered = activeSessions;

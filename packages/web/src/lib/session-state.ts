@@ -17,6 +17,17 @@ export function getSessionDisplayName(session: SessionInfo): string {
   return sessionDisplayName(session.sessionName, session.cwd, session.sessionId);
 }
 
+/**
+ * The single definition of "live" every consumer must agree on: a session the
+ * gate still considers active. Note it is `active !== false`, not `active ===
+ * true` — a session with `active` unset (never suspended) is live, and only an
+ * explicit `active: false` (idle-tombstoned/suspended) drops it. Duplicating
+ * that subtlety inline is how the Dashboard and the Sessions tab drifted apart.
+ */
+export function isSessionLive(session: SessionInfo): boolean {
+  return session.active !== false;
+}
+
 /** Color for a context-window-usage percentage, shared by the dashboard row and pane header. */
 export function contextPctColor(pct: number, fallback: string): string {
   if (pct >= 75) return 'var(--error)';
