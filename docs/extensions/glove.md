@@ -143,9 +143,17 @@ glove's netgate records every connection a sandboxed session makes, and Layman r
 Network, Map, Topology and Trace tabs. The implementation plan is
 [`docs/planning/network-views.md`](../planning/network-views.md); glove's data contract, frozen at v1,
 is glove's `docs/planning/network-observability-layman-handoff.md` ("the handoff"), and wins over the
-plan on any question of data format. Code: `packages/server/src/netobs/`. What is built so far is the
-**read side**: discovery, tailing, the store, classification, `net:*` WebSocket frames and a REST
-snapshot. The tabs, the rules writer, the map, correlation and persistence come in later phases.
+plan on any question of data format. Code: `packages/server/src/netobs/`. What is built so far: the
+**read side** (discovery, tailing, the store, classification, `net:*` WebSocket frames and a REST
+snapshot), the **client shell** shared by the four tabs, and the **Network tab**. The rules writer, the
+map, topology, correlation and persistence come in later phases.
+
+glove answered Layman's follow-up questions in its
+`docs/planning/network-observability-layman-followup-results.md` (glove branch
+`netobs-layman-followup`): fail-closed on an unreadable `rules.json`, the permission contract for the
+rules writer, hash-based write confirmation, gate lifecycle records, and a scenario fixture for every
+state its first fixture lacked. What that changed on the read side is below; the writer follows its §3
+contract when it is built.
 
 ### The rule that must not be relaxed
 
@@ -233,7 +241,8 @@ data gets its own `NetStore` (`store.ts`) and its own frames, as `LiveStreamStor
 - **Empty connections are folded**, not listed: an allowed flow with no destination that closed on
   `eof`/`timeout` is proxy noise (handoff §2), counted in `emptyFolded`.
 - Sparklines anchor on the session's latest record, not the wall clock, so when a gate stops its
-  sparklines freeze rather than drain.
+  sparklines freeze rather than drain. There is one per destination and one per flow (the table draws
+  both), each the last 60 s at 1 s, sent sparse: a flow with nothing in the window sends an empty list.
 - **Grouping by registrable domain** (`domain.ts`: `en.wikipedia.org` → `wikipedia.org`; IPs,
   single-label and private-TLD names such as `llm.operator.lan` are their own groups) runs on the server
   so there is one implementation, using `tldts`, which bundles the Public Suffix List (so grouping is a
@@ -252,6 +261,34 @@ come from `classifySession()`: gate freshness (`stale` when a `running` gate's h
 old, falling back to `status.json`'s mtime for a gate that writes no `t`), route declared vs verified
 (verified only while the latest exit is healthy; with `exit_identity: "none"` "declared" is expected,
 not an error), resolver, rules load result, telemetry, and unobserved services.
+
+`gate_lost` is the tenth state, from glove's follow-up: an unclosed flow whose forwarder has gone (next
+section). It is not "open" in any sense the UI means, so `totals.openFlows` and a destination's
+`openFlows` leave it out and `totals.gateLost` counts it. `status.json`'s `rules` also carries glove's
+new `sha256` (of the file now enforced) and `last_rejected` (`{checked_at, source_mtime, sha256, error}`,
+kept after a later acceptance); they are parsed now and are how the rules writer will confirm a write.
+
+### Gate lifecycle: flows that never close
+
+Before glove's follow-up, a forwarder killed with SIGKILL left its open flows looking pooled forever:
+nothing ever wrote their `close`, and `restart: unless-stopped` does not restart a killed container. glove
+now tags every flow record with `run` (the forwarder process, `g_<ULID>`) and writes `type: "gate"`
+start/stop records into `flows.ndjson`, including an `"inferred": true` stop for a forwarder silent for
+30 s. The reader rule: in file order, a run ends at a `stop` for it, or when a later run appears for the
+same service; any later record of the run revives it; an unclosed flow of an ended run was cut by the
+gate going away.
+
+`NetStore.ingestGate()` and `noteRun()` are a **port of glove's reference `glove.netview.ended_runs`**,
+and must stay one: two readers that disagree about which flows are live is exactly the bug class this
+avoids. Three details come straight from the reference. A `stop` ends only its own run and never
+displaces the service's current one — glove fixed this during the follow-up (`d855a1c`) after a crashed
+run's late inferred stop ended its restarted replacement. A later record of an *older* run makes it the
+service's current run again, ending the newer one. Collector records (`role: "collect"`) are skipped.
+`lifecycle.crosscheck.test.ts` enforces the port by running glove's own function (through `uv`) on every
+scenario fixture and on 300 seeded random sequences of starts, stops, collector records and flows, and
+requiring identical ended runs. It was checked to fail on the first draft of the port, which revived an
+old run without making it current. It is skipped when glove or `uv` is not beside the repo. A flow with
+no `run` (an older gate) is never judged by the rule.
 
 ### Frames and coalescing
 
@@ -301,13 +338,69 @@ nothing for finished sessions (their history is not an alarm).
 - **Rules rejected** pins a red `role="alert"` banner under the strip on all four tabs, with "Show file".
   The path it shows is the **host** path (`RulesView.displayPath`, via `toHostPath()` using `HOST_HOME`);
   showing the container's `/root/.glove/…` would send the user to a file that does not exist on their
-  machine. "Revert" and "Try again" arrive with the rules writer.
+  machine. An error beginning `cannot read` gets its own wording: since glove's follow-up an *unreadable*
+  file is a rejection too (it used to fail open), and it almost always means ownership, not content.
+  "Revert" and "Try again" arrive with the rules writer.
 - **Panels** (`lib/net-panels.ts`, `hooks/useNetPanels.ts`, reusing `useDragReorder`): each tab's panels
   are shown or hidden from the chips and reordered by dragging the header grip, persisted per tab in
   localStorage. A per-viewer convenience, so reads are tolerant: unknown ids are dropped and a panel
   added later appears after its default neighbour.
 - A web no-network guard (`lib/net-guard.test.ts`) mirrors the server's over `components/network/`,
   `lib/net-*`, `netStore` and `useNetPanels`.
+
+### The Network tab
+
+Built from `network-ledger.dc.html`: a KPI row, then the Destinations table (main column) and the mini
+map and Rules panels (side column). Activity and Details are off by default and still placeholders; they
+come with the Map tab's detail card. All deciding is in two pure, tested modules; the components draw.
+
+- **The state legend is data** (`NET_LEGEND` in `lib/net-format.ts`): one entry per row of handoff §6.1,
+  plus cleartext HTTP, each with its label, data rule, icon, colour, badge, toggle kind, map treatment and
+  explanation, and `NET_STATE_INFO` mapping every `NetState` to its entry. Every view reads colours and
+  toggles from it, so the legend and the views cannot disagree. The Map, Topology and Trace tabs will use
+  the same table.
+- **The table model** (`lib/net-table.ts`, `buildTable()`) turns destinations and flows into rows:
+  group → host → flow, grouped by registrable domain (default), route or tool, and sorted by most recent
+  or most bytes. A group whose only host *is* the group (`arxiv.org`) is drawn as that host, with no extra
+  level; `wikipedia.org` keeps its level because its host is `en.wikipedia.org`. Four groups are fixed
+  whatever the grouping: Search fan-out, Local links, Refused by glove guard, and Not watched (declared
+  `observed: false` services, which have no records at all). The guard and Not watched groups start
+  expanded: they are what a glance should catch. The mockup drew guard refusals as loose rows; the plan
+  requires the fixed group, and it wins. Not watched rows appear only unfiltered, since they have nothing
+  to match a filter on. Filter chips (All, Live, Blocked, Broken, Local, with counts) and a text filter
+  over host, IP, tool, service, rule id and rule note apply per destination. A host expands to its flows
+  newest first; a destination with more flows than the client holds says how many were not loaded. The
+  footer counts folded empty connections, with "show" to list them.
+- **What each cell says** is decided there too: `live · 380 KB/s` (the last 3 s of the sparkline),
+  `pooled · idle 4 s`, `finished · eof`, `finished · cleartext http`, `path broken · upstream`,
+  `refused by glove guard` / `refused · malformed request`, `blocked · your rule “ads”` (the note from
+  rules.json), `blocked · nothing allowed it`, `cut · gate shut down`, `cut · gate went away (inferred)`.
+  Untunnelled traffic keeps its state but is prefixed `untunnelled ·` in red, with a tinted row and a red
+  left edge; the route cell says `never left` for refusals, `local`, `Direct`, or the declared route. A
+  guard refusal's sublabel says why (`cloud metadata`, `internal name`, `private address`, `no
+  destination`), a user rule's shows its match pattern. The Playwright pass checks that every one of
+  these renders somewhere across the scenario sessions.
+- **Windowing** past 200 rows: `windowRange()` computes the visible slice and spacer heights from a prefix
+  sum of the two row heights (30 px for top-level rows, 28 px below), with no dependency. Checked with a
+  301-row session: 30 rows in the DOM, and scrolling reaches the last row.
+- **Toggles are real buttons** (`NetToggle` in `cells.tsx`): `aria-pressed`, and an `aria-label` naming
+  the verb and target ("Block arxiv.org", "Unblock …", "Allow …"). The kinds are drawn as the legend says:
+  allow filled teal, your rule filled red, default outlined red, guard dashed amber with a lock and always
+  disabled. Until the rules writer exists all of them are disabled, with a tooltip saying how to change
+  rules meanwhile. A group gets a toggle only when all its members agree on one.
+- **KPIs**: Sent, Received, Live (open flows, plus how many were lost with their gate), Destinations (to
+  map, unknown location), Blocked (by guard / your rules / the default), Untunnelled (green "every egress
+  flow used the VPN" at zero, otherwise a red `role="alert"` tile).
+- **Rules panel, read-only**: whether the gate enforces what is on disk, evaluation order (glove's guard as
+  locked row 0 with its hit count, then the file's rules with theirs, and a `CUTS OPEN` badge for
+  `terminate`), and the default policy. When the gate has **rejected** the file, the list is headed "In
+  rules.json · not enforced": the file on disk is not what the gate enforces, and Layman cannot see the
+  set that is. Listing it as the evaluation order would claim otherwise. Hit counts come from the
+  destination aggregates (each destination's block count under its latest rule), so they undercount a
+  destination blocked by two different rules over time. "View file" shows the host path and the file.
+- **Mini map** is a static placeholder until the Map tab's renderer exists: sandbox → exit (dashed while
+  no exit is verified), how many destinations can be placed and how many are in Unknown location, and a
+  click opens the Map tab.
 
 ### Configuration
 
@@ -324,11 +417,24 @@ is empty, so nothing changes for users who don't run it.
 the source commit and how to refresh it). `fixture.test.ts` loads it through discovery, tailing and the
 store and asserts every fixture state in handoff §6.1 plus Appendix A's totals; a drift guard fails when
 the copy differs from `../glove`, and is skipped when glove is not checked out beside this repo.
+
+`netobs/__scenarios__/` is the same for glove's `tests/fixtures/netobs-scenarios/`: sixteen real `net/`
+directories, one per state the first fixture lacks (`default-block`, `direct`, `rules-rejected`,
+`terminate`, `gate-lost`, `stopped`, `pooled`, `rotation` with a same-millisecond collision, and more),
+written by glove's real forwarder and collector code. `COPIED.md` records the source commit and the
+refresh command. `scenarios.test.ts` reads each one through the same path, with "now" one second after
+its heartbeat since every fixture is stale when read later, and asserts the state it exists for. It
+has its own drift guard.
+
 `packages/server/scripts/netobs-replay.ts` builds a fake glove home from the fixture with timestamps
-moved to now and replays it at its recorded pace (`--speed`, `--loop`, `--rotate-every N`, `--direct`):
+moved to now and replays it at its recorded pace (`--speed`, `--loop`, `--rotate-every N`, `--direct`).
+`--scenario <names|all>` replays scenarios instead, each into its own glove session named after it, so
+every state can be looked at in the session picker; a later `--loop` pass gets fresh flow **and run**
+ids, which to the reader is a restarted gate:
 
 ```bash
 pnpm --filter ./packages/server netobs:replay -- --dir /tmp/layman-netobs/glove --speed 0.2 --loop --rotate-every 30
+pnpm --filter ./packages/server netobs:replay -- --dir /tmp/layman-netobs/glove --scenario all
 # then: glove.enabled = true, glove.sessionsDir = /tmp/layman-netobs/glove/envs
 ```
 

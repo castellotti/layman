@@ -97,6 +97,7 @@ class SessionReader {
     for (const line of this.flows.poll()) {
       const p = parseLine(line);
       if (p.kind === 'flow') store.ingestFlow(token, p.record, now);
+      else if (p.kind === 'gate') store.ingestGate(token, p.record, now);
       else if (p.kind === 'invalid') invalid++;
       else skipped++;
     }

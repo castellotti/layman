@@ -1,9 +1,9 @@
 /**
- * Formatting for the network views: bytes, ages, and the gate strip's chips.
- * Pure, so it is tested in node. The per-flow state table (label, colour, icon
- * and toggle kind for every NetState) joins this file with the Network tab.
+ * Formatting for the network views: bytes, ages, the gate strip's chips, and
+ * the state legend every view draws from. Pure, so it is tested in node.
  */
 import type { NetSessionData } from './net-state.js';
+import type { NetState } from './netobs-types.js';
 
 export function formatBytes(n: number): string {
   if (!Number.isFinite(n) || n < 1000) return `${Math.max(0, Math.round(n || 0))} B`;
@@ -145,3 +145,124 @@ export function gateChips(data: NetSessionData): GateChip[] {
   }
   return chips;
 }
+
+// ─── The state legend (plan §6.3, state-legend.dc.html) ─────────────────────
+
+/**
+ * How a row's allow/block toggle is drawn: `allow` filled teal; `block` filled
+ * red (the operator's own rule); `default` outlined red (blocked because nothing
+ * allowed it); `locked` dashed amber (glove's guard: no rule can change it);
+ * `pending` striped amber (a write the gate has not confirmed); `none` no toggle.
+ */
+export type ToggleKind = 'allow' | 'block' | 'default' | 'locked' | 'pending' | 'none';
+
+export type StateIcon =
+  | 'pulse' | 'check' | 'lock' | 'blocked' | 'alert' | 'broken' | 'cut' | 'home' | 'tunnel' | 'eye-off'
+  | 'pin' | 'fold' | 'direct' | 'clock' | 'file' | 'globe' | 'shield';
+
+export interface StateInfo {
+  key: string;
+  /** Handoff §6.1's name for the state. */
+  label: string;
+  /** How it appears in glove's data. */
+  dataRule: string;
+  icon: StateIcon;
+  colourVar: string;
+  /** Short badge text beside a host, or null. */
+  badge: string | null;
+  toggleKind: ToggleKind;
+  /** How the Map tab draws it. */
+  mapTreatment: string;
+  /** What the operator needs to understand. */
+  explanation: string;
+  /** Per flow (a `NetState`), an attribute of a flow (`FlowFlags`), or of the whole session. */
+  level: 'flow' | 'flag' | 'session';
+  /** Must be unmissable: tinted row, red. */
+  loud?: boolean;
+}
+
+/**
+ * Every state the network views tell apart: handoff §6.1 in its order, plus
+ * cleartext HTTP. Every view reads its label, colour, icon, badge and toggle
+ * from here, so the legend and the views cannot disagree.
+ */
+export const NET_LEGEND: readonly StateInfo[] = [
+  { key: 'active', level: 'flow', label: 'Active flow', dataRule: 'open / update, no close yet', icon: 'pulse', colourVar: 'var(--net-tunnel)',
+    badge: 'LIVE', toggleKind: 'allow', mapTreatment: 'bright arc, moving dash', explanation: 'Talking right now; bytes are live.' },
+  { key: 'finished', level: 'flow', label: 'Finished normally', dataRule: 'close_reason: eof', icon: 'check', colourVar: 'var(--text-muted)',
+    badge: null, toggleKind: 'allow', mapTreatment: 'dim arc', explanation: 'Done.' },
+  { key: 'guard', level: 'flow', label: 'Refused by glove guard', dataRule: 'verdict block, rule builtin:*', icon: 'lock', colourVar: 'var(--warn)',
+    badge: 'GUARD', toggleKind: 'locked', mapTreatment: 'not on the map',
+    explanation: 'Tried to reach something internal or unsafe. Not unblockable.' },
+  { key: 'user_rule', level: 'flow', label: 'Blocked by your rule', dataRule: 'verdict block, rule r_*', icon: 'blocked', colourVar: 'var(--error)',
+    badge: 'YOUR RULE', toggleKind: 'block', mapTreatment: 'not on the map', explanation: 'Your own rule did this. Unblock from the same row.' },
+  { key: 'default_block', level: 'flow', label: 'Blocked by the default', dataRule: 'verdict block, rule null', icon: 'blocked', colourVar: 'var(--error)',
+    badge: 'DEFAULT', toggleKind: 'default', mapTreatment: 'not on the map', explanation: 'Nothing allowed it. An allow rule would.' },
+  { key: 'rules_rejected', level: 'session', loud: true, label: 'Rules rejected', dataRule: 'status.json rules.ok false + error', icon: 'alert',
+    colourVar: 'var(--error)', badge: 'BANNER', toggleKind: 'none', mapTreatment: 'red banner, every layout',
+    explanation: 'Your last change did not take effect.' },
+  { key: 'broken', level: 'flow', label: 'Tunnel / upstream failure', dataRule: 'allow + upstream_unreachable / timeout', icon: 'broken',
+    colourVar: 'var(--warn)', badge: 'UNREACHABLE', toggleKind: 'allow', mapTreatment: 'arc stops short, broken end',
+    explanation: 'Not a policy decision: the path is broken.' },
+  { key: 'gate_shutdown', level: 'flow', label: 'Cut by gate shutdown', dataRule: 'close_reason: gate_shutdown', icon: 'cut', colourVar: 'var(--text-muted)',
+    badge: 'CUT', toggleKind: 'allow', mapTreatment: 'arc ends in a slash', explanation: 'The session ended mid-transfer.' },
+  { key: 'local', level: 'flag', label: 'Local link', dataRule: 'scope: local', icon: 'home', colourVar: 'var(--text-body)',
+    badge: null, toggleKind: 'allow', mapTreatment: 'in the sandbox card only', explanation: 'Your machine or an internal service. Never on the map.' },
+  { key: 'tunnelled', level: 'flag', label: 'Tunnelled', dataRule: 'scope: tunnelled', icon: 'tunnel', colourVar: 'var(--net-tunnel)',
+    badge: null, toggleKind: 'allow', mapTreatment: 'teal, via the exit', explanation: 'Left through the declared VPN or Tor route.' },
+  { key: 'direct', level: 'flag', loud: true, label: 'Untunnelled', dataRule: 'scope: direct', icon: 'alert', colourVar: 'var(--error)',
+    badge: 'DIRECT', toggleKind: 'allow', mapTreatment: 'red dashed, skips the exit',
+    explanation: 'The anonymity failure. Red banner, red strip chip, red tab dot.' },
+  { key: 'route_declared', level: 'session', label: 'Route declared, not verified', dataRule: 'route.kind, no healthy exit record', icon: 'tunnel',
+    colourVar: 'var(--warn)', badge: 'UNVERIFIED', toggleKind: 'none', mapTreatment: 'dashed trunk, no exit pin',
+    explanation: 'Trust the label less than an observed exit.' },
+  { key: 'exit_observed', level: 'session', label: 'Exit observed', dataRule: 'latest exit.ndjson healthy: true', icon: 'pin',
+    colourVar: 'var(--net-tunnel)', badge: 'VERIFIED', toggleKind: 'none', mapTreatment: 'solid trunk to the exit pin',
+    explanation: 'The apparent origin. The map starts here, not at you.' },
+  { key: 'resolver_down', level: 'session', label: 'Resolver down', dataRule: 'resolver.healthy false', icon: 'alert', colourVar: 'var(--warn)',
+    badge: 'STRIP', toggleKind: 'none', mapTreatment: 'new flows go to Unknown', explanation: 'The map loses precision; traffic is fine.' },
+  { key: 'unresolved', level: 'flag', label: 'Unresolved destination', dataRule: 'dest.ip null', icon: 'pin', colourVar: 'var(--text-muted)',
+    badge: 'UNKNOWN LOC.', toggleKind: 'allow', mapTreatment: '“Unknown location” bucket', explanation: 'Never looked up by Layman.' },
+  { key: 'no_host', level: 'flag', label: 'Unknown destination', dataRule: 'dest.host null', icon: 'lock', colourVar: 'var(--text-muted)',
+    badge: 'NO HOST', toggleKind: 'locked', mapTreatment: 'not on the map', explanation: 'Shown as the service endpoint.' },
+  { key: 'not_watched', level: 'session', label: 'Service not watched', dataRule: 'session.json observed: false', icon: 'eye-off',
+    colourVar: 'var(--text-faint)', badge: 'NOT WATCHED', toggleKind: 'none', mapTreatment: 'grey chip in the sandbox card',
+    explanation: 'A way out of the sandbox that nobody can see.' },
+  { key: 'telemetry', level: 'session', label: 'Telemetry degraded', dataRule: 'telemetry.dropped > 0', icon: 'alert', colourVar: 'var(--warn)',
+    badge: 'STRIP', toggleKind: 'none', mapTreatment: 'strip chip appears', explanation: 'The view is incomplete; traffic was not affected.' },
+  { key: 'gate_stale', level: 'session', label: 'Gate stale or stopped', dataRule: 'state ≠ running, or t older than 20 s', icon: 'clock',
+    colourVar: 'var(--warn)', badge: 'STRIP', toggleKind: 'none', mapTreatment: 'arcs stop animating',
+    explanation: 'The data has stopped updating, not the traffic.' },
+  { key: 'record_full', level: 'session', label: 'Full record mode', dataRule: 'record: full', icon: 'file', colourVar: 'var(--net-up)',
+    badge: 'STRIP', toggleKind: 'none', mapTreatment: 'strip chip, always',
+    explanation: 'You traded privacy for visibility: request URLs are recorded.' },
+  { key: 'pooled', level: 'flow', label: 'Pooled (idle)', dataRule: 'open, no record for over 3 s', icon: 'pulse', colourVar: 'var(--net-tunnel)',
+    badge: 'POOLED', toggleKind: 'allow', mapTreatment: 'steady arc, no dash', explanation: 'A kept-alive connection, not a live transfer.' },
+  { key: 'gate_lost', level: 'flow', label: 'Cut by a gate that went away (inferred)', dataRule: 'no close, and the flow’s run has ended',
+    icon: 'cut', colourVar: 'var(--warn)', badge: 'CUT · INFERRED', toggleKind: 'allow', mapTreatment: 'arc ends in a slash',
+    explanation: 'The forwarder died mid-flow; its close was never written.' },
+  { key: 'empty', level: 'flow', label: 'Empty connection', dataRule: 'allow, dest.host null, eof / timeout', icon: 'fold',
+    colourVar: 'var(--text-faint)', badge: null, toggleKind: 'none', mapTreatment: 'not on the map', explanation: 'Proxy noise: folded away.' },
+  { key: 'cleartext', level: 'flag', label: 'Cleartext HTTP', dataRule: 'proto: http, or port 80', icon: 'alert', colourVar: 'var(--warn)',
+    badge: 'CLEARTEXT', toggleKind: 'allow', mapTreatment: 'amber arc',
+    explanation: 'Unencrypted: the exit, and anyone past it, can read it.' },
+];
+
+/** States that are a block of some kind: the Blocked KPI, filter chip and toggle. */
+export const BLOCK_STATES: ReadonlySet<NetState> = new Set(['guard', 'user_rule', 'default_block']);
+
+export const LEGEND_BY_KEY: Readonly<Record<string, StateInfo>> = Object.fromEntries(NET_LEGEND.map((s) => [s.key, s]));
+
+/** The legend entry for each primary flow state. */
+export const NET_STATE_INFO: Readonly<Record<NetState, StateInfo>> = {
+  active: LEGEND_BY_KEY.active,
+  pooled: LEGEND_BY_KEY.pooled,
+  finished: LEGEND_BY_KEY.finished,
+  guard: LEGEND_BY_KEY.guard,
+  user_rule: LEGEND_BY_KEY.user_rule,
+  default_block: LEGEND_BY_KEY.default_block,
+  broken: LEGEND_BY_KEY.broken,
+  gate_shutdown: LEGEND_BY_KEY.gate_shutdown,
+  gate_lost: LEGEND_BY_KEY.gate_lost,
+  empty: LEGEND_BY_KEY.empty,
+};

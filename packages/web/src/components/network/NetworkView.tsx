@@ -10,22 +10,22 @@ import React, { useEffect, useMemo } from 'react';
 import { useSessionStore } from '../../stores/sessionStore.js';
 import { useNetStore } from '../../stores/netStore.js';
 import { useNetPanels } from '../../hooks/useNetPanels.js';
-import { defaultNetToken } from '../../lib/net-state.js';
+import { defaultNetToken, type NetSessionData } from '../../lib/net-state.js';
 import { columnPanels, type PanelDef } from '../../lib/net-panels.js';
 import type { ClientMessage } from '../../lib/ws-protocol.js';
 import { GateStrip, RulesRejectedBanner } from './GateStrip.js';
+import { DestinationTable } from './DestinationTable.js';
+import { KpiRow, MiniMap, MiniMapExpand, RulesFileLink, RulesPanel } from './NetworkPanels.js';
 import { EmptyState, PanelFrame } from './netui.js';
 import { TAB_PANELS, type NetTab } from './tabs.js';
 
 /**
- * What each panel will hold, shown until it is built. The Network tab's panels
- * arrive first, then control, the map, topology and the trace.
+ * What each panel will hold, shown until it is built: the map, topology and
+ * the trace arrive in later phases, and the Network tab's Activity and Details
+ * panels with them.
  */
 const PANEL_PURPOSE: Record<string, string> = {
-  'network/table': 'Every destination this session reached, grouped by registrable domain, with live activity, bytes, state and a block/allow toggle.',
   'network/activity': 'Bytes sent and received over time.',
-  'network/map': 'Where this session’s traffic went, from its apparent origin. Opens the Map tab.',
-  'network/rules': 'The rules glove enforces, in evaluation order, and whether the last change took effect.',
   'network/details': 'The selected destination: totals, policy, what the agent asked for, and the connection.',
   'map/world': 'A world map of destinations, with the tunnel exit as the origin of every route.',
   'map/ribbon': 'The last 60 seconds, one lane per flow, with the agent’s tool calls marked.',
@@ -39,13 +39,47 @@ const PANEL_PURPOSE: Record<string, string> = {
   'trace/details': 'The selected call or connection, and what the gate did with it.',
 };
 
-function Board({ tab, panels }: { tab: NetTab; panels: ReturnType<typeof useNetPanels> }) {
+interface PanelContent {
+  body: React.ReactNode;
+  count?: React.ReactNode;
+  actions?: React.ReactNode;
+  /** The panel scrolls itself (the table's sticky header and windowing need that). */
+  ownScroll?: boolean;
+  /** The panel's share of its column (CSS `flex`); by default panels share it equally. */
+  flex?: string;
+}
+
+/** A built panel's content, or null for one still to come. */
+function panelContent(tab: NetTab, id: string, data: NetSessionData): PanelContent | null {
+  switch (`${tab}/${id}`) {
+    case 'network/table':
+      return { body: <DestinationTable data={data} />, count: data.totals.destinations, ownScroll: true };
+    case 'network/map':
+      return { body: <MiniMap data={data} />, actions: <MiniMapExpand />, ownScroll: true, flex: '0 0 240px' };
+    case 'network/rules':
+      return {
+        body: <RulesPanel data={data} />,
+        count: data.gate.rules ? `${data.gate.rules.active_count} enforced` : undefined,
+        actions: <RulesFileLink data={data} />,
+      };
+    default:
+      return null;
+  }
+}
+
+function Board({ tab, panels, data }: { tab: NetTab; panels: ReturnType<typeof useNetPanels>; data: NetSessionData }) {
   const defs = TAB_PANELS[tab];
   const { drag } = panels;
-  const render = (p: PanelDef) => (
+  const render = (p: PanelDef) => {
+    const content = panelContent(tab, p.id, data);
+    return (
     <PanelFrame
       key={p.id}
       title={p.title}
+      count={content?.count}
+      actions={content?.actions}
+      flex={content?.flex}
+      bodyStyle={content?.ownScroll ? { overflow: 'hidden', display: 'flex', flexDirection: 'column' } : undefined}
       onHide={() => panels.toggle(p.id)}
       dropTarget={drag.dragId !== null && drag.dragOverId === p.id && drag.dragId !== p.id}
       drag={{
@@ -54,9 +88,10 @@ function Board({ tab, panels }: { tab: NetTab; panels: ReturnType<typeof useNetP
         onDragEnd: drag.handleDragEnd,
       }}
     >
-      <EmptyState title="Not built yet">{PANEL_PURPOSE[`${tab}/${p.id}`]}</EmptyState>
+      {content?.body ?? <EmptyState title="Not built yet">{PANEL_PURPOSE[`${tab}/${p.id}`]}</EmptyState>}
     </PanelFrame>
-  );
+    );
+  };
   const main = columnPanels(defs, panels.state, 'main');
   const side = columnPanels(defs, panels.state, 'side');
   if (!main.length && !side.length) {
@@ -139,7 +174,12 @@ export default function NetworkView({ tab, onSend }: { tab: NetTab; onSend: (msg
       );
     }
     if (!data || data.token !== token) return <EmptyState title={`Loading ${token}…`} />;
-    return <Board tab={tab} panels={panels} />;
+    return (
+      <>
+        {tab === 'network' && <KpiRow data={data} />}
+        <Board tab={tab} panels={panels} data={data} />
+      </>
+    );
   }, [enabled, sessionsKnown, sessions.length, listed, token, data, tab, panels, config?.glove.sessionsDir, setSettingsOpen]);
 
   const shown = data && data.token === token ? data : null;

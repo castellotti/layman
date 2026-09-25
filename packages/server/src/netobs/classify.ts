@@ -23,7 +23,11 @@ export const STALE_MS = 20_000;
 export type ClassifiableFlow = Pick<
   FlowRecord,
   'phase' | 'verdict' | 'rule' | 'close_reason' | 'dest' | 'scope' | 'proto' | 'client' | 'tool'
-> & { lastActivityAt: number };
+> & {
+  lastActivityAt: number;
+  /** The flow's `run` has ended (handoff §2 reader rule). Only an unclosed flow cares. */
+  runEnded?: boolean;
+};
 
 export const BLOCK_STATES: ReadonlySet<NetState> = new Set(['guard', 'user_rule', 'default_block']);
 
@@ -41,7 +45,12 @@ export function classifyFlow(f: ClassifiableFlow, now: number): NetState {
     if (f.rule) return 'user_rule';
     return 'default_block';
   }
-  if (f.phase !== 'close') return now - f.lastActivityAt > IDLE_MS ? 'pooled' : 'active';
+  if (f.phase !== 'close') {
+    // The forwarder that carried it is gone, so no close will ever come: glove
+    // shows this as "cut by gate shutdown, inferred".
+    if (f.runEnded) return 'gate_lost';
+    return now - f.lastActivityAt > IDLE_MS ? 'pooled' : 'active';
+  }
   switch (f.close_reason) {
     case 'gate_shutdown':
       return 'gate_shutdown';

@@ -102,8 +102,11 @@ linked above.
    Rotated files are identified by content, not inode (Docker Desktop's bind mount changes inodes on
    rename). **Never make a network call keyed on gloved flow data**; tests in both packages enforce it.
    Client: data in `stores/netStore.ts` (never `sessionStore`, which must not re-render per delta);
-   the selection (`netToken`, `netDest`) in `sessionStore` because the URL reads it. Design and rules:
-   `docs/extensions/glove.md` → Network.
+   the selection (`netToken`, `netDest`) in `sessionStore` because the URL reads it. Which flows a
+   dead gate left open is glove's rule (`glove.netview.ended_runs`), ported in `NetStore` and held to it
+   by a cross-check that runs glove's own function — change both or neither. State labels, colours and
+   toggles come from one legend table (`NET_LEGEND` in `lib/net-format.ts`) that every view reads.
+   Design and rules: `docs/extensions/glove.md` → Network.
 
 5. **OpenCode plugin** (`docs/harnesses/opencode.md`): a bidirectional plugin (`packages/opencode-plugin`)
    that receives events from OpenCode and can send prompts back, registered in

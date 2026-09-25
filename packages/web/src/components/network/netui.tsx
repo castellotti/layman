@@ -8,7 +8,8 @@ import type { ChipIcon, ChipTone } from '../../lib/net-format.js';
 export type NetIconName =
   | ChipIcon
   | 'grip' | 'close' | 'table' | 'map' | 'rules' | 'activity' | 'details' | 'trace' | 'topology'
-  | 'eye-off' | 'globe' | 'pin' | 'legend' | 'ribbon';
+  | 'eye-off' | 'globe' | 'pin' | 'legend' | 'ribbon'
+  | 'lock' | 'blocked' | 'broken' | 'cut' | 'home' | 'fold' | 'chevron' | 'search' | 'up' | 'down' | 'expand';
 
 const PATHS: Record<NetIconName, React.ReactNode> = {
   pulse: <path d="M1.5 8h3l1.5-4 3 8 1.5-4h4" />,
@@ -33,6 +34,17 @@ const PATHS: Record<NetIconName, React.ReactNode> = {
   pin: <><path d="M8 14s4.5-4.2 4.5-7.5a4.5 4.5 0 00-9 0C3.5 9.8 8 14 8 14z" /><circle cx="8" cy="6.5" r="1.5" /></>,
   legend: <><path d="M2 4.5h3M2 8h3M2 11.5h3" /><path d="M7 4.5h7M7 8h7M7 11.5h7" /></>,
   ribbon: <path d="M2 13.5h12M3.5 11V6M6.5 11V3M9.5 11V7M12.5 11V5" />,
+  lock: <><rect x="3.5" y="7" width="9" height="6.5" rx="1.2" /><path d="M5.5 7V5a2.5 2.5 0 015 0v2" /></>,
+  blocked: <><circle cx="8" cy="8" r="5.5" /><path d="M4.1 11.9l7.8-7.8" /></>,
+  broken: <path d="M1.5 8h4l1-2M9.5 10l1-2h4" />,
+  cut: <><circle cx="4.5" cy="11.5" r="1.8" /><circle cx="11.5" cy="11.5" r="1.8" /><path d="M5.8 10.2L12 3M10.2 10.2L4 3" /></>,
+  home: <><path d="M2.5 7.5L8 3l5.5 4.5" /><path d="M4 6.5V13h8V6.5" /></>,
+  fold: <path d="M3 8h.01M8 8h.01M13 8h.01" strokeWidth="2.2" />,
+  chevron: <path d="M4 6l4 4 4-4" />,
+  search: <><circle cx="7" cy="7" r="4.5" /><path d="M10.5 10.5L14 14" /></>,
+  up: <path d="M8 13V3M4 7l4-4 4 4" />,
+  down: <path d="M8 3v10M4 9l4 4 4-4" />,
+  expand: <path d="M9.5 2.5h4v4M13.5 2.5L9 7M6.5 13.5h-4v-4M2.5 13.5L7 9" />,
 };
 
 export function NetIcon({ name, size = 12, color = 'currentColor', strokeWidth = 1.4 }: {
@@ -80,14 +92,18 @@ export function Chip({ tone, icon, label, title, strong }: {
  * button, then its body. Dragging is by the grip only, so text in the body
  * stays selectable.
  */
-export function PanelFrame({ title, count, onHide, drag, dropTarget, children, bodyStyle }: {
+export function PanelFrame({ title, count, actions, onHide, drag, dropTarget, children, bodyStyle, flex = '1 1 0' }: {
   title: string;
   count?: React.ReactNode;
+  /** Links in the header, before the hide button ("Expand", "View file"). */
+  actions?: React.ReactNode;
   onHide?: () => void;
   drag?: { onDragStart: () => void; onDragEnd: () => void; onDragOver: () => void };
   dropTarget?: boolean;
   children: React.ReactNode;
   bodyStyle?: React.CSSProperties;
+  /** Share of the column (CSS `flex`). */
+  flex?: string;
 }) {
   return (
     <section
@@ -96,7 +112,7 @@ export function PanelFrame({ title, count, onHide, drag, dropTarget, children, b
       style={{
         display: 'flex', flexDirection: 'column', background: 'var(--bg-card)',
         border: `1px solid ${dropTarget ? 'var(--accent)' : 'var(--border)'}`, borderRadius: 8,
-        overflow: 'hidden', minHeight: 0, minWidth: 0, flex: 1,
+        overflow: 'hidden', minHeight: 0, minWidth: 0, flex,
       }}
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: 7, height: 32, padding: '0 8px', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
@@ -116,6 +132,7 @@ export function PanelFrame({ title, count, onHide, drag, dropTarget, children, b
         </h2>
         {count !== undefined && <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-faint)' }}>{count}</span>}
         <div style={{ flex: 1 }} />
+        {actions}
         {onHide && (
           <button type="button" aria-label={`Hide ${title} panel`} onClick={onHide} style={{
             display: 'flex', alignItems: 'center', justifyContent: 'center', width: 22, height: 22,

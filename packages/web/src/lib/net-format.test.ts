@@ -1,19 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { formatAge, formatBytes, gateChips } from './net-format.js';
 import type { NetSessionData } from './net-state.js';
-import type { NetGateView } from './netobs-types.js';
-import { gate } from './net-test-fixtures.js';
+import { sessionData } from './net-test-fixtures.js';
 
-const data = (g: Partial<NetGateView> = {}, over: Partial<NetSessionData> = {}): NetSessionData => ({
-  token: 'pi-search', env: 'pi-search', name: 'pi-search', session: null, gate: gate(g),
-  exit: { v: 1, type: 'exit', t: 't', env: 'e', session: 'e', kind: 'vpn', ip: '195.177.93.17', country: 'Switzerland', city: null, lat: 47.36, lon: 8.54, source: 'via-proxy:am.i.mullvad.net', healthy: true },
-  exits: [],
-  rules: { path: '/r', displayPath: '/r', exists: true, file: { v: 1, env: 'e', session: 'e', default: 'allow', rules: [] }, readError: null, mtimeMs: 1 },
-  destinations: new Map(), flows: new Map(), buckets: new Map(),
-  totals: { bytesUp: 0, bytesDown: 0, flows: 0, openFlows: 0, destinations: 0, blocked: { guard: 0, userRule: 0, default: 0 }, directFlows: 0, broken: 0 },
-  counters: { records: 0, invalid: 0, skipped: 0, gaps: 0 }, emptyFolded: 0, historyTruncated: false,
-  ...over,
-});
+const data = sessionData;
 const labels = (d: NetSessionData) => gateChips(d).map((c) => c.label);
 const chip = (d: NetSessionData, key: string) => gateChips(d).find((c) => c.key === key);
 
@@ -59,7 +49,7 @@ describe('gateChips', () => {
 
   it('resolver down, rules rejected, record full', () => {
     expect(chip(data({ resolver: { mode: 'in-tunnel', healthy: false, name: null } }), 'resolver')!.label).toBe('Resolver down');
-    const rejected = chip(data({ rules: { loaded_at: null, source_mtime: null, ok: false, error: 'rules[1].match: unknown keys', active_count: 1 } }), 'rules')!;
+    const rejected = chip(data({ rules: { loaded_at: null, source_mtime: null, ok: false, error: 'rules[1].match: unknown keys', active_count: 1, sha256: null, last_rejected: null } }), 'rules')!;
     expect(rejected).toMatchObject({ label: 'Rules rejected', tone: 'error' });
     expect(rejected.title).toContain('still enforcing the previous 1 rule');
     expect(chip(data({ record: 'full' }), 'record')!).toMatchObject({ label: 'Record: full', tone: 'violet' });

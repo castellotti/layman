@@ -66,6 +66,31 @@ export interface FlowRecord {
   rule: string | null;
   close_reason: string | null;
   request: FlowRequest | null;
+  /**
+   * The forwarder process that emitted this record (`g_<ULID>`), additive in
+   * glove's follow-up. Null from an older gate, whose flows can't be judged by
+   * the gate-lifecycle rule.
+   */
+  run: string | null;
+}
+
+/**
+ * A gate process starting or stopping (glove follow-up, handoff §2 "Additive
+ * fields"). `role: "forward"` is per service; `role: "collect"` is the collector
+ * (`service: null`). A forwarder re-sends `start` as a heartbeat, so key on `run`.
+ */
+export interface GateRecord {
+  v: 1;
+  type: 'gate';
+  event: 'start' | 'stop' | string;
+  role: 'forward' | 'collect' | string;
+  run: string;
+  service: string | null;
+  env: string;
+  session: string;
+  t: string;
+  /** A stop the collector wrote for a forwarder silent for 30 s: it died. */
+  inferred: boolean;
 }
 
 export interface ExitRecord {
@@ -92,6 +117,16 @@ export interface StatusRules {
   ok: boolean;
   error: string | null;
   active_count: number;
+  /** SHA-256 (hex) of the file now enforced; null when there is no file (glove follow-up). */
+  sha256: string | null;
+  /** The most recent rejected read; kept after a later acceptance (`ok` is the current state). */
+  last_rejected: {
+    checked_at: string | null;
+    source_mtime: string | null;
+    /** Null when the file could not be read at all. */
+    sha256: string | null;
+    error: string | null;
+  } | null;
 }
 
 export interface StatusRecord {
@@ -198,6 +233,12 @@ export type NetState =
   | 'broken'
   /** Cut mid-transfer because the gate shut down. */
   | 'gate_shutdown'
+  /**
+   * No `close`, but the forwarder that carried it has gone (a `stop` for its
+   * `run`, or a newer run for the same service): cut by a gate that went away,
+   * inferred (handoff §2 reader rule).
+   */
+  | 'gate_lost'
   /** Allowed, no destination, closed on eof/timeout: noise, folded away. */
   | 'empty';
 
@@ -242,6 +283,8 @@ export interface FlowView {
   /** Aggregate this flow counts toward; null for folded empty connections. */
   destKey: string | null;
   groupKey: string;
+  /** Last 60 s at 1 s resolution, for the row's sparkline. Sparse, oldest first. */
+  spark: RateBucket[];
 }
 
 /** Bytes moved in one bucket. `t` is the bucket start in ms. */
@@ -339,7 +382,10 @@ export interface NetTotals {
   bytesUp: number;
   bytesDown: number;
   flows: number;
+  /** Flows moving or pooled now: open, and not cut by a gate that went away. */
   openFlows: number;
+  /** Open flows whose gate went away (`gate_lost`). */
+  gateLost: number;
   destinations: number;
   blocked: { guard: number; userRule: number; default: number };
   directFlows: number;

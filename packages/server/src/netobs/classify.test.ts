@@ -84,7 +84,7 @@ const status = (over: Partial<StatusRecord> = {}): StatusRecord => ({
   record: 'metadata',
   upstream: { kind: 'vpn', healthy: true },
   resolver: { mode: 'in-tunnel', healthy: true },
-  rules: { loaded_at: null, source_mtime: null, ok: true, error: null, active_count: 0 },
+  rules: { loaded_at: null, source_mtime: null, ok: true, error: null, active_count: 0, sha256: null, last_rejected: null },
   t: new Date(NOW - 2_000).toISOString(),
   telemetry: { written: 10, dropped: 0, invalid: 0, rotations: 0 },
   ...over,
@@ -142,7 +142,7 @@ describe('classifySession', () => {
     expect(gate({ ...base, status: status({ resolver: { mode: 'in-tunnel', healthy: false } }) }).resolver.healthy).toBe(false);
   });
   it('rules rejected', () => {
-    const rules = { loaded_at: null, source_mtime: null, ok: false, error: 'rules[0].match: unknown keys', active_count: 1 };
+    const rules = { loaded_at: null, source_mtime: null, ok: false, error: 'rules[0].match: unknown keys', active_count: 1, sha256: null, last_rejected: null };
     expect(gate({ ...base, status: status({ rules }) }).rules).toMatchObject({ ok: false, active_count: 1 });
   });
   it('lists unobserved services', () => {

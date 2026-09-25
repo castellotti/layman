@@ -6,7 +6,7 @@ import { fileURLToPath } from 'url';
 import { COALESCE_MS, NetObs, type NetServerMessage, type NetSocket } from './index.js';
 import { NetStore } from './store.js';
 import type { NetSessionLocation } from './discovery.js';
-import type { FlowRecord } from './types.js';
+import type { FlowRecord, GateRecord } from './types.js';
 
 const T0 = Date.parse('2026-09-23T14:00:00.000Z');
 
@@ -17,7 +17,7 @@ function rec(id: string, phase: FlowRecord['phase'], dt: number, over: Partial<F
     t_close: phase === 'close' ? t : null, service: 'proxy', tool: 'web_fetch', client: 'harness',
     proto: 'http-connect', dest: { host: 'arxiv.org', port: 443, ip: '151.101.3.42', resolution: 'in-tunnel' },
     scope: 'tunnelled', route: { kind: 'vpn', upstream: null }, bytes: { up: 10 * (dt + 1), down: 100 * (dt + 1) },
-    verdict: 'allow', rule: null, close_reason: phase === 'close' ? 'eof' : null, request: null, ...over,
+    verdict: 'allow', rule: null, close_reason: phase === 'close' ? 'eof' : null, request: null, run: null, ...over,
   };
 }
 
@@ -103,6 +103,72 @@ describe('NetStore', () => {
     store.tick(T0 + 3500);
     expect(store.snapshot('e')!.flows[0].state).toBe('pooled');
     expect(store.snapshot('e')!.destinations[0].state).toBe('pooled');
+  });
+
+  describe('gate lifecycle (handoff §2 reader rule)', () => {
+    const gate = (event: 'start' | 'stop', run: string, dt: number, service: string | null = 'proxy', inferred = false): GateRecord => ({
+      v: 1, type: 'gate', event, role: service === null ? 'collect' : 'forward', run, service, env: 'e', session: 'e',
+      t: new Date(T0 + dt).toISOString(), inferred,
+    });
+    const stateOf = (id: string) => store.snapshot('e')!.flows.find((f) => f.id === id)!.state;
+
+    it('a stop for the run cuts its unclosed flows, and a later record of the run revives them', () => {
+      store.ingestGate('e', gate('start', 'g_A', 0), T0);
+      store.ingestFlow('e', rec('f1', 'open', 0, { run: 'g_A' }), T0);
+      store.ingestGate('e', gate('stop', 'g_A', 500, 'proxy', true), T0);
+      expect(stateOf('f1')).toBe('gate_lost');
+      expect(store.snapshot('e')!.totals).toMatchObject({ openFlows: 0, gateLost: 1 });
+      store.ingestFlow('e', rec('f1', 'update', 1000, { run: 'g_A' }), T0 + 1000);
+      expect(stateOf('f1')).toBe('active');
+    });
+
+    it('a new run for the same service ends the old one (the forwarder restarted)', () => {
+      store.ingestFlow('e', rec('f1', 'open', 0, { run: 'g_A' }), T0);
+      store.ingestFlow('e', rec('f2', 'open', 100, { run: 'g_L', service: 'llm' }), T0);
+      store.ingestGate('e', gate('start', 'g_B', 500), T0);
+      expect(stateOf('f1')).toBe('gate_lost');
+      expect(stateOf('f2')).toBe('active'); // another service's run is untouched
+    });
+
+    it("the collector's own stop never ends a forwarder's run, and a heartbeat start is not a restart", () => {
+      store.ingestGate('e', gate('start', 'g_A', 0), T0);
+      store.ingestFlow('e', rec('f1', 'open', 0, { run: 'g_A' }), T0);
+      store.ingestGate('e', gate('start', 'g_A', 0), T0);
+      store.ingestGate('e', gate('stop', 'g_C', 500, null), T0);
+      expect(stateOf('f1')).toBe('active');
+    });
+
+    it('a late inferred stop for a crashed run does not end its restarted replacement (glove d855a1c)', () => {
+      store.ingestGate('e', gate('start', 'g_A', 0), T0);
+      store.ingestGate('e', gate('start', 'g_B', 100), T0);
+      store.ingestFlow('e', rec('f1', 'open', 200, { run: 'g_B' }), T0);
+      store.ingestGate('e', gate('stop', 'g_A', 30_000, 'proxy', true), T0);
+      expect(stateOf('f1')).toBe('active');
+    });
+
+    it('matches glove: a later record of an older run makes it current again, ending the newer', () => {
+      store.ingestFlow('e', rec('f1', 'open', 0, { run: 'g_A' }), T0);
+      store.ingestFlow('e', rec('f2', 'open', 100, { run: 'g_B' }), T0);
+      expect(stateOf('f1')).toBe('gate_lost');
+      store.ingestFlow('e', rec('f1', 'update', 200, { run: 'g_A' }), T0);
+      expect([stateOf('f1'), stateOf('f2')]).toEqual(['active', 'gate_lost']);
+    });
+
+    it('a flow with no run (an older gate) is never judged by it', () => {
+      store.ingestFlow('e', rec('f1', 'open', 0), T0);
+      store.ingestGate('e', gate('start', 'g_B', 500), T0);
+      expect(stateOf('f1')).toBe('active');
+    });
+  });
+
+  it('keeps a per-flow sparkline of the last 60 s', () => {
+    store.ingestFlow('e', rec('f1', 'open', 0, { bytes: { up: 5, down: 0 } }), T0);
+    store.ingestFlow('e', rec('f1', 'update', 1000, { bytes: { up: 50, down: 500 } }), T0);
+    store.ingestFlow('e', rec('f2', 'open', 90_000, { bytes: { up: 1, down: 1 } }), T0);
+    const flows = store.snapshot('e')!.flows;
+    // f1's buckets fell out of the window anchored on the session's latest record.
+    expect(flows.find((f) => f.id === 'f1')!.spark).toEqual([]);
+    expect(flows.find((f) => f.id === 'f2')!.spark).toEqual([{ t: T0 + 90_000, up: 1, down: 1 }]);
   });
 
   it('passes record:full request URLs and headers through the string filter only', () => {

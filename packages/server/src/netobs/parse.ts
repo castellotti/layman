@@ -14,6 +14,7 @@ import type {
   FlowRecord,
   FlowRequest,
   FlowRoute,
+  GateRecord,
   NetService,
   NetSessionFile,
   Rule,
@@ -25,6 +26,7 @@ import type {
 export type ParsedLine =
   | { kind: 'flow'; record: FlowRecord }
   | { kind: 'exit'; record: ExitRecord }
+  | { kind: 'gate'; record: GateRecord }
   /** A well-formed v1 record of a type this Layman does not know. */
   | { kind: 'skipped' }
   /** Not JSON, not an object, `v` other than 1, or missing a required field. */
@@ -94,6 +96,26 @@ function parseFlow(o: Obj): FlowRecord | null {
     rule: str(o.rule),
     close_reason: str(o.close_reason),
     request: parseRequest(o.request),
+    run: str(o.run),
+  };
+}
+
+function parseGate(o: Obj): GateRecord | null {
+  const run = str(o.run);
+  const event = str(o.event);
+  const t = str(o.t);
+  if (!run || !event || !t || Number.isNaN(Date.parse(t))) return null;
+  return {
+    v: 1,
+    type: 'gate',
+    event,
+    role: str(o.role) ?? 'forward',
+    run,
+    service: str(o.service),
+    env: str(o.env) ?? '',
+    session: str(o.session) ?? '',
+    t,
+    inferred: o.inferred === true,
   };
 }
 
@@ -134,6 +156,10 @@ export function parseLine(line: string): ParsedLine {
     const record = parseExit(raw);
     return record ? { kind: 'exit', record } : { kind: 'invalid' };
   }
+  if (raw.type === 'gate') {
+    const record = parseGate(raw);
+    return record ? { kind: 'gate', record } : { kind: 'invalid' };
+  }
   return { kind: 'skipped' };
 }
 
@@ -145,6 +171,15 @@ function parseStatusRules(v: unknown): StatusRules | null {
     ok: v.ok !== false,
     error: str(v.error),
     active_count: num(v.active_count) ?? 0,
+    sha256: str(v.sha256),
+    last_rejected: isObj(v.last_rejected)
+      ? {
+          checked_at: str(v.last_rejected.checked_at),
+          source_mtime: str(v.last_rejected.source_mtime),
+          sha256: str(v.last_rejected.sha256),
+          error: str(v.last_rejected.error),
+        }
+      : null,
   };
 }
 

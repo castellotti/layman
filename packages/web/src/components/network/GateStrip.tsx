@@ -109,6 +109,8 @@ export function RulesRejectedBanner({ data }: { data: NetSessionData }) {
   const rules = data.gate.rules;
   if (!rules || rules.ok) return null;
   const n = rules.active_count;
+  // glove's follow-up: an unreadable file is a rejection too, reported as "cannot read rules.json: …".
+  const unreadable = rules.error?.startsWith('cannot read') ?? false;
   const fileText = data.rules.readError
     ? data.rules.readError
     : data.rules.file ? JSON.stringify(data.rules.file, null, 2) : 'rules.json is not present.';
@@ -120,9 +122,13 @@ export function RulesRejectedBanner({ data }: { data: NetSessionData }) {
       }}>
         <NetIcon name="alert" size={20} color="var(--error)" strokeWidth={1.8} />
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: '#FFB4AD' }}>Your last rules change did not take effect</div>
+          <div style={{ fontSize: 13, fontWeight: 700, color: '#FFB4AD' }}>
+            {unreadable ? 'The gate cannot read your rules file' : 'Your last rules change did not take effect'}
+          </div>
           <div style={{ fontSize: 11.5, color: '#F3C6C1', marginTop: 2 }}>
-            glove rejected rules.json: <span style={{ fontFamily: 'var(--font-mono)' }}>{rules.error ?? 'no reason given'}</span>.
+            {unreadable
+              ? <>glove reports <span style={{ fontFamily: 'var(--font-mono)' }}>{rules.error}</span>. That is almost always ownership: the gate runs as your user, and rules.json must be readable by it.</>
+              : <>glove rejected rules.json: <span style={{ fontFamily: 'var(--font-mono)' }}>{rules.error ?? 'no reason given'}</span>.</>}
             {' '}The gate is still enforcing the previous {n} rule{n === 1 ? '' : 's'}.
           </div>
           <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-faint)', marginTop: 3 }}>

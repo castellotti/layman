@@ -27,6 +27,7 @@ import type {
   FlowFlags,
   FlowRecord,
   FlowView,
+  GateRecord,
   NetCounters,
   NetDelta,
   NetGateView,
@@ -59,6 +60,7 @@ interface FlowEntry {
   flags: FlowFlags;
   destKey: string | null;
   groupKey: string;
+  spark: Map<number, RateBucket>;
 }
 
 interface AggEntry {
@@ -70,8 +72,17 @@ interface AggEntry {
   spark: Map<number, RateBucket>;
 }
 
+/** A gate process, keyed by its `run` id (handoff §2 "Additive fields"). */
+interface RunState {
+  service: string | null;
+  ended: boolean;
+}
+
 interface SessionData {
   loc: NetSessionLocation;
+  runs: Map<string, RunState>;
+  /** The latest run seen per service: a newer one means the forwarder restarted. */
+  serviceRun: Map<string, string>;
   flows: Map<string, FlowEntry>;
   /** Closed flow ids, oldest close first, for eviction. */
   closedOrder: string[];
@@ -126,6 +137,12 @@ function addBucket(m: Map<number, RateBucket>, t: number, up: number, down: numb
   return b;
 }
 
+/** A sparkline's buckets: the last `SPARK_SPAN` before the session's latest record, oldest first. */
+function sparkWindow(m: Map<number, RateBucket>, lastT: number | null): RateBucket[] {
+  const from = (lastT ?? 0) - SPARK_SPAN;
+  return [...m.values()].filter((b) => b.t > from).sort((a, b) => a.t - b.t).map((b) => ({ ...b }));
+}
+
 function pushUnique(list: string[], v: string | null | undefined, max = Infinity): void {
   if (v && !list.includes(v)) {
     list.push(v);
@@ -162,6 +179,8 @@ export class NetStore extends EventEmitter {
     if (this.sessions.has(loc.token)) return;
     this.sessions.set(loc.token, {
       loc,
+      runs: new Map(),
+      serviceRun: new Map(),
       flows: new Map(),
       closedOrder: [],
       aggs: new Map(),
@@ -203,6 +222,7 @@ export class NetStore extends EventEmitter {
     s.counters.records++;
     const t = Date.parse(rec.t);
     const prev = s.flows.get(rec.id);
+    if (rec.run) this.noteRun(s, rec.run, rec.service, now);
 
     // bytes are cumulative (rule 1): the flow's total is its latest record's,
     // and the rate is the difference. Taking the max keeps a stray older record
@@ -226,8 +246,9 @@ export class NetStore extends EventEmitter {
       flags: flowFlags(latest),
       destKey: null,
       groupKey: groupKeyFor(latest.dest.host, latest.service),
+      spark: prev?.spark ?? new Map(),
     };
-    entry.state = classifyFlow({ ...latest, lastActivityAt: entry.lastActivityAt }, now);
+    entry.state = this.classify(s, entry, now);
     entry.destKey = entry.state === 'empty' ? null : destKeyFor(latest);
 
     this.apply(s, rec.id, prev ?? null, entry);
@@ -235,6 +256,7 @@ export class NetStore extends EventEmitter {
     if (dUp || dDown) {
       const sec = Math.floor(t / SECOND) * SECOND;
       addBucket(s.seconds, sec, dUp, dDown);
+      addBucket(entry.spark, sec, dUp, dDown);
       s.dirtyBuckets.add(sec);
       if (entry.destKey) {
         const agg = s.aggs.get(entry.destKey);
@@ -252,6 +274,59 @@ export class NetStore extends EventEmitter {
     }
     s.dirtyTotals = true;
     this.emit('changed', token);
+  }
+
+  private classify(s: SessionData, e: FlowEntry, now: number): NetState {
+    const run = e.rec.run ? s.runs.get(e.rec.run) : undefined;
+    return classifyFlow({ ...e.rec, lastActivityAt: e.lastActivityAt, runEnded: run?.ended === true }, now);
+  }
+
+  /**
+   * glove's gate lifecycle, read in file order (handoff §2 reader rule; this is
+   * a port of glove's reference `glove.netview.ended_runs` and must stay one).
+   * A run ends at a `stop` for it, or when a later run appears for the same
+   * service (the forwarder restarted); any later record of the run itself
+   * revives it. A `stop` ends only its own run and never displaces the service's
+   * current one: the collector's inferred stop for a crashed run can land after
+   * its restarted replacement's `start`. Collector records (`role: "collect"`)
+   * say nothing about forwarders and are skipped.
+   */
+  ingestGate(token: string, rec: GateRecord, now = Date.now()): void {
+    const s = this.sessions.get(token);
+    if (!s) return;
+    s.counters.records++;
+    if (rec.role !== 'forward') return;
+    if (rec.event === 'stop') {
+      if (!s.runs.has(rec.run)) s.runs.set(rec.run, { service: rec.service, ended: false });
+      this.setRunEnded(s, rec.run, true, now);
+    } else {
+      this.noteRun(s, rec.run, rec.service, now);
+    }
+    this.emit('changed', token);
+  }
+
+  /** A forwarder record (a `start`, or any flow record) of `run`: it is alive, and its service's current run. */
+  private noteRun(s: SessionData, run: string, service: string | null, now: number): void {
+    const known = s.runs.get(run);
+    if (!known) s.runs.set(run, { service, ended: false });
+    else if (known.ended) this.setRunEnded(s, run, false, now);
+    if (service === null) return;
+    const previous = s.serviceRun.get(service);
+    s.serviceRun.set(service, run);
+    if (previous && previous !== run) this.setRunEnded(s, previous, true, now);
+  }
+
+  /** Mark a run ended (or revived) and re-classify its unclosed flows. */
+  private setRunEnded(s: SessionData, run: string, ended: boolean, now: number): void {
+    const r = s.runs.get(run);
+    if (!r || r.ended === ended) return;
+    r.ended = ended;
+    for (const [id, e] of s.flows) {
+      if (e.rec.run !== run || e.rec.phase === 'close') continue;
+      const state = this.classify(s, e, now);
+      if (state !== e.state) this.apply(s, id, e, { ...e, state });
+    }
+    s.dirtyTotals = true;
   }
 
   /**
@@ -412,7 +487,7 @@ export class NetStore extends EventEmitter {
       let changed = false;
       for (const [id, e] of s.flows) {
         if (e.rec.phase === 'close') continue;
-        const state = classifyFlow({ ...e.rec, lastActivityAt: e.lastActivityAt }, now);
+        const state = this.classify(s, e, now);
         if (state === e.state) continue;
         this.apply(s, id, e, { ...e, state });
         changed = true;
@@ -438,6 +513,9 @@ export class NetStore extends EventEmitter {
     for (const e of s.aggs.values()) {
       for (const t of e.spark.keys()) if (t < sparkCutoff) e.spark.delete(t);
     }
+    for (const e of s.flows.values()) {
+      for (const t of e.spark.keys()) if (t < sparkCutoff) e.spark.delete(t);
+    }
   }
 
   /** Emits `status` when the gate view changed in a way the UI shows. */
@@ -453,7 +531,7 @@ export class NetStore extends EventEmitter {
 
   // ─── Views ────────────────────────────────────────────────────────────────
 
-  private flowView(id: string, e: FlowEntry): FlowView {
+  private flowView(s: SessionData, id: string, e: FlowEntry): FlowView {
     const r = e.rec;
     let request = r.request;
     if (request && this.stringFilter) {
@@ -489,38 +567,47 @@ export class NetStore extends EventEmitter {
       flags: e.flags,
       destKey: e.destKey,
       groupKey: e.groupKey,
+      spark: sparkWindow(e.spark, s.lastT),
     };
   }
 
   private aggView(s: SessionData, e: AggEntry): DestinationAggregate {
     const states = [...e.open.values()];
     if (e.latest) states.unshift(e.latest.state);
-    const from = (s.lastT ?? 0) - SPARK_SPAN;
     return {
       ...e.agg,
+      // A flow whose gate went away is unclosed but not open in any sense the UI means.
+      openFlows: [...e.open.values()].filter((st) => st !== 'gate_lost').length,
       ips: [...e.agg.ips],
       services: [...e.agg.services],
       tools: [...e.agg.tools],
       clients: [...e.agg.clients],
       state: aggregateState(states),
-      spark: [...e.spark.values()].filter((b) => b.t > from).sort((a, b) => a.t - b.t).map((b) => ({ ...b })),
+      spark: sparkWindow(e.spark, s.lastT),
     };
   }
 
   private totals(s: SessionData): NetTotals {
     const n = (st: NetState) => s.stateCounts.get(st) ?? 0;
     let open = 0;
-    for (const e of s.flows.values()) if (e.rec.phase !== 'close') open++;
+    for (const e of s.flows.values()) if (e.rec.phase !== 'close' && e.state !== 'gate_lost') open++;
     return {
       bytesUp: s.bytesUp,
       bytesDown: s.bytesDown,
       flows: s.flowCount,
       openFlows: open,
+      gateLost: n('gate_lost'),
       destinations: s.aggs.size,
       blocked: { guard: n('guard'), userRule: n('user_rule'), default: n('default_block') },
       directFlows: s.directFlows,
       broken: n('broken'),
     };
+  }
+
+  /** Forwarder runs that are over (for the cross-check against glove's `ended_runs`). */
+  endedRuns(token: string): string[] {
+    const s = this.sessions.get(token);
+    return s ? [...s.runs].filter(([, r]) => r.ended).map(([id]) => id).sort() : [];
   }
 
   gate(token: string): NetGateView | null {
@@ -556,7 +643,7 @@ export class NetStore extends EventEmitter {
       exits: [...s.exits],
       rules: s.rules,
       destinations: [...s.aggs.values()].map((e) => this.aggView(s, e)),
-      flows: picked.map(([id, e]) => this.flowView(id, e)),
+      flows: picked.map(([id, e]) => this.flowView(s, id, e)),
       buckets: [...s.seconds.values()].sort((a, b) => a.t - b.t).map((b) => ({ ...b })),
       totals: this.totals(s),
       counters: { ...s.counters },
@@ -575,7 +662,7 @@ export class NetStore extends EventEmitter {
     const delta: NetDelta = {
       flows: [...s.dirtyFlows].flatMap((id) => {
         const e = s.flows.get(id);
-        return e ? [this.flowView(id, e)] : [];
+        return e ? [this.flowView(s, id, e)] : [];
       }),
       destinations: [...s.dirtyAggs].flatMap((k) => {
         const e = s.aggs.get(k);
@@ -616,7 +703,7 @@ export class NetStore extends EventEmitter {
       .filter(([, e]) => e.tOpen > since)
       .sort((a, b) => a[1].tOpen - b[1].tOpen)
       .slice(0, Math.max(0, limit))
-      .map(([id, e]) => this.flowView(id, e));
+      .map(([id, e]) => this.flowView(s, id, e));
   }
 
   /**

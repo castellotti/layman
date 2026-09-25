@@ -4,27 +4,10 @@ import {
   type NetClientState,
 } from './net-state.js';
 import type {
-  DestinationAggregate, FlowView, NetDelta, NetSessionSummary, NetSnapshot, NetTotals,
+  NetDelta, NetSessionSummary, NetSnapshot,
 } from './netobs-types.js';
-import { gate } from './net-test-fixtures.js';
+import { dest, flow, gate, totals } from './net-test-fixtures.js';
 
-const totals = (over: Partial<NetTotals> = {}): NetTotals => ({
-  bytesUp: 0, bytesDown: 0, flows: 0, openFlows: 0, destinations: 0,
-  blocked: { guard: 0, userRule: 0, default: 0 }, directFlows: 0, broken: 0, ...over,
-});
-const flow = (id: string, over: Partial<FlowView> = {}): FlowView => ({
-  id, phase: 'open', tOpen: 1, tClose: null, lastT: 1, lastActivityAt: 1, service: 'proxy', tool: 'web_fetch',
-  client: 'harness', proto: 'http-connect', dest: { host: 'arxiv.org', port: 443, ip: null, resolution: 'in-tunnel' },
-  scope: 'tunnelled', route: null, bytes: { up: 1, down: 1 }, verdict: 'allow', rule: null, closeReason: null,
-  request: null, state: 'active', flags: { scope: 'tunnelled', unresolved: false, noHost: false, cleartext: false, fanout: false },
-  destKey: 'arxiv.org:443', groupKey: 'arxiv.org', ...over,
-});
-const dest = (key: string, over: Partial<DestinationAggregate> = {}): DestinationAggregate => ({
-  key, host: key.split(':')[0], port: 443, groupKey: key, endpoint: null, ips: [], services: [], tools: [], clients: [],
-  scope: 'tunnelled', resolution: 'in-tunnel', bytesUp: 1, bytesDown: 1, flows: 1, openFlows: 0, blocked: 0,
-  firstSeen: 0, lastSeen: 0, state: 'finished', rule: null,
-  flags: { scope: 'tunnelled', unresolved: false, noHost: false, cleartext: false, fanout: false }, spark: [], ...over,
-});
 const snapshot = (token: string, over: Partial<NetSnapshot> = {}): NetSnapshot => ({
   token, env: token, name: token, session: null, gate: gate(), exit: null, exits: [],
   rules: { path: '/r', displayPath: '/r', exists: false, file: null, readError: null, mtimeMs: null },
