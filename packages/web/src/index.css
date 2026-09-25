@@ -42,6 +42,14 @@
   --info:   #5A9CF8;   /* user prompts, drop indicators */
   --agent:  #8B7CF6;   /* agent responses, subagent lanes */
 
+  /* Network views (glove) */
+  --net-tunnel:   #35C9B4;  /* tunnelled route, live arcs, "allowed" toggle fill */
+  --net-up:       #B58CF6;  /* sent */
+  --net-down:     #5A9CF8;  /* received */
+  --net-ocean:    #090C12;
+  --net-land:     #151B27;
+  --net-landline: #1F2736;
+
   /* Typography */
   --font-ui:   'IBM Plex Sans', system-ui, sans-serif;
   --font-mono: 'IBM Plex Mono', 'SF Mono', 'Fira Code', monospace;
@@ -211,3 +219,7 @@ body {
     size: A4;
   }
 }
+
+/* Network views: the gate strip's chip row scrolls sideways without a visible bar
+   (scrollbar-width covers Chrome/Firefox; this covers Safari). */
+.net-chip-row::-webkit-scrollbar { display: none; }

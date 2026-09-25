@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { useSessionStore, viewNameForMode, instanceUrlOf } from '../stores/sessionStore.js';
+import { useSessionStore, viewNameForMode, instanceUrlOf, isNetworkView } from '../stores/sessionStore.js';
 import type { SessionState } from '../stores/sessionStore.js';
 import { buildPath, parsePath } from '../lib/layman-url.js';
 import type { LaymanRoute, RouteOptions } from '../lib/layman-url.js';
@@ -35,9 +35,11 @@ let routeGeneration = 0;
  * entry instead of pushing one — Back should leave a session, not unwind a
  * sequence of panel toggles.
  */
-function entityKey(route: LaymanRoute): string {
+function entityKey(route: LaymanRoute, opts: RouteOptions = {}): string {
   switch (route.kind) {
-    case 'dashboard': return 'dashboard';
+    // A glove session is an addressed entity (switching it pushes); the network
+    // tab and the selected destination are view state (they replace).
+    case 'dashboard': return opts.glove ? `dashboard:glove:${opts.glove}` : 'dashboard';
     case 'session':   return `s:${route.sessionId}`;
     case 'turn':      return `s:${route.sessionId}:t:${route.promptEventId}`;
     case 'event':     return `s:${route.sessionId}:e:${route.eventId}`;
@@ -55,6 +57,15 @@ function entityKey(route: LaymanRoute): string {
  * every unrelated state change.
  */
 export function routeForState(state: SessionState): { route: LaymanRoute; opts: RouteOptions } {
+  // First: a network view is not about any Layman session or folder, and a
+  // folder id left over from an earlier /f/ arrival must not outrank it.
+  if (isNetworkView(state.viewMode)) {
+    const opts: RouteOptions = { view: viewNameForMode(state.viewMode) };
+    if (state.netToken) opts.glove = state.netToken;
+    if (state.netDest) opts.dest = state.netDest;
+    return { route: { kind: 'dashboard' }, opts };
+  }
+
   if (state.routeFolderId) {
     return { route: { kind: 'folder', folderId: state.routeFolderId }, opts: {} };
   }
@@ -79,6 +90,28 @@ export function routeForState(state: SessionState): { route: LaymanRoute; opts: 
 
   const view = viewNameForMode(state.viewMode);
   return { route: { kind: 'dashboard' }, opts: view === 'dashboard' ? {} : { view } };
+}
+
+/**
+ * Whether moving from the address bar's `current` route to the next one should
+ * replace the history entry (same entity: a view toggle, a selection) or push a
+ * new one (a different entity), so Back leaves a place rather than unwinding
+ * panel toggles.
+ */
+export function historyModeFor(
+  current: { route: LaymanRoute; opts: RouteOptions } | null,
+  route: LaymanRoute,
+  opts: RouteOptions,
+): 'replace' | 'push' {
+  if (!current) return 'push';
+  if (entityKey(current.route, current.opts) === entityKey(route, opts)) return 'replace';
+  // The network views filling in their default glove session: the same place
+  // made explicit. Pushing would make Back land on the bare URL, which
+  // re-defaults and pushes again — a trap.
+  if (current.route.kind === 'dashboard' && route.kind === 'dashboard' && !current.opts.glove && !!opts.glove) {
+    return 'replace';
+  }
+  return 'push';
 }
 
 /** How long a `?play=1` arrival waits for config before giving up. */
@@ -242,8 +275,7 @@ export function useLaymanRoute(): void {
       if (next === `${window.location.pathname}${window.location.search}`) return;
 
       const current = parsePath(window.location.pathname, window.location.search);
-      const sameEntity = current !== null && entityKey(current.route) === entityKey(route);
-      if (sameEntity) window.history.replaceState(null, '', next);
+      if (historyModeFor(current, route, opts) === 'replace') window.history.replaceState(null, '', next);
       else window.history.pushState(null, '', next);
     };
 

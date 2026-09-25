@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { NetSessionSource, controlPaths, gloveHomeFromSessionsDir, sessionToken } from './discovery.js';
+import { NetSessionSource, controlPaths, gloveHomeFromSessionsDir, sessionToken, toHostPath } from './discovery.js';
 import { groupKeyFor, isIpLiteral, registrableDomain } from './domain.js';
 
 let home: string;
@@ -36,6 +36,17 @@ describe('session token and paths', () => {
       expect(controlPaths('/h/.glove', env, name)).toBeNull();
     },
   );
+});
+
+describe('toHostPath', () => {
+  it('translates a container path back to the host home', () => {
+    expect(toHostPath('/root/.glove/control/e/n/rules.json', '/Users/sc', '/root')).toBe('/Users/sc/.glove/control/e/n/rules.json');
+  });
+  it('is a no-op natively, and for paths outside the home', () => {
+    expect(toHostPath('/home/u/.glove/x', undefined, '/home/u')).toBe('/home/u/.glove/x');
+    expect(toHostPath('/tmp/x', '/Users/sc', '/root')).toBe('/tmp/x');
+    expect(toHostPath('/rootless/x', '/Users/sc', '/root')).toBe('/rootless/x');
+  });
 });
 
 describe('NetSessionSource', () => {

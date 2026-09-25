@@ -264,6 +264,51 @@ accumulates nothing. The list is re-broadcast only when something the picker sho
 it: `GET /api/net/sessions`, `/api/net/sessions/:token` (the snapshot), `…/flows?since=&limit=`, and
 `…/buckets?window=60s|5m|1h|session`.
 
+### The client shell
+
+The header gains `Network  Map  Topology  Trace` between their own dividers — **only** when
+`glove.enabled` (and `glove.network.enabled`) and the server has listed at least one glove session with a
+`net/` directory. Otherwise the header is unchanged; this was checked by comparing the rendered tab bar
+with glove off against a pre-feature build, and they are identical. The four tabs are exclusive
+full-content views like Flow (`isNetworkView()` in `sessionStore.ts`; excluded from `inLiveMode`),
+lazy-loaded as one chunk (`components/network/NetworkView.tsx`), with keys `N`, `M`, `O`, `T` (unbound
+elsewhere) active only while the group is shown. The Network label carries a dot: red while a
+*running* gate reports rejected rules or has carried untunnelled traffic, teal while any gate runs,
+nothing for finished sessions (their history is not an alarm).
+
+- **Data and selection live apart.** The network data is in `stores/netStore.ts`, fed by
+  `lib/net-state.ts` (a pure reducer, so it is tested in node), because deltas arrive up to twice a
+  second and nothing outside these tabs should re-render on them. *Which* glove session and *which*
+  destination are view state in `sessionStore` (`netToken`, `netDest`), because the URL is derived from
+  them — the root `CLAUDE.md` rule that anything hydration sets must be readable back out.
+- **URLs.** `/?view=network|map|topology|trace&glove=<token>&dest=<host>` (both copies of the grammar,
+  round-trip tested in both packages). `routeForState` checks the network views *before* a leftover
+  `/f/` folder id, which would otherwise outrank them. Changing the glove session pushes a history
+  entry; changing tab or destination replaces (like every view on the dashboard route). A bare
+  `/?view=network` shows the default session — the one matching the active Layman session's
+  `sessionName`, else the most recently active — and writes it into the URL by **replacing**, because
+  pushing would make Back land on the bare URL, re-default and push again (`historyModeFor`, tested).
+- **Subscription.** The view subscribes the socket to the shown session, re-subscribes after a
+  reconnect (the server forgets subscriptions with the socket) and unsubscribes when the tabs close, so a
+  dashboard that is not looking stops receiving deltas.
+- **Gate strip** (`GateStrip.tsx`, chips derived by `gateChips()` in `lib/net-format.ts`, tested): the
+  glove session picker, then gate state, the untunnelled alarm straight after it (the mockups' order, so
+  it is the last thing clipped), route and exit (the exit's `source` is in the tooltip: Layman did not
+  determine it), resolver, rules, record mode, and "View incomplete" when the gate dropped records, a
+  rotated file vanished, or backfill hit its budget. The chip row shrinks and scrolls sideways before the
+  Panels chips on the right would be cut — found at 1440 px, where a stale gate's longer label pushed the
+  last Panels chip off screen.
+- **Rules rejected** pins a red `role="alert"` banner under the strip on all four tabs, with "Show file".
+  The path it shows is the **host** path (`RulesView.displayPath`, via `toHostPath()` using `HOST_HOME`);
+  showing the container's `/root/.glove/…` would send the user to a file that does not exist on their
+  machine. "Revert" and "Try again" arrive with the rules writer.
+- **Panels** (`lib/net-panels.ts`, `hooks/useNetPanels.ts`, reusing `useDragReorder`): each tab's panels
+  are shown or hidden from the chips and reordered by dragging the header grip, persisted per tab in
+  localStorage. A per-viewer convenience, so reads are tolerant: unknown ids are dropped and a panel
+  added later appears after its default neighbour.
+- A web no-network guard (`lib/net-guard.test.ts`) mirrors the server's over `components/network/`,
+  `lib/net-*`, `netStore` and `useNetPanels`.
+
 ### Configuration
 
 `glove.network` in `GloveConfigSchema`: `enabled` (default true, meaningful only with `glove.enabled`),

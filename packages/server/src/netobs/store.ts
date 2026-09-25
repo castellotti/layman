@@ -20,7 +20,7 @@
 import { EventEmitter } from 'events';
 import { BLOCK_STATES, aggregateState, classifyFlow, classifySession, flowFlags } from './classify.js';
 import { groupKeyFor } from './domain.js';
-import type { NetSessionLocation } from './discovery.js';
+import { toHostPath, type NetSessionLocation } from './discovery.js';
 import type {
   DestinationAggregate,
   ExitRecord,
@@ -171,7 +171,7 @@ export class NetStore extends EventEmitter {
       statusMtimeMs: null,
       session: null,
       exits: [],
-      rules: { path: loc.rulesPath, exists: false, file: null, readError: null, mtimeMs: null },
+      rules: { path: loc.rulesPath, displayPath: toHostPath(loc.rulesPath), exists: false, file: null, readError: null, mtimeMs: null },
       counters: { records: 0, invalid: 0, skipped: 0, gaps: 0 },
       historyTruncated: false,
       bytesUp: 0,

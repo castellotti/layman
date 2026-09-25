@@ -9,6 +9,7 @@
  */
 import { readdirSync, statSync } from 'fs';
 import { dirname, join, resolve, sep } from 'path';
+import { homedir } from 'os';
 
 export interface NetSessionLocation {
   /** glove's session token: what flows carry in `session`, and `GloveSource`'s WatchRoot label. */
@@ -75,6 +76,19 @@ function subdirs(dir: string): string[] {
       return false;
     }
   });
+}
+
+/**
+ * A path as the user sees it on the host. Inside the container the host home is
+ * mounted at the container home (`HOST_HOME` names it), so a path Layman shows
+ * must be translated back, or "Show file" points at `/root/.glove/…`, which does
+ * not exist on the user's machine. The inverse of `rebaseGloveHome`
+ * (monitor/sources.ts); a no-op for native Layman.
+ */
+export function toHostPath(p: string, hostHome = process.env.HOST_HOME, containerHome = homedir()): string {
+  if (!hostHome || hostHome === containerHome) return p;
+  if (p === containerHome) return hostHome;
+  return p.startsWith(containerHome + sep) ? join(hostHome, p.slice(containerHome.length + 1)) : p;
 }
 
 export class NetSessionSource {

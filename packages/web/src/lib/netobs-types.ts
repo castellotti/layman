@@ -309,8 +309,10 @@ export interface NetGateView {
 
 /** rules.json as Layman last read it from the control directory. */
 export interface RulesView {
-  /** Where the file lives (or would live). */
+  /** Where the file lives (or would live), as this process sees it. */
   path: string;
+  /** The same path as the user sees it on the host (differs inside the container). */
+  displayPath: string;
   exists: boolean;
   /** Parsed file, or null when absent or unreadable. */
   file: RulesFile | null;

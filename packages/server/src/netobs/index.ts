@@ -6,7 +6,7 @@
  * Wiring lives here so `server.ts` makes one constructor call, one `start()`,
  * and hands each WebSocket to `attach()`/`subscribe()`.
  */
-import { NetSessionSource, type NetSessionLocation } from './discovery.js';
+import { NetSessionSource, toHostPath, type NetSessionLocation } from './discovery.js';
 import { parseLine, parseRulesForDisplay, parseSessionFile, parseStatus } from './parse.js';
 import { NetStore } from './store.js';
 import { DEFAULT_BACKFILL_BYTES, JsonFileWatcher, NdjsonTailer } from './tail.js';
@@ -113,6 +113,7 @@ class SessionReader {
     if (this.rules.poll()) {
       store.setRules(token, {
         path: this.loc.rulesPath,
+        displayPath: toHostPath(this.loc.rulesPath),
         exists: this.rules.exists,
         file: this.rules.value?.file ?? null,
         readError: this.rules.value?.error ?? null,

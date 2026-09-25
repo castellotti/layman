@@ -24,6 +24,10 @@ const OPTION_SETS: RouteOptions[] = [
   { play: true },
   { t: 1712345678901 },
   { view: 'prompts', play: true, t: 42 },
+  { view: 'network', glove: 'pi-search' },
+  { view: 'map', glove: 'pi-search-review', dest: 'en.wikipedia.org' },
+  { view: 'topology', glove: 'pi-search', dest: '169.254.169.254' },
+  { view: 'trace', glove: 'env/with space' },
 ];
 
 describe('URL round-trip', () => {
@@ -72,6 +76,16 @@ describe('buildUrl', () => {
   it('carries options through', () => {
     expect(buildUrl('http://h:1', { kind: 'turn', sessionId: 's', promptEventId: 'p' }, { play: true }))
       .toBe('http://h:1/s/s/t/p?play=1');
+  });
+});
+
+describe('network view parameters', () => {
+  it('builds the documented network deep link', () => {
+    expect(buildPath({ kind: 'dashboard' }, { view: 'map', glove: 'pi-search', dest: 'arxiv.org' }))
+      .toBe('/?view=map&glove=pi-search&dest=arxiv.org');
+  });
+  it('drops empty glove/dest values rather than keeping an empty selection', () => {
+    expect(parsePath('/', '?view=network&glove=&dest=')!.opts).toEqual({ view: 'network' });
   });
 });
 
