@@ -9,6 +9,13 @@ import type { NetSessionData } from '../../lib/net-state.js';
 import type { PanelDef } from '../../lib/net-panels.js';
 import { gateChips } from '../../lib/net-format.js';
 import { Chip, NetIcon, type NetIconName } from './netui.js';
+import { useNetStore } from '../../stores/netStore.js';
+
+const bannerButton: React.CSSProperties = {
+  display: 'inline-flex', alignItems: 'center', gap: 6, height: 26, padding: '0 10px', borderRadius: 6,
+  fontSize: 11.5, fontWeight: 500, whiteSpace: 'nowrap', background: 'var(--bg-pill)',
+  border: '1px solid var(--border-strong)', color: 'var(--text)', cursor: 'pointer', fontFamily: 'var(--font-ui)',
+};
 
 function sessionOption(s: NetSessionSummary): string {
   const parts = [s.token];
@@ -66,7 +73,15 @@ export function GateStrip({ sessions, token, onPick, data, panels, isVisible, on
         }}
       >
         {data && gateChips(data).map((c) => (
-          <Chip key={c.key} tone={c.tone} icon={c.icon} label={c.label} title={c.title} strong={c.key === 'direct'} />
+          c.key === 'cut' ? (
+            <span key={c.key} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+              <Chip tone={c.tone} icon={c.icon} label={c.label} title={c.title} strong />
+              <button type="button" disabled={data.rules.control.state !== 'ok'} onClick={() => useNetStore.getState().applyRules({ kind: 'restoreAll' })}
+                style={{ height: 20, padding: '0 8px', borderRadius: 10, fontSize: 10.5, cursor: 'pointer', fontFamily: 'var(--font-ui)', color: 'var(--net-tunnel)', background: 'rgba(53,201,180,0.12)', border: '1px solid rgba(53,201,180,0.45)' }}>
+                Restore
+              </button>
+            </span>
+          ) : <Chip key={c.key} tone={c.tone} icon={c.icon} label={c.label} title={c.title} strong={c.key === 'direct'} />
         ))}
       </div>
 
@@ -100,9 +115,10 @@ export function GateStrip({ sessions, token, onPick, data, panels, isVisible, on
 
 /**
  * glove refused the rules file (plan §6.2): pinned under the strip on every
- * network tab while `rules.ok` is false. Read-only until the rules writer
- * exists: "Show file" is here; "Revert to enforced rules" and "Try again" need
- * something to revert and retry with, and arrive with it.
+ * network tab while `rules.ok` is false. "Revert to enforced rules" writes back
+ * the bytes the gate is enforcing (Layman remembers every valid version it has
+ * read, by hash); "Try again" writes the current file again through the
+ * ownership contract, which is what fixes an unreadable file.
  */
 export function RulesRejectedBanner({ data }: { data: NetSessionData }) {
   const [open, setOpen] = React.useState(false);
@@ -111,6 +127,9 @@ export function RulesRejectedBanner({ data }: { data: NetSessionData }) {
   const n = rules.active_count;
   // glove's follow-up: an unreadable file is a rejection too, reported as "cannot read rules.json: …".
   const unreadable = rules.error?.startsWith('cannot read') ?? false;
+  const control = data.rules.control.state === 'ok' ? null : data.rules.control.detail;
+  const canRevert = !control && (data.rules.enforced !== null || (rules.sha256 === null && rules.source_mtime === null));
+  const canRetry = !control && data.rules.exists && !data.rules.invalid && !data.rules.readError;
   const fileText = data.rules.readError
     ? data.rules.readError
     : data.rules.file ? JSON.stringify(data.rules.file, null, 2) : 'rules.json is not present.';
@@ -135,6 +154,14 @@ export function RulesRejectedBanner({ data }: { data: NetSessionData }) {
             status.json · rules.ok false{rules.loaded_at ? ` · last good load ${rules.loaded_at}` : ''}
           </div>
         </div>
+        <button type="button" disabled={!canRevert} title={canRevert ? 'Write back the rules the gate is enforcing' : 'Layman has not seen the file the gate is enforcing'}
+          onClick={() => useNetStore.getState().applyRules({ kind: 'revert' })} style={bannerButton}>
+          <NetIcon name="direct" />Revert to enforced rules
+        </button>
+        <button type="button" disabled={!canRetry} title={canRetry ? 'Write rules.json again, handed to the gate’s user' : control ?? 'The file on disk is invalid'}
+          onClick={() => useNetStore.getState().applyRules({ kind: 'rewrite' })} style={{ ...bannerButton, color: '#FF8A80', border: '1px solid rgba(240,86,74,0.6)', background: 'transparent' }}>
+          Try again
+        </button>
         <button type="button" aria-expanded={open} onClick={() => setOpen((o) => !o)} style={{
           display: 'inline-flex', alignItems: 'center', gap: 6, height: 26, padding: '0 10px', borderRadius: 6,
           fontSize: 11.5, fontWeight: 500, whiteSpace: 'nowrap', background: 'var(--bg-pill)',

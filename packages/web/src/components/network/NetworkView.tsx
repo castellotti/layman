@@ -15,7 +15,10 @@ import { columnPanels, type PanelDef } from '../../lib/net-panels.js';
 import type { ClientMessage } from '../../lib/ws-protocol.js';
 import { GateStrip, RulesRejectedBanner } from './GateStrip.js';
 import { DestinationTable } from './DestinationTable.js';
-import { KpiRow, MiniMap, MiniMapExpand, RulesFileLink, RulesPanel } from './NetworkPanels.js';
+import { KpiRow, MiniMap, MiniMapExpand, RulesFileLink } from './NetworkPanels.js';
+import { RulesPanel } from './RulesPanel.js';
+import { NetNotices } from './NetNotices.js';
+import { useNow } from '../../hooks/useNow.js';
 import { EmptyState, PanelFrame } from './netui.js';
 import { TAB_PANELS, type NetTab } from './tabs.js';
 
@@ -50,7 +53,7 @@ interface PanelContent {
 }
 
 /** A built panel's content, or null for one still to come. */
-function panelContent(tab: NetTab, id: string, data: NetSessionData): PanelContent | null {
+function panelContent(tab: NetTab, id: string, data: NetSessionData, now: number): PanelContent | null {
   switch (`${tab}/${id}`) {
     case 'network/table':
       return { body: <DestinationTable data={data} />, count: data.totals.destinations, ownScroll: true };
@@ -58,7 +61,7 @@ function panelContent(tab: NetTab, id: string, data: NetSessionData): PanelConte
       return { body: <MiniMap data={data} />, actions: <MiniMapExpand />, ownScroll: true, flex: '0 0 240px' };
     case 'network/rules':
       return {
-        body: <RulesPanel data={data} />,
+        body: <RulesPanel data={data} now={now} />,
         count: data.gate.rules ? `${data.gate.rules.active_count} enforced` : undefined,
         actions: <RulesFileLink data={data} />,
       };
@@ -70,8 +73,9 @@ function panelContent(tab: NetTab, id: string, data: NetSessionData): PanelConte
 function Board({ tab, panels, data }: { tab: NetTab; panels: ReturnType<typeof useNetPanels>; data: NetSessionData }) {
   const defs = TAB_PANELS[tab];
   const { drag } = panels;
+  const now = useNow(1000);
   const render = (p: PanelDef) => {
-    const content = panelContent(tab, p.id, data);
+    const content = panelContent(tab, p.id, data, now);
     return (
     <PanelFrame
       key={p.id}
@@ -140,9 +144,13 @@ export default function NetworkView({ tab, onSend }: { tab: NetTab; onSend: (msg
     setSubscribed(subscribeTo);
     onSend({ type: 'net:subscribe', token: subscribeTo });
   }, [wsStatus, subscribeTo, onSend, setSubscribed]);
-  useEffect(() => () => {
-    onSend({ type: 'net:subscribe', token: null });
-    useNetStore.getState().setSubscribed(null);
+  useEffect(() => {
+    useNetStore.getState().setSender(onSend);
+    return () => {
+      onSend({ type: 'net:subscribe', token: null });
+      useNetStore.getState().setSubscribed(null);
+      useNetStore.getState().setSender(null);
+    };
   }, [onSend]);
 
   const body = useMemo(() => {
@@ -196,6 +204,7 @@ export default function NetworkView({ tab, onSend }: { tab: NetTab; onSend: (msg
       />
       {shown && <RulesRejectedBanner data={shown} />}
       <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>{body}</div>
+      <NetNotices data={shown} />
     </div>
   );
 }

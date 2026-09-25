@@ -1,13 +1,13 @@
 /**
  * The Network tab's other pieces (plan §7.1, network-ledger.dc.html): the KPI
  * row above the panels, the mini map (a placeholder until the Map tab's
- * renderer exists), and the Rules panel, read-only until Layman can write rules.
+ * renderer exists), and the Rules panel's "View file" link. The Rules panel
+ * itself is `RulesPanel.tsx`.
  */
 import React from 'react';
 import { useSessionStore } from '../../stores/sessionStore.js';
 import { BLOCK_STATES, formatBytes } from '../../lib/net-format.js';
 import type { NetSessionData } from '../../lib/net-state.js';
-import { clockTime, matchText } from '../../lib/net-table.js';
 import { NetIcon, type NetIconName } from './netui.js';
 
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
@@ -113,128 +113,7 @@ const linkStyle: React.CSSProperties = {
   background: 'transparent', border: 'none', padding: '0 4px', color: 'var(--info)', cursor: 'pointer', fontSize: 10.5, fontFamily: 'var(--font-ui)',
 };
 
-// ─── Rules (read-only) ────────────────────────────────────────────────────────
-
-function StatusBox({ tone, title, sub }: { tone: 'ok' | 'error' | 'neutral'; title: React.ReactNode; sub: React.ReactNode }) {
-  const c = tone === 'ok'
-    ? { bg: 'rgba(76,195,138,0.08)', border: 'rgba(76,195,138,0.3)', icon: 'check' as const, colour: 'var(--ok)' }
-    : tone === 'error'
-      ? { bg: 'rgba(240,86,74,0.10)', border: 'rgba(240,86,74,0.5)', icon: 'alert' as const, colour: 'var(--error)' }
-      : { bg: 'rgba(255,255,255,0.03)', border: 'var(--border-strong)', icon: 'shield' as const, colour: 'var(--text-muted)' };
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 9px', borderRadius: 6, background: c.bg, border: `1px solid ${c.border}`, marginBottom: 10 }}>
-      <NetIcon name={c.icon} color={c.colour} />
-      <div style={{ fontSize: 11, color: 'var(--text-body)', minWidth: 0 }}>
-        {title}
-        <div style={{ fontSize: 10, color: 'var(--text-faint)' }}>{sub}</div>
-      </div>
-    </div>
-  );
-}
-
-const sectionTitle: React.CSSProperties = { fontSize: 10, letterSpacing: '0.08em', fontWeight: 600, color: 'var(--text-muted)', marginBottom: 6 };
-
-function RuleRow({ index, action, match, sub, hits, locked, badge }: {
-  index: number; action: string; match: string; sub: string; hits: number | null; locked?: boolean; badge?: string;
-}) {
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 8px', border: '1px solid var(--border)', borderRadius: 6, background: 'var(--bg)' }}>
-      {locked ? <NetIcon name="lock" color="var(--warn)" /> : <span style={{ width: 12 }} />}
-      <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-faint)', width: 12 }}>{index}</span>
-      <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.05em', color: action === 'allow' ? 'var(--net-tunnel)' : 'var(--error)', width: 38 }}>
-        {action.toUpperCase()}
-      </span>
-      <div style={{ minWidth: 0, flex: 1 }}>
-        <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={match}>{match}</div>
-        <div style={{ fontSize: 10, color: 'var(--text-faint)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{sub}</div>
-      </div>
-      {badge && (
-        <span style={{ fontSize: 9.5, fontWeight: 600, letterSpacing: '0.04em', color: 'var(--warn)', border: '1px solid rgba(229,168,59,0.45)', background: 'rgba(229,168,59,0.1)', borderRadius: 4, padding: '1px 5px', whiteSpace: 'nowrap' }}>
-          {badge}
-        </span>
-      )}
-      {hits !== null && <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-faint)', whiteSpace: 'nowrap' }}>{plural(hits, 'hit')}</span>}
-      {locked && <span style={{ fontSize: 10, color: 'var(--text-faint)', whiteSpace: 'nowrap' }}>not editable</span>}
-    </div>
-  );
-}
-
-/**
- * What glove enforces, in the order it evaluates it: the built-in guard first
- * (locked), then rules.json top to bottom, then the default. The status box
- * says whether the file on disk is what the gate enforces.
- */
-export function RulesPanel({ data }: { data: NetSessionData }) {
-  const status = data.gate.rules;
-  const view = data.rules;
-  const file = view.file;
-  const hits = new Map<string, number>();
-  for (const d of data.destinations.values()) if (d.rule) hits.set(d.rule, (hits.get(d.rule) ?? 0) + d.blocked);
-
-  let box: React.ReactNode;
-  if (!status) {
-    box = <StatusBox tone="neutral" title="The gate has not reported its rules" sub="No status.json has been read for this session." />;
-  } else if (!status.ok) {
-    const unreadable = status.error?.startsWith('cannot read');
-    box = (
-      <StatusBox
-        tone="error"
-        title={unreadable ? 'The gate cannot read rules.json' : 'Not enforced: glove rejected rules.json'}
-        sub={`${unreadable ? 'Almost always ownership: the gate runs as your user and must be able to read the file. ' : `${status.error ?? 'No reason given'}. `}The previous ${plural(status.active_count, 'rule')} ${status.active_count === 1 ? 'is' : 'are'} still enforced.`}
-      />
-    );
-  } else if (!view.exists) {
-    box = <StatusBox tone="neutral" title="No rules.json" sub="Everything is allowed unless glove’s guard refuses it." />;
-  } else {
-    box = (
-      <StatusBox
-        tone="ok"
-        title={<>Enforced by the gate{status.loaded_at ? <> · loaded <span style={{ fontFamily: 'var(--font-mono)' }}>{clockTime(Date.parse(status.loaded_at))}</span></> : null}</>}
-        sub="glove re-reads rules.json about once a second"
-      />
-    );
-  }
-
-  const def = file?.default ?? 'allow';
-  // A rejected file is on disk but not in force, and Layman cannot see the set
-  // that is: list the file's rules for what they are, not as the gate's order.
-  const rejected = status?.ok === false;
-  return (
-    <div style={{ padding: 10 }}>
-      {box}
-      <div style={{ ...sectionTitle, color: rejected ? 'var(--error)' : sectionTitle.color }}>
-        {rejected ? 'IN RULES.JSON · NOT ENFORCED' : 'EVALUATION ORDER'}
-      </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-        <RuleRow index={0} action="block" match="internal, metadata, malformed" sub="glove built-in guard, runs first" hits={data.totals.blocked.guard} locked />
-        {(file?.rules ?? []).map((r, i) => (
-          <RuleRow key={r.id || i} index={i + 1} action={r.action} match={matchText(r)} sub={r.note ?? r.id}
-            hits={hits.get(r.id) ?? 0} badge={r.terminate ? 'CUTS OPEN' : undefined} />
-        ))}
-        {view.readError && (
-          <div style={{ fontSize: 10.5, color: 'var(--error)', fontFamily: 'var(--font-mono)' }}>rules.json: {view.readError}</div>
-        )}
-      </div>
-
-      <div style={{ ...sectionTitle, marginTop: 12 }}>{rejected ? 'WHEN NOTHING MATCHES · IN THE REJECTED FILE' : 'WHEN NOTHING MATCHES'}</div>
-      <div role="radiogroup" aria-label="Default policy" aria-readonly="true" style={{ display: 'flex', border: '1px solid var(--border-strong)', borderRadius: 6, overflow: 'hidden' }}>
-        {(['allow', 'block'] as const).map((p, i) => (
-          <button key={p} type="button" role="radio" aria-checked={def === p} disabled title="Read-only for now"
-            style={{
-              flex: 1, height: 26, border: 'none', borderLeft: i ? '1px solid var(--border-strong)' : 'none', fontSize: 11,
-              background: def === p ? 'var(--bg-selected)' : 'transparent', color: def === p ? 'var(--text)' : 'var(--text-muted)',
-              fontFamily: 'var(--font-ui)', cursor: 'default',
-            }}>
-            {p === 'allow' ? 'Allow unless blocked' : 'Block unless allowed'}
-          </button>
-        ))}
-      </div>
-      <div style={{ fontSize: 10, color: 'var(--text-faint)', marginTop: 8, lineHeight: 1.5 }}>
-        Read-only: Layman does not change rules yet. Edit <span style={{ fontFamily: 'var(--font-mono)' }}>{view.displayPath}</span>, or use <span style={{ fontFamily: 'var(--font-mono)' }}>glove net block</span>.
-      </div>
-    </div>
-  );
-}
+// ─── Rules ────────────────────────────────────────────────────────────────────
 
 /** "View file" in the Rules panel header: shows the path and the file as Layman read it. */
 export function RulesFileLink({ data }: { data: NetSessionData }) {

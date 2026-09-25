@@ -6,7 +6,7 @@ forwarder and collector code. glove's own `README.md` here says what each scenar
 was forced. Read by `../scenarios.test.ts`.
 
 - Copied: 2026-09-25
-- From glove commit `ab0ad9f` (branch `netobs-layman-followup`, not yet merged to glove's `main`). The scenario
+- From glove commit `ab0ad9f`, merged to glove's `main` as `405683c` (PR #11). The scenario
   data is unchanged since `aec500b`; only `generate.py` moved on.
 
 Do not edit these files (this one excepted). To refresh:

@@ -1,10 +1,16 @@
 /**
  * REST surface for network views (plan §4.2). Registered by one call from
- * server.ts, as `routes/turns.ts` is. Read-only in this phase: the rules write
- * route arrives with the rules writer.
+ * server.ts, as `routes/turns.ts` is. The rules write route and the
+ * `net:rules:apply` WebSocket message share `NetObs.applyRules`.
  */
+import { randomUUID } from 'crypto';
 import type { FastifyInstance } from 'fastify';
-import type { NetObs } from './index.js';
+import type { NetObs, RulesOp } from './index.js';
+
+const OP_KINDS = new Set([
+  'blockHost', 'blockDomain', 'blockIp', 'blockGroup', 'allowHost', 'allowDomain', 'removeRule', 'setDefault',
+  'cutAll', 'restoreAll', 'saveDraft', 'revert', 'rewrite',
+]);
 
 const WINDOWS: Record<string, number | 'session'> = {
   '60s': 60_000,
@@ -45,6 +51,28 @@ export function registerNetRoutes(fastify: FastifyInstance, deps: { netObs: NetO
       }
       const buckets = store.buckets(request.params.token, window);
       return buckets ? { window: name, buckets } : reply.status(404).send(notFound(request.params.token));
+    },
+  );
+
+  fastify.get<{ Params: { token: string } }>('/api/net/sessions/:token/rules', async (request, reply) => {
+    const rules = store.rules(request.params.token);
+    return rules ? { rules } : reply.status(404).send(notFound(request.params.token));
+  });
+
+  // Whether the write reached disk is the response; whether the gate took it
+  // is `rules.write.state` (poll GET, or watch `net:rules`).
+  fastify.post<{ Params: { token: string }; Body: { op?: RulesOp; opId?: string } }>(
+    '/api/net/sessions/:token/rules',
+    async (request, reply) => {
+      const { token } = request.params;
+      if (!store.location(token)) return reply.status(404).send(notFound(token));
+      const op = request.body?.op;
+      if (!op || typeof op !== 'object' || !OP_KINDS.has(op.kind)) {
+        return reply.status(400).send({ error: `op.kind must be one of ${[...OP_KINDS].join(', ')}` });
+      }
+      const opId = typeof request.body?.opId === 'string' ? request.body.opId : randomUUID();
+      const result = netObs.applyRules(token, op, opId);
+      return reply.status(result.ok ? 200 : 409).send({ ...result, opId, rules: store.rules(token) });
     },
   );
 }

@@ -6,7 +6,7 @@ import {
 } from './net-table.js';
 import type { NetSessionData } from './net-state.js';
 import type { DestinationAggregate, FlowView, NetSessionFile, NetState } from './netobs-types.js';
-import { dest, flow, sessionData } from './net-test-fixtures.js';
+import { dest, flow, rulesView, sessionData } from './net-test-fixtures.js';
 
 const T = Date.parse('2026-09-23T14:14:43Z');
 const LOCAL = { scope: 'local', unresolved: false, noHost: false, cleartext: false, fanout: false } as const;
@@ -54,9 +54,9 @@ function ledger(): NetSessionData {
     session,
     destinations: new Map(dests.map((d) => [d.key, d])),
     flows: new Map(flows.map((f) => [f.id, f])),
-    rules: { path: '/r', displayPath: '/r', exists: true, readError: null, mtimeMs: 1,
+    rules: rulesView({
       file: { v: 1, env: 'pi-search', session: 'pi-search', default: 'allow',
-        rules: [{ id: 'r_ads', action: 'block', match: { host: '*.tracker.example' }, note: 'ads' }] } },
+        rules: [{ id: 'r_ads', action: 'block', match: { host: '*.tracker.example' }, note: 'ads' }] } }),
   });
 }
 
@@ -160,6 +160,12 @@ describe('buildTable', () => {
     const host = buildTable(ledger(), opts({ toggled: new Set(['domain:tracker.example']) })).rows;
     expect(row(host, 'ads.tracker.example')).toMatchObject({ sublabel: '*.tracker.example', toggle: 'block' });
     expect(row(rows, 'nature.com')).toMatchObject({ toggle: 'default' });
+  });
+
+  it('says "all traffic cut" for the kill switch’s rules, not their note', () => {
+    const data = ledger();
+    data.destinations.set('cut.example:443', dest('cut.example:443', { state: 'user_rule', rule: 'r_layman_cut_X_1', blocked: 1, lastSeen: T }));
+    expect(row(buildTable(data, opts()).rows, 'cut.example')).toMatchObject({ sublabel: null, state: { text: 'blocked · all traffic cut' } });
   });
 
   it('counts and applies the filter chips', () => {

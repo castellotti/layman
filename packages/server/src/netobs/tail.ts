@@ -265,13 +265,11 @@ export class NdjsonTailer {
 }
 
 /**
- * A small JSON file re-read when it changes (inode, mtime or size).
- *
- * `torn: 'retry'` is for files glove rewrites in place (status.json): a parse
- * error is taken to be a read racing a write, so the previous value is kept and
- * the file re-read next tick. `torn: 'value'` is for rules.json, which every
- * writer replaces atomically: there a parse error is the file's real content and
- * is reported, because an invalid rules file is something the user must see.
+ * A small JSON file glove rewrites in place (status.json, session.json),
+ * re-read when it changes (inode, mtime or size). A parse error is taken to be a
+ * read racing a write: the previous value is kept and the file re-read next
+ * tick. rules.json is not read this way: `control.ts` needs its exact bytes,
+ * because the gate confirms a write by their hash.
  */
 export class JsonFileWatcher<T> {
   value: T | null = null;
@@ -282,7 +280,6 @@ export class JsonFileWatcher<T> {
   constructor(
     readonly path: string,
     private readonly parse: (text: string) => T | null,
-    private readonly torn: 'retry' | 'value' = 'retry',
   ) {}
 
   /** True when the value (or the file's existence) changed. */
@@ -312,7 +309,7 @@ export class JsonFileWatcher<T> {
     } catch {
       value = null;
     }
-    if (value === null && this.torn === 'retry') return false;
+    if (value === null) return false;
     this.sig = sig;
     this.exists = true;
     this.mtimeMs = st.mtimeMs;

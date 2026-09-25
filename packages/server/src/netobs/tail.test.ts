@@ -232,21 +232,4 @@ describe('JsonFileWatcher', () => {
     expect(w.poll()).toBe(true);
     expect(w.value?.state).toBe('stopped');
   });
-
-  it("reports an unparseable file as its value in 'value' mode", () => {
-    const p = join(dir, 'rules.json');
-    writeFileSync(p, 'not json');
-    const w = new JsonFileWatcher(p, (t) => {
-      try {
-        return { ok: true, v: JSON.parse(t) };
-      } catch {
-        return { ok: false, v: null };
-      }
-    }, 'value');
-    expect(w.poll()).toBe(true);
-    expect(w.value).toEqual({ ok: false, v: null });
-    unlinkSync(p);
-    expect(w.poll()).toBe(true);
-    expect(w.exists).toBe(false);
-  });
 });

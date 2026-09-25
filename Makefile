@@ -67,6 +67,8 @@ docker-build:
 # Override the project dir: make docker-run LAYMAN_PROJECT_DIR=/path/to/project
 docker-run: docker-build
 	@mkdir -p "$${HOME}/.local/share/layman"
+	@# Bind source Docker would otherwise create root-owned on Linux; glove must be able to create env dirs in control/.
+	@mkdir -p "$${HOME}/.glove/control"
 	LAYMAN_PROJECT_DIR=$(or $(LAYMAN_PROJECT_DIR),$(CURDIR)) \
 	LAYMAN_HOST_NAME="$${LAYMAN_HOST_NAME:-$$(hostname)}" \
 	$(COMPOSE) up -d

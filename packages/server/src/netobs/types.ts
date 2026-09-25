@@ -326,6 +326,20 @@ export interface DestinationAggregate {
   flags: FlowFlags;
   /** Last 60 s at 1 s resolution, for the sparkline. Oldest first. */
   spark: RateBucket[];
+  /**
+   * What the rules say about this destination, before any new flow proves it:
+   * first-match evaluation of its host, first IP, port, first service and tool,
+   * and scope. `enforced` is the set the gate runs (null when Layman has not
+   * seen it); `written` is rules.json on disk. They differ while a write is
+   * waiting for the gate. The observed verdict (`state`) stays the authority.
+   */
+  policy: { enforced: PolicyVerdict | null; written: PolicyVerdict | null };
+}
+
+export interface PolicyVerdict {
+  action: RuleAction;
+  /** The matching rule's id, or null when the default decided. */
+  rule: string | null;
 }
 
 export type GateFreshness = 'running' | 'stale' | 'stopped' | 'unknown';
@@ -354,18 +368,75 @@ export interface NetGateView {
   unwatchedServices: string[];
 }
 
-/** rules.json as Layman last read it from the control directory. */
+/**
+ * An edit to rules.json, applied by the server to a fresh read of the file
+ * (`rules.ts` `applyOp`). Sent by the client as `net:rules:apply`.
+ */
+export type GroupKey = 'tool' | 'service' | 'scope';
+
+export type RulesOp =
+  | { kind: 'blockHost'; host: string; terminate: boolean; note?: string }
+  | { kind: 'blockDomain'; apex: string; terminate: boolean; note?: string }
+  | { kind: 'blockIp'; ip: string; terminate: boolean; note?: string }
+  | { kind: 'blockGroup'; key: GroupKey; value: string; terminate: boolean; note?: string }
+  | { kind: 'allowHost'; host: string; note?: string }
+  | { kind: 'allowDomain'; apex: string; note?: string }
+  | { kind: 'removeRule'; ids: string[] }
+  | { kind: 'setDefault'; default: RuleAction }
+  | { kind: 'cutAll'; keepLlm: boolean }
+  | { kind: 'restoreAll' }
+  /** The Rules panel's draft: its rules and default replace the file's, if the file is still `baseSha256`. */
+  | { kind: 'saveDraft'; baseSha256: string | null; default: RuleAction; rules: Rule[] }
+  /** "Revert to enforced rules": write back the bytes the gate is enforcing. */
+  | { kind: 'revert' }
+  /** "Try again": write the file's current content back through the ownership contract. */
+  | { kind: 'rewrite' };
+
+/** Layman's last write of rules.json, and what the gate made of it. */
+export interface RulesWriteView {
+  opId: string;
+  /** The `RulesOp` kind that produced it. */
+  kind: string;
+  /** SHA-256 of the bytes written; null for a removal. */
+  sha256: string | null;
+  at: number;
+  /**
+   * By glove's hash rule: `enforced` when status.json `rules.sha256` equals the
+   * write's, `rejected` when `rules.last_rejected.sha256` does, `superseded`
+   * when rules.json no longer holds it (another writer replaced it), else
+   * `pending` — `unconfirmed` once that has lasted 10 s. `failed` never reached disk.
+   */
+  state: 'pending' | 'enforced' | 'rejected' | 'unconfirmed' | 'superseded' | 'failed';
+  error: string | null;
+}
+
+export type ControlState = 'ok' | 'disabled' | 'no-dir' | 'read-only';
+
+/** rules.json as Layman last read it from the control directory, and whether Layman may change it. */
 export interface RulesView {
   /** Where the file lives (or would live), as this process sees it. */
   path: string;
   /** The same path as the user sees it on the host (differs inside the container). */
   displayPath: string;
   exists: boolean;
-  /** Parsed file, or null when absent or unreadable. */
+  /** Parsed file (tolerantly, for display), or null when absent or unreadable. */
   file: RulesFile | null;
-  /** Why the file on disk could not be read as a rules file. */
+  /** Why the file on disk could not be read or shown as a rules file. */
   readError: string | null;
   mtimeMs: number | null;
+  /** SHA-256 of the bytes on disk. */
+  sha256: string | null;
+  /** The gate's validator's verdict on the file on disk (null when valid, or absent). */
+  invalid: string | null;
+  /** The file on disk vs status.json, by glove's hash rule; `unknown` with no status. */
+  enforcement: 'enforced' | 'rejected' | 'pending' | 'unknown';
+  /** The set the gate enforces, when Layman has seen those bytes. Null when it cannot know. */
+  enforced: RulesFile | null;
+  /** Whether Layman may write this session's rules, and if not, why. */
+  control: { state: ControlState; detail: string };
+  write: RulesWriteView | null;
+  /** The last time rules.json changed and it was not Layman's write. */
+  externalChange: { at: number; sha256: string | null } | null;
 }
 
 export interface NetCounters {

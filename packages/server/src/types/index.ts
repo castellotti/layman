@@ -37,7 +37,7 @@ import type { BookmarkFolder, Bookmark, HighlightFolder, Highlight } from '../db
 import type { DriftState } from '../drift/types.js';
 import type { LiveStream } from '../stream/live.js';
 import type { SyncStatus, HostStats } from '../sync/protocol.js';
-import type { NetServerMessage } from '../netobs/index.js';
+import type { NetServerMessage, RulesOp } from '../netobs/index.js';
 
 export interface SessionStatus {
   connected: boolean;
@@ -127,4 +127,6 @@ export type ClientMessage =
   | { type: 'drift:dismiss'; sessionId: string; approvalId: string }
   | { type: 'drift:dismiss-item'; sessionId: string; category: 'indicator' | 'patternBreak' | 'phantomReference' | 'violation'; value: string }
   /** Network data for one glove session at a time per socket; null unsubscribes. */
-  | { type: 'net:subscribe'; token: string | null };
+  | { type: 'net:subscribe'; token: string | null }
+  /** Change one glove session's rules.json; answered with `net:rules:result` to this socket. */
+  | { type: 'net:rules:apply'; token: string; op: RulesOp; opId: string };

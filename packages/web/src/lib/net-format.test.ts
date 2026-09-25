@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { formatAge, formatBytes, gateChips } from './net-format.js';
 import type { NetSessionData } from './net-state.js';
-import { sessionData } from './net-test-fixtures.js';
+import { rulesView, sessionData } from './net-test-fixtures.js';
 
 const data = sessionData;
 const labels = (d: NetSessionData) => gateChips(d).map((c) => c.label);
@@ -53,6 +53,16 @@ describe('gateChips', () => {
     expect(rejected).toMatchObject({ label: 'Rules rejected', tone: 'error' });
     expect(rejected.title).toContain('still enforcing the previous 1 rule');
     expect(chip(data({ record: 'full' }), 'record')!).toMatchObject({ label: 'Record: full', tone: 'violet' });
+  });
+
+  it('says when all traffic is cut, straight after the gate state', () => {
+    expect(chip(data(), 'cut')).toBeUndefined();
+    const cut = data({}, { rules: rulesView({ file: { v: 1, env: 'e', session: 'e', default: 'block', rules: [
+      { id: 'r_layman_cut_X_0', action: 'allow', match: { service: 'llm' } },
+      { id: 'r_layman_cut_X_1', action: 'block', match: { scope: 'tunnelled' }, terminate: true },
+    ] } }) });
+    expect(labels(cut).slice(0, 2)).toEqual(['Gate running', 'ALL TRAFFIC CUT']);
+    expect(chip(cut, 'cut')!.title).toContain('except the LLM link');
   });
 
   it('flags an incomplete view, and only then', () => {

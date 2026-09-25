@@ -27,9 +27,14 @@
  *   --rotate-every <n>   rename flows.ndjson to flows-<ts>.ndjson every n records
  *   --direct             inject one scope:"direct" flow mid-pass (the leak treatment)
  *   --scenario <names>   replay scenarios instead of the fixture: comma-separated names, or `all`
- *   --gate               fake gate mode — not yet implemented (arrives with the rules writer)
+ *   --gate               fake gate: validate control/<env>/<name>/rules.json with Layman's port of glove's
+ *                        validator, report it in status.json as glove's collector does (sha256,
+ *                        last_rejected, last good set kept on a rejection), and apply its verdicts to the
+ *                        replayed flows (blocked opens; `terminate` rules cut open flows)
  */
+import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync, appendFileSync } from 'node:fs';
+import { evaluate, parseRulesBytes, type RuleSet } from '../src/netobs/rules.ts';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -151,10 +156,6 @@ const stops: Array<() => void> = [];
 
 async function main(): Promise<void> {
   const o = parseArgs(process.argv.slice(2));
-  if (o.gate) {
-    console.error('--gate (fake gate mode) arrives with the rules writer; replaying without it is supported now.');
-    process.exit(2);
-  }
   process.on('SIGINT', () => {
     for (const stop of stops) stop();
     console.log('\nGate marked stopped. Bye.');
@@ -169,6 +170,76 @@ async function main(): Promise<void> {
     await replay(o, loadSource(FIXTURE), ENV, NAME, o.direct);
   }
   console.log('Replay finished; the gate keeps heartbeating. Ctrl-C to stop it.');
+}
+
+/** status.json `rules`, as glove's collector reports them. */
+interface GateRules {
+  loaded_at: string | null;
+  source_mtime: string | null;
+  ok: boolean;
+  error: string | null;
+  active_count: number;
+  sha256: string | null;
+  last_rejected: { checked_at: string; source_mtime: string | null; sha256: string | null; error: string } | null;
+}
+
+/**
+ * A stand-in for glove's PolicyWatcher: polls rules.json, keeps the last
+ * known-good set, and reports every read the way the real gate does — by hash.
+ */
+class FakeGate {
+  set: RuleSet | null = null;
+  rules: GateRules = { loaded_at: null, source_mtime: null, ok: true, error: null, active_count: 0, sha256: null, last_rejected: null };
+  private sig: string | null = null;
+
+  constructor(private readonly path: string, private readonly env: string, private readonly token: string) {}
+
+  /** True when the enforced set changed. */
+  poll(): boolean {
+    let st;
+    try {
+      st = statSync(this.path);
+    } catch {
+      if (this.sig === 'absent') return false;
+      const had = this.set !== null;
+      this.sig = 'absent';
+      this.set = null;
+      this.rules = { ...this.rules, loaded_at: iso(Date.now()), source_mtime: null, ok: true, error: null, active_count: 0, sha256: null };
+      return had;
+    }
+    const sig = `${st.ino}:${st.mtimeMs}:${st.size}:${st.mode}:${st.uid}:${st.gid}`;
+    if (sig === this.sig) return false;
+    this.sig = sig;
+    let bytes: Buffer;
+    try {
+      bytes = readFileSync(this.path);
+    } catch (e) {
+      const error = `cannot read rules.json: ${(e as NodeJS.ErrnoException).code}`;
+      this.rules = { ...this.rules, ok: false, error, last_rejected: { checked_at: iso(Date.now()), source_mtime: iso(st.mtimeMs), sha256: null, error } };
+      return false;
+    }
+    const sha256 = createHash('sha256').update(bytes).digest('hex');
+    try {
+      this.set = parseRulesBytes(bytes, { env: this.env, session: this.token }).set;
+    } catch (e) {
+      const error = (e as Error).message;
+      this.rules = { ...this.rules, ok: false, error, last_rejected: { checked_at: iso(Date.now()), source_mtime: iso(st.mtimeMs), sha256, error } };
+      return false;
+    }
+    this.rules = { ...this.rules, loaded_at: iso(Date.now()), source_mtime: iso(st.mtimeMs), ok: true, error: null, active_count: this.set.rules.length, sha256 };
+    return true;
+  }
+
+  /** The verdict for a flow record, or null to let it through. glove's own refusals are never second-guessed. */
+  verdict(r: Rec): { rule: string | null; terminate: boolean } | null {
+    if (!this.set || r.verdict === 'block') return null;
+    const dest = (r.dest ?? {}) as { host?: string | null; ip?: string | null; port?: number | null };
+    const v = evaluate(this.set, {
+      host: dest.host ?? null, ip: dest.ip ?? null, port: dest.port ?? null,
+      service: (r.service as string) ?? null, tool: (r.tool as string) ?? null, scope: (r.scope as string) ?? null,
+    });
+    return v.action === 'block' ? { rule: v.rule, terminate: v.terminate } : null;
+  }
 }
 
 /**
@@ -197,8 +268,10 @@ async function replay(o: Options, src: Source, env: string, name: string, direct
   let written = 0;
   let rotations = 0;
   let state = 'running';
+  const gate = o.gate ? new FakeGate(rulesPath, env, token) : null;
+  gate?.poll();
   const heartbeat = () => {
-    const rules = src.status.rules ?? {};
+    const rules = gate ? gate.rules : src.status.rules ?? {};
     writeAtomic(
       join(net, 'status.json'),
       JSON.stringify(
@@ -206,7 +279,7 @@ async function replay(o: Options, src: Source, env: string, name: string, direct
           ...src.status,
           state,
           t: iso(Date.now()),
-          rules: { ...rules, loaded_at: rules.loaded_at ? iso(start) : null, source_mtime: rules.source_mtime ? iso(start) : null },
+          rules: gate ? rules : { ...rules, loaded_at: rules.loaded_at ? iso(start) : null, source_mtime: rules.source_mtime ? iso(start) : null },
           telemetry: { ...src.status.telemetry, written, rotations },
         },
         null,
@@ -216,9 +289,29 @@ async function replay(o: Options, src: Source, env: string, name: string, direct
   };
   heartbeat();
   const beat = setInterval(heartbeat, 5_000);
+  // Flows the fake gate refused or cut: their remaining records are dropped, as the real gate would never send them.
+  const ended = new Set<string>();
+  const open = new Map<string, Rec>();
+  const cut = (r: Rec, rule: string | null, bytes?: unknown) => {
+    const t = iso(Date.now());
+    ended.add(r.id as string);
+    open.delete(r.id as string);
+    write({ ...r, phase: 'close', t, t_close: t, verdict: 'block', rule, close_reason: 'blocked', bytes: bytes ?? { up: 40, down: 180 } });
+  };
+  // Forwarders re-read rules.json about once a second; `terminate` rules cut established flows.
+  const rulesTimer = gate
+    ? setInterval(() => {
+        if (!gate.poll()) return;
+        for (const r of [...open.values()]) {
+          const v = gate.verdict(r);
+          if (v?.terminate) cut(r, v.rule, r.bytes);
+        }
+      }, 1_000)
+    : null;
   stops.push(() => {
     state = 'stopped';
     clearInterval(beat);
+    if (rulesTimer) clearInterval(rulesTimer);
     heartbeat();
   });
 
@@ -260,6 +353,18 @@ async function replay(o: Options, src: Source, env: string, name: string, direct
         if ('t_open' in r) out.t_open = shift(r.t_open) ?? undefined;
         if ('t_close' in r) out.t_close = shift(r.t_close);
       }
+      if (file === 'flows' && out.type === 'flow' && gate) {
+        if (ended.has(out.id as string)) continue;
+        const v = out.phase === 'open' ? gate.verdict(out) : null;
+        if (v) {
+          // Refused at open: one close record, as the gate writes for a blocked connection.
+          write({ ...out, phase: 'open', verdict: 'block', rule: v.rule, bytes: { up: 40, down: 0 } });
+          cut(out, v.rule);
+          continue;
+        }
+        if (out.phase === 'close') open.delete(out.id as string);
+        else open.set(out.id as string, out);
+      }
       write(out, file);
       if (direct && i === directAt) await injectDirect(write, pass, env, token);
     }
@@ -270,6 +375,7 @@ async function replay(o: Options, src: Source, env: string, name: string, direct
   if (src.status.state && src.status.state !== 'running') {
     state = src.status.state;
     clearInterval(beat);
+    if (rulesTimer) clearInterval(rulesTimer);
     heartbeat();
   }
   console.log(`  ${token}: done (${written} records written, ${rotations} rotations).`);

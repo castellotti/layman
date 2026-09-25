@@ -4,7 +4,9 @@
 persists its fake home on the host under `~/.glove/envs/<env-id>/sessions/<name>/home/`. Layman monitors gloved
 sessions **passively and read-only** by tailing those already-persisted transcript logs from
 outside the sandbox — it adds nothing to what the sandboxed agent can see. The feature is off by
-default (`glove.enabled`) and enabling or disabling it never affects native monitoring.
+default (`glove.enabled`) and enabling or disabling it never affects native monitoring. The one thing
+Layman ever writes is a session's network rules file, `~/.glove/control/<env>/<name>/rules.json`,
+outside the sandbox and only when the user blocks or allows something (Network → Writing rules).
 
 Only harnesses that persist a tailable transcript are discoverable this way today: **Mistral Vibe**
 and **pi**. A network-hook harness inside a net-restricted sandbox cannot reach Layman and persists
@@ -83,7 +85,8 @@ path is irrelevant); Layman tails those already-persisted logs from outside. The
 to what the sandboxed agent can see — no new mount into the container, no egress — which is a
 deliberate fit for glove's security model, and the reason the host mount is `:ro`. Interception /
 blocking of a sandboxed harness would be a separate mechanism (a glove-provided forwarder) — this
-watcher is logging only.
+watcher is logging only. (Blocking *network traffic* is different: glove's gate reads a rules file
+Layman may write, outside the sandbox; see Network → Writing rules.)
 
 glove cooperates with this integration: its Vibe renderer pre-creates `home/.vibe/logs/session/` on
 launch *specifically so an external monitor can attach before the first turn*
@@ -171,8 +174,8 @@ so the guard needs no exemptions.
 
 Per session, `~/.glove/envs/<env>/sessions/<name>/net/`: `flows.ndjson` and its rotated
 `flows-<stamp>.ndjson`, `exit.ndjson` (which rotates the same way), `status.json`, `session.json`; and
-`~/.glove/control/<env>/<name>/rules.json` (read only, for now). All of it is inside the existing
-read-only `~/.glove` mount, so reading needs no new Docker mount.
+`~/.glove/control/<env>/<name>/rules.json`. All of it is inside the existing read-only `~/.glove`
+mount; only writing rules needs the extra `control/` mount (Docker, below).
 
 - **Discovery is a plain glob** (`discovery.ts`), deliberately not routed through `GloveSource`: that
   source grew registry and `homes/` handling because a harness *home* can be relocated, but `net/`
@@ -386,14 +389,14 @@ come with the Map tab's detail card. All deciding is in two pure, tested modules
 - **Toggles are real buttons** (`NetToggle` in `cells.tsx`): `aria-pressed`, and an `aria-label` naming
   the verb and target ("Block arxiv.org", "Unblock …", "Allow …"). The kinds are drawn as the legend says:
   allow filled teal, your rule filled red, default outlined red, guard dashed amber with a lock and always
-  disabled. Until the rules writer exists all of them are disabled, with a tooltip saying how to change
-  rules meanwhile. A group gets a toggle only when all its members agree on one.
+  disabled. A group gets a toggle only when all its members agree on one. What they do is under Writing
+  rules below.
 - **KPIs**: Sent, Received, Live (open flows, plus how many were lost with their gate), Destinations (to
   map, unknown location), Blocked (by guard / your rules / the default), Untunnelled (green "every egress
   flow used the VPN" at zero, otherwise a red `role="alert"` tile).
-- **Rules panel, read-only**: whether the gate enforces what is on disk, evaluation order (glove's guard as
-  locked row 0 with its hit count, then the file's rules with theirs, and a `CUTS OPEN` badge for
-  `terminate`), and the default policy. When the gate has **rejected** the file, the list is headed "In
+- **Rules panel** (`RulesPanel.tsx`): whether the gate enforces what is on disk, evaluation order
+  (glove's guard as locked row 0 with its hit count, then the file's rules with theirs, and a `CUTS OPEN`
+  badge for `terminate`), the default policy, and editing (Writing rules, below). When the gate has **rejected** the file, the list is headed "In
   rules.json · not enforced": the file on disk is not what the gate enforces, and Layman cannot see the
   set that is. Listing it as the evaluation order would claim otherwise. Hit counts come from the
   destination aggregates (each destination's block count under its latest rule), so they undercount a
@@ -402,10 +405,89 @@ come with the Map tab's detail card. All deciding is in two pure, tested modules
   no exit is verified), how many destinations can be placed and how many are in Unknown location, and a
   click opens the Map tab.
 
+### Writing rules
+
+Blocking and unblocking (plan §5.3, §6.4; `controls-block-unblock.dc.html`). This is the only place
+Layman writes into `~/.glove`, and it follows glove's contract from its follow-up results (§3), which
+overrode the plan in three places:
+
+- **Never create the control directory.** glove creates `control/<env>/<name>/` (0700, the user's) when
+  it renders a session with a gate. If it is absent the session has no gate yet, and the toggles say so
+  (`control.state: 'no-dir'`). The plan had Layman create it.
+- **Hand the file to the gate's user** (`writer.ts`). The gate runs as the user who ran glove and reads
+  the file through a read-only bind, so Layman writes `rules.json.layman.tmp` in that directory, fsyncs
+  it, chowns it to the directory's owner as `stat` reports it, sets 0600, and renames it onto
+  `rules.json`. If the chown fails, the temp file is deleted and nothing is renamed. Without the chown,
+  a root Layman on a rootful Linux engine leaves a `root:root 0600` file the gate cannot read. On Docker
+  Desktop and rootless Podman the chown is a no-op, which was checked here: the file lands on the host
+  owned by the directory's owner. The writer refuses a directory that is a symlink or not exactly
+  `control/<env>/<name>`, and never writes anything else there. The plan used a shared `rules.json.tmp`
+  name, which another writer could clobber.
+- **Confirm by hash, not time** (`control.ts`). `status.json` `rules.sha256` names the bytes the gate
+  enforces and `rules.last_rejected.sha256` the bytes it last refused. So a write is `enforced` or
+  `rejected` by its own hash, `superseded` when the file on disk no longer holds it (another writer),
+  and `pending`, then `unconfirmed` after 10 s. The plan's timestamp rule could not detect a rejection
+  at all, because `loaded_at` does not move on one. Confirmation lags enforcement by up to ~5 s (the
+  collector re-reads the file when it writes `status.json`).
+
+How it is built:
+
+- **The validator is a port of glove's `policy.py`** (`rules.ts`). It covers every rejection, Python's
+  quirks included: `v: true` passes as 1, an explicit `terminate: null` fails, netmasks and hostmasks
+  in `ip`, and IPv6 scope ids accepted and ignored, which the cross-check found. Layman refuses to
+  write anything it rejects. `rules.crosscheck.test.ts` feeds ~120 files and a set of flows to both
+  the port and glove's own `parse_bytes` / `RuleSet.evaluate`, requires identical verdicts and matching
+  rules, and runs `glove net validate` on a file Layman wrote. It is skipped without glove or `uv`.
+  Known and harmless: JSON cannot tell `443.0` from `443`, which Python rejects as a port; Layman never
+  writes the former.
+- **Operations** (`RulesOp`, applied to a fresh read, new rules on top): `blockHost`, `blockDomain`
+  (two rules, `apex` and `*.apex`, ids `<stem>-apex` / `<stem>-sub` so removing one removes the pair),
+  `blockIp`, `blockGroup` (one rule for fan-out, local links, a route or a tool), `allowHost`,
+  `allowDomain`, `removeRule`, `setDefault`, `cutAll` / `restoreAll`, `saveDraft`, `revert` and
+  `rewrite`. `cutAll` writes `default: block` plus terminating block rules for the three scopes, after
+  an `allow service: llm` when the LLM link is kept. Its rules carry the id prefix `r_layman_cut_` and
+  record the previous default in their note, so `restoreAll` needs no state outside the file.
+  `saveDraft` is refused unless the file still has the hash the draft started from.
+- **Refuse to clobber.** If the file on disk is one the gate would reject, every operation but `revert`
+  is refused: someone else's broken write is theirs to fix. `revert` writes back the bytes the gate
+  enforces. Layman remembers every valid version it has read, by hash, so it knows those bytes after a
+  rejection; if the gate enforces "no file", it removes the file. `rewrite` ("Try again") writes the
+  current, valid file again through the contract. That is what fixes an unreadable, wrongly owned file.
+- **What the toggles show.** The server evaluates each destination (host, first IP, port, service,
+  tool, scope) against both the *enforced* set and the file on disk, and sends both
+  (`DestinationAggregate.policy`). The toggle shows the enforced verdict, so a rejected write springs
+  back by itself, and shows `pending` while the two differ. The observed state column stays the
+  authority on what actually happened.
+- **The UI.** A toggle opens a popover. For an allowed destination, Block offers this host, the domain
+  and every subdomain, or this IP (with the shared-CDN warning), plus "also cut the N open connections"
+  (checked when there are some), a note, and the exact JSON. For your own rule, Unblock offers removing
+  the rule or rule pair ("unblocks every host it matches (N seen)"), or allowing only this host above
+  it. A default block offers Allow host / Allow domain. The Rules panel edits a draft (drag to reorder,
+  delete, Add rule with the six permitted match keys, the default policy) and saves it as one write.
+  When the file changes under a draft, the draft is rebased (your additions on top, your deletions
+  kept, everything else from the new file) and a conflict notice says so. "Cut all traffic now"
+  confirms first, with "Keep the LLM link open" checked by default. The strip then shows
+  **ALL TRAFFIC CUT** with Restore. The rejected banner gained "Revert to enforced rules" and "Try again".
+  A toast reports a failed write, and any change to rules.json that was not Layman's.
+- **When toggles cannot act**, they say why: `glove.network.controlEnabled` off (Settings → Glove →
+  Allow blocking from Layman), no control directory, a read-only mount (checked with `access(W_OK)`,
+  never a probe file, since glove's contract forbids other files there), an invalid file, or a write
+  still waiting for the gate.
+- **Wire.** `net:rules:apply { token, op, opId }` over the socket and `POST
+  /api/net/sessions/:token/rules { op }` over REST share `NetObs.applyRules`. The response says whether
+  the write reached disk (`net:rules:result`, or 409 with the reason); the gate's verdict follows in
+  `net:rules` (`rules.write.state`).
+- **Checked in the running app** against the fake gate: block → pending → enforced → later flows
+  refused by the rule, with owner and mode right on the host; unblock from the same row; allow a
+  default block; a draft saved; cut and restore; an outside edit toasted; a hand-broken file shows the
+  banner on all four tabs while the toggles keep showing the enforced rules; revert restores the exact
+  bytes.
+
 ### Configuration
 
 `glove.network` in `GloveConfigSchema`: `enabled` (default true, meaningful only with `glove.enabled`),
-`controlEnabled` and `geoipDbPath` (used by later phases). `glove` and `glove.network` are deep-merged in
+`controlEnabled` (default true; false makes every toggle read-only, and is the Settings toggle "Allow
+blocking from Layman") and `geoipDbPath` (used by a later phase). `glove` and `glove.network` are deep-merged in
 both `loadConfig()` and `updateConfig()` — before this, `glove` was not, so a Settings update carrying
 only `glove.enabled` would have blanked `sessionsDir`, and one carrying a single network toggle would
 have reset the others. With glove (or its network views) off, the store is emptied and the session list
@@ -428,7 +510,10 @@ has its own drift guard.
 
 `packages/server/scripts/netobs-replay.ts` builds a fake glove home from the fixture with timestamps
 moved to now and replays it at its recorded pace (`--speed`, `--loop`, `--rotate-every N`, `--direct`).
-`--scenario <names|all>` replays scenarios instead, each into its own glove session named after it, so
+`--gate` adds a fake gate: it polls the session's `rules.json`, validates it with the port, reports
+`status.json` `rules` as glove's collector does (hash, `last_rejected`, the last good set kept on a
+rejection, a ~5 s status lag), refuses matching new connections, and cuts open flows for `terminate`
+rules. `--scenario <names|all>` replays scenarios instead, each into its own glove session named after it, so
 every state can be looked at in the session picker; a later `--loop` pass gets fresh flow **and run**
 ids, which to the reader is a restarted gate:
 
@@ -440,6 +525,15 @@ pnpm --filter ./packages/server netobs:replay -- --dir /tmp/layman-netobs/glove 
 
 ## Docker
 
-The whole `${HOME}/.glove` is mounted **read-only** (`:ro`): it is the one mount Layman only ever reads,
-never writes, because writing into a sandbox is exactly what the feature must not do. It covers the
-network views' `net/` directories too. See the "Docker mounts" note in the root `CLAUDE.md`.
+The whole `${HOME}/.glove` is mounted **read-only** (`:ro,z`): writing into a sandbox is exactly what the
+feature must not do. It covers the network views' `net/` directories too. Mounted after it, and so
+over it, `${HOME}/.glove/control` is **writable** (`:z`). That is the only writable glove path, and it
+is safe to expose because the gate's schema can express only allow/block verdicts over destinations.
+`make docker-run` creates `~/.glove/control` as you first; otherwise Docker creates it root-owned on
+Linux and glove can no longer create per-env directories in it. `z` is the shared SELinux label glove
+requires on enforcing hosts (never `Z`, which would lock the gate out) and is ignored elsewhere. The
+nested rw-inside-ro bind was checked on Docker Desktop and on rootless Podman (a macOS Podman
+machine): the rest of `~/.glove` stays read-only, `control/` is writable, and container root's chown to
+`0:0` lands as the host user. `docker-compose.ghcr.yml`, the file the README's one-line install
+downloads, has no glove mounts at all, so glove users of the published image must add both lines. See
+the "Docker mounts" note in the root `CLAUDE.md`.

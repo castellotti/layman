@@ -195,6 +195,7 @@ export function useWebSocket(): { send: (msg: ClientMessage) => void } {
         case 'net:status':
         case 'net:exit':
         case 'net:rules':
+        case 'net:rules:result':
           useNetStore.getState().apply(message);
           break;
       }

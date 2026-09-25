@@ -6,8 +6,9 @@
  * Wiring lives here so `server.ts` makes one constructor call, one `start()`,
  * and hands each WebSocket to `attach()`/`subscribe()`.
  */
-import { NetSessionSource, toHostPath, type NetSessionLocation } from './discovery.js';
-import { parseLine, parseRulesForDisplay, parseSessionFile, parseStatus } from './parse.js';
+import { NetSessionSource, type NetSessionLocation } from './discovery.js';
+import { RulesControl, type ApplyResult } from './control.js';
+import { parseLine, parseSessionFile, parseStatus } from './parse.js';
 import { NetStore } from './store.js';
 import { DEFAULT_BACKFILL_BYTES, JsonFileWatcher, NdjsonTailer } from './tail.js';
 import type {
@@ -17,7 +18,7 @@ import type {
   NetSessionFile,
   NetSessionSummary,
   NetSnapshot,
-  RulesFile,
+  RulesOp,
   RulesView,
   StatusRecord,
 } from './types.js';
@@ -33,7 +34,9 @@ export type NetServerMessage =
   | { type: 'net:delta'; token: string; delta: NetDelta }
   | { type: 'net:status'; token: string; status: NetGateView }
   | { type: 'net:exit'; token: string; exit: ExitRecord | null }
-  | { type: 'net:rules'; token: string; rules: RulesView };
+  | { type: 'net:rules'; token: string; rules: RulesView }
+  /** The outcome of one `net:rules:apply`, to the socket that sent it. Confirmation follows in `net:rules`. */
+  | { type: 'net:rules:result'; token: string; opId: string; ok: boolean; error: string | null };
 
 /** What server.ts's WebSocket handler holds. */
 export interface NetSocket {
@@ -50,6 +53,8 @@ export interface NetObsOptions {
   /** Expanded glove sessions dir, or null when glove or its network views are off. */
   getSessionsDir: () => string | null;
   stringFilter?: (text: string) => string;
+  /** `glove.network.controlEnabled`: false leaves every toggle read-only. */
+  controlEnabled?: () => boolean;
   pollMs?: number;
   coalesceMs?: number;
   budgetBytes?: number;
@@ -60,7 +65,6 @@ class SessionReader {
   readonly exits: NdjsonTailer;
   readonly status: JsonFileWatcher<StatusRecord>;
   readonly session: JsonFileWatcher<NetSessionFile>;
-  readonly rules: JsonFileWatcher<{ file: RulesFile | null; error: string | null }>;
   private gapsSeen = 0;
 
   constructor(readonly loc: NetSessionLocation, budgetBytes: number) {
@@ -68,17 +72,6 @@ class SessionReader {
     this.exits = new NdjsonTailer(loc.netDir, 'exit', budgetBytes);
     this.status = new JsonFileWatcher(join(loc.netDir, 'status.json'), (t) => parseStatus(JSON.parse(t)));
     this.session = new JsonFileWatcher(join(loc.netDir, 'session.json'), (t) => parseSessionFile(JSON.parse(t)));
-    this.rules = new JsonFileWatcher(
-      loc.rulesPath,
-      (t) => {
-        try {
-          return parseRulesForDisplay(JSON.parse(t));
-        } catch (e) {
-          return { file: null, error: `not valid JSON: ${(e as Error).message}` };
-        }
-      },
-      'value',
-    );
   }
 
   /** Read everything new into the store. session.json first, so aggregates can name service endpoints. */
@@ -111,16 +104,6 @@ class SessionReader {
     });
 
     if (this.status.poll()) store.setStatus(token, this.status.value, this.status.mtimeMs, now);
-    if (this.rules.poll()) {
-      store.setRules(token, {
-        path: this.loc.rulesPath,
-        displayPath: toHostPath(this.loc.rulesPath),
-        exists: this.rules.exists,
-        file: this.rules.value?.file ?? null,
-        readError: this.rules.value?.error ?? null,
-        mtimeMs: this.rules.mtimeMs,
-      });
-    }
   }
 }
 
@@ -136,9 +119,11 @@ export class NetObs {
   private readonly coalesceMs: number;
   private readonly budgetBytes: number;
   private readonly getSessionsDir: () => string | null;
+  private readonly control: RulesControl;
 
   constructor(opts: NetObsOptions) {
     this.getSessionsDir = opts.getSessionsDir;
+    this.control = new RulesControl({ controlEnabled: opts.controlEnabled ?? (() => true) });
     this.source = new NetSessionSource(opts.getSessionsDir);
     this.store = new NetStore({ stringFilter: opts.stringFilter });
     this.pollMs = opts.pollMs ?? POLL_MS;
@@ -192,6 +177,7 @@ export class NetObs {
       }
       try {
         this.readers.get(loc.token)!.poll(this.store, now);
+        this.pollRules(loc, now);
       } catch (err) {
         // A read error on one session must not stop the others, or the poll loop.
         console.warn(`[netobs] ${loc.token}: ${(err as Error).message}`);
@@ -199,9 +185,40 @@ export class NetObs {
     }
     // A session whose directory vanished stops being read but stays listed:
     // what was read from it is still true.
-    for (const token of [...this.readers.keys()]) if (!seen.has(token)) this.readers.delete(token);
+    for (const token of [...this.readers.keys()]) {
+      if (seen.has(token)) continue;
+      this.readers.delete(token);
+      this.control.forget(token);
+    }
     this.store.tick(now);
     this.maybeBroadcastSessions();
+  }
+
+  /** rules.json and the gate's verdict on it; pushes `net:rules` and new policy predictions when they change. */
+  private pollRules(loc: NetSessionLocation, now: number): void {
+    if (!this.control.poll(loc, this.store.statusRecord(loc.token), now)) return;
+    this.store.setRules(loc.token, this.control.view(loc.token)!);
+    this.store.setPolicy(loc.token, this.control.sets(loc.token));
+  }
+
+  /**
+   * Change rules.json (plan §5.3). The WebSocket and REST share this. The
+   * result says whether the write reached disk; whether the gate took it
+   * arrives later, in `net:rules`, by the hash rule.
+   */
+  applyRules(token: string, op: RulesOp, opId: string, now = Date.now()): ApplyResult {
+    const loc = this.store.location(token);
+    if (!loc) return { ok: false, error: `No glove network session '${token}'` };
+    const result = this.control.apply(loc, this.store.statusRecord(token), op, opId, now);
+    this.store.setRules(token, this.control.view(token)!);
+    this.store.setPolicy(token, this.control.sets(token));
+    return result;
+  }
+
+  /** `net:rules:apply` from a socket: apply, and answer that socket. */
+  applyFromSocket(socket: NetSocket, token: string, op: RulesOp, opId: string): void {
+    const result = this.applyRules(token, op, opId);
+    this.send(socket, { type: 'net:rules:result', token, opId, ...result });
   }
 
   sessions(): NetSessionSummary[] {

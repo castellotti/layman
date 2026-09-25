@@ -9,9 +9,6 @@ import type { CellText } from '../../lib/net-table.js';
 import type { RateBucket } from '../../lib/netobs-types.js';
 import { NetIcon, type NetIconName } from './netui.js';
 
-/** Why toggles are read-only until Layman can write rules (phase 4 of the plan). */
-export const READ_ONLY_REASON = 'Read-only: Layman does not change rules yet. Edit rules.json, or use `glove net block`.';
-
 const VERB: Record<ToggleKind, (target: string) => string> = {
   allow: (t) => `Block ${t}`,
   block: (t) => `Unblock ${t}`,
@@ -22,17 +19,20 @@ const VERB: Record<ToggleKind, (target: string) => string> = {
 };
 
 const LOCKED_TITLE = 'Refused by glove’s built-in guard before any rule runs. No rule can allow it.';
+const PENDING_TITLE = 'Waiting for the gate: rules.json was written, and the toggle changes once status.json confirms it.';
 
 /**
  * The allow/block toggle (plan §6.3). A real button with `aria-pressed` and a
  * verb-and-target label, so it reads right to a screen reader even while it is
  * read-only. `locked` is always disabled: glove's guard is not negotiable.
  */
-export function NetToggle({ kind, target, disabledReason = READ_ONLY_REASON }: {
+export function NetToggle({ kind, target, disabledReason, onClick }: {
   kind: ToggleKind;
   target: string;
-  /** Null when the toggle acts (phase 4). */
-  disabledReason?: string | null;
+  /** Why it cannot act (control off, file invalid, a write pending); null when it can. */
+  disabledReason: string | null;
+  /** Opens the block/unblock popover, anchored on the toggle. */
+  onClick?: (anchor: DOMRect) => void;
 }) {
   if (kind === 'none') return null;
   const label = VERB[kind](target);
@@ -40,7 +40,7 @@ export function NetToggle({ kind, target, disabledReason = READ_ONLY_REASON }: {
   const red = kind === 'block' || kind === 'default';
   const base: React.CSSProperties = {
     position: 'relative', width: 30, height: 16, borderRadius: 8, flexShrink: 0, padding: 0,
-    cursor: disabledReason === null && kind !== 'locked' ? 'pointer' : 'default',
+    cursor: disabledReason === null && kind !== 'locked' && kind !== 'pending' ? 'pointer' : 'default',
   };
   let style: React.CSSProperties;
   let knob: React.CSSProperties | null = { position: 'absolute', top: 1, width: 12, height: 12, borderRadius: 6 };
@@ -67,15 +67,18 @@ export function NetToggle({ kind, target, disabledReason = READ_ONLY_REASON }: {
       knob = null;
       break;
   }
-  const disabled = kind === 'locked' || disabledReason !== null;
+  const disabled = kind === 'locked' || kind === 'pending' || disabledReason !== null;
   return (
     <button
       type="button"
       aria-pressed={on}
       aria-label={label}
-      title={kind === 'locked' ? LOCKED_TITLE : disabledReason ? `${label}. ${disabledReason}` : label}
+      title={kind === 'locked' ? LOCKED_TITLE : kind === 'pending' ? PENDING_TITLE : disabledReason ? `${label}. ${disabledReason}` : label}
       disabled={disabled}
-      onClick={(e) => e.stopPropagation()}
+      onClick={(e) => {
+        e.stopPropagation();
+        if (!disabled) onClick?.(e.currentTarget.getBoundingClientRect());
+      }}
       style={{ ...style, opacity: disabled && kind !== 'locked' ? 0.85 : 1, outlineColor: red ? 'var(--error)' : undefined }}
     >
       {knob && <span style={knob} />}

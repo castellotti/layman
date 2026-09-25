@@ -4,6 +4,7 @@ import type { LaymanConfig } from '../../../lib/types.js';
 import { SectionTitle, ToggleRow, CustomRow } from './primitives.js';
 
 const DEFAULT_SESSIONS_DIR = '~/.glove/envs';
+const DEFAULT_NETWORK = { enabled: true, controlEnabled: true, geoipDbPath: '' };
 
 /**
  * glove — passive monitoring of sandboxed harnesses. Enabling it points the
@@ -18,7 +19,10 @@ export function GloveSection({
   onSend: (msg: ClientMessage) => void;
 }) {
   const updateConfig = (updates: Partial<LaymanConfig>) => onSend({ type: 'config:update', config: updates });
-  const glove = config.glove ?? { enabled: false, sessionsDir: DEFAULT_SESSIONS_DIR };
+  const glove = config.glove ?? { enabled: false, sessionsDir: DEFAULT_SESSIONS_DIR, network: DEFAULT_NETWORK };
+  const network = glove.network ?? DEFAULT_NETWORK;
+  // The server deep-merges glove and glove.network, so sending only the changed field is safe.
+  const setNetwork = (updates: Partial<typeof network>) => updateConfig({ glove: { ...glove, network: { ...network, ...updates } } });
 
   return (
     <>
@@ -48,6 +52,23 @@ export function GloveSection({
           In Docker this must match the mount in docker-compose.yml (default maps to the container's <code style={{ fontFamily: 'var(--font-mono)' }}>~/.glove/envs</code>).
         </span>
       </CustomRow>
+
+      {glove.enabled && (
+      <ToggleRow
+        label="Network views"
+        desc="Show the Network, Map, Topology and Trace tabs for glove sessions that record their traffic. Layman never looks up the hosts it shows: no DNS, no geo-IP service."
+        checked={network.enabled}
+        onChange={() => setNetwork({ enabled: !network.enabled })}
+      />
+      )}
+      {glove.enabled && network.enabled && (
+      <ToggleRow
+        label="Allow blocking from Layman"
+        desc="Let the network views write the session's rules.json (block, unblock, cut all traffic). Off makes every toggle read-only. In Docker this also needs the writable ~/.glove/control mount from docker-compose.yml."
+        checked={network.controlEnabled}
+        onChange={() => setNetwork({ controlEnabled: !network.controlEnabled })}
+      />
+      )}
     </>
   );
 }

@@ -205,6 +205,7 @@ export function createServer(config: LaymanConfig): LaymanServer {
     },
     // Only `request` (record: full) is agent-derived text; see netobs/store.ts.
     stringFilter: (text) => (getConfig().piiFilter ? redactString(text) : text),
+    controlEnabled: () => getConfig().glove.network.controlEnabled,
   });
   const vibeWatcher = new VibeSessionWatcher(eventStore, gate, getConfig, [
     new NativeVibeSource(),
@@ -1725,6 +1726,12 @@ export function createServer(config: LaymanConfig): LaymanServer {
             // Per-socket, so it cannot go through the socket-less handler below.
             if (message.type === 'net:subscribe') {
               netObs.subscribe(ws, typeof message.token === 'string' ? message.token : null);
+              return;
+            }
+            if (message.type === 'net:rules:apply') {
+              if (typeof message.token === 'string' && typeof message.opId === 'string' && message.op && typeof message.op.kind === 'string') {
+                netObs.applyFromSocket(ws, message.token, message.op, message.opId);
+              }
               return;
             }
             handleClientMessage(message);

@@ -20,7 +20,9 @@
 import { EventEmitter } from 'events';
 import { BLOCK_STATES, aggregateState, classifyFlow, classifySession, flowFlags } from './classify.js';
 import { groupKeyFor } from './domain.js';
-import { toHostPath, type NetSessionLocation } from './discovery.js';
+import { type NetSessionLocation } from './discovery.js';
+import { blankRulesView } from './control.js';
+import { evaluate, type RuleSet } from './rules.js';
 import type {
   DestinationAggregate,
   ExitRecord,
@@ -36,6 +38,7 @@ import type {
   NetSnapshot,
   NetState,
   NetTotals,
+  PolicyVerdict,
   RateBucket,
   RulesView,
   StatusRecord,
@@ -64,7 +67,7 @@ interface FlowEntry {
 }
 
 interface AggEntry {
-  agg: Omit<DestinationAggregate, 'state' | 'spark'>;
+  agg: Omit<DestinationAggregate, 'state' | 'spark' | 'policy'>;
   /** Open flows and their current states: open flows are never evicted. */
   open: Map<string, NetState>;
   /** The flow with the latest `t_open`, and its state. */
@@ -105,6 +108,8 @@ interface SessionData {
   /** Latest record time. Sparklines anchor here, so a stopped gate's sparklines freeze rather than drain. */
   lastT: number | null;
   gate: NetGateView;
+  /** The enforced rule set and the one on disk, for each destination's predicted policy. */
+  policy: { enforced: RuleSet | null; written: RuleSet | null };
   dirtyFlows: Set<string>;
   dirtyAggs: Set<string>;
   removedAggs: Set<string>;
@@ -190,7 +195,8 @@ export class NetStore extends EventEmitter {
       statusMtimeMs: null,
       session: null,
       exits: [],
-      rules: { path: loc.rulesPath, displayPath: toHostPath(loc.rulesPath), exists: false, file: null, readError: null, mtimeMs: null },
+      rules: blankRulesView(loc),
+      policy: { enforced: null, written: null },
       counters: { records: 0, invalid: 0, skipped: 0, gaps: 0 },
       historyTruncated: false,
       bytesUp: 0,
@@ -466,6 +472,15 @@ export class NetStore extends EventEmitter {
     this.emit('rules', token);
   }
 
+  /** New rule sets: every destination's predicted policy may change, so all are re-sent. */
+  setPolicy(token: string, policy: { enforced: RuleSet | null; written: RuleSet | null }): void {
+    const s = this.sessions.get(token);
+    if (!s) return;
+    s.policy = policy;
+    for (const k of s.aggs.keys()) s.dirtyAggs.add(k);
+    this.emit('changed', token);
+  }
+
   noteRead(token: string, info: { invalid?: number; skipped?: number; gaps?: number; historyTruncated?: boolean }): void {
     const s = this.sessions.get(token);
     if (!s) return;
@@ -574,8 +589,18 @@ export class NetStore extends EventEmitter {
   private aggView(s: SessionData, e: AggEntry): DestinationAggregate {
     const states = [...e.open.values()];
     if (e.latest) states.unshift(e.latest.state);
+    const a = e.agg;
+    const facts = {
+      host: a.host, ip: a.ips[0] ?? null, port: a.port, service: a.services[0] ?? null, tool: a.tools[0] ?? null, scope: a.scope,
+    };
+    const predict = (set: RuleSet | null): PolicyVerdict | null => {
+      if (!set) return null;
+      const v = evaluate(set, facts);
+      return { action: v.action, rule: v.rule };
+    };
     return {
       ...e.agg,
+      policy: { enforced: predict(s.policy.enforced), written: predict(s.policy.written) },
       // A flow whose gate went away is unclosed but not open in any sense the UI means.
       openFlows: [...e.open.values()].filter((st) => st !== 'gate_lost').length,
       ips: [...e.agg.ips],
@@ -608,6 +633,11 @@ export class NetStore extends EventEmitter {
   endedRuns(token: string): string[] {
     const s = this.sessions.get(token);
     return s ? [...s.runs].filter(([, r]) => r.ended).map(([id]) => id).sort() : [];
+  }
+
+  /** status.json as last read: the write confirmation needs its raw rules hashes. */
+  statusRecord(token: string): StatusRecord | null {
+    return this.sessions.get(token)?.status ?? null;
   }
 
   gate(token: string): NetGateView | null {

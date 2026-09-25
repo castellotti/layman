@@ -72,6 +72,13 @@ export function gateChips(data: NetSessionData): GateChip[] {
         title: 'No status.json has been read for this session.' });
   }
 
+  // The kill switch is on: said straight after the gate state, like the alarms, until restored.
+  if (data.rules.file?.rules.some((r) => r.id.startsWith('r_layman_cut_'))) {
+    const keep = data.rules.file.rules.some((r) => r.id.startsWith('r_layman_cut_') && r.action === 'allow');
+    chips.push({ key: 'cut', label: 'ALL TRAFFIC CUT', tone: 'error', icon: 'alert',
+      title: `Every connection is blocked by “Cut all traffic”${keep ? ', except the LLM link' : ''}. Restore puts back the previous rules.` });
+  }
+
   if (totals.directFlows > 0) {
     chips.push({ key: 'direct', label: `${plural(totals.directFlows, 'untunnelled flow').toUpperCase()}`, tone: 'error', icon: 'alert',
       title: 'Traffic left the sandbox on a direct route, without the tunnel, and carried the operator’s real IP.' });

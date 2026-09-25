@@ -6,11 +6,11 @@ import {
 import type {
   NetDelta, NetSessionSummary, NetSnapshot,
 } from './netobs-types.js';
-import { dest, flow, gate, totals } from './net-test-fixtures.js';
+import { dest, flow, gate, rulesView, totals } from './net-test-fixtures.js';
 
 const snapshot = (token: string, over: Partial<NetSnapshot> = {}): NetSnapshot => ({
   token, env: token, name: token, session: null, gate: gate(), exit: null, exits: [],
-  rules: { path: '/r', displayPath: '/r', exists: false, file: null, readError: null, mtimeMs: null },
+  rules: rulesView({ exists: false, file: null }),
   destinations: [dest('arxiv.org:443'), dest('gone.example:443')], flows: [flow('f1')], buckets: [{ t: 1000, up: 1, down: 2 }],
   totals: totals({ flows: 1 }), counters: { records: 1, invalid: 0, skipped: 0, gaps: 0 }, emptyFolded: 0,
   historyTruncated: false, ...over,
@@ -69,7 +69,7 @@ describe('applyNetMessage', () => {
     let s = applyNetMessage(subscribed('a'), { type: 'net:snapshot', token: 'a', snapshot: snapshot('a') });
     s = applyNetMessage(s, { type: 'net:status', token: 'a', status: gate({ freshness: 'stale' }) });
     expect(s.data!.gate.freshness).toBe('stale');
-    s = applyNetMessage(s, { type: 'net:rules', token: 'a', rules: { path: '/r', displayPath: '/r', exists: true, file: null, readError: 'bad', mtimeMs: 1 } });
+    s = applyNetMessage(s, { type: 'net:rules', token: 'a', rules: rulesView({ file: null, readError: 'bad' }) });
     expect(s.data!.rules.readError).toBe('bad');
     const exit = { v: 1 as const, type: 'exit' as const, t: 't', env: 'a', session: 'a', kind: 'vpn', ip: '1.2.3.4', country: 'Sweden', city: null, lat: null, lon: null, source: 'x', healthy: true };
     s = applyNetMessage(s, { type: 'net:exit', token: 'a', exit });

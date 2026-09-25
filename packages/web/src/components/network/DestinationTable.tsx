@@ -13,7 +13,9 @@ import {
   WINDOW_THRESHOLD, buildTable, rowHeight, sessionAnchor, toolLabel, windowRange,
   type GroupBy, type SortBy, type StateFilter, type TableRow,
 } from '../../lib/net-table.js';
+import { controlDisabledReason } from '../../lib/net-rules.js';
 import { CellLabel, NetToggle, Sparkline } from './cells.js';
+import { ControlPopover } from './ControlPopover.js';
 import { NetIcon, TONE } from './netui.js';
 
 interface Column {
@@ -64,12 +66,14 @@ const selectStyle: React.CSSProperties = {
 
 const mono: React.CSSProperties = { fontFamily: 'var(--font-mono)', fontSize: 11, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' };
 
-function Row({ row, anchor, selected, onSelect, onExpand }: {
+function Row({ row, anchor, selected, onSelect, onExpand, disabledReason, onToggle }: {
   row: TableRow;
   anchor: number;
   selected: boolean;
   onSelect: (row: TableRow) => void;
   onExpand: (key: string) => void;
+  disabledReason: string | null;
+  onToggle: (row: TableRow, anchor: DOMRect) => void;
 }) {
   const top = row.depth === 0;
   const muted = row.kind === 'unwatched' || row.kind === 'more';
@@ -97,7 +101,9 @@ function Row({ row, anchor, selected, onSelect, onExpand }: {
       }}
     >
       <div role="cell" style={cellStyle(COL.toggle)}>
-        {(top || row.kind === 'host') && <NetToggle kind={row.toggle} target={row.target} />}
+        {(top || row.kind === 'host') && (
+          <NetToggle kind={row.toggle} target={row.target} disabledReason={disabledReason} onClick={(a) => onToggle(row, a)} />
+        )}
       </div>
       <div role="cell" style={cellStyle(COL.dest)}>
         <span style={{ display: 'flex', alignItems: 'center', gap: 6, paddingLeft: indent, minWidth: 0 }}>
@@ -159,6 +165,8 @@ export function DestinationTable({ data }: { data: NetSessionData }) {
   const [sortBy, setSortBy] = useState<SortBy>('recent');
   const [toggled, setToggled] = useState<ReadonlySet<string>>(new Set());
   const [showEmpty, setShowEmpty] = useState(false);
+  const [popover, setPopover] = useState<{ key: string; anchor: DOMRect } | null>(null);
+  const disabledReason = controlDisabledReason(data.rules);
 
   const model = useMemo(
     () => buildTable(data, { groupBy, sortBy, filter, text, toggled, now, showEmpty }),
@@ -264,7 +272,8 @@ export function DestinationTable({ data }: { data: NetSessionData }) {
           {range && <div style={{ height: range.padTop }} />}
           {visible.map((row) => (
             <Row key={row.key} row={row} anchor={anchor} selected={row.host !== null && row.host === netDest && row.kind !== 'flow'}
-              onSelect={select} onExpand={expand} />
+              onSelect={select} onExpand={expand} disabledReason={disabledReason}
+              onToggle={(r, a) => setPopover({ key: r.key, anchor: a })} />
           ))}
           {range && <div style={{ height: range.padBottom }} />}
           {model.rows.length === 0 && (
@@ -283,6 +292,11 @@ export function DestinationTable({ data }: { data: NetSessionData }) {
           )}
         </div>
       </div>
+      {popover && (() => {
+        // Re-found by key on every render, so the popover follows the row's live data.
+        const row = model.rows.find((r) => r.key === popover.key);
+        return row ? <ControlPopover row={row} data={data} anchor={popover.anchor} onClose={() => setPopover(null)} /> : null;
+      })()}
     </div>
   );
 }

@@ -10,6 +10,7 @@
  */
 import { BLOCK_STATES, LEGEND_BY_KEY, NET_STATE_INFO, formatAge, type StateIcon, type ToggleKind } from './net-format.js';
 import type { NetSessionData } from './net-state.js';
+import { CUT_PREFIX, toggleFor } from './net-rules.js';
 import type { DestinationAggregate, FlowView, NetService, NetState, RateBucket, Rule } from './netobs-types.js';
 
 export type GroupBy = 'domain' | 'route' | 'tool';
@@ -66,6 +67,10 @@ export interface TableRow {
   state: CellText;
   /** Tint the row: untunnelled traffic must be unmissable. */
   loud: boolean;
+  /** The destination a host row (or a one-host group) stands for: what its toggle acts on. */
+  dest?: DestinationAggregate;
+  /** For a group row: its members, and its group key (what a group toggle acts on). */
+  members?: DestinationAggregate[];
 }
 
 export interface FilterCounts {
@@ -215,6 +220,10 @@ function stateCell(
       cell = c(s.rule === 'builtin:malformed-request' ? 'refused · malformed request' : 'refused by glove guard');
       break;
     case 'user_rule': {
+      if (s.rule?.startsWith(CUT_PREFIX)) {
+        cell = c('blocked · all traffic cut');
+        break;
+      }
       const note = ruleNote(ctx, s.rule);
       cell = c(note ? `blocked · your rule “${note}”` : 'blocked · your rule');
       break;
@@ -254,11 +263,6 @@ function routeCell(ctx: Ctx, d: { state: NetState; scope: string }): CellText {
   return { text: name, colourVar: 'var(--net-tunnel)', icon: 'tunnel' };
 }
 
-export function toggleKindFor(state: NetState, noHost: boolean): ToggleKind {
-  if (state === 'empty') return 'none';
-  if (noHost) return 'locked';
-  return NET_STATE_INFO[state].toggleKind;
-}
 
 function lastCell(ctx: Ctx, t: number, live: boolean): CellText {
   return live
@@ -289,6 +293,7 @@ function flowState(ctx: Ctx, f: FlowView): CellText {
 
 function hostSublabel(ctx: Ctx, d: DestinationAggregate): string | null {
   if (d.state === 'guard') return guardReason(d);
+  if (d.state === 'user_rule' && d.rule?.startsWith(CUT_PREFIX)) return null;
   if (d.state === 'user_rule' && d.rule) {
     const rule = ctx.rules.get(d.rule);
     return rule ? String(rule.match.host ?? matchText(rule)) : d.rule;
@@ -454,7 +459,7 @@ function hostRow(ctx: Ctx, d: DestinationAggregate, depth: 0 | 1, opts: TableOpt
   return {
     kind: 'host', key, depth, label, sublabel, mono: depth > 0,
     expandable: true, expanded: isExpanded(key, opts.toggled), host: d.host,
-    toggle: toggleKindFor(d.state, d.flags.noHost), target: d.host ?? d.endpoint ?? d.key,
+    toggle: toggleFor(d), target: d.host ?? d.endpoint ?? d.key, dest: d,
     route: routeCell(ctx, d), tools: d.tools, spark: sparkWindow(d.spark, ctx.anchor),
     sent: d.bytesUp, received: d.bytesDown, flows: d.flows,
     last: lastCell(ctx, d.lastSeen, d.state === 'active'), state: destState(ctx, d),
@@ -513,13 +518,15 @@ export function buildTable(data: NetSessionData, opts: TableOptions): TableModel
     }
     const expanded = isExpanded(g.key, opts.toggled);
     const first = g.dests[0];
-    const allToggles = new Set(g.dests.map((d) => toggleKindFor(d.state, d.flags.noHost)));
+    const allToggles = new Set(g.dests.map((d) => toggleFor(d)));
     rows.push({
       kind: 'group', key: g.key, depth: 0, label: g.label, sublabel: groupSublabel(ctx, g), mono: false,
       expandable: true, expanded, host: g.dests.length === 1 ? first.host : null,
       // One toggle for the group only when every member agrees; phase 4 writes one rule for it.
       toggle: allToggles.size === 1 ? [...allToggles][0] : 'none',
       target: g.label,
+      members: g.dests,
+      dest: g.dests.length === 1 ? first : undefined,
       route: routeCell(ctx, first),
       tools: [...new Set(g.dests.flatMap((d) => d.tools))],
       spark: sumSparks(g.dests.map((d) => sparkWindow(d.spark, ctx.anchor))),

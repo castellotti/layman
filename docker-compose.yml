@@ -42,7 +42,21 @@ services:
       # discovery.md) is reachable. Read-only: Layman never writes into a sandbox,
       # and the mount adds nothing to what the sandboxed agent can see. Off by
       # default; native monitoring is unaffected whether or not glove is enabled.
-      - ${HOME}/.glove:/root/.glove:ro
+      # `z`: glove's netgate writes net/ as you; on an SELinux-enforcing host a
+      # container can read it only with the shared label.
+      - ${HOME}/.glove:/root/.glove:ro,z
+      # glove network control: the ONE writable glove path, mounted after (and so
+      # over) the read-only ~/.glove above. Layman writes only
+      # control/<env>/<name>/rules.json there, by glove's ownership contract (temp
+      # file, chown to the directory's owner, 0600, rename; it never creates the
+      # directory). It is safe to expose because the gate's rules schema can
+      # express only allow/block verdicts over destinations: any other key makes
+      # the gate reject the whole file and keep its last good set. `make
+      # docker-run` creates ~/.glove/control as you first, so Docker does not
+      # create it root-owned on Linux. `z` (shared SELinux label, never `Z`) is
+      # what glove requires on enforcing hosts, and is ignored elsewhere. See
+      # docs/extensions/glove.md → Network → Writing rules.
+      - ${HOME}/.glove/control:/root/.glove/control:z
     environment:
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}

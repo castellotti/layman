@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import Fastify, { type FastifyInstance } from 'fastify';
-import { copyFileSync, mkdirSync, mkdtempSync, rmSync } from 'fs';
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
@@ -59,5 +59,24 @@ describe('net REST routes', () => {
     const sum = buckets.buckets.reduce((a: number, b: { down: number }) => a + b.down, 0);
     expect(sum).toBe(1_475_671);
     expect((await app.inject('/api/net/sessions/pi-search/buckets?window=2d')).statusCode).toBe(400);
+  });
+
+  it('GET/POST rules: refuses without glove’s control directory, then writes and reports pending', async () => {
+    const post = (op: unknown) => app.inject({ method: 'POST', url: '/api/net/sessions/pi-search/rules', payload: { op, opId: 'op1' } });
+    expect((await app.inject('/api/net/sessions/pi-search/rules')).json().rules.control.state).toBe('no-dir');
+    const refused = await post({ kind: 'blockHost', host: 'arxiv.org', terminate: false });
+    expect(refused.statusCode).toBe(409);
+    expect(refused.json().error).toMatch(/Layman never creates it/);
+
+    const control = join(home, 'control', 'pi-search', 'pi-search');
+    mkdirSync(control, { recursive: true });
+    const res = await post({ kind: 'blockHost', host: 'arxiv.org', terminate: false });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ ok: true, opId: 'op1', rules: { write: { opId: 'op1', state: 'pending' } } });
+    expect(JSON.parse(readFileSync(join(control, 'rules.json'), 'utf8')).rules[0].match).toEqual({ host: 'arxiv.org' });
+
+    expect((await post({ kind: 'exec', cmd: 'x' })).statusCode).toBe(400);
+    expect((await app.inject({ method: 'POST', url: '/api/net/sessions/nope/rules', payload: { op: { kind: 'revert' } } })).statusCode).toBe(404);
+    expect(existsSync(join(control, 'rules.json.layman.tmp'))).toBe(false);
   });
 });
