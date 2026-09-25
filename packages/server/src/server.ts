@@ -40,6 +40,8 @@ import { BookmarkStore } from './db/bookmarks.js';
 import { HighlightStore } from './db/highlights.js';
 import { TurnStore } from './turns/store.js';
 import { registerTurnRoutes } from './routes/turns.js';
+import { NetObs } from './netobs/index.js';
+import { registerNetRoutes } from './netobs/routes.js';
 import { registerTtsRoutes } from './routes/tts.js';
 import { searchEvents, parseSearchQuery, matchesSearchTerms } from './db/search.js';
 import { computeTimeMetrics } from './db/time-metrics.js';
@@ -192,6 +194,17 @@ export function createServer(config: LaymanConfig): LaymanServer {
   const gloveSource = new GloveSource(() => {
     const glove = getConfig().glove;
     return glove.enabled ? expandHome(glove.sessionsDir) : null;
+  });
+  // Network views of gloved sessions read the same sessions dir, but by a
+  // plain glob of `*/sessions/*/net/` — see netobs/discovery.ts for why this
+  // is not routed through GloveSource.
+  const netObs = new NetObs({
+    getSessionsDir: () => {
+      const glove = getConfig().glove;
+      return glove.enabled && glove.network.enabled ? expandHome(glove.sessionsDir) : null;
+    },
+    // Only `request` (record: full) is agent-derived text; see netobs/store.ts.
+    stringFilter: (text) => (getConfig().piiFilter ? redactString(text) : text),
   });
   const vibeWatcher = new VibeSessionWatcher(eventStore, gate, getConfig, [
     new NativeVibeSource(),
@@ -595,6 +608,9 @@ export function createServer(config: LaymanConfig): LaymanServer {
   function registerRoutes(): void {
     // Turn model + data egress (see docs: addressable URLs)
     registerTurnRoutes(fastify, { turnStore, bookmarkStore, getConfig });
+
+    // Network views of glove sessions (read side)
+    registerNetRoutes(fastify, { netObs });
 
     // Text-to-speech pass-through to speaches (speaches has CORS off by default)
     registerTtsRoutes(fastify, { getConfig });
@@ -1699,9 +1715,18 @@ export function createServer(config: LaymanConfig): LaymanServer {
           } satisfies ServerMessage));
         }
 
+        // Network views: the glove session list only. Flow data follows a
+        // net:subscribe, so a dashboard that never opens the tabs never pays for it.
+        netObs.attach(ws);
+
         ws.on('message', (data: unknown) => {
           try {
             const message = JSON.parse(String(data)) as ClientMessage;
+            // Per-socket, so it cannot go through the socket-less handler below.
+            if (message.type === 'net:subscribe') {
+              netObs.subscribe(ws, typeof message.token === 'string' ? message.token : null);
+              return;
+            }
             handleClientMessage(message);
           } catch {
             // Ignore malformed messages
@@ -1710,6 +1735,7 @@ export function createServer(config: LaymanConfig): LaymanServer {
 
         ws.on('close', () => {
           wsClients.delete(ws);
+          netObs.detach(ws);
         });
       });
     });
@@ -1940,6 +1966,7 @@ export function createServer(config: LaymanConfig): LaymanServer {
       registerRoutes();
       vibeWatcher.start();
       piWatcher.start();
+      netObs.start();
       reconcileSync();
       syncMaintenanceTimer = setInterval(runSyncMaintenance, SYNC_MAINTENANCE_MS);
 
@@ -1974,6 +2001,7 @@ export function createServer(config: LaymanConfig): LaymanServer {
     async stop() {
       vibeWatcher.stop();
       piWatcher.stop();
+      netObs.stop();
       liveStreams.stop();
       syncPusher?.stop();
       syncPuller?.stop();

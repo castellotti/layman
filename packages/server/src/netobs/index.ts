@@ -1,0 +1,277 @@
+/**
+ * Network observability for glove sessions: discovery → tail → store → `net:*`
+ * frames. See docs/extensions/glove.md ("Network") for the design and the rules
+ * that must not be relaxed; docs/planning/network-views.md for the plan.
+ *
+ * Wiring lives here so `server.ts` makes one constructor call, one `start()`,
+ * and hands each WebSocket to `attach()`/`subscribe()`.
+ */
+import { NetSessionSource, type NetSessionLocation } from './discovery.js';
+import { parseLine, parseRulesForDisplay, parseSessionFile, parseStatus } from './parse.js';
+import { NetStore } from './store.js';
+import { DEFAULT_BACKFILL_BYTES, JsonFileWatcher, NdjsonTailer } from './tail.js';
+import type {
+  ExitRecord,
+  NetDelta,
+  NetGateView,
+  NetSessionFile,
+  NetSessionSummary,
+  NetSnapshot,
+  RulesFile,
+  RulesView,
+  StatusRecord,
+} from './types.js';
+import { join } from 'path';
+
+export { NetStore } from './store.js';
+export type * from './types.js';
+
+/** The `net:*` frames this module sends. Part of `ServerMessage` (types/index.ts). */
+export type NetServerMessage =
+  | { type: 'net:sessions'; sessions: NetSessionSummary[] }
+  | { type: 'net:snapshot'; token: string; snapshot: NetSnapshot }
+  | { type: 'net:delta'; token: string; delta: NetDelta }
+  | { type: 'net:status'; token: string; status: NetGateView }
+  | { type: 'net:exit'; token: string; exit: ExitRecord | null }
+  | { type: 'net:rules'; token: string; rules: RulesView };
+
+/** What server.ts's WebSocket handler holds. */
+export interface NetSocket {
+  readyState: number;
+  send: (data: string) => void;
+}
+
+/** Tail polling, the same cadence as glove's own reload loop. */
+export const POLL_MS = 1_000;
+/** At most one `net:delta` per session per this interval (plan §4.1). */
+export const COALESCE_MS = 500;
+
+export interface NetObsOptions {
+  /** Expanded glove sessions dir, or null when glove or its network views are off. */
+  getSessionsDir: () => string | null;
+  stringFilter?: (text: string) => string;
+  pollMs?: number;
+  coalesceMs?: number;
+  budgetBytes?: number;
+}
+
+class SessionReader {
+  readonly flows: NdjsonTailer;
+  readonly exits: NdjsonTailer;
+  readonly status: JsonFileWatcher<StatusRecord>;
+  readonly session: JsonFileWatcher<NetSessionFile>;
+  readonly rules: JsonFileWatcher<{ file: RulesFile | null; error: string | null }>;
+  private gapsSeen = 0;
+
+  constructor(readonly loc: NetSessionLocation, budgetBytes: number) {
+    this.flows = new NdjsonTailer(loc.netDir, 'flows', budgetBytes);
+    this.exits = new NdjsonTailer(loc.netDir, 'exit', budgetBytes);
+    this.status = new JsonFileWatcher(join(loc.netDir, 'status.json'), (t) => parseStatus(JSON.parse(t)));
+    this.session = new JsonFileWatcher(join(loc.netDir, 'session.json'), (t) => parseSessionFile(JSON.parse(t)));
+    this.rules = new JsonFileWatcher(
+      loc.rulesPath,
+      (t) => {
+        try {
+          return parseRulesForDisplay(JSON.parse(t));
+        } catch (e) {
+          return { file: null, error: `not valid JSON: ${(e as Error).message}` };
+        }
+      },
+      'value',
+    );
+  }
+
+  /** Read everything new into the store. session.json first, so aggregates can name service endpoints. */
+  poll(store: NetStore, now: number): void {
+    const token = this.loc.token;
+    if (this.session.poll()) store.setSessionFile(token, this.session.value, now);
+
+    let invalid = 0;
+    let skipped = 0;
+    for (const line of this.exits.poll()) {
+      const p = parseLine(line);
+      if (p.kind === 'exit') store.ingestExit(token, p.record);
+      else if (p.kind === 'invalid') invalid++;
+      else skipped++;
+    }
+    for (const line of this.flows.poll()) {
+      const p = parseLine(line);
+      if (p.kind === 'flow') store.ingestFlow(token, p.record, now);
+      else if (p.kind === 'invalid') invalid++;
+      else skipped++;
+    }
+    const gaps = this.flows.gaps + this.exits.gaps - this.gapsSeen;
+    this.gapsSeen += gaps;
+    store.noteRead(token, {
+      invalid,
+      skipped,
+      gaps,
+      historyTruncated: this.flows.historyTruncated,
+    });
+
+    if (this.status.poll()) store.setStatus(token, this.status.value, this.status.mtimeMs, now);
+    if (this.rules.poll()) {
+      store.setRules(token, {
+        path: this.loc.rulesPath,
+        exists: this.rules.exists,
+        file: this.rules.value?.file ?? null,
+        readError: this.rules.value?.error ?? null,
+        mtimeMs: this.rules.mtimeMs,
+      });
+    }
+  }
+}
+
+export class NetObs {
+  readonly store: NetStore;
+  private readonly source: NetSessionSource;
+  private readonly readers = new Map<string, SessionReader>();
+  private readonly subs = new Map<NetSocket, string | null>();
+  private readonly timers = new Map<string, ReturnType<typeof setTimeout>>();
+  private pollTimer: ReturnType<typeof setInterval> | null = null;
+  private listSig = '';
+  private readonly pollMs: number;
+  private readonly coalesceMs: number;
+  private readonly budgetBytes: number;
+  private readonly getSessionsDir: () => string | null;
+
+  constructor(opts: NetObsOptions) {
+    this.getSessionsDir = opts.getSessionsDir;
+    this.source = new NetSessionSource(opts.getSessionsDir);
+    this.store = new NetStore({ stringFilter: opts.stringFilter });
+    this.pollMs = opts.pollMs ?? POLL_MS;
+    this.coalesceMs = opts.coalesceMs ?? COALESCE_MS;
+    this.budgetBytes = opts.budgetBytes ?? DEFAULT_BACKFILL_BYTES;
+
+    this.store.on('changed', (token: string) => this.onChanged(token));
+    this.store.on('status', (token: string) => {
+      const status = this.store.gate(token);
+      if (status) this.sendTo(token, { type: 'net:status', token, status });
+    });
+    this.store.on('exit', (token: string) => this.sendTo(token, { type: 'net:exit', token, exit: this.store.exit(token) }));
+    this.store.on('rules', (token: string) => {
+      const rules = this.store.rules(token);
+      if (rules) this.sendTo(token, { type: 'net:rules', token, rules });
+    });
+  }
+
+  start(): void {
+    if (this.pollTimer) return;
+    this.poll();
+    this.pollTimer = setInterval(() => this.poll(), this.pollMs);
+    this.pollTimer.unref?.();
+  }
+
+  stop(): void {
+    if (this.pollTimer) clearInterval(this.pollTimer);
+    this.pollTimer = null;
+    for (const t of this.timers.values()) clearTimeout(t);
+    this.timers.clear();
+  }
+
+  /** One discovery + read pass. Public so tests can drive it without timers. */
+  poll(now = Date.now()): void {
+    if (this.getSessionsDir() === null) {
+      // Glove (or its network views) switched off: forget everything, so the
+      // header goes back to exactly what it was.
+      this.readers.clear();
+      for (const token of this.store.tokens()) this.store.remove(token);
+      this.maybeBroadcastSessions();
+      return;
+    }
+    const found = this.source.discover();
+
+    const seen = new Set<string>();
+    for (const loc of found) {
+      seen.add(loc.token);
+      if (!this.readers.has(loc.token)) {
+        this.store.ensure(loc);
+        this.readers.set(loc.token, new SessionReader(loc, this.budgetBytes));
+      }
+      try {
+        this.readers.get(loc.token)!.poll(this.store, now);
+      } catch (err) {
+        // A read error on one session must not stop the others, or the poll loop.
+        console.warn(`[netobs] ${loc.token}: ${(err as Error).message}`);
+      }
+    }
+    // A session whose directory vanished stops being read but stays listed:
+    // what was read from it is still true.
+    for (const token of [...this.readers.keys()]) if (!seen.has(token)) this.readers.delete(token);
+    this.store.tick(now);
+    this.maybeBroadcastSessions();
+  }
+
+  sessions(): NetSessionSummary[] {
+    return this.store.summaries();
+  }
+
+  // ─── Sockets ──────────────────────────────────────────────────────────────
+
+  /** A new WebSocket: it gets the (small) session list, and nothing else until it subscribes. */
+  attach(socket: NetSocket): void {
+    this.subs.set(socket, null);
+    this.send(socket, { type: 'net:sessions', sessions: this.sessions() });
+  }
+
+  detach(socket: NetSocket): void {
+    this.subs.delete(socket);
+  }
+
+  /** One session at a time per socket; null unsubscribes. */
+  subscribe(socket: NetSocket, token: string | null): void {
+    this.subs.set(socket, token);
+    if (token === null) return;
+    const snapshot = this.store.snapshot(token);
+    if (snapshot) this.send(socket, { type: 'net:snapshot', token, snapshot });
+  }
+
+  private subscribers(token: string): NetSocket[] {
+    const out: NetSocket[] = [];
+    for (const [socket, t] of this.subs) if (t === token) out.push(socket);
+    return out;
+  }
+
+  private send(socket: NetSocket, msg: NetServerMessage): void {
+    if (socket.readyState === 1) socket.send(JSON.stringify(msg));
+  }
+
+  private sendTo(token: string, msg: NetServerMessage): void {
+    const targets = this.subscribers(token);
+    if (!targets.length) return;
+    const json = JSON.stringify(msg);
+    for (const s of targets) if (s.readyState === 1) s.send(json);
+  }
+
+  /**
+   * Coalesce to one delta per session per `coalesceMs`: glove already writes at
+   * about 1 Hz per flow, and a burst of opens must not become a burst of frames
+   * to every dashboard. The trailing timer guarantees the last state of a burst
+   * is sent. A session nobody is watching accumulates nothing — a subscriber
+   * starts from a snapshot.
+   */
+  private onChanged(token: string): void {
+    if (!this.subscribers(token).length) {
+      this.store.discardDelta(token);
+      return;
+    }
+    if (this.timers.has(token)) return;
+    this.timers.set(
+      token,
+      setTimeout(() => {
+        this.timers.delete(token);
+        const delta = this.store.takeDelta(token);
+        if (delta) this.sendTo(token, { type: 'net:delta', token, delta });
+      }, this.coalesceMs),
+    );
+  }
+
+  /** Re-send the list only when something the picker shows changed. */
+  private maybeBroadcastSessions(): void {
+    const sessions = this.sessions();
+    const sig = JSON.stringify(sessions.map((s) => [s.token, s.live, s.rulesOk, s.directFlows > 0, s.harness]));
+    if (sig === this.listSig) return;
+    this.listSig = sig;
+    for (const socket of this.subs.keys()) this.send(socket, { type: 'net:sessions', sessions });
+  }
+}

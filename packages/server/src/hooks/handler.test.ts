@@ -58,7 +58,7 @@ const MOCK_CONFIG: LaymanConfig = {
     remindOnOrange: true,
   },
   liveTokens: { enabled: true, showThinking: true },
-  glove: { enabled: false, sessionsDir: '~/.glove/envs' },
+  glove: { enabled: false, sessionsDir: '~/.glove/envs', network: { enabled: true, controlEnabled: true, geoipDbPath: '' } },
   sync: {
     role: 'standalone',
     hostId: '',

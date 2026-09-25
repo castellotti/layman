@@ -121,6 +121,20 @@ export async function loadConfig(
       ...runtimeFile.sync,
       ...cliFlags.sync,
     },
+    // Deep-merge glove and glove.network so a partial config (e.g. only
+    // `glove.enabled`) can neither blank sessionsDir nor reset the network block.
+    glove: {
+      ...envConfig.glove,
+      ...fileConfig.glove,
+      ...runtimeFile.glove,
+      ...cliFlags.glove,
+      network: {
+        ...envConfig.glove?.network,
+        ...fileConfig.glove?.network,
+        ...runtimeFile.glove?.network,
+        ...cliFlags.glove?.network,
+      },
+    },
   };
 
   return LaymanConfigSchema.parse(merged);
@@ -147,6 +161,14 @@ export function updateConfig(updates: Partial<LaymanConfig>): LaymanConfig {
     // Deep-merge so a Settings update that omits sync.hostId (or sends only a
     // role change) keeps the persisted identity instead of minting a new one.
     sync: { ...runtimeConfig.sync, ...updates.sync },
+    // Deep-merge so a Settings update carrying only `glove.enabled` keeps
+    // sessionsDir and the network block (and one carrying only a network
+    // toggle keeps the rest of it).
+    glove: {
+      ...runtimeConfig.glove,
+      ...updates.glove,
+      network: { ...runtimeConfig.glove.network, ...updates.glove?.network },
+    },
   });
   return runtimeConfig;
 }

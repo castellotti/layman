@@ -317,7 +317,12 @@ export interface LaymanConfig {
   /** Live token streaming. Mirrors LiveTokensConfigSchema on the server. */
   liveTokens: { enabled: boolean; showThinking: boolean };
   /** Passive monitoring of glove-sandboxed harnesses. Mirrors GloveConfigSchema. */
-  glove: { enabled: boolean; sessionsDir: string };
+  glove: {
+    enabled: boolean;
+    sessionsDir: string;
+    /** Network views of gloved sessions. Mirrors the server's `glove.network` block. */
+    network: { enabled: boolean; controlEnabled: boolean; geoipDbPath: string };
+  };
   /** Multi-host sync. Mirrors SyncConfigSchema on the server. */
   sync: SyncConfig;
   driftMonitoring: DriftMonitoringConfig;

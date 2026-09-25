@@ -137,8 +137,158 @@ spreads the imported events across it — otherwise every imported Vibe session 
 date rather than the day it ran. See the file header of `transcript-vibe.ts` for the discover→parse
 hand-off this relies on.
 
+## Network
+
+glove's netgate records every connection a sandboxed session makes, and Layman renders it as the
+Network, Map, Topology and Trace tabs. The implementation plan is
+[`docs/planning/network-views.md`](../planning/network-views.md); glove's data contract, frozen at v1,
+is glove's `docs/planning/network-observability-layman-handoff.md` ("the handoff"), and wins over the
+plan on any question of data format. Code: `packages/server/src/netobs/`. What is built so far is the
+**read side**: discovery, tailing, the store, classification, `net:*` WebSocket frames and a REST
+snapshot. The tabs, the rules writer, the map, correlation and persistence come in later phases.
+
+### The rule that must not be relaxed
+
+glove resolves destination hostnames *inside the tunnel* so the operator's resolver never sees them.
+**Layman never makes a network call keyed on gloved flow data** — no DNS or reverse-DNS lookup, geo-IP
+API, favicon fetch, link unfurl or WHOIS, however much prettier the label would be. Any such call leaks
+the sandboxed agent's browsing history to the host's resolver and undoes glove's design; it is a
+privacy bug, not a missing feature. Geolocation will be a local file read or nothing. A deliberately
+crude test (`netobs/index.test.ts`, "no-network guard") fails any `netobs/` source file that imports
+`dns`, `net`, `http(s)` or `tls`, calls `fetch(` on anything but `/api/`, opens a WebSocket, or mentions
+`favicon`. `domain.ts` even carries its own IP-literal check rather than importing `node:net`'s `isIP`,
+so the guard needs no exemptions.
+
+### What is read, and from where
+
+Per session, `~/.glove/envs/<env>/sessions/<name>/net/`: `flows.ndjson` and its rotated
+`flows-<stamp>.ndjson`, `exit.ndjson` (which rotates the same way), `status.json`, `session.json`; and
+`~/.glove/control/<env>/<name>/rules.json` (read only, for now). All of it is inside the existing
+read-only `~/.glove` mount, so reading needs no new Docker mount.
+
+- **Discovery is a plain glob** (`discovery.ts`), deliberately not routed through `GloveSource`: that
+  source grew registry and `homes/` handling because a harness *home* can be relocated, but `net/`
+  never leaves the session directory (handoff §1).
+- **Token and paths.** A session's token is `<env>` for the default session (whose directory is named
+  after the env) and `<env>-<name>` otherwise. It is the value flows carry in `session` and the label
+  `GloveSource` gives the Layman sessions it tails, so network data joins the transcript by it. The
+  control path uses the **directory name** `<name>`, while the rules file's own `session` field is the
+  **token**; for a named session the two differ, and mixing them up makes the gate ignore the file.
+  Env and session names must match `^[A-Za-z0-9][A-Za-z0-9._-]*$` and the resolved control path must
+  stay inside `~/.glove/control`, or the session is skipped — those names later address the one
+  directory Layman will be allowed to write.
+- **Reading is tolerant** (`parse.ts`): unknown fields are ignored, an unknown record `type` is skipped,
+  and a line that does not parse or carries `v` other than 1 is counted (`counters.invalid`), never
+  thrown. A glove-side addition must never break a deployed Layman.
+
+### Tailing: content, not inodes
+
+`tail.ts` polls every second (inotify does not cross Docker Desktop's file sharing; glove made the same
+choice) and reads each file from a byte offset, buffering a trailing partial line — as bytes, so a
+multi-byte character split across two reads is never mis-decoded. glove rotates by renaming
+`flows.ndjson` to `flows-<stamp>.ndjson` and creating a fresh file at once, and a flow's `close` can land
+in a newer file than its `open`, so the unread tail of the old file must be drained by its new name.
+
+The obvious way to find it — and what the plan and glove's own reference tailer describe — is by inode.
+**That does not work where Layman usually runs.** Through Docker Desktop's bind mount, inode numbers are
+not stable across a host-side rename: measured on this machine, `flows.ndjson` at inode 192 reappeared
+after rotation as the rotated file at inode 194. Matching by inode found nothing, counted a gap, and
+then re-read the rotated file as unseen, on every rotation (bytes stayed right only because they are
+cumulative and deduplicated by flow id). The tailer therefore identifies a file by its **first bytes**
+(up to 1 KB, which include a ULID and a timestamp): the live file has rotated when it no longer starts
+with the bytes read from it, or is shorter than the offset; the file to drain is the rotated one that
+does start with them; any other file rotated meanwhile is read whole, in rotation order, told apart by
+name (glove never reuses one). Rotation order comes from the parsed `(stamp, n)`, not from sorting
+names: `…Z-1.ndjson`, glove's same-millisecond collision name, sorts *before* `…Z.ndjson` because `-`
+precedes `.`. Verified live against the container across ~70 rotations: every line read exactly once,
+no gaps. Two tests in `tail.test.ts` simulate the new-inode rename with a copy, so a change back to
+inode matching fails.
+
+Backfill at startup reads rotated files oldest first, then the live file, within a 64 MB budget per
+session; over budget the newest files win (they hold the open flows) and the snapshot says
+`historyTruncated`. `status.json` and `session.json` are rewritten in place, so a read that fails to
+parse is taken to be torn: the previous value is kept and the file re-read next tick. `rules.json` is
+always replaced atomically, so there an unparseable file is its real content and is shown as such.
+
+### The store, and why it is not `EventStore`
+
+`update` records arrive about once a second for every open flow. `EventStore.add()` would PII-scan each
+one, push it onto the 10,000-entry ring (evicting real events), record it to SQLite and broadcast it —
+the "ruinous for a token delta" case the root `CLAUDE.md` documents for live token streaming. Network
+data gets its own `NetStore` (`store.ts`) and its own frames, as `LiveStreamStore` does.
+
+- **No PII filter on flow records.** They are hostnames, IPs, ports and byte counts from glove's
+  collector, not agent-authored text, and redacting hostnames would make the feature useless. The one
+  exception is `request` in `record: "full"` mode, whose URL and header values go through the same
+  `redactString` the live stream uses before they leave the server.
+- **Bytes are cumulative**, so a flow's total is its latest record's and rates are the differences,
+  bucketed per second (1 s for the last hour, then 1 min). A dropped `update` costs resolution, not
+  accuracy. `dest` is taken from the latest record too: when it is refined after `open`, the flow's
+  whole contribution moves to the new destination (`removedDestinations` in the delta says which row
+  emptied).
+- **Aggregates are running sums** per destination (host + port; a null host is keyed by the service
+  endpoint it arrived on, from `session.json`), maintained by subtracting a flow's previous
+  contribution and adding its new one. Closed flows are evicted beyond 5,000 per session without
+  changing a total.
+- **Empty connections are folded**, not listed: an allowed flow with no destination that closed on
+  `eof`/`timeout` is proxy noise (handoff §2), counted in `emptyFolded`.
+- Sparklines anchor on the session's latest record, not the wall clock, so when a gate stops its
+  sparklines freeze rather than drain.
+- **Grouping by registrable domain** (`domain.ts`: `en.wikipedia.org` → `wikipedia.org`; IPs,
+  single-label and private-TLD names such as `llm.operator.lan` are their own groups) runs on the server
+  so there is one implementation, using `tldts`, which bundles the Public Suffix List (so grouping is a
+  string operation, never a lookup). A TLD not on the list is an operator's own name, not a public
+  registry, and grouping one level up would invent an organisation boundary.
+
+### States (`classify.ts`)
+
+The single place state is decided; the web client receives results and never re-derives them. A flow
+has one primary `NetState` — `active`, `pooled` (open, no byte change for over 3 s), `finished`, `guard`
+(`builtin:*`, never user-toggleable), `user_rule`, `default_block` (block with `rule: null`), `broken`
+(an upstream failure, not a policy decision), `gate_shutdown`, `empty` — plus orthogonal `FlowFlags`
+(scope, unresolved, no host, cleartext, fan-out). Blocks are recognised by `close_reason: "blocked"` as
+well as by verdict, because a `terminate: true` rule cuts an already-allowed flow. Session-wide states
+come from `classifySession()`: gate freshness (`stale` when a `running` gate's heartbeat is over 20 s
+old, falling back to `status.json`'s mtime for a gate that writes no `t`), route declared vs verified
+(verified only while the latest exit is healthy; with `exit_identity: "none"` "declared" is expected,
+not an error), resolver, rules load result, telemetry, and unobserved services.
+
+### Frames and coalescing
+
+On connect a socket receives `net:sessions` only — a Layman user who never opens the tabs never pays for
+flow data. `net:subscribe { token }` (one session per socket) returns a `net:snapshot` (every open flow
+plus the latest closed ones, up to 500), then `net:delta`s coalesced to at most one per session per
+500 ms, each carrying the latest full value of whatever changed (so applying one twice is harmless).
+`net:status`, `net:exit` and `net:rules` are sent as they change. A session nobody is subscribed to
+accumulates nothing. The list is re-broadcast only when something the picker shows changes. REST mirrors
+it: `GET /api/net/sessions`, `/api/net/sessions/:token` (the snapshot), `…/flows?since=&limit=`, and
+`…/buckets?window=60s|5m|1h|session`.
+
+### Configuration
+
+`glove.network` in `GloveConfigSchema`: `enabled` (default true, meaningful only with `glove.enabled`),
+`controlEnabled` and `geoipDbPath` (used by later phases). `glove` and `glove.network` are deep-merged in
+both `loadConfig()` and `updateConfig()` — before this, `glove` was not, so a Settings update carrying
+only `glove.enabled` would have blanked `sessionsDir`, and one carrying a single network toggle would
+have reset the others. With glove (or its network views) off, the store is emptied and the session list
+is empty, so nothing changes for users who don't run it.
+
+### Testing against a fake glove
+
+`netobs/__fixtures__/` is a byte-for-byte copy of glove's `tests/fixtures/netobs/` (see its README for
+the source commit and how to refresh it). `fixture.test.ts` loads it through discovery, tailing and the
+store and asserts every fixture state in handoff §6.1 plus Appendix A's totals; a drift guard fails when
+the copy differs from `../glove`, and is skipped when glove is not checked out beside this repo.
+`packages/server/scripts/netobs-replay.ts` builds a fake glove home from the fixture with timestamps
+moved to now and replays it at its recorded pace (`--speed`, `--loop`, `--rotate-every N`, `--direct`):
+
+```bash
+pnpm --filter ./packages/server netobs:replay -- --dir /tmp/layman-netobs/glove --speed 0.2 --loop --rotate-every 30
+# then: glove.enabled = true, glove.sessionsDir = /tmp/layman-netobs/glove/envs
+```
+
 ## Docker
 
-`${HOME}/.glove/envs` is mounted **read-only** (`:ro`) — it is the one mount Layman only ever reads,
-never writes, because writing into a sandbox is exactly what the feature must not do. See the "Docker
-mounts" note in the root `CLAUDE.md`.
+The whole `${HOME}/.glove` is mounted **read-only** (`:ro`): it is the one mount Layman only ever reads,
+never writes, because writing into a sandbox is exactly what the feature must not do. It covers the
+network views' `net/` directories too. See the "Docker mounts" note in the root `CLAUDE.md`.

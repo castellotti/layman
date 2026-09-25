@@ -96,6 +96,13 @@ linked above.
    no live extension. Design and reliability notes (why it never emits a trailing `tool_call_pending`,
    dedupe by committed id, tombstone resurrection) are in `docs/harnesses/pi.md`.
 
+4d. **Network observability (glove)** (`packages/server/src/netobs/`, plan
+   `docs/planning/network-views.md`): tails each gloved session's `net/` (flows, exit, status) into a
+   dedicated `NetStore` and `net:*` frames — **never `EventStore`** (same reason as live streaming).
+   Rotated files are identified by content, not inode (Docker Desktop's bind mount changes inodes on
+   rename). **Never make a network call keyed on gloved flow data**; a test enforces it. Design and
+   rules: `docs/extensions/glove.md` → Network.
+
 5. **OpenCode plugin** (`docs/harnesses/opencode.md`): a bidirectional plugin (`packages/opencode-plugin`)
    that receives events from OpenCode and can send prompts back, registered in
    `~/.config/opencode/opencode.json`.

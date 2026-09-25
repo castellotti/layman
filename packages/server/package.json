@@ -9,7 +9,8 @@
     "build": "tsup src/index.ts --format esm --dts --clean",
     "dev": "tsup src/index.ts --format esm --watch",
     "test": "vitest run",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "netobs:replay": "tsx scripts/netobs-replay.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
@@ -23,12 +24,14 @@
     "fastify": "^4.28.1",
     "open": "^10.1.0",
     "openai": "^4.87.0",
+    "tldts": "^6.1.86",
     "zod": "^3.23.8"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^20.0.0",
     "tsup": "^8.0.0",
+    "tsx": "^4.23.15",
     "typescript": "^5.4.0",
     "vitest": "^1.6.0"
   }
