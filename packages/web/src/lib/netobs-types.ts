@@ -504,6 +504,8 @@ export interface NetSessionSummary {
   flows: number;
   directFlows: number;
   rulesOk: boolean | null;
+  /** glove's files for it are gone: what is shown is what Layman kept (plan §5.6). */
+  historyOnly: boolean;
 }
 
 export interface NetSnapshot {
@@ -527,6 +529,8 @@ export interface NetSnapshot {
   emptyFolded: number;
   /** Backfill hit its byte budget: older rotated files were not read. */
   historyTruncated: boolean;
+  /** glove's files for it are gone: totals and destinations only, from what Layman kept. */
+  historyOnly: boolean;
 }
 
 /** Changes since the previous delta. Every entry is the latest full value (replace, never add). */

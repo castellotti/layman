@@ -39,7 +39,14 @@ interface PanelContent {
 }
 
 /** A built panel's content, or null for one still to come. */
+const HISTORY_ONLY = (
+  <EmptyState title="History only">
+    glove’s files for this session are gone. Layman kept its totals and destinations; live panels, flows and the trace are not kept.
+  </EmptyState>
+);
+
 function panelContent(tab: NetTab, id: string, data: NetSessionData, now: number, netDest: string | null): PanelContent | null {
+  if (data.historyOnly && (id === 'map' || id === 'activity' || id === 'rules' || id === 'details')) return { body: HISTORY_ONLY };
   switch (`${tab}/${id}`) {
     case 'network/table':
       return { body: <DestinationTable data={data} />, count: data.totals.destinations, ownScroll: true };
@@ -184,8 +191,9 @@ export default function NetworkView({ tab, onSend }: { tab: NetTab; onSend: (msg
     return (
       <>
         {tab === 'network' && <KpiRow data={data} />}
-        {tab === 'trace' && <TurnBar data={data} />}
-        {tab === 'map' ? <MapView data={data} panels={panels} /> : <Board tab={tab} panels={panels} data={data} />}
+        {tab === 'trace' && !data.historyOnly && <TurnBar data={data} />}
+        {data.historyOnly && tab !== 'network' ? HISTORY_ONLY
+          : tab === 'map' ? <MapView data={data} panels={panels} /> : <Board tab={tab} panels={panels} data={data} />}
       </>
     );
   }, [enabled, sessionsKnown, sessions.length, listed, token, data, tab, panels, config?.glove.sessionsDir, setSettingsOpen]);

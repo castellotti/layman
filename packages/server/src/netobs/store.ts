@@ -16,6 +16,10 @@
  * Every aggregate is a running sum maintained by subtracting a flow's previous
  * contribution and adding its new one, so evicting closed flows from memory
  * (bounded at `maxClosedFlows`) never changes a total.
+ *
+ * What Layman kept from before a restart (`history.ts`) is added on top: each
+ * view shows the kept totals less what the files re-read up to the kept
+ * watermark (the part they already counted), plus everything read.
  */
 import { EventEmitter } from 'events';
 import { BLOCK_STATES, aggregateState, classifyFlow, classifySession, flowFlags } from './classify.js';
@@ -23,6 +27,7 @@ import { groupKeyFor } from './domain.js';
 import { type NetSessionLocation } from './discovery.js';
 import { blankRulesView } from './control.js';
 import { evaluate, type RuleSet } from './rules.js';
+import type { CarryFlow, HistoryDest, HistorySession } from './history.js';
 import type {
   DestinationAggregate,
   ExitRecord,
@@ -55,8 +60,28 @@ const MAX_IPS = 8;
 export const DEFAULT_MAX_CLOSED_FLOWS = 5_000;
 export const SNAPSHOT_FLOW_LIMIT = 500;
 
+/**
+ * How much of a flow the kept history already counts: its records at or before
+ * the history's watermark, under the destination it had then. That part stays
+ * with that key even if the flow's destination is refined later: the kept row
+ * for that key is what holds it.
+ */
+interface PreWatermark {
+  key: string | null;
+  up: number;
+  down: number;
+  counted: boolean;
+  blocked: NetState | null;
+  direct: boolean;
+  /** The kept history's carry entry for this flow has been applied. */
+  carried: boolean;
+}
+const NO_PRE: PreWatermark = { key: null, up: 0, down: 0, counted: false, blocked: null, direct: false, carried: false };
+type Seen = { up: number; down: number; flows: number; blocked: number };
+
 interface FlowEntry {
   rec: FlowRecord;
+  pre: PreWatermark;
   tOpen: number;
   lastT: number;
   lastActivityAt: number;
@@ -84,6 +109,14 @@ interface RunState {
 
 interface SessionData {
   loc: NetSessionLocation;
+  /** What Layman kept from before this process, and its destinations by key. */
+  history: { s: HistorySession; dests: Map<string, HistoryDest> } | null;
+  /** No files: shown from `history` alone. */
+  historyOnly: boolean;
+  /** Session-wide sum of what re-read records up to the watermark contributed. */
+  seen: { up: number; down: number; flows: number; guard: number; userRule: number; def: number; direct: number };
+  /** The same per destination key, by the key each flow had at the watermark. */
+  seenByKey: Map<string, Seen>;
   runs: Map<string, RunState>;
   /** The latest run seen per service: a newer one means the forwarder restarted. */
   serviceRun: Map<string, string>;
@@ -189,6 +222,10 @@ export class NetStore extends EventEmitter {
     if (this.sessions.has(loc.token)) return;
     this.sessions.set(loc.token, {
       loc,
+      history: null,
+      historyOnly: false,
+      seen: { up: 0, down: 0, flows: 0, guard: 0, userRule: 0, def: 0, direct: 0 },
+      seenByKey: new Map(),
       runs: new Map(),
       serviceRun: new Map(),
       flows: new Map(),
@@ -224,6 +261,41 @@ export class NetStore extends EventEmitter {
     this.sessions.delete(token);
   }
 
+  /**
+   * What Layman kept for a session (`history.ts`). Call before its files are
+   * read: the watermark decides which re-read records the kept totals hold.
+   * A session with no files yet is created, history only.
+   */
+  setHistory(h: HistorySession, now = Date.now()): void {
+    if (!this.sessions.has(h.token)) {
+      this.ensure({ token: h.token, env: h.env, name: h.name, netDir: '', controlDir: '', rulesPath: '' });
+      const s = this.sessions.get(h.token)!;
+      s.historyOnly = true;
+      // Nothing to write to: every toggle and the Rules panel say why.
+      s.rules = { ...s.rules, control: { state: 'disabled', detail: 'History only: glove’s files for this session are gone, so there are no rules to change.' } };
+      s.session = h.sessionFile;
+      if (h.lastExit) s.exits.push(h.lastExit);
+      s.status = h.lastStatus;
+      this.refreshGate(s, now, false);
+    }
+    const s = this.sessions.get(h.token)!;
+    if (s.counters.records > 0) return; // too late to tell re-read records from new ones
+    s.history = { s: h, dests: new Map(h.destinations.map((d) => [d.key, d])) };
+  }
+
+  /** A history-only session whose files have (re)appeared. */
+  relocate(loc: NetSessionLocation): void {
+    const s = this.sessions.get(loc.token);
+    if (!s) return;
+    s.loc = loc;
+    s.historyOnly = false;
+    s.rules = blankRulesView(loc);
+  }
+
+  isHistoryOnly(token: string): boolean {
+    return this.sessions.get(token)?.historyOnly ?? false;
+  }
+
   // ─── Ingest ───────────────────────────────────────────────────────────────
 
   /** One flow record, in file order. Emits `changed`. */
@@ -250,6 +322,7 @@ export class NetStore extends EventEmitter {
     const tOpen = Date.parse(latest.t_open);
     const entry: FlowEntry = {
       rec: latest,
+      pre: prev?.pre ?? NO_PRE,
       tOpen: Number.isFinite(tOpen) ? tOpen : t,
       lastT: prev ? Math.max(prev.lastT, t) : t,
       lastActivityAt: dUp || dDown || !prev ? Math.max(prev?.lastActivityAt ?? 0, t) : prev.lastActivityAt,
@@ -261,6 +334,13 @@ export class NetStore extends EventEmitter {
     };
     entry.state = this.classify(s, entry, now);
     entry.destKey = entry.state === 'empty' ? null : destKeyFor(latest);
+    if (s.history) {
+      const { watermark, carry } = s.history.s;
+      const c = carry[rec.id];
+      // Before the watermark: the kept rows hold it. At or after it: only what a carried flow held.
+      if (t < watermark) this.countPre(s, entry, bytes);
+      else if (c && !entry.pre.carried) this.carryPre(s, entry, c);
+    }
 
     this.apply(s, rec.id, prev ?? null, entry);
 
@@ -285,6 +365,59 @@ export class NetStore extends EventEmitter {
     }
     s.dirtyTotals = true;
     this.emit('changed', token);
+  }
+
+  /** A record from before the kept watermark: the kept rows hold it, under the flow's key then. */
+  private countPre(s: SessionData, entry: FlowEntry, bytes: { up: number; down: number }): void {
+    const was = entry.pre;
+    this.setPre(s, entry, {
+      key: entry.destKey,
+      up: Math.max(was.up, bytes.up),
+      down: Math.max(was.down, bytes.down),
+      counted: true,
+      blocked: was.blocked ?? (BLOCK_STATES.has(entry.state) ? entry.state : null),
+      direct: was.direct || entry.flags.scope === 'direct',
+      carried: false,
+    });
+  }
+
+  /** A carried flow (`CarryFlow`) reached the watermark: the kept rows hold exactly what it held there. */
+  private carryPre(s: SessionData, entry: FlowEntry, c: CarryFlow): void {
+    const was = entry.pre;
+    this.setPre(s, entry, {
+      key: c.key,
+      up: Math.max(was.up, c.up),
+      down: Math.max(was.down, c.down),
+      counted: true,
+      blocked: c.blocked ?? was.blocked,
+      direct: c.direct || was.direct,
+      carried: true,
+    });
+  }
+
+  private setPre(s: SessionData, entry: FlowEntry, pre: PreWatermark): void {
+    const was = entry.pre;
+    s.seen.up += pre.up - was.up;
+    s.seen.down += pre.down - was.down;
+    if (!was.counted) s.seen.flows++;
+    if (!was.direct && pre.direct) s.seen.direct++;
+    const cat = (b: NetState | null) => (b === 'guard' ? 'guard' : b === 'user_rule' ? 'userRule' : b ? 'def' : null);
+    if (cat(was.blocked) !== cat(pre.blocked)) {
+      if (cat(was.blocked)) s.seen[cat(was.blocked)!]--;
+      if (cat(pre.blocked)) s.seen[cat(pre.blocked)!]++;
+    }
+    const move = (p: PreWatermark, sign: 1 | -1) => {
+      if (!p.key) return;
+      const k = s.seenByKey.get(p.key) ?? { up: 0, down: 0, flows: 0, blocked: 0 };
+      k.up += sign * p.up;
+      k.down += sign * p.down;
+      k.flows += sign * (p.counted ? 1 : 0);
+      k.blocked += sign * (p.blocked ? 1 : 0);
+      s.seenByKey.set(p.key, k);
+    };
+    move(was, -1);
+    move(pre, 1);
+    entry.pre = pre;
   }
 
   private classify(s: SessionData, e: FlowEntry, now: number): NetState {
@@ -417,6 +550,7 @@ export class NetStore extends EventEmitter {
     a.bytesUp += r.bytes.up;
     a.bytesDown += r.bytes.down;
     a.flows++;
+
     if (BLOCK_STATES.has(next.state)) {
       a.blocked++;
       if (r.rule !== null || next.state === 'default_block') a.rule = r.rule;
@@ -602,7 +736,7 @@ export class NetStore extends EventEmitter {
   private aggView(s: SessionData, e: AggEntry): DestinationAggregate {
     const states = [...e.open.values()];
     if (e.latest) states.unshift(e.latest.state);
-    const a = e.agg;
+    const a = this.withHistory(e.agg, this.kept(s, e.agg.key));
     const facts = {
       host: a.host, ip: a.ips[0] ?? null, port: a.port, service: a.services[0] ?? null, tool: a.tools[0] ?? null, scope: a.scope,
     };
@@ -612,7 +746,7 @@ export class NetStore extends EventEmitter {
       return { action: v.action, rule: v.rule };
     };
     return {
-      ...e.agg,
+      ...a,
       policy: { enforced: predict(s.policy.enforced), written: predict(s.policy.written) },
       // Only an IP glove resolved inside the tunnel (or a literal), never a local link (plan §5.4).
       geo: this.geolocate && a.ips[0] && a.scope !== 'local' && (a.resolution === 'in-tunnel' || a.resolution === 'literal')
@@ -620,29 +754,146 @@ export class NetStore extends EventEmitter {
         : null,
       // A flow whose gate went away is unclosed but not open in any sense the UI means.
       openFlows: [...e.open.values()].filter((st) => st !== 'gate_lost').length,
-      ips: [...e.agg.ips],
-      services: [...e.agg.services],
-      tools: [...e.agg.tools],
-      clients: [...e.agg.clients],
+      ips: [...a.ips],
+      services: [...a.services],
+      tools: [...a.tools],
+      clients: [...a.clients],
       state: aggregateState(states),
       spark: sparkWindow(e.spark, s.lastT),
     };
+  }
+
+  /** What the kept history holds for a destination beyond what the files re-read: kept − seen. Null when nothing. */
+  private kept(s: SessionData, key: string): { h: HistoryDest; c: Seen } | null {
+    const h = s.history?.dests.get(key);
+    if (!h) return null;
+    const seen = s.seenByKey.get(key) ?? { up: 0, down: 0, flows: 0, blocked: 0 };
+    const c = {
+      up: Math.max(0, h.bytesUp - seen.up),
+      down: Math.max(0, h.bytesDown - seen.down),
+      flows: Math.max(0, h.flows - seen.flows),
+      blocked: Math.max(0, h.blocked - seen.blocked),
+    };
+    return c.up || c.down || c.flows ? { h, c } : null;
+  }
+
+  /** A destination's live totals plus what the kept history holds beyond the re-read part. */
+  private withHistory(a: AggEntry['agg'], k: { h: HistoryDest; c: Seen } | null): AggEntry['agg'] {
+    if (!k) return a;
+    const { h, c } = k;
+    return {
+      ...a,
+      bytesUp: a.bytesUp + c.up,
+      bytesDown: a.bytesDown + c.down,
+      flows: a.flows + c.flows,
+      blocked: a.blocked + c.blocked,
+      firstSeen: Math.min(a.firstSeen, h.firstSeen),
+      lastSeen: Math.max(a.lastSeen, h.lastSeen),
+      ips: a.ips.length || !h.lastIp ? a.ips : [h.lastIp],
+      tools: a.tools.length || !h.tool ? a.tools : [h.tool],
+    };
+  }
+
+  /** A destination only the kept history knows: what is left of it once the files are re-read. */
+  private historyView(s: SessionData, h: HistoryDest, c: Seen): DestinationAggregate {
+    const facts = { host: h.host, ip: h.lastIp, port: h.port, service: null, tool: h.tool, scope: h.scope };
+    const predict = (set: RuleSet | null): PolicyVerdict | null => {
+      if (!set) return null;
+      const v = evaluate(set, facts);
+      return { action: v.action, rule: v.rule };
+    };
+    const scope = (h.scope ?? 'unknown') as FlowFlags['scope'];
+    return {
+      key: h.key, host: h.host, port: h.port, groupKey: h.groupKey, endpoint: h.host === null ? h.key.replace(/^@/, '') : null,
+      ips: h.lastIp ? [h.lastIp] : [], services: [], tools: h.tool ? [h.tool] : [], clients: [],
+      scope: h.scope ?? 'unknown', resolution: h.resolution ?? 'unavailable',
+      bytesUp: c.up, bytesDown: c.down, flows: c.flows, openFlows: 0, blocked: c.blocked,
+      firstSeen: h.firstSeen, lastSeen: h.lastSeen, state: h.lastState ?? 'finished', rule: null,
+      flags: { scope, unresolved: !h.lastIp, noHost: h.host === null, cleartext: h.port === 80, fanout: h.tool === 'search-engine-fanout' },
+      spark: [], policy: { enforced: predict(s.policy.enforced), written: predict(s.policy.written) }, geo: null,
+    };
+  }
+
+  /** Every destination: live ones with their history, then those only the history has. */
+  private destViews(s: SessionData): DestinationAggregate[] {
+    const out = [...s.aggs.values()].map((e) => this.aggView(s, e));
+    for (const k of this.historyOnlyKeys(s)) {
+      const kept = this.kept(s, k)!;
+      out.push(this.historyView(s, kept.h, kept.c));
+    }
+    return out;
+  }
+
+  /** Kept destinations with nothing live and something the files no longer account for. */
+  private historyOnlyKeys(s: SessionData): string[] {
+    if (!s.history) return [];
+    return [...s.history.dests.keys()].filter((k) => !s.aggs.has(k) && this.kept(s, k) !== null);
   }
 
   private totals(s: SessionData): NetTotals {
     const n = (st: NetState) => s.stateCounts.get(st) ?? 0;
     let open = 0;
     for (const e of s.flows.values()) if (e.rec.phase !== 'close' && e.state !== 'gate_lost') open++;
+    const h = s.history?.s;
+    const kept = (v: number | undefined, seen: number) => Math.max(0, (v ?? 0) - seen);
+    const destinations = s.aggs.size + this.historyOnlyKeys(s).length;
     return {
-      bytesUp: s.bytesUp,
-      bytesDown: s.bytesDown,
-      flows: s.flowCount,
+      bytesUp: s.bytesUp + kept(h?.bytesUp, s.seen.up),
+      bytesDown: s.bytesDown + kept(h?.bytesDown, s.seen.down),
+      flows: s.flowCount + kept(h?.flows, s.seen.flows),
       openFlows: open,
       gateLost: n('gate_lost'),
-      destinations: s.aggs.size,
-      blocked: { guard: n('guard'), userRule: n('user_rule'), default: n('default_block') },
-      directFlows: s.directFlows,
+      destinations,
+      blocked: {
+        guard: n('guard') + kept(h?.blockedGuard, s.seen.guard),
+        userRule: n('user_rule') + kept(h?.blockedRule, s.seen.userRule),
+        default: n('default_block') + kept(h?.blockedDefault, s.seen.def),
+      },
+      directFlows: s.directFlows + kept(h?.directFlows, s.seen.direct),
       broken: n('broken'),
+    };
+  }
+
+  /** Flows open now or with a record at the latest record time (`CarryFlow`), as the totals count them. */
+  private carryOf(s: SessionData): Record<string, CarryFlow> {
+    const out: Record<string, CarryFlow> = {};
+    for (const [id, e] of s.flows) {
+      if (e.rec.phase === 'close' && e.lastT !== s.lastT) continue;
+      out[id] = {
+        key: e.destKey, up: e.rec.bytes.up, down: e.rec.bytes.down,
+        blocked: BLOCK_STATES.has(e.state) ? e.state : null, direct: e.flags.scope === 'direct',
+      };
+    }
+    return out;
+  }
+
+  /**
+   * What to keep of a session (`history.ts`): the totals and destinations as
+   * shown, and the latest record time they include. Null before anything was read.
+   */
+  rollup(token: string): HistorySession | null {
+    const s = this.sessions.get(token);
+    if (!s || (s.lastT === null && !s.history)) return null;
+    const t = this.totals(s);
+    const h = s.history?.s;
+    const dests = this.destViews(s);
+    const first = Math.min(s.firstSeen ?? Infinity, h?.firstSeen ?? Infinity, ...dests.map((d) => d.firstSeen));
+    return {
+      token, env: s.loc.env, name: s.loc.name,
+      firstSeen: Number.isFinite(first) ? first : 0,
+      lastSeen: Math.max(s.lastT ?? 0, h?.lastSeen ?? 0),
+      watermark: Math.max(s.lastT ?? -Infinity, h?.watermark ?? -Infinity),
+      carry: this.carryOf(s),
+      bytesUp: t.bytesUp, bytesDown: t.bytesDown, flows: t.flows,
+      blockedGuard: t.blocked.guard, blockedRule: t.blocked.userRule, blockedDefault: t.blocked.default, directFlows: t.directFlows,
+      lastExit: s.exits[s.exits.length - 1] ?? h?.lastExit ?? null,
+      lastStatus: s.status ?? h?.lastStatus ?? null,
+      sessionFile: s.session ?? h?.sessionFile ?? null,
+      destinations: dests.map((d) => ({
+        key: d.key, host: d.host, port: d.port, groupKey: d.groupKey, lastIp: d.ips[0] ?? null, scope: d.scope, resolution: d.resolution,
+        tool: d.tools[0] ?? null, firstSeen: d.firstSeen, lastSeen: d.lastSeen, bytesUp: d.bytesUp, bytesDown: d.bytesDown,
+        flows: d.flows, blocked: d.blocked, lastState: d.state,
+      })),
     };
   }
 
@@ -689,13 +940,14 @@ export class NetStore extends EventEmitter {
       exit: s.exits[s.exits.length - 1] ?? null,
       exits: [...s.exits],
       rules: s.rules,
-      destinations: [...s.aggs.values()].map((e) => this.aggView(s, e)),
+      destinations: this.destViews(s),
       flows: picked.map(([id, e]) => this.flowView(s, id, e)),
       buckets: [...s.seconds.values()].sort((a, b) => a.t - b.t).map((b) => ({ ...b })),
       totals: this.totals(s),
       counters: { ...s.counters },
       emptyFolded: s.stateCounts.get('empty') ?? 0,
       historyTruncated: s.historyTruncated,
+      historyOnly: s.historyOnly,
     };
   }
 
@@ -711,11 +963,18 @@ export class NetStore extends EventEmitter {
         const e = s.flows.get(id);
         return e ? [this.flowView(s, id, e)] : [];
       }),
-      destinations: [...s.dirtyAggs].flatMap((k) => {
-        const e = s.aggs.get(k);
-        return e ? [this.aggView(s, e)] : [];
-      }),
-      removedDestinations: [...s.removedAggs],
+      destinations: [
+        ...[...s.dirtyAggs].flatMap((k) => {
+          const e = s.aggs.get(k);
+          return e ? [this.aggView(s, e)] : [];
+        }),
+        ...[...s.removedAggs].flatMap((k) => {
+          const kept = s.aggs.has(k) ? null : this.kept(s, k);
+          return kept ? [this.historyView(s, kept.h, kept.c)] : [];
+        }),
+      ],
+      // A destination whose last live flow moved away is still one the history has.
+      removedDestinations: [...s.removedAggs].filter((k) => !(!s.aggs.has(k) && this.kept(s, k))),
       buckets: [...s.dirtyBuckets].flatMap((t) => {
         const b = s.seconds.get(t);
         return b ? [{ ...b }] : [];
@@ -792,20 +1051,25 @@ export class NetStore extends EventEmitter {
 
   summaries(): NetSessionSummary[] {
     return [...this.sessions.values()]
-      .map((s) => ({
-        token: s.loc.token,
-        env: s.loc.env,
-        name: s.loc.name,
-        harness: s.session?.harness ?? null,
-        live: s.gate.freshness === 'running',
-        firstSeen: s.firstSeen,
-        lastSeen: s.lastT,
-        bytesUp: s.bytesUp,
-        bytesDown: s.bytesDown,
-        flows: s.flowCount,
-        directFlows: s.directFlows,
-        rulesOk: s.status?.rules?.ok ?? null,
-      }))
+      .map((s) => {
+        const t = this.totals(s);
+        const h = s.history?.s;
+        return {
+          token: s.loc.token,
+          env: s.loc.env,
+          name: s.loc.name,
+          harness: s.session?.harness ?? null,
+          live: !s.historyOnly && s.gate.freshness === 'running',
+          firstSeen: s.firstSeen === null ? h?.firstSeen ?? null : Math.min(s.firstSeen, h?.firstSeen ?? Infinity),
+          lastSeen: s.lastT === null ? h?.lastSeen ?? null : Math.max(s.lastT, h?.lastSeen ?? 0),
+          bytesUp: t.bytesUp,
+          bytesDown: t.bytesDown,
+          flows: t.flows,
+          directFlows: t.directFlows,
+          rulesOk: s.historyOnly ? null : s.status?.rules?.ok ?? null,
+          historyOnly: s.historyOnly,
+        };
+      })
       .sort((a, b) => Number(b.live) - Number(a.live) || (b.lastSeen ?? 0) - (a.lastSeen ?? 0));
   }
 }

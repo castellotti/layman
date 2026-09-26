@@ -18,6 +18,11 @@ describe('formatBytes / formatAge', () => {
 });
 
 describe('gateChips', () => {
+  it('says only "History only" for a session whose files are gone: its gate and route are not current', () => {
+    const chips = gateChips(sessionData({}, { historyOnly: true }));
+    expect(chips.map((c) => [c.key, c.label, c.tone])).toEqual([['history', 'History only', 'muted']]);
+  });
+
   it('matches the mockup for the fixture session', () => {
     expect(labels(data())).toEqual([
       'Gate running', 'VPN · exit verified · Switzerland', 'Resolver in-tunnel', '1 rule enforced', 'Record: metadata',

@@ -47,6 +47,6 @@ export const sessionData = (g: Partial<NetGateView> = {}, over: Partial<NetSessi
   exits: [],
   rules: rulesView(),
   destinations: new Map(), flows: new Map(), buckets: new Map(), totals: totals(),
-  counters: { records: 0, invalid: 0, skipped: 0, gaps: 0 }, emptyFolded: 0, historyTruncated: false,
+  counters: { records: 0, invalid: 0, skipped: 0, gaps: 0 }, emptyFolded: 0, historyTruncated: false, historyOnly: false,
   ...over,
 });

@@ -42,6 +42,8 @@ export interface NetSessionData {
   counters: NetCounters;
   emptyFolded: number;
   historyTruncated: boolean;
+  /** glove's files are gone: shown from what Layman kept. */
+  historyOnly: boolean;
 }
 
 /** What became of one `net:rules:apply` this client sent: did the write reach disk? */
@@ -127,6 +129,7 @@ export function applyNetMessage(state: NetClientState, msg: NetServerMessage): N
         counters: s.counters,
         emptyFolded: s.emptyFolded,
         historyTruncated: s.historyTruncated,
+        historyOnly: s.historyOnly,
       },
     };
   }

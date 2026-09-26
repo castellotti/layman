@@ -149,8 +149,8 @@ is glove's `docs/planning/network-observability-layman-handoff.md` ("the handoff
 plan on any question of data format. Code: `packages/server/src/netobs/`. What is built so far: the
 **read side** (discovery, tailing, the store, classification, `net:*` WebSocket frames and a REST
 snapshot), the **client shell** shared by the four tabs, the **Network tab**, **writing rules** and the
-**Map tab** with offline geolocation, the **Topology tab**, and the **Trace tab** (correlation with the
-transcript). Persistence comes in a later phase.
+**Map tab** with offline geolocation, the **Topology tab**, the **Trace tab** (correlation with the
+transcript), and **persistence** of totals across restarts.
 
 glove answered Layman's follow-up questions in its
 `docs/planning/network-observability-layman-followup-results.md` (glove branch
@@ -681,6 +681,56 @@ links them.
   `GET /api/net/sessions/:token/calls?from=<ms>&to=<ms>` (at most an hour).
 - **Empty state.** With no Layman session named after the glove session, the tab says so; the other
   three tabs work without one.
+
+### Persistence (`netobs/persist.ts`, `netobs/history.ts`)
+
+Per-flow rows would dwarf the event tables, so Layman keeps **rollups**: one row per glove session
+(`net_sessions`) and one per destination (`net_destinations`), migration 3 in `db/database.ts`.
+- **When.** Written every 30 s, on shutdown, and before glove is switched off, only while session
+  recording is on. Writes replace a session's rows in one transaction, so writing the same rollup
+  twice changes nothing.
+- **Not synced.** The tables have no journal triggers and no `SYNC_ENTITIES` entry: they describe one
+  host's sandbox traffic, and must not travel to a central instance (also in `CLAUDE.md`).
+
+**No double counting.** On restart the files are backfilled again, so the rows cannot simply be added
+to what is read. The plan suggested resetting the rows when the backfill covers the whole history and
+"adding only new flows" otherwise. That turned out to need per-flow knowledge it did not specify, so
+the scheme is this:
+- **What is stored.** The rows hold the totals as the views showed them, and a **watermark**: the
+  latest record time they include.
+- **Re-reading.** When the files are read again, the store tracks for every flow how much came from
+  records before the watermark. That is exactly the part the rows already hold, so each view shows
+  rows − that part + everything read.
+- **Attribution.** A flow's already-counted part belongs to the destination key it had at the
+  watermark, even if the destination is refined later (`sni-refined`).
+- **The carry list.** Time alone is not enough. glove writes many records in one millisecond, and that
+  millisecond may have been only partly read when the rows were written. A flow open at the watermark
+  can also lose its opening record to rotation and reappear later. So the rows also carry the flows
+  open at the watermark or with a record at it: their key, bytes and state (`carry_json`, tens of
+  entries, not per-flow history). A record at the watermark counts as already held only for a carried
+  flow, and a carried flow reappearing takes its held part from that list.
+- **Consequence.** Totals from files glove has since deleted (rotation keeps 8), or that a
+  byte-budgeted backfill skipped, are kept. Traffic written while Layman was down is counted once.
+- **Tested.** `history.test.ts` checks it the hard way:
+  - on glove's fixture, persist after every third record, restart with the oldest records deleted,
+    and compare with one uninterrupted read;
+  - restart after *every* record of the fixture and of the gate-lost, terminate, default-block,
+    direct, pooled and sni-refined scenarios;
+  - the running-app check restarts the container twice and requires identical totals and
+    destinations.
+- **Known imprecision.** A record older than the watermark that arrives after a write, out of time
+  order, is not counted.
+
+Two columns were added to the plan's schema:
+- **`blocked_guard` / `blocked_rule` / `blocked_default`**, because the KPI row splits blocked by who
+  refused.
+- **`watermark` and `carry_json`**, which the scheme needs.
+
+**History only.** A glove session whose files are gone is still listed (the picker says "history"),
+with its totals and destinations. The gate strip shows only a "History only" chip, because the gate,
+route and rules it last saw are not current. Toggles are disabled with that reason. The Map, Topology,
+Trace, Activity, Rules and Details panels say "History only". If its files come back, it is read
+again, from its watermark.
 
 ### Configuration
 

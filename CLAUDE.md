@@ -120,6 +120,11 @@ linked above.
    `sessionName` is the glove token. Call times come from the transcript (`data.transcriptAt` /
    `transcriptCompletedAt`, kept by the pi watcher) because a passive watcher's `timestamp` is when it
    *read* the call; without them a call joins by host only and is shown as approximate.
+   Totals survive restarts as SQLite rollups (`netobs/persist.ts`, `history.ts`), written every 30 s
+   while recording is on. They are kept with a watermark and a small carry list, and on restart the
+   store subtracts what the re-read files already account for, so nothing is counted twice and
+   traffic from deleted files is kept. A glove session whose files are gone is listed, history only.
+   Change the counting only with `history.test.ts`, which restarts at every record.
    Design and rules: `docs/extensions/glove.md` → Network.
 
 5. **OpenCode plugin** (`docs/harnesses/opencode.md`): a bidirectional plugin (`packages/opencode-plugin`)
@@ -338,6 +343,11 @@ Four rules that must not be relaxed casually:
 - **Identity is established before any recorded-data write** (`ensureHostIdentity` after
   `openDatabase`), because the triggers read `sync_state.hostId`. `sync.hostId` is deep-merged in
   `config.ts` so a partial Settings update can never blank it and orphan every row.
+
+- **The glove network rollups are deliberately not synced** (`net_sessions`, `net_destinations`,
+  migration 3; `netobs/persist.ts`). No triggers, no `SYNC_ENTITIES` entry. They record where one
+  host's sandboxes browsed, and syncing them would ship that to a central instance. Do not "fix" this
+  by adding them to the journal.
 
 ### Key design decisions
 

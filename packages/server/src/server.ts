@@ -42,6 +42,7 @@ import { TurnStore } from './turns/store.js';
 import { registerTurnRoutes } from './routes/turns.js';
 import { NetObs } from './netobs/index.js';
 import { registerNetRoutes } from './netobs/routes.js';
+import { SqliteNetHistory } from './netobs/persist.js';
 import { registerTtsRoutes } from './routes/tts.js';
 import { searchEvents, parseSearchQuery, matchesSearchTerms } from './db/search.js';
 import { computeTimeMetrics } from './db/time-metrics.js';
@@ -210,7 +211,16 @@ export function createServer(config: LaymanConfig): LaymanServer {
       const p = getConfig().glove.network.geoipDbPath.trim();
       return p ? expandHome(p) : '';
     },
+    // Rollups kept across restarts (netobs/persist.ts), only while recording is on,
+    // never synced. `db` is opened below; the history is first used when polling starts.
+    history: {
+      enabled: () => getConfig().sessionRecording,
+      load: () => netHistory().load(),
+      save: (rows) => netHistory().save(rows),
+    },
   });
+  let netHistoryImpl: SqliteNetHistory | null = null;
+  const netHistory = () => (netHistoryImpl ??= new SqliteNetHistory(db, () => getConfig().sessionRecording));
   const vibeWatcher = new VibeSessionWatcher(eventStore, gate, getConfig, [
     new NativeVibeSource(),
     gloveSource,

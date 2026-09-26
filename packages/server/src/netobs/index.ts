@@ -10,6 +10,7 @@ import { NetSessionSource, type NetSessionLocation } from './discovery.js';
 import { RulesControl, type ApplyResult } from './control.js';
 import { GeoLocator } from './geo.js';
 import { parseLine, parseSessionFile, parseStatus } from './parse.js';
+import type { NetHistory } from './history.js';
 import { NetStore } from './store.js';
 import { DEFAULT_BACKFILL_BYTES, JsonFileWatcher, NdjsonTailer } from './tail.js';
 import type {
@@ -61,7 +62,13 @@ export interface NetObsOptions {
   pollMs?: number;
   coalesceMs?: number;
   budgetBytes?: number;
+  /** Where totals are kept across restarts (`persist.ts`); none in most tests. */
+  history?: NetHistory;
+  /** How often rollups are written (plan §5.6: 30 s). */
+  persistMs?: number;
 }
+
+const PERSIST_MS = 30_000;
 
 class SessionReader {
   readonly flows: NdjsonTailer;
@@ -117,6 +124,10 @@ export class NetObs {
   private readonly subs = new Map<NetSocket, string | null>();
   private readonly timers = new Map<string, ReturnType<typeof setTimeout>>();
   private pollTimer: ReturnType<typeof setInterval> | null = null;
+  private persistTimer: ReturnType<typeof setInterval> | null = null;
+  private readonly history: NetHistory | null;
+  private readonly persistMs: number;
+  private historyLoaded = false;
   private listSig = '';
   private readonly pollMs: number;
   private readonly coalesceMs: number;
@@ -135,6 +146,8 @@ export class NetObs {
     this.pollMs = opts.pollMs ?? POLL_MS;
     this.coalesceMs = opts.coalesceMs ?? COALESCE_MS;
     this.budgetBytes = opts.budgetBytes ?? DEFAULT_BACKFILL_BYTES;
+    this.history = opts.history ?? null;
+    this.persistMs = opts.persistMs ?? PERSIST_MS;
 
     this.store.on('changed', (token: string) => this.onChanged(token));
     this.store.on('status', (token: string) => {
@@ -153,11 +166,18 @@ export class NetObs {
     this.poll();
     this.pollTimer = setInterval(() => this.poll(), this.pollMs);
     this.pollTimer.unref?.();
+    if (this.history) {
+      this.persistTimer = setInterval(() => this.persist(), this.persistMs);
+      this.persistTimer.unref?.();
+    }
   }
 
   stop(): void {
     if (this.pollTimer) clearInterval(this.pollTimer);
     this.pollTimer = null;
+    if (this.persistTimer) clearInterval(this.persistTimer);
+    this.persistTimer = null;
+    this.persist();
     for (const t of this.timers.values()) clearTimeout(t);
     this.timers.clear();
   }
@@ -165,12 +185,23 @@ export class NetObs {
   /** One discovery + read pass. Public so tests can drive it without timers. */
   poll(now = Date.now()): void {
     if (this.getSessionsDir() === null) {
-      // Glove (or its network views) switched off: forget everything, so the
-      // header goes back to exactly what it was.
+      // Glove (or its network views) switched off: keep what was read, then
+      // forget everything, so the header goes back to exactly what it was.
+      this.persist();
+      this.historyLoaded = false;
       this.readers.clear();
       for (const token of this.store.tokens()) this.store.remove(token);
       this.maybeBroadcastSessions();
       return;
+    }
+    // What Layman kept goes in before any file is read: its watermark decides which re-read records it already holds.
+    if (!this.historyLoaded) {
+      this.historyLoaded = true;
+      try {
+        for (const h of this.history?.load() ?? []) this.store.setHistory(h, now);
+      } catch (err) {
+        console.warn(`[netobs] could not read kept network history: ${(err as Error).message}`);
+      }
     }
     const found = this.source.discover();
     if (this.geo.refresh()) this.store.refreshGeo();
@@ -179,7 +210,8 @@ export class NetObs {
     for (const loc of found) {
       seen.add(loc.token);
       if (!this.readers.has(loc.token)) {
-        this.store.ensure(loc);
+        if (this.store.isHistoryOnly(loc.token)) this.store.relocate(loc);
+        else this.store.ensure(loc);
         this.readers.set(loc.token, new SessionReader(loc, this.budgetBytes));
       }
       try {
@@ -199,6 +231,23 @@ export class NetObs {
     }
     this.store.tick(now);
     this.maybeBroadcastSessions();
+  }
+
+  /**
+   * Write every session's rollup (plan §5.6), when session recording is on.
+   * Public so tests (and shutdown) can drive it.
+   */
+  persist(): void {
+    if (!this.history?.enabled()) return;
+    const rows = this.store.tokens()
+      .filter((t) => !this.store.isHistoryOnly(t)) // unchanged since it was loaded
+      .map((t) => this.store.rollup(t))
+      .filter((r): r is NonNullable<typeof r> => r !== null);
+    try {
+      this.history.save(rows);
+    } catch (err) {
+      console.warn(`[netobs] could not keep network history: ${(err as Error).message}`);
+    }
   }
 
   /** rules.json and the gate's verdict on it; pushes `net:rules` and new policy predictions when they change. */

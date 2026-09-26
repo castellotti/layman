@@ -13,7 +13,7 @@ const snapshot = (token: string, over: Partial<NetSnapshot> = {}): NetSnapshot =
   rules: rulesView({ exists: false, file: null }),
   destinations: [dest('arxiv.org:443'), dest('gone.example:443')], flows: [flow('f1')], buckets: [{ t: 1000, up: 1, down: 2 }],
   totals: totals({ flows: 1 }), counters: { records: 1, invalid: 0, skipped: 0, gaps: 0 }, emptyFolded: 0,
-  historyTruncated: false, ...over,
+  historyTruncated: false, historyOnly: false, ...over,
 });
 const delta = (over: Partial<NetDelta> = {}): NetDelta => ({
   flows: [], destinations: [], removedDestinations: [], buckets: [], totals: totals(),
@@ -80,7 +80,7 @@ describe('applyNetMessage', () => {
 
 const summary = (token: string, over: Partial<NetSessionSummary> = {}): NetSessionSummary => ({
   token, env: token, name: token, harness: 'pi', live: false, firstSeen: 0, lastSeen: 0,
-  bytesUp: 0, bytesDown: 0, flows: 0, directFlows: 0, rulesOk: true, ...over,
+  bytesUp: 0, bytesDown: 0, flows: 0, directFlows: 0, rulesOk: true, historyOnly: false, ...over,
 });
 
 describe('defaultNetToken', () => {

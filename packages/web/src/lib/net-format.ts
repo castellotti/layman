@@ -53,6 +53,11 @@ export function gateChips(data: NetSessionData): GateChip[] {
   const { gate, exit, totals, counters } = data;
   const chips: GateChip[] = [];
   const version = gate.gateVersion ? ` · gate ${gate.gateVersion}` : '';
+  // Nothing is being read: its gate, route and rules are as they were, not as they are.
+  if (data.historyOnly) {
+    return [{ key: 'history', label: 'History only', tone: 'muted', icon: 'file',
+      title: 'glove’s files for this session are gone. Layman kept its totals and destinations while session recording was on; flows, the map and the trace are not kept.' }];
+  }
 
   switch (gate.freshness) {
     case 'running':

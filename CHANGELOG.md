@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- **Network totals now survive restarts** (phase 8 of `docs/planning/network-views.md`). Layman keeps rollups of each glove session and destination in SQLite (`net_sessions`, `net_destinations`, migration 3), written every 30 s and on shutdown while session recording is on.
+  - **Never synced** to other hosts. The tables have no journal triggers, and `CLAUDE.md` says why.
+  - **History only.** A glove session whose files are gone stays in the picker with its totals and destinations, marked "History only" (toggles disabled; the Map, Topology and Trace say so).
+  - **Counting.** The plan's "reset, or add only new flows" needed per-flow knowledge it did not specify. Instead, the rows carry a watermark (the latest record time they include) and a short list of flows open or mid-millisecond at it. On restart the store subtracts exactly what the re-read files already account for. Nothing is counted twice, traffic written while Layman was down counts once, and totals from files glove rotated away are kept.
+  - **Two cases found by testing.** Time alone failed on two things, both now handled by the carry list and covered by tests:
+    - glove writes many records in one millisecond, which a write can split;
+    - a flow's opening record can expire while the flow is still open.
+    Moving a refined flow's already-counted bytes to its new destination also double-counted; they now stay with the key the flow had at the watermark.
+  - **Tests.** `history.test.ts` restarts at every record of the fixture and six scenarios, and at many cut points with the oldest records deleted, requiring exactly what one uninterrupted read shows. The running-app check restarts the container twice and deletes a session's files.
+  - **Schema.** Blocked counts are split by guard / rule / default, and `watermark` and `carry_json` are added; both are departures from the plan's schema.
 - Added the **Trace tab** (phase 7 of `docs/planning/network-views.md`), from `trace-agent-trace.dc.html`: one turn at a time, each tool call the agent made over the network flows glove's gate saw for it, which glove alone cannot do (it never learns the URL behind an HTTPS CONNECT).
   - **The join** (`netobs/correlate.ts`, pure). A call naming a URL claims flows to that host (and port, if written) opened from its start − 1 s to its end + 2 s, with the nearest start winning. `web_search` claims the search service and SearXNG's fan-out. LLM flows are their own rows. Everything else is Unattributed, never guessed. It is tested against glove's fixture: each fetch finds its host, the two arxiv flows go to the abstract and the PDF, and the four fan-out engines go to the search.
   - **The tab.** A turn bar (previous/next, the prompt; chips for calls, flows, refused, blocked, bytes), the waterfall (outcome, bytes, timeline, the same toggles and block popover as the Network tab), and Details. Details says what the agent asked for, what happened, and whether it can be allowed, with Open turn and Bookmark. A guard refusal is selected by default.

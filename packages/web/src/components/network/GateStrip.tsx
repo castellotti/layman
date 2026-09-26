@@ -21,6 +21,7 @@ function sessionOption(s: NetSessionSummary): string {
   const parts = [s.token];
   if (s.harness) parts.push(s.harness);
   if (s.live) parts.push('live');
+  if (s.historyOnly) parts.push('history');
   return `${s.live ? '● ' : ''}${parts.join(' · ')}`;
 }
 
