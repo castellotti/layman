@@ -1,24 +1,28 @@
 /**
  * The only code in Layman that writes into `~/.glove`, and only
- * `control/<env>/<name>/rules.json`. It follows glove's ownership contract
- * (glove's `network-observability-layman-followup-results.md` §3, handoff §3
- * "Ownership") literally, because the gate runs as the user who ran glove and
- * must be able to read what Layman writes:
+ * `control/<env>/<name>/rules.json`. It follows glove's contract for a second
+ * writer (glove's `layman-independence-results.md` §3, handoff §3 "Ownership")
+ * literally:
  *
- *  1. Never create the session's control directory: glove creates it (the
- *     user's, 0700) before any gate starts. No directory → no controls.
+ *  1. Never create, chmod, chown or relabel any directory under `~/.glove`. The
+ *     session's control directory is glove's (the user's, 0700, created before
+ *     any gate starts). No directory → no controls.
  *  2. Write a temp file *in that directory* under a name unique to Layman,
- *     fsync it, chown it to the directory's owner as `stat` reports it, chmod
- *     0600, then rename it onto rules.json. If the chown fails, delete the temp
- *     file, do not rename, and report the error.
+ *     fsync it, `chmod 0644` it explicitly, then rename it onto rules.json. On
+ *     any failure, delete the temp file.
  *  3. Put nothing else in the directory.
  *
- * Without step 2's chown, a Layman running as root on a rootful Linux engine
- * leaves a `root:root 0600` file the gate cannot read, and the gate reports
- * `cannot read rules.json: permission denied` (glove verified this on rootful
- * Podman). On Docker Desktop and rootless Podman the chown is a no-op.
+ * Why 0644, and explicitly: the gate runs as the user who ran glove and only
+ * needs to read the file. Through the umask a root writer with umask 077 would
+ * leave `root:root 0600`, which the gate cannot read (`cannot read rules.json:
+ * permission denied`; glove verified this on rootful Podman). 0644 exposes
+ * nothing: the directory is 0700 and the user's, so no other user can reach the
+ * file. glove's CLI can still replace a root-owned file, because the rename needs
+ * write permission on the directory, not on the file. An earlier contract had
+ * the writer chown the file to the directory's owner instead; glove dropped
+ * that so Layman changes no ownership at all.
  */
-import { accessSync, chmodSync, chownSync, closeSync, constants, fsyncSync, lstatSync, openSync, renameSync, statSync, unlinkSync, writeSync } from 'fs';
+import { accessSync, closeSync, constants, fchmodSync, fsyncSync, lstatSync, openSync, renameSync, statSync, unlinkSync, writeSync } from 'fs';
 import { dirname, join, relative, resolve, sep } from 'path';
 
 export const TEMP_NAME = 'rules.json.layman.tmp';
@@ -74,7 +78,7 @@ export function controlStatus(controlRoot: string, rulesPath: string, enabled: b
     return {
       state: 'read-only',
       detail: code === 'EROFS'
-        ? 'The control directory is mounted read-only. Add the ~/.glove/control mount from docker-compose.yml and recreate the container.'
+        ? 'The control directory is mounted read-only: Layman was started without the ~/.glove/control mount (docker-compose.glove-control.yml), which `make docker-run` adds once glove has created ~/.glove/control. Restart Layman that way.'
         : `Layman cannot write the control directory (${code ?? 'access denied'}).`,
     };
   }
@@ -84,32 +88,29 @@ export function controlStatus(controlRoot: string, rulesPath: string, enabled: b
 /** Replace rules.json with `bytes`, by the contract above. */
 export function writeRules(controlRoot: string, rulesPath: string, bytes: Buffer): void {
   const dir = checkedDir(controlRoot, rulesPath);
-  let owner: { uid: number; gid: number };
   try {
-    const st = lstatSync(dir);
-    if (!st.isDirectory()) throw new WriteError(`${dir} is not a directory`);
-    owner = { uid: st.uid, gid: st.gid };
+    if (!lstatSync(dir).isDirectory()) throw new WriteError(`${dir} is not a directory`);
   } catch (e) {
     if (e instanceof WriteError) throw e;
     throw new WriteError(`the control directory is missing (${(e as NodeJS.ErrnoException).code}); glove creates it, Layman does not`);
   }
   const tmp = join(dir, TEMP_NAME);
-  const fd = openSync(tmp, 'w', 0o600);
   try {
-    let off = 0;
-    while (off < bytes.length) off += writeSync(fd, bytes, off, bytes.length - off);
-    fsyncSync(fd);
-  } finally {
-    closeSync(fd);
-  }
-  try {
-    chownSync(tmp, owner.uid, owner.gid);
-    chmodSync(tmp, 0o600);
+    const fd = openSync(tmp, 'w', 0o644);
+    try {
+      let off = 0;
+      while (off < bytes.length) off += writeSync(fd, bytes, off, bytes.length - off);
+      fsyncSync(fd);
+      // Explicitly, not through the umask: a 077 umask would make it unreadable to the gate.
+      fchmodSync(fd, 0o644);
+    } finally {
+      closeSync(fd);
+    }
+    renameSync(tmp, join(dir, 'rules.json'));
   } catch (e) {
-    try { unlinkSync(tmp); } catch { /* already gone */ }
-    throw new WriteError(`could not hand rules.json to the directory's owner (${owner.uid}:${owner.gid}): ${(e as Error).message}`);
+    try { unlinkSync(tmp); } catch { /* never created, or already renamed */ }
+    throw new WriteError(`could not write rules.json: ${(e as Error).message}`);
   }
-  renameSync(tmp, join(dir, 'rules.json'));
 }
 
 /** Remove rules.json: back to default allow with no rules (only a missing file means that). */

@@ -6,6 +6,9 @@
  */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createHash } from 'crypto';
+import { execFileSync } from 'child_process';
+import { dirname } from 'path';
+import { fileURLToPath } from 'url';
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
@@ -59,12 +62,24 @@ beforeEach(() => {
 afterEach(() => rmSync(home, { recursive: true, force: true }));
 
 describe('writing rules.json', () => {
-  it('writes atomically through a Layman-only temp name, 0600, owned like its directory, and leaves nothing behind', () => {
+  it('writes 0644 whatever the umask, changing no ownership', () => {
+    const dirBefore = statSync(control);
+    // A worker cannot change its umask: write from a child process running under `umask 077`,
+    // the case where relying on the umask would leave a file the gate cannot read.
+    const writer = join(dirname(fileURLToPath(import.meta.url)), 'writer.ts');
+    const code = `import { writeRules } from ${JSON.stringify(writer)}; writeRules(${JSON.stringify(join(home, 'control'))}, ${JSON.stringify(rulesPath)}, Buffer.from("{}"));`;
+    execFileSync('sh', ['-c', 'umask 077 && exec "$0" --import tsx --input-type=module -e "$1"', process.execPath, code]);
+    const st = statSync(rulesPath);
+    expect(st.mode & 0o777).toBe(0o644);
+    expect([st.uid, st.gid]).toEqual([process.getuid!(), process.getgid!()]); // the writer's own: never chowned
+    const dir = statSync(control);
+    expect([dir.mode, dir.uid, dir.gid]).toEqual([dirBefore.mode, dirBefore.uid, dirBefore.gid]); // the directory untouched
+  });
+
+  it('writes atomically through a Layman-only temp name and leaves nothing behind', () => {
     expect(apply(block('arxiv.org'))).toEqual({ ok: true, error: null });
     expect(readdirSync(control)).toEqual(['rules.json']);
-    const st = statSync(rulesPath);
-    const dir = statSync(control);
-    expect([st.mode & 0o777, st.uid, st.gid]).toEqual([0o600, dir.uid, dir.gid]);
+    expect(statSync(rulesPath).mode & 0o777).toBe(0o644);
     expect(onDisk()).toMatchObject({ v: 1, env: TOKEN, session: TOKEN, updated_by: 'layman', rules: [{ action: 'block', match: { host: 'arxiv.org' } }] });
   });
 
@@ -206,7 +221,7 @@ describe('confirmation by hash', () => {
     expect(rules().externalChange).toBeNull();
   });
 
-  it('"Try again" rewrites the current file through the ownership contract', () => {
+  it('"Try again" rewrites the current file by the contract (0644), which fixes an unreadable one', () => {
     writeFileSync(rulesPath, JSON.stringify({ v: 1, env: TOKEN, session: TOKEN, rules: [] }));
     obs.poll(T0);
     status({ ok: false, error: 'cannot read rules.json: permission denied', last_rejected: { checked_at: 't', source_mtime: null, sha256: null, error: 'cannot read rules.json: permission denied' } });
@@ -214,7 +229,7 @@ describe('confirmation by hash', () => {
     const before = readFileSync(rulesPath);
     expect(apply({ kind: 'rewrite' }, T0 + 2000).ok).toBe(true);
     expect(readFileSync(rulesPath).equals(before)).toBe(true);
-    expect(statSync(rulesPath).mode & 0o777).toBe(0o600);
+    expect(statSync(rulesPath).mode & 0o777).toBe(0o644);
   });
 
   it('predicts each destination’s verdict under the enforced and the written rules', () => {

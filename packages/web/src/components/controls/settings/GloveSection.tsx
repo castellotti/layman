@@ -64,7 +64,7 @@ export function GloveSection({
       {glove.enabled && network.enabled && (
       <ToggleRow
         label="Allow blocking from Layman"
-        desc="Let the network views write the session's rules.json (block, unblock, cut all traffic). Off makes every toggle read-only. In Docker this also needs the writable ~/.glove/control mount from docker-compose.yml."
+        desc="Let the network views write the session's rules.json (block, unblock, cut all traffic). Off makes every toggle read-only. In Docker, `make docker-run` adds the writable ~/.glove/control mount once glove has created that folder."
         checked={network.controlEnabled}
         onChange={() => setNetwork({ controlEnabled: !network.controlEnabled })}
       />

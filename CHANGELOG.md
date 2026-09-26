@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- **glove is no longer mounted by default.** Layman and glove are independent projects that meet only when the glove extension is enabled, but `docker-compose.yml` bound `~/.glove`, and Docker creates a missing bind source, so every Layman user got a `~/.glove` folder (root-owned on Linux). The glove mounts moved to two opt-in overlays:
+  - `docker-compose.glove.yml`: `~/.glove`, read-only.
+  - `docker-compose.glove-control.yml`: `~/.glove/control`, writable, for network rules.
+
+  `make docker-run`, `start` and `update` add each overlay only when that folder already exists, and print which were used. Layman now never creates, chmods or SELinux-relabels anything under `~/.glove`: the `mkdir` and the `z` labels from the previous entry are gone. glove took over what those did (its `layman-independence-results.md`, PR #12):
+  - glove creates `~/.glove/control` whenever it sets up its home.
+  - Its contract now has Layman write `rules.json` as 0644 with no chown, so Layman changes no ownership at all.
+  - SELinux-enforcing hosts are declared unsupported for both projects (glove itself does not run there yet), so no `z`/`Z` labels. **If you run Layman with glove via `docker compose` directly, add `-f docker-compose.glove.yml` (and `-f docker-compose.glove-control.yml`).**
 - Added **blocking and unblocking** for glove sessions' network traffic (phase 4 of `docs/planning/network-views.md`, following glove's merged follow-up contract where it overrides the plan). Every row's toggle opens a popover:
   - **Block** an allowed destination: this host, the domain and every subdomain (two rules, since `*.x` does not match `x`), or this IP (with a shared-CDN warning); optionally cut its open connections; add a note; see the exact JSON first.
   - **Unblock** your own rule: remove it (or the domain pair), or allow just this host above it.
@@ -11,17 +19,14 @@
 
   How the writes work:
   - **Validation.** The writer validates with a port of glove's `policy.py`. A cross-check test runs glove's own validator and evaluator over ~120 files and a set of flows, and `glove net validate` on a Layman-written file. It found one divergence, IPv6 scope ids, now matched.
-  - **Ownership.** Writes follow glove's ownership contract. Layman never creates the control directory, writes a Layman-unique temp file, chowns it to the directory's owner, sets 0600 and renames it into place. Without the chown, a root Layman on rootful Linux writes a file the gate cannot read.
+  - **Ownership.** Writes follow glove's contract for a second writer. Layman never creates the control directory, writes a Layman-unique temp file, sets it to 0644 explicitly (never through the umask) and renames it into place. It changes no ownership. The first version chowned the file to the directory's owner with 0600; glove replaced that with 0644 at Layman's request (next entry).
   - **Confirmation.** A write counts as confirmed only by glove's hash rule: enforced, rejected, superseded by another writer, pending, or unconfirmed after 10 s. The plan's timestamp rule could not detect a rejection.
   - **What toggles show.** The server predicts each destination's verdict under both the enforced rules and the file on disk. Toggles show what the gate enforces, so a rejected write springs back by itself, and they show pending while the two differ.
   - **Refusing to clobber.** An invalid file written by someone else is never overwritten; only reverted to the bytes the gate enforces, which Layman remembers by hash.
 
   Everything is off with `glove.network.controlEnabled` (new Settings toggle "Allow blocking from Layman", next to a "Network views" toggle).
 
-  Docker:
-  - `docker-compose.yml` mounts `~/.glove/control` writable over the read-only `~/.glove`, with the SELinux shared label `z` on both, as glove requires on enforcing hosts.
-  - `make docker-run` creates `~/.glove/control` first, so Docker doesn't create it root-owned on Linux.
-  - The nested bind was checked on Docker Desktop and rootless Podman.
+  Docker: the writable `~/.glove/control` mount is an opt-in overlay (next entry). The nested rw-inside-ro bind was checked on Docker Desktop and rootless Podman.
 
   The replay script gains `--gate`, a fake gate that enforces rules.json and reports it as glove's collector does. Checked end to end in the running app against it.
 - Added the **Network tab** (phase 3 of `docs/planning/network-views.md`), from `network-ledger.dc.html`: a KPI row (sent, received, live, destinations, blocked by guard / rule / default, and an Untunnelled tile that turns into a red alert when any flow skipped the tunnel), the Destinations table, a read-only Rules panel and a mini map placeholder that opens the Map tab. The table groups by registrable domain, route or tool, sorts by recency or bytes, filters by chip (All / Live / Blocked / Broken / Local) and by text over host, IP, tool and rule note, and expands group → host → flow with a 60 s sparkline on every row (per-flow sparklines are new on the server). Four groups are fixed whatever the grouping: Search fan-out, Local links, Refused by glove guard and Not watched. The plan requires the guard group; the mockup drew guard refusals as loose rows, and the plan wins. Past 200 rows the table renders only what is on screen (checked with 301 rows: 30 in the DOM). Every state's label, colour, icon, badge and toggle come from one legend table (`NET_LEGEND`, handoff §6.1 plus cleartext HTTP) so no view can disagree with it, and a Playwright pass over glove's scenario sessions confirmed each state renders. Toggles are real `aria-pressed` buttons named by verb and target, and stay disabled until Layman can write rules. When the gate has rejected rules.json, the Rules panel heads the file's rules "not enforced" rather than listing them as the evaluation order, because the file on disk is not what the gate enforces.

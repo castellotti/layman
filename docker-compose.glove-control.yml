@@ -1,0 +1,18 @@
+# glove extension, network control (optional overlay).
+#
+# The ONE writable glove path, mounted over the read-only ~/.glove from
+# docker-compose.glove.yml. Added by the Makefile only when ~/.glove/control
+# already exists — glove creates it, as the user, when it renders a session
+# with a network gate; Layman never does (see docker-compose.glove.yml).
+#
+# Layman writes only control/<env>/<name>/rules.json there, by glove's
+# contract for a second writer (a Layman-only temp file, explicit chmod 0644,
+# atomic rename; no chown, and it never creates the directory). No SELinux
+# option: SELinux-enforcing hosts are unsupported for glove (never add z/Z). Safe to expose
+# because the gate's rules schema can express only allow/block verdicts over
+# destinations: any other key makes the gate reject the whole file and keep its
+# last good set. See docs/extensions/glove.md → Network → Writing rules.
+services:
+  layman:
+    volumes:
+      - ${HOME}/.glove/control:/root/.glove/control

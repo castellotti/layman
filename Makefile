@@ -16,6 +16,16 @@ CONTAINER_ENGINE := $(shell \
 	else echo docker; fi)
 COMPOSE := $(CONTAINER_ENGINE) compose
 
+# ── glove (optional extension) ────────────────────────────────────────────────
+# Layman and glove are independent: the glove mounts live in overlay files that
+# are added only when glove's own folders already exist, so starting Layman never
+# creates ~/.glove (Docker would create a missing bind source). glove creates
+# ~/.glove/control when it renders a session with a network gate; until then
+# Layman can show that session's traffic but not change its rules. Layman never
+# creates or changes permissions on anything under ~/.glove.
+GLOVE_COMPOSE := $(if $(wildcard $(HOME)/.glove/.),-f docker-compose.glove.yml)$(if $(wildcard $(HOME)/.glove/control/.), -f docker-compose.glove-control.yml)
+GLOVE_NOTE = $(if $(wildcard $(HOME)/.glove/.),glove: mounting ~/.glove read-only$(if $(wildcard $(HOME)/.glove/control/.), and ~/.glove/control writable, (no ~/.glove/control yet: rules stay read-only until glove creates it and Layman is restarted)),glove: ~/.glove not found; not mounted)
+
 # ── Local development ─────────────────────────────────────────────────────────
 
 install:
@@ -41,8 +51,9 @@ clean:
 start:
 	@mkdir -p "$${HOME}/.local/share/layman"
 	$(COMPOSE) -f docker-compose.ghcr.yml pull
+	@echo "$(GLOVE_NOTE)"
 	LAYMAN_HOST_NAME="$${LAYMAN_HOST_NAME:-$$(hostname)}" \
-	$(COMPOSE) -f docker-compose.ghcr.yml up -d
+	$(COMPOSE) -f docker-compose.ghcr.yml $(GLOVE_COMPOSE) up -d
 	@echo ""
 	@echo "Layman running at http://localhost:8880"
 
@@ -53,8 +64,9 @@ stop:
 update:
 	@mkdir -p "$${HOME}/.local/share/layman"
 	$(COMPOSE) -f docker-compose.ghcr.yml pull
+	@echo "$(GLOVE_NOTE)"
 	LAYMAN_HOST_NAME="$${LAYMAN_HOST_NAME:-$$(hostname)}" \
-	$(COMPOSE) -f docker-compose.ghcr.yml up -d
+	$(COMPOSE) -f docker-compose.ghcr.yml $(GLOVE_COMPOSE) up -d
 	@echo "Layman updated and restarted."
 
 # ── Container image (build from source) ───────────────────────────────────────
@@ -67,11 +79,10 @@ docker-build:
 # Override the project dir: make docker-run LAYMAN_PROJECT_DIR=/path/to/project
 docker-run: docker-build
 	@mkdir -p "$${HOME}/.local/share/layman"
-	@# Bind source Docker would otherwise create root-owned on Linux; glove must be able to create env dirs in control/.
-	@mkdir -p "$${HOME}/.glove/control"
+	@echo "$(GLOVE_NOTE)"
 	LAYMAN_PROJECT_DIR=$(or $(LAYMAN_PROJECT_DIR),$(CURDIR)) \
 	LAYMAN_HOST_NAME="$${LAYMAN_HOST_NAME:-$$(hostname)}" \
-	$(COMPOSE) up -d
+	$(COMPOSE) -f docker-compose.yml $(GLOVE_COMPOSE) up -d
 	@echo ""
 	@echo "Layman running at http://localhost:8880"
 	@echo "Hooks installed in $${LAYMAN_PROJECT_DIR:-.}/.claude/settings.local.json"

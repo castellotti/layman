@@ -33,30 +33,9 @@ services:
       # extension to ~/.pi/agent/extensions/layman/index.ts, which pi
       # auto-discovers. Nothing else in ~/.pi is touched.
       - ${HOME}/.pi:/root/.pi
-      # glove state (read-only). When `glove.enabled` is set, the passive watchers
-      # tail harness logs (Vibe and pi) under each env's resolved home to monitor
-      # sandboxed sessions live. The whole ~/.glove is mounted (not just envs/) so
-      # GloveSource can read ~/.glove/registry.json — glove's single canonical
-      # record of each env's resolved home — and so a home relocated under ~/.glove
-      # (the mount contract for relocated homes; see docs/planning/glove-session-
-      # discovery.md) is reachable. Read-only: Layman never writes into a sandbox,
-      # and the mount adds nothing to what the sandboxed agent can see. Off by
-      # default; native monitoring is unaffected whether or not glove is enabled.
-      # `z`: glove's netgate writes net/ as you; on an SELinux-enforcing host a
-      # container can read it only with the shared label.
-      - ${HOME}/.glove:/root/.glove:ro,z
-      # glove network control: the ONE writable glove path, mounted after (and so
-      # over) the read-only ~/.glove above. Layman writes only
-      # control/<env>/<name>/rules.json there, by glove's ownership contract (temp
-      # file, chown to the directory's owner, 0600, rename; it never creates the
-      # directory). It is safe to expose because the gate's rules schema can
-      # express only allow/block verdicts over destinations: any other key makes
-      # the gate reject the whole file and keep its last good set. `make
-      # docker-run` creates ~/.glove/control as you first, so Docker does not
-      # create it root-owned on Linux. `z` (shared SELinux label, never `Z`) is
-      # what glove requires on enforcing hosts, and is ignored elsewhere. See
-      # docs/extensions/glove.md → Network → Writing rules.
-      - ${HOME}/.glove/control:/root/.glove/control:z
+      # glove (optional extension) is not mounted here: see docker-compose.glove.yml
+      # and docker-compose.glove-control.yml, which the Makefile adds only when
+      # glove's own folders already exist, so Layman never creates ~/.glove.
     environment:
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}

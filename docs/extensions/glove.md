@@ -408,21 +408,29 @@ come with the Map tab's detail card. All deciding is in two pure, tested modules
 ### Writing rules
 
 Blocking and unblocking (plan §5.3, §6.4; `controls-block-unblock.dc.html`). This is the only place
-Layman writes into `~/.glove`, and it follows glove's contract from its follow-up results (§3), which
-overrode the plan in three places:
+Layman writes into `~/.glove`. It follows glove's contract for a second writer: its follow-up results
+§3, as revised by its `layman-independence-results.md` §3 (glove PR #12). That contract overrode the
+plan in three places:
 
 - **Never create the control directory.** glove creates `control/<env>/<name>/` (0700, the user's) when
   it renders a session with a gate. If it is absent the session has no gate yet, and the toggles say so
   (`control.state: 'no-dir'`). The plan had Layman create it.
-- **Hand the file to the gate's user** (`writer.ts`). The gate runs as the user who ran glove and reads
-  the file through a read-only bind, so Layman writes `rules.json.layman.tmp` in that directory, fsyncs
-  it, chowns it to the directory's owner as `stat` reports it, sets 0600, and renames it onto
-  `rules.json`. If the chown fails, the temp file is deleted and nothing is renamed. Without the chown,
-  a root Layman on a rootful Linux engine leaves a `root:root 0600` file the gate cannot read. On Docker
-  Desktop and rootless Podman the chown is a no-op, which was checked here: the file lands on the host
-  owned by the directory's owner. The writer refuses a directory that is a symlink or not exactly
-  `control/<env>/<name>`, and never writes anything else there. The plan used a shared `rules.json.tmp`
-  name, which another writer could clobber.
+- **A file the gate's user can read, and no ownership changes** (`writer.ts`). The gate runs as the
+  user who ran glove and only reads the file. So Layman writes `rules.json.layman.tmp` in that
+  directory, fsyncs it, `chmod 0644`s it **explicitly**, and renames it onto `rules.json`. On any
+  failure the temp file is deleted.
+  - *Explicitly*, because through the umask a root writer with umask 077 leaves `root:root 0600`,
+    which the gate cannot read. A test writes under `umask 077` in a child process, and fails if the
+    explicit chmod is removed.
+  - 0644 exposes nothing: the session directory is 0700 and the user's.
+  - glove's CLI can still replace a root-owned file, because a rename needs write permission on the
+    directory.
+
+  The first version of this contract had Layman chown the file to the directory's owner and set 0600.
+  glove dropped that at Layman's request so that Layman changes no ownership at all, and verified the
+  0644 form on Docker Desktop and on rootless and rootful Podman. The writer refuses a directory that
+  is a symlink or not exactly `control/<env>/<name>`, and never writes anything else there. The plan
+  used a shared `rules.json.tmp` name, which another writer could clobber.
 - **Confirm by hash, not time** (`control.ts`). `status.json` `rules.sha256` names the bytes the gate
   enforces and `rules.last_rejected.sha256` the bytes it last refused. So a write is `enforced` or
   `rejected` by its own hash, `superseded` when the file on disk no longer holds it (another writer),
@@ -452,7 +460,7 @@ How it is built:
   is refused: someone else's broken write is theirs to fix. `revert` writes back the bytes the gate
   enforces. Layman remembers every valid version it has read, by hash, so it knows those bytes after a
   rejection; if the gate enforces "no file", it removes the file. `rewrite` ("Try again") writes the
-  current, valid file again through the contract. That is what fixes an unreadable, wrongly owned file.
+  current, valid file again through the contract (0644). That is what fixes a file the gate cannot read.
 - **What the toggles show.** The server evaluates each destination (host, first IP, port, service,
   tool, scope) against both the *enforced* set and the file on disk, and sends both
   (`DestinationAggregate.policy`). The toggle shows the enforced verdict, so a rejected write springs
@@ -525,15 +533,43 @@ pnpm --filter ./packages/server netobs:replay -- --dir /tmp/layman-netobs/glove 
 
 ## Docker
 
-The whole `${HOME}/.glove` is mounted **read-only** (`:ro,z`): writing into a sandbox is exactly what the
-feature must not do. It covers the network views' `net/` directories too. Mounted after it, and so
-over it, `${HOME}/.glove/control` is **writable** (`:z`). That is the only writable glove path, and it
-is safe to expose because the gate's schema can express only allow/block verdicts over destinations.
-`make docker-run` creates `~/.glove/control` as you first; otherwise Docker creates it root-owned on
-Linux and glove can no longer create per-env directories in it. `z` is the shared SELinux label glove
-requires on enforcing hosts (never `Z`, which would lock the gate out) and is ignored elsewhere. The
-nested rw-inside-ro bind was checked on Docker Desktop and on rootless Podman (a macOS Podman
-machine): the rest of `~/.glove` stays read-only, `control/` is writable, and container root's chown to
-`0:0` lands as the host user. `docker-compose.ghcr.yml`, the file the README's one-line install
-downloads, has no glove mounts at all, so glove users of the published image must add both lines. See
-the "Docker mounts" note in the root `CLAUDE.md`.
+Layman and glove are independent projects that meet only when the glove extension is enabled, so
+**`docker-compose.yml` does not mount glove at all**. A bind mount's missing source is created by Docker
+(root-owned, on Linux), and someone who only ever uses Layman must not get a `~/.glove` folder from
+starting it. The glove mounts are two opt-in overlays, added by `make docker-run`, `make start` and
+`make update` only when glove's own folders already exist:
+
+| Overlay | Mount | Added when |
+|---|---|---|
+| `docker-compose.glove.yml` | `${HOME}/.glove` → `/root/.glove`, **read-only** | `~/.glove` exists |
+| `docker-compose.glove-control.yml` | `${HOME}/.glove/control` → `/root/.glove/control`, **writable**, mounted over the read-only one | `~/.glove/control` exists |
+
+The make targets print which were used. By hand, add them after the base file:
+`docker compose -f docker-compose.yml -f docker-compose.glove.yml -f docker-compose.glove-control.yml up -d`
+(with `docker-compose.ghcr.yml` as the base, the published image works the same way). The overlays
+are read at start, so a glove installed, or a `control/` created, after Layman started needs Layman
+restarted. Until then Layman sees no glove data, or shows the session's traffic with read-only toggles
+whose tooltip says why.
+
+**Layman never creates, chmods or relabels anything under `~/.glove`.** `control/` is created by glove
+when it renders a session with a network gate. The only write is a session's `rules.json` inside
+glove's existing `control/<env>/<name>/`, by glove's own contract (Writing rules, above). The writable
+path is safe to expose because the gate's schema can express only allow/block verdicts over
+destinations. An earlier draft of this phase had `make docker-run` create `~/.glove/control`, and the
+mounts carry the SELinux shared label `z` (which relabels host files). Both were taken out: they
+changed glove's folders from Layman's side. glove took over what they did (its
+`layman-independence-results.md`, PR #12):
+
+- **`control/` exists whenever glove has set up its home.** Any registry write, `glove init` or
+  `glove run` creates it as the user. An install that predates this needs one `glove init`/`run` (or
+  `mkdir ~/.glove/control`).
+- **SELinux-enforcing hosts (Fedora, RHEL) are unsupported, for glove and for Layman alike.** glove
+  itself does not run there yet, because its harness binds are unlabelled. There, Layman's binds are
+  denied, and that is expected. Layman must not add `z`/`Z`: that would relabel glove's files from
+  Layman's side, and a recursive `z` would relabel every harness home. glove withdrew its earlier advice
+  to use them. Labelling (and whether harness homes may be shared with another container at all)
+  belongs to the future work that makes glove run on SELinux.
+
+The nested rw-inside-ro bind was checked on Docker Desktop and on rootless Podman (a macOS Podman
+machine): the rest of `~/.glove` stays read-only, `control/` is writable, and a file container root
+writes lands owned by the host user. See the "Docker mounts" note in the root `CLAUDE.md`.
