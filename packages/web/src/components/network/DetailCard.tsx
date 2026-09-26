@@ -13,9 +13,11 @@ import { formatBytes, formatAge } from '../../lib/net-format.js';
 import type { NetSessionData } from '../../lib/net-state.js';
 import { clockTime, flowLabel, toolLabel } from '../../lib/net-table.js';
 import { controlDisabledReason, siblingIds } from '../../lib/net-rules.js';
-import type { DestinationAggregate, FlowView, GeoStatus, RulesOp } from '../../lib/netobs-types.js';
+import type { DestinationAggregate, FlowView, GeoStatus, RulesOp, TraceView } from '../../lib/netobs-types.js';
 import { buttonStyle } from './ControlPopover.js';
 import { NetIcon } from './netui.js';
+import { useNetTrace } from '../../hooks/useNetTrace.js';
+import { openInTrace } from './TraceView.js';
 
 type SectionId = 'totals' | 'asked' | 'connection' | 'flows';
 const SECTIONS: Array<{ id: SectionId; label: string; on: boolean }> = [
@@ -47,7 +49,7 @@ const RESOLUTION: Record<string, string> = {
   disabled: 'not resolved: a configured endpoint',
 };
 
-function Row({ k, v, sub, mono = true, colour }: { k: string; v: React.ReactNode; sub?: React.ReactNode; mono?: boolean; colour?: string }) {
+export function Row({ k, v, sub, mono = true, colour }: { k: string; v: React.ReactNode; sub?: React.ReactNode; mono?: boolean; colour?: string }) {
   return (
     <div style={{ display: 'grid', gridTemplateColumns: '72px 1fr', gap: 10, padding: '3px 0' }}>
       <span style={{ fontSize: 11, color: 'var(--text-faint)', textAlign: 'right' }}>{k}</span>
@@ -59,7 +61,7 @@ function Row({ k, v, sub, mono = true, colour }: { k: string; v: React.ReactNode
   );
 }
 
-function SectionHead({ children }: { children: React.ReactNode }) {
+export function SectionHead({ children }: { children: React.ReactNode }) {
   return <div style={{ fontSize: 10, letterSpacing: '0.08em', fontWeight: 600, color: 'var(--text-muted)', margin: '12px 0 6px', textTransform: 'uppercase' }}>{children}</div>;
 }
 
@@ -152,6 +154,60 @@ function Policy({ data, d }: { data: NetSessionData; d: DestinationAggregate }) 
   );
 }
 
+/**
+ * "Agent asked for": the tool call the transcript says produced this
+ * destination's latest flow, from the trace of the turn it opened in
+ * (`netobs/correlate.ts`). The gate alone never knows the URL behind a CONNECT.
+ */
+function AskedFor({ data, host, port, flows }: { data: NetSessionData; host: string | null; port: number | null; flows: FlowView[] }) {
+  const f = flows[0];
+  // Re-read while the card is open: a running turn's calls arrive after its flows.
+  const latest = useNetTrace(f ? data.token : null, f ? { at: f.tOpen } : null, f ? f.id : '', 5000);
+  const mine = new Set(flows.map((x) => x.id));
+  const claim = (v: TraceView | null) => {
+    const hit = v?.items.find((i) => i.kind === 'call' && [...i.flowIds, ...i.fanoutIds].some((id) => mine.has(id)));
+    return hit?.kind === 'call' ? { call: hit.call, flowId: [...hit.flowIds, ...hit.fanoutIds].find((id) => mine.has(id)) ?? null, view: v! } : null;
+  };
+  // A harness records a call only once it has finished (pi's watcher never shows one in flight),
+  // so a flow in the turn still running is not claimed yet: meanwhile, show the latest flow before it that was.
+  const running = !!latest.view?.turn && latest.view.turns[latest.view.turns.length - 1]?.promptEventId === latest.view.turn.promptEventId;
+  const earlier = running && !claim(latest.view) ? flows.find((x) => latest.view!.window && x.tOpen < latest.view!.window.from) : undefined;
+  const before = useNetTrace(earlier ? data.token : null, earlier ? { at: earlier.tOpen } : null, earlier ? earlier.id : '', 0);
+  const found = claim(latest.view) ?? claim(before.view);
+  const { view, error } = latest;
+  const call = found?.call ?? null;
+  const gateSaw = f?.proto === 'http-connect' ? `CONNECT ${host}:${port ?? 443}` : `a connection to ${host}`;
+  let body: React.ReactNode;
+  if (!f) body = 'No flow to join yet.';
+  else if (error) body = `The transcript could not be read: ${error}.`;
+  else if (!view) body = 'Looking in the transcript…';
+  else if (!view.sessionIds.length) body = `No Layman session is named “${data.token}”, so there is no transcript to join. The gate saw only ${gateSaw}.`;
+  else if (!call && running) body = `The turn this opened in is still running; its tool calls appear once the harness records them. The gate saw only ${gateSaw}.`;
+  else if (!call) body = `No tool call in the turn it happened in names this host; Layman does not guess. The gate saw only ${gateSaw}.`;
+  const earlierNote = found && found.view !== view ? ' · an earlier turn' : '';
+  return (
+    <>
+      <SectionHead>Agent asked for</SectionHead>
+      {call && found?.view.turn ? (
+        <div style={{ padding: '7px 9px', borderRadius: 6, border: '1px solid var(--border-strong)', background: 'var(--bg)' }}>
+          <div style={{ fontSize: 10.5, color: 'var(--info)' }}>
+            {call.toolName} · {clockTime(call.start)}{call.timing === 'approximate' ? ' (read time)' : ''}{earlierNote}
+          </div>
+          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11.5, color: 'var(--text)', wordBreak: 'break-all', marginTop: 2 }}>
+            {call.kind === 'search' ? `“${call.label}”` : call.label}
+          </div>
+          <button type="button" onClick={() => openInTrace(data.token, found.view.turn!.promptEventId, found.flowId)}
+            style={{ background: 'none', border: 'none', padding: 0, marginTop: 4, color: 'var(--info)', cursor: 'pointer', fontSize: 10.5, fontFamily: 'var(--font-ui)' }}>
+            Open in Trace
+          </button>
+        </div>
+      ) : (
+        <div style={{ fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.5 }}>{body}</div>
+      )}
+    </>
+  );
+}
+
 export function DetailCard({ data, host, onClose, docked = false }: {
   data: NetSessionData;
   host: string | null;
@@ -215,14 +271,7 @@ export function DetailCard({ data, host, onClose, docked = false }: {
         </div>
       )}
 
-      {shown('asked') && (
-        <>
-          <SectionHead>Agent asked for</SectionHead>
-          <div style={{ fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.5 }}>
-            Not joined to a tool call yet. The gate saw only {f?.proto === 'http-connect' ? `CONNECT ${d.host}:${d.port ?? 443}` : `a connection to ${d.host}`}; the agent’s transcript holds what it asked for.
-          </div>
-        </>
-      )}
+      {shown('asked') && <AskedFor data={data} host={d.host} port={d.port} flows={flows} />}
 
       {shown('connection') && (
         <>

@@ -95,6 +95,20 @@ describe('PiSessionWatcher', () => {
     expect(session.cwd).toBe(CWD);
   });
 
+  it('keeps the transcript\'s own times beside the read time, for joining calls to network flows', () => {
+    vi.setSystemTime(new Date('2026-08-21T10:00:09.500Z'));
+    watcher.start();
+    const prompt = store.getAll().find((e) => e.type === 'user_prompt')!;
+    const tool = store.getAll().find((e) => e.type === 'tool_call_completed')!;
+    // Read time: when Layman saw it, unchanged.
+    expect(tool.timestamp).toBe(Date.parse('2026-08-21T10:00:09.500Z'));
+    expect(tool.data.completedAt).toBe(Date.parse('2026-08-21T10:00:09.500Z'));
+    // Transcript time: when pi says the call was made and answered.
+    expect(prompt.data.transcriptAt).toBe(Date.parse('2026-08-21T10:00:01.000Z'));
+    expect(tool.data.transcriptAt).toBe(Date.parse('2026-08-21T10:00:02.000Z'));
+    expect(tool.data.transcriptCompletedAt).toBe(Date.parse('2026-08-21T10:00:03.000Z'));
+  });
+
   it('activates a glove (labelled) session even when autoActivateClients is empty', () => {
     // A labelled root is a glove sandbox: /layman can't reach the host from inside
     // it, so it has no other path onto the Dashboard and must always activate.

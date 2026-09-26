@@ -30,12 +30,15 @@
  *   --demo-geo <file>    write a small demo geolocation database (MaxMind format, type
  *                        "Layman-Demo-City": not real data) placing the fixtures' IPs, and exit.
  *                        Point Settings → Glove → Geolocation database at it.
+ *   --transcript         also write a pi transcript into the fake session's home, one turn per pass whose
+ *                        web_search / web_fetch calls match the fixture's flows, so the Trace tab has a real
+ *                        gloved pi session (read by GloveSource and the pi watcher) to join them to
  *   --gate               fake gate: validate control/<env>/<name>/rules.json with Layman's port of glove's
  *                        validator, report it in status.json as glove's collector does (sha256,
  *                        last_rejected, last good set kept on a rejection), and apply its verdicts to the
  *                        replayed flows (blocked opens; `terminate` rules cut open flows)
  */
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync, appendFileSync } from 'node:fs';
 import { evaluate, parseRulesBytes, type RuleSet } from '../src/netobs/rules.ts';
 import { writeMmdb } from '../src/netobs/testing/mmdb-writer.ts';
@@ -55,6 +58,7 @@ interface Options {
   rotateEvery: number;
   direct: boolean;
   gate: boolean;
+  transcript: boolean;
   scenarios: string[];
   demoGeo: string | null;
 }
@@ -68,6 +72,7 @@ function parseArgs(argv: string[]): Options {
     rotateEvery: 0,
     direct: false,
     gate: false,
+    transcript: false,
     scenarios: [],
     demoGeo: null,
   };
@@ -86,6 +91,7 @@ function parseArgs(argv: string[]): Options {
     else if (a === '--rotate-every') o.rotateEvery = Number(next());
     else if (a === '--direct') o.direct = true;
     else if (a === '--gate') o.gate = true;
+    else if (a === '--transcript') o.transcript = true;
     else if (a === '--demo-geo') o.demoGeo = resolve(next());
     else if (a === '--scenario') {
       const v = next();
@@ -191,7 +197,7 @@ async function main(): Promise<void> {
     console.log(`Replaying scenarios ${o.scenarios.join(', ')}, each as its own session. Ctrl-C to stop the gates.`);
     await Promise.all(o.scenarios.map((n) => replay(o, loadSource(join(SCENARIOS, n)), n, n, false)));
   } else {
-    await replay(o, loadSource(FIXTURE), ENV, NAME, o.direct);
+    await replay(o, loadSource(FIXTURE), ENV, NAME, o.direct, o.transcript ? new FakeTranscript(o.dir, ENV, NAME) : null);
   }
   console.log('Replay finished; the gate keeps heartbeating. Ctrl-C to stop it.');
 }
@@ -271,7 +277,69 @@ class FakeGate {
  * times to now and `env`/`session` to this session's. A later pass gets fresh
  * flow and run ids, so to the reader each pass is a restarted gate.
  */
-async function replay(o: Options, src: Source, env: string, name: string, direct: boolean): Promise<void> {
+/**
+ * A pi session running in the fake glove session: one turn per pass, written
+ * where GloveSource looks (`envs/<env>/sessions/<name>/home/.pi/agent/sessions/`),
+ * in pi's format-3 JSONL, so the pi watcher records it as a gloved session
+ * named after the glove token. Its calls are the fixture's: a web search at the
+ * fan-out's moment, a fetch per host the proxy saw, and the arxiv PDF three
+ * seconds later (the second arxiv flow). Times are the fixture's, shifted like
+ * the flows, so the Trace tab joins them exactly as it would a real session.
+ */
+class FakeTranscript {
+  private readonly path: string;
+  private last: string | null = null;
+  private n = 0;
+
+  constructor(dir: string, env: string, name: string) {
+    const home = join(dir, 'envs', env, 'sessions', name, 'home', '.pi', 'agent', 'sessions', '--work--');
+    mkdirSync(home, { recursive: true });
+    const now = Date.now();
+    this.path = join(home, `${iso(now).replace(/[:.]/g, '-')}_${randomUUID()}.jsonl`);
+    appendFileSync(this.path, JSON.stringify({ type: 'session', version: 3, id: randomUUID(), timestamp: iso(now), cwd: '/work' }) + '\n');
+  }
+
+  private add(timestamp: string, message: Record<string, unknown>): void {
+    const id = `m${++this.n}`;
+    appendFileSync(this.path, JSON.stringify({ type: 'message', id, parentId: this.last, timestamp, message }) + '\n');
+    this.last = id;
+  }
+
+  /** The turn's prompt, written as the pass starts: a real prompt comes before its traffic. */
+  prompt(at: (fixtureTime: string) => string, pass: number): void {
+    this.add(at('2026-09-23T14:14:43.000Z'), { role: 'user', content: [{ type: 'text', text: `Research the history of onion routing and summarise the key papers, with links. (pass ${pass + 1})` }] });
+  }
+
+  /** The rest of the turn, after the pass: calls and results as pi writes them once they finish. */
+  turn(at: (fixtureTime: string) => string, pass: number): void {
+    const t = (s: string) => at(`2026-09-23T14:14:${s}Z`);
+    const text = (s: string) => [{ type: 'text', text: s }];
+    const calls = (ts: string, list: Array<[string, string, Record<string, unknown>]>) => this.add(t(ts), {
+      role: 'assistant', stopReason: 'toolUse', content: list.map(([id, name, args]) => ({ type: 'toolCall', id: `${id}-${pass}`, name, arguments: args })),
+    });
+    const result = (ts: string, id: string, name: string, out: string, isError = false) =>
+      this.add(t(ts), { role: 'toolResult', toolCallId: `${id}-${pass}`, toolName: name, content: text(out), isError });
+    const fetches: Array<[string, string, boolean]> = [
+      ['f1', 'https://en.wikipedia.org/wiki/Onion_routing', false],
+      ['f2', 'https://arxiv.org/abs/2403.01234', false],
+      ['f3', 'https://www.nature.com/articles/onion-routing', false],
+      ['f4', 'https://duckduckgo.com/html/?q=tor', true],
+      ['f5', 'http://example.org/', false],
+      ['f6', 'http://169.254.169.254/latest/meta-data/', true],
+      ['f7', 'http://gluetun:8000/v1/publicip/ip', true],
+      ['f8', 'https://ads.tracker.example/p.gif', true],
+    ];
+    calls('43.300', [['s1', 'web_search', { query: 'history of onion routing' }]]);
+    result('44.500', 's1', 'web_search', '1. Onion routing - Wikipedia\n   URL: https://en.wikipedia.org/wiki/Onion_routing');
+    calls('43.350', fetches.map(([id, url]) => [id, 'web_fetch', { url }]));
+    for (const [id, url, err] of fetches) result('45.000', id, 'web_fetch', err ? `fetch failed: ${url}` : `<html>… ${url}</html>`, err);
+    calls('46.400', [['f9', 'web_fetch', { url: 'https://arxiv.org/pdf/2403.01234' }]]);
+    result('47.000', 'f9', 'web_fetch', '%PDF-1.7 …');
+    this.add(t('47.500'), { role: 'assistant', stopReason: 'stop', content: text('Onion routing was developed at the U.S. Naval Research Laboratory in the mid-1990s …') });
+  }
+}
+
+async function replay(o: Options, src: Source, env: string, name: string, direct: boolean, transcript: FakeTranscript | null = null): Promise<void> {
   const token = name === env ? env : `${env}-${name}`;
   const net = join(o.dir, 'envs', env, 'sessions', name, 'net');
   const control = join(o.dir, 'control', env, name);
@@ -365,6 +433,7 @@ async function replay(o: Options, src: Source, env: string, name: string, direct
       s ? iso(passStart + (Date.parse(s) - t0) / o.speed) : (s ?? null);
     const renamed = (v: unknown) => (pass === 0 || typeof v !== 'string' ? v : `${v}L${pass}`);
     const directAt = Math.floor(src.records.length / 2);
+    transcript?.prompt((s) => shift(s)!, pass);
     for (let i = 0; i < src.records.length; i++) {
       const { file, rec: r } = src.records[i];
       const due = passStart + (Date.parse(r.t) - t0) / o.speed;
@@ -392,6 +461,8 @@ async function replay(o: Options, src: Source, env: string, name: string, direct
       write(out, file);
       if (direct && i === directAt) await injectDirect(write, pass, env, token);
     }
+    // After the pass, as a transcript is written as the agent works: the calls and their results.
+    transcript?.turn((s) => shift(s)!, pass);
     if (!o.loop) break;
     await sleep(o.loopGapS * 1000);
   }

@@ -93,7 +93,8 @@ linked above.
 
 4c. **pi passive watcher** (`packages/server/src/pi/watcher.ts`): tails pi's format-version-3 JSONL
    transcripts for glove-sandboxed pi (which cannot reach Layman over the network) and native pi with
-   no live extension. Design and reliability notes (why it never emits a trailing `tool_call_pending`,
+   no live extension. Events go through the live path (read-time `timestamp`), so it also keeps the
+   transcript's own times as `data.transcriptAt` / `data.transcriptCompletedAt`. Design and reliability notes (why it never emits a trailing `tool_call_pending`,
    dedupe by committed id, tombstone resurrection) are in `docs/harnesses/pi.md`.
 
 4d. **Network observability (glove)** (`packages/server/src/netobs/`, plan
@@ -114,6 +115,11 @@ linked above.
    up only in-tunnel/literal destination IPs; the running-app check asserts every request goes to Layman.
    Geometry is pure and tested, components only draw: the Map's in `lib/net-geo.ts`, the Topology
    diagram's (columns, bands, the policy wall, the selected path's hops) in `lib/net-topology.ts`.
+   Trace joins a turn's tool calls to its flows in `netobs/correlate.ts` (pure; host + time, nearest
+   start, search → fan-out, else Unattributed — never guessed). Its Layman sessions are those whose
+   `sessionName` is the glove token. Call times come from the transcript (`data.transcriptAt` /
+   `transcriptCompletedAt`, kept by the pi watcher) because a passive watcher's `timestamp` is when it
+   *read* the call; without them a call joins by host only and is shown as approximate.
    Design and rules: `docs/extensions/glove.md` → Network.
 
 5. **OpenCode plugin** (`docs/harnesses/opencode.md`): a bidirectional plugin (`packages/opencode-plugin`)

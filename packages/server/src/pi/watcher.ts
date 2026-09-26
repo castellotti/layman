@@ -296,6 +296,15 @@ export class PiSessionWatcher {
    */
   private emitEvent(session: TrackedSession, ev: TimelineEvent): void {
     const { sessionId, agentType } = session;
+    // The live path stamps the event with the time it was read; keep the
+    // transcript's own times beside it, for joining tool calls to glove's
+    // network flows (netobs/correlate.ts). `timestamp`/`completedAt` keep
+    // their meaning for everything else.
+    const transcript = {
+      ...(ev.timestamp > 0 ? { transcriptAt: ev.timestamp } : {}),
+      ...(ev.type === 'tool_call_completed' && typeof ev.data.completedAt === 'number' && ev.data.completedAt > 0
+        ? { transcriptCompletedAt: ev.data.completedAt } : {}),
+    };
 
     if (ev.type === 'tool_call_completed') {
       const toolName = String(ev.data.toolName ?? 'unknown');
@@ -309,6 +318,7 @@ export class PiSessionWatcher {
 
       const event = this.eventStore.add('tool_call_completed', sessionId, {
         ...ev.data,
+        ...transcript,
         completedAt,
         fileAccess: filesWithId,
         urlAccess: urlsWithId,
@@ -322,7 +332,7 @@ export class PiSessionWatcher {
       return;
     }
 
-    this.eventStore.add(ev.type, sessionId, ev.data, ev.riskLevel, agentType);
+    this.eventStore.add(ev.type, sessionId, { ...ev.data, ...transcript }, ev.riskLevel, agentType);
   }
 
   private cleanupEndedSessions(): void {

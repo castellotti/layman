@@ -149,8 +149,8 @@ is glove's `docs/planning/network-observability-layman-handoff.md` ("the handoff
 plan on any question of data format. Code: `packages/server/src/netobs/`. What is built so far: the
 **read side** (discovery, tailing, the store, classification, `net:*` WebSocket frames and a REST
 snapshot), the **client shell** shared by the four tabs, the **Network tab**, **writing rules** and the
-**Map tab** with offline geolocation, and the **Topology tab**. Correlation with the transcript (Trace)
-and persistence come in later phases.
+**Map tab** with offline geolocation, the **Topology tab**, and the **Trace tab** (correlation with the
+transcript). Persistence comes in a later phase.
 
 glove answered Layman's follow-up questions in its
 `docs/planning/network-observability-layman-followup-results.md` (glove branch
@@ -621,6 +621,67 @@ Selected path panel that walks one destination's path hop by hop.
   A refused path stops at the policy hop, a broken one before the exit. Below the hops: sent and
   received tiles, Block (or Unblock), and Open in map.
 
+### The Trace tab
+
+Built from `trace-agent-trace.dc.html`: one turn at a time, each tool call the agent made over the
+flows the gate saw for it. This is what Layman can do and glove cannot: glove never learns the URL
+behind an HTTPS `CONNECT`, but the harness transcript Layman records has the exact `web_fetch` call.
+The footnote says so: tool calls come from the transcript and flows from the gate, and glove never
+links them.
+
+- **Which Layman sessions.** Those whose `sessionName` is the glove token (`GloveSource` labels the
+  sessions it finds so), from the live store and from `recorded_sessions`. One glove session can hold
+  several harness runs; their turns are listed together, in time order, within the glove session's
+  span. Events come through `TurnStore`, so a long, recorded session works.
+- **The join** (`netobs/correlate.ts`, pure, tested against glove's fixture). A turn owns the flows
+  opened from its prompt until the next prompt. Within that window:
+  1. A call that names URLs (a `url`-like argument, a `urls` list, or URLs in a shell command) claims
+     a flow to the URL's host that opened between the call's start − 1 s and its end + 2 s. The host
+     matches case-insensitively, and the port only when the URL spells one out. When two calls could
+     claim a flow, the nearest start wins; this is how the fixture's two arxiv flows go to the abstract
+     and the PDF fetches.
+  2. A search call (`web_search`) claims the `search` service's flows and SearXNG's fan-out, grouped
+     as "fan-out · N engines".
+  3. `llm` service flows are rows of their own between the calls.
+  4. Anything else is **Unattributed**. Nothing is guessed.
+- **Where the plan was wrong against the code: call times.** The plan's window assumes events carry the
+  call's real start and end. Gloved pi reaches Layman only through the passive watcher, which stamps
+  every event with the time it *read* the transcript (up to a poll late) and records no start at all.
+  The watcher now also keeps the transcript's own times (`data.transcriptAt`,
+  `data.transcriptCompletedAt`; see `docs/harnesses/pi.md`), and the join uses them. A call is
+  otherwise exact when its completion is after its start (a hook harness, a history import). For
+  anything else, including pi events recorded before this change, only "it had ended by the time it
+  was read" is known: such calls join by host alone, after the turn began, the first call read after
+  the flow opened winning, and are marked **≈ time**.
+- **The PII filter.** Events are PII-filtered before they are stored, so with the IPv4 category on,
+  `http://169.254.169.254/latest/meta-data/` is recorded as `http://[REDACTED]/latest/meta-data/`. Such
+  a call stays a fetch, is marked **redacted**, and joins nothing; its flow (here the guard refusal)
+  goes to Unattributed. Flow records are not PII-filtered (they are hostnames and IPs by design), and
+  Layman does not work around the user's filter to match them.
+- **The waterfall.** Tool call → flows, outcome (worded from the legend), bytes, a timeline from the
+  turn's start, and each flow's toggle, which opens the same block popover as the Network tab. "Only
+  calls with traffic" hides calls that made none. When the turn has a guard refusal, it is selected by
+  default: "the agent tried to reach cloud metadata" is the most important thing this tab can say.
+- **The turn bar** has previous/next, the prompt, and chips: tool calls, flows, refused, blocked,
+  bytes received. The latest turn shows by default and the view refreshes every 3 s.
+- **Details.** For a flow:
+  - the state and rule, and "The agent asked for" with the call;
+  - what happened, and whether it can be allowed (the guard: no, and why the toggle is locked; your
+    rule: Unblock; the default: Allow; allowed: Block);
+  - the connection.
+
+  For a call: its times, and how it was joined. **Open turn** goes to `/s/{sessionId}/t/{promptEventId}`
+  (`buildPath`), and **Bookmark** saves the turn as a highlight.
+- **Elsewhere.** The detail card's **Agent asked for** section asks the trace for the turn in which the
+  destination's latest flow opened (`?at=`). While that turn is still running (pi's watcher records a
+  call only once it finishes), it shows the latest earlier claimed flow's call, marked "an earlier
+  turn". **Open in Trace** opens that turn with the flow selected. The Map's ribbon draws a marker for
+  every tool call that started in its 60 s window, across turns (`/calls?from=&to=`).
+- **API.** `GET /api/net/sessions/:token/trace?turn=<event id>|at=<ms>` and
+  `GET /api/net/sessions/:token/calls?from=<ms>&to=<ms>` (at most an hour).
+- **Empty state.** With no Layman session named after the glove session, the tab says so; the other
+  three tabs work without one.
+
 ### Configuration
 
 `glove.network` in `GloveConfigSchema`: `enabled` (default true, meaningful only with `glove.enabled`),
@@ -653,10 +714,14 @@ moved to now and replays it at its recorded pace (`--speed`, `--loop`, `--rotate
 rejection, a ~5 s status lag), refuses matching new connections, and cuts open flows for `terminate`
 rules. `--scenario <names|all>` replays scenarios instead, each into its own glove session named after it, so
 every state can be looked at in the session picker; a later `--loop` pass gets fresh flow **and run**
-ids, which to the reader is a restarted gate:
+ids, which to the reader is a restarted gate. `--transcript` also writes a pi session into the fake
+session's home (`envs/pi-search/sessions/pi-search/home/.pi/agent/sessions/`), one turn per pass whose
+`web_search` and `web_fetch` calls match the fixture's flows at the fixture's moments. GloveSource and
+the pi watcher then record it as a real gloved session named `pi-search`, which gives the Trace tab
+something to join:
 
 ```bash
-pnpm --filter ./packages/server netobs:replay -- --dir /tmp/layman-netobs/glove --speed 0.2 --loop --rotate-every 30
+pnpm --filter ./packages/server netobs:replay -- --dir /tmp/layman-netobs/glove --speed 0.2 --loop --rotate-every 30 --transcript
 pnpm --filter ./packages/server netobs:replay -- --dir /tmp/layman-netobs/glove --scenario all
 # then: glove.enabled = true, glove.sessionsDir = /tmp/layman-netobs/glove/envs
 ```

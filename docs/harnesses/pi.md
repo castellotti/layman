@@ -162,6 +162,21 @@ nor drop one. (Keying by array position would; that was the original approach.) 
 live path (`add()`, fresh id) exactly as the Vibe watcher does, so a passively-tailed session is a
 `live` source and history import won't double-record it.
 
+Because it uses the live path, an event's `timestamp` (and a tool call's `completedAt`) is when Layman
+*read* the transcript, up to a poll (2 s) after the fact, and a call's start is not recorded at all.
+That is fine for a timeline and too coarse to join a tool call to the network flows glove saw for it,
+so the watcher also keeps the transcript's own times on every event it emits: `data.transcriptAt` (a
+tool call's start, a prompt's time) and, for a completed call, `data.transcriptCompletedAt`.
+`timestamp` and `completedAt` keep their meaning. The Trace tab's join (`netobs/correlate.ts`) uses
+the transcript times when present; events recorded before they were kept join by host only, marked
+"≈ time". Vibe's logs carry no per-message times, so its watcher has nothing to keep.
+
+**Known issue, not yet fixed:** replay-from-start for a young session (touched in the last 5 minutes)
+runs whenever Layman starts. With session recording on, a Layman restart during an active pi session
+therefore records that session's events again under fresh ids, and its turns appear twice (three
+times after two restarts). Found while checking the Trace tab. The transcript times above would let a
+fix skip what is already recorded.
+
 The reliability patterns are reused verbatim from the Vibe watcher: scan-tick reconciliation
 (fs.watch is unreliable on Docker bind mounts, and pi's files sit below the watched root anyway), the
 recent/idle windows, replay-from-start for young sessions, and **resurrection of a tombstoned

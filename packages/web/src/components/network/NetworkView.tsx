@@ -22,15 +22,11 @@ import { DetailCard } from './DetailCard.js';
 import { ActivityChart } from './ActivityChart.js';
 import { NetNotices } from './NetNotices.js';
 import { SelectedPath, TopologyDiagram, TopologyLegend } from './TopologyView.js';
+import { TraceActions, TraceDetails, TraceWaterfall, TurnBar } from './TraceView.js';
 import { useNow } from '../../hooks/useNow.js';
 import { EmptyState, PanelFrame } from './netui.js';
 import { TAB_PANELS, type NetTab } from './tabs.js';
 
-/** What each panel will hold, shown until it is built: Trace arrives in a later phase. */
-const PANEL_PURPOSE: Record<string, string> = {
-  'trace/trace': 'One turn at a time: each tool call the agent made and the connections it produced.',
-  'trace/details': 'The selected call or connection, and what the gate did with it.',
-};
 
 interface PanelContent {
   body: React.ReactNode;
@@ -63,6 +59,10 @@ function panelContent(tab: NetTab, id: string, data: NetSessionData, now: number
       return { body: <TopologyDiagram data={data} />, actions: <TopologyLegend />, ownScroll: true };
     case 'topology/path':
       return { body: <SelectedPath data={data} /> };
+    case 'trace/trace':
+      return { body: <TraceWaterfall data={data} />, actions: <TraceActions />, ownScroll: true };
+    case 'trace/details':
+      return { body: <TraceDetails data={data} /> };
     default:
       return null;
   }
@@ -91,7 +91,7 @@ function Board({ tab, panels, data }: { tab: NetTab; panels: ReturnType<typeof u
         onDragEnd: drag.handleDragEnd,
       }}
     >
-      {content?.body ?? <EmptyState title="Not built yet">{PANEL_PURPOSE[`${tab}/${p.id}`]}</EmptyState>}
+      {content?.body ?? <EmptyState title="Not built yet" />}
     </PanelFrame>
     );
   };
@@ -184,6 +184,7 @@ export default function NetworkView({ tab, onSend }: { tab: NetTab; onSend: (msg
     return (
       <>
         {tab === 'network' && <KpiRow data={data} />}
+        {tab === 'trace' && <TurnBar data={data} />}
         {tab === 'map' ? <MapView data={data} panels={panels} /> : <Board tab={tab} panels={panels} data={data} />}
       </>
     );

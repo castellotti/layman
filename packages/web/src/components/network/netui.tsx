@@ -9,7 +9,8 @@ export type NetIconName =
   | ChipIcon
   | 'grip' | 'close' | 'table' | 'map' | 'rules' | 'activity' | 'details' | 'trace' | 'topology'
   | 'eye-off' | 'globe' | 'pin' | 'legend' | 'ribbon'
-  | 'lock' | 'blocked' | 'broken' | 'cut' | 'home' | 'fold' | 'chevron' | 'search' | 'up' | 'down' | 'expand';
+  | 'lock' | 'blocked' | 'broken' | 'cut' | 'home' | 'fold' | 'chevron' | 'search' | 'up' | 'down' | 'expand'
+  | 'gear' | 'fanout' | 'window';
 
 const PATHS: Record<NetIconName, React.ReactNode> = {
   pulse: <path d="M1.5 8h3l1.5-4 3 8 1.5-4h4" />,
@@ -45,6 +46,9 @@ const PATHS: Record<NetIconName, React.ReactNode> = {
   up: <path d="M8 13V3M4 7l4-4 4 4" />,
   down: <path d="M8 3v10M4 9l4 4 4-4" />,
   expand: <path d="M9.5 2.5h4v4M13.5 2.5L9 7M6.5 13.5h-4v-4M2.5 13.5L7 9" />,
+  gear: <><circle cx="8" cy="8" r="2.2" /><path d="M8 1.8v2M8 12.2v2M1.8 8h2M12.2 8h2M3.6 3.6l1.4 1.4M11 11l1.4 1.4M3.6 12.4L5 11M11 5l1.4-1.4" /></>,
+  fanout: <><circle cx="3.5" cy="8" r="1.5" /><circle cx="12.5" cy="3.5" r="1.5" /><circle cx="12.5" cy="12.5" r="1.5" /><path d="M5 8h3M8 8l3.2-3.4M8 8l3.2 3.4" /></>,
+  window: <><rect x="2" y="3" width="12" height="10" rx="1.5" /><path d="M2 6h12" /></>,
 };
 
 export function NetIcon({ name, size = 12, color = 'currentColor', strokeWidth = 1.4 }: {

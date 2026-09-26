@@ -753,6 +753,26 @@ export class NetStore extends EventEmitter {
       .map(([id, e]) => this.flowView(s, id, e));
   }
 
+  /** Flows opened in [from, to], oldest first: what one turn's trace joins against. */
+  flowsBetween(token: string, from: number, to: number): FlowView[] | null {
+    const s = this.sessions.get(token);
+    if (!s) return null;
+    return [...s.flows]
+      .filter(([, e]) => e.tOpen >= from && e.tOpen <= to)
+      .sort((a, b) => a[1].tOpen - b[1].tOpen)
+      .map(([id, e]) => this.flowView(s, id, e));
+  }
+
+  sessionFile(token: string): NetSessionFile | null {
+    return this.sessions.get(token)?.session ?? null;
+  }
+
+  /** First and latest record times, or null before any record. */
+  span(token: string): { first: number; last: number } | null {
+    const s = this.sessions.get(token);
+    return s && s.firstSeen !== null && s.lastT !== null ? { first: s.firstSeen, last: s.lastT } : null;
+  }
+
   /**
    * Rate buckets for a window ending at the session's latest record. `session`
    * returns the 1 min history followed by the 1 s tail, so a chart can span the

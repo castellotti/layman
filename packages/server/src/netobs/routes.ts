@@ -6,6 +6,7 @@
 import { randomUUID } from 'crypto';
 import type { FastifyInstance } from 'fastify';
 import type { NetObs, RulesOp } from './index.js';
+import { buildTrace, callsBetween, type TraceDeps } from './trace.js';
 
 const OP_KINDS = new Set([
   'blockHost', 'blockDomain', 'blockIp', 'blockGroup', 'allowHost', 'allowDomain', 'removeRule', 'setDefault',
@@ -19,7 +20,7 @@ const WINDOWS: Record<string, number | 'session'> = {
   session: 'session',
 };
 
-export function registerNetRoutes(fastify: FastifyInstance, deps: { netObs: NetObs }): void {
+export function registerNetRoutes(fastify: FastifyInstance, deps: { netObs: NetObs; trace?: TraceDeps }): void {
   const { netObs } = deps;
   const store = netObs.store;
   const notFound = (token: string) => ({ error: `No glove network session '${token}'` });
@@ -58,6 +59,30 @@ export function registerNetRoutes(fastify: FastifyInstance, deps: { netObs: NetO
       return buckets ? { window: name, buckets } : reply.status(404).send(notFound(request.params.token));
     },
   );
+
+  // One turn's tool calls joined to its flows: `turn` (a prompt event id), or the turn in progress
+  // `at` a moment (ms since the epoch: the detail card and the Map's ribbon), else the latest.
+  fastify.get<{ Params: { token: string }; Querystring: { turn?: string; at?: string } }>('/api/net/sessions/:token/trace', async (request, reply) => {
+    const { token } = request.params;
+    if (!deps.trace) return reply.status(501).send({ error: 'Trace is not available on this server' });
+    const at = Number(request.query.at);
+    const select = request.query.turn ? { turn: request.query.turn } : request.query.at && Number.isFinite(at) ? { at } : null;
+    const view = buildTrace(store, token, deps.trace, select);
+    return view ?? reply.status(404).send(notFound(token));
+  });
+
+  // Tool calls that started in [from, to] (ms), across turns: the Map ribbon's markers. At most an hour.
+  fastify.get<{ Params: { token: string }; Querystring: { from?: string; to?: string } }>('/api/net/sessions/:token/calls', async (request, reply) => {
+    const { token } = request.params;
+    if (!deps.trace) return reply.status(501).send({ error: 'Trace is not available on this server' });
+    const from = Number(request.query.from);
+    const to = Number(request.query.to);
+    if (!Number.isFinite(from) || !Number.isFinite(to) || to < from || to - from > 3_600_000) {
+      return reply.status(400).send({ error: 'from and to are required, in ms, at most an hour apart' });
+    }
+    const calls = callsBetween(store, token, deps.trace, from, to);
+    return calls ? { calls } : reply.status(404).send(notFound(token));
+  });
 
   fastify.get<{ Params: { token: string } }>('/api/net/sessions/:token/rules', async (request, reply) => {
     const rules = store.rules(request.params.token);

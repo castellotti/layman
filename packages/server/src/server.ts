@@ -614,8 +614,20 @@ export function createServer(config: LaymanConfig): LaymanServer {
     // Turn model + data egress (see docs: addressable URLs)
     registerTurnRoutes(fastify, { turnStore, bookmarkStore, getConfig });
 
-    // Network views of glove sessions (read side)
-    registerNetRoutes(fastify, { netObs });
+    // Network views of glove sessions. Trace joins them to the Layman sessions
+    // GloveSource named after the glove session (sessionName = token).
+    const sessionsNamedStmt = db.prepare('SELECT session_id FROM recorded_sessions WHERE session_name = ?');
+    registerNetRoutes(fastify, {
+      netObs,
+      trace: {
+        sessionsNamed: (token) => [...new Set([
+          ...eventStore.getSessions().filter((s) => s.sessionName === token).map((s) => s.sessionId),
+          ...(sessionsNamedStmt.all(token) as Array<{ session_id: string }>).map((r) => r.session_id),
+        ])],
+        turns: (sessionId) => turnStore.listTurns(sessionId),
+        events: (sessionId) => turnStore.eventsFor(sessionId),
+      },
+    });
 
     // Text-to-speech pass-through to speaches (speaches has CORS off by default)
     registerTtsRoutes(fastify, { getConfig });

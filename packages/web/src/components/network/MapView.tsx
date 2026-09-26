@@ -11,8 +11,9 @@ import { useNetStore } from '../../stores/netStore.js';
 import { useSessionStore } from '../../stores/sessionStore.js';
 import { formatBytes } from '../../lib/net-format.js';
 import type { NetSessionData } from '../../lib/net-state.js';
-import { destinationRow, rateOf, sessionAnchor, toolLabel, type TableRow } from '../../lib/net-table.js';
-import { ribbonLanes, unknownLocation } from '../../lib/net-geo.js';
+import { clockTime, destinationRow, rateOf, sessionAnchor, toolLabel, type TableRow } from '../../lib/net-table.js';
+import { RIBBON_MS, ribbonLanes, unknownLocation } from '../../lib/net-geo.js';
+import { useNetCalls } from '../../hooks/useNetTrace.js';
 import { controlDisabledReason } from '../../lib/net-rules.js';
 import type { DestinationAggregate } from '../../lib/netobs-types.js';
 import type { useNetPanels } from '../../hooks/useNetPanels.js';
@@ -197,9 +198,18 @@ function LegendCard() {
   );
 }
 
+/** The ribbon re-asks for its tool calls this often; between asks its markers move with the lanes. */
+const MARKER_REFRESH_MS = 5000;
+
 function Ribbon({ data, now }: { data: NetSessionData; now: number }) {
   const anchor = sessionAnchor(data, now);
   const { lanes, more } = useMemo(() => ribbonLanes(data.flows.values(), anchor), [data.flows, anchor]);
+  // Tool-call markers (plan §7.2): every call that started in the window, whichever turn it belongs to.
+  const asked = Math.floor(anchor / MARKER_REFRESH_MS) * MARKER_REFRESH_MS;
+  const calls = useNetCalls(data.token, asked - RIBBON_MS - MARKER_REFRESH_MS, asked + MARKER_REFRESH_MS);
+  const markers = useMemo(() => calls
+    .filter((c) => c.start >= anchor - RIBBON_MS && c.start <= anchor)
+    .map((c) => ({ c, x: (c.start - (anchor - RIBBON_MS)) / RIBBON_MS })), [calls, anchor]);
   const colour = (l: (typeof lanes)[number]) =>
     l.direct ? 'var(--error)' : l.state === 'guard' ? 'var(--warn)' : l.state === 'user_rule' || l.state === 'default_block' ? 'var(--error)'
       : l.state === 'broken' ? 'var(--warn)' : l.open ? 'var(--net-tunnel)' : 'var(--text-faint)';
@@ -224,9 +234,18 @@ function Ribbon({ data, now }: { data: NetSessionData; now: number }) {
           {lanes.map((l, i) => (
             <rect key={l.id} x={l.x0 * 1000} y={5 + i * 5} width={Math.max(3, (l.x1 - l.x0) * 1000)} height={3} fill={colour(l)} opacity={l.open ? 1 : 0.7} />
           ))}
+          {markers.map(({ c, x }) => (
+            <g key={c.eventId} data-call-marker={c.toolName}>
+              <line x1={x * 1000} x2={x * 1000} y1={0} y2={Math.max(10, lanes.length * 5 + 6)} stroke={c.kind === 'search' ? 'var(--net-fanout)' : 'var(--info)'}
+                strokeWidth={1.5} strokeDasharray="2 2" vectorEffect="non-scaling-stroke" opacity={0.85} />
+              <line x1={x * 1000} x2={x * 1000} y1={0} y2={Math.max(10, lanes.length * 5 + 6)} stroke="transparent" strokeWidth={10} vectorEffect="non-scaling-stroke">
+                <title>{`${c.toolName} ${c.kind === 'search' ? `“${c.label}”` : c.label} · ${clockTime(c.start)}${c.timing === 'approximate' ? ' (read time)' : ''}`}</title>
+              </line>
+            </g>
+          ))}
         </svg>
         <div style={{ position: 'absolute', right: 12, bottom: 4, fontSize: 10, color: 'var(--text-faint)', background: 'var(--bg-card)', padding: '0 4px' }}>
-          60 s ago … now{more ? ` · ${more} more not drawn` : ''}
+          60 s ago … now{more ? ` · ${more} more not drawn` : ''}{markers.length ? ` · ┊ ${markers.length} tool call${markers.length === 1 ? '' : 's'}` : ''}
         </div>
       </div>
     </div>

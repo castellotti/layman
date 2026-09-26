@@ -542,6 +542,85 @@ export interface NetDelta {
   emptyFolded: number;
 }
 
+// ─── Trace (plan §7.4) ───────────────────────────────────────────────────────
+
+/**
+ * How well a tool call's times are known. `exact`: the transcript's own times,
+ * or a hook that fired as the call started and ended. `approximate`: a passive
+ * watcher read the call after the fact and nothing kept the transcript's times,
+ * so only "it had finished by `start`" is known; such calls join by host alone.
+ */
+export type TraceTiming = 'exact' | 'approximate';
+export type TraceCallKind = 'fetch' | 'search' | 'other';
+
+export interface TraceCall {
+  /** The Layman event id of the tool call. */
+  eventId: string;
+  sessionId: string;
+  toolName: string;
+  kind: TraceCallKind;
+  /** The URL, the search query, or a short summary of the call. */
+  label: string;
+  /** Hosts a fetch names, lower-case, with the port when the URL spelled one out. */
+  targets: Array<{ host: string; port: number | null }>;
+  /**
+   * The PII filter redacted part of a URL this call names (a literal IP, say),
+   * so its flows cannot be joined to it: they stay unattributed.
+   */
+  redacted: boolean;
+  /** When the call started; for `approximate`, when Layman read it (it had ended by then). */
+  start: number;
+  /** When it ended; null while it runs. */
+  end: number | null;
+  timing: TraceTiming;
+  failed: boolean;
+}
+
+export type TraceItem =
+  | { kind: 'call'; call: TraceCall; flowIds: string[]; fanoutIds: string[] }
+  | { kind: 'llm'; flowId: string };
+
+export interface TraceTurn {
+  sessionId: string;
+  promptEventId: string;
+  responseEventId: string | null;
+  /** 0-based position of the turn in its Layman session. */
+  index: number;
+  startedAt: number;
+  promptText: string;
+  toolCallCount: number;
+}
+
+export interface TraceCounts {
+  calls: number;
+  flows: number;
+  /** Refused by glove's guard. */
+  refused: number;
+  /** Blocked by a rule or the default. */
+  blocked: number;
+  bytesUp: number;
+  bytesDown: number;
+}
+
+/** One turn's tool calls joined to the flows they made (`GET /api/net/sessions/:token/trace`). */
+export interface TraceView {
+  token: string;
+  /** Layman sessions whose `sessionName` is this glove session's token. */
+  sessionIds: string[];
+  /** Their turns within the glove session's span, oldest first. */
+  turns: TraceTurn[];
+  /** The turn shown; null when there is none. */
+  turn: TraceTurn | null;
+  /** Flows opened in [from, to] belong to the turn. */
+  window: { from: number; to: number } | null;
+  items: TraceItem[];
+  /** Flow ids in the turn's window that no call claimed. Never guessed. */
+  unattributed: string[];
+  /** Every flow the items and `unattributed` name. */
+  flows: FlowView[];
+  counts: TraceCounts;
+}
+
 // ─── WebSocket frames (mirror of NetServerMessage in netobs/index.ts) ────────
 
 export type NetServerMessage =
