@@ -13,6 +13,13 @@
  *   3. `llm` service flows become LLM rows between the calls.
  *   4. Anything else in the turn is Unattributed. Never guess.
  *
+ * Connections are kept alive: pi reuses one connection to SearXNG, and SearXNG
+ * pools its engines', so a later call often opens nothing. A connection that
+ * matches a call and was already open when it started is listed as the call's
+ * `openIds`, a fact about timing, not a claim. Calls that start at the same
+ * instant (a batch of parallel calls) share their flows in turn rather than
+ * the first taking them all.
+ *
  * Calls whose times are only approximate (see `TraceTiming`) join by host,
  * against "had ended by `start`": the flow opened after the turn began and no
  * later than `start` + 2 s, and the first call read after the flow opened wins.
@@ -156,6 +163,8 @@ export interface CorrelateInput {
   calls: readonly TraceCall[];
   /** The flows opened in the turn's window. */
   flows: readonly FlowView[];
+  /** Flows opened before the window and still open at its start: never claimed, only named in `openIds`. */
+  earlier?: readonly FlowView[];
   services: readonly NetService[];
   /** Start of the turn's window. */
   from: number;
@@ -166,8 +175,9 @@ export interface Correlation {
   unattributed: string[];
 }
 
-export function correlate({ calls, flows, services, from }: CorrelateInput): Correlation {
+export function correlate({ calls, flows, earlier = [], services, from }: CorrelateInput): Correlation {
   const claimed = new Map<string, { flowIds: string[]; fanoutIds: string[] }>(calls.map((c) => [c.eventId, { flowIds: [], fanoutIds: [] }]));
+  const load = (c: TraceCall) => { const x = claimed.get(c.eventId)!; return x.flowIds.length + x.fanoutIds.length; };
   const llm: FlowView[] = [];
   const unattributed: string[] = [];
   const nearest = (cands: TraceCall[], f: FlowView): TraceCall | null => {
@@ -175,7 +185,8 @@ export function correlate({ calls, flows, services, from }: CorrelateInput): Cor
     let bestD = Infinity;
     for (const c of cands) {
       const d = joinDistance(c, f.tOpen, from);
-      if (d !== null && d < bestD) { best = c; bestD = d; }
+      // Equal distance means calls that started together: the one holding fewer flows so far takes it.
+      if (d !== null && (d < bestD || (d === bestD && best && load(c) < load(best)))) { best = c; bestD = d; }
     }
     return best;
   };
@@ -196,8 +207,22 @@ export function correlate({ calls, flows, services, from }: CorrelateInput): Cor
     else unattributed.push(f.id);
   }
 
+  const byId = new Map([...flows, ...earlier].map((f) => [f.id, f]));
+  const openAt = (call: TraceCall): string[] => {
+    if (call.timing !== 'exact' || call.kind === 'other') return [];
+    const own = claimed.get(call.eventId)!;
+    const mine = new Set([...own.flowIds, ...own.fanoutIds]);
+    return [...byId.values()]
+      .filter((f) => !mine.has(f.id) && f.state !== 'gate_lost' && f.tOpen < call.start && (f.tClose ?? Infinity) >= call.start)
+      .filter((f) => {
+        const role = flowRole(f, services);
+        return call.kind === 'search' ? role === 'search' || role === 'fanout' : role === 'other' && targets(call, f);
+      })
+      .sort((a, b) => a.tOpen - b.tOpen)
+      .map((f) => f.id);
+  };
   const items: Array<{ at: number; item: TraceItem }> = [
-    ...calls.map((call) => ({ at: call.start, item: { kind: 'call' as const, call, ...claimed.get(call.eventId)! } })),
+    ...calls.map((call) => ({ at: call.start, item: { kind: 'call' as const, call, ...claimed.get(call.eventId)!, openIds: openAt(call) } })),
     ...llm.map((f) => ({ at: f.tOpen, item: { kind: 'llm' as const, flowId: f.id } })),
   ];
   // Stable: a call and an LLM flow at the same instant keep calls first.

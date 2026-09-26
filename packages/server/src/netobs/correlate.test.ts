@@ -151,6 +151,43 @@ describe('joining', () => {
     expect(claimedBy(r)).toEqual({ 'https://arxiv.org/abs/1': ['a'], 'https://arxiv.org/pdf/1': ['b'] });
     expect(r.unattributed).toEqual(['before']);
   });
+  it('names a kept-alive connection a later call rode, without claiming it', () => {
+    // As seen against a real gate: pi keeps its SearXNG connection open across searches, and SearXNG pools its engines'.
+    const pooled = (id: string, host: string, tOpen: number, tClose: number | null) => flow(id, host, tOpen, {
+      service: 'fanout', tool: 'search-engine-fanout', client: 'searxng', flags: { ...FLAGS, fanout: true }, tClose, lastT: tClose ?? tOpen + 900, phase: tClose ? 'close' : 'open',
+    });
+    const cs = callsFrom([
+      call('web_search', { query: 'first' }, T + 2400, T + 5400),
+      call('web_search', { query: 'second' }, T + 6000, T + 6500),
+      call('web_fetch', { url: 'https://a.example/1' }, T + 7000, T + 8000),
+      call('web_fetch', { url: 'https://a.example/2' }, T + 9000, T + 9500),
+      call('web_search', { query: 'after it closed' }, T + 14_000, T + 14_500),
+    ]);
+    const flows = [
+      flow('s', 'searxng', T + 2400, { service: 'search', tool: 'web_search', scope: 'local', tClose: T + 12_600, lastT: T + 12_600 }),
+      pooled('e1', 'engine-one.example', T + 2450, null),
+      pooled('e2', 'engine-two.example', T + 2460, T + 4000),
+      flow('a', 'a.example', T + 7050, { tClose: T + 9600, lastT: T + 9600 }),
+    ];
+    // Opened in an earlier turn and still open: named, never claimed or unattributed.
+    const earlier = [pooled('old', 'engine-three.example', T - 60_000, null)];
+    const r = correlate({ calls: cs, flows, earlier, services: SERVICES, from: T });
+    const open = Object.fromEntries(r.items.flatMap((i) => (i.kind === 'call' ? [[i.call.label, i.openIds]] : [])));
+    expect(claimedBy(r)).toEqual({ first: ['s', 'e1', 'e2'], second: [], 'https://a.example/1': ['a'], 'https://a.example/2': [], 'after it closed': [] });
+    expect(open).toEqual({
+      first: ['old'], second: ['old', 's', 'e1'], 'https://a.example/1': [], 'https://a.example/2': ['a'], 'after it closed': ['old', 'e1'],
+    });
+    expect(r.unattributed).toEqual([]);
+  });
+  it('shares flows between calls that started together instead of giving the first all of them', () => {
+    // Two parallel fetches of one host: one assistant message, one start time.
+    const cs = callsFrom([
+      call('web_fetch', { url: 'https://b.example/x' }, T + 1000, T + 2000),
+      call('web_fetch', { url: 'https://b.example/y' }, T + 1000, T + 2000),
+    ]);
+    const r = join_(cs, [flow('b1', 'b.example', T + 1100), flow('b2', 'b.example', T + 1150)]);
+    expect(claimedBy(r)).toEqual({ 'https://b.example/x': ['b1'], 'https://b.example/y': ['b2'] });
+  });
   it('classifies flows from their own fields, falling back to the declared service', () => {
     expect(flowRole({ service: 'llm', tool: null, client: null, flags: FLAGS }, SERVICES)).toBe('llm');
     expect(flowRole({ service: 'search', tool: null, client: null, flags: FLAGS }, SERVICES)).toBe('search');

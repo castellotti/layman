@@ -116,7 +116,8 @@ linked above.
    Geometry is pure and tested, components only draw: the Map's in `lib/net-geo.ts`, the Topology
    diagram's (columns, bands, the policy wall, the selected path's hops) in `lib/net-topology.ts`.
    Trace joins a turn's tool calls to its flows in `netobs/correlate.ts` (pure; host + time, nearest
-   start, search → fan-out, else Unattributed — never guessed). Its Layman sessions are those whose
+   start, search → fan-out, else Unattributed — never guessed; a kept-alive connection a later call
+   rides is named in `openIds`, never claimed). Its Layman sessions are those whose
    `sessionName` is the glove token. Call times come from the transcript (`data.transcriptAt` /
    `transcriptCompletedAt`, kept by the pi watcher) because a passive watcher's `timestamp` is when it
    *read* the call; without them a call joins by host only and is shown as approximate.

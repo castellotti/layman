@@ -581,7 +581,15 @@ export interface TraceCall {
 }
 
 export type TraceItem =
-  | { kind: 'call'; call: TraceCall; flowIds: string[]; fanoutIds: string[] }
+  | {
+    kind: 'call'; call: TraceCall; flowIds: string[]; fanoutIds: string[];
+    /**
+     * Matching connections already open when the call started, opened by an earlier call or turn.
+     * A kept-alive connection carries later calls without a new flow; metadata cannot say how
+     * much of it was this call's, so these are named, never claimed.
+     */
+    openIds: string[];
+  }
   | { kind: 'llm'; flowId: string };
 
 export interface TraceTurn {

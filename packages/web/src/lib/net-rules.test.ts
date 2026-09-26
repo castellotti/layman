@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   blockChoices, blockOp, checkMatchValue, controlDisabledReason, decidedBy, draftRuleId, groupTarget, isCut, isDirty,
-  matchFor, moveRule, openToCut, previewRules, previewText, rebaseDraft, siblingIds, startDraft, toggleFor,
+  matchFor, moveRule, openToCut, previewRules, previewText, rebaseDraft, rejectedAuthor, siblingIds, startDraft, toggleFor,
 } from './net-rules.js';
-import type { RulesOp } from './netobs-types.js';
+import type { RulesFile, RulesOp } from './netobs-types.js';
 // The server's own opRules, imported across packages in a test only: the preview must never drift from what is written.
 import { opRules } from '../../../server/src/netobs/rules.js';
 import { dest, rulesView } from './net-test-fixtures.js';
@@ -143,5 +143,20 @@ describe('the draft', () => {
     expect(checkMatchValue('scope', 'lan')).toMatch(/One of/);
     expect(matchFor('port', '443')).toEqual({ port: 443 });
     expect(matchFor('port', '1-2')).toEqual({ port: '1-2' });
+  });
+});
+
+describe('who wrote a rejected rules.json', () => {
+  const write = (sha256: string) => ({ opId: 'o', kind: 'block', sha256, at: 1, state: 'rejected' as const, error: null });
+  const file = (updated_by?: string): RulesFile => ({ v: 1, env: 'e', session: 'e', default: 'allow', rules: [], ...(updated_by ? { updated_by } : {}) });
+  it('is Layman only when its own last write is the file on disk', () => {
+    expect(rejectedAuthor(rulesView({ sha256: 'bb', write: write('bb') }))).toBe('layman');
+    expect(rejectedAuthor(rulesView({ sha256: 'bb', write: write('aa') }))).toBe('unknown');
+  });
+  it('is outside Layman when Layman saw the change or the file names another writer (the real-glove hand edit)', () => {
+    expect(rejectedAuthor(rulesView({ sha256: 'bb', write: write('aa'), externalChange: { at: 2, sha256: 'bb' } }))).toBe('outside');
+    expect(rejectedAuthor(rulesView({ sha256: 'bb', file: file('hand-edit') }))).toBe('outside');
+    expect(rejectedAuthor(rulesView({ sha256: 'bb', file: file('layman') }))).toBe('unknown');
+    expect(rejectedAuthor(rulesView({ sha256: null, file: null }))).toBe('unknown');
   });
 });

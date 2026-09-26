@@ -76,6 +76,25 @@ describe('buildTrace', () => {
     expect(t.items).toEqual([]);
   });
 
+  it('names connections still open from before the turn, shows them, and counts only the turn\'s own', () => {
+    // A turn that starts while the fixture's fan-out and en.wikipedia.org connections (14:43.4 → 14:46.4) are still open.
+    const run3 = [
+      ev('run3', 'user_prompt', at('14:45.000'), { prompt: 'again, briefly' }),
+      ev('run3', 'tool_call_completed', at('14:45.100'), { toolName: 'web_search', toolInput: { query: 'onion routing' }, transcriptCompletedAt: at('14:45.300') }),
+      fetch_('run3', 'https://en.wikipedia.org/wiki/Onion_routing', at('14:45.200')),
+    ];
+    const d: TraceDeps = { sessionsNamed: () => ['run3'], turns: () => extractTurns(run3), events: () => run3 };
+    const t = buildTrace(netObs.store, 'pi-search', d, null, at('14:48.000'))!;
+    const host = (id: string) => t.flows.find((f) => f.id === id)?.dest.host;
+    const open = t.items.flatMap((i) => (i.kind === 'call' ? [[i.call.toolName, i.flowIds.length, i.openIds.map(host)]] : []));
+    expect(open).toEqual([
+      ['web_search', 0, ['html.duckduckgo.com', 'search.brave.com', 'www.mojeek.com', 'api.qwant.com']],
+      ['web_fetch', 0, ['en.wikipedia.org']],
+    ]);
+    // The only flow the turn opened is arxiv's second (14:46.4), and nothing earlier is Unattributed.
+    expect([t.counts.flows, t.unattributed.map(host)]).toEqual([1, ['arxiv.org']]);
+  });
+
   it('joins a chosen turn\'s calls to the flows opened before the next prompt', () => {
     const turns = buildTrace(netObs.store, 'pi-search', deps, null)!.turns;
     const t = buildTrace(netObs.store, 'pi-search', deps, { turn: turns[1].promptEventId }, at('14:55.000'))!;

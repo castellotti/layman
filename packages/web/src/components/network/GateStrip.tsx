@@ -8,6 +8,7 @@ import type { NetSessionSummary } from '../../lib/netobs-types.js';
 import type { NetSessionData } from '../../lib/net-state.js';
 import type { PanelDef } from '../../lib/net-panels.js';
 import { gateChips } from '../../lib/net-format.js';
+import { REJECTED_TITLE, rejectedAuthor } from '../../lib/net-rules.js';
 import { Chip, NetIcon, type NetIconName } from './netui.js';
 import { useNetStore } from '../../stores/netStore.js';
 
@@ -143,7 +144,7 @@ export function RulesRejectedBanner({ data }: { data: NetSessionData }) {
         <NetIcon name="alert" size={20} color="var(--error)" strokeWidth={1.8} />
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 13, fontWeight: 700, color: '#FFB4AD' }}>
-            {unreadable ? 'The gate cannot read your rules file' : 'Your last rules change did not take effect'}
+            {unreadable ? 'The gate cannot read your rules file' : REJECTED_TITLE[rejectedAuthor(data.rules)]}
           </div>
           <div style={{ fontSize: 11.5, color: '#F3C6C1', marginTop: 2 }}>
             {unreadable

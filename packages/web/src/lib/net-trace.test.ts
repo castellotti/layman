@@ -31,11 +31,11 @@ function view(): TraceView {
     window: { from: T - 1000, to: T + 60_000 },
     items: [
       { kind: 'llm', flowId: 'llm1' },
-      { kind: 'call', call: call('c1', 'search', 'history of onion routing', T + 1000), flowIds: ['s'], fanoutIds: ['f1', 'f2'] },
-      { kind: 'call', call: call('c2', 'fetch', 'https://arxiv.org/abs/1', T + 2900), flowIds: ['a'], fanoutIds: [] },
-      { kind: 'call', call: call('c3', 'fetch', 'http://169.254.169.254/latest/meta-data/', T + 3900), flowIds: ['g'], fanoutIds: [] },
-      { kind: 'call', call: call('c4', 'fetch', 'https://ads.tracker.example/p.gif', T + 4050), flowIds: ['ads'], fanoutIds: [] },
-      { kind: 'call', call: call('c5', 'other', 'ls -la', T + 4500), flowIds: [], fanoutIds: [] },
+      { kind: 'call', call: call('c1', 'search', 'history of onion routing', T + 1000), flowIds: ['s'], fanoutIds: ['f1', 'f2'], openIds: [] },
+      { kind: 'call', call: call('c2', 'fetch', 'https://arxiv.org/abs/1', T + 2900), flowIds: ['a'], fanoutIds: [], openIds: [] },
+      { kind: 'call', call: call('c3', 'fetch', 'http://169.254.169.254/latest/meta-data/', T + 3900), flowIds: ['g'], fanoutIds: [], openIds: [] },
+      { kind: 'call', call: call('c4', 'fetch', 'https://ads.tracker.example/p.gif', T + 4050), flowIds: ['ads'], fanoutIds: [], openIds: [] },
+      { kind: 'call', call: call('c5', 'other', 'ls -la', T + 4500), flowIds: [], fanoutIds: [], openIds: [] },
     ],
     unattributed: ['x'], flows,
     counts: { calls: 5, flows: 8, refused: 1, blocked: 1, bytesUp: 0, bytesDown: 0 },
@@ -102,9 +102,24 @@ describe('rows', () => {
 
   it('says why a redacted fetch has no flows', () => {
     const v2 = view();
-    v2.items.push({ kind: 'call', call: call('c6', 'fetch', 'http://[REDACTED]/x', T + 4600, { redacted: true }), flowIds: [], fanoutIds: [] });
+    v2.items.push({ kind: 'call', call: call('c6', 'fetch', 'http://[REDACTED]/x', T + 4600, { redacted: true }), flowIds: [], fanoutIds: [], openIds: [] });
     const r = traceRows(v2, axis, { toggled: new Set(), onlyTraffic: false, now: T + 60_000 });
     expect(r.find((x) => x.id === 'call:c6')?.outcome?.text).toBe('host redacted · not joined');
+  });
+
+  it('says a call rode a connection that was already open, rather than "no traffic seen"', () => {
+    const v2 = view();
+    // A second search while SearXNG's connection and two pooled engines are still open, then a fetch reusing arxiv.org.
+    v2.items.push(
+      { kind: 'call', call: call('c7', 'search', 'onion routing papers', T + 1200), flowIds: [], fanoutIds: [], openIds: ['s', 'f1', 'f2'] },
+      { kind: 'call', call: call('c8', 'fetch', 'https://arxiv.org/pdf/1', T + 3100), flowIds: [], fanoutIds: [], openIds: ['a'] },
+    );
+    const r = traceRows(v2, axis, { toggled: new Set(), onlyTraffic: true, now: T + 60_000 });
+    expect(r.find((x) => x.id === 'call:c7')?.outcome?.text).toBe('no new connection · searxng + 2 fan-out already open');
+    expect(r.find((x) => x.id === 'call:c8')?.outcome?.text).toBe('no new connection · arxiv.org already open');
+    // Not expandable: the flows stay under the call that opened them, so no row appears twice.
+    expect(r.find((x) => x.id === 'call:c8')?.expandable).toBe(false);
+    expect(r.filter((x) => x.id === 'flow:a')).toHaveLength(1);
   });
 
   it('hides calls that made no traffic when asked, never the unattributed', () => {

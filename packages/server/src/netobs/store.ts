@@ -1022,6 +1022,18 @@ export class NetStore extends EventEmitter {
       .map(([id, e]) => this.flowView(s, id, e));
   }
 
+  /** Flows opened before `t` and not closed before it: kept-alive connections a turn starting at `t` may reuse. */
+  flowsOpenAt(token: string, t: number): FlowView[] | null {
+    const s = this.sessions.get(token);
+    if (!s) return null;
+    return [...s.flows]
+      .filter(([, e]) => e.tOpen < t)
+      .sort((a, b) => a[1].tOpen - b[1].tOpen)
+      .map(([id, e]) => this.flowView(s, id, e))
+      // A gate_lost flow was never closed because its gate died, not because it is open.
+      .filter((f) => (f.tClose ?? Infinity) >= t && f.state !== 'gate_lost');
+  }
+
   sessionFile(token: string): NetSessionFile | null {
     return this.sessions.get(token)?.session ?? null;
   }

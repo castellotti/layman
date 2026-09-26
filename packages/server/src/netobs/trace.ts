@@ -77,7 +77,11 @@ export function buildTrace(store: NetStore, token: string, deps: TraceDeps, sele
   const calls = callsFrom(turnEvents);
   const flows = store.flowsBetween(token, from, to) ?? [];
   const services = store.sessionFile(token)?.services ?? [];
-  const { items, unattributed } = correlate({ calls, flows, services, from });
+  const earlier = store.flowsOpenAt(token, from) ?? [];
+  const { items, unattributed } = correlate({ calls, flows, earlier, services, from });
+  // Name what `openIds` point at: the view's flows are the turn's own plus those still open from before it.
+  const named = new Set(items.flatMap((i) => (i.kind === 'call' ? i.openIds : [])));
+  const shown = [...flows, ...earlier.filter((f) => named.has(f.id))];
 
   const counts: TraceCounts = { ...empty, calls: calls.length, flows: flows.length };
   for (const f of flows) {
@@ -86,7 +90,7 @@ export function buildTrace(store: NetStore, token: string, deps: TraceDeps, sele
     if (f.state === 'guard') counts.refused++;
     else if (f.state === 'user_rule' || f.state === 'default_block') counts.blocked++;
   }
-  return { ...base, turn: view(cur), window: { from, to }, items, unattributed, flows, counts };
+  return { ...base, turn: view(cur), window: { from, to }, items, unattributed, flows: shown, counts };
 }
 
 /** Every tool call of the glove session's Layman sessions that started in [from, to]: the Map ribbon's markers. */

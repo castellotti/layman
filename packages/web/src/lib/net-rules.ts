@@ -154,6 +154,28 @@ export function decidedBy(ruleIds: readonly string[], dests: Iterable<Destinatio
   return [...dests].filter((d) => d.policy.enforced?.rule && ids.has(d.policy.enforced.rule));
 }
 
+/**
+ * Who wrote the rules.json glove rejected: Layman, when its own last write is
+ * the file on disk; someone else, when Layman saw the file change without
+ * writing it or the file names another writer; otherwise unknown (e.g. Layman
+ * started after the change). The banner must not say "your change" for a
+ * hand edit.
+ */
+export function rejectedAuthor(view: Pick<RulesView, 'sha256' | 'write' | 'externalChange' | 'file'>): 'layman' | 'outside' | 'unknown' {
+  if (view.sha256 === null) return 'unknown';
+  if (view.write?.sha256 === view.sha256) return 'layman';
+  if (view.externalChange?.sha256 === view.sha256) return 'outside';
+  const by = view.file?.updated_by;
+  return by && by !== 'layman' ? 'outside' : 'unknown';
+}
+
+/** The rejected banner's headline, by who wrote the file. */
+export const REJECTED_TITLE: Record<ReturnType<typeof rejectedAuthor>, string> = {
+  layman: 'Your last rules change did not take effect',
+  outside: 'rules.json was changed outside Layman, and glove rejected it',
+  unknown: 'The last change to rules.json did not take effect',
+};
+
 export function isCut(file: RulesFile | null): boolean {
   return !!file?.rules.some((r) => r.id.startsWith(CUT_PREFIX));
 }

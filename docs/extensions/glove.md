@@ -340,6 +340,10 @@ nothing for finished sessions (their history is not an alarm).
   Panels chips on the right would be cut — found at 1440 px, where a stale gate's longer label pushed the
   last Panels chip off screen.
 - **Rules rejected** pins a red `role="alert"` banner under the strip on all four tabs, with "Show file".
+  Its headline says who wrote the rejected file (`rejectedAuthor` in `lib/net-rules.ts`): "Your last rules
+  change" only when Layman's own last write is the file on disk, "rules.json was changed outside Layman"
+  when Layman saw it change without writing it or `updated_by` names someone else, and neutral wording
+  otherwise. The real-glove check caught it calling a hand edit "your change".
   The path it shows is the **host** path (`RulesView.displayPath`, via `toHostPath()` using `HOST_HOME`);
   showing the container's `/root/.glove/…` would send the user to a file that does not exist on their
   machine. An error beginning `cannot read` gets its own wording: since glove's follow-up an *unreadable*
@@ -645,6 +649,18 @@ links them.
      as "fan-out · N engines".
   3. `llm` service flows are rows of their own between the calls.
   4. Anything else is **Unattributed**. Nothing is guessed.
+
+  Calls that start at the same instant (one assistant message's parallel calls) share their flows in
+  turn instead of the first taking them all.
+- **Kept-alive connections** (found against real glove). pi keeps its connection to SearXNG open
+  across searches, and SearXNG pools its engines' connections, so after the first search the later
+  ones open nothing. Joining by open time alone left them reading "no traffic seen", which was false.
+  A call now also lists `openIds`: matching connections (the search service and fan-out for a search,
+  the same host for a fetch) that were already open when it started, including ones an earlier turn
+  opened (`NetStore.flowsOpenAt`, excluding `gate_lost`). It reads "no new connection · searxng:8080 + 9
+  fan-out already open". These are named, never claimed: metadata cannot say how many of a pooled
+  connection's bytes were which call's, so the flow stays with the call that opened it and the turn's
+  counts include only flows it opened.
 - **Where the plan was wrong against the code: call times.** The plan's window assumes events carry the
   call's real start and end. Gloved pi reaches Layman only through the passive watcher, which stamps
   every event with the time it *read* the transcript (up to a poll late) and records no start at all.

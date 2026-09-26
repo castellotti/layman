@@ -95,6 +95,18 @@ function barFor(f: FlowView, axis: TraceAxis, tone: Tone, now: number) {
   return { x0: x(f.tOpen), x1: Math.max(x(end), x(f.tOpen) + 0.006), tone, open, refused: REFUSED.has(f.state) };
 }
 
+/**
+ * A call that opened nothing while a matching connection was already open:
+ * "no new connection · searxng:8080 + 9 fan-out already open". Said as a fact
+ * about timing; the flows stay with the call that opened them.
+ */
+function alreadyOpen(call: TraceCall, open: FlowView[]): Outcome {
+  const hosts = [...new Set(open.filter((f) => !f.flags.fanout).map((f) => (f.dest.port !== null && f.dest.port !== 443 ? `${f.dest.host}:${f.dest.port}` : f.dest.host ?? `${f.service} endpoint`)))];
+  const fan = open.filter((f) => f.flags.fanout).length;
+  const what = [hosts.length > 2 ? `${hosts.slice(0, 2).join(', ')} +${hosts.length - 2}` : hosts.join(', '), fan ? `${fan} fan-out` : ''].filter(Boolean).join(' + ');
+  return { text: `${call.failed ? 'failed · ' : ''}no new connection · ${what} already open`, tone: 'muted', icon: call.kind === 'search' ? 'fanout' : 'globe' };
+}
+
 const flowTone = (f: FlowView): Tone => (f.flags.fanout ? 'fanout' : f.flags.scope === 'local' ? 'local' : f.flags.scope === 'direct' ? 'error' : 'tunnel');
 const hasTraffic = (flowIds: string[], fanoutIds: string[]) => flowIds.length + fanoutIds.length > 0;
 
@@ -137,8 +149,9 @@ export function traceRows(view: TraceView, axis: TraceAxis, opts: RowOptions): T
       });
       continue;
     }
-    const { call, flowIds, fanoutIds } = item;
-    if (opts.onlyTraffic && !hasTraffic(flowIds, fanoutIds)) continue;
+    const { call, flowIds, fanoutIds, openIds } = item;
+    // A call that rode an already-open connection made traffic too, just no new flow.
+    if (opts.onlyTraffic && !hasTraffic(flowIds, fanoutIds) && !openIds.length) continue;
     const id = `call:${call.eventId}`;
     const expanded = isRowExpanded(id, opts.toggled);
     const any = hasTraffic(flowIds, fanoutIds);
@@ -147,7 +160,8 @@ export function traceRows(view: TraceView, axis: TraceAxis, opts: RowOptions): T
       title: call.toolName, detail: call.kind === 'search' ? `“${call.label}”` : call.label,
       outcome: call.kind === 'search' && any ? { text: [flowIds.length ? `${flowIds.length} local` : null, fanoutIds.length ? `${fanoutIds.length} fan-out` : null].filter(Boolean).join(' + '), tone: 'fanout', icon: 'fanout' }
         : !any && call.redacted ? { text: 'host redacted · not joined', tone: 'warn', icon: 'alert' }
-          : !any && call.kind !== 'other' ? { text: call.failed ? 'failed · no traffic seen' : 'no traffic seen', tone: 'muted', icon: 'fold' } : null,
+          : !any && openIds.length ? alreadyOpen(call, openIds.map((fid) => byId.get(fid)).filter((f): f is FlowView => !!f))
+            : !any && call.kind !== 'other' ? { text: call.failed ? 'failed · no traffic seen' : 'no traffic seen', tone: 'muted', icon: 'fold' } : null,
       bytes: null, bar: null, flowId: null, call, expandable: any, expanded: any && expanded,
     });
     if (!any || !expanded) continue;
