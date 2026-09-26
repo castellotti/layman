@@ -200,7 +200,7 @@ export default function NetworkView({ tab, onSend }: { tab: NetTab; onSend: (msg
 
   const shown = data && data.token === token ? data : null;
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, overflow: 'hidden', background: 'var(--bg)' }}>
+    <div className="net-view" style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, overflow: 'hidden', background: 'var(--bg)' }}>
       <GateStrip
         sessions={sessions}
         token={token}

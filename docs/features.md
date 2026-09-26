@@ -104,6 +104,25 @@ Set up in **Settings → Connection → Multi-host sync**. The network model is 
 
 ![Multi-host sync settings](images/multi-host-sync.png)
 
+## glove network views
+
+When [glove](extensions/glove.md) sandboxes a harness behind its network gate, the gate records every connection the sandbox makes. With the glove extension on, Layman adds four tabs to the header, between two dividers, for any glove session that has network data: **Network**, **Map**, **Topology** and **Trace**. Without glove network data the header is unchanged. A session picker chooses the glove session, and a strip across all four tabs shows the gate's state: the route, the resolver, whether the exit is verified, and whether the rules are enforced.
+
+- **Network**: every destination the sandbox reached, grouped by site, route or tool, with live sparklines, bytes, flow counts and what happened to each connection. The fixed groups (search fan-out, local links, refusals by glove's guard, declared services glove does not watch) are always visible. A rules panel lists what is blocked.
+- **Map**: a world map of where the traffic went, from the tunnel's exit to each destination. It is drawn from a bundled map, and located only with a database file you supply (DB-IP's free "IP to City Lite" is suggested), so **nothing is looked up online**. Traffic that bypassed the tunnel is drawn in red, with a banner that cannot be dismissed.
+- **Topology**: the path the traffic takes. Each service glove declares leads through the policy wall and the route to the apparent origin and the destinations. Selecting a destination walks its path hop by hop, and marks what glove observed, only declared, or verified.
+- **Trace**: one turn at a time, each tool call the agent made above the connections it caused, e.g. a `web_fetch` above its HTTPS flow, or a search above its search engine fan-out. glove alone cannot do this: it never sees the URL inside an HTTPS connection, but the transcript Layman records does. Connections no call explains are listed as Unattributed rather than guessed.
+
+**Blocking.** A toggle on any destination, group or rule blocks or allows it, and a kill switch cuts all traffic. Layman writes the session's rules file, the one thing it ever writes under `~/.glove`. The toggle shows *pending* until glove's gate confirms it enforces the new rules, and a rules file the gate rejected puts a banner on every tab. Settings → Glove → **Allow blocking from Layman** makes all of it read-only.
+
+**Privacy.** Layman never makes a network request based on the sandbox's traffic: no DNS, no favicons, no online geolocation. Doing so would reveal to the host's network what glove hides inside the tunnel.
+
+**Totals survive restarts** while session recording is on, and are never sent to other hosts by multi-host sync. A glove session whose files are gone stays listed, marked "History only".
+
+Setup, design and the rules behind each view: [extensions/glove.md → Network](extensions/glove.md#network).
+
+![glove Network tab](images/network.png)
+
 ## Setup wizard
 
 First-run setup is guided by a wizard that detects installed AI clients and walks through configuration options.

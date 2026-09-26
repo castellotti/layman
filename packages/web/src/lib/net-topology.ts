@@ -644,7 +644,8 @@ export function layoutTopology(data: TopoInput, width: number, height: number): 
         d: `M${x.toFixed(1)},${y1.toFixed(1)}C${(x + 16).toFixed(1)},${((y1 + y2) / 2).toFixed(1)} ${(x - 16).toFixed(1)},${((y1 + y2) / 2).toFixed(1)} ${x.toFixed(1)},${y2.toFixed(1)}`,
         start: [x, y1],
         width: 1, bytes: 0, hosts: [], live: false, dashed: true,
-        label: y2 > y1 ? { text: 'triggers', x: x + 8, y: (y1 + y2) / 2, anchor: 'start' } : null,
+        // Just under the search box: halfway down, glove's declared order puts `proxy` over the word.
+        label: y2 - y1 > 24 ? { text: 'triggers', x: x + 8, y: y1 + 14, anchor: 'start' } : null,
       });
     }
     if (fanBytes > 0) {

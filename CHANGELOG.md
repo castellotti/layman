@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- **glove network views: finished** (phase 9 of `docs/planning/network-views.md`). `docs/features.md` has a user-facing section on the four tabs, the README lists them, and `docs/extensions/glove.md` no longer describes any of it as future work.
+  - **Fixed, from phase 6:** the Topology's dashed "triggers" link from `search` to the fan-out had its label halfway between the two boxes. In glove's declared order `proxy` sits between them, so its box covered the word and one stray "s" showed beside it. The label now sits just under `search`, and a test checks that no box covers it.
+  - **Fixed, from phase 4:** a disabled button in the network views looked exactly like an enabled one, because they are styled inline and inline styles cannot target `:disabled`. The most visible case was a read-only session's "Cut all traffic now". One rule scoped to the views now dims them and shows a not-allowed cursor; toggles keep their own treatment.
+  - **Fixed, from phase 5:** until `GET /api/net/geo` answered, the Map legend said "No geolocation database" and Settings said "No database", for about a second (Settings asks 1.2 s after opening). A claim made before the answer arrived. The legend now shows nothing and Settings "Checking…" until Layman answers. Found because a slower page (a large dev database) made the browser check read the legend first; the check now also fails if the legend ever makes that claim early.
+  - **Against real glove (plan §9.3):** the user's `pi-search` environment has a `net/` holding only `session.json`, and no gate was running, so there was no live traffic to check. A `net/` in that state is listed with the gate "status unknown", its declared services (including the unwatched `browser`), zero totals, and read-only controls that say glove has not created the control directory. The live tail, a real block and a rejected write against a running gate are still to be checked with the user.
+
 - **Network totals now survive restarts** (phase 8 of `docs/planning/network-views.md`). Layman keeps rollups of each glove session and destination in SQLite (`net_sessions`, `net_destinations`, migration 3), written every 30 s and on shutdown while session recording is on.
   - **Never synced** to other hosts. The tables have no journal triggers, and `CLAUDE.md` says why.
   - **History only.** A glove session whose files are gone stays in the picker with its totals and destinations, marked "History only" (toggles disabled; the Map, Topology and Trace say so).

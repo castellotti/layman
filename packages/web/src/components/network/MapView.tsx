@@ -192,7 +192,8 @@ function LegendCard() {
       <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>{line('var(--net-tunnel)', '6 4')}Route declared, not verified</span>
       <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>{line('var(--error)', '5 4')}Untunnelled: skips the exit</span>
       <span style={{ fontSize: 10, color: 'var(--text-faint)', marginTop: 3 }}>
-        {geo?.attribution ?? 'No geolocation database: destinations are in Unknown location.'}
+        {/* Nothing until Layman answers: "no database" is a claim, not a placeholder. */}
+        {geo ? geo.attribution ?? 'No geolocation database: destinations are in Unknown location.' : ''}
       </span>
     </div>
   );

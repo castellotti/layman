@@ -146,7 +146,7 @@ glove's netgate records every connection a sandboxed session makes, and Layman r
 Network, Map, Topology and Trace tabs. The implementation plan is
 [`docs/planning/network-views.md`](../planning/network-views.md); glove's data contract, frozen at v1,
 is glove's `docs/planning/network-observability-layman-handoff.md` ("the handoff"), and wins over the
-plan on any question of data format. Code: `packages/server/src/netobs/`. What is built so far: the
+plan on any question of data format. Code: `packages/server/src/netobs/`. It is built in full: the
 **read side** (discovery, tailing, the store, classification, `net:*` WebSocket frames and a REST
 snapshot), the **client shell** shared by the four tabs, the **Network tab**, **writing rules** and the
 **Map tab** with offline geolocation, the **Topology tab**, the **Trace tab** (correlation with the
@@ -165,7 +165,7 @@ glove resolves destination hostnames *inside the tunnel* so the operator's resol
 **Layman never makes a network call keyed on gloved flow data** — no DNS or reverse-DNS lookup, geo-IP
 API, favicon fetch, link unfurl or WHOIS, however much prettier the label would be. Any such call leaks
 the sandboxed agent's browsing history to the host's resolver and undoes glove's design; it is a
-privacy bug, not a missing feature. Geolocation will be a local file read or nothing. A deliberately
+privacy bug, not a missing feature. Geolocation is a local file read or nothing (The Map tab). A deliberately
 crude test (`netobs/index.test.ts`, "no-network guard") fails any `netobs/` source file that imports
 `dns`, `net`, `http(s)` or `tls`, calls `fetch(` on anything but `/api/`, opens a WebSocket, or mentions
 `favicon`. `domain.ts` even carries its own IP-literal check rather than importing `node:net`'s `isIP`,
@@ -187,8 +187,8 @@ mount; only writing rules needs the extra `control/` mount (Docker, below).
   control path uses the **directory name** `<name>`, while the rules file's own `session` field is the
   **token**; for a named session the two differ, and mixing them up makes the gate ignore the file.
   Env and session names must match `^[A-Za-z0-9][A-Za-z0-9._-]*$` and the resolved control path must
-  stay inside `~/.glove/control`, or the session is skipped — those names later address the one
-  directory Layman will be allowed to write.
+  stay inside `~/.glove/control`, or the session is skipped — those names address the one
+  directory Layman is allowed to write.
 - **Reading is tolerant** (`parse.ts`): unknown fields are ignored, an unknown record `type` is skipped,
   and a line that does not parse or carries `v` other than 1 is counted (`counters.invalid`), never
   thrown. A glove-side addition must never break a deployed Layman.
@@ -270,7 +270,7 @@ not an error), resolver, rules load result, telemetry, and unobserved services.
 section). It is not "open" in any sense the UI means, so `totals.openFlows` and a destination's
 `openFlows` leave it out and `totals.gateLost` counts it. `status.json`'s `rules` also carries glove's
 new `sha256` (of the file now enforced) and `last_rejected` (`{checked_at, source_mtime, sha256, error}`,
-kept after a later acceptance); they are parsed now and are how the rules writer will confirm a write.
+kept after a later acceptance); they are how the rules writer confirms a write.
 
 ### Gate lifecycle: flows that never close
 
@@ -363,7 +363,7 @@ bars over 1m / 5m / 1h, from the client's own 1 s buckets, or over the whole ses
 - **The state legend is data** (`NET_LEGEND` in `lib/net-format.ts`): one entry per row of handoff §6.1,
   plus cleartext HTTP, each with its label, data rule, icon, colour, badge, toggle kind, map treatment and
   explanation, and `NET_STATE_INFO` mapping every `NetState` to its entry. Every view reads colours and
-  toggles from it, so the legend and the views cannot disagree. The Map, Topology and Trace tabs will use
+  toggles from it, so the legend and the views cannot disagree. The Map, Topology and Trace tabs use
   the same table.
 - **The table model** (`lib/net-table.ts`, `buildTable()`) turns destinations and flows into rows:
   group → host → flow, grouped by registrable domain (default), route or tool, and sorted by most recent
@@ -580,7 +580,8 @@ Selected path panel that walks one destination's path hop by hop.
     which is drawn dashed with an eye-off icon ("declared · not watched") and a dashed line from the
     sandbox, since traffic there is invisible, not absent. A service seen in traffic but not declared is
     drawn too. The fan-out service says "SearXNG → gate · not the harness", and a dashed "triggers" link
-    joins it to the `search` service.
+    joins it to the `search` service, labelled just under `search` (halfway down, the `proxy` box that
+    glove's declared order puts between them would cover the label).
   - **Policy**: a wall where refusals end. One label per reason: glove's guard (with its reasons:
     metadata, internal, malformed), each of your rules by its note, and the default. The caption gives
     the default and the rule count.

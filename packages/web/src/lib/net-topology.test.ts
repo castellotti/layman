@@ -149,6 +149,9 @@ describe('the fixture topology', () => {
     expect(kind('route:local>dest:llm.operator.lan:8080')).toBe('local');
     const trigger = t.bands.find((b) => b.kind === 'trigger')!;
     expect([trigger.from, trigger.to, trigger.dashed, trigger.label?.text]).toEqual(['svc:search', 'svc:fanout', true, 'triggers']);
+    // Not under a box: `proxy` sits between search and fan-out in glove's declared order.
+    const { x, y } = trigger.label!;
+    expect(t.nodes.filter((n) => x >= n.x && x <= n.x + n.w && y - 10 <= n.y + n.h && y >= n.y)).toEqual([]);
     expect(t.captions.map((c) => c.text)).toEqual(['662 KB via SearXNG']);
   });
 

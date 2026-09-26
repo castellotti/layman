@@ -230,6 +230,10 @@ body {
 .net-live-dash { stroke-dasharray: 8 7; animation: net-dash 1.1s linear infinite; }
 .net-live-dash-trunk { stroke-dasharray: 10 6; animation: net-dash 1.4s linear infinite; }
 @keyframes net-dash { to { stroke-dashoffset: -30; } }
+/* Buttons in the network views are styled inline, which cannot reach :disabled; without this a
+   read-only "Cut all traffic now" looked exactly like a live one. Opacity yields to an inline one
+   (NetToggle keeps a locked toggle legible); the cursor must not. */
+.net-view button:disabled { opacity: 0.45; cursor: not-allowed !important; }
 @media (prefers-reduced-motion: reduce) {
   .net-live-dash, .net-live-dash-trunk { animation: none; }
 }

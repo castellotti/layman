@@ -94,11 +94,13 @@ function GeoDatabaseRow({ path, onChange }: { path: string; onChange: (p: string
     }, 1200);
     return () => { live = false; clearTimeout(t); };
   }, [path]);
-  const line = !status || !status.configured
-    ? 'No database: destinations appear in “Unknown location”.'
-    : status.loaded
-      ? `Loaded ${status.databaseType ?? 'database'}${status.buildDate ? ` (${status.buildDate})` : ''}. ${status.attribution ?? ''}`
-      : `Not loaded: ${status.error ?? 'unknown error'}.`;
+  const line = !status
+    ? 'Checking…'
+    : !status.configured
+      ? 'No database: destinations appear in “Unknown location”.'
+      : status.loaded
+        ? `Loaded ${status.databaseType ?? 'database'}${status.buildDate ? ` (${status.buildDate})` : ''}. ${status.attribution ?? ''}`
+        : `Not loaded: ${status.error ?? 'unknown error'}.`;
   return (
     <CustomRow>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
