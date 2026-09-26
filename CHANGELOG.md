@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+- Added the **Map tab** (phase 5 of `docs/planning/network-views.md`):
+  - **The map.** A world map of where a glove session's traffic went: great-circle arcs from the tunnel exit to each destination, sized by bytes and dashed while live. Destinations in one city share a pin. The trunk runs from a "This sandbox" card to the exit pin; the sandbox is deliberately a card, not a place, so the map never implies where the operator is. The trunk is solid when the exit is verified and dashed when the route is only declared.
+  - **Untunnelled traffic** is drawn as a red dashed curve that skips the exit, with a banner that cannot be dismissed and offers "Block direct egress".
+  - **Cards around it:** Talking now, Unknown location, the destination's details, This sandbox and a legend, plus the last 60 seconds as lanes beneath. Each card can be hidden, or dragged to another corner.
+  - **The detail card** also docks as the Network tab's Details panel. Its toggleable sections include mockup A's Connection section (IP and how it was resolved, port, service and upstream, route, location and its source, open/close, flow id) and a Policy section with block, unblock and allow.
+  - **Network tab:** its mini map is now the live renderer, and its Activity panel charts bytes over 1m / 5m / 1h / the session.
+
+  **Nothing is fetched from anywhere but Layman:**
+  - The land shapes (Natural Earth, public domain) are bundled as a lazily loaded chunk (~174 KB gzipped).
+  - Geolocation reads a database file the user downloaded themselves (DB-IP's free "IP to City Lite", CC BY 4.0, suggested location Layman's data folder), set in Settings → Glove. It looks up only IPs glove resolved inside the tunnel, never local links or the exit, and credits DB-IP on the map as its licence requires.
+  - With no database, destinations are listed under Unknown location.
+  - A browser check records every request the page makes and requires all of them to go to Layman.
+
+  Testing and fixes:
+  - A small MMDB writer (tests and `netobs-replay.ts --demo-geo` only) lets the real reader be tested without shipping a database.
+  - The first map fitted the whole world, because d3-geo read the fitting box's winding as its outside; a test now pins the fit.
+  - The zoom buttons were dead, because the map's drag captured their clicks.
 - **glove is no longer mounted by default.** Layman and glove are independent projects that meet only when the glove extension is enabled, but `docker-compose.yml` bound `~/.glove`, and Docker creates a missing bind source, so every Layman user got a `~/.glove` folder (root-owned on Linux). The glove mounts moved to two opt-in overlays:
   - `docker-compose.glove.yml`: `~/.glove`, read-only.
   - `docker-compose.glove-control.yml`: `~/.glove/control`, writable, for network rules.

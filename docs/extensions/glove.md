@@ -148,15 +148,16 @@ Network, Map, Topology and Trace tabs. The implementation plan is
 is glove's `docs/planning/network-observability-layman-handoff.md` ("the handoff"), and wins over the
 plan on any question of data format. Code: `packages/server/src/netobs/`. What is built so far: the
 **read side** (discovery, tailing, the store, classification, `net:*` WebSocket frames and a REST
-snapshot), the **client shell** shared by the four tabs, and the **Network tab**. The rules writer, the
-map, topology, correlation and persistence come in later phases.
+snapshot), the **client shell** shared by the four tabs, the **Network tab**, **writing rules** and the
+**Map tab** with offline geolocation. Topology, correlation with the transcript (Trace) and persistence
+come in later phases.
 
 glove answered Layman's follow-up questions in its
 `docs/planning/network-observability-layman-followup-results.md` (glove branch
 `netobs-layman-followup`): fail-closed on an unreadable `rules.json`, the permission contract for the
 rules writer, hash-based write confirmation, gate lifecycle records, and a scenario fixture for every
-state its first fixture lacked. What that changed on the read side is below; the writer follows its §3
-contract when it is built.
+state its first fixture lacked. What that changed on the read side is below, and the writer follows its
+contract (Writing rules).
 
 ### The rule that must not be relaxed
 
@@ -354,8 +355,10 @@ nothing for finished sessions (their history is not an alarm).
 ### The Network tab
 
 Built from `network-ledger.dc.html`: a KPI row, then the Destinations table (main column) and the mini
-map and Rules panels (side column). Activity and Details are off by default and still placeholders; they
-come with the Map tab's detail card. All deciding is in two pure, tested modules; the components draw.
+map and Rules panels (side column), plus Activity and Details, off by default. Details is the Map's
+detail card, docked (The Map tab, below). Activity (`ActivityChart.tsx`) draws received and sent bytes as
+bars over 1m / 5m / 1h, from the client's own 1 s buckets, or over the whole session from
+`GET …/buckets?window=session`. All deciding is in pure, tested modules; the components draw.
 
 - **The state legend is data** (`NET_LEGEND` in `lib/net-format.ts`): one entry per row of handoff §6.1,
   plus cleartext HTTP, each with its label, data rule, icon, colour, badge, toggle kind, map treatment and
@@ -401,9 +404,9 @@ come with the Map tab's detail card. All deciding is in two pure, tested modules
   set that is. Listing it as the evaluation order would claim otherwise. Hit counts come from the
   destination aggregates (each destination's block count under its latest rule), so they undercount a
   destination blocked by two different rules over time. "View file" shows the host path and the file.
-- **Mini map** is a static placeholder until the Map tab's renderer exists: sandbox → exit (dashed while
-  no exit is verified), how many destinations can be placed and how many are in Unknown location, and a
-  click opens the Map tab.
+- **Mini map** is the Map tab's renderer at small size (no labels, no pan or zoom), with how many
+  destinations are placed and how many are in Unknown location. A click opens the Map tab with the
+  selection kept.
 
 ### Writing rules
 
@@ -491,11 +494,86 @@ How it is built:
   banner on all four tabs while the toggles keep showing the enforced rules; revert restores the exact
   bytes.
 
+### The Map tab
+
+Built from `map-route-map.dc.html`, with mockup A's Connection section in the detail card.
+
+- **Offline, bundled map.** Natural Earth land (`world-atlas` `land-50m`, public domain) drawn with
+  `d3-geo` and `topojson-client`. It is imported lazily into its own chunk (~174 KB gzipped) that
+  Layman serves itself, and only when a map is shown. Nothing is fetched from anywhere else: no tiles,
+  no fonts, no lookups. The phase 5 browser check records every request the page makes across the Map,
+  Network and Settings pages, and requires all of them to go to Layman.
+- **Geolocation is a local file read** (`netobs/geo.ts`, `mmdb-lib` on the server). The user downloads
+  a MaxMind-format city database themselves; DB-IP's "IP to City Lite" (CC BY 4.0, no account) is the
+  suggestion. They point Settings → Glove → Geolocation database at it. In Docker it must be in a
+  mounted folder, so the suggested place is Layman's own data folder, `~/.local/share/layman/`, which
+  is already mounted. Layman ships no database.
+  - Only a destination IP glove resolved **inside the tunnel** (or that was a literal) is looked up,
+    never a local link, and never the exit, which is placed from exit.ndjson's own `lat`/`lon`.
+  - Results are cached per IP. The database is re-opened when the setting or the file changes, and every
+    destination is then re-sent.
+  - No database, or no entry, means "Unknown location".
+  - `GET /api/net/geo` reports the state. While a database is in use, the legend and Settings show its
+    credit ("IP geolocation by DB-IP", which CC BY 4.0 requires, or the file's own type otherwise).
+- **Tests without a database.** `netobs/testing/mmdb-writer.ts` is a small writer for the MMDB format,
+  used only by tests and by the replay script's `--demo-geo <file>`. That option writes a database
+  typed "Layman-Demo-City", whose metadata says it is not real data, placing the fixtures' IPs in
+  plausible cities. The writer's output is read through `mmdb-lib` itself, so the tests exercise the
+  real reader on the real format.
+- **Geometry** (`lib/net-geo.ts`, pure and tested):
+  - **Projection.** Mercator, fitted to the exit and the placed destinations, widened to at least
+    50°×25°, clipped to 84°N–58°S, with a North-Atlantic view when nothing is placed.
+  - **Fitted clear of the cards.** The fit leaves room for the cards over the map: the tall top-corner
+    cards take a side, the bottom ones a strip.
+  - **The fit is a set of corner points, not a polygon.** d3-geo reads a ring's winding as which side is
+    inside, and the first version's counter-clockwise box fitted "everything but the box", i.e. the
+    whole world. A test pins it.
+  - **Arcs and pins.** Arcs are great circles (48 samples, split at the antimeridian), 1–3.5 px by the
+    square root of bytes. Destinations in one city share a pin with a count.
+  - **Unknown location** is what left the sandbox but cannot be placed.
+  - **The ribbon** has one lane per flow in the last 60 s.
+- **The trunk and the sandbox.** The sandbox is not a place: it is a card in a corner, and the trunk
+  runs from that card's edge to the exit pin. It is solid when the exit is verified, dashed when the
+  route is only declared, and absent for a direct or point-to-point route. With no exit to pin, arcs
+  leave from the card itself, dashed. Untunnelled destinations get a red dashed curve straight from the
+  sandbox that skips the exit, plus a red banner with "Block direct egress", which writes one terminating
+  `scope: direct` rule. The banner cannot be dismissed while such traffic exists.
+- **Renderer** (`WorldMap.tsx`): SVG. Land and graticule are projected once per size change and
+  panned and zoomed with a transform (drag, wheel about the cursor, +/−, reset) and non-scaling strokes.
+  Pins and labels are placed in screen space so they stay crisp. A drag never starts on a pin or a
+  control, because the drag's pointer capture would swallow their click; the zoom buttons were dead
+  until that was fixed. Live arcs have a moving dash, which `prefers-reduced-motion` turns off (checked
+  in the browser).
+- **Cards** (`MapView.tsx`), each hidable from the Panels chips and draggable by its grip to another
+  corner (remembered per viewer in localStorage):
+  - **Talking now**: open destinations by live rate with their toggles, plus finished / refused /
+    blocked / broken counts that switch the list.
+  - **Unknown location**.
+  - **Details** (`DetailCard.tsx`).
+  - **This sandbox**: local links and unwatched services.
+  - **Legend**, with the database credit.
+  - **The last 60 seconds**, a band beneath the map, with session totals.
+
+  Top corners get ~60% of the height and bottom ones ~40%, and cards scroll inside their share, so
+  stacks never overlap on a short window.
+- **The detail card**, floating on the Map and docked in the Network tab's Details panel. Its sections
+  are toggled from a menu and remembered: Totals, Agent asked for and Connection on, Flows off; Policy
+  is always shown.
+  - **Connection**: the IP and how it was resolved, port and protocol, service → upstream, route
+    (verified or declared), location and its source, opened / closed with reason and duration, and the
+    flow id.
+  - **Policy**: the enforced verdict, and Block this host / Block the domain / Block and cut live
+    flows, Unblock, or Allow.
+  - **Agent asked for** says honestly that nothing is joined yet: joining flows to the transcript's
+    tool calls is the Trace phase.
+- **Known limitation:** labels of nearby cities can overlap at the fitted zoom (Ashburn/Virginia,
+  London/Amsterdam). Zooming in separates them.
+
 ### Configuration
 
 `glove.network` in `GloveConfigSchema`: `enabled` (default true, meaningful only with `glove.enabled`),
 `controlEnabled` (default true; false makes every toggle read-only, and is the Settings toggle "Allow
-blocking from Layman") and `geoipDbPath` (used by a later phase). `glove` and `glove.network` are deep-merged in
+blocking from Layman") and `geoipDbPath` (the Map's offline geolocation database; empty means none). `glove` and `glove.network` are deep-merged in
 both `loadConfig()` and `updateConfig()` — before this, `glove` was not, so a Settings update carrying
 only `glove.enabled` would have blanked `sessionsDir`, and one carrying a single network toggle would
 have reset the others. With glove (or its network views) off, the store is emptied and the session list

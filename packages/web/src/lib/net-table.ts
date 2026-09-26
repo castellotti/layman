@@ -467,9 +467,7 @@ function hostRow(ctx: Ctx, d: DestinationAggregate, depth: 0 | 1, opts: TableOpt
   };
 }
 
-/** The table's rows, top to bottom, with only expanded subtrees included. */
-export function buildTable(data: NetSessionData, opts: TableOptions): TableModel {
-  const all = [...data.destinations.values()];
+function makeCtx(data: NetSessionData, now: number): Ctx {
   const flowsByDest = new Map<string, FlowView[]>();
   for (const f of data.flows.values()) {
     if (!f.destKey) continue;
@@ -478,13 +476,24 @@ export function buildTable(data: NetSessionData, opts: TableOptions): TableModel
     flowsByDest.set(f.destKey, list);
   }
   for (const list of flowsByDest.values()) list.sort((a, b) => b.tOpen - a.tOpen);
-  const ctx: Ctx = {
+  return {
     data,
-    anchor: sessionAnchor(data, opts.now),
-    now: opts.now,
+    anchor: sessionAnchor(data, now),
+    now,
     rules: new Map((data.rules.file?.rules ?? []).map((r) => [r.id, r])),
     flowsByDest,
   };
+}
+
+/** One destination as a table row, outside the table (the Map's cards use its cells, toggle and popover). */
+export function destinationRow(data: NetSessionData, d: DestinationAggregate, now: number): TableRow {
+  return hostRow(makeCtx(data, now), d, 0, { groupBy: 'domain', sortBy: 'recent', filter: 'all', text: '', toggled: new Set(), now });
+}
+
+/** The table's rows, top to bottom, with only expanded subtrees included. */
+export function buildTable(data: NetSessionData, opts: TableOptions): TableModel {
+  const all = [...data.destinations.values()];
+  const ctx = makeCtx(data, opts.now);
 
   const q = opts.text.trim().toLowerCase();
   const shown = all.filter((d) => matchesFilter(d, opts.filter) && matchesText(ctx, d, q));

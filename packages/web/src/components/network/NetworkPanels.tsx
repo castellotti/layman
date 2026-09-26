@@ -1,7 +1,6 @@
 /**
  * The Network tab's other pieces (plan §7.1, network-ledger.dc.html): the KPI
- * row above the panels, the mini map (a placeholder until the Map tab's
- * renderer exists), and the Rules panel's "View file" link. The Rules panel
+ * row above the panels, the mini map, and the Rules panel's "View file" link. The Rules panel
  * itself is `RulesPanel.tsx`.
  */
 import React from 'react';
@@ -9,6 +8,7 @@ import { useSessionStore } from '../../stores/sessionStore.js';
 import { BLOCK_STATES, formatBytes } from '../../lib/net-format.js';
 import type { NetSessionData } from '../../lib/net-state.js';
 import { NetIcon, type NetIconName } from './netui.js';
+import { WorldMap } from './WorldMap.js';
 
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 const ROUTE_NAME: Record<string, string> = { vpn: 'the VPN', tor: 'Tor' };
@@ -65,40 +65,31 @@ export function KpiRow({ data }: { data: NetSessionData }) {
   );
 }
 
-// ─── Mini map (placeholder) ───────────────────────────────────────────────────
+// ─── Mini map ─────────────────────────────────────────────────────────────────
 
 /**
- * Stands in for the Map tab's renderer at small size (plan §7.1), which arrives
- * with the Map tab. It already says what the map will: where the traffic
- * appears to come from, and how much of it can be placed.
+ * The Map tab's renderer at small size (plan §7.1): no labels, no pan or zoom,
+ * the trunk and arcs. A click opens the Map tab, with the selection kept.
  */
 export function MiniMap({ data }: { data: NetSessionData }) {
   const setViewMode = useSessionStore((s) => s.setViewMode);
+  const netDest = useSessionStore((s) => s.netDest);
   const dests = [...data.destinations.values()].filter((d) => d.scope !== 'local' && !BLOCK_STATES.has(d.state));
-  const unknown = dests.filter((d) => d.flags.unresolved).length;
+  const placed = dests.filter((d) => d.geo).length;
   const exit = data.exit?.healthy ? data.exit : null;
   const origin = exit ? `exit ${exit.city ? `${exit.city}, ` : ''}${exit.country ?? exit.ip ?? ''}` : 'exit not observed';
   return (
-    <button
-      type="button"
-      onClick={() => setViewMode('map')}
-      aria-label="Open the Map tab"
-      style={{ position: 'relative', display: 'block', width: '100%', height: '100%', minHeight: 150, padding: 0, border: 'none', cursor: 'pointer', background: 'var(--net-ocean)', overflow: 'hidden' }}
-    >
-      <svg width="100%" height="100%" viewBox="0 0 360 200" preserveAspectRatio="xMidYMid slice" aria-hidden="true" style={{ position: 'absolute', inset: 0 }}>
-        {Array.from({ length: 9 }, (_, i) => <line key={`h${i}`} x1="0" x2="360" y1={i * 25} y2={i * 25} stroke="var(--net-landline)" strokeWidth="0.5" />)}
-        {Array.from({ length: 15 }, (_, i) => <line key={`v${i}`} y1="0" y2="200" x1={i * 25} x2={i * 25} stroke="var(--net-landline)" strokeWidth="0.5" />)}
-        <path d="M40 150 Q 180 20 310 90" fill="none" stroke="var(--net-tunnel)" strokeWidth="2" strokeDasharray={exit ? undefined : '5 4'} opacity="0.85" />
-        <circle cx="40" cy="150" r="4" fill="var(--bg)" stroke="var(--net-tunnel)" strokeWidth="1.5" />
-        <circle cx="310" cy="90" r="5" fill="var(--net-tunnel)" opacity={exit ? 1 : 0.4} />
-      </svg>
+    <div role="button" tabIndex={0} aria-label="Open the Map tab" onClick={() => setViewMode('map')}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setViewMode('map'); }}
+      style={{ position: 'relative', width: '100%', height: '100%', minHeight: 150, cursor: 'pointer', overflow: 'hidden' }}>
+      <WorldMap data={data} selected={netDest} compact />
       <span style={{ position: 'absolute', top: 8, right: 8, fontSize: 10, color: 'var(--text-muted)', background: 'rgba(11,14,20,0.8)', border: '1px solid var(--border-strong)', borderRadius: 10, padding: '2px 8px' }}>
-        {dests.length - unknown} to map · Unknown location · {unknown}
+        {placed} mapped · Unknown location · {dests.length - placed}
       </span>
       <span style={{ position: 'absolute', left: 8, bottom: 8, display: 'flex', alignItems: 'center', gap: 5, fontSize: 10.5, color: 'var(--text-body)', background: 'rgba(11,14,20,0.8)', border: '1px solid var(--border-strong)', borderRadius: 10, padding: '2px 8px' }}>
         <NetIcon name="tunnel" color="var(--net-tunnel)" /> sandbox → {origin}
       </span>
-    </button>
+    </div>
   );
 }
 

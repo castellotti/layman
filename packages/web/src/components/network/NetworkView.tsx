@@ -17,25 +17,16 @@ import { GateStrip, RulesRejectedBanner } from './GateStrip.js';
 import { DestinationTable } from './DestinationTable.js';
 import { KpiRow, MiniMap, MiniMapExpand, RulesFileLink } from './NetworkPanels.js';
 import { RulesPanel } from './RulesPanel.js';
+import { MapView } from './MapView.js';
+import { DetailCard } from './DetailCard.js';
+import { ActivityChart } from './ActivityChart.js';
 import { NetNotices } from './NetNotices.js';
 import { useNow } from '../../hooks/useNow.js';
 import { EmptyState, PanelFrame } from './netui.js';
 import { TAB_PANELS, type NetTab } from './tabs.js';
 
-/**
- * What each panel will hold, shown until it is built: the map, topology and
- * the trace arrive in later phases, and the Network tab's Activity and Details
- * panels with them.
- */
+/** What each panel will hold, shown until it is built: Topology and Trace arrive in later phases. */
 const PANEL_PURPOSE: Record<string, string> = {
-  'network/activity': 'Bytes sent and received over time.',
-  'network/details': 'The selected destination: totals, policy, what the agent asked for, and the connection.',
-  'map/world': 'A world map of destinations, with the tunnel exit as the origin of every route.',
-  'map/ribbon': 'The last 60 seconds, one lane per flow, with the agent’s tool calls marked.',
-  'map/talking': 'Flows open right now, with their live rates.',
-  'map/detail': 'The selected destination: totals, what the agent asked for, and the connection.',
-  'map/unknown': 'Destinations glove could not resolve inside the tunnel. Layman never looks them up.',
-  'map/legend': 'How each route and state is drawn.',
   'topology/routes': 'The route from the sandbox through glove’s services, the policy wall and the tunnel to each destination.',
   'topology/path': 'Every hop of the selected path, and whether each is declared or verified.',
   'trace/trace': 'One turn at a time: each tool call the agent made and the connections it produced.',
@@ -53,12 +44,16 @@ interface PanelContent {
 }
 
 /** A built panel's content, or null for one still to come. */
-function panelContent(tab: NetTab, id: string, data: NetSessionData, now: number): PanelContent | null {
+function panelContent(tab: NetTab, id: string, data: NetSessionData, now: number, netDest: string | null): PanelContent | null {
   switch (`${tab}/${id}`) {
     case 'network/table':
       return { body: <DestinationTable data={data} />, count: data.totals.destinations, ownScroll: true };
     case 'network/map':
       return { body: <MiniMap data={data} />, actions: <MiniMapExpand />, ownScroll: true, flex: '0 0 240px' };
+    case 'network/details':
+      return { body: <DetailCard data={data} host={netDest} docked /> };
+    case 'network/activity':
+      return { body: <ActivityChart data={data} now={now} />, ownScroll: true, flex: '0 0 220px' };
     case 'network/rules':
       return {
         body: <RulesPanel data={data} now={now} />,
@@ -74,8 +69,9 @@ function Board({ tab, panels, data }: { tab: NetTab; panels: ReturnType<typeof u
   const defs = TAB_PANELS[tab];
   const { drag } = panels;
   const now = useNow(1000);
+  const netDest = useSessionStore((s) => s.netDest);
   const render = (p: PanelDef) => {
-    const content = panelContent(tab, p.id, data, now);
+    const content = panelContent(tab, p.id, data, now, netDest);
     return (
     <PanelFrame
       key={p.id}
@@ -185,7 +181,7 @@ export default function NetworkView({ tab, onSend }: { tab: NetTab; onSend: (msg
     return (
       <>
         {tab === 'network' && <KpiRow data={data} />}
-        <Board tab={tab} panels={panels} data={data} />
+        {tab === 'map' ? <MapView data={data} panels={panels} /> : <Board tab={tab} panels={panels} data={data} />}
       </>
     );
   }, [enabled, sessionsKnown, sessions.length, listed, token, data, tab, panels, config?.glove.sessionsDir, setSettingsOpen]);

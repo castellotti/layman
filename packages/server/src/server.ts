@@ -206,6 +206,10 @@ export function createServer(config: LaymanConfig): LaymanServer {
     // Only `request` (record: full) is agent-derived text; see netobs/store.ts.
     stringFilter: (text) => (getConfig().piiFilter ? redactString(text) : text),
     controlEnabled: () => getConfig().glove.network.controlEnabled,
+    getGeoPath: () => {
+      const p = getConfig().glove.network.geoipDbPath.trim();
+      return p ? expandHome(p) : '';
+    },
   });
   const vibeWatcher = new VibeSessionWatcher(eventStore, gate, getConfig, [
     new NativeVibeSource(),

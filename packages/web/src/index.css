@@ -223,3 +223,11 @@ body {
 /* Network views: the gate strip's chip row scrolls sideways without a visible bar
    (scrollbar-width covers Chrome/Firefox; this covers Safari). */
 .net-chip-row::-webkit-scrollbar { display: none; }
+
+/* Network map: live arcs carry a moving dash (plan §7.2). None when the user asks for reduced motion. */
+.net-live-dash { stroke-dasharray: 8 7; animation: net-dash 1.1s linear infinite; }
+.net-live-dash-trunk { stroke-dasharray: 10 6; animation: net-dash 1.4s linear infinite; }
+@keyframes net-dash { to { stroke-dashoffset: -30; } }
+@media (prefers-reduced-motion: reduce) {
+  .net-live-dash, .net-live-dash-trunk { animation: none; }
+}

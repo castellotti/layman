@@ -29,6 +29,7 @@ export const TAB_PANELS: Record<NetTab, readonly PanelDef[]> = {
     { id: 'talking', title: 'Talking now', chip: 'Talking now', icon: 'activity', defaultVisible: true, column: 'side' },
     { id: 'detail', title: 'Details', chip: 'Details', icon: 'details', defaultVisible: true, column: 'side' },
     { id: 'unknown', title: 'Unknown location', chip: 'Unknown', icon: 'pin', defaultVisible: true, column: 'side' },
+    { id: 'sandbox', title: 'This sandbox', chip: 'Sandbox', icon: 'rules', defaultVisible: true, column: 'side' },
     { id: 'legend', title: 'Legend', chip: 'Legend', icon: 'legend', defaultVisible: true, column: 'side' },
   ],
   topology: [

@@ -26,6 +26,11 @@ export function registerNetRoutes(fastify: FastifyInstance, deps: { netObs: NetO
 
   fastify.get('/api/net/sessions', async () => ({ sessions: netObs.sessions() }));
 
+  fastify.get('/api/net/geo', async () => {
+    netObs.geo.refresh();
+    return netObs.geo.status();
+  });
+
   fastify.get<{ Params: { token: string } }>('/api/net/sessions/:token', async (request, reply) => {
     const snapshot = store.snapshot(request.params.token);
     return snapshot ?? reply.status(404).send(notFound(request.params.token));

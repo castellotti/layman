@@ -79,4 +79,10 @@ describe('net REST routes', () => {
     expect((await app.inject({ method: 'POST', url: '/api/net/sessions/nope/rules', payload: { op: { kind: 'revert' } } })).statusCode).toBe(404);
     expect(existsSync(join(control, 'rules.json.layman.tmp'))).toBe(false);
   });
+
+  it('GET /api/net/geo reports no database when none is set', async () => {
+    const res = await app.inject('/api/net/geo');
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ configured: false, loaded: false, attribution: null });
+  });
 });

@@ -109,7 +109,9 @@ linked above.
    Rules: `netobs/rules.ts` is a port of glove's `policy.py` validator/evaluator, held to it by a
    cross-check test that runs glove's own code; a write is confirmed only by glove's **hash rule**
    (`status.json` `rules.sha256` / `rules.last_rejected.sha256`), never by timestamps, and toggles show
-   what the gate *enforces*, not what Layman wrote.
+   what the gate *enforces*, not what Layman wrote. The Map is fully offline: bundled Natural Earth land
+   (lazy chunk) and geolocation only from a local MMDB file the user supplies (`netobs/geo.ts`), looking
+   up only in-tunnel/literal destination IPs; the running-app check asserts every request goes to Layman.
    Design and rules: `docs/extensions/glove.md` → Network.
 
 5. **OpenCode plugin** (`docs/harnesses/opencode.md`): a bidirectional plugin (`packages/opencode-plugin`)

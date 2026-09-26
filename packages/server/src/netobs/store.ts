@@ -30,6 +30,7 @@ import type {
   FlowRecord,
   FlowView,
   GateRecord,
+  GeoPoint,
   NetCounters,
   NetDelta,
   NetGateView,
@@ -67,7 +68,7 @@ interface FlowEntry {
 }
 
 interface AggEntry {
-  agg: Omit<DestinationAggregate, 'state' | 'spark' | 'policy'>;
+  agg: Omit<DestinationAggregate, 'state' | 'spark' | 'policy' | 'geo'>;
   /** Open flows and their current states: open flows are never evicted. */
   open: Map<string, NetState>;
   /** The flow with the latest `t_open`, and its state. */
@@ -120,6 +121,8 @@ interface SessionData {
 export interface NetStoreOptions {
   /** Applied to `request.url` and header values (record: full). */
   stringFilter?: (text: string) => string;
+  /** Offline geolocation of an IP (`geo.ts`), or null when there is no database. */
+  geolocate?: (ip: string) => GeoPoint | null;
   maxClosedFlows?: number;
 }
 
@@ -158,11 +161,13 @@ function pushUnique(list: string[], v: string | null | undefined, max = Infinity
 export class NetStore extends EventEmitter {
   private sessions = new Map<string, SessionData>();
   private readonly stringFilter?: (text: string) => string;
+  private readonly geolocate?: (ip: string) => GeoPoint | null;
   private readonly maxClosedFlows: number;
 
   constructor(opts: NetStoreOptions = {}) {
     super();
     this.stringFilter = opts.stringFilter;
+    this.geolocate = opts.geolocate;
     this.maxClosedFlows = opts.maxClosedFlows ?? DEFAULT_MAX_CLOSED_FLOWS;
   }
 
@@ -472,6 +477,14 @@ export class NetStore extends EventEmitter {
     this.emit('rules', token);
   }
 
+  /** The geolocation database changed: every destination's location may have, so all are re-sent. */
+  refreshGeo(): void {
+    for (const [token, s] of this.sessions) {
+      for (const k of s.aggs.keys()) s.dirtyAggs.add(k);
+      this.emit('changed', token);
+    }
+  }
+
   /** New rule sets: every destination's predicted policy may change, so all are re-sent. */
   setPolicy(token: string, policy: { enforced: RuleSet | null; written: RuleSet | null }): void {
     const s = this.sessions.get(token);
@@ -601,6 +614,10 @@ export class NetStore extends EventEmitter {
     return {
       ...e.agg,
       policy: { enforced: predict(s.policy.enforced), written: predict(s.policy.written) },
+      // Only an IP glove resolved inside the tunnel (or a literal), never a local link (plan §5.4).
+      geo: this.geolocate && a.ips[0] && a.scope !== 'local' && (a.resolution === 'in-tunnel' || a.resolution === 'literal')
+        ? this.geolocate(a.ips[0])
+        : null,
       // A flow whose gate went away is unclosed but not open in any sense the UI means.
       openFlows: [...e.open.values()].filter((st) => st !== 'gate_lost').length,
       ips: [...e.agg.ips],

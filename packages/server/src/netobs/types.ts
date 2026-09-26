@@ -334,6 +334,36 @@ export interface DestinationAggregate {
    * waiting for the gate. The observed verdict (`state`) stays the authority.
    */
   policy: { enforced: PolicyVerdict | null; written: PolicyVerdict | null };
+  /**
+   * Where the destination is, from the user's own offline database, for its
+   * first IP — only when glove resolved it inside the tunnel (or it was a
+   * literal) and it is not a local link. Null: "Unknown location".
+   */
+  geo: GeoPoint | null;
+}
+
+export interface GeoPoint {
+  lat: number;
+  lon: number;
+  city: string | null;
+  /** The database's country name. */
+  country: string | null;
+  countryCode: string | null;
+}
+
+/** The geolocation database's state (`GET /api/net/geo`). */
+export interface GeoStatus {
+  /** A path is set in Settings. */
+  configured: boolean;
+  path: string;
+  /** The path as the user sees it on the host. */
+  displayPath: string;
+  loaded: boolean;
+  databaseType: string | null;
+  buildDate: string | null;
+  error: string | null;
+  /** The credit the map must show while this database is in use (DB-IP's licence requires it). */
+  attribution: string | null;
 }
 
 export interface PolicyVerdict {

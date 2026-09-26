@@ -29,7 +29,7 @@ export const dest = (key: string, over: Partial<DestinationAggregate> = {}): Des
   key, host: key.split(':')[0], port: 443, groupKey: key.split(':')[0], endpoint: null, ips: [], services: [], tools: [], clients: [],
   scope: 'tunnelled', resolution: 'in-tunnel', bytesUp: 1, bytesDown: 1, flows: 1, openFlows: 0, blocked: 0,
   firstSeen: 0, lastSeen: 0, state: 'finished', rule: null, flags: { ...FLAGS }, spark: [],
-  policy: { enforced: null, written: null }, ...over,
+  policy: { enforced: null, written: null }, geo: null, ...over,
 });
 
 /** rules.json as read: present, empty, enforced, and writable unless overridden. */

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import type { ClientMessage } from '../../../lib/ws-protocol.js';
 import type { LaymanConfig } from '../../../lib/types.js';
 import { SectionTitle, ToggleRow, CustomRow } from './primitives.js';
@@ -69,6 +69,58 @@ export function GloveSection({
         onChange={() => setNetwork({ controlEnabled: !network.controlEnabled })}
       />
       )}
+      {glove.enabled && network.enabled && <GeoDatabaseRow path={network.geoipDbPath} onChange={(geoipDbPath) => setNetwork({ geoipDbPath })} />}
     </>
+  );
+}
+
+interface GeoStatus { configured: boolean; loaded: boolean; databaseType: string | null; buildDate: string | null; error: string | null; attribution: string | null; displayPath: string }
+
+/**
+ * The Map's offline geolocation database (plan §5.4). Layman ships none and
+ * never looks an IP up anywhere: the user downloads DB-IP's free "IP to City
+ * Lite" (.mmdb, CC BY 4.0, no account) and points this at it. In Docker the
+ * file must be inside a mounted folder; Layman's own data folder is one.
+ */
+function GeoDatabaseRow({ path, onChange }: { path: string; onChange: (p: string) => void }) {
+  const [draft, setDraft] = useState(path);
+  const [status, setStatus] = useState<GeoStatus | null>(null);
+  useEffect(() => setDraft(path), [path]);
+  useEffect(() => {
+    let live = true;
+    // The server re-reads the setting on its next poll; ask shortly after a change.
+    const t = setTimeout(() => {
+      fetch('/api/net/geo').then((r) => (r.ok ? r.json() : null)).then((s) => { if (live) setStatus(s); }).catch(() => {});
+    }, 1200);
+    return () => { live = false; clearTimeout(t); };
+  }, [path]);
+  const line = !status || !status.configured
+    ? 'No database: destinations appear in “Unknown location”.'
+    : status.loaded
+      ? `Loaded ${status.databaseType ?? 'database'}${status.buildDate ? ` (${status.buildDate})` : ''}. ${status.attribution ?? ''}`
+      : `Not loaded: ${status.error ?? 'unknown error'}.`;
+  return (
+    <CustomRow>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <span style={{ fontSize: 12, color: 'var(--text)', flex: 1 }}>Geolocation database</span>
+        <input
+          type="text"
+          value={draft}
+          placeholder="~/.local/share/layman/dbip-city-lite.mmdb"
+          aria-label="Geolocation database path"
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={() => { if (draft !== path) onChange(draft.trim()); }}
+          onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+          spellCheck={false}
+          style={{ width: 260, padding: '4px 6px', fontSize: 11, fontFamily: 'var(--font-mono)', background: 'var(--bg-card)', border: '1px solid var(--border-strong)', borderRadius: 5, color: 'var(--text)', outline: 'none' }}
+        />
+      </div>
+      <span style={{ fontSize: 10.5, color: status?.loaded ? 'var(--ok)' : status?.configured ? 'var(--warn)' : 'var(--text-faint)', lineHeight: 1.5 }}>{line}</span>
+      <span style={{ fontSize: 10.5, color: 'var(--text-faint)', lineHeight: 1.5 }}>
+        Places destinations on the Map from a file on this machine; no IP is ever sent anywhere. Download the free
+        {' '}<a href="https://db-ip.com/db/download/ip-to-city-lite" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--info)' }}>DB-IP “IP to City Lite”</a>{' '}
+        (.mmdb) yourself and put it in Layman’s data folder (<code style={{ fontFamily: 'var(--font-mono)' }}>~/.local/share/layman/</code>), which the container can read.
+      </span>
+    </CustomRow>
   );
 }

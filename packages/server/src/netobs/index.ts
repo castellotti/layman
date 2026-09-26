@@ -8,6 +8,7 @@
  */
 import { NetSessionSource, type NetSessionLocation } from './discovery.js';
 import { RulesControl, type ApplyResult } from './control.js';
+import { GeoLocator } from './geo.js';
 import { parseLine, parseSessionFile, parseStatus } from './parse.js';
 import { NetStore } from './store.js';
 import { DEFAULT_BACKFILL_BYTES, JsonFileWatcher, NdjsonTailer } from './tail.js';
@@ -55,6 +56,8 @@ export interface NetObsOptions {
   stringFilter?: (text: string) => string;
   /** `glove.network.controlEnabled`: false leaves every toggle read-only. */
   controlEnabled?: () => boolean;
+  /** Expanded `glove.network.geoipDbPath`, or '' for none. */
+  getGeoPath?: () => string;
   pollMs?: number;
   coalesceMs?: number;
   budgetBytes?: number;
@@ -120,12 +123,15 @@ export class NetObs {
   private readonly budgetBytes: number;
   private readonly getSessionsDir: () => string | null;
   private readonly control: RulesControl;
+  readonly geo: GeoLocator;
 
   constructor(opts: NetObsOptions) {
     this.getSessionsDir = opts.getSessionsDir;
     this.control = new RulesControl({ controlEnabled: opts.controlEnabled ?? (() => true) });
     this.source = new NetSessionSource(opts.getSessionsDir);
-    this.store = new NetStore({ stringFilter: opts.stringFilter });
+    this.geo = new GeoLocator(opts.getGeoPath ?? (() => ''));
+    this.geo.refresh();
+    this.store = new NetStore({ stringFilter: opts.stringFilter, geolocate: (ip) => this.geo.lookup(ip) });
     this.pollMs = opts.pollMs ?? POLL_MS;
     this.coalesceMs = opts.coalesceMs ?? COALESCE_MS;
     this.budgetBytes = opts.budgetBytes ?? DEFAULT_BACKFILL_BYTES;
@@ -167,6 +173,7 @@ export class NetObs {
       return;
     }
     const found = this.source.discover();
+    if (this.geo.refresh()) this.store.refreshGeo();
 
     const seen = new Set<string>();
     for (const loc of found) {

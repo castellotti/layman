@@ -27,6 +27,9 @@
  *   --rotate-every <n>   rename flows.ndjson to flows-<ts>.ndjson every n records
  *   --direct             inject one scope:"direct" flow mid-pass (the leak treatment)
  *   --scenario <names>   replay scenarios instead of the fixture: comma-separated names, or `all`
+ *   --demo-geo <file>    write a small demo geolocation database (MaxMind format, type
+ *                        "Layman-Demo-City": not real data) placing the fixtures' IPs, and exit.
+ *                        Point Settings → Glove → Geolocation database at it.
  *   --gate               fake gate: validate control/<env>/<name>/rules.json with Layman's port of glove's
  *                        validator, report it in status.json as glove's collector does (sha256,
  *                        last_rejected, last good set kept on a rejection), and apply its verdicts to the
@@ -35,6 +38,7 @@
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync, appendFileSync } from 'node:fs';
 import { evaluate, parseRulesBytes, type RuleSet } from '../src/netobs/rules.ts';
+import { writeMmdb } from '../src/netobs/testing/mmdb-writer.ts';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -52,6 +56,7 @@ interface Options {
   direct: boolean;
   gate: boolean;
   scenarios: string[];
+  demoGeo: string | null;
 }
 
 function parseArgs(argv: string[]): Options {
@@ -64,6 +69,7 @@ function parseArgs(argv: string[]): Options {
     direct: false,
     gate: false,
     scenarios: [],
+    demoGeo: null,
   };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -80,6 +86,7 @@ function parseArgs(argv: string[]): Options {
     else if (a === '--rotate-every') o.rotateEvery = Number(next());
     else if (a === '--direct') o.direct = true;
     else if (a === '--gate') o.gate = true;
+    else if (a === '--demo-geo') o.demoGeo = resolve(next());
     else if (a === '--scenario') {
       const v = next();
       o.scenarios = v === 'all'
@@ -154,8 +161,25 @@ function loadSource(dir: string): Source {
 
 const stops: Array<() => void> = [];
 
+/** Where the demo database puts the fixtures' IPs: plausible, made up, and labelled as such. */
+const DEMO_PLACES: Array<{ cidr: string; city: string; countryCode: string; country: string; lat: number; lon: number }> = [
+  { cidr: '151.101.0.0/16', city: 'San Francisco', countryCode: 'US', country: 'United States', lat: 37.77, lon: -122.42 },
+  { cidr: '93.184.215.0/24', city: 'Los Angeles', countryCode: 'US', country: 'United States', lat: 34.05, lon: -118.24 },
+  { cidr: '40.114.177.0/24', city: 'Virginia', countryCode: 'US', country: 'United States', lat: 38.03, lon: -78.48 },
+  { cidr: '185.15.59.0/24', city: 'Amsterdam', countryCode: 'NL', country: 'Netherlands', lat: 52.37, lon: 4.9 },
+  { cidr: '143.204.55.0/24', city: 'Frankfurt', countryCode: 'DE', country: 'Germany', lat: 50.11, lon: 8.68 },
+  { cidr: '5.102.173.0/24', city: 'London', countryCode: 'GB', country: 'United Kingdom', lat: 51.51, lon: -0.13 },
+  { cidr: '51.91.211.0/24', city: 'Roubaix', countryCode: 'FR', country: 'France', lat: 50.69, lon: 3.17 },
+  { cidr: '140.82.113.0/24', city: 'Ashburn', countryCode: 'US', country: 'United States', lat: 39.04, lon: -77.49 },
+];
+
 async function main(): Promise<void> {
   const o = parseArgs(process.argv.slice(2));
+  if (o.demoGeo) {
+    writeFileSync(o.demoGeo, writeMmdb(DEMO_PLACES.map(({ cidr, ...record }) => ({ cidr, record })), 'Layman-Demo-City'));
+    console.log(`Demo geolocation database (not real data): ${o.demoGeo}`);
+    return;
+  }
   process.on('SIGINT', () => {
     for (const stop of stops) stop();
     console.log('\nGate marked stopped. Bye.');
