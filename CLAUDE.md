@@ -112,6 +112,8 @@ linked above.
    what the gate *enforces*, not what Layman wrote. The Map is fully offline: bundled Natural Earth land
    (lazy chunk) and geolocation only from a local MMDB file the user supplies (`netobs/geo.ts`), looking
    up only in-tunnel/literal destination IPs; the running-app check asserts every request goes to Layman.
+   Geometry is pure and tested, components only draw: the Map's in `lib/net-geo.ts`, the Topology
+   diagram's (columns, bands, the policy wall, the selected path's hops) in `lib/net-topology.ts`.
    Design and rules: `docs/extensions/glove.md` → Network.
 
 5. **OpenCode plugin** (`docs/harnesses/opencode.md`): a bidirectional plugin (`packages/opencode-plugin`)

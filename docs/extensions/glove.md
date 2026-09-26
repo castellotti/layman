@@ -149,8 +149,8 @@ is glove's `docs/planning/network-observability-layman-handoff.md` ("the handoff
 plan on any question of data format. Code: `packages/server/src/netobs/`. What is built so far: the
 **read side** (discovery, tailing, the store, classification, `net:*` WebSocket frames and a REST
 snapshot), the **client shell** shared by the four tabs, the **Network tab**, **writing rules** and the
-**Map tab** with offline geolocation. Topology, correlation with the transcript (Trace) and persistence
-come in later phases.
+**Map tab** with offline geolocation, and the **Topology tab**. Correlation with the transcript (Trace)
+and persistence come in later phases.
 
 glove answered Layman's follow-up questions in its
 `docs/planning/network-observability-layman-followup-results.md` (glove branch
@@ -568,6 +568,58 @@ Built from `map-route-map.dc.html`, with mockup A's Connection section in the de
     tool calls is the Trace phase.
 - **Known limitation:** labels of nearby cities can overlap at the fitted zoom (Ashburn/Virginia,
   London/Amsterdam). Zooming in separates them.
+
+### The Topology tab
+
+Built from `topology.dc.html`: the route a session's traffic takes, as a diagram of six columns, and a
+Selected path panel that walks one destination's path hop by hop.
+
+- **Columns**, left to right:
+  - **Sandbox**: the session, its harness, and "no route out except through the gate".
+  - **Gate services**: every service `session.json` declares, including one glove does not watch,
+    which is drawn dashed with an eye-off icon ("declared · not watched") and a dashed line from the
+    sandbox, since traffic there is invisible, not absent. A service seen in traffic but not declared is
+    drawn too. The fan-out service says "SearXNG → gate · not the harness", and a dashed "triggers" link
+    joins it to the `search` service.
+  - **Policy**: a wall where refusals end. One label per reason: glove's guard (with its reasons:
+    metadata, internal, malformed), each of your rules by its note, and the default. The caption gives
+    the default and the rule count.
+  - **Route**: Local (its upstream, "never mapped"), the declared tunnel (kind, upstream, resolver,
+    upstream health) and Direct, which shows a check and "no traffic" when nothing went direct.
+  - **Apparent origin**: the exit, as glove verified it (country, IP, "via am.i.mullvad.net · not
+    Layman's lookup"), or "not verified" with the reason (exit identity off, a failed check, no record
+    yet). A broken path ends here in a broken-line glyph labelled with its host, before the exit.
+  - **Destinations** that were reached: local links first, then the harness's tunnelled traffic, then
+    the fan-out's, then direct, by bytes within each.
+- **Bands** are sized by the square root of bytes, relative to the busiest band, and coloured by route:
+  teal tunnelled, violet fan-out (it starts at the fan-out service, not the sandbox), grey local, red
+  direct, amber/red thin lines into the wall for refusals. Live traffic is a thin moving line along its
+  band, not a dashed band (dashing a 30 px band reads as stripes); reduced motion stops it.
+- **Layout** (`lib/net-topology.ts`) is a pure, tested function returning every box and band path; the
+  component (`TopologyView.tsx`) only draws SVG.
+  - **Columns.** Destinations sit against the right edge. The route and origin columns keep their share
+    of the width unless that would leave their bands under 40 and 90 px to bend (at 1280 px wide they
+    otherwise collapsed into a vertical strip). The wall sits in the gap before the route.
+  - **Order.** Services keep glove's declared order rather than byte order, as the mockup draws them, so
+    the column does not reshuffle while traffic flows. Destinations are ordered by bytes, as the plan
+    says. Each column then gets one overlap-avoidance pass.
+  - **Size.** Below 1000 × 420 the diagram is laid out at that size and scaled down, never scrolled.
+  - **Folding.** Destinations that do not fit are folded into one "+N more" box per route, keeping the
+    busiest; the Network tab lists them all.
+- **Selecting.** Clicking a destination, a band or a "+N more" box selects that path. A band shared by
+  several destinations selects the busiest. The selection is the same `dest=` the Map and the Network
+  tab use, and every band not on the path dims.
+- **Selected path panel.** The destination's hops, each with its status and whether glove **observed**
+  it, only **declared** it (a dashed circle), or **verified** it:
+  - the sandbox, with gate freshness and heartbeat age (a fan-out path starts at SearXNG instead);
+  - the service and its listener;
+  - the policy verdict;
+  - the route (a declared tunnel and its upstream health, a local link, or direct);
+  - the exit (verified by exit identity, or not);
+  - the destination, with its IP, port and offline location.
+
+  A refused path stops at the policy hop, a broken one before the exit. Below the hops: sent and
+  received tiles, Block (or Unblock), and Open in map.
 
 ### Configuration
 

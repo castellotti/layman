@@ -21,14 +21,13 @@ import { MapView } from './MapView.js';
 import { DetailCard } from './DetailCard.js';
 import { ActivityChart } from './ActivityChart.js';
 import { NetNotices } from './NetNotices.js';
+import { SelectedPath, TopologyDiagram, TopologyLegend } from './TopologyView.js';
 import { useNow } from '../../hooks/useNow.js';
 import { EmptyState, PanelFrame } from './netui.js';
 import { TAB_PANELS, type NetTab } from './tabs.js';
 
-/** What each panel will hold, shown until it is built: Topology and Trace arrive in later phases. */
+/** What each panel will hold, shown until it is built: Trace arrives in a later phase. */
 const PANEL_PURPOSE: Record<string, string> = {
-  'topology/routes': 'The route from the sandbox through glove’s services, the policy wall and the tunnel to each destination.',
-  'topology/path': 'Every hop of the selected path, and whether each is declared or verified.',
   'trace/trace': 'One turn at a time: each tool call the agent made and the connections it produced.',
   'trace/details': 'The selected call or connection, and what the gate did with it.',
 };
@@ -60,6 +59,10 @@ function panelContent(tab: NetTab, id: string, data: NetSessionData, now: number
         count: data.gate.rules ? `${data.gate.rules.active_count} enforced` : undefined,
         actions: <RulesFileLink data={data} />,
       };
+    case 'topology/routes':
+      return { body: <TopologyDiagram data={data} />, actions: <TopologyLegend />, ownScroll: true };
+    case 'topology/path':
+      return { body: <SelectedPath data={data} /> };
     default:
       return null;
   }

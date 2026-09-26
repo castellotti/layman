@@ -49,6 +49,8 @@
   --net-ocean:    #090C12;
   --net-land:     #151B27;
   --net-landline: #1F2736;
+  --net-fanout:   #7B6CE0;  /* SearXNG fan-out: traffic the search engine made, not the agent */
+  --net-local:    #5B6477;  /* local links (LLM, SearXNG): never leave the machine */
 
   /* Typography */
   --font-ui:   'IBM Plex Sans', system-ui, sans-serif;

@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Added the **Topology tab** (phase 6 of `docs/planning/network-views.md`), from `topology.dc.html`: a diagram of the route a glove session's traffic takes, and a Selected path panel.
+  - **The diagram.** Six columns: the sandbox, every service glove declares (one it does not watch is drawn dashed, "declared · not watched"), the policy wall where refusals end, the route (Local, the declared tunnel with its upstream, resolver and health, and Direct), the apparent origin (the exit as glove verified it, or "not verified" and why) and the destinations reached. Bands are sized by the square root of bytes and coloured by route. SearXNG's fan-out starts at its own service, with a dashed "triggers" link from `search`. A broken path ends in a broken-line glyph before the exit.
+  - **Selecting.** Clicking a destination or a band selects that path, shared with the Map and Network tabs through `dest=`, and dims the rest.
+  - **Selected path.** The panel lists each hop from sandbox to destination and says whether glove observed it, only declared it, or verified it. It also has sent and received totals, Block or Unblock, and Open in map.
+  - **Layout.** The layout is a pure, tested function (`lib/net-topology.ts`) and the component only draws. It is deterministic.
+  - **Deliberate difference from the plan.** Services keep glove's declared order, as the mockup draws them, rather than the plan's byte order, so the column does not reshuffle while traffic flows.
+  - **Found in the browser.** At 1280 px the exit's bands collapsed into a vertical strip, and dashing a wide live band read as stripes. Columns now keep a minimum gap, and liveness is a thin moving line on the band. Destinations that do not fit fold into "+N more" per route.
+  - **Checked** in the running app at 1440×900 and 1280×800: every service including the unobserved `browser`, the hop lists, selection both ways, six other scenario sessions and the 301-destination one, no horizontal scroll, and no request to anything but Layman.
 - Added the **Map tab** (phase 5 of `docs/planning/network-views.md`):
   - **The map.** A world map of where a glove session's traffic went: great-circle arcs from the tunnel exit to each destination, sized by bytes and dashed while live. Destinations in one city share a pin. The trunk runs from a "This sandbox" card to the exit pin; the sandbox is deliberately a card, not a place, so the map never implies where the operator is. The trunk is solid when the exit is verified and dashed when the route is only declared.
   - **Untunnelled traffic** is drawn as a red dashed curve that skips the exit, with a banner that cannot be dismissed and offers "Block direct egress".

@@ -63,7 +63,7 @@ function SectionHead({ children }: { children: React.ReactNode }) {
   return <div style={{ fontSize: 10, letterSpacing: '0.08em', fontWeight: 600, color: 'var(--text-muted)', margin: '12px 0 6px', textTransform: 'uppercase' }}>{children}</div>;
 }
 
-function Tile({ label, value, colour, icon }: { label: string; value: string; colour: string; icon: 'up' | 'down' }) {
+export function Tile({ label, value, colour, icon }: { label: string; value: string; colour: string; icon: 'up' | 'down' }) {
   return (
     <div style={{ flex: 1, padding: '8px 10px', borderRadius: 8, border: `1px solid ${colour}`, background: 'var(--bg)' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 9.5, letterSpacing: '0.08em', fontWeight: 600, color: colour }}>
@@ -259,7 +259,7 @@ export function DetailCard({ data, host, onClose, docked = false }: {
   );
 }
 
-const Badge = ({ colour, children }: { colour: string; children: React.ReactNode }) => (
+export const Badge = ({ colour, children }: { colour: string; children: React.ReactNode }) => (
   <span style={{ fontSize: 9.5, fontWeight: 600, letterSpacing: '0.05em', color: colour, border: `1px solid ${colour}`, borderRadius: 4, padding: '0 5px' }}>{children}</span>
 );
 const iconButton: React.CSSProperties = { display: 'flex', alignItems: 'center', justifyContent: 'center', width: 22, height: 22, background: 'transparent', border: 'none', borderRadius: 4, cursor: 'pointer' };
