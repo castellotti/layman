@@ -91,6 +91,7 @@ export class PiSessionWatcher {
     gate: SessionGate,
     getConfig: () => LaymanConfig,
     sources: MonitorSource[],
+    private recorded: (sessionId: string) => RecordedCursor | null = () => null,
   ) {
     this.eventStore = eventStore;
     this.gate = gate;
@@ -242,6 +243,10 @@ export class PiSessionWatcher {
     this.sessions.set(filePath, session);
 
     if (isRecent) {
+      // Replaying from the start re-sends events a previous run already recorded, and the live
+      // path gives each a fresh id, so the database cannot tell them apart. Skip what it holds.
+      const done = this.recorded(sessionId);
+      if (done) for (const ev of committed) if (isRecorded(ev, done)) session.emittedIds.add(ev.id);
       this.emitNew(session, committed);
     } else {
       // Old session: adopt the existing history as already-emitted so only future
@@ -301,6 +306,8 @@ export class PiSessionWatcher {
     // network flows (netobs/correlate.ts). `timestamp`/`completedAt` keep
     // their meaning for everything else.
     const transcript = {
+      // The parser's deterministic id: what a restart checks to skip events already recorded.
+      transcriptEventId: ev.id,
       ...(ev.timestamp > 0 ? { transcriptAt: ev.timestamp } : {}),
       ...(ev.type === 'tool_call_completed' && typeof ev.data.completedAt === 'number' && ev.data.completedAt > 0
         ? { transcriptCompletedAt: ev.data.completedAt } : {}),
@@ -438,6 +445,22 @@ export class PiSessionWatcher {
  * it completes — and reordering of already-committed events, as happens when
  * parallel tools finish out of order, can neither duplicate nor drop one.
  */
+/** What the database already holds of a session, for a replay after a restart to skip. */
+export interface RecordedCursor {
+  /** `data.transcriptEventId` of every recorded event. */
+  ids: ReadonlySet<string>;
+  /**
+   * The latest `data.transcriptAt` among recorded events that have no `transcriptEventId`: rows
+   * recorded before the id was kept. Everything up to it counts as recorded.
+   */
+  legacyThrough: number | null;
+}
+
+export function isRecorded(ev: Pick<TimelineEvent, 'id' | 'timestamp'>, done: RecordedCursor): boolean {
+  if (done.ids.has(ev.id)) return true;
+  return done.legacyThrough !== null && ev.timestamp > 0 && ev.timestamp <= done.legacyThrough;
+}
+
 function committedEvents(events: TimelineEvent[]): TimelineEvent[] {
   return events.filter((e) => e.type !== 'tool_call_pending');
 }

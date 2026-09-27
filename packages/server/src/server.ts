@@ -19,7 +19,7 @@ import { AnalysisEngine } from './analysis/engine.js';
 import { DriftMonitor } from './drift/monitor.js';
 import { LiveStreamStore, type LiveStream } from './stream/live.js';
 import { resolveEndpoint } from './analysis/providers/openai-compat.js';
-import { filterPii, redactValue, redactString } from './pii/filter.js';
+import { filterPii, IP_CATEGORIES, redactValue, redactString } from './pii/filter.js';
 import { PII_CATEGORIES, PII_GROUPS } from './pii/categories.js';
 import { scanPii, executePurge } from './pii/purge.js';
 import { updateConfig, saveConfig } from './config/config.js';
@@ -108,14 +108,18 @@ export function createServer(config: LaymanConfig): LaymanServer {
   // The real broadcast is wired up after wsClients is defined below.
   let driftMonitor: DriftMonitor;
 
-  // Wire PII filter — checks config on every event so toggling takes effect immediately
-  eventStore.setDataFilter((data) => {
-    if (getConfig().piiFilter) return filterPii(data);
+  // Wire PII filter — checks config on every event so toggling takes effect immediately.
+  // `glove.showIpAddresses` keeps IP addresses in gloved sessions (named by their glove label):
+  // the addresses a sandbox reached are what the network views exist to show.
+  const piiKeep = (sessionId: string) =>
+    getConfig().glove.showIpAddresses && eventStore.sessionNameOf(sessionId) !== undefined ? IP_CATEGORIES : undefined;
+  eventStore.setDataFilter((data, sessionId) => {
+    if (getConfig().piiFilter) return filterPii(data, piiKeep(sessionId));
     return data;
   });
   // Layman's-terms explanations bypass EventData entirely (attachLaymans), so they need
   // their own filter hook to get the same redaction as everything else leaving the store.
-  eventStore.setStringFilter((text) => (getConfig().piiFilter ? redactString(text) : text));
+  eventStore.setStringFilter((text, sessionId) => (getConfig().piiFilter ? redactString(text, piiKeep(sessionId)) : text));
 
   // In-memory queue of prompts to be relayed to OpenCode by the plugin.
   interface PendingPrompt { id: string; sessionId: string; prompt: string; queuedAt: number }
@@ -205,7 +209,7 @@ export function createServer(config: LaymanConfig): LaymanServer {
       return glove.enabled && glove.network.enabled ? expandHome(glove.sessionsDir) : null;
     },
     // Only `request` (record: full) is agent-derived text; see netobs/store.ts.
-    stringFilter: (text) => (getConfig().piiFilter ? redactString(text) : text),
+    stringFilter: (text) => (getConfig().piiFilter ? redactString(text, getConfig().glove.showIpAddresses ? IP_CATEGORIES : undefined) : text),
     controlEnabled: () => getConfig().glove.network.controlEnabled,
     getGeoPath: () => {
       const p = getConfig().glove.network.geoipDbPath.trim();
@@ -228,7 +232,19 @@ export function createServer(config: LaymanConfig): LaymanServer {
   const piWatcher = new PiSessionWatcher(eventStore, gate, getConfig, [
     new NativePiSource(),
     gloveSource,
-  ]);
+  ], (sessionId) => {
+    // Only a recorded session can be recorded twice; with recording off the replay is what shows it.
+    if (!getConfig().sessionRecording) return null;
+    const rows = db.prepare(`SELECT json_extract(data_json, '$.transcriptEventId') AS tid, json_extract(data_json, '$.transcriptAt') AS tat
+      FROM recorded_events WHERE session_id = ?`).all(sessionId) as Array<{ tid: string | null; tat: number | null }>;
+    const ids = new Set<string>();
+    let legacyThrough: number | null = null;
+    for (const r of rows) {
+      if (typeof r.tid === 'string') ids.add(r.tid);
+      else if (typeof r.tat === 'number') legacyThrough = Math.max(legacyThrough ?? r.tat, r.tat);
+    }
+    return { ids, legacyThrough };
+  });
 
   // Persistent storage
   const db = openDatabase();
@@ -732,7 +748,7 @@ export function createServer(config: LaymanConfig): LaymanServer {
           }
           result = { files, urls };
         }
-        return getConfig().piiFilter ? redactValue(result) : result;
+        return getConfig().piiFilter ? redactValue(result, piiKeep(sessionId)) : result;
       }
     );
 
@@ -742,7 +758,7 @@ export function createServer(config: LaymanConfig): LaymanServer {
       const applyPii = getConfig().piiFilter;
       for (const s of sessions) {
         const log = eventStore.getAccessLog(s.sessionId);
-        logs[s.sessionId] = applyPii ? redactValue(log) as typeof log : log;
+        logs[s.sessionId] = applyPii ? redactValue(log, piiKeep(s.sessionId)) as typeof log : log;
       }
       return logs;
     });

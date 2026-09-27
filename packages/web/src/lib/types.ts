@@ -127,6 +127,11 @@ export interface EventData {
   transcriptAt?: number;
   /** The transcript's own completion time for a tool call; see `transcriptAt`. */
   transcriptCompletedAt?: number;
+  /**
+   * The transcript parser's deterministic id for this event (pi's passive watcher). The live path
+   * gives every event a fresh id, so this is how a restart knows what is already recorded.
+   */
+  transcriptEventId?: string;
   permissionRequestType?: 'tool_use' | 'execution_mode';
   permissionSuggestions?: PermissionSuggestion[];
   fileAccess?: FileAccess[];
@@ -329,6 +334,8 @@ export interface LaymanConfig {
   glove: {
     enabled: boolean;
     sessionsDir: string;
+    /** Keep IP addresses unredacted in gloved sessions' events. */
+    showIpAddresses: boolean;
     /** Network views of gloved sessions. Mirrors the server's `glove.network` block. */
     network: { enabled: boolean; controlEnabled: boolean; geoipDbPath: string };
   };

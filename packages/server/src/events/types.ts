@@ -85,6 +85,11 @@ export interface EventData {
   transcriptAt?: number;
   /** The transcript's own completion time for a tool call; see `transcriptAt`. */
   transcriptCompletedAt?: number;
+  /**
+   * The transcript parser's deterministic id for this event (pi's passive watcher). The live path
+   * gives every event a fresh id, so this is how a restart knows what is already recorded.
+   */
+  transcriptEventId?: string;
   permissionRequestType?: 'tool_use' | 'execution_mode';
   permissionSuggestions?: PermissionSuggestion[];
   fileAccess?: FileAccess[];

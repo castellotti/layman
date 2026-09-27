@@ -171,11 +171,16 @@ tool call's start, a prompt's time) and, for a completed call, `data.transcriptC
 the transcript times when present; events recorded before they were kept join by host only, marked
 "≈ time". Vibe's logs carry no per-message times, so its watcher has nothing to keep.
 
-**Known issue, not yet fixed:** replay-from-start for a young session (touched in the last 5 minutes)
-runs whenever Layman starts. With session recording on, a Layman restart during an active pi session
-therefore records that session's events again under fresh ids, and its turns appear twice (three
-times after two restarts). Found while checking the Trace tab. The transcript times above would let a
-fix skip what is already recorded.
+**A restart does not record a young session twice.** Replay-from-start for a young session (touched
+in the last 5 minutes) runs whenever Layman starts, and every event goes through the live path, which
+gives it a fresh random id, so the database could not recognise what it already held: with recording
+on, each restart during an active pi session recorded its turns again (found while checking the Trace
+tab; a dev database reached 13 copies). The watcher now also keeps the parser's deterministic id as
+`data.transcriptEventId`, and before replaying asks the database (`RecordedCursor`, wired in
+`server.ts`) which of the session's events it holds, skipping those. Rows recorded before the id was
+kept are matched by `data.transcriptAt`: everything up to the latest recorded transcript time counts
+as recorded. With recording off nothing is skipped, since the replay is then the only way the session
+shows. Duplicates recorded before the fix stay in the database.
 
 The reliability patterns are reused verbatim from the Vibe watcher: scan-tick reconciliation
 (fs.watch is unreliable on Docker bind mounts, and pi's files sit below the watched root anyway), the

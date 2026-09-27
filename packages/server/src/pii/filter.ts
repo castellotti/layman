@@ -186,9 +186,30 @@ export function countPiiMatches(input: string): number {
  * Apply PII redaction to a single string.
  * Returns the redacted version.
  */
-export function redactString(input: string): string {
+const MAX_PARKED = 0xF8FF - 0xE100 + 1;
+
+export function redactString(input: string, keep?: ReadonlySet<string>): string {
   let result = input;
-  for (const { regex, replacement } of PII_PATTERNS) {
+  // A kept match must also survive the other patterns: without the IPv4 pattern first, the phone
+  // pattern takes `169.254.169` out of `169.254.169.254`. Park kept matches behind private-use
+  // placeholders no pattern can match, and put them back at the end.
+  const parked: string[] = [];
+  let full = false;
+  if (keep?.size) {
+    for (const { id, regex } of PII_PATTERNS) {
+      if (!keep.has(id)) continue;
+      regex.lastIndex = 0;
+      result = result.replace(regex, (match) => {
+        // Out of placeholders (thousands of IPs in one string): leave the rest to be redacted.
+        if (parked.length >= MAX_PARKED) { full = true; return match; }
+        parked.push(match);
+        return `\uE000${String.fromCharCode(0xE100 + parked.length - 1)}\uE000`;
+      });
+    }
+  }
+  for (const { id, regex, replacement } of PII_PATTERNS) {
+    // Once full, kept categories are redacted like the rest: the parked ones are already safe.
+    if (keep?.has(id) && !full) continue;
     // Reset lastIndex for global regexes
     regex.lastIndex = 0;
     result = result.replace(regex, (match) => {
@@ -196,23 +217,24 @@ export function redactString(input: string): string {
       return replacement ?? REDACTED;
     });
   }
-  return result;
+  // A sequence that was already in the input, not ours, is left as it was.
+  return parked.length ? result.replace(/\uE000([\uE100-\uF8FF])\uE000/g, (seq, c: string) => parked[c.charCodeAt(0) - 0xE100] ?? seq) : result;
 }
 
 /**
  * Recursively walk a value and redact any strings found.
  */
-export function redactValue(value: unknown): unknown {
+export function redactValue(value: unknown, keep?: ReadonlySet<string>): unknown {
   if (typeof value === 'string') {
-    return redactString(value);
+    return redactString(value, keep);
   }
   if (Array.isArray(value)) {
-    return value.map(redactValue);
+    return value.map((v) => redactValue(v, keep));
   }
   if (value !== null && typeof value === 'object') {
     const result: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
-      result[k] = redactValue(v);
+      result[k] = redactValue(v, keep);
     }
     return result;
   }
@@ -223,6 +245,12 @@ export function redactValue(value: unknown): unknown {
  * Filter PII from EventData.
  * Deep-clones and redacts all string fields.
  */
-export function filterPii(data: EventData): EventData {
-  return redactValue(data) as EventData;
+export function filterPii(data: EventData, keep?: ReadonlySet<string>): EventData {
+  return redactValue(data, keep) as EventData;
 }
+
+/**
+ * The categories `glove.showIpAddresses` leaves unredacted in gloved sessions, so the
+ * Trace tab can join a fetch of a literal IP (e.g. cloud metadata) to the flow glove refused.
+ */
+export const IP_CATEGORIES: ReadonlySet<string> = new Set(['ipv4', 'ipv6']);

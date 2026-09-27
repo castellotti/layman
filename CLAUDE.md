@@ -94,7 +94,9 @@ linked above.
 4c. **pi passive watcher** (`packages/server/src/pi/watcher.ts`): tails pi's format-version-3 JSONL
    transcripts for glove-sandboxed pi (which cannot reach Layman over the network) and native pi with
    no live extension. Events go through the live path (read-time `timestamp`), so it also keeps the
-   transcript's own times as `data.transcriptAt` / `data.transcriptCompletedAt`. Design and reliability notes (why it never emits a trailing `tool_call_pending`,
+   transcript's own times as `data.transcriptAt` / `data.transcriptCompletedAt`, and the parser's id as
+   `data.transcriptEventId`, which is how a restart's replay skips what is already recorded (live ids are
+   random, so without it every restart recorded a young session again). Design and reliability notes (why it never emits a trailing `tool_call_pending`,
    dedupe by committed id, tombstone resurrection) are in `docs/harnesses/pi.md`.
 
 4d. **Network observability (glove)** (`packages/server/src/netobs/`, plan
@@ -145,7 +147,7 @@ linked above.
 
 9. **Analysis engine** (`packages/server/src/analysis/engine.ts`) — wraps Anthropic or OpenAI-compatible providers, supports `analyze()` (structured JSON → `AnalysisResult`) and `ask()` (free-form Q&A). Both return `{ text/result, tokens: { input, output }, latencyMs, model }`. Max 3 concurrent requests with a queue.
 
-10. **PII filter** (`packages/server/src/pii/filter.ts`) — regex-based redaction covering 24 categories (emails, API keys, passwords, credit cards, JWTs, etc.). Applied at the EventStore level so all events are covered regardless of source.
+10. **PII filter** (`packages/server/src/pii/filter.ts`) — regex-based redaction covering 24 categories (emails, API keys, passwords, credit cards, JWTs, etc.). Applied at the EventStore level so all events are covered regardless of source. The store passes each event's session to its filters, which is how `glove.showIpAddresses` keeps IPv4/IPv6 in gloved sessions only; a kept category's matches are parked behind placeholders while the other patterns run, because the phone pattern otherwise eats part of an IPv4 address.
 
 11. **Client state** — Zustand store in `packages/web/src/stores/sessionStore.ts` holds all events, pending approvals, sessions list, active session filter, and investigation state. The `useEventStore()` hook at `packages/web/src/hooks/useEventStore.ts` applies session + UI filters on top.
 

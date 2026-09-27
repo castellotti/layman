@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { redactString, filterPii } from './filter.js';
+import { redactString, filterPii, IP_CATEGORIES } from './filter.js';
+import { EventStore } from '../events/store.js';
 
 describe('redactString', () => {
   describe('email addresses', () => {
@@ -230,5 +231,42 @@ describe('filterPii', () => {
     const result = filterPii(data);
     expect(result.toolName).toBeUndefined();
     expect(result.toolInput).toBeUndefined();
+  });
+});
+
+describe('keeping categories (glove.showIpAddresses)', () => {
+  const text = 'fetch http://169.254.169.254/latest/meta-data/ and [fe80::1:2:3:4:5:6] as alice@example.com';
+  it('leaves IP addresses when asked, and still redacts everything else', () => {
+    const out = redactString(text, IP_CATEGORIES);
+    expect(out).toContain('169.254.169.254');
+    expect(out).toContain('fe80::1:2:3:4:5:6');
+    expect(out).not.toContain('alice@example.com');
+  });
+  it('redacts, never corrupts, past the placeholder limit', () => {
+    const many = Array.from({ length: 7000 }, (_, i) => `10.${(i >> 8) & 255}.${i & 255}.1`).join(' ');
+    const out = redactString(many, IP_CATEGORIES).split(' ');
+    expect(out).toHaveLength(7000);
+    expect(out[0]).toBe('10.0.0.1');
+    expect(out.every((w, i) => w === `10.${(i >> 8) & 255}.${i & 255}.1` || w.includes('[REDACTED]'))).toBe(true);
+    expect(out[6999]).toContain('[REDACTED]');
+  });
+  it('redacts them by default', () => {
+    expect(redactString(text)).not.toContain('169.254.169.254');
+  });
+  it('carries through nested event data', () => {
+    const d = filterPii({ toolInput: { url: 'http://10.0.0.5:8080/x', token: 'alice@example.com' } }, IP_CATEGORIES);
+    expect(d.toolInput).toEqual({ url: 'http://10.0.0.5:8080/x', token: '[REDACTED]' });
+  });
+});
+
+describe('EventStore passes the session to its filters', () => {
+  it('lets a filter decide per session', () => {
+    const store = new EventStore();
+    store.trackSession('gloved', '/w', 'pi', undefined, 'pi-search');
+    store.trackSession('native', '/w', 'pi');
+    store.setDataFilter((data, sid) => filterPii(data, store.sessionNameOf(sid) ? IP_CATEGORIES : undefined));
+    const a = store.add('tool_call_completed', 'gloved', { toolInput: { url: 'http://169.254.169.254/' } });
+    const b = store.add('tool_call_completed', 'native', { toolInput: { url: 'http://169.254.169.254/' } });
+    expect([a.data.toolInput, b.data.toolInput]).toEqual([{ url: 'http://169.254.169.254/' }, { url: 'http://[REDACTED]/' }]);
   });
 });

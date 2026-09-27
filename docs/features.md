@@ -117,6 +117,8 @@ When [glove](extensions/glove.md) sandboxes a harness behind its network gate, t
 
 **Privacy.** Layman never makes a network request based on the sandbox's traffic: no DNS, no favicons, no online geolocation. Doing so would reveal to the host's network what glove hides inside the tunnel.
 
+**IP addresses.** The PII filter redacts IP addresses, so an agent's fetch of `http://169.254.169.254/` (cloud metadata) is recorded as `http://[REDACTED]/` and Trace cannot join it to the refusal it caused. **Settings → Glove → Show IP addresses in sandboxed sessions** leaves IP addresses unredacted in glove sessions only, from then on; everything else the filter redacts stays redacted.
+
 **Totals survive restarts** while session recording is on, and are never sent to other hosts by multi-host sync. A glove session whose files are gone stays listed, marked "History only".
 
 Setup, design and the rules behind each view: [extensions/glove.md → Network](extensions/glove.md#network).

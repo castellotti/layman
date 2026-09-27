@@ -90,6 +90,12 @@ export const GloveConfigSchema = z.object({
   /** Host dir glove persists environments under; homes live at `<sessionsDir>/<env-id>/sessions/<name>/home/`. */
   sessionsDir: z.string().default('~/.glove/envs'),
   /**
+   * Leave IP addresses unredacted by the PII filter in gloved sessions' events, so the network
+   * views can join and show them (a fetch of `http://169.254.169.254/` stays joinable). Off:
+   * redacted like every other session. Applies to events recorded from then on.
+   */
+  showIpAddresses: z.boolean().default(false),
+  /**
    * Network views of gloved sessions (docs/extensions/glove.md → Network).
    * Only meaningful when `enabled` is true.
    */

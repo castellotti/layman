@@ -6,7 +6,7 @@ import { EventStore } from '../events/store.js';
 import { SessionGate } from '../hooks/gate.js';
 import type { LaymanConfig } from '../config/schema.js';
 import type { MonitorSource, WatchRoot } from '../monitor/sources.js';
-import { PiSessionWatcher } from './watcher.js';
+import { PiSessionWatcher, type RecordedCursor } from './watcher.js';
 
 const SESSION_ID = 'aaaaaaaa-0000-4000-8000-000000000000';
 const ENCODED_CWD = '--Users-test-proj--';
@@ -107,6 +107,48 @@ describe('PiSessionWatcher', () => {
     expect(prompt.data.transcriptAt).toBe(Date.parse('2026-08-21T10:00:01.000Z'));
     expect(tool.data.transcriptAt).toBe(Date.parse('2026-08-21T10:00:02.000Z'));
     expect(tool.data.transcriptCompletedAt).toBe(Date.parse('2026-08-21T10:00:03.000Z'));
+  });
+
+  describe('a restart while the session is still young', () => {
+    /** What the database would hold after the first run, as the server's query reads it. */
+    const cursorFrom = (events: ReturnType<EventStore['getAll']>, legacy = false): RecordedCursor => {
+      const ids = new Set<string>();
+      let legacyThrough: number | null = null;
+      for (const e of events) {
+        if (!legacy && typeof e.data.transcriptEventId === 'string') ids.add(e.data.transcriptEventId);
+        else if (typeof e.data.transcriptAt === 'number') legacyThrough = Math.max(legacyThrough ?? 0, e.data.transcriptAt);
+      }
+      return { ids, legacyThrough };
+    };
+    const restart = (recorded: (first: ReturnType<EventStore['getAll']>) => RecordedCursor | null) => {
+      watcher.start();
+      const first = store.getAll();
+      watcher.stop();
+      appendFileSync(transcript, APPENDED_LINE + '\n');
+      vi.setSystemTime(new Date('2026-08-21T10:00:07.000Z'));
+      const again = new EventStore();
+      const w = new PiSessionWatcher(again, new SessionGate(), makeConfig(), [
+        new FixedSource({ path: sessionsRoot, agentType: 'pi', label: 'pi-local' }),
+      ], () => recorded(first));
+      w.start();
+      w.stop();
+      return { first, again: again.getAll().map((e) => e.type) };
+    };
+
+    it('records only what arrived since, not the whole session again', () => {
+      const r = restart((first) => cursorFrom(first));
+      expect(r.first.every((e) => e.type === 'session_start' || typeof e.data.transcriptEventId === 'string')).toBe(true);
+      expect(r.again).toEqual(['session_start', 'agent_response']);
+    });
+
+    it('also skips rows recorded before the id was kept, by their transcript time', () => {
+      const r = restart((first) => cursorFrom(first, true));
+      expect(r.again).toEqual(['session_start', 'agent_response']);
+    });
+
+    it('replays everything when nothing is recorded (recording off)', () => {
+      expect(restart(() => null).again).toEqual(['session_start', 'user_prompt', 'tool_call_completed', 'agent_response']);
+    });
   });
 
   it('activates a glove (labelled) session even when autoActivateClients is empty', () => {

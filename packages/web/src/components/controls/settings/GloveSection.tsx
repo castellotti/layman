@@ -19,7 +19,7 @@ export function GloveSection({
   onSend: (msg: ClientMessage) => void;
 }) {
   const updateConfig = (updates: Partial<LaymanConfig>) => onSend({ type: 'config:update', config: updates });
-  const glove = config.glove ?? { enabled: false, sessionsDir: DEFAULT_SESSIONS_DIR, network: DEFAULT_NETWORK };
+  const glove = config.glove ?? { enabled: false, sessionsDir: DEFAULT_SESSIONS_DIR, showIpAddresses: false, network: DEFAULT_NETWORK };
   const network = glove.network ?? DEFAULT_NETWORK;
   // The server deep-merges glove and glove.network, so sending only the changed field is safe.
   const setNetwork = (updates: Partial<typeof network>) => updateConfig({ glove: { ...glove, network: { ...network, ...updates } } });
@@ -70,6 +70,16 @@ export function GloveSection({
       />
       )}
       {glove.enabled && network.enabled && <GeoDatabaseRow path={network.geoipDbPath} onChange={(geoipDbPath) => setNetwork({ geoipDbPath })} />}
+      {glove.enabled && (
+      <ToggleRow
+        label="Show IP addresses in sandboxed sessions"
+        desc={config.piiFilter
+          ? 'The PII filter redacts IP addresses everywhere. On, it leaves them in glove sessions only, so a fetch of an IP (such as cloud metadata at 169.254.169.254) shows in Logs and joins its connection in Trace. Other sessions stay redacted. Applies to events recorded from now on; recorded ones stay redacted.'
+          : 'The PII filter is off, so IP addresses already show everywhere. This setting takes effect when the filter is on.'}
+        checked={glove.showIpAddresses ?? false}
+        onChange={() => updateConfig({ glove: { ...glove, showIpAddresses: !glove.showIpAddresses } })}
+      />
+      )}
     </>
   );
 }
