@@ -250,6 +250,26 @@ describe('NetObs sockets and coalescing', () => {
     expect(s.of('net:delta')[0].delta.flows.map((f) => f.id)).toEqual(['f1']);
   });
 
+  it('a directory missing from one pass is not read again from the start when it returns', () => {
+    // Exit records and the records counter are what a re-read counts twice (flows still in memory dedupe by id).
+    appendFileSync(join(net, 'flows.ndjson'), JSON.stringify(rec('f1', 'close', 0)) + '\n');
+    writeFileSync(join(net, 'exit.ndjson'), JSON.stringify({
+      v: 1, type: 'exit', t: new Date(T0).toISOString(), env: 'e', session: 'e', kind: 'vpn', ip: null,
+      country: null, city: null, lat: null, lon: null, source: 'via-proxy:x', healthy: false,
+    }) + '\n');
+    let listed = true;
+    const flaky = new NetObs({ getSessionsDir: () => (listed ? join(home, 'envs') : join(home, 'nothing')) });
+    flaky.poll(T0);
+    const before = flaky.store.snapshot('e')!;
+    expect(before.exits).toHaveLength(1);
+    listed = false;
+    flaky.poll(T0);
+    listed = true;
+    flaky.poll(T0);
+    expect(flaky.store.snapshot('e')).toEqual(before);
+    flaky.stop();
+  });
+
   it('forgets every session when glove is switched off', () => {
     let on = true;
     const toggled = new NetObs({ getSessionsDir: () => (on ? join(home, 'envs') : null) });

@@ -32,9 +32,13 @@ const json = <T>(s: string | null): T | null => {
   }
 };
 
-/** `@service` keys (no host) are stored with the key as the host and port 0; `host:port` otherwise. */
+/**
+ * `@service` keys (no host) are stored with the key as the host and port 0; `host:port` otherwise,
+ * lower-cased like the live key (`destKeyFor` in store.ts), or a host with capitals reloads as a
+ * second, history-only destination beside the live one and its traffic is counted twice.
+ */
 function destKey(host: string, port: number): string {
-  return host.startsWith('@') ? host : `${host}:${port}`;
+  return host.startsWith('@') ? host : `${host.toLowerCase()}:${port}`;
 }
 
 export class SqliteNetHistory implements NetHistory {

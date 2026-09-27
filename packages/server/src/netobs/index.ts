@@ -189,6 +189,9 @@ export class NetObs {
       // forget everything, so the header goes back to exactly what it was.
       this.persist();
       this.historyLoaded = false;
+      // Rules state too: the sessions come back with an empty rules view, and a control that
+      // still held the old signature would see nothing new and never send it again.
+      for (const token of this.readers.keys()) this.control.forget(token);
       this.readers.clear();
       for (const token of this.store.tokens()) this.store.remove(token);
       this.maybeBroadcastSessions();
@@ -223,11 +226,12 @@ export class NetObs {
       }
     }
     // A session whose directory vanished stops being read but stays listed:
-    // what was read from it is still true.
-    for (const token of [...this.readers.keys()]) {
-      if (seen.has(token)) continue;
-      this.readers.delete(token);
-      this.control.forget(token);
+    // what was read from it is still true. Its reader is kept, not dropped: one
+    // failed directory read (a Docker Desktop bind mount can return an empty
+    // listing) would otherwise have a new reader re-read every file from the
+    // start into the same session, counting its flows and exits twice.
+    for (const token of this.readers.keys()) {
+      if (!seen.has(token)) this.control.forget(token);
     }
     this.store.tick(now);
     this.maybeBroadcastSessions();

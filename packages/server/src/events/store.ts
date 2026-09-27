@@ -23,6 +23,8 @@ export class EventStore extends EventEmitter {
   private eventById = new Map<string, TimelineEvent>();
   private maxEvents = 10000;
   private sessions: Map<string, { cwd: string; lastSeen: number; agentType: string; opencodeUrl?: string; sessionName?: string }> = new Map();
+  /** Sessions a passive watcher found under a glove sandbox root (see `markGloved`). */
+  private gloved = new Set<string>();
   private accessLogs: Map<string, { files: FileAccess[]; urls: UrlAccess[] }> = new Map();
   private dataFilter?: (data: EventData, sessionId: string) => EventData;
   private stringFilter?: (text: string, sessionId: string) => string;
@@ -163,6 +165,18 @@ export class EventStore extends EventEmitter {
   /** The session's name: the glove label for a gloved session, else usually undefined. */
   sessionNameOf(sessionId: string): string | undefined {
     return this.sessions.get(sessionId)?.sessionName;
+  }
+
+  /**
+   * Marks a session as running in a glove sandbox. Only the passive watchers know that (from a
+   * labelled root); a session name alone does not, since Claude Code sessions can be renamed.
+   */
+  markGloved(sessionId: string): void {
+    this.gloved.add(sessionId);
+  }
+
+  isGloved(sessionId: string): boolean {
+    return this.gloved.has(sessionId);
   }
 
   getSessions(): SessionInfo[] {

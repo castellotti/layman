@@ -182,6 +182,12 @@ kept are matched by `data.transcriptAt`: everything up to the latest recorded tr
 as recorded. With recording off nothing is skipped, since the replay is then the only way the session
 shows. Duplicates recorded before the fix stay in the database.
 
+`transcriptEventId` is exempt from the PII filter (`filterPii`). It is `<uuid>_<entryId>`, and the
+phone-number pattern matches a run of its digits (an all-digit entry id, or digits between the UUID's
+dashes), so a filtered id never matched on the next restart and those events were recorded again.
+Rows stored before the exemption hold the redacted form; `RecordedCursor.storedAs` redacts the fresh
+id the same way before looking again, so they match too.
+
 The reliability patterns are reused verbatim from the Vibe watcher: scan-tick reconciliation
 (fs.watch is unreliable on Docker bind mounts, and pi's files sit below the watched root anyway), the
 recent/idle windows, replay-from-start for young sessions, and **resurrection of a tombstoned

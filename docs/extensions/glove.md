@@ -222,6 +222,15 @@ session; over budget the newest files win (they hold the open flows) and the sna
 parse is taken to be torn: the previous value is kept and the file re-read next tick. `rules.json` is
 always replaced atomically, so there an unparseable file is its real content and is shown as such.
 
+A session whose `net/` drops out of a discovery pass keeps its reader; it is only no longer polled.
+One failed directory read (a Docker Desktop bind mount can return an empty listing) used to drop the
+reader, and when the directory came back a new one re-read every file from the start into the same
+session: exit records were added again, the records counter inflated, and closed flows already evicted
+from memory counted a second time, all of which then reached the saved totals. Switching glove or its
+network views off is different: the store forgets every session, so readers and the rules control's
+per-session state are dropped with it. The rules state must go too, or on switching back the control
+sees an unchanged `rules.json` and never sends the rules again, leaving every Rules panel blank.
+
 ### The store, and why it is not `EventStore`
 
 `update` records arrive about once a second for every open flow. `EventStore.add()` would PII-scan each
@@ -678,8 +687,10 @@ links them.
 
   **Settings → Glove → Show IP addresses in sandboxed sessions** (`glove.showIpAddresses`, off by
   default) is the user's way to change that. With it on, the filter leaves IPv4 and IPv6 addresses in
-  gloved sessions' events (sessions named with a glove label), and everything else it redacts as
-  before; other sessions are untouched. The metadata fetch then keeps its IP, joins the guard refusal,
+  gloved sessions' events, and everything else it redacts as before; other sessions are untouched. A
+  session is gloved when a passive watcher found it under a glove sandbox root (`EventStore.markGloved`),
+  not when it merely has a name: a renamed Claude Code session has one too, and an earlier "has a
+  session name" check kept that session's IPs. The metadata fetch then keeps its IP, joins the guard refusal,
   and shows in Logs. It applies from the moment it is turned on: events already recorded stay redacted,
   and "purge PII" still redacts IPs everywhere. The filter's keep-set had one trap: with the IPv4 pattern
   skipped, the phone-number pattern matched `169.254.169` inside the address. Kept matches are therefore

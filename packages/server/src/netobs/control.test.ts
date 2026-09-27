@@ -62,6 +62,19 @@ beforeEach(() => {
 afterEach(() => rmSync(home, { recursive: true, force: true }));
 
 describe('writing rules.json', () => {
+  it('shows the rules again after glove is switched off and back on', () => {
+    let on = true;
+    const toggled = new NetObs({ getSessionsDir: () => (on ? join(home, 'envs') : null), controlEnabled: () => controlOn });
+    toggled.poll(T0);
+    const before = toggled.store.rules(TOKEN)!;
+    expect(before.control.state).not.toBe('no-dir');
+    on = false;
+    toggled.poll(T0);
+    on = true;
+    toggled.poll(T0);
+    expect(toggled.store.rules(TOKEN)).toEqual(before);
+  });
+
   it('writes 0644 whatever the umask, changing no ownership', () => {
     const dirBefore = statSync(control);
     // A worker cannot change its umask: write from a child process running under `umask 077`,

@@ -42,6 +42,13 @@ describe('SqliteNetHistory', () => {
     expect([back.bytesDown, back.destinations.map((x) => x.key)]).toEqual([6000, ['arxiv.org:443']]);
   });
 
+  it('reloads a host with capitals under the same lower-cased key the live store uses', () => {
+    const h = new SqliteNetHistory(db(), () => true);
+    const dest = { ...session().destinations[0], key: 'api.example.com:443', host: 'API.Example.com', groupKey: 'example.com' };
+    h.save([session({ destinations: [dest] })]);
+    expect(h.load()[0].destinations[0].key).toBe('api.example.com:443');
+  });
+
   it('says whether it may write from the recording setting', () => {
     let on = false;
     const h = new SqliteNetHistory(db(), () => on);

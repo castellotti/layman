@@ -109,10 +109,11 @@ export function createServer(config: LaymanConfig): LaymanServer {
   let driftMonitor: DriftMonitor;
 
   // Wire PII filter — checks config on every event so toggling takes effect immediately.
-  // `glove.showIpAddresses` keeps IP addresses in gloved sessions (named by their glove label):
-  // the addresses a sandbox reached are what the network views exist to show.
+  // `glove.showIpAddresses` keeps IP addresses in gloved sessions only: the addresses a sandbox
+  // reached are what the network views exist to show. Not "has a session name" — a renamed
+  // Claude Code session has one too, and is no sandbox.
   const piiKeep = (sessionId: string) =>
-    getConfig().glove.showIpAddresses && eventStore.sessionNameOf(sessionId) !== undefined ? IP_CATEGORIES : undefined;
+    getConfig().glove.showIpAddresses && eventStore.isGloved(sessionId) ? IP_CATEGORIES : undefined;
   eventStore.setDataFilter((data, sessionId) => {
     if (getConfig().piiFilter) return filterPii(data, piiKeep(sessionId));
     return data;
@@ -243,7 +244,7 @@ export function createServer(config: LaymanConfig): LaymanServer {
       if (typeof r.tid === 'string') ids.add(r.tid);
       else if (typeof r.tat === 'number') legacyThrough = Math.max(legacyThrough ?? r.tat, r.tat);
     }
-    return { ids, legacyThrough };
+    return { ids, legacyThrough, storedAs: (id) => redactString(id) };
   });
 
   // Persistent storage

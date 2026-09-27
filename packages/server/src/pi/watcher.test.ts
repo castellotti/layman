@@ -146,6 +146,15 @@ describe('PiSessionWatcher', () => {
       expect(r.again).toEqual(['session_start', 'agent_response']);
     });
 
+    it('matches ids the PII filter redacted before they were exempt from it', () => {
+      const mangle = (id: string) => id.replace(/\d{3,}/g, '[REDACTED]');
+      const r = restart((first) => {
+        const c = cursorFrom(first);
+        return { ...c, ids: new Set([...c.ids].map(mangle)), storedAs: mangle };
+      });
+      expect(r.again).toEqual(['session_start', 'agent_response']);
+    });
+
     it('replays everything when nothing is recorded (recording off)', () => {
       expect(restart(() => null).again).toEqual(['session_start', 'user_prompt', 'tool_call_completed', 'agent_response']);
     });
@@ -156,6 +165,8 @@ describe('PiSessionWatcher', () => {
     // it, so it has no other path onto the Dashboard and must always activate.
     watcher.start();
     expect(gate.isActive(SESSION_ID)).toBe(true);
+    // …and is marked gloved, which is what glove.showIpAddresses keys on (not the session name).
+    expect(store.isGloved(SESSION_ID)).toBe(true);
   });
 
   it('does not activate a native (unlabelled) session unless its agent type is opted in', () => {

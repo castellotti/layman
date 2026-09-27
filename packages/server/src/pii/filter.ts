@@ -246,7 +246,11 @@ export function redactValue(value: unknown, keep?: ReadonlySet<string>): unknown
  * Deep-clones and redacts all string fields.
  */
 export function filterPii(data: EventData, keep?: ReadonlySet<string>): EventData {
-  return redactValue(data, keep) as EventData;
+  const out = redactValue(data, keep) as EventData;
+  // An id the pi parser mints (`<uuid>_<entryId>`), not agent text. A restart matches it against
+  // the transcript (pi/watcher.ts), and the phone pattern can eat a run of its digits.
+  if (typeof data.transcriptEventId === 'string') out.transcriptEventId = data.transcriptEventId;
+  return out;
 }
 
 /**

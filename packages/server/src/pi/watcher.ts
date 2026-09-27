@@ -221,6 +221,7 @@ export class PiSessionWatcher {
       this.gate.activate(sessionId);
     }
     this.eventStore.trackSession(sessionId, cwd, root.agentType, undefined, root.label);
+    if (root.label) this.eventStore.markGloved(sessionId);
     this.eventStore.add('session_start', sessionId, { source: 'startup' }, undefined, root.agentType);
     const tag = root.label ? ` [glove: ${root.label}]` : '';
     console.log(`[pi] Tracking session ${sessionId.slice(0, 8)} (${basename(filePath)})${tag}`);
@@ -454,10 +455,16 @@ export interface RecordedCursor {
    * recorded before the id was kept. Everything up to it counts as recorded.
    */
   legacyThrough: number | null;
+  /**
+   * How an id was stored before it was exempt from the PII filter, which redacted digit runs in
+   * some. Rows recorded then still hold that form; matching it keeps them from recording again.
+   */
+  storedAs?: (id: string) => string;
 }
 
 export function isRecorded(ev: Pick<TimelineEvent, 'id' | 'timestamp'>, done: RecordedCursor): boolean {
   if (done.ids.has(ev.id)) return true;
+  if (done.storedAs && done.ids.has(done.storedAs(ev.id))) return true;
   return done.legacyThrough !== null && ev.timestamp > 0 && ev.timestamp <= done.legacyThrough;
 }
 
