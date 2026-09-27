@@ -7,9 +7,11 @@ import type { Database } from './database.js';
  * under fresh random ids, so the copies differ only in `id` and the read-time `timestamp`.
  *
  * A copy is the same session, type and data (which carries the transcript's own `transcriptAt`),
- * ignoring what the watcher adds when it *reads* the event (`READ_TIME`) and `transcriptEventId`,
- * which only newer rows have. A genuine re-send of the same prompt has a different `transcriptAt`
- * and is never a copy. Rows without `transcriptAt` (pi before phase 7)
+ * ignoring what the watcher adds when it *reads* the event (`READ_TIME`). `transcriptEventId` is
+ * compared on its own: only newer rows have it, so a row without one matches on the rest, but two
+ * rows that both have one and differ are two transcript entries, never copies (two identical parallel
+ * tool calls finishing in the same millisecond agree on everything else). A genuine re-send of the
+ * same prompt has a different `transcriptAt` and is never a copy. Rows without `transcriptAt` (pi before phase 7)
  * cannot be told from a re-send and are left alone.
  *
  * The earliest copy is kept. So is any copy a highlight or a Q&A answer points at.
@@ -36,9 +38,9 @@ export interface DedupePlan {
  * (the transcript's own is `transcriptCompletedAt`) and the access records derived from the call
  * with that time and the event's random id.
  */
-const READ_TIME = ['transcriptEventId', 'completedAt', 'fileAccess', 'urlAccess'];
+const READ_TIME = ['completedAt', 'fileAccess', 'urlAccess'];
 
-function copyKey(r: DedupeRow): string | null {
+function copyKey(r: DedupeRow): { key: string; entryId: string | undefined } | null {
   let data: Record<string, unknown>;
   try {
     data = JSON.parse(r.data_json) as Record<string, unknown>;
@@ -47,20 +49,26 @@ function copyKey(r: DedupeRow): string | null {
   }
   if (typeof data.transcriptAt !== 'number') return null;
   for (const k of READ_TIME) delete data[k];
-  return `${r.session_id}\u0000${r.type}\u0000${JSON.stringify(data)}`;
+  const entryId = typeof data.transcriptEventId === 'string' ? data.transcriptEventId : undefined;
+  delete data.transcriptEventId;
+  return { key: `${r.session_id}\u0000${r.type}\u0000${JSON.stringify(data)}`, entryId };
 }
 
 /** Which rows are later copies of an earlier one. Pure; `referenced` ids are never chosen. */
 export function planReplayDedupe(rows: DedupeRow[], referenced: ReadonlySet<string> = new Set()): DedupePlan {
   const sorted = [...rows].sort((a, b) => a.timestamp - b.timestamp || a.id.localeCompare(b.id));
-  const seen = new Set<string>();
+  // Per key, the `transcriptEventId`s of the rows kept so far (`undefined` for a row without one).
+  const kept = new Map<string, Array<string | undefined>>();
   const ids: string[] = [];
   const sessions = new Set<string>();
   for (const r of sorted) {
-    const key = copyKey(r);
-    if (key === null) continue;
-    if (!seen.has(key)) {
-      seen.add(key);
+    const k = copyKey(r);
+    if (k === null) continue;
+    const entries = kept.get(k.key);
+    const isCopy = entries?.some((e) => e === undefined || k.entryId === undefined || e === k.entryId) ?? false;
+    if (!isCopy) {
+      if (entries) entries.push(k.entryId);
+      else kept.set(k.key, [k.entryId]);
       continue;
     }
     if (referenced.has(r.id)) continue;

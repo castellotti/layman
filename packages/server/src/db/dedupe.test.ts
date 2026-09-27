@@ -23,6 +23,18 @@ describe('planReplayDedupe', () => {
     expect(plan.ids).toEqual(['b']);
   });
 
+  it('keeps identical parallel calls that are two transcript entries, but drops their replays', () => {
+    const call = { toolName: 'read', toolInput: { path: 'a.ts' }, toolOutput: 'x', transcriptAt: 1000, transcriptCompletedAt: 1500 };
+    const plan = planReplayDedupe([
+      row('a', 1, { ...call, transcriptEventId: 'm_tc_0', completedAt: 10 }, { type: 'tool_call_completed' }),
+      row('b', 2, { ...call, transcriptEventId: 'm_tc_1', completedAt: 11 }, { type: 'tool_call_completed' }),
+      // A later replay of each, recorded with the same entry ids.
+      row('c', 3, { ...call, transcriptEventId: 'm_tc_0', completedAt: 20 }, { type: 'tool_call_completed' }),
+      row('d', 4, { ...call, transcriptEventId: 'm_tc_1', completedAt: 21 }, { type: 'tool_call_completed' }),
+    ]);
+    expect(plan.ids).toEqual(['c', 'd']);
+  });
+
   it('never treats a genuine re-send (another transcript time) or another session or type as a copy', () => {
     const plan = planReplayDedupe([
       row('a', 1, { prompt: 'again', transcriptAt: 1000 }),

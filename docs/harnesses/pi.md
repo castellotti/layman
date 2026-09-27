@@ -184,7 +184,9 @@ shows. Duplicates recorded before the fix stay in the database until removed wit
 `layman dedupe-pi-replays` (dry run; `--apply` deletes; `db/dedupe.ts`). It treats as copies only
 events with the same session, type and data, *including* the transcript's own `transcriptAt`, so a
 genuine re-send of the same prompt (another transcript time) is never touched; rows with no
-`transcriptAt` (pi before the Trace work) cannot be told from a re-send and are left alone. The
+`transcriptAt` (pi before the Trace work) cannot be told from a re-send and are left alone. Two
+rows that both carry a `transcriptEventId` and differ are two transcript entries and never copies —
+identical parallel tool calls finishing in the same millisecond agree on every other field. The
 earliest copy is kept, and so is any copy a highlight or answer points at. Stop Layman first (or run
 it inside the container) so one process writes the database; the deletes are not journalled per
 event, so a sync central keeps its copies.
