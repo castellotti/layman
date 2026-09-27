@@ -1,5 +1,5 @@
 /**
- * The gate-lifecycle rule (handoff §2) exists in two places: glove's reference
+ * The gate-lifecycle rule (glove's record contract) exists in two places: glove's reference
  * `glove.netview.ended_runs` and its port in `NetStore`. This runs both on the
  * same records — every scenario fixture plus a few hundred seeded random
  * sequences — and requires the same ended runs. Skipped when glove (or `uv`)

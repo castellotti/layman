@@ -1,6 +1,6 @@
 /**
  * Small building blocks shared by the four network tabs, copied from the
- * mockups in docs/planning/network-mockups/ (sizes, colours and structure).
+ * design (sizes, colours and structure).
  */
 import React from 'react';
 import type { ChipIcon, ChipTone } from '../../lib/net-format.js';
@@ -64,7 +64,7 @@ export function NetIcon({ name, size = 12, color = 'currentColor', strokeWidth =
   );
 }
 
-/** Colour, fill and border per chip tone, as the mockups' gate strip draws them. */
+/** Colour, fill and border per chip tone, as the design's gate strip draws them. */
 export const TONE: Record<ChipTone, { color: string; bg: string; border: string }> = {
   ok: { color: 'var(--ok)', bg: 'rgba(76,195,138,0.12)', border: 'rgba(76,195,138,0.35)' },
   tunnel: { color: 'var(--net-tunnel)', bg: 'rgba(53,201,180,0.12)', border: 'rgba(53,201,180,0.35)' },

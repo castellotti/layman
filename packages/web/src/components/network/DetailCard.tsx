@@ -1,9 +1,9 @@
 /**
- * The selected destination (plan §1.3): the Map's floating detail card and,
+ * The selected destination: the Map's floating detail card and,
  * docked, the Network tab's Details panel. Sections are toggled from a small
  * menu and remembered: Totals, Agent asked for and Connection on by default,
- * Flows off; Policy is always shown. Connection is mockup A's
- * (workbench-connection-section-source.dc.html) "CONNECTION" section.
+ * Flows off; Policy is always shown. Connection is the design's
+ * "CONNECTION" section.
  */
 import React, { useEffect, useMemo, useState } from 'react';
 import { useExpandedSections } from '../../hooks/useExpandedSections.js';
@@ -170,7 +170,7 @@ function AskedFor({ data, host, port, flows }: { data: NetSessionData; host: str
   };
   // A harness records a call only once it has finished (pi's watcher never shows one in flight),
   // so a flow in the turn still running is not claimed yet: meanwhile, show the latest flow before it that was.
-  const running = !!latest.view?.turn && latest.view.turns[latest.view.turns.length - 1]?.promptEventId === latest.view.turn.promptEventId;
+  const running = !!latest.view?.turn && latest.view.nav.next === null;
   const earlier = running && !claim(latest.view) ? flows.find((x) => latest.view!.window && x.tOpen < latest.view!.window.from) : undefined;
   const before = useNetTrace(earlier ? data.token : null, earlier ? { at: earlier.tOpen } : null, earlier ? earlier.id : '', 0);
   const found = claim(latest.view) ?? claim(before.view);

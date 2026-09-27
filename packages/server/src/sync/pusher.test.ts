@@ -87,6 +87,36 @@ describe('SyncPusher', () => {
     expect(pusher.status().backlog).toBe(0);
   });
 
+  // `glove.showIpAddresses` is host-local: a gloved session's kept IPs never leave this host,
+  // on backfill or incrementally. Central (FakeCentral applies without re-redaction) sees none.
+  it('redacts kept IP addresses from pushed events when the PII filter is on', async () => {
+    const ipEvent = (id: string) => rdb.prepare(
+      "INSERT INTO recorded_events (id, session_id, type, timestamp, agent_type, data_json) VALUES (?, 's0', 'user_prompt', 1, 'pi', '{\"prompt\":\"fetch http://169.254.169.254/\"}')",
+    ).run(id);
+    seed(rdb, 1, 0);
+    ipEvent('ip-backfill');
+    cfg = LaymanConfigSchema.parse({ ...cfg, piiFilter: true });
+    const pusher = new SyncPusher(rdb, new FakeCentral(cdb), () => cfg);
+    await pusher.drain();
+    ipEvent('ip-incremental');
+    await pusher.drain();
+
+    const rows = cdb.prepare('SELECT data_json FROM recorded_events ORDER BY id').all() as Array<{ data_json: string }>;
+    expect(rows).toHaveLength(2);
+    for (const r of rows) expect(r.data_json).not.toContain('169.254.169.254');
+    // The remote keeps its own copy as recorded.
+    expect((rdb.prepare("SELECT data_json FROM recorded_events WHERE id = 'ip-backfill'").get() as { data_json: string }).data_json)
+      .toContain('169.254.169.254');
+  });
+
+  it('pushes events as recorded when the PII filter is off', async () => {
+    seed(rdb, 1, 0);
+    rdb.prepare("INSERT INTO recorded_events (id, session_id, type, timestamp, agent_type, data_json) VALUES ('ip', 's0', 'user_prompt', 1, 'pi', '{\"prompt\":\"fetch http://169.254.169.254/\"}')").run();
+    cfg = LaymanConfigSchema.parse({ ...cfg, piiFilter: false });
+    await new SyncPusher(rdb, new FakeCentral(cdb), () => cfg).drain();
+    expect((cdb.prepare('SELECT data_json FROM recorded_events').get() as { data_json: string }).data_json).toContain('169.254.169.254');
+  });
+
   it('replays new journal entries incrementally after backfill', async () => {
     seed(rdb, 1, 1);
     const central = new FakeCentral(cdb);

@@ -211,6 +211,20 @@ describe('sync routes — pull (snapshot/changes)', () => {
     expect(kinds).not.toContain('s-mine');
   });
 
+  // A host's kept IPs (glove.showIpAddresses) never cross hosts, including to a mirror.
+  it('snapshot and changes redact kept IP addresses from event rows', async () => {
+    const token = await enrol();
+    seed(CENTRAL, 's-central');
+    db.prepare("INSERT INTO recorded_events (id, session_id, type, timestamp, agent_type, data_json) VALUES ('e-ip', 's-central', 'user_prompt', 1, 'pi', '{\"prompt\":\"fetch http://169.254.169.254/\"}')").run();
+
+    const snap = await app.inject({ method: 'GET', url: '/api/sync/snapshot?kind=event&cursor=&limit=500', headers: bearer(token) });
+    const changes = await app.inject({ method: 'GET', url: '/api/sync/changes?since=0&limit=1000', headers: bearer(token) });
+    for (const body of [snap.json(), changes.json()]) {
+      const row = body.entries.find((e: { id: string }) => e.id === 'e-ip')?.row as { data_json: string };
+      expect(row.data_json).not.toContain('169.254.169.254');
+    }
+  });
+
   it('changes signals resync when the cursor is behind retained history', async () => {
     const token = await enrol();
     seed(CENTRAL, 's1');

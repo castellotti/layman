@@ -1,7 +1,6 @@
 /**
  * Cells shared by the network views' rows: the allow/block toggle, the
- * sparkline, and a state or route text with its icon. Drawn from
- * network-ledger.dc.html and state-legend.dc.html.
+ * sparkline, and a state or route text with its icon.
  */
 import React from 'react';
 import type { ToggleKind } from '../../lib/net-format.js';
@@ -22,7 +21,7 @@ const LOCKED_TITLE = 'Refused by glove’s built-in guard before any rule runs. 
 const PENDING_TITLE = 'Waiting for the gate: rules.json was written, and the toggle changes once status.json confirms it.';
 
 /**
- * The allow/block toggle (plan §6.3). A real button with `aria-pressed` and a
+ * The allow/block toggle. A real button with `aria-pressed` and a
  * verb-and-target label, so it reads right to a screen reader even while it is
  * read-only. `locked` is always disabled: glove's guard is not negotiable.
  */

@@ -44,7 +44,7 @@ export interface GateChip {
 const ROUTE_LABEL: Record<string, string> = { vpn: 'VPN', tor: 'Tor' };
 
 /**
- * The gate strip, left to right (plan §6.1, ordered as the mockups draw it):
+ * The gate strip, left to right :
  * gate state; the untunnelled alarm when there is one, straight after it so it
  * cannot be missed; route and exit; resolver; rules; record mode; and "view
  * incomplete" when the data itself has holes.
@@ -158,7 +158,7 @@ export function gateChips(data: NetSessionData): GateChip[] {
   return chips;
 }
 
-// ─── The state legend (plan §6.3, state-legend.dc.html) ─────────────────────
+// ─── The state legend ─────────────────────
 
 /**
  * How a row's allow/block toggle is drawn: `allow` filled teal; `block` filled
@@ -194,7 +194,7 @@ export interface StateInfo {
 }
 
 /**
- * Every state the network views tell apart: handoff §6.1 in its order, plus
+ * Every state the network views tell apart: glove's state table in its order, plus
  * cleartext HTTP. Every view reads its label, colour, icon, badge and toggle
  * from here, so the legend and the views cannot disagree.
  */

@@ -1,5 +1,5 @@
 /**
- * The rules writer and its confirmation (plan §8.1 "RulesWriter"), against a
+ * The rules writer and its confirmation, against a
  * temp glove home and a hand-driven status.json standing in for the gate.
  * Confirmation is glove's hash rule: status.json `rules.sha256` /
  * `rules.last_rejected.sha256` against the bytes written.

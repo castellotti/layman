@@ -1,5 +1,5 @@
 /**
- * The Network tab's destination table (plan §7.1, network-ledger.dc.html):
+ * The Network tab's destination table:
  * filter, chips, grouping and sort in a toolbar, then group → host → flow rows.
  * All the deciding is in `lib/net-table.ts`; this file draws its rows, and
  * windows them once a session passes 200 rows.

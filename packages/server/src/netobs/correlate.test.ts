@@ -207,7 +207,7 @@ describe('the glove fixture', () => {
   }
   const flows = store.flows('pi-search', 0, 5000)!;
   const at = (s: string) => Date.parse(`2026-09-23T14:14:${s}Z`);
-  // The mockup's turn: one search, then a fetch per host, the arxiv PDF three seconds later.
+  // The design's turn: one search, then a fetch per host, the arxiv PDF three seconds later.
   const events = [
     call('web_search', { query: 'history of onion routing' }, at('43.300'), at('44.500')),
     ...['https://en.wikipedia.org/wiki/Onion_routing', 'https://arxiv.org/abs/2403.01234', 'https://www.nature.com/articles/x',

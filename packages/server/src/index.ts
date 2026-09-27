@@ -9,7 +9,7 @@ import { tmpdir } from 'os';
 import { createServer } from './server.js';
 import { HookInstaller, findOrphanedProjectHooks, repairOrphanedProjectHooks } from './hooks/installer.js';
 import { loadConfig, setConfig } from './config/config.js';
-import { migrateLegacyData } from './config/paths.js';
+import { migrateLegacyData, laymanDbPath } from './config/paths.js';
 import type { LaymanConfig } from './config/schema.js';
 
 /**
@@ -317,6 +317,36 @@ program
         : '\nLayman installs hooks globally in ~/.claude/settings.json; these project-level\n' +
           'copies were merged on top of them, so every hook fired twice.',
     );
+  });
+
+// ── layman dedupe-pi-replays ──────────────────────────────────────────────────
+// A one-off for databases recorded before the pi watcher skipped what a restart's replay had
+// already recorded: each restart could record a young session's turns again. See db/dedupe.ts.
+// Stop Layman first (or run it inside the container) so only one process writes the database.
+program
+  .command('dedupe-pi-replays')
+  .description('Remove pi events recorded more than once by restarts of an older Layman')
+  .option('--apply', 'Delete the copies (default: report only)')
+  .action(async (options: { apply?: boolean }) => {
+    const { openDatabase } = await import('./db/database.js');
+    const { findPiReplayDuplicates, deleteEvents } = await import('./db/dedupe.js');
+    const db = openDatabase();
+    try {
+      const plan = findPiReplayDuplicates(db);
+      if (plan.ids.length === 0) {
+        console.log(`No replayed pi events found in ${laymanDbPath()}`);
+        return;
+      }
+      if (!options.apply) {
+        console.log(`Would remove ${plan.ids.length} copied pi event(s) across ${plan.sessions} session(s) from ${laymanDbPath()}.`);
+        console.log('Re-run with --apply to delete them. The earliest copy of each is kept.');
+        return;
+      }
+      const n = deleteEvents(db, plan.ids);
+      console.log(`Removed ${n} copied pi event(s) across ${plan.sessions} session(s).`);
+    } finally {
+      db.close();
+    }
   });
 
 program.parse(process.argv);

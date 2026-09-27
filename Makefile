@@ -1,4 +1,4 @@
-.PHONY: build dev test typecheck docker-build docker-run docker-stop docker-logs clean start stop update
+.PHONY: build dev test typecheck docker-build docker-run docker-stop docker-logs clean start stop update e2e-network
 
 # ── Container engine ──────────────────────────────────────────────────────────
 # Layman runs from a container image; either Docker or Podman drives it. Both
@@ -38,6 +38,11 @@ test:
 
 typecheck:
 	pnpm -r typecheck
+
+# Browser checks of the glove network views against a throwaway Layman on :8890 with a fake glove
+# home (never the live :8880 or ~/.glove). See e2e/network/README.md.
+e2e-network:
+	CONTAINER_ENGINE=$(CONTAINER_ENGINE) scripts/netobs-e2e.sh all
 
 clean:
 	rm -rf packages/server/dist web-dist node_modules packages/*/node_modules

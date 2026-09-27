@@ -1,5 +1,5 @@
 /**
- * One turn's trace for the Trace tab (plan §7.4): the Layman sessions a glove
+ * One turn's trace for the Trace tab: the Layman sessions a glove
  * session belongs to, their turns, and the chosen turn's tool calls joined to
  * the flows it made (`correlate.ts`).
  *
@@ -13,12 +13,13 @@ import type { TimelineEvent } from '../events/types.js';
 import type { Turn } from '../turns/types.js';
 import { callsFrom, correlate, JOIN_BEFORE_MS } from './correlate.js';
 import type { NetStore } from './store.js';
-import type { TraceCall, TraceCounts, TraceTurn, TraceView } from './types.js';
+import type { TraceCall, TraceCounts, TraceNav, TraceTurn, TraceView } from './types.js';
 
 export interface TraceDeps {
   /** Layman session ids whose `sessionName` is this token. */
   sessionsNamed(token: string): string[];
-  turns(sessionId: string): Turn[];
+  /** A session's turns and the events they were built from, from one read (a long session is a big one). */
+  session(sessionId: string): { turns: Turn[]; events: TimelineEvent[] };
   events(sessionId: string): TimelineEvent[];
 }
 
@@ -40,9 +41,10 @@ export function buildTrace(store: NetStore, token: string, deps: TraceDeps, sele
   const events = new Map<string, Map<string, TimelineEvent>>();
   const all: TurnAt[] = [];
   for (const sid of sessionIds) {
-    const byId = new Map(deps.events(sid).map((e) => [e.id, e]));
+    const session = deps.session(sid);
+    const byId = new Map(session.events.map((e) => [e.id, e]));
     events.set(sid, byId);
-    for (const turn of deps.turns(sid)) {
+    for (const turn of session.turns) {
       const prompt = byId.get(turn.promptEventId);
       const at = prompt?.data.transcriptAt;
       const start = typeof at === 'number' ? at : turn.startedAt;
@@ -56,7 +58,12 @@ export function buildTrace(store: NetStore, token: string, deps: TraceDeps, sele
     startedAt: t.start, promptText: t.turn.promptText.slice(0, PROMPT_PREVIEW), toolCallCount: t.turn.toolCallCount,
   });
   const empty: TraceCounts = { calls: 0, flows: 0, refused: 0, blocked: 0, bytesUp: 0, bytesDown: 0 };
-  const base = { token, sessionIds, turns: all.map(view) };
+  // Only the neighbours, not the list: the tab polls, and a long session has thousands of turns.
+  const nav = (j: number): TraceNav => ({
+    index: j, count: all.length,
+    prev: j > 0 ? all[j - 1].turn.promptEventId : null,
+    next: j >= 0 && j < all.length - 1 ? all[j + 1].turn.promptEventId : null,
+  });
   const windowStart = (t: TurnAt) => t.start - (t.exact ? JOIN_BEFORE_MS : READ_LAG_MS);
   let i: number;
   if (select === null) i = all.length - 1;
@@ -65,6 +72,7 @@ export function buildTrace(store: NetStore, token: string, deps: TraceDeps, sele
     i = -1;
     for (let j = 0; j < all.length && windowStart(all[j]) <= select.at; j++) i = j;
   }
+  const base = { token, sessionIds, nav: nav(i) };
   if (i < 0) return { ...base, turn: null, window: null, items: [], unattributed: [], flows: [], counts: empty };
 
   const cur = all[i];

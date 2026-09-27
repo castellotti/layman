@@ -26,7 +26,7 @@ function view(): TraceView {
   ];
   return {
     token: 'pi-search', sessionIds: ['s1'],
-    turns: [{ sessionId: 's1', promptEventId: 'p1', responseEventId: 'r1', index: 2, startedAt: T, promptText: 'onion routing', toolCallCount: 4 }],
+    nav: { index: 0, count: 1, prev: null, next: null },
     turn: { sessionId: 's1', promptEventId: 'p1', responseEventId: 'r1', index: 2, startedAt: T, promptText: 'onion routing', toolCallCount: 4 },
     window: { from: T - 1000, to: T + 60_000 },
     items: [

@@ -335,6 +335,110 @@ export function evaluate(set: RuleSet, facts: FlowFacts): Verdict {
   return { action: set.default, rule: null, terminate: false };
 }
 
+// ─── The built-in guard (glove/netgate/guard.py) ─────────────────────────────
+
+/**
+ * glove refuses, before any rule, a proxy destination that is not plainly public
+ * (`forward.py` `_handle_proxy`): by the host's *shape*, then again by the IP the
+ * in-tunnel resolver returned for it. So a user rule for such a host never
+ * decides it, and a prediction that skipped the guard would name that rule.
+ * Only `http-proxy` listeners run it; a `tcp` listener goes to a fixed endpoint.
+ * `rules.crosscheck.test.ts` holds `guardRefuses` to glove's own `guard.check`.
+ */
+export const GUARD_RULE = 'builtin:ssrf-guard';
+
+const LOCAL_SUFFIXES = [
+  '.localhost', '.local', '.internal', '.lan', '.home', '.home.arpa',
+  '.localdomain', '.intranet', '.corp', '.private',
+];
+
+/** `inet_aton`'s legacy IPv4 forms (`2130706433`, `0x7f.1`, `0177.0.0.1`): 1–4 parts, the last fills the rest. */
+function parseLegacyV4(s: string): bigint | null {
+  const parts = s.split('.');
+  if (parts.length > 4) return null;
+  const nums: bigint[] = [];
+  for (const p of parts) {
+    let n: bigint;
+    if (/^0x[0-9a-f]*$/i.test(p)) n = p.length > 2 ? BigInt(p) : 0n;
+    else if (/^0[0-7]*$/.test(p)) n = p.length > 1 ? BigInt(`0o${p.slice(1)}`) : 0n;
+    else if (/^[1-9]\d*$/.test(p)) n = BigInt(p);
+    else return null;
+    nums.push(n);
+  }
+  const last = nums.pop()!;
+  if (nums.some((n) => n > 255n)) return null;
+  if (last >= 1n << BigInt(8 * (4 - nums.length))) return null;
+  return nums.reduce((acc, n, i) => acc | (n << BigInt(8 * (3 - i))), 0n) | last;
+}
+
+/** `guard.ip_literal`: `host` as an address in any form a resolver accepts, IPv4-mapped IPv6 unwrapped. */
+export function ipLiteral(host: string): IpAddr | null {
+  let h = host.trim();
+  if (h.startsWith('[') && h.endsWith(']')) h = h.slice(1, -1);
+  let ip = parseIp(h);
+  if (!ip && /^[0-9a-fx.]+$/.test(h.toLowerCase())) {
+    const v = parseLegacyV4(h);
+    if (v !== null) ip = { version: 4, value: v };
+  }
+  if (ip?.version === 6 && ip.value >> 32n === 0xffffn) return { version: 4, value: ip.value & 0xffffffffn };
+  return ip;
+}
+
+const nets = (xs: string[]) => xs.map((x) => parseNetwork(x)!);
+// Python's `ipaddress` tables (IANA special-purpose registries), as of the 3.14 that runs the cross-check.
+const V4_PRIVATE = nets([
+  '0.0.0.0/8', '10.0.0.0/8', '127.0.0.0/8', '169.254.0.0/16', '172.16.0.0/12', '192.0.0.0/24',
+  '192.0.0.170/31', '192.0.2.0/24', '192.168.0.0/16', '198.18.0.0/15', '198.51.100.0/24',
+  '203.0.113.0/24', '240.0.0.0/4', '255.255.255.255/32',
+]);
+const V4_EXCEPTIONS = nets(['192.0.0.9/32', '192.0.0.10/32']);
+const V4_SHARED = nets(['100.64.0.0/10']);
+const V4_MULTICAST = nets(['224.0.0.0/4']);
+const V6_PRIVATE = nets([
+  '::1/128', '::/128', '::ffff:0:0/96', '64:ff9b:1::/48', '100::/64', '2001::/23', '2001:db8::/32',
+  '2002::/16', '3fff::/20', 'fc00::/7', 'fe80::/10',
+]);
+const V6_EXCEPTIONS = nets(['2001:1::1/128', '2001:1::2/128', '2001:3::/32', '2001:4:112::/48', '2001:20::/28', '2001:30::/28']);
+const V6_MULTICAST = nets(['ff00::/8']);
+
+const inAny = (ip: IpAddr, ns: IpNet[]) => ns.some((n) => inNetwork(ip, n));
+
+/** `ip.is_global and not ip.is_multicast`: what the guard lets through. */
+export function isPublic(ip: IpAddr): boolean {
+  const v4 = ip.version === 4;
+  const priv = inAny(ip, v4 ? V4_PRIVATE : V6_PRIVATE) && !inAny(ip, v4 ? V4_EXCEPTIONS : V6_EXCEPTIONS);
+  const global = !priv && !(v4 && inAny(ip, V4_SHARED));
+  return global && !inAny(ip, v4 ? V4_MULTICAST : V6_MULTICAST);
+}
+
+/** `guard.check(host)[0] is not None`, for a normalized host (lowercase, no trailing dot) or an IP. */
+export function guardRefuses(host: string): boolean {
+  const ip = ipLiteral(host);
+  if (ip) return !isPublic(ip);
+  if (!host.includes('.')) return true;
+  return host === 'localhost' || LOCAL_SUFFIXES.some((s) => host.endsWith(s));
+}
+
+/** How a destination reached the gate, for `predict`. */
+export interface GateFacts {
+  /** It arrived on an `http-proxy` listener, the only kind the guard runs on. */
+  proxy: boolean;
+  /** `dest.resolution`: the guard re-checks the IP only when it came from the in-tunnel resolver. */
+  resolution: string | null;
+}
+
+/**
+ * What the gate would decide for these facts, in its order: the guard on the host,
+ * the guard on the in-tunnel IP, then the rules (`evaluate`).
+ */
+export function predict(set: RuleSet, facts: FlowFacts, gate: GateFacts): Verdict {
+  if (gate.proxy && facts.host) {
+    const byIp = gate.resolution === 'in-tunnel' && facts.ip !== null && guardRefuses(facts.ip);
+    if (guardRefuses(facts.host.toLowerCase()) || byIp) return { action: 'block', rule: GUARD_RULE, terminate: false };
+  }
+  return evaluate(set, facts);
+}
+
 // ─── Operations ──────────────────────────────────────────────────────────────
 
 /** Rule ids of a "Cut all traffic" set: found and removed by `restoreAll`, never by hand. */
@@ -367,7 +471,7 @@ export function opRules(op: RulesOp): Array<Omit<Rule, 'id'>> {
     case 'blockHost':
       return [withNote({ action: 'block' as const, match: { host: op.host.toLowerCase() }, terminate: op.terminate }, op.note)];
     case 'blockDomain':
-      // `*.example.com` does not match `example.com` (handoff §3): the apex needs its own rule.
+      // `*.example.com` does not match `example.com` (glove's record contract): the apex needs its own rule.
       return [
         withNote({ action: 'block' as const, match: { host: op.apex.toLowerCase() }, terminate: op.terminate }, op.note),
         withNote({ action: 'block' as const, match: { host: `*.${op.apex.toLowerCase()}` }, terminate: op.terminate }, op.note),

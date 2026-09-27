@@ -43,8 +43,8 @@ export function wireRowToEvent(row: WireRow): TimelineEvent {
 }
 
 /**
- * Tracks live sessions reported by remote hosts (docs/planning/multi-host-sync.md
- * §3.8). Remote events never enter `EventStore`; this keeps just enough — the
+ * Tracks live sessions reported by remote hosts
+ * (CLAUDE.md → Multi-host sync). Remote events never enter `EventStore`; this keeps just enough — the
  * active-session set per host and a small per-session event ring — to render a
  * remote session as running on the Dashboard, with its last few events, at no
  * cost to the local pipeline. A host whose presence has not refreshed within

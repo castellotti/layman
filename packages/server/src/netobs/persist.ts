@@ -1,5 +1,5 @@
 /**
- * The glove network rollups in SQLite (plan §5.6, migration 3 in
+ * The glove network rollups in SQLite (migration 3 in
  * `db/database.ts`): `NetHistory` for `NetObs`. Per-flow rows would dwarf the
  * event tables, so only sessions and destinations are kept (`history.ts`
  * explains how the totals survive a restart without double counting).

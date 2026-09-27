@@ -1,5 +1,5 @@
 /**
- * Tolerant readers for glove's network records (handoff §2).
+ * Tolerant readers for glove's network records (glove's record contract).
  *
  * The reader contract: accept `v: 1`, ignore unknown fields, skip an unknown
  * `type`, and count — never throw on — anything that does not parse. A glove-side

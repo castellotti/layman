@@ -1,8 +1,6 @@
 import { EventEmitter } from 'events';
 import type { Database } from '../db/database.js';
-import { filterPii, redactString } from '../pii/filter.js';
-import type { EventData } from '../events/types.js';
-import { CURATION_KINDS, SYNC_ENTITIES } from './entities.js';
+import { CURATION_KINDS, SYNC_ENTITIES, redactEventRow } from './entities.js';
 import { SyncJournal } from './journal.js';
 import { updateHostStats } from './stats.js';
 import type { PushEntry, WireRow } from './protocol.js';
@@ -38,7 +36,7 @@ const KIND_ORDER: Record<string, number> = {
 };
 
 /**
- * Applies a peer's push batch on central (docs/planning/multi-host-sync.md §3.8).
+ * Applies a peer's push batch on central.
  *
  * Everything runs in one transaction, entries in registry order regardless of
  * arrival order, so a bookmark that references a not-yet-seen session still
@@ -115,19 +113,5 @@ export class SyncApplier extends EventEmitter {
     }
     if (applied > 0) this.emit('applied', { originHostId, entries: ordered });
     return { applied, conflicts };
-  }
-}
-
-/** Re-redact an event wire row's JSON blobs in place (central-side defence in depth). */
-function redactEventRow(row: WireRow): void {
-  if (typeof row.data_json === 'string') {
-    try {
-      row.data_json = JSON.stringify(filterPii(JSON.parse(row.data_json) as EventData));
-    } catch {
-      // leave as-is on malformed JSON
-    }
-  }
-  if (typeof row.laymans_json === 'string') {
-    row.laymans_json = redactString(row.laymans_json);
   }
 }

@@ -3,12 +3,12 @@
  *
  * Hand-kept mirror of `packages/server/src/netobs/types.ts` (the "Type
  * duplication" rule in the root CLAUDE.md). The record types are glove's frozen
- * v1 contract (glove's `network-observability-layman-handoff.md` §2–§3); the rest
+ * v1 `net/` record contract (glove's README → Network observability); the rest
  * is Layman's derived view, computed on the server — the client never
  * re-derives a state. Keep the two files in sync.
  */
 
-// ─── glove's records (handoff §2–§3) ─────────────────────────────────────────
+// ─── glove's records ─────────────────────────────────────────────────────────
 
 export type FlowPhase = 'open' | 'update' | 'close';
 export type FlowScope = 'tunnelled' | 'local' | 'direct';
@@ -71,8 +71,8 @@ export interface FlowRecord {
 }
 
 /**
- * A gate process starting or stopping (glove follow-up, handoff §2 "Additive
- * fields"). `role: "forward"` is per service; `role: "collect"` is the collector
+ * A gate process starting or stopping (an additive field of
+ * glove\'s record contract). `role: "forward"` is per service; `role: "collect"` is the collector
  * (`service: null`). A forwarder re-sends `start` as a heartbeat, so key on `run`.
  */
 export interface GateRecord {
@@ -209,7 +209,7 @@ export interface RulesFile {
  * A flow's primary state: the one that decides its colour, label and toggle.
  * Orthogonal attributes (route scope, unresolved, no host, cleartext, fan-out)
  * are `FlowFlags`; session-wide states (rules rejected, stale gate, exit
- * verified…) are on `NetGateView`. Together they cover handoff §6.1 plus
+ * verified…) are on `NetGateView`. Together they cover glove's state table plus
  * "cleartext HTTP". `classify.ts` is the only place these are computed.
  */
 export type NetState =
@@ -232,7 +232,7 @@ export type NetState =
   /**
    * No `close`, but the forwarder that carried it has gone (a `stop` for its
    * `run`, or a newer run for the same service): cut by a gate that went away,
-   * inferred (handoff §2 reader rule).
+   * inferred (glove's record contract).
    */
   | 'gate_lost'
   /** Allowed, no destination, closed on eof/timeout: noise, folded away. */
@@ -319,6 +319,11 @@ export interface DestinationAggregate {
   state: NetState;
   /** Latest block rule seen for this destination. */
   rule: string | null;
+  /**
+   * Blocked flows by the rule that blocked them (`''`: the default), over the flows the files
+   * still hold. `blocked` minus their sum is what only the kept history knows, by no rule.
+   */
+  blockedBy: Record<string, number>;
   flags: FlowFlags;
   /** Last 60 s at 1 s resolution, for the sparkline. Oldest first. */
   spark: RateBucket[];
@@ -504,7 +509,7 @@ export interface NetSessionSummary {
   flows: number;
   directFlows: number;
   rulesOk: boolean | null;
-  /** glove's files for it are gone: what is shown is what Layman kept (plan §5.6). */
+  /** glove's files for it are gone: what is shown is what Layman kept. */
   historyOnly: boolean;
 }
 
@@ -525,7 +530,7 @@ export interface NetSnapshot {
   buckets: RateBucket[];
   totals: NetTotals;
   counters: NetCounters;
-  /** Allowed connections with no destination that closed empty (handoff §2). */
+  /** Allowed connections with no destination that closed empty (glove's record contract). */
   emptyFolded: number;
   /** Backfill hit its byte budget: older rotated files were not read. */
   historyTruncated: boolean;
@@ -546,7 +551,7 @@ export interface NetDelta {
   emptyFolded: number;
 }
 
-// ─── Trace (plan §7.4) ───────────────────────────────────────────────────────
+// ─── Trace ───────────────────────────────────────────────────────
 
 /**
  * How well a tool call's times are known. `exact`: the transcript's own times,
@@ -615,12 +620,21 @@ export interface TraceCounts {
 }
 
 /** One turn's tool calls joined to the flows they made (`GET /api/net/sessions/:token/trace`). */
+export interface TraceNav {
+  /** The shown turn's position, from 0; -1 when none is shown. */
+  index: number;
+  count: number;
+  /** Prompt event ids of the turns either side, for the arrows. */
+  prev: string | null;
+  next: string | null;
+}
+
 export interface TraceView {
   token: string;
   /** Layman sessions whose `sessionName` is this glove session's token. */
   sessionIds: string[];
-  /** Their turns within the glove session's span, oldest first. */
-  turns: TraceTurn[];
+  /** Where the shown turn sits among their turns within the glove session's span, oldest first. */
+  nav: TraceNav;
   /** The turn shown; null when there is none. */
   turn: TraceTurn | null;
   /** Flows opened in [from, to] belong to the turn. */

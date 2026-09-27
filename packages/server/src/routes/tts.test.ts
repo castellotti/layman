@@ -2,6 +2,13 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { registerTtsRoutes, toIdList, upstreamErrorMessage } from './tts.js';
 import { LaymanConfigSchema, type LaymanConfig } from '../config/schema.js';
+import { resolveEndpoint } from '../analysis/providers/openai-compat.js';
+
+/**
+ * The default upstream as the proxy sends it: in a container, `localhost` is rewritten to
+ * `host.docker.internal` by design, so the expectation goes through the same rewrite.
+ */
+const UPSTREAM = resolveEndpoint('http://localhost:8000');
 
 /** Records what the proxy sent upstream so assertions can inspect it. */
 interface UpstreamCall {
@@ -61,7 +68,7 @@ describe('POST /api/tts/speech', () => {
     expect(res.body).toBe('ID3-fake-mp3');
 
     expect(calls).toHaveLength(1);
-    expect(calls[0].url).toBe('http://localhost:8000/v1/audio/speech');
+    expect(calls[0].url).toBe(`${UPSTREAM}/v1/audio/speech`);
     // `input`, not `text` — the field names are speaches', per its request model.
     expect(calls[0].body).toEqual({
       model: config.tts.model,
@@ -225,7 +232,7 @@ describe('GET /api/tts/voices', () => {
 
     expect(res.statusCode).toBe(200);
     expect(res.json()).toEqual({ voices: ['af_heart', 'af_sky'] });
-    expect(calls[0].url).toBe('http://localhost:8000/v1/audio/voices');
+    expect(calls[0].url).toBe(`${UPSTREAM}/v1/audio/voices`);
   });
 
   it('surfaces an upstream failure', async () => {
@@ -250,7 +257,7 @@ describe('GET /api/tts/models', () => {
     expect(res.json()).toEqual({
       models: ['speaches-ai/Kokoro-82M-v1.0-ONNX', 'rhasspy/piper-voices'],
     });
-    expect(calls[0].url).toBe('http://localhost:8000/v1/models');
+    expect(calls[0].url).toBe(`${UPSTREAM}/v1/models`);
   });
 });
 

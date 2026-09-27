@@ -1,5 +1,5 @@
 /**
- * The 34 px strip under the header on all four network tabs (plan §6.1):
+ * The 34 px strip under the header on all four network tabs:
  * "GLOVE ·" and the glove session picker, the gate's state as chips, and on the
  * right the tab's Panels chips.
  */
@@ -116,7 +116,7 @@ export function GateStrip({ sessions, token, onPick, data, panels, isVisible, on
 }
 
 /**
- * glove refused the rules file (plan §6.2): pinned under the strip on every
+ * glove refused the rules file: pinned under the strip on every
  * network tab while `rules.ok` is false. "Revert to enforced rules" writes back
  * the bytes the gate is enforcing (Layman remembers every valid version it has
  * read, by hash); "Try again" writes the current file again through the
