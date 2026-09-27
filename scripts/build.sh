@@ -20,9 +20,28 @@ if [ -z "${CONTAINER_ENGINE:-}" ]; then
   fi
 fi
 
+cd "$(dirname "${BASH_SOURCE[0]}")/.."
+
+# glove (optional extension): add its overlays only when glove's own folders
+# already exist, exactly as the Makefile's GLOVE_COMPOSE does, so this never
+# creates ~/.glove and never starts Layman blind to glove sessions.
+COMPOSE_FILES=(-f docker-compose.yml)
+if [ -d "$HOME/.glove" ]; then
+  COMPOSE_FILES+=(-f docker-compose.glove.yml)
+  if [ -d "$HOME/.glove/control" ]; then
+    COMPOSE_FILES+=(-f docker-compose.glove-control.yml)
+    echo "glove: mounting ~/.glove read-only and ~/.glove/control writable"
+  else
+    echo "glove: mounting ~/.glove read-only (no ~/.glove/control yet: rules stay read-only until glove creates it and Layman is restarted)"
+  fi
+else
+  echo "glove: ~/.glove not found; not mounted"
+fi
+
 # Both engines accept the same compose/rm/logs verbs.
 "$CONTAINER_ENGINE" stop layman || true
 "$CONTAINER_ENGINE" rm layman || true
-"$CONTAINER_ENGINE" compose build
-"$CONTAINER_ENGINE" compose up -d
+"$CONTAINER_ENGINE" compose "${COMPOSE_FILES[@]}" build
+LAYMAN_HOST_NAME="${LAYMAN_HOST_NAME:-$(hostname)}" \
+  "$CONTAINER_ENGINE" compose "${COMPOSE_FILES[@]}" up -d
 "$CONTAINER_ENGINE" logs -f layman
