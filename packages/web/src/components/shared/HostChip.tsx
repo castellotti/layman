@@ -11,7 +11,7 @@ interface HostChipProps {
 
 /**
  * A small mono-font pill naming the origin host of a session or curation row
- * (docs/planning/multi-host-sync.md §8.2). Renders nothing for the local host,
+ *. Renders nothing for the local host,
  * so single-machine installs look exactly as they did before. The 2px left
  * border is a deterministic per-host accent, so the same host is recognisable
  * across views.

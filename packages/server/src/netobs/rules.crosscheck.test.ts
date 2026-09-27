@@ -12,7 +12,7 @@ import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
-import { applyOp, emptyRules, evaluate, parseRulesBytes, serializeRules, type FlowFacts } from './rules.js';
+import { applyOp, emptyRules, evaluate, GUARD_RULE, guardRefuses, parseRulesBytes, predict, serializeRules, type FlowFacts } from './rules.js';
 
 const GLOVE = join(dirname(fileURLToPath(import.meta.url)), '../../../../../glove');
 
@@ -99,6 +99,24 @@ const RULESETS = [
   ] },
 ];
 
+/** Hosts (normalized, as glove records them) and in-tunnel answers for the built-in guard. */
+const GUARD_HOSTS = [
+  'arxiv.org', 'export.arxiv.org', 'gluetun', 'egress-proxy', 'localhost', 'a.localhost', 'printer.local',
+  'db.internal', 'nas.lan', 'x.home', 'x.home.arpa', 'x.localdomain', 'x.intranet', 'x.corp', 'x.private',
+  'local', 'internal.example.com', 'localhost.example.com',
+  '169.254.169.254', '10.0.0.1', '172.16.5.4', '172.32.0.1', '192.168.1.1', '127.0.0.1', '0.0.0.0',
+  '100.64.0.1', '100.128.0.1', '192.0.0.9', '192.0.0.8', '192.0.2.1', '198.18.0.1', '198.51.100.7',
+  '203.0.113.7', '224.0.0.1', '239.255.255.250', '240.0.0.1', '255.255.255.255', '8.8.8.8', '151.101.3.42',
+  '2130706433', '0x7f.1', '0177.0.0.1', '0x7f000001', '10.1', '8.8.2056', '1.2.3.4.5', '0x', '08.1.1.1', '999.1.1.1',
+  '::1', '::', '[::1]', '::ffff:127.0.0.1', '::ffff:8.8.8.8', 'fe80::1', 'fe80::1%eth0', 'fc00::1', 'fd12::1',
+  '2001:db8::1', '2001:4860:4860::8888', '2606:4700::1111', 'ff02::1', '2002::1', '2001:1::1', '2001:3::1',
+  '64:ff9b:1::1', '64:ff9b::808:808', '3fff::1',
+];
+
+const GUARD = `import json,sys
+from glove.netgate.guard import check
+print(json.dumps([check(h)[0] is not None for h in json.load(sys.stdin)]))`;
+
 const VALIDATE = `import json,sys
 from glove.netgate.policy import parse_bytes, PolicyError
 out=[]
@@ -140,6 +158,27 @@ describe('rules cross-check against glove/netgate/policy.py', () => {
       return FACTS.map((f) => { const v = evaluate(set, f); return [v.action, v.rule, v.terminate]; });
     });
     expect(ours).toEqual(glove);
+  });
+
+  it.skipIf(!ready)('refuses exactly the hosts glove\'s built-in guard does', () => {
+    const glove = python(GUARD, GUARD_HOSTS) as boolean[];
+    const diffs = GUARD_HOSTS.flatMap((h, i) => (glove[i] === guardRefuses(h) ? [] : [`${h} → glove ${glove[i]}, layman ${!glove[i]}`]));
+    expect(diffs).toEqual([]);
+    expect(glove.filter(Boolean).length).toBeGreaterThan(20);
+    expect(glove.filter((x) => !x).length).toBeGreaterThan(5);
+  });
+
+  // glove's gate (`forward.py`): the guard runs on the in-tunnel IP before any rule, so a host
+  // whose in-tunnel answer is non-public is refused as the guard, never by the user's rule for it.
+  it.skipIf(!ready)('predicts the guard, not a user rule, for a host that resolves in-tunnel to a non-public address', () => {
+    const { set } = parseRulesBytes(Buffer.from(JSON.stringify(file(r({ host: 'rebind.example' }, { id: 'r_user' })))));
+    const facts: FlowFacts = { host: 'rebind.example', ip: '203.0.113.7', port: 443, service: 'proxy', tool: 'web_fetch', scope: 'local' };
+    expect(python(GUARD, ['203.0.113.7'])).toEqual([true]);
+    expect(evaluate(set, facts).rule).toBe('r_user'); // the rules alone would name the user's rule
+    expect(predict(set, facts, { proxy: true, resolution: 'in-tunnel' })).toMatchObject({ action: 'block', rule: GUARD_RULE });
+    // Not an in-tunnel answer, or not a proxy listener: the guard does not run on the IP.
+    expect(predict(set, facts, { proxy: true, resolution: 'unavailable' }).rule).toBe('r_user');
+    expect(predict(set, facts, { proxy: false, resolution: 'in-tunnel' }).rule).toBe('r_user');
   });
 
   it.skipIf(!ready)('`glove net validate` accepts a file Layman wrote', () => {

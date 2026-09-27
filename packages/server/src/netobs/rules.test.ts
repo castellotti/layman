@@ -11,7 +11,7 @@ const ok = (data: unknown, opts = {}) => expect(() => validateRules(data, opts))
 const bad = (data: unknown, re: RegExp, opts = {}) => expect(() => validateRules(data, opts)).toThrow(re);
 
 describe('validateRules: every rejection in policy.py', () => {
-  it('accepts the handoff example and a minimal file', () => {
+  it("accepts glove's documented example and a minimal file", () => {
     ok({ v: 1, env: 'e', session: 's' });
     ok({ ...base, updated_at: 't', updated_by: 'layman', rules: [
       { id: 'r_01JBQ', action: 'block', match: { host: '*.doubleclick.net' }, terminate: false, note: 'ad tracker' },

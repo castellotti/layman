@@ -1,5 +1,5 @@
 /**
- * The four network tabs and each one's panels (plan §1.3). Order here is the
+ * The four network tabs and each one's panels. Order here is the
  * default order; visibility defaults follow the plan (Network: Table, Map and
  * Rules on, Activity and Details off; Trace keeps only Trace and Details).
  */

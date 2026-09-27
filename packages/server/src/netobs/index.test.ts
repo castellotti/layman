@@ -5,8 +5,9 @@ import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { COALESCE_MS, NetObs, type NetServerMessage, type NetSocket } from './index.js';
 import { NetStore } from './store.js';
+import { GUARD_RULE, parseRulesBytes } from './rules.js';
 import type { NetSessionLocation } from './discovery.js';
-import type { FlowRecord, GateRecord } from './types.js';
+import type { FlowRecord, GateRecord, NetSessionFile } from './types.js';
 
 const T0 = Date.parse('2026-09-23T14:00:00.000Z');
 
@@ -41,6 +42,35 @@ describe('NetStore', () => {
   beforeEach(() => {
     store = new NetStore();
     store.ensure(loc('e'));
+  });
+
+  it('counts blocked flows by the rule that blocked each, across updates', () => {
+    const blocked = (id: string, rule: string | null, dt: number) => ['open', 'close'].forEach((phase, k) =>
+      store.ingestFlow('e', rec(id, phase as FlowRecord['phase'], dt + k, { verdict: 'block', rule, close_reason: phase === 'close' ? 'blocked' : null })));
+    blocked('f1', 'r_old', 0);
+    blocked('f2', 'r_old', 10);
+    blocked('f3', 'r_new', 20);
+    blocked('f4', null, 30);
+    const d = store.snapshot('e')!.destinations[0];
+    expect([d.blocked, d.rule, d.blockedBy]).toEqual([4, null, { r_old: 2, r_new: 1, '': 1 }]);
+  });
+
+  // glove runs its guard on a proxy destination's host and in-tunnel IP before any rule,
+  // so the predicted verdict must name the guard, not a user rule for the same host.
+  it('predicts the built-in guard ahead of a user rule, only on an http-proxy listener', () => {
+    store.setSessionFile('e', { v: 1, services: [
+      { service: 'proxy', listen: null, observed: true, mode: 'http-proxy' },
+      { service: 'llm', listen: null, observed: true, mode: 'tcp' },
+    ] } as unknown as NetSessionFile, T0);
+    const rules = { v: 1, env: 'e', session: 'e', default: 'allow', rules: ['rebind.example', 'nas.lan'].map((host, i) => (
+      { id: `r_${i}`, action: 'block', match: { host } })) };
+    const { set } = parseRulesBytes(Buffer.from(JSON.stringify(rules)), { env: 'e', session: 'e' });
+    store.setPolicy('e', { enforced: set, written: set });
+    store.ingestFlow('e', rec('f1', 'open', 0, { dest: { host: 'rebind.example', port: 443, ip: '203.0.113.7', resolution: 'in-tunnel' } }), T0);
+    store.ingestFlow('e', rec('f2', 'open', 0, { service: 'llm', dest: { host: 'nas.lan', port: 8080, ip: null, resolution: 'disabled' } }), T0);
+    const policy = (host: string) => store.snapshot('e')!.destinations.find((d) => d.host === host)!.policy.enforced;
+    expect(policy('rebind.example')).toEqual({ action: 'block', rule: GUARD_RULE });
+    expect(policy('nas.lan')).toEqual({ action: 'block', rule: 'r_1' }); // tcp listener: no guard
   });
 
   it('bytes are cumulative: rates are deltas, totals the latest record', () => {
@@ -105,7 +135,7 @@ describe('NetStore', () => {
     expect(store.snapshot('e')!.destinations[0].state).toBe('pooled');
   });
 
-  describe('gate lifecycle (handoff §2 reader rule)', () => {
+  describe("gate lifecycle (glove's record contract)", () => {
     const gate = (event: 'start' | 'stop', run: string, dt: number, service: string | null = 'proxy', inferred = false): GateRecord => ({
       v: 1, type: 'gate', event, role: service === null ? 'collect' : 'forward', run, service, env: 'e', session: 'e',
       t: new Date(T0 + dt).toISOString(), inferred,

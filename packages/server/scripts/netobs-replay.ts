@@ -1,6 +1,6 @@
 /**
  * A fake glove home and a replaying gate, for developing and checking Layman's
- * network views without running glove (docs/planning/network-views.md §9.1).
+ * network views without running glove.
  *
  * Builds `<dir>/envs/pi-search/sessions/pi-search/net/` from glove's fixture
  * (`src/netobs/__fixtures__/`), with every timestamp rewritten to "now", then
@@ -32,7 +32,10 @@
  *                        Point Settings → Glove → Geolocation database at it.
  *   --transcript         also write a pi transcript into the fake session's home, one turn per pass whose
  *                        web_search / web_fetch calls match the fixture's flows, so the Trace tab has a real
- *                        gloved pi session (read by GloveSource and the pi watcher) to join them to
+ *                        gloved pi session (read by GloveSource and the pi watcher) to join them to.
+ *                        The prompt is written when a pass starts but its calls only when it ends, so the
+ *                        turn in progress shows no calls until then (a real agent writes each call as it
+ *                        finishes); a check wanting calls should look at the previous turn.
  *   --gate               fake gate: validate control/<env>/<name>/rules.json with Layman's port of glove's
  *                        validator, report it in status.json as glove's collector does (sha256,
  *                        last_rejected, last good set kept on a rejection), and apply its verdicts to the
@@ -136,7 +139,7 @@ interface Source {
 const readNdjson = (path: string): Rec[] =>
   existsSync(path) ? readFileSync(path, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l)) : [];
 
-/** glove's `(stamp, n)` order for rotated files (handoff §2), not name order. */
+/** glove's `(stamp, n)` order for rotated files (glove's record contract), not name order. */
 function rotatedFlows(dir: string): string[] {
   const key = (f: string) => {
     const m = /^flows-(\d{8}T\d{9}Z)(?:-(\d+))?\.ndjson$/.exec(f);
@@ -461,7 +464,8 @@ async function replay(o: Options, src: Source, env: string, name: string, direct
       write(out, file);
       if (direct && i === directAt) await injectDirect(write, pass, env, token);
     }
-    // After the pass, as a transcript is written as the agent works: the calls and their results.
+    // After the pass: the calls and their results, all at once. Simpler than interleaving them with
+    // the flows, at the cost that the running turn shows no calls until the pass ends (see --transcript).
     transcript?.turn((s) => shift(s)!, pass);
     if (!o.loop) break;
     await sleep(o.loopGapS * 1000);

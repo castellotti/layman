@@ -1,5 +1,5 @@
 /**
- * The Map's geometry (plan §7.2, map-route-map.dc.html), pure so it is tested
+ * The Map's geometry, pure so it is tested
  * in node: the projection, great-circle arcs, city clusters, the trunk from the
  * sandbox card to the exit, what goes to "Unknown location", and the 60 s
  * ribbon's lanes. `components/network/WorldMap.tsx` only draws.
@@ -83,7 +83,7 @@ export function arcPath(project: (p: LonLat) => [number, number] | null, a: LonL
   return d;
 }
 
-/** A quadratic curve from a screen point (the sandbox card) to one on the map, bowed upward like the mockup's trunk. */
+/** A quadratic curve from a screen point (the sandbox card) to one on the map, bowed upward like the design's trunk. */
 export function screenCurve(from: [number, number], to: [number, number], bow = 0.25): string {
   const [x1, y1] = from;
   const [x2, y2] = to;
@@ -139,6 +139,52 @@ export function clusterDestinations(dests: Iterable<DestinationAggregate>): Clus
     m.set(key, c);
   }
   return [...m.values()].sort((a, b) => b.bytes - a.bytes);
+}
+
+// ─── Labels ───────────────────────────────────────────────────────────────────
+
+export interface LabelSpot {
+  key: string;
+  /** The pin, in screen pixels. */
+  x: number;
+  y: number;
+  text: string;
+}
+
+/** Where a label pill goes: `left` is its left edge, `top` its vertical centre (the pill is translated −50%). */
+export interface PlacedLabel { left: number; top: number }
+
+const LABEL_H = 17;
+/** An estimate of the pill's width at 10.5 px: close enough to keep neighbours apart. */
+const labelWidth = (text: string) => text.length * 6 + 16;
+
+/**
+ * Keeps nearby cities' labels (Ashburn and Virginia, London, Roubaix and Frankfurt at a
+ * fitted zoom) from overlapping. Greedy, in the order given (the biggest cluster first):
+ * each tries right of its pin, then above right, left, above left, and is hidden when all
+ * four collide; its pin's tooltip still names it. `reserved` boxes (the exit's label) are
+ * taken first. Pure, so it is tested without a browser.
+ */
+export function placeLabels(spots: LabelSpot[], reserved: Array<[number, number, number, number]> = []): Map<string, PlacedLabel | null> {
+  const taken = [...reserved];
+  const hits = (b: [number, number, number, number]) => taken.some((t) => b[0] < t[2] && b[2] > t[0] && b[1] < t[3] && b[3] > t[1]);
+  const out = new Map<string, PlacedLabel | null>();
+  for (const s of spots) {
+    const w = labelWidth(s.text);
+    const tries: PlacedLabel[] = [
+      { left: s.x + 10, top: s.y + 6 }, { left: s.x + 10, top: s.y - 12 },
+      { left: s.x - 10 - w, top: s.y + 6 }, { left: s.x - 10 - w, top: s.y - 12 },
+    ];
+    const fit = tries.find((p) => !hits([p.left, p.top - LABEL_H / 2, p.left + w, p.top + LABEL_H / 2])) ?? null;
+    if (fit) taken.push([fit.left, fit.top - LABEL_H / 2, fit.left + w, fit.top + LABEL_H / 2]);
+    out.set(s.key, fit);
+  }
+  return out;
+}
+
+/** The box `placeLabels` reserves for a label placed at `p`. */
+export function labelBox(p: PlacedLabel, text: string): [number, number, number, number] {
+  return [p.left, p.top - LABEL_H / 2, p.left + labelWidth(text), p.top + LABEL_H / 2];
 }
 
 export type TrunkKind = 'verified' | 'declared' | 'none';

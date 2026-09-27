@@ -1,5 +1,5 @@
 /**
- * Blocking and unblocking (plan §6.4, controls-block-unblock.dc.html) as data:
+ * Blocking and unblocking as data:
  * what a row's toggle shows, what clicking it offers, the operation each choice
  * sends, and the Rules panel's draft. Pure, so it is tested in node.
  *
@@ -32,6 +32,25 @@ export function toggleFor(d: Pick<DestinationAggregate, 'state' | 'flags' | 'pol
   if (d.state === 'user_rule') return 'block';
   if (d.state === 'default_block') return 'default';
   return 'allow';
+}
+
+/**
+ * Blocked flows per rule id, for the Rules panel. Exact for the flows the files hold
+ * (`blockedBy`); blocks only the kept history knows (files since deleted) carry no rule,
+ * so they are put on the destination's latest one, as an estimate.
+ */
+export function ruleHits(dests: Iterable<Pick<DestinationAggregate, 'blocked' | 'blockedBy' | 'rule'>>): Map<string, number> {
+  const m = new Map<string, number>();
+  const add = (rule: string, n: number) => m.set(rule, (m.get(rule) ?? 0) + n);
+  for (const d of dests) {
+    let known = 0;
+    for (const [rule, n] of Object.entries(d.blockedBy ?? {})) {
+      known += n;
+      if (rule) add(rule, n);
+    }
+    if (d.rule && d.blocked > known) add(d.rule, d.blocked - known);
+  }
+  return m;
 }
 
 /** Why toggles cannot act, or null when they can. */
@@ -82,7 +101,7 @@ export function blockOp(d: Pick<DestinationAggregate, 'host' | 'groupKey' | 'ips
   return { kind: 'blockHost', host: d.host!, terminate, note: n };
 }
 
-/** A group toggle writes one rule over the group (plan §6.4): fan-out, local links, a route or a tool. */
+/** A group toggle writes one rule over the group: fan-out, local links, a route or a tool. */
 export interface GroupTarget {
   key: GroupKey;
   value: string;

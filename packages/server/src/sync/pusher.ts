@@ -3,6 +3,7 @@ import type { Database } from '../db/database.js';
 import type { LaymanConfig } from '../config/schema.js';
 import { SyncJournal, type LogEntry } from './journal.js';
 import { SyncState } from './state.js';
+import { outboundRow } from './applier.js';
 import { SYNC_ENTITIES, SYNC_ENTITIES_ORDERED, type SyncEntity } from './entities.js';
 import {
   SYNC_PROTOCOL_VERSION,
@@ -122,8 +123,8 @@ interface BackfillCursor {
 }
 
 /**
- * Pushes this remote's own-origin data to central (docs/planning/multi-host-sync.md
- * §3.7): a one-time backfill (page every kind, own rows only) followed by
+ * Pushes this remote's own-origin data to central:
+ * a one-time backfill (page every kind, own rows only) followed by
  * incremental replay of the journal. Cursors live in `sync_state`, so an
  * interrupted backfill resumes at the next page and a failed incremental batch
  * simply re-sends. Every apply on central is an idempotent upsert, so re-sending
@@ -196,7 +197,7 @@ export class SyncPusher {
   private buildUpsertEntry(entity: SyncEntity, id: string): PushEntry | null {
     const row = entity.load(this.db, [id])[0] as WireRow | undefined;
     if (!row) return null; // deleted after journaling — skip (§3.7)
-    return { op: 'upsert', kind: entity.kind, id, row };
+    return { op: 'upsert', kind: entity.kind, id, row: outboundRow(entity.kind, row, this.getConfig().piiFilter) };
   }
 
   /**
@@ -240,7 +241,8 @@ export class SyncPusher {
         continue;
       }
       // Fit within the byte budget; a short send just advances the cursor less.
-      const { entries, lastId } = fitRows(entity, rows);
+      const piiFilter = this.getConfig().piiFilter;
+      const { entries, lastId } = fitRows(entity, rows.map((row) => outboundRow(entity.kind, row, piiFilter)));
       await this.client.push({ hostId, entries, live: this.presence() });
       pushed += entries.length;
       cursor = { kind: cursor.kind, lastId };

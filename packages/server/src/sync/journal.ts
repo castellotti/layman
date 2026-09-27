@@ -31,7 +31,7 @@ function toEntry(r: RawLog): LogEntry {
 }
 
 /**
- * Reads over `sync_log` (docs/planning/multi-host-sync.md §3.4). The log is
+ * Reads over `sync_log`. The log is
  * written entirely by triggers; this is the read/maintenance side. Deduping a
  * page down to one entry per `(kind, entity_id)` and loading current state is
  * the pusher's job — the journal just returns ordered slices.

@@ -1,7 +1,7 @@
 # glove netobs fixture (copy)
 
 A byte-for-byte copy of glove's `tests/fixtures/netobs/`: a `net/` directory produced by glove's real
-gate code, covering every fixture-marked state in glove's handoff §6.1. It is the cross-repo contract
+gate code, covering every fixture-marked state in glove's state table. It is the cross-repo contract
 test for Layman's reader (`../fixture.test.ts`).
 
 - Copied: 2026-09-25

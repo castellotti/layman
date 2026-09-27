@@ -2,8 +2,8 @@ import type { Database } from '../db/database.js';
 import type { HostStats } from './protocol.js';
 
 /**
- * Per-host statistics maintained in `sync_hosts` (docs/planning/multi-host-sync.md
- * §3.11). Counters are cheap to keep incrementally in later phases; here we only
+ * Per-host statistics maintained in `sync_hosts`.
+ * Counters are cheap to keep incrementally in later phases; here we only
  * need the full recompute, used once when the local host row is created and by
  * the `POST /api/sync/hosts/recompute` route.
  *

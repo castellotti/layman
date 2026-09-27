@@ -658,7 +658,7 @@ export async function importHistoricalSessions(
 
         // Batch insert via recorder. discovered.label (a glove env id, undefined
         // for native) tags the session name so gloved imports look like watched ones.
-        recorder.importSession(sessionId, cwd, agentType, events, 'imported', discovered.label);
+        recorder.importSession(sessionId, cwd, agentType, events, 'imported', discovered.label, discovered.label !== undefined);
         // Mark known for the rest of this scan so a second transcript file that
         // resolves to the same session (its resume/fork sibling) enriches rather
         // than re-importing — existingSessions was snapshotted before the loop.
@@ -696,7 +696,10 @@ export async function importHistoricalSessions(
           continue;
         }
 
-        // Use addRaw for enrichment — triggers recorder via event:new listener
+        // Use addRaw for enrichment — triggers recorder via event:new listener.
+        // The store's filter keys `glove.showIpAddresses` on the gloved mark, which
+        // only a watcher sets; a transcript from a glove root is gloved all the same.
+        if (discovered.label !== undefined) eventStore.markGloved(sessionId);
         for (const event of events) {
           eventStore.addRaw(event);
         }
@@ -756,7 +759,7 @@ export async function importHistoricalSessions(
         // importSession()'s own upsert never downgrades an existing 'live'
         // session's source, so 'imported' here is safe regardless of what
         // existingSource currently is.
-        recorder.importSession(sessionId, cwd, agentType, newEvents, 'imported', discovered.label);
+        recorder.importSession(sessionId, cwd, agentType, newEvents, 'imported', discovered.label, discovered.label !== undefined);
 
         const toolCallCount = newEvents.filter(e => e.type === 'tool_call_completed').length;
         const userPromptCount = newEvents.filter(e => e.type === 'user_prompt').length;

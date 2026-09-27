@@ -1,6 +1,5 @@
 /**
- * The Network tab's Activity panel (mockup A, workbench-connection-section-
- * source.dc.html): bytes received and sent over time. 1m / 5m / 1h come from
+ * The Network tab's Activity panel: bytes received and sent over time. 1m / 5m / 1h come from
  * the client's own 1 s buckets (it keeps an hour); Session asks Layman's API
  * for the whole run (1 min buckets, then the 1 s tail). The right edge is the
  * session's latest record, so a stopped gate's chart freezes rather than drains.

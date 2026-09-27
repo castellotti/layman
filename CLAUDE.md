@@ -99,8 +99,8 @@ linked above.
    random, so without it every restart recorded a young session again). Design and reliability notes (why it never emits a trailing `tool_call_pending`,
    dedupe by committed id, tombstone resurrection) are in `docs/harnesses/pi.md`.
 
-4d. **Network observability (glove)** (`packages/server/src/netobs/`, plan
-   `docs/planning/network-views.md`): tails each gloved session's `net/` (flows, exit, status) into a
+4d. **Network observability (glove)** (`packages/server/src/netobs/`, design
+   in `docs/extensions/glove.md` → Network): tails each gloved session's `net/` (flows, exit, status) into a
    dedicated `NetStore` and `net:*` frames — **never `EventStore`** (same reason as live streaming).
    Rotated files are identified by content, not inode (Docker Desktop's bind mount changes inodes on
    rename). **Never make a network call keyed on gloved flow data**; tests in both packages enforce it.
@@ -109,7 +109,9 @@ linked above.
    dead gate left open is glove's rule (`glove.netview.ended_runs`), ported in `NetStore` and held to it
    by a cross-check that runs glove's own function — change both or neither. State labels, colours and
    toggles come from one legend table (`NET_LEGEND` in `lib/net-format.ts`) that every view reads.
-   Rules: `netobs/rules.ts` is a port of glove's `policy.py` validator/evaluator, held to it by a
+   Rules: `netobs/rules.ts` is a port of glove's `policy.py` validator/evaluator and of its built-in
+   `guard.check` (which refuses non-public proxy destinations by host shape and by in-tunnel IP before
+   any rule, so a prediction must go through `predict()`, never `evaluate()` alone), held to both by a
    cross-check test that runs glove's own code; a write is confirmed only by glove's **hash rule**
    (`status.json` `rules.sha256` / `rules.last_rejected.sha256`), never by timestamps, and toggles show
    what the gate *enforces*, not what Layman wrote. The Map is fully offline: bundled Natural Earth land
@@ -147,7 +149,7 @@ linked above.
 
 9. **Analysis engine** (`packages/server/src/analysis/engine.ts`) — wraps Anthropic or OpenAI-compatible providers, supports `analyze()` (structured JSON → `AnalysisResult`) and `ask()` (free-form Q&A). Both return `{ text/result, tokens: { input, output }, latencyMs, model }`. Max 3 concurrent requests with a queue.
 
-10. **PII filter** (`packages/server/src/pii/filter.ts`) — regex-based redaction covering 24 categories (emails, API keys, passwords, credit cards, JWTs, etc.). Applied at the EventStore level so all events are covered regardless of source. The store passes each event's session to its filters, which is how `glove.showIpAddresses` keeps IPv4/IPv6 in gloved sessions only (those a passive watcher marked with `markGloved` from a glove root, never "has a session name", which a renamed Claude Code session also has); a kept category's matches are parked behind placeholders while the other patterns run, because the phone pattern otherwise eats part of an IPv4 address.
+10. **PII filter** (`packages/server/src/pii/filter.ts`) — regex-based redaction covering 24 categories (emails, API keys, passwords, credit cards, JWTs, etc.). Applied at the EventStore level so all live events are covered regardless of source. Events that reach SQLite *without* the store — history import (`SessionRecorder.importSession()`) and the JSON file import — get the same filter through `SessionRecorder.setImportFilter()` (`filterEventPii`), gloved when the transcript came from a glove root; any new write path that bypasses the store needs it too. The store passes each event's session to its filters, which is how `glove.showIpAddresses` keeps IPv4/IPv6 in gloved sessions only (those a passive watcher marked with `markGloved` from a glove root, never "has a session name", which a renamed Claude Code session also has); a kept category's matches are parked behind placeholders while the other patterns run, because the phone pattern otherwise eats part of an IPv4 address.
 
 11. **Client state** — Zustand store in `packages/web/src/stores/sessionStore.ts` holds all events, pending approvals, sessions list, active session filter, and investigation state. The `useEventStore()` hook at `packages/web/src/hooks/useEventStore.ts` applies session + UI filters on top.
 
@@ -317,22 +319,21 @@ tested in node, where there is no `Audio` and no `URL.createObjectURL`.
 
 A **central** instance collects recorded data from many **remote** instances; each remote keeps
 recording locally and pushes to central, optionally **mirroring** (pulling) everything else back.
-`sync.role` is `standalone` (default) | `central` | `remote`. Full design in
-[`docs/planning/multi-host-sync.md`](docs/planning/multi-host-sync.md); user-facing summary in
-[`docs/features.md`](docs/features.md#multi-host-sync). The pieces live in `packages/server/src/sync/`
+`sync.role` is `standalone` (default) | `central` | `remote`. The design is in this section;
+user-facing summary in [`docs/features.md`](docs/features.md#multi-host-sync). The pieces live in `packages/server/src/sync/`
 (`identity`, `state`, `entities`, `journal`, `tokens`, `applier`, `pusher`, `puller`, `presence`,
 `stats`, `routes`, `protocol`), wired from `server.ts` by `reconcileSync()` on config change.
 
 Four rules that must not be relaxed casually:
 
-- **The journal is written by SQLite triggers, never by application code** (§3.4, migration 2 in
+- **The journal is written by SQLite triggers, never by application code** (migration 2 in
   `db/database.ts`). Every recorded-data write — the recorder, bookmark/highlight stores, the raw
   `UPDATE`s in `server.ts` and `pii/purge.ts` — is captured into `sync_log` by `AFTER
   INSERT/UPDATE/DELETE` triggers. A new recorded-data write site therefore needs no instrumentation,
   but a new *table* worth syncing needs a trigger plus a `SYNC_ENTITIES` entry. A session delete
   journals one cascade row, not one per event.
 
-- **Remote data never goes through `EventStore`** (§3.8). `SyncApplier` writes straight through the
+- **Remote data never goes through `EventStore`**. `SyncApplier` writes straight through the
   entity tables; feeding remote rows through `EventStore.add()` would re-record them and a historical
   backfill would evict every live event. Live remote presence rides `RemoteSessionRegistry` +
   ordinary `event:new` frames, not the store.
@@ -352,6 +353,12 @@ Four rules that must not be relaxed casually:
   host's sandboxes browsed, and syncing them would ship that to a central instance. Do not "fix" this
   by adding them to the journal.
 
+- **IP addresses kept by `glove.showIpAddresses` never cross hosts**, for the same reason. With the
+  PII filter on, every outbound sync path (push, `/api/sync/snapshot`, `/api/sync/changes`) passes
+  event rows through `outboundRow()` (`sync/applier.ts`), which redacts them in full. Central cannot
+  tell a gloved session from a renamed one, so "keep what the origin recorded" is not an option. A new
+  outbound path must call it.
+
 ### Key design decisions
 
 - **Blocking hooks**: `PreToolUse` and `PermissionRequest` (Claude Code) and `PreToolUse` (Cline) suspend the agent process until `PendingApprovalManager.resolveApproval()` is called. Claude Code's timeout is 300s (configurable); Cline's is 25s (Cline hardcodes 30s).
@@ -366,7 +373,7 @@ Four rules that must not be relaxed casually:
 
 - **`EventStore.setStringFilter()`**: `attachLaymans()` writes `event.laymans.explanation` directly, bypassing `EventData` and therefore the `dataFilter` PII redaction every other field gets. A separate `stringFilter` hook (wired in `server.ts` next to `setDataFilter`) redacts it at the same point. Any future field that rides outside `EventData` needs the same treatment — it will not be filtered by default.
 
-- **Docker mounts**: The container mounts `${HOME}/.local/share/layman` (Layman's own data dir — `layman.db` and `layman.json`; see storage note below), `${HOME}/.claude` (Claude Code hooks/commands/StatusLine relay), `${HOME}/.config` (OpenCode detection/commands), `${HOME}/.vibe` (Vibe log watching), `${HOME}/Documents/Cline` (Cline hook script installation), `${HOME}/.codex` (Codex hook script installation and hooks.json), and `${HOME}/.pi` (pi extension installation). The `HookInstaller` runs inside the container and writes through these mounts to the host filesystem. **glove is not mounted by `docker-compose.yml`**: Layman and glove are independent projects that meet only when the glove extension is enabled, and someone who only uses Layman must never get a `~/.glove` folder (Docker creates a missing bind source). The glove mounts are opt-in overlays the Makefile adds only when glove's own folders already exist: `docker-compose.glove.yml` mounts `${HOME}/.glove` **read-only** for `GloveSource` and the network views, because writing into a sandbox is exactly what the feature must not do; `docker-compose.glove-control.yml` mounts `${HOME}/.glove/control` writable over it, only if it exists, so Layman can write a session's `rules.json` — and nothing else — by glove's ownership contract (`netobs/writer.ts`; never create the directory; Layman-only temp file, explicit `chmod 0644`, no chown, atomic rename). **Layman never creates, chmods or relabels anything under `~/.glove`**; anything glove needs there (folders, permissions, SELinux labels) is glove's to do, and is asked of glove through a plan in its `docs/planning/`. SELinux-enforcing hosts are unsupported for the glove integration (glove itself does not run there yet); never add `z`/`Z` to the glove mounts. The whole `~/.glove` is mounted (not just `envs/`) so `GloveSource` can read `~/.glove/registry.json` — glove's canonical record of each env's resolved home — and reach a home relocated under `~/.glove` (the mount contract for relocated homes; see `docs/planning/glove-session-discovery.md`).
+- **Docker mounts**: The container mounts `${HOME}/.local/share/layman` (Layman's own data dir — `layman.db` and `layman.json`; see storage note below), `${HOME}/.claude` (Claude Code hooks/commands/StatusLine relay), `${HOME}/.config` (OpenCode detection/commands), `${HOME}/.vibe` (Vibe log watching), `${HOME}/Documents/Cline` (Cline hook script installation), `${HOME}/.codex` (Codex hook script installation and hooks.json), and `${HOME}/.pi` (pi extension installation). The `HookInstaller` runs inside the container and writes through these mounts to the host filesystem. **glove is not mounted by `docker-compose.yml`**: Layman and glove are independent projects that meet only when the glove extension is enabled, and someone who only uses Layman must never get a `~/.glove` folder (Docker creates a missing bind source). The glove mounts are opt-in overlays the Makefile adds only when glove's own folders already exist: `docker-compose.glove.yml` mounts `${HOME}/.glove` **read-only** for `GloveSource` and the network views, because writing into a sandbox is exactly what the feature must not do; `docker-compose.glove-control.yml` mounts `${HOME}/.glove/control` writable over it, only if it exists, so Layman can write a session's `rules.json` — and nothing else — by glove's ownership contract (`netobs/writer.ts`; never create the directory; Layman-only temp file, explicit `chmod 0644`, no chown, atomic rename). **Layman never creates, chmods or relabels anything under `~/.glove`**; anything glove needs there (folders, permissions, SELinux labels) is glove's to do, and is asked of glove through a plan in its `docs/planning/`. SELinux-enforcing hosts are unsupported for the glove integration (glove itself does not run there yet); never add `z`/`Z` to the glove mounts. The whole `~/.glove` is mounted (not just `envs/`) so `GloveSource` can read `~/.glove/registry.json` — glove's canonical record of each env's resolved home — and reach a home relocated under `~/.glove` (the mount contract for relocated homes; see `docs/extensions/glove.md`).
 
 - **Storage is harness-agnostic, not inside `~/.claude`** (`config/paths.ts`). Layman's SQLite
   database and runtime config are its own data, not Claude Code's — a user may run only Codex, Vibe,

@@ -1,5 +1,5 @@
 /**
- * The world map (plan §7.2): Natural Earth land from `world-atlas`, bundled
+ * The world map: Natural Earth land from `world-atlas`, bundled
  * and loaded lazily as its own chunk — nothing is fetched from anywhere at run
  * time — drawn with `d3-geo`. The geometry decisions are in `lib/net-geo.ts`.
  *
@@ -14,7 +14,7 @@ import { feature } from 'topojson-client';
 import type { FeatureCollection, Geometry } from 'geojson';
 import type { NetSessionData } from '../../lib/net-state.js';
 import {
-  arcPath, clusterDestinations, fitBounds, makeProjection, screenCurve, strokeWidth, trunkFor, type Insets, type LonLat,
+  arcPath, clusterDestinations, fitBounds, labelBox, makeProjection, placeLabels, screenCurve, strokeWidth, trunkFor, type Insets, type LonLat,
 } from '../../lib/net-geo.js';
 import { NetIcon } from './netui.js';
 
@@ -180,22 +180,35 @@ export function WorldMap({ data, selected, onSelect, compact = false, sandboxAnc
         })}
       </svg>
 
-      {/* Labels are HTML: crisp at any zoom, and the same pill as the mockup. */}
-      {!compact && clusters.map((c) => {
-        const b = base([c.lon, c.lat]);
-        if (!b) return null;
-        const [x, y] = toScreen(b);
+      {/* Labels are HTML: crisp at any zoom, and the same pill as the design. Placed so neighbours never overlap. */}
+      {!compact && (() => {
+        const exitText = exitScreen && trunk.label ? `${trunk.label}${trunk.kind === 'declared' ? ' · declared' : ''}` : null;
+        const exitAt = exitScreen && exitText ? { left: exitScreen[0] + 14, top: exitScreen[1] + 12 } : null;
+        const text = (c: typeof clusters[number]) => `${c.label}${c.dests.length > 1 ? ` · ${c.dests.length}` : ''}`;
+        const spots = clusters.flatMap((c) => {
+          const b = base([c.lon, c.lat]);
+          if (!b) return [];
+          const [x, y] = toScreen(b);
+          return [{ key: c.key, x, y, text: text(c) }];
+        });
+        const placed = placeLabels(spots, exitAt && exitText ? [labelBox(exitAt, exitText)] : []);
         return (
-          <span key={`lbl-${c.key}`} style={{ ...pill, left: x + 10, top: y + 6, borderColor: c.direct ? 'rgba(240,86,74,0.6)' : 'var(--border-strong)' }}>
-            {c.label}{c.dests.length > 1 ? ` · ${c.dests.length}` : ''}
-          </span>
+          <>
+            {clusters.map((c) => {
+              const p = placed.get(c.key);
+              if (!p) return null;
+              return (
+                <span key={`lbl-${c.key}`} style={{ ...pill, left: p.left, top: p.top, borderColor: c.direct ? 'rgba(240,86,74,0.6)' : 'var(--border-strong)' }}>
+                  {text(c)}
+                </span>
+              );
+            })}
+            {exitAt && (
+              <span style={{ ...pill, ...exitAt, color: 'var(--net-tunnel)', borderColor: 'rgba(53,201,180,0.45)' }}>{exitText}</span>
+            )}
+          </>
         );
-      })}
-      {!compact && exitScreen && trunk.label && (
-        <span style={{ ...pill, left: exitScreen[0] + 14, top: exitScreen[1] + 12, color: 'var(--net-tunnel)', borderColor: 'rgba(53,201,180,0.45)' }}>
-          {trunk.label}{trunk.kind === 'declared' ? ' · declared' : ''}
-        </span>
-      )}
+      })()}
       {!compact && (
         <div style={{ position: 'absolute', right: 12, bottom: 64, display: 'flex', flexDirection: 'column', gap: 4, zIndex: 2 }}>
           {([['+', 1.5, 'Zoom in'], ['−', 1 / 1.5, 'Zoom out']] as const).map(([t, f, label]) => (

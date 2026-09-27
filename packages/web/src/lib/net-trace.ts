@@ -1,5 +1,5 @@
 /**
- * The Trace tab's waterfall (plan §7.4, trace-agent-trace.dc.html), pure so it
+ * The Trace tab's waterfall, pure so it
  * is tested in node: a turn's tool calls, each with the flows the server joined
  * to it (`netobs/correlate.ts`), LLM requests between them, and whatever no
  * call claimed under "Unattributed". Rows, the time axis, each flow's outcome
@@ -117,7 +117,7 @@ export function isRowExpanded(id: string, toggled: ReadonlySet<string>): boolean
 
 export interface RowOptions {
   toggled: ReadonlySet<string>;
-  /** Hide calls that made no traffic (the mockup's "Only calls with traffic"). */
+  /** Hide calls that made no traffic (the design's "Only calls with traffic"). */
   onlyTraffic: boolean;
   rules?: readonly Rule[];
   /** A client name for the fan-out's route line: `via SearXNG · VPN`. */

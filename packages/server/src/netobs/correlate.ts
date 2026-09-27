@@ -1,6 +1,6 @@
 /**
  * Joins a turn's tool calls (from the harness transcript Layman records) to the
- * flows glove's gate saw (plan §7.4). This is what Layman can do and glove
+ * flows glove's gate saw. This is what Layman can do and glove
  * cannot: glove never learns the URL behind an HTTPS CONNECT, but the
  * transcript has the exact `web_fetch` call.
  *

@@ -6,6 +6,7 @@ import { randomUUID } from 'crypto';
 import { fileURLToPath } from 'url';
 import { EventStore } from '../events/store.js';
 import { SessionRecorder } from '../db/recorder.js';
+import { filterEventPii, IP_CATEGORIES } from '../pii/filter.js';
 import type { Database } from '../db/database.js';
 import type { discoverTranscriptFiles as DiscoverFn, importHistoricalSessions as ImportFn } from './recovery.js';
 
@@ -32,7 +33,7 @@ const FIXTURES_DIR = join(dirname(fileURLToPath(import.meta.url)), '__fixtures__
  */
 class FakeDb {
   sessions = new Map<string, { session_id: string; cwd: string; agent_type: string; started_at: number; last_seen: number; source: string; session_name: string | null }>();
-  events = new Map<string, { id: string; session_id: string; type: string; timestamp: number }>();
+  events = new Map<string, { id: string; session_id: string; type: string; timestamp: number; data_json?: string }>();
 
   transaction<T extends (...args: unknown[]) => unknown>(fn: T): T {
     return fn;
@@ -61,9 +62,9 @@ class FakeDb {
     }
     if (sql.includes('INSERT OR IGNORE INTO recorded_events')) {
       return {
-        run(id: string, sessionId: string, type: string, timestamp: number) {
+        run(id: string, sessionId: string, type: string, timestamp: number, _agentType: string, dataJson: string) {
           if (db.events.has(id)) return;
-          db.events.set(id, { id, session_id: sessionId, type, timestamp });
+          db.events.set(id, { id, session_id: sessionId, type, timestamp, data_json: dataJson });
         },
       };
     }
@@ -130,11 +131,12 @@ function writeClaudeCodeFixture(): void {
   writeFileSync(join(projectDir, `${CC_SESSION_ID}.jsonl`), lines.join('\n') + '\n');
 }
 
-function writePiFixture(): string {
+function writePiFixture(prompt?: string): string {
   const sessionsDir = join(home, '.pi', 'agent', 'sessions', '--Users-test-pi-project--');
   mkdirSync(sessionsDir, { recursive: true });
   const content = readFileSync(join(FIXTURES_DIR, 'linear.jsonl'), 'utf-8')
-    .replace('aaaaaaaa-0000-7000-8000-000000000000', PI_SESSION_ID);
+    .replace('aaaaaaaa-0000-7000-8000-000000000000', PI_SESSION_ID)
+    .replace('Read notes.md then summarize it', prompt ?? 'Read notes.md then summarize it');
   const path = join(sessionsDir, `2026-08-21T09-00-00-000Z_${PI_SESSION_ID}.jsonl`);
   writeFileSync(path, content);
   return path;
@@ -148,12 +150,13 @@ const GLOVE_PI_SESSION_ID = '44444444-4444-4444-4444-444444444444';
  * env id label. Sits outside `home` deliberately — a glove session lives under
  * the glove sessions dir, not the native pi home.
  */
-function writeGlovePiFixture(envId: string): { root: string; label: string } {
+function writeGlovePiFixture(envId: string, prompt?: string): { root: string; label: string } {
   const sessionsDir = join(home, '.glove', 'envs', envId, 'home', '.pi', 'agent', 'sessions');
   const projectDir = join(sessionsDir, '--Users-test-pi-project--');
   mkdirSync(projectDir, { recursive: true });
   const content = readFileSync(join(FIXTURES_DIR, 'linear.jsonl'), 'utf-8')
-    .replace('aaaaaaaa-0000-7000-8000-000000000000', GLOVE_PI_SESSION_ID);
+    .replace('aaaaaaaa-0000-7000-8000-000000000000', GLOVE_PI_SESSION_ID)
+    .replace('Read notes.md then summarize it', prompt ?? 'Read notes.md then summarize it');
   writeFileSync(join(projectDir, `2026-08-21T09-00-00-000Z_${GLOVE_PI_SESSION_ID}.jsonl`), content);
   return { root: sessionsDir, label: envId };
 }
@@ -274,6 +277,38 @@ describe('importHistoricalSessions', () => {
     // The env id rides through to the session name, so the gloved import is
     // tagged just like a passively-watched gloved session.
     expect(db.sessions.get(GLOVE_PI_SESSION_ID)?.session_name).toBe('pi-local');
+  });
+
+  // Imported events never pass through EventStore, so the recorder applies the
+  // same filter itself. Before, an imported transcript was stored exactly as parsed.
+  const SECRET_PROMPT = 'Mail jane.doe@example.com about 203.0.113.7';
+  const piiRecorder = (db: FakeDb, keepIps: boolean) => {
+    const recorder = makeRecorder(db);
+    recorder.setImportFilter((event, gloved) => filterEventPii(event, gloved && keepIps ? IP_CATEGORIES : undefined));
+    return recorder;
+  };
+  const storedPrompt = (db: FakeDb) =>
+    Array.from(db.events.values()).find((e) => e.type === 'user_prompt')!.data_json ?? '';
+
+  it('stores an imported transcript PII-filtered', async () => {
+    writePiFixture(SECRET_PROMPT);
+    const db = new FakeDb();
+    await importHistoricalSessions(db as unknown as Database, new EventStore(), piiRecorder(db, true));
+    const stored = storedPrompt(db);
+    expect(stored).not.toContain('jane.doe@example.com');
+    // Not gloved: the IP setting does not apply.
+    expect(stored).not.toContain('203.0.113.7');
+  });
+
+  it('keeps IP addresses in an imported gloved transcript when the IP setting is on, and nothing else', async () => {
+    const { root, label } = writeGlovePiFixture('pi-local', SECRET_PROMPT);
+    const db = new FakeDb();
+    await importHistoricalSessions(db as unknown as Database, new EventStore(), piiRecorder(db, true), {
+      gloveRoots: [{ path: root, agentType: 'pi', label }],
+    });
+    const stored = storedPrompt(db);
+    expect(stored).not.toContain('jane.doe@example.com');
+    expect(stored).toContain('203.0.113.7');
   });
 
   it('re-scanning an already-imported session finds nothing new (idempotent)', async () => {

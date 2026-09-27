@@ -1,5 +1,5 @@
 /**
- * Wire protocol for multi-host sync (docs/planning/multi-host-sync.md §3.7, §3.12).
+ * Wire protocol for multi-host sync.
  *
  * These are the only sync types the web client mirrors (Phase 2). Bumping
  * `SYNC_PROTOCOL_VERSION` is a breaking change: `hello` checks it on both sides
@@ -84,7 +84,7 @@ export interface HelloResponse {
   headSeq: number;
 }
 
-/** One page of a mirror bootstrap snapshot (docs/planning/multi-host-sync.md §3.10). */
+/** One page of a mirror bootstrap snapshot. */
 export interface SnapshotPage {
   kind: SyncKind;
   entries: PushEntry[];

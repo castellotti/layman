@@ -1,5 +1,5 @@
 /**
- * REST surface for network views (plan §4.2). Registered by one call from
+ * REST surface for network views. Registered by one call from
  * server.ts, as `routes/turns.ts` is. The rules write route and the
  * `net:rules:apply` WebSocket message share `NetObs.applyRules`.
  */

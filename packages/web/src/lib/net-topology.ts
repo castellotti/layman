@@ -1,5 +1,5 @@
 /**
- * The Topology tab's diagram (plan §7.3, topology.dc.html), pure so it is
+ * The Topology tab's diagram, pure so it is
  * tested in node: which boxes exist in each column, where they sit, and the
  * bands between them. `components/network/TopologyView.tsx` only draws.
  *
@@ -25,7 +25,7 @@ export const COLUMN_LABELS: Readonly<Record<ColumnId, string>> = {
   sandbox: 'Sandbox', services: 'Gate services', policy: 'Policy', route: 'Route', origin: 'Apparent origin', dests: 'Destinations',
 };
 
-/** Where each column would like to start, as a share of the width (the mockup's, at 1080 px). */
+/** Where each column would like to start, as a share of the width (the design's, at 1080 px). */
 const COLUMN_X: Readonly<Record<'sandbox' | 'services' | 'route' | 'origin', number>> = { sandbox: 0.03, services: 0.225, route: 0.53, origin: 0.7 };
 /** The least room between a column's boxes and the next column, so bands have somewhere to bend. */
 const MIN_GAP = { originToDests: 90, routeToOrigin: 40 };

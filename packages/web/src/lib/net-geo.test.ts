@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  arcPath, clusterDestinations, fitBounds, isMappable, makeProjection, ribbonLanes, screenCurve, strokeWidth, trunkFor, unknownLocation,
+  arcPath, clusterDestinations, fitBounds, isMappable, labelBox, makeProjection, placeLabels, ribbonLanes, screenCurve, strokeWidth, trunkFor, unknownLocation,
   LAT_MAX, LAT_MIN,
 } from './net-geo.js';
 import { dest, flow, gate } from './net-test-fixtures.js';
@@ -86,6 +86,31 @@ describe('what goes where', () => {
     expect(cs.map((c) => [c.label, c.dests.length, c.live, c.direct])).toEqual([
       ['San Francisco', 2, true, false], ['Amsterdam', 2, false, true],
     ]);
+  });
+});
+
+describe('labels', () => {
+  it('keeps nearby cities apart, and hides a label only when every side is taken', () => {
+    const placed = placeLabels([
+      { key: 'london', x: 100, y: 100, text: 'London · 3' },
+      { key: 'roubaix', x: 104, y: 104, text: 'Roubaix' },
+      { key: 'frankfurt', x: 102, y: 102, text: 'Frankfurt' },
+      { key: 'paris', x: 106, y: 108, text: 'Paris' },
+      { key: 'far', x: 400, y: 300, text: 'Ashburn' },
+    ]);
+    expect(placed.get('london')).toEqual({ left: 110, top: 106 }); // the biggest keeps the usual spot
+    expect(placed.get('roubaix')).toEqual({ left: 36, top: 110 }); // left of its pin
+    expect(placed.get('frankfurt')).toEqual({ left: 22, top: 90 }); // above left
+    expect(placed.get('paris')).toBeNull(); // its pin's tooltip still names it
+    expect(placed.get('far')).toEqual({ left: 410, top: 306 });
+    // Two labels on one pin (Ashburn and Virginia) stack.
+    const same = placeLabels([{ key: 'a', x: 0, y: 0, text: 'Ashburn' }, { key: 'v', x: 0, y: 0, text: 'Virginia' }]);
+    expect([...same.values()]).toEqual([{ left: 10, top: 6 }, { left: 10, top: -12 }]);
+  });
+
+  it('never covers a reserved box (the exit label)', () => {
+    const exit = labelBox({ left: 110, top: 106 }, 'Exit · Zurich');
+    expect(placeLabels([{ key: 'z', x: 100, y: 100, text: 'Zurich' }], [exit]).get('z')).toEqual({ left: 110, top: 88 });
   });
 });
 

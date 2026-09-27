@@ -1,5 +1,5 @@
 /**
- * The Topology tab (plan §7.3, topology.dc.html): the Routes diagram and the
+ * The Topology tab: the Routes diagram and the
  * Selected path panel. Geometry comes from `lib/net-topology.ts`; this file
  * only draws it. Clicking a destination or a band selects that path (the
  * `netDest` the Map and the Network tab share), which dims every other band.

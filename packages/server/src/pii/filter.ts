@@ -1,4 +1,4 @@
-import type { EventData } from '../events/types.js';
+import type { EventData, TimelineEvent } from '../events/types.js';
 
 const REDACTED = '[REDACTED]';
 
@@ -252,6 +252,18 @@ export function filterPii(data: EventData, keep?: ReadonlySet<string>): EventDat
   const out = redactValue(rest, keep) as EventData;
   if (transcriptEventId !== undefined) out.transcriptEventId = transcriptEventId;
   return out;
+}
+
+/**
+ * Filter a whole event the way `EventStore` does on the way in: its data, and the
+ * Layman's-terms explanation that rides outside it. For events written to the
+ * database without passing through the store (history import, JSON import).
+ */
+export function filterEventPii(event: TimelineEvent, keep?: ReadonlySet<string>): TimelineEvent {
+  const laymans = event.laymans?.explanation
+    ? { ...event.laymans, explanation: redactString(event.laymans.explanation, keep) }
+    : event.laymans;
+  return { ...event, data: filterPii(event.data, keep), laymans };
 }
 
 /**

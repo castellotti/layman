@@ -1,7 +1,7 @@
 /**
  * Network observability for glove sessions: discovery → tail → store → `net:*`
  * frames. See docs/extensions/glove.md ("Network") for the design and the rules
- * that must not be relaxed; docs/planning/network-views.md for the plan.
+ * that must not be relaxed; docs/extensions/glove.md → Network for the design.
  *
  * Wiring lives here so `server.ts` makes one constructor call, one `start()`,
  * and hands each WebSocket to `attach()`/`subscribe()`.
@@ -48,7 +48,7 @@ export interface NetSocket {
 
 /** Tail polling, the same cadence as glove's own reload loop. */
 export const POLL_MS = 1_000;
-/** At most one `net:delta` per session per this interval (plan §4.1). */
+/** At most one `net:delta` per session per this interval. */
 export const COALESCE_MS = 500;
 
 export interface NetObsOptions {
@@ -64,7 +64,7 @@ export interface NetObsOptions {
   budgetBytes?: number;
   /** Where totals are kept across restarts (`persist.ts`); none in most tests. */
   history?: NetHistory;
-  /** How often rollups are written (plan §5.6: 30 s). */
+  /** How often rollups are written (30 s). */
   persistMs?: number;
 }
 
@@ -238,7 +238,7 @@ export class NetObs {
   }
 
   /**
-   * Write every session's rollup (plan §5.6), when session recording is on.
+   * Write every session's rollup, when session recording is on.
    * Public so tests (and shutdown) can drive it.
    */
   persist(): void {
@@ -262,7 +262,7 @@ export class NetObs {
   }
 
   /**
-   * Change rules.json (plan §5.3). The WebSocket and REST share this. The
+   * Change rules.json. The WebSocket and REST share this. The
    * result says whether the write reached disk; whether the gate took it
    * arrives later, in `net:rules`, by the hash rule.
    */

@@ -1,5 +1,5 @@
 /**
- * Toasts for the network views (plan §6.4): a rules change that could not be
+ * Toasts for the network views: a rules change that could not be
  * written, and rules.json changed by someone other than Layman (glove's CLI, an
  * editor). Layman never treats its own last write as the truth, so an outside
  * change is reported, not overwritten.

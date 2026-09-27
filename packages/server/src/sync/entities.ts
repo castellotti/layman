@@ -2,7 +2,7 @@ import type { Database } from '../db/database.js';
 import { type SyncKind, SYNC_KIND_ORDER, type WireRow } from './protocol.js';
 
 /**
- * The entity registry (docs/planning/multi-host-sync.md §3.5): one `SyncEntity`
+ * The entity registry: one `SyncEntity`
  * per kind, pure SQL over a `Database`. Adding a kind later means adding one
  * entry here and one trigger — the transport never changes. Wire rows use the
  * DB column names and pass `*_json` columns through as strings without parsing.

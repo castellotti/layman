@@ -3,7 +3,7 @@ import compress from '@fastify/compress';
 import type { Database } from '../db/database.js';
 import type { LaymanConfig } from '../config/schema.js';
 import { SyncJournal } from './journal.js';
-import { SyncApplier } from './applier.js';
+import { SyncApplier, outboundRow } from './applier.js';
 import { PeerStore } from './tokens.js';
 import { createHttpSyncClient, type SyncPusher } from './pusher.js';
 import type { SyncPuller } from './puller.js';
@@ -48,7 +48,7 @@ export interface SyncRouteDeps {
 }
 
 /**
- * All `/api/sync/*` routes (docs/planning/multi-host-sync.md §6), registered as a
+ * All `/api/sync/*` routes, registered as a
  * single encapsulated plugin so `@fastify/compress` request-decompression is
  * scoped to them. Token routes (`hello`, `push`) require a bearer token; the
  * management routes are local-only, same trust model as every other `/api/*`
@@ -175,7 +175,7 @@ export async function registerSyncRoutes(fastify: FastifyInstance, deps: SyncRou
       }
 
       // deferStats: the receiving side of a bulk transfer is the corruption
-      // hazard (see docs/planning/multihost-sync-durability-followup.md), and a
+      // hazard (see CLAUDE.md → SQLite runs in DELETE mode), and a
       // large remote's first backfill applies here in the same tight loop as a
       // mirror snapshot. Skip the per-batch counter recompute (an accidental
       // O(n²) over recorded_events) and let the applier's 'applied' listener
@@ -215,8 +215,9 @@ export async function registerSyncRoutes(fastify: FastifyInstance, deps: SyncRou
         const limit = Math.min(Math.max(parseInt(request.query.limit ?? '500', 10) || 500, 1), 1000);
         const cursor = request.query.cursor ?? '';
         const rows = entity.pageExcludingOrigin(db, { afterId: cursor, limit, excludeHostId: peer.host_id });
+        const piiFilter = getConfig().piiFilter;
         const entries: PushEntry[] = rows.map((row) => ({
-          op: 'upsert', kind: entity.kind, id: String(row[entity.idColumn]), row,
+          op: 'upsert', kind: entity.kind, id: String(row[entity.idColumn]), row: outboundRow(entity.kind, row, piiFilter),
         }));
         const nextCursor = rows.length === limit ? String(rows[rows.length - 1][entity.idColumn]) : null;
 
@@ -257,7 +258,7 @@ export async function registerSyncRoutes(fastify: FastifyInstance, deps: SyncRou
           }
           const entity = SYNC_ENTITIES[e.kind];
           const row = entity?.load(db, [e.entityId])[0];
-          if (row) entries.push({ op: 'upsert', kind: e.kind, id: e.entityId, row });
+          if (row) entries.push({ op: 'upsert', kind: e.kind, id: e.entityId, row: outboundRow(e.kind, row, getConfig().piiFilter) });
           // an upsert whose row is gone (deleted after journaling) is skipped
         }
 

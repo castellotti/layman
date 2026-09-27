@@ -151,8 +151,7 @@ export function applyMigrations(db: Database): void {
 }
 
 /**
- * Migration 3 — glove network rollups (docs/planning/network-views.md §5.6,
- * `netobs/persist.ts`): one row per glove session and one per destination, never
+ * Migration 3 — glove network rollups (`netobs/persist.ts`): one row per glove session and one per destination, never
  * per flow. **Deliberately not synced**: no triggers and no SYNC_ENTITIES entry.
  * These rows describe one host's sandbox traffic — where it browsed — and must
  * not travel to a central instance or any other host.
@@ -216,7 +215,7 @@ function addColumn(db: Database, table: string, column: string, ddl: string): vo
 /**
  * Migration 2 — multi-host sync scaffolding (schema only; no host backfill).
  *
- * See docs/planning/multi-host-sync.md §4. Structural DDL lives here and is
+ * See CLAUDE.md → Multi-host sync. Structural DDL lives here and is
  * idempotent; the row backfill (host_id / sync_id / updated_at and the local
  * sync_hosts row) runs from `ensureHostIdentity()` once the host id is known,
  * because the triggers and backfill both read `sync_state.hostId`.
@@ -300,7 +299,7 @@ const LOCAL_HOST = `(SELECT value FROM sync_state WHERE key = 'hostId')`;
  *  - "log" triggers append an upsert/delete entry to sync_log with the row's
  *    true origin. Ordering: the default-host trigger is created before the log
  *    triggers so it fires first; the extra log row its UPDATE produces dedupes
- *    away at read/compaction time (see plan §3.4).
+ *    away at read/compaction time.
  */
 function createSyncTriggers(db: Database): void {
   const stmts: string[] = [];

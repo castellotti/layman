@@ -1,7 +1,7 @@
 /**
  * Cross-repo contract test: glove's own fixture (produced by its real gate
  * code), read through discovery → tail → store exactly as a live session is.
- * Facts asserted here are glove's handoff Appendix A / §6.1.
+ * Facts asserted here are glove's §6.1.
  */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'fs';
@@ -92,7 +92,7 @@ describe('glove netobs fixture', () => {
     expect(dest(snap, '169.254.169.254:80').groupKey).toBe('169.254.169.254');
   });
 
-  it('classifies every fixture state in handoff §6.1', () => {
+  it("classifies every fixture state in glove's state table", () => {
     const snap = load();
     const one = (host: string | null) => {
       const fs = byHost(snap, host);

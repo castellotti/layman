@@ -8,7 +8,7 @@ export interface PanelDef {
   id: string;
   /** Panel header (uppercased), e.g. "Destinations". */
   title: string;
-  /** The Panels chip in the gate strip, e.g. "Table" — the mockups name them differently. */
+  /** The Panels chip in the gate strip, e.g. "Table" — the design names them differently. */
   chip: string;
   /** Icon name for the chip (see components/network/netui.tsx). */
   icon: string;

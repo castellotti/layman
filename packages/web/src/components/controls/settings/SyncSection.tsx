@@ -25,7 +25,7 @@ async function jsonFetch<T>(url: string, init?: RequestInit): Promise<T> {
 }
 
 /**
- * Settings → Connection → Multi-host sync (docs/planning/multi-host-sync.md §8.3).
+ * Settings → Connection → Multi-host sync.
  * Mirrors SyncConfigSchema on the server; role/credentials go through
  * `config:update`, and peers/hosts use the local `/api/sync/*` management routes.
  * Mirror (pull) controls arrive in Phase 4.

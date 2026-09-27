@@ -1,5 +1,5 @@
 /**
- * The Trace tab (plan §7.4, trace-agent-trace.dc.html): one turn at a time,
+ * The Trace tab: one turn at a time,
  * each tool call the agent made over the flows the gate saw for it. The join is
  * the server's (`netobs/correlate.ts`, `GET /api/net/sessions/:token/trace`);
  * rows and wording are `lib/net-trace.ts`; this file draws the turn bar, the
@@ -56,14 +56,17 @@ function useTraceData(token: string) {
   }, [token, set]);
   useEffect(() => {
     let live = true;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    // The next load is scheduled once this one settles, never on a fixed beat: a slow build
+    // (a long session) must not stack requests behind it.
     const load = () => {
       fetchTrace(token, turnId ? { turn: turnId } : null)
         .then((v) => { if (live) set({ view: v, error: null }); })
-        .catch((e: Error) => { if (live) set({ error: e.message }); });
+        .catch((e: Error) => { if (live) set({ error: e.message }); })
+        .finally(() => { if (live) timer = setTimeout(load, REFRESH_MS); });
     };
     load();
-    const t = setInterval(load, REFRESH_MS);
-    return () => { live = false; clearInterval(t); };
+    return () => { live = false; clearTimeout(timer); };
   }, [token, turnId, set]);
 }
 
@@ -88,10 +91,9 @@ function Chip({ tone, icon, children }: { tone: 'neutral' | 'warn' | 'error' | '
 export function TurnBar({ data }: { data: NetSessionData }) {
   useTraceData(data.token);
   const { view, error, set } = useTrace();
-  const turns = view?.turns ?? [];
-  const i = view?.turn ? turns.findIndex((t) => t.promptEventId === view.turn!.promptEventId) : -1;
-  const go = (j: number) => set({ turnId: turns[j].promptEventId, selected: null, toggled: new Set() });
-  const nav: React.CSSProperties = { width: 26, height: 26, borderRadius: 6, border: '1px solid var(--border-strong)', background: 'var(--bg-pill)', color: 'var(--text)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' };
+  const nav = view?.nav;
+  const go = (turnId: string | null | undefined) => { if (turnId) set({ turnId, selected: null, toggled: new Set() }); };
+  const navStyle: React.CSSProperties = { width: 26, height: 26, borderRadius: 6, border: '1px solid var(--border-strong)', background: 'var(--bg-pill)', color: 'var(--text)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' };
   if (!view) {
     return <div style={{ margin: '8px 8px 0', padding: '10px 14px', fontSize: 11.5, color: 'var(--text-muted)' }}>{error ? `Trace unavailable: ${error}` : 'Loading the trace…'}</div>;
   }
@@ -101,16 +103,16 @@ export function TurnBar({ data }: { data: NetSessionData }) {
   return (
     <div role="region" aria-label="Turn" style={{ display: 'flex', alignItems: 'center', gap: 12, margin: '8px 8px 0', padding: '8px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-card)', minWidth: 0 }}>
       <div style={{ display: 'flex', gap: 6 }}>
-        <button type="button" aria-label="Previous turn" disabled={i <= 0} onClick={() => go(i - 1)} style={{ ...nav, opacity: i <= 0 ? 0.4 : 1 }}>
+        <button type="button" aria-label="Previous turn" disabled={!nav?.prev} onClick={() => go(nav?.prev)} style={{ ...navStyle, opacity: nav?.prev ? 1 : 0.4 }}>
           <span style={{ display: 'inline-block', transform: 'rotate(90deg)' }}><NetIcon name="chevron" size={12} /></span>
         </button>
-        <button type="button" aria-label="Next turn" disabled={i < 0 || i >= turns.length - 1} onClick={() => go(i + 1)} style={{ ...nav, opacity: i < 0 || i >= turns.length - 1 ? 0.4 : 1 }}>
+        <button type="button" aria-label="Next turn" disabled={!nav?.next} onClick={() => go(nav?.next)} style={{ ...navStyle, opacity: nav?.next ? 1 : 0.4 }}>
           <span style={{ display: 'inline-block', transform: 'rotate(-90deg)' }}><NetIcon name="chevron" size={12} /></span>
         </button>
       </div>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', fontSize: 10.5 }}>
-          <span style={{ color: 'var(--info)', fontWeight: 600, letterSpacing: '0.06em' }}>TURN {i + 1} OF {turns.length}</span>
+          <span style={{ color: 'var(--info)', fontWeight: 600, letterSpacing: '0.06em' }}>TURN {(nav?.index ?? -1) + 1} OF {nav?.count ?? 0}</span>
           <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-faint)' }}>{clockTime(t.startedAt)}</span>
           <span style={{ color: 'var(--text-faint)' }}>{data.session?.harness ?? 'harness'} · {data.token}</span>
         </div>
@@ -185,7 +187,7 @@ function RowView({ row, data, selected, onSelect, onToggleRow, onPolicy, axisWid
           </span>
         )}
         {row.call?.redacted && (
-          <span title="The PII filter redacted this URL's host when Layman recorded the call (Settings → PII filter), so no flow can be joined to it; its traffic is under Unattributed."
+          <span title="The PII filter redacted this URL's host when Layman recorded the call, so no flow can be joined to it; its traffic is under Unattributed. To keep IP addresses in glove sessions, turn on Settings → glove → Show IP addresses in sandboxed sessions (calls recorded from then on)."
             style={{ fontSize: 9.5, color: 'var(--warn)', border: '1px solid rgba(229,168,59,0.5)', borderRadius: 4, padding: '0 4px', flexShrink: 0 }}>redacted</span>
         )}
         {row.call?.timing === 'approximate' && (
@@ -234,6 +236,7 @@ export function TraceWaterfall({ data }: { data: NetSessionData }) {
         <span style={{ fontFamily: 'var(--font-mono)' }}> {data.token}</span>. {view.sessionIds.length || sessionName
           ? 'Its turns appear here once the agent is prompted.'
           : 'Start the harness in this glove session and it appears here; the Network, Map and Topology tabs work without it.'}
+        {' '}If the agent ran before Layman started recording it, Settings → Data → Import session history brings its turns in.
       </EmptyState>
     );
   }
@@ -386,7 +389,7 @@ export function TraceDetails({ data }: { data: NetSessionData }) {
         {c.end !== null && c.timing === 'exact' && <Row k="Ended" v={`${clockTime(c.end)} · ${((c.end - c.start) / 1000).toFixed(1)} s`} />}
         <Row k="Flows" v={`${item.flowIds.length + item.fanoutIds.length}`} sub={item.fanoutIds.length ? `${item.fanoutIds.length} by SearXNG’s fan-out` : undefined} />
         <Row k="Joined" v={c.redacted ? 'not joined' : c.timing === 'exact' ? 'host and time' : 'host only'} mono={false}
-          sub={c.redacted ? 'the PII filter redacted the host when the call was recorded' : c.timing === 'exact' ? 'opened between start − 1 s and end + 2 s' : 'opened after the turn began, before Layman read the call'} />
+          sub={c.redacted ? 'the PII filter redacted the host when the call was recorded; Settings → glove → Show IP addresses keeps IPs in glove sessions' : c.timing === 'exact' ? 'opened between start − 1 s and end + 2 s' : 'opened after the turn began, before Layman read the call'} />
         {c.failed && <Row k="Result" v="failed" colour="#FF8A80" />}
         <TurnButtons view={view} label={c.label} />
       </div>

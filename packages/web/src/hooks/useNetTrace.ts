@@ -22,12 +22,14 @@ export function useNetTrace(token: string | null, query: TraceQuery, key: string
   useEffect(() => {
     if (!token) return;
     let live = true;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    // Re-read once the previous request settles, so a slow build never stacks requests.
     const load = () => fetchTrace(token, query)
       .then((view) => { if (live) setState({ view, error: null, key }); })
-      .catch((e: Error) => { if (live) setState((s) => ({ ...s, error: e.message, key })); });
-    load();
-    const t = refreshMs > 0 ? setInterval(load, refreshMs) : null;
-    return () => { live = false; if (t) clearInterval(t); };
+      .catch((e: Error) => { if (live) setState((s) => ({ ...s, error: e.message, key })); })
+      .finally(() => { if (live && refreshMs > 0) timer = setTimeout(load, refreshMs); });
+    void load();
+    return () => { live = false; clearTimeout(timer); };
     // `query` is described by `key`.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, key, refreshMs]);

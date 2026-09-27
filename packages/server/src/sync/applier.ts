@@ -38,7 +38,7 @@ const KIND_ORDER: Record<string, number> = {
 };
 
 /**
- * Applies a peer's push batch on central (docs/planning/multi-host-sync.md §3.8).
+ * Applies a peer's push batch on central.
  *
  * Everything runs in one transaction, entries in registry order regardless of
  * arrival order, so a bookmark that references a not-yet-seen session still
@@ -116,6 +116,18 @@ export class SyncApplier extends EventEmitter {
     if (applied > 0) this.emit('applied', { originHostId, entries: ordered });
     return { applied, conflicts };
   }
+}
+
+/**
+ * Prepare a row for another host. With the PII filter on, an event row is redacted in full,
+ * which removes the IP addresses `glove.showIpAddresses` keeps in gloved sessions: that setting
+ * is host-local, and where one host's sandboxes connected never crosses hosts (the same reason
+ * the network rollups are not synced). Everything else is already redacted, so it is unchanged.
+ * Used by every outbound path: push, the mirror snapshot and the mirror changes feed.
+ */
+export function outboundRow(kind: string, row: WireRow, piiFilter: boolean): WireRow {
+  if (piiFilter && kind === 'event') redactEventRow(row);
+  return row;
 }
 
 /** Re-redact an event wire row's JSON blobs in place (central-side defence in depth). */

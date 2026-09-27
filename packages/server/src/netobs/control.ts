@@ -1,8 +1,8 @@
 /**
  * rules.json per session: what is on disk, what the gate enforces, and what
  * became of Layman's own last write. The UI only ever claims what the gate
- * confirms, so everything here is decided by glove's hash rule (follow-up
- * results §2 item 3; handoff §3 "Confirming a write"), never by timestamps:
+ * confirms, so everything here is decided by glove's hash rule, never by
+ * timestamps:
  * `status.json` `rules.sha256` names the bytes the gate enforces, and
  * `rules.last_rejected.sha256` the bytes it last refused.
  *

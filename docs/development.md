@@ -4,7 +4,11 @@ Building, testing, and contributing to Layman.
 
 ## Prerequisites
 
-- Node.js 22+
+- Node.js 22 (`.nvmrc`). The server's SQLite binding (`better-sqlite3` 9.x) ships prebuilds for
+  Node ≤ 22 and does not compile against newer Node, so on Node 24+ every test that opens a
+  database (`db/`, `sync/`, `netobs/persist.test.ts`) fails with "Could not locate the bindings
+  file" and the server cannot start natively. `pnpm rebuild better-sqlite3` does not fix that.
+  Use Node 22 (`nvm use`, `fnm use`, or Homebrew's `node@22`), or run the suite in Docker (below).
 - pnpm 10 (`corepack enable && corepack prepare pnpm@10.29.3 --activate`)
 - Docker **or** Podman (for container builds — see [Container engine](#container-engine) below)
 
@@ -26,6 +30,14 @@ make dev         # server + web in parallel watch mode
 make build       # pnpm -r build
 make test        # vitest across the workspace
 make typecheck   # tsc --noEmit across the workspace
+make e2e-network # browser checks of the glove network views (e2e/network/README.md)
+```
+
+To run the full suite where the SQLite binding always builds, in the image's build stage (the
+glove cross-checks are skipped there, since `../glove` is not in the build context):
+
+```bash
+docker build --target build -t layman-test . && docker run --rm layman-test pnpm -r test; docker rmi layman-test
 ```
 
 ## Turns and addressable URLs

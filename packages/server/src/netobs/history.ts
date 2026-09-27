@@ -1,5 +1,5 @@
 /**
- * What Layman keeps of a glove session between restarts (plan §5.6): one row
+ * What Layman keeps of a glove session between restarts: one row
  * per session and one per destination, written by `persist.ts` and read back
  * into `NetStore` before the files are backfilled.
  *

@@ -1,5 +1,5 @@
 /**
- * The Network tab's destination table (plan §7.1, network-ledger.dc.html) as
+ * The Network tab's destination table as
  * data: grouping, filtering, sorting, and what every cell says. Pure, so it is
  * tested in node; `components/network/DestinationTable.tsx` only draws rows.
  *
@@ -26,7 +26,7 @@ export const GROUP_EMPTY = '@empty';
 /** Fixed groups that start expanded: the guard's refusals and the unwatched routes are what a glance should catch. */
 const EXPANDED_BY_DEFAULT = new Set([GROUP_GUARD, GROUP_UNWATCHED]);
 
-/** Past this many rows the table renders only what is on screen (plan §7.1). */
+/** Past this many rows the table renders only what is on screen. */
 export const WINDOW_THRESHOLD = 200;
 export const GROUP_ROW_HEIGHT = 30;
 export const ROW_HEIGHT = 28;
@@ -119,7 +119,7 @@ export function isExpanded(key: string, toggled: ReadonlySet<string>): boolean {
   return EXPANDED_BY_DEFAULT.has(key) !== toggled.has(key);
 }
 
-/** `f_01M3…9W4R` → `flow f_…9W4R`, as the mockup abbreviates flow ids. */
+/** `f_01M3…9W4R` → `flow f_…9W4R`, as the design abbreviates flow ids. */
 export function flowLabel(id: string): string {
   return `flow ${id.slice(0, 2)}…${id.slice(-4)}`;
 }
@@ -136,7 +136,7 @@ export function hostLabel(d: Pick<DestinationAggregate, 'host' | 'port' | 'endpo
   return d.port !== null && d.port !== 443 && d.port !== 80 ? `${d.host}:${d.port}` : d.host;
 }
 
-/** Why glove's guard refused a destination, as the mockup's sublabels put it. */
+/** Why glove's guard refused a destination, as the design's sublabels put it. */
 export function guardReason(d: Pick<DestinationAggregate, 'host' | 'rule'>): string {
   if (d.rule === 'builtin:malformed-request' || d.host === null) return 'no destination';
   const h = d.host.toLowerCase();

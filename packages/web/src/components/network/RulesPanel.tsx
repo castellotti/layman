@@ -1,6 +1,5 @@
 /**
- * The Rules panel (plan §7.1, network-ledger.dc.html; controls from
- * controls-block-unblock.dc.html): whether the gate enforces what is on disk,
+ * The Rules panel: whether the gate enforces what is on disk,
  * the evaluation order (glove's guard first and locked, then rules.json top to
  * bottom), a draft to edit it — reorder, delete, add, change the default — and
  * the kill switch. A draft is saved as one write, and only onto the file it was
@@ -14,7 +13,7 @@ import type { NetSessionData } from '../../lib/net-state.js';
 import { clockTime, matchText } from '../../lib/net-table.js';
 import {
   CUT_PREFIX, checkMatchValue, controlDisabledReason, draftRuleId, isCut, isDirty, matchFor, moveRule, openToCut,
-  rebaseDraft, startDraft, type Draft, type MatchKey,
+  rebaseDraft, ruleHits, startDraft, type Draft, type MatchKey,
 } from '../../lib/net-rules.js';
 import type { Rule, RuleAction } from '../../lib/netobs-types.js';
 import { buttonStyle } from './ControlPopover.js';
@@ -147,7 +146,7 @@ const inputStyle: React.CSSProperties = {
   color: 'var(--text)', outline: 'none', fontFamily: 'var(--font-ui)', minWidth: 0,
 };
 
-/** Add rule: the permitted match keys only (handoff §3), checked before the server's validator sees it. */
+/** Add rule: the permitted match keys only (glove's record contract), checked before the server's validator sees it. */
 function AddRuleForm({ onAdd, onCancel }: { onAdd: (rule: Omit<Rule, 'id'>) => void; onCancel: () => void }) {
   const [action, setAction] = useState<RuleAction>('block');
   const [key, setKey] = useState<MatchKey>('host');
@@ -183,7 +182,7 @@ function AddRuleForm({ onAdd, onCancel }: { onAdd: (rule: Omit<Rule, 'id'>) => v
   );
 }
 
-/** "Cut all traffic now" (plan §6.4): confirm, with "keep the LLM link open" checked by default. */
+/** "Cut all traffic now": confirm, with "keep the LLM link open" checked by default. */
 function KillSwitchDialog({ data, onClose }: { data: NetSessionData; onClose: () => void }) {
   const [keepLlm, setKeepLlm] = useState(true);
   const n = openToCut(data.destinations.values(), keepLlm);
@@ -247,11 +246,7 @@ export function RulesPanel({ data, now }: { data: NetSessionData; now: number })
     setSavingOp(null);
   }, [ops, savingOp]);
 
-  const hits = useMemo(() => {
-    const m = new Map<string, number>();
-    for (const d of data.destinations.values()) if (d.rule) m.set(d.rule, (m.get(d.rule) ?? 0) + d.blocked);
-    return m;
-  }, [data.destinations]);
+  const hits = useMemo(() => ruleHits(data.destinations.values()), [data.destinations]);
 
   // Editing a draft needs a writable, valid file; a write waiting for the gate does not block it.
   const editable = view.control.state === 'ok' && !view.invalid;
