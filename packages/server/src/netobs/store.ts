@@ -159,9 +159,17 @@ export interface NetStoreOptions {
   maxClosedFlows?: number;
 }
 
+/**
+ * A destination's aggregate key: lower-cased `host:port`, or `@service` when there is no host.
+ * Persisted history reloads under it too (persist.ts), or a host with capitals would reload as a
+ * second, history-only destination beside the live one and its traffic would count twice.
+ */
+export function destKey(host: string | null, port: number | null, service: string): string {
+  return host === null ? `@${service}` : `${host.toLowerCase()}:${port ?? 0}`;
+}
+
 function destKeyFor(rec: FlowRecord): string {
-  const { host, port } = rec.dest;
-  return host === null ? `@${rec.service}` : `${host.toLowerCase()}:${port ?? 0}`;
+  return destKey(rec.dest.host, rec.dest.port, rec.service);
 }
 
 function inc<K>(m: Map<K, number>, k: K, by: number): void {

@@ -438,14 +438,6 @@ export class PiSessionWatcher {
   }
 }
 
-/**
- * Events safe to emit while tailing: everything except `tool_call_pending`.
- * A pending is an in-flight tool with no result yet; once the result lands the
- * parser replaces it with a `tool_call_completed` bearing the *same* event id.
- * Emission dedupes by id (see `emitNew`), so a pending is simply withheld until
- * it completes — and reordering of already-committed events, as happens when
- * parallel tools finish out of order, can neither duplicate nor drop one.
- */
 /** What the database already holds of a session, for a replay after a restart to skip. */
 export interface RecordedCursor {
   /** `data.transcriptEventId` of every recorded event. */
@@ -468,6 +460,28 @@ export function isRecorded(ev: Pick<TimelineEvent, 'id' | 'timestamp'>, done: Re
   return done.legacyThrough !== null && ev.timestamp > 0 && ev.timestamp <= done.legacyThrough;
 }
 
+/** Folds recorded events' `transcriptEventId` / `transcriptAt` (`tid` / `tat`) into a cursor. */
+export function recordedCursorFrom(
+  rows: Iterable<{ tid: string | null; tat: number | null }>,
+  storedAs?: (id: string) => string,
+): RecordedCursor {
+  const ids = new Set<string>();
+  let legacyThrough: number | null = null;
+  for (const r of rows) {
+    if (typeof r.tid === 'string') ids.add(r.tid);
+    else if (typeof r.tat === 'number') legacyThrough = Math.max(legacyThrough ?? r.tat, r.tat);
+  }
+  return { ids, legacyThrough, storedAs };
+}
+
+/**
+ * Events safe to emit while tailing: everything except `tool_call_pending`.
+ * A pending is an in-flight tool with no result yet; once the result lands the
+ * parser replaces it with a `tool_call_completed` bearing the *same* event id.
+ * Emission dedupes by id (see `emitNew`), so a pending is simply withheld until
+ * it completes — and reordering of already-committed events, as happens when
+ * parallel tools finish out of order, can neither duplicate nor drop one.
+ */
 function committedEvents(events: TimelineEvent[]): TimelineEvent[] {
   return events.filter((e) => e.type !== 'tool_call_pending');
 }

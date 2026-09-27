@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- **`scripts/build.sh` started Layman blind to glove sessions.** It ran a bare `compose up`, so it never added the glove overlays that `make docker-run` adds, and a Layman restarted with it silently showed no glove session. It now adds `docker-compose.glove.yml` and `docker-compose.glove-control.yml` under the same conditions as the Makefile (only when `~/.glove` and `~/.glove/control` already exist, so it still never creates them). It also defaults `LAYMAN_HOST_NAME` to `$(hostname)` as the Makefile does, rather than leaving it empty.
+- **`scripts/build.sh` started Layman blind to glove sessions.** It ran a bare `compose up`, so it never added the glove overlays that `make docker-run` adds, and a Layman restarted with it silently showed no glove session. It now adds `docker-compose.glove.yml` and `docker-compose.glove-control.yml` under the same conditions as the Makefile (only when `~/.glove` and `~/.glove/control` already exist, so it still never creates them). It also defaults `LAYMAN_HOST_NAME` to `$(hostname)` as the Makefile does, rather than leaving it empty. The overlay rule now lives in one place, `scripts/glove-compose.sh`, which both the Makefile and `build.sh` call: the two copies had already drifted once.
 
 - **Fixes from a code review of the glove network branch.**
   - **Show IP addresses kept IPs in renamed Claude Code sessions.** The setting was meant for glove sessions only, but it checked whether a session had a name, and a renamed Claude Code session has one. A session is now counted as gloved only when a passive watcher found it under a glove sandbox root. The Trace tab and the other network views work as before.

@@ -182,12 +182,12 @@ export function countPiiMatches(input: string): number {
   return count;
 }
 
+const MAX_PARKED = 0xF8FF - 0xE100 + 1;
+
 /**
  * Apply PII redaction to a single string.
  * Returns the redacted version.
  */
-const MAX_PARKED = 0xF8FF - 0xE100 + 1;
-
 export function redactString(input: string, keep?: ReadonlySet<string>): string {
   let result = input;
   // A kept match must also survive the other patterns: without the IPv4 pattern first, the phone
@@ -246,10 +246,11 @@ export function redactValue(value: unknown, keep?: ReadonlySet<string>): unknown
  * Deep-clones and redacts all string fields.
  */
 export function filterPii(data: EventData, keep?: ReadonlySet<string>): EventData {
-  const out = redactValue(data, keep) as EventData;
   // An id the pi parser mints (`<uuid>_<entryId>`), not agent text. A restart matches it against
   // the transcript (pi/watcher.ts), and the phone pattern can eat a run of its digits.
-  if (typeof data.transcriptEventId === 'string') out.transcriptEventId = data.transcriptEventId;
+  const { transcriptEventId, ...rest } = data;
+  const out = redactValue(rest, keep) as EventData;
+  if (transcriptEventId !== undefined) out.transcriptEventId = transcriptEventId;
   return out;
 }
 

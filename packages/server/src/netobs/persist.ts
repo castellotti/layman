@@ -10,6 +10,7 @@
 import type { Database } from '../db/database.js';
 import type { HistoryDest, HistorySession, NetHistory } from './history.js';
 import type { NetState } from './types.js';
+import { destKey } from './store.js';
 
 interface SessionRow {
   token: string; env: string; session_name: string; first_seen: number; last_seen: number; watermark: number;
@@ -32,15 +33,6 @@ const json = <T>(s: string | null): T | null => {
   }
 };
 
-/**
- * `@service` keys (no host) are stored with the key as the host and port 0; `host:port` otherwise,
- * lower-cased like the live key (`destKeyFor` in store.ts), or a host with capitals reloads as a
- * second, history-only destination beside the live one and its traffic is counted twice.
- */
-function destKey(host: string, port: number): string {
-  return host.startsWith('@') ? host : `${host.toLowerCase()}:${port}`;
-}
-
 export class SqliteNetHistory implements NetHistory {
   constructor(private readonly db: Database, private readonly recording: () => boolean) {}
 
@@ -54,8 +46,10 @@ export class SqliteNetHistory implements NetHistory {
     const byToken = new Map<string, HistoryDest[]>();
     for (const d of dests) {
       const list = byToken.get(d.token) ?? [];
+      // `@service` keys (no host) are stored with the key as the host and port 0.
+      const host = d.host.startsWith('@') ? null : d.host;
       list.push({
-        key: destKey(d.host, d.port), host: d.host.startsWith('@') ? null : d.host, port: d.host.startsWith('@') ? null : d.port,
+        key: destKey(host, d.port, d.host.slice(1)), host, port: host === null ? null : d.port,
         groupKey: d.group_key, lastIp: d.last_ip, scope: d.scope, resolution: d.resolution, tool: d.tool,
         firstSeen: d.first_seen, lastSeen: d.last_seen, bytesUp: d.bytes_up, bytesDown: d.bytes_down, flows: d.flows, blocked: d.blocked,
         lastState: d.last_state as NetState | null,

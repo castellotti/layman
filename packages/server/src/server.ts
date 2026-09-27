@@ -19,6 +19,7 @@ import { AnalysisEngine } from './analysis/engine.js';
 import { DriftMonitor } from './drift/monitor.js';
 import { LiveStreamStore, type LiveStream } from './stream/live.js';
 import { resolveEndpoint } from './analysis/providers/openai-compat.js';
+import type BetterSqlite3 from 'better-sqlite3';
 import { filterPii, IP_CATEGORIES, redactValue, redactString } from './pii/filter.js';
 import { PII_CATEGORIES, PII_GROUPS } from './pii/categories.js';
 import { scanPii, executePurge } from './pii/purge.js';
@@ -49,7 +50,7 @@ import { computeTimeMetrics } from './db/time-metrics.js';
 import type { SearchRequest } from './db/search.js';
 import type { LaymanConfig } from './config/schema.js';
 import { VibeSessionWatcher } from './vibe/watcher.js';
-import { PiSessionWatcher } from './pi/watcher.js';
+import { PiSessionWatcher, recordedCursorFrom } from './pi/watcher.js';
 import { NativeVibeSource, NativePiSource, GloveSource } from './monitor/sources.js';
 import { recoverSessionGaps, importHistoricalSessions } from './hooks/recovery.js';
 import type { ServerMessage, ClientMessage, SessionStatus, SetupStatus } from './types/index.js';
@@ -112,8 +113,8 @@ export function createServer(config: LaymanConfig): LaymanServer {
   // `glove.showIpAddresses` keeps IP addresses in gloved sessions only: the addresses a sandbox
   // reached are what the network views exist to show. Not "has a session name" — a renamed
   // Claude Code session has one too, and is no sandbox.
-  const piiKeep = (sessionId: string) =>
-    getConfig().glove.showIpAddresses && eventStore.isGloved(sessionId) ? IP_CATEGORIES : undefined;
+  const ipKeep = () => (getConfig().glove.showIpAddresses ? IP_CATEGORIES : undefined);
+  const piiKeep = (sessionId: string) => (eventStore.isGloved(sessionId) ? ipKeep() : undefined);
   eventStore.setDataFilter((data, sessionId) => {
     if (getConfig().piiFilter) return filterPii(data, piiKeep(sessionId));
     return data;
@@ -210,7 +211,7 @@ export function createServer(config: LaymanConfig): LaymanServer {
       return glove.enabled && glove.network.enabled ? expandHome(glove.sessionsDir) : null;
     },
     // Only `request` (record: full) is agent-derived text; see netobs/store.ts.
-    stringFilter: (text) => (getConfig().piiFilter ? redactString(text, getConfig().glove.showIpAddresses ? IP_CATEGORIES : undefined) : text),
+    stringFilter: (text) => (getConfig().piiFilter ? redactString(text, ipKeep()) : text),
     controlEnabled: () => getConfig().glove.network.controlEnabled,
     getGeoPath: () => {
       const p = getConfig().glove.network.geoipDbPath.trim();
@@ -230,21 +231,17 @@ export function createServer(config: LaymanConfig): LaymanServer {
     new NativeVibeSource(),
     gloveSource,
   ]);
+  let recordedCursorStmt: BetterSqlite3.Statement<unknown[]> | null = null;
   const piWatcher = new PiSessionWatcher(eventStore, gate, getConfig, [
     new NativePiSource(),
     gloveSource,
   ], (sessionId) => {
     // Only a recorded session can be recorded twice; with recording off the replay is what shows it.
     if (!getConfig().sessionRecording) return null;
-    const rows = db.prepare(`SELECT json_extract(data_json, '$.transcriptEventId') AS tid, json_extract(data_json, '$.transcriptAt') AS tat
-      FROM recorded_events WHERE session_id = ?`).all(sessionId) as Array<{ tid: string | null; tat: number | null }>;
-    const ids = new Set<string>();
-    let legacyThrough: number | null = null;
-    for (const r of rows) {
-      if (typeof r.tid === 'string') ids.add(r.tid);
-      else if (typeof r.tat === 'number') legacyThrough = Math.max(legacyThrough ?? r.tat, r.tat);
-    }
-    return { ids, legacyThrough, storedAs: (id) => redactString(id) };
+    recordedCursorStmt ??= db.prepare(`SELECT json_extract(data_json, '$.transcriptEventId') AS tid, json_extract(data_json, '$.transcriptAt') AS tat
+      FROM recorded_events WHERE session_id = ?`);
+    const rows = recordedCursorStmt.all(sessionId) as Array<{ tid: string | null; tat: number | null }>;
+    return recordedCursorFrom(rows, (id) => redactString(id));
   });
 
   // Persistent storage

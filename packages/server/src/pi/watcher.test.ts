@@ -6,7 +6,7 @@ import { EventStore } from '../events/store.js';
 import { SessionGate } from '../hooks/gate.js';
 import type { LaymanConfig } from '../config/schema.js';
 import type { MonitorSource, WatchRoot } from '../monitor/sources.js';
-import { PiSessionWatcher, type RecordedCursor } from './watcher.js';
+import { PiSessionWatcher, recordedCursorFrom, type RecordedCursor } from './watcher.js';
 
 const SESSION_ID = 'aaaaaaaa-0000-4000-8000-000000000000';
 const ENCODED_CWD = '--Users-test-proj--';
@@ -111,15 +111,11 @@ describe('PiSessionWatcher', () => {
 
   describe('a restart while the session is still young', () => {
     /** What the database would hold after the first run, as the server's query reads it. */
-    const cursorFrom = (events: ReturnType<EventStore['getAll']>, legacy = false): RecordedCursor => {
-      const ids = new Set<string>();
-      let legacyThrough: number | null = null;
-      for (const e of events) {
-        if (!legacy && typeof e.data.transcriptEventId === 'string') ids.add(e.data.transcriptEventId);
-        else if (typeof e.data.transcriptAt === 'number') legacyThrough = Math.max(legacyThrough ?? 0, e.data.transcriptAt);
-      }
-      return { ids, legacyThrough };
-    };
+    const cursorFrom = (events: ReturnType<EventStore['getAll']>, legacy = false): RecordedCursor =>
+      recordedCursorFrom(events.map((e) => ({
+        tid: legacy ? null : e.data.transcriptEventId ?? null,
+        tat: e.data.transcriptAt ?? null,
+      })));
     const restart = (recorded: (first: ReturnType<EventStore['getAll']>) => RecordedCursor | null) => {
       watcher.start();
       const first = store.getAll();

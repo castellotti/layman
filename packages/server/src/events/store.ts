@@ -162,11 +162,6 @@ export class EventStore extends EventEmitter {
     }
   }
 
-  /** The session's name: the glove label for a gloved session, else usually undefined. */
-  sessionNameOf(sessionId: string): string | undefined {
-    return this.sessions.get(sessionId)?.sessionName;
-  }
-
   /**
    * Marks a session as running in a glove sandbox. Only the passive watchers know that (from a
    * labelled root); a session name alone does not, since Claude Code sessions can be renamed.
