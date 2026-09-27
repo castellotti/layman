@@ -1,16 +1,6 @@
 // glove network views browser check (trace; was phase-7 check7). Run via scripts/netobs-e2e.sh.
-import { BASE, DATA, GLOVE, SHOTS, REPO, CONTAINER, ENGINE, launch, isForeign } from './env.mjs';
-const results = [];
-const check = (name, ok, detail = '') => results.push([ok ? 'PASS' : 'FAIL', name, String(detail).slice(0, 220)]);
-const browser = await launch();
-const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
-const page = await ctx.newPage();
-const errors = [];
-const foreign = [];
-page.on('pageerror', (e) => errors.push(String(e)));
-page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
-page.on('request', (r) => { const u = r.url(); if (isForeign(u)) foreign.push(u); });
-const waitFor = async (fn, ms = 10000) => { const t = Date.now(); while (Date.now() - t < ms) { if (await fn()) return true; await page.waitForTimeout(250); } return false; };
+import { BASE, overflowX, startCheck } from './env.mjs';
+const { page, check, waitFor, finish } = await startCheck();
 const prompt = () => page.$eval('[role=region][aria-label="Turn"]', (r) => r.innerText);
 const rowText = () => page.$$eval('[role=table] [role=row]', (rs) => rs.map((r) => r.innerText.replace(/\s+/g, ' ')));
 const details = () => page.$eval('section:has(h2:text-is("Details"))', (s) => s.innerText);
@@ -108,12 +98,7 @@ for (const [w, h] of [[1440, 900], [1280, 800]]) {
   await page.setViewportSize({ width: w, height: h });
   await page.goto(`${BASE}/?view=trace&glove=pi-search`);
   await waitFor(async () => (await page.$$('[role=table] [role=row]')).length > 5);
-  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+  const overflow = await overflowX(page);
   check(`no horizontal scroll at ${w}×${h}`, overflow <= 0, overflow);
 }
-check('no page errors', errors.length === 0, errors.slice(0, 3).join(' | '));
-check('every request went to Layman itself', foreign.length === 0, foreign.slice(0, 5).join(' '));
-for (const r of results) console.log(r.join('  '));
-console.log(`${results.filter((r) => r[0] === 'PASS').length}/${results.length}`);
-await browser.close();
-process.exitCode = results.every((r) => r[0] === 'PASS') ? 0 : 1;
+await finish();

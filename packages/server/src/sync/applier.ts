@@ -1,8 +1,6 @@
 import { EventEmitter } from 'events';
 import type { Database } from '../db/database.js';
-import { filterPii, redactString } from '../pii/filter.js';
-import type { EventData } from '../events/types.js';
-import { CURATION_KINDS, SYNC_ENTITIES } from './entities.js';
+import { CURATION_KINDS, SYNC_ENTITIES, redactEventRow } from './entities.js';
 import { SyncJournal } from './journal.js';
 import { updateHostStats } from './stats.js';
 import type { PushEntry, WireRow } from './protocol.js';
@@ -115,31 +113,5 @@ export class SyncApplier extends EventEmitter {
     }
     if (applied > 0) this.emit('applied', { originHostId, entries: ordered });
     return { applied, conflicts };
-  }
-}
-
-/**
- * Prepare a row for another host. With the PII filter on, an event row is redacted in full,
- * which removes the IP addresses `glove.showIpAddresses` keeps in gloved sessions: that setting
- * is host-local, and where one host's sandboxes connected never crosses hosts (the same reason
- * the network rollups are not synced). Everything else is already redacted, so it is unchanged.
- * Used by every outbound path: push, the mirror snapshot and the mirror changes feed.
- */
-export function outboundRow(kind: string, row: WireRow, piiFilter: boolean): WireRow {
-  if (piiFilter && kind === 'event') redactEventRow(row);
-  return row;
-}
-
-/** Re-redact an event wire row's JSON blobs in place (central-side defence in depth). */
-function redactEventRow(row: WireRow): void {
-  if (typeof row.data_json === 'string') {
-    try {
-      row.data_json = JSON.stringify(filterPii(JSON.parse(row.data_json) as EventData));
-    } catch {
-      // leave as-is on malformed JSON
-    }
-  }
-  if (typeof row.laymans_json === 'string') {
-    row.laymans_json = redactString(row.laymans_json);
   }
 }

@@ -39,7 +39,7 @@ export class SessionRecorder {
   private fillSessionModel: BetterSqlite3.Statement<unknown[]>;
   private fillSessionName: BetterSqlite3.Statement<unknown[]>;
   private insertQA: BetterSqlite3.Statement<unknown[]>;
-  private importFilter?: (event: TimelineEvent, gloved: boolean) => TimelineEvent;
+  private importFilter?: (event: TimelineEvent) => TimelineEvent;
 
   constructor(
     private db: Database,
@@ -88,17 +88,16 @@ export class SessionRecorder {
   /**
    * The PII filter for events that reach the database without passing through
    * `EventStore` (history import, a JSON file import). Live events are filtered
-   * by the store; these would otherwise be stored exactly as parsed. `gloved`
-   * says the events come from a glove sandbox, so `glove.showIpAddresses` applies.
+   * by the store; these would otherwise be stored exactly as parsed.
    */
-  setImportFilter(filter: (event: TimelineEvent, gloved: boolean) => TimelineEvent): void {
+  setImportFilter(filter: (event: TimelineEvent) => TimelineEvent): void {
     this.importFilter = filter;
   }
 
   /** Apply the import filter (a no-op until one is set). */
-  filterImported(events: TimelineEvent[], gloved = false): TimelineEvent[] {
+  filterImported(events: TimelineEvent[]): TimelineEvent[] {
     const filter = this.importFilter;
-    return filter ? events.map((e) => filter(e, gloved)) : events;
+    return filter ? events.map(filter) : events;
   }
 
   attach(store: EventStore): void {
@@ -250,8 +249,7 @@ export class SessionRecorder {
    * Import a historical session from transcript data.
    * Uses INSERT OR IGNORE for events (idempotent) and never downgrades
    * a live session's source to 'imported'. Events are PII-filtered here
-   * (`setImportFilter`), since they never pass through `EventStore`;
-   * `gloved` marks a transcript found under a glove sandbox root.
+   * (`setImportFilter`), since they never pass through `EventStore`.
    */
   importSession(
     sessionId: string,
@@ -260,10 +258,9 @@ export class SessionRecorder {
     parsed: TimelineEvent[],
     source: string,
     sessionName?: string,
-    gloved = false,
   ): void {
     if (parsed.length === 0) return;
-    const events = this.filterImported(parsed, gloved);
+    const events = this.filterImported(parsed);
     const upsertSess = this.db.prepare(`
       INSERT INTO recorded_sessions (session_id, cwd, agent_type, started_at, last_seen, source, session_name)
       VALUES (?, ?, ?, ?, ?, ?, ?)

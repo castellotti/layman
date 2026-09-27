@@ -19,7 +19,7 @@ import { buildPath } from '../../lib/layman-url.js';
 import { callForFlow, defaultSelection, tickLabel, traceAxis, traceRows, type Tone, type TraceIcon, type TraceRow } from '../../lib/net-trace.js';
 import type { FlowView, RulesOp, TraceView } from '../../lib/netobs-types.js';
 import { useNow } from '../../hooks/useNow.js';
-import { fetchTrace } from '../../hooks/useNetTrace.js';
+import { fetchTrace, pollSettled } from '../../hooks/useNetTrace.js';
 import { buttonStyle, ControlPopover } from './ControlPopover.js';
 import { NetToggle } from './cells.js';
 import { Row, SectionHead } from './DetailCard.js';
@@ -54,20 +54,9 @@ function useTraceData(token: string) {
   useEffect(() => {
     if (useTrace.getState().token !== token) set({ token, turnId: null, view: null, selected: null, toggled: new Set(), error: null });
   }, [token, set]);
-  useEffect(() => {
-    let live = true;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    // The next load is scheduled once this one settles, never on a fixed beat: a slow build
-    // (a long session) must not stack requests behind it.
-    const load = () => {
-      fetchTrace(token, turnId ? { turn: turnId } : null)
-        .then((v) => { if (live) set({ view: v, error: null }); })
-        .catch((e: Error) => { if (live) set({ error: e.message }); })
-        .finally(() => { if (live) timer = setTimeout(load, REFRESH_MS); });
-    };
-    load();
-    return () => { live = false; clearTimeout(timer); };
-  }, [token, turnId, set]);
+  useEffect(() => pollSettled((live) => fetchTrace(token, turnId ? { turn: turnId } : null)
+    .then((v) => { if (live()) set({ view: v, error: null }); })
+    .catch((e: Error) => { if (live()) set({ error: e.message }); }), REFRESH_MS), [token, turnId, set]);
 }
 
 /** Show one turn in the Trace tab with one flow selected: the detail card's "Open in Trace". */

@@ -175,8 +175,8 @@ export function placeLabels(spots: LabelSpot[], reserved: Array<[number, number,
       { left: s.x + 10, top: s.y + 6 }, { left: s.x + 10, top: s.y - 12 },
       { left: s.x - 10 - w, top: s.y + 6 }, { left: s.x - 10 - w, top: s.y - 12 },
     ];
-    const fit = tries.find((p) => !hits([p.left, p.top - LABEL_H / 2, p.left + w, p.top + LABEL_H / 2])) ?? null;
-    if (fit) taken.push([fit.left, fit.top - LABEL_H / 2, fit.left + w, fit.top + LABEL_H / 2]);
+    const fit = tries.find((p) => !hits(labelBox(p, s.text))) ?? null;
+    if (fit) taken.push(labelBox(fit, s.text));
     out.set(s.key, fit);
   }
   return out;

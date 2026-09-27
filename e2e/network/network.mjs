@@ -1,12 +1,6 @@
 // glove network views browser check (network; was phase-3 check3). Run via scripts/netobs-e2e.sh.
-import { BASE, DATA, GLOVE, SHOTS, REPO, CONTAINER, ENGINE, launch, isForeign } from './env.mjs';
-const results = [];
-const check = (name, ok, detail = '') => { results.push([ok ? 'PASS' : 'FAIL', name, detail]); };
-const browser = await launch();
-const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
-const errors = [];
-page.on('pageerror', (e) => errors.push(String(e)));
-page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
+import { BASE, SHOTS, overflowX, startCheck } from './env.mjs';
+const { page, check, finish } = await startCheck();
 
 const rowsText = () => page.$$eval('[role=table][aria-label=Destinations] [role=row]', (rs) => rs.map((r) => r.innerText.replace(/\s+/g, ' ').trim()));
 const stateTexts = () => page.$$eval('[role=table][aria-label=Destinations] [role=row] [role=cell]:last-child', (cs) => cs.map((c) => c.innerText.trim()));
@@ -121,12 +115,8 @@ await page.setViewportSize({ width: 1280, height: 800 });
 await page.goto(`${BASE}/?view=network&glove=pi-search`);
 await page.waitForSelector('[role=table][aria-label=Destinations] [role=row] >> nth=2');
 await page.waitForTimeout(500);
-const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+const overflow = await overflowX(page);
 check('no horizontal page scroll at 1280×800', overflow <= 0, `overflow ${overflow}`);
 await page.screenshot({ path: `${SHOTS}/network-1280.png` });
 
-check('no page errors', errors.length === 0, errors.slice(0, 3).join(' | '));
-await browser.close();
-for (const r of results) console.log(r.join('  '));
-console.log(`${results.filter((r) => r[0] === 'PASS').length}/${results.length} passed`);
-process.exitCode = results.every((r) => r[0] === 'PASS') ? 0 : 1;
+await finish();

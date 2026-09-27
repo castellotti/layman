@@ -706,7 +706,7 @@ links them.
   and shows in Logs. It applies from the moment it is turned on: events already recorded stay redacted,
   and "purge PII" still redacts IPs everywhere (its confirmation says so). History import applies the
   same keep-set to transcripts found under a glove root. The kept IPs never leave the host: with the
-  filter on, sync redacts event rows in full on the way out (`outboundRow`, and `CLAUDE.md`). The filter's keep-set had one trap: with the IPv4 pattern
+  filter on, sync redacts event rows in full on the way out (the outbound readers in `sync/entities.ts`, and `CLAUDE.md`). The filter's keep-set had one trap: with the IPv4 pattern
   skipped, the phone-number pattern matched `169.254.169` inside the address. Kept matches are therefore
   parked behind private-use placeholders while the other patterns run (`redactString` in
   `pii/filter.ts`), and past a few thousand in one string the rest are redacted rather than left to

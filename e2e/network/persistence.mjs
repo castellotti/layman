@@ -1,5 +1,5 @@
 // glove network views browser check (persistence; was phase-8 check8). Run via scripts/netobs-e2e.sh.
-import { BASE, DATA, GLOVE, SHOTS, REPO, CONTAINER, ENGINE, launch, isForeign } from './env.mjs';
+import { BASE, DATA, GLOVE, SHOTS, CONTAINER, ENGINE, startCheck } from './env.mjs';
 // Phase 8: rollups keep totals across restarts, never double count, and a glove
 // session whose files are gone stays listed, history only.
 import { execSync } from 'child_process';
@@ -7,8 +7,7 @@ import { cpSync, readFileSync, writeFileSync, rmSync, readdirSync, existsSync } 
 import { join } from 'path';
 const ENVS = `${GLOVE}/envs`;
 const DB = `${DATA}/layman.db`;
-const results = [];
-const check = (name, ok, detail = '') => results.push([ok ? 'PASS' : 'FAIL', name, String(detail).slice(0, 240)]);
+const { page, check, finish } = await startCheck();
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 // Docker Desktop's port forwarder can drop a connection or two while a restarted container settles.
 const get = async (p) => { for (let i = 0; ; i++) { try { return await (await fetch(BASE + p)).json(); } catch (e) { if (i > 20) throw e; await sleep(1000); } } };
@@ -58,13 +57,6 @@ check('a session whose files are gone is still listed, history only', summary?.h
 const hist = await view(TOKEN);
 check('…with the same totals and destinations', hist.historyOnly && hist.key === before.key, hist.key);
 
-const browser = await launch();
-const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
-const errors = [];
-const foreign = [];
-page.on('pageerror', (e) => errors.push(String(e)));
-page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
-page.on('request', (r) => { const u = r.url(); if (isForeign(u)) foreign.push(u); });
 await page.goto(`${BASE}/?view=network&glove=${TOKEN}`);
 await page.waitForTimeout(3000);
 check('History only chip in the gate strip', await page.$('text=History only') !== null);
@@ -81,9 +73,4 @@ check('Map says history only', await page.$('h3:has-text("History only"), div:te
 await page.goto(`${BASE}/?view=trace&glove=${TOKEN}`);
 await page.waitForTimeout(2000);
 check('Trace says history only', (await page.content()).includes('files for this session are gone'));
-check('no page errors', errors.length === 0, errors.slice(0, 3).join(' | '));
-check('every request went to Layman itself', foreign.length === 0, foreign.slice(0, 5).join(' '));
-await browser.close();
-for (const r of results) console.log(r.join('  '));
-console.log(`${results.filter((r) => r[0] === 'PASS').length}/${results.length}`);
-process.exitCode = results.every((r) => r[0] === 'PASS') ? 0 : 1;
+await finish();

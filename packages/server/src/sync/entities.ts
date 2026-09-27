@@ -1,4 +1,6 @@
 import type { Database } from '../db/database.js';
+import type { EventData } from '../events/types.js';
+import { filterPii, redactString } from '../pii/filter.js';
 import { type SyncKind, SYNC_KIND_ORDER, type WireRow } from './protocol.js';
 
 /**
@@ -12,12 +14,22 @@ export interface SyncEntity {
   table: string;
   /** Column whose value equals the journal `entity_id` (portable id for qa). */
   idColumn: string;
-  /** Load current state for the given ids (skips missing rows). */
+  /** Load current state for the given ids (skips missing rows), as stored: for local use only. */
   load(db: Database, ids: string[]): WireRow[];
+  /**
+   * The readers below produce rows for another host. With `piiFilter` on, an event row is
+   * redacted in full, which removes the IP addresses `glove.showIpAddresses` keeps in gloved
+   * sessions: that setting is host-local, and where one host's sandboxes connected never
+   * crosses hosts (the same reason the network rollups are not synced). Everything else is
+   * already redacted, so it is unchanged. Redacting here, in the only readers an outbound
+   * path has, is what keeps a new path from forgetting it.
+   */
+  /** `load`, for another host. */
+  loadOutbound(db: Database, ids: string[], piiFilter: boolean): WireRow[];
   /** Page own-origin rows for backfill, keyset-ordered by `idColumn`. */
-  page(db: Database, opts: { afterId?: string; limit: number; originHostId: string }): WireRow[];
+  page(db: Database, opts: { afterId?: string; limit: number; originHostId: string; piiFilter: boolean }): WireRow[];
   /** Page rows *not* owned by a host (mirror snapshot), keyset-ordered. */
-  pageExcludingOrigin(db: Database, opts: { afterId?: string; limit: number; excludeHostId: string }): WireRow[];
+  pageExcludingOrigin(db: Database, opts: { afterId?: string; limit: number; excludeHostId: string; piiFilter: boolean }): WireRow[];
   /** Idempotent upsert of a whole wire row (INSERT … ON CONFLICT DO UPDATE). */
   upsert(db: Database, row: WireRow): void;
   /** Remove by id (session cascades to its events and qa). */
@@ -37,6 +49,20 @@ function excludeOriginPredicate(hasHostColumn: boolean): string {
   return hasHostColumn
     ? '(host_id IS NULL OR host_id != ?)'
     : 'session_id IN (SELECT session_id FROM recorded_sessions WHERE host_id IS NULL OR host_id != ?)';
+}
+
+/** Re-redact an event wire row's JSON blobs in place: outbound, and on arrival as defence in depth. */
+export function redactEventRow(row: WireRow): void {
+  if (typeof row.data_json === 'string') {
+    try {
+      row.data_json = JSON.stringify(filterPii(JSON.parse(row.data_json) as EventData));
+    } catch {
+      // leave as-is on malformed JSON
+    }
+  }
+  if (typeof row.laymans_json === 'string') {
+    row.laymans_json = redactString(row.laymans_json);
+  }
 }
 
 function makeEntity(spec: {
@@ -59,36 +85,47 @@ function makeEntity(spec: {
        ON CONFLICT(${idColumn}) DO UPDATE SET ${updates}`
     : `INSERT OR IGNORE INTO ${table} (${colList}) VALUES (${placeholders})`;
 
+  const outbound = (rows: WireRow[], piiFilter: boolean): WireRow[] => {
+    if (piiFilter && kind === 'event') for (const row of rows) redactEventRow(row);
+    return rows;
+  };
+  const load = (db: Database, ids: string[]): WireRow[] => {
+    if (ids.length === 0) return [];
+    const qs = ids.map(() => '?').join(', ');
+    return db
+      .prepare(`SELECT ${colList} FROM ${table} WHERE ${idColumn} IN (${qs})`)
+      .all(...ids) as WireRow[];
+  };
+
   return {
     kind,
     table,
     idColumn,
-    load(db, ids) {
-      if (ids.length === 0) return [];
-      const qs = ids.map(() => '?').join(', ');
-      return db
-        .prepare(`SELECT ${colList} FROM ${table} WHERE ${idColumn} IN (${qs})`)
-        .all(...ids) as WireRow[];
+    load,
+    loadOutbound(db, ids, piiFilter) {
+      return outbound(load(db, ids), piiFilter);
     },
-    page(db, { afterId = '', limit, originHostId }) {
+    page(db, { afterId = '', limit, originHostId, piiFilter }) {
       const pred = originPredicate({ table }, hasHostColumn);
-      return db
+      const rows = db
         .prepare(
           `SELECT ${colList} FROM ${table}
            WHERE ${pred} AND ${idColumn} > ?
            ORDER BY ${idColumn} ASC LIMIT ?`,
         )
         .all(originHostId, afterId, limit) as WireRow[];
+      return outbound(rows, piiFilter);
     },
-    pageExcludingOrigin(db, { afterId = '', limit, excludeHostId }) {
+    pageExcludingOrigin(db, { afterId = '', limit, excludeHostId, piiFilter }) {
       const pred = excludeOriginPredicate(hasHostColumn);
-      return db
+      const rows = db
         .prepare(
           `SELECT ${colList} FROM ${table}
            WHERE ${pred} AND ${idColumn} > ?
            ORDER BY ${idColumn} ASC LIMIT ?`,
         )
         .all(excludeHostId, afterId, limit) as WireRow[];
+      return outbound(rows, piiFilter);
     },
     upsert(db, row) {
       const values = columns.map((c) => (row[c] === undefined ? null : row[c]));

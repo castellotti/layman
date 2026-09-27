@@ -42,3 +42,49 @@ export function launch() {
 
 /** A request that leaves Layman: the views must never make one (the no-network rule). */
 export const isForeign = (u) => !u.startsWith(BASE) && !u.startsWith(WS_BASE) && !u.startsWith('data:');
+
+/**
+ * A check's page and its bookkeeping. `check` records a result, `waitFor` polls a condition,
+ * `has` is a condition for a selector. Page and console errors, and every request that leaves
+ * Layman, are collected; `finish()` checks both, prints the tally, closes the browser and sets
+ * the exit code.
+ */
+export async function startCheck({ viewport = { width: 1440, height: 900 } } = {}) {
+  const results = [];
+  const check = (name, ok, detail = '') => { results.push([ok ? 'PASS' : 'FAIL', name, String(detail).slice(0, 240)]); };
+  const browser = await launch();
+  const page = await browser.newPage({ viewport });
+  const errors = [];
+  const foreign = [];
+  page.on('pageerror', (e) => errors.push(String(e)));
+  page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
+  page.on('request', (r) => { const u = r.url(); if (isForeign(u)) foreign.push(u); });
+  const waitFor = async (fn, ms = 10000) => {
+    const t = Date.now();
+    while (Date.now() - t < ms) { if (await fn()) return true; await page.waitForTimeout(250); }
+    return false;
+  };
+  const has = (sel) => async () => (await page.$(sel)) !== null;
+  const finish = async () => {
+    check('no page errors', errors.length === 0, errors.slice(0, 3).join(' | '));
+    check('every request went to Layman itself', foreign.length === 0, foreign.slice(0, 5).join(' '));
+    await browser.close();
+    for (const r of results) console.log(r.join('  '));
+    console.log(`${results.filter((r) => r[0] === 'PASS').length}/${results.length} passed`);
+    process.exitCode = results.every((r) => r[0] === 'PASS') ? 0 : 1;
+  };
+  return { page, check, waitFor, has, finish };
+}
+
+/** How far the page scrolls sideways; a view must fit, so anything over 0 is a failure. */
+export const overflowX = (page) => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+
+/** Open Settings → Glove from the dashboard. */
+export async function openGloveSettings(page) {
+  await page.goto(`${BASE}/`);
+  await page.waitForTimeout(800);
+  await page.click('button:has-text("Settings")');
+  await page.waitForTimeout(500);
+  const tab = await page.$('text=/^Glove$/');
+  if (tab) await tab.click().catch(() => {});
+}

@@ -88,6 +88,21 @@ export function WorldMap({ data, selected, onSelect, compact = false, sandboxAnc
   const exitScreen = trunk.exit ? (() => { const b = base(trunk.exit!); return b ? toScreen(b) : null; })() : null;
   const maxBytes = Math.max(1, ...clusters.flatMap((c) => c.dests.map((d) => d.bytesUp + d.bytesDown)));
 
+  // Labels are placed so neighbours never overlap, around the exit's label.
+  const exitLabel = exitScreen && trunk.label
+    ? { text: `${trunk.label}${trunk.kind === 'declared' ? ' · declared' : ''}`, at: { left: exitScreen[0] + 14, top: exitScreen[1] + 12 } }
+    : null;
+  const labelText = (c: typeof clusters[number]) => `${c.label}${c.dests.length > 1 ? ` · ${c.dests.length}` : ''}`;
+  const placed = compact ? null : placeLabels(
+    clusters.flatMap((c) => {
+      const b = base([c.lon, c.lat]);
+      if (!b) return [];
+      const [x, y] = toScreen(b);
+      return [{ key: c.key, x, y, text: labelText(c) }];
+    }),
+    exitLabel ? [labelBox(exitLabel.at, exitLabel.text)] : [],
+  );
+
   // Wheel zoom about the cursor; drag to pan.
   useEffect(() => {
     const el = ref.current;
@@ -180,35 +195,19 @@ export function WorldMap({ data, selected, onSelect, compact = false, sandboxAnc
         })}
       </svg>
 
-      {/* Labels are HTML: crisp at any zoom, and the same pill as the design. Placed so neighbours never overlap. */}
-      {!compact && (() => {
-        const exitText = exitScreen && trunk.label ? `${trunk.label}${trunk.kind === 'declared' ? ' · declared' : ''}` : null;
-        const exitAt = exitScreen && exitText ? { left: exitScreen[0] + 14, top: exitScreen[1] + 12 } : null;
-        const text = (c: typeof clusters[number]) => `${c.label}${c.dests.length > 1 ? ` · ${c.dests.length}` : ''}`;
-        const spots = clusters.flatMap((c) => {
-          const b = base([c.lon, c.lat]);
-          if (!b) return [];
-          const [x, y] = toScreen(b);
-          return [{ key: c.key, x, y, text: text(c) }];
-        });
-        const placed = placeLabels(spots, exitAt && exitText ? [labelBox(exitAt, exitText)] : []);
+      {/* Labels are HTML: crisp at any zoom, and the same pill as the design. */}
+      {placed && clusters.map((c) => {
+        const p = placed.get(c.key);
+        if (!p) return null;
         return (
-          <>
-            {clusters.map((c) => {
-              const p = placed.get(c.key);
-              if (!p) return null;
-              return (
-                <span key={`lbl-${c.key}`} style={{ ...pill, left: p.left, top: p.top, borderColor: c.direct ? 'rgba(240,86,74,0.6)' : 'var(--border-strong)' }}>
-                  {text(c)}
-                </span>
-              );
-            })}
-            {exitAt && (
-              <span style={{ ...pill, ...exitAt, color: 'var(--net-tunnel)', borderColor: 'rgba(53,201,180,0.45)' }}>{exitText}</span>
-            )}
-          </>
+          <span key={`lbl-${c.key}`} style={{ ...pill, left: p.left, top: p.top, borderColor: c.direct ? 'rgba(240,86,74,0.6)' : 'var(--border-strong)' }}>
+            {labelText(c)}
+          </span>
         );
-      })()}
+      })}
+      {placed && exitLabel && (
+        <span style={{ ...pill, ...exitLabel.at, color: 'var(--net-tunnel)', borderColor: 'rgba(53,201,180,0.45)' }}>{exitLabel.text}</span>
+      )}
       {!compact && (
         <div style={{ position: 'absolute', right: 12, bottom: 64, display: 'flex', flexDirection: 'column', gap: 4, zIndex: 2 }}>
           {([['+', 1.5, 'Zoom in'], ['−', 1 / 1.5, 'Zoom out']] as const).map(([t, f, label]) => (

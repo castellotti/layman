@@ -3,7 +3,6 @@ import type { Database } from '../db/database.js';
 import type { LaymanConfig } from '../config/schema.js';
 import { SyncJournal, type LogEntry } from './journal.js';
 import { SyncState } from './state.js';
-import { outboundRow } from './applier.js';
 import { SYNC_ENTITIES, SYNC_ENTITIES_ORDERED, type SyncEntity } from './entities.js';
 import {
   SYNC_PROTOCOL_VERSION,
@@ -195,9 +194,9 @@ export class SyncPusher {
 
   // ── batch assembly ──────────────────────────────────────────────────────────
   private buildUpsertEntry(entity: SyncEntity, id: string): PushEntry | null {
-    const row = entity.load(this.db, [id])[0] as WireRow | undefined;
+    const row = entity.loadOutbound(this.db, [id], this.getConfig().piiFilter)[0] as WireRow | undefined;
     if (!row) return null; // deleted after journaling — skip (§3.7)
-    return { op: 'upsert', kind: entity.kind, id, row: outboundRow(entity.kind, row, this.getConfig().piiFilter) };
+    return { op: 'upsert', kind: entity.kind, id, row };
   }
 
   /**
@@ -234,15 +233,16 @@ export class SyncPusher {
     while (cursor) {
       const entity = SYNC_ENTITIES[cursor.kind];
       this.backfillKind = cursor.kind;
-      const rows = entity.page(this.db, { afterId: cursor.lastId, limit: BATCH_MAX_ENTRIES, originHostId: hostId });
+      const rows = entity.page(this.db, {
+        afterId: cursor.lastId, limit: BATCH_MAX_ENTRIES, originHostId: hostId, piiFilter: this.getConfig().piiFilter,
+      });
       if (rows.length === 0) {
         cursor = this.nextKindCursor(cursor.kind);
         this.writeCursor(cursor);
         continue;
       }
       // Fit within the byte budget; a short send just advances the cursor less.
-      const piiFilter = this.getConfig().piiFilter;
-      const { entries, lastId } = fitRows(entity, rows.map((row) => outboundRow(entity.kind, row, piiFilter)));
+      const { entries, lastId } = fitRows(entity, rows);
       await this.client.push({ hostId, entries, live: this.presence() });
       pushed += entries.length;
       cursor = { kind: cursor.kind, lastId };

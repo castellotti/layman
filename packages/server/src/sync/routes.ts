@@ -3,7 +3,7 @@ import compress from '@fastify/compress';
 import type { Database } from '../db/database.js';
 import type { LaymanConfig } from '../config/schema.js';
 import { SyncJournal } from './journal.js';
-import { SyncApplier, outboundRow } from './applier.js';
+import { SyncApplier } from './applier.js';
 import { PeerStore } from './tokens.js';
 import { createHttpSyncClient, type SyncPusher } from './pusher.js';
 import type { SyncPuller } from './puller.js';
@@ -214,10 +214,9 @@ export async function registerSyncRoutes(fastify: FastifyInstance, deps: SyncRou
 
         const limit = Math.min(Math.max(parseInt(request.query.limit ?? '500', 10) || 500, 1), 1000);
         const cursor = request.query.cursor ?? '';
-        const rows = entity.pageExcludingOrigin(db, { afterId: cursor, limit, excludeHostId: peer.host_id });
-        const piiFilter = getConfig().piiFilter;
+        const rows = entity.pageExcludingOrigin(db, { afterId: cursor, limit, excludeHostId: peer.host_id, piiFilter: getConfig().piiFilter });
         const entries: PushEntry[] = rows.map((row) => ({
-          op: 'upsert', kind: entity.kind, id: String(row[entity.idColumn]), row: outboundRow(entity.kind, row, piiFilter),
+          op: 'upsert', kind: entity.kind, id: String(row[entity.idColumn]), row,
         }));
         const nextCursor = rows.length === limit ? String(rows[rows.length - 1][entity.idColumn]) : null;
 
@@ -250,6 +249,7 @@ export async function registerSyncRoutes(fastify: FastifyInstance, deps: SyncRou
         const byEntity = new Map<string, { kind: SyncKind; entityId: string; op: 'upsert' | 'delete' }>();
         for (const e of log) byEntity.set(`${e.kind}:${e.entityId}`, { kind: e.kind, entityId: e.entityId, op: e.op });
 
+        const piiFilter = getConfig().piiFilter;
         const entries: PushEntry[] = [];
         for (const e of byEntity.values()) {
           if (e.op === 'delete') {
@@ -257,8 +257,8 @@ export async function registerSyncRoutes(fastify: FastifyInstance, deps: SyncRou
             continue;
           }
           const entity = SYNC_ENTITIES[e.kind];
-          const row = entity?.load(db, [e.entityId])[0];
-          if (row) entries.push({ op: 'upsert', kind: e.kind, id: e.entityId, row: outboundRow(e.kind, row, getConfig().piiFilter) });
+          const row = entity?.loadOutbound(db, [e.entityId], piiFilter)[0];
+          if (row) entries.push({ op: 'upsert', kind: e.kind, id: e.entityId, row });
           // an upsert whose row is gone (deleted after journaling) is skipped
         }
 

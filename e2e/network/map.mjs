@@ -1,16 +1,6 @@
 // glove network views browser check (map; was phase-5 check5). Run via scripts/netobs-e2e.sh.
-import { BASE, DATA, GLOVE, SHOTS, REPO, CONTAINER, ENGINE, launch, isForeign } from './env.mjs';
-const results = [];
-const check = (name, ok, detail = '') => results.push([ok ? 'PASS' : 'FAIL', name, String(detail).slice(0, 220)]);
-const browser = await launch();
-const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
-const page = await ctx.newPage();
-const errors = [];
-const foreign = [];
-page.on('pageerror', (e) => errors.push(String(e)));
-page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
-page.on('request', (r) => { const u = r.url(); if (isForeign(u)) foreign.push(u); });
-const waitFor = async (fn, ms = 10000) => { const t = Date.now(); while (Date.now() - t < ms) { if (await fn()) return true; await page.waitForTimeout(250); } return false; };
+import { BASE, SHOTS, openGloveSettings, overflowX, startCheck } from './env.mjs';
+const { page, check, waitFor, finish } = await startCheck();
 await page.goto(`${BASE}/?view=map&glove=pi-search`);
 await page.evaluate(() => localStorage.clear()); // once: a reload must keep what the page saved
 await page.reload();
@@ -93,12 +83,7 @@ await page.click('[aria-label="Open the Map tab"]');
 check('mini map opens the Map, keeping the selection', await waitFor(async () => page.url().includes('view=map') && page.url().includes('dest=arxiv.org')), page.url());
 
 // Settings shows the database
-await page.goto(`${BASE}/`);
-await page.waitForTimeout(800);
-await page.click('button:has-text("Settings")');
-await page.waitForTimeout(500);
-const tab = await page.$('text=/^Glove$/');
-if (tab) await tab.click().catch(() => {});
+await openGloveSettings(page);
 const settingsText = await page.evaluate(() => document.body.innerText);
 check('Settings shows the loaded database', await waitFor(async () => /Loaded Layman-Demo-City/.test(await page.evaluate(() => document.body.innerText)), 6000), settingsText.match(/Geolocation database[\s\S]{0,160}/)?.[0]);
 
@@ -106,13 +91,9 @@ check('Settings shows the loaded database', await waitFor(async () => /Loaded La
 await page.setViewportSize({ width: 1280, height: 800 });
 await page.goto(`${BASE}/?view=map&glove=pi-search`);
 await page.waitForTimeout(2500);
-const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+const overflow = await overflowX(page);
 check('no horizontal page scroll at 1280×800', overflow <= 0, overflow);
 await page.screenshot({ path: `${SHOTS}/p5-map-1280.png` });
 
-check('every request went to Layman itself (no lookups, no tiles, no fonts from elsewhere)', foreign.length === 0, foreign.slice(0, 5).join(' '));
-check('no page errors', errors.length === 0, errors.slice(0, 3).join(' | '));
-await browser.close();
-for (const r of results) console.log(r.join('  '));
-console.log(`${results.filter((r) => r[0] === 'PASS').length}/${results.length} passed`);
-process.exitCode = results.every((r) => r[0] === 'PASS') ? 0 : 1;
+// finish() also checks every request went to Layman itself: no lookups, no tiles, no fonts from elsewhere.
+await finish();

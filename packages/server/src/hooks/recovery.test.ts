@@ -282,9 +282,11 @@ describe('importHistoricalSessions', () => {
   // Imported events never pass through EventStore, so the recorder applies the
   // same filter itself. Before, an imported transcript was stored exactly as parsed.
   const SECRET_PROMPT = 'Mail jane.doe@example.com about 203.0.113.7';
-  const piiRecorder = (db: FakeDb, keepIps: boolean) => {
+  // Mirrors server.ts: the gloved mark lives on the store, which history import sets.
+  const piiRecorder = (db: FakeDb, store: EventStore, keepIps: boolean) => {
     const recorder = makeRecorder(db);
-    recorder.setImportFilter((event, gloved) => filterEventPii(event, gloved && keepIps ? IP_CATEGORIES : undefined));
+    recorder.setImportFilter((event) =>
+      filterEventPii(event, store.isGloved(event.sessionId) && keepIps ? IP_CATEGORIES : undefined));
     return recorder;
   };
   const storedPrompt = (db: FakeDb) =>
@@ -293,7 +295,8 @@ describe('importHistoricalSessions', () => {
   it('stores an imported transcript PII-filtered', async () => {
     writePiFixture(SECRET_PROMPT);
     const db = new FakeDb();
-    await importHistoricalSessions(db as unknown as Database, new EventStore(), piiRecorder(db, true));
+    const store = new EventStore();
+    await importHistoricalSessions(db as unknown as Database, store, piiRecorder(db, store, true));
     const stored = storedPrompt(db);
     expect(stored).not.toContain('jane.doe@example.com');
     // Not gloved: the IP setting does not apply.
@@ -303,7 +306,8 @@ describe('importHistoricalSessions', () => {
   it('keeps IP addresses in an imported gloved transcript when the IP setting is on, and nothing else', async () => {
     const { root, label } = writeGlovePiFixture('pi-local', SECRET_PROMPT);
     const db = new FakeDb();
-    await importHistoricalSessions(db as unknown as Database, new EventStore(), piiRecorder(db, true), {
+    const store = new EventStore();
+    await importHistoricalSessions(db as unknown as Database, store, piiRecorder(db, store, true), {
       gloveRoots: [{ path: root, agentType: 'pi', label }],
     });
     const stored = storedPrompt(db);

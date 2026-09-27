@@ -1,16 +1,6 @@
 // glove network views browser check (topology; was phase-6 check6). Run via scripts/netobs-e2e.sh.
-import { BASE, DATA, GLOVE, SHOTS, REPO, CONTAINER, ENGINE, launch, isForeign } from './env.mjs';
-const results = [];
-const check = (name, ok, detail = '') => results.push([ok ? 'PASS' : 'FAIL', name, String(detail).slice(0, 220)]);
-const browser = await launch();
-const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
-const page = await ctx.newPage();
-const errors = [];
-const foreign = [];
-page.on('pageerror', (e) => errors.push(String(e)));
-page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
-page.on('request', (r) => { const u = r.url(); if (isForeign(u)) foreign.push(u); });
-const waitFor = async (fn, ms = 10000) => { const t = Date.now(); while (Date.now() - t < ms) { if (await fn()) return true; await page.waitForTimeout(250); } return false; };
+import { BASE, SHOTS, overflowX, startCheck } from './env.mjs';
+const { page, check, waitFor, finish } = await startCheck();
 const DIAG = 'svg[aria-label^="Routes from"]';
 const nodeTitles = (kind) => page.$$eval(`${DIAG} g[data-node^="${kind}"] > text:first-of-type`, (ts) => ts.map((t) => t.textContent));
 
@@ -89,15 +79,10 @@ for (const [w, h] of [[1440, 900], [1280, 800]]) {
   await page.goto(`${BASE}/?view=topology&glove=pi-search&dest=arxiv.org`);
   await waitFor(async () => (await page.$$(`${DIAG} g[data-node]`)).length > 10);
   await page.waitForTimeout(800);
-  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+  const overflow = await overflowX(page);
   check(`no horizontal scroll at ${w}×${h}`, overflow <= 0, overflow);
   const clipped = await page.evaluate((sel) => { const s = document.querySelector(sel); const r = s.getBoundingClientRect(); const p = s.parentElement.getBoundingClientRect(); return r.right - p.right; }, DIAG);
   check(`diagram fits its panel at ${w}×${h}`, clipped <= 1, clipped);
   await page.screenshot({ path: `${SHOTS}/p6-topology-${w}.png` });
 }
-check('no page errors', errors.length === 0, errors.slice(0, 3).join(' | '));
-check('every request went to Layman itself', foreign.length === 0, foreign.slice(0, 5).join(' '));
-for (const r of results) console.log(r.join('  '));
-console.log(`${results.filter((r) => r[0] === 'PASS').length}/${results.length}`);
-await browser.close();
-process.exitCode = results.every((r) => r[0] === 'PASS') ? 0 : 1;
+await finish();

@@ -44,7 +44,7 @@ export function ruleHits(dests: Iterable<Pick<DestinationAggregate, 'blocked' | 
   const add = (rule: string, n: number) => m.set(rule, (m.get(rule) ?? 0) + n);
   for (const d of dests) {
     let known = 0;
-    for (const [rule, n] of Object.entries(d.blockedBy ?? {})) {
+    for (const [rule, n] of Object.entries(d.blockedBy)) {
       known += n;
       if (rule) add(rule, n);
     }

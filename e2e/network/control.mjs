@@ -1,17 +1,9 @@
 // glove network views browser check (control; was phase-4 check4). Run via scripts/netobs-e2e.sh.
-import { BASE, DATA, GLOVE, SHOTS, REPO, CONTAINER, ENGINE, launch, isForeign } from './env.mjs';
+import { BASE, GLOVE, SHOTS, REPO, startCheck } from './env.mjs';
 import { readFileSync, writeFileSync } from 'fs';
 import { createHash } from 'crypto';
 const RULES = `${GLOVE}/control/pi-search/pi-search/rules.json`;
-const results = [];
-const check = (name, ok, detail = '') => results.push([ok ? 'PASS' : 'FAIL', name, String(detail).slice(0, 200)]);
-const browser = await launch();
-const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
-const errors = [];
-page.on('pageerror', (e) => errors.push(String(e)));
-page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
-const waitFor = async (fn, ms = 15000) => { const t = Date.now(); while (Date.now() - t < ms) { if (await fn()) return true; await page.waitForTimeout(300); } return false; };
-const has = (sel) => async () => (await page.$(sel)) !== null;
+const { page, check, waitFor, has, finish } = await startCheck();
 const rulesText = () => page.$eval('section:has(h2:text-is("Rules"))', (s) => s.innerText);
 
 // Start from the fixtures' rules (the fake glove home is ours; this stands in for the user's own edit).
@@ -21,10 +13,14 @@ const reset = (session, src) => {
   writeFileSync(`${GLOVE}/control/${session}/${session}/rules.json`, text, { mode: 0o644 });
   return createHash('sha256').update(text).digest('hex');
 };
+/** The gate reports enforcing exactly this file. */
+const gateEnforces = (session, sha) => waitFor(async () => {
+  const r = (await (await fetch(`${BASE}/api/net/sessions/${session}/rules`)).json()).rules;
+  return r.sha256 === sha && r.enforcement === 'enforced';
+}, 15000);
 const resets = { 'pi-search': reset('pi-search', `${SCEN}/__fixtures__/rules.json`), 'default-block': reset('default-block', `${SCEN}/__scenarios__/default-block/rules.json`) };
 for (const [session, sha] of Object.entries(resets)) {
-  const ok = await (async () => { for (let i = 0; i < 50; i++) { const r = (await (await fetch(`${BASE}/api/net/sessions/${session}/rules`)).json()).rules; if (r.sha256 === sha && r.enforcement === 'enforced') return true; await new Promise((res) => setTimeout(res, 300)); } return false; })();
-  check(`reset ${session} to its fixture rules`, ok);
+  check(`reset ${session} to its fixture rules`, await gateEnforces(session, sha));
 }
 
 await page.goto(`${BASE}/?view=network&glove=pi-search`);
@@ -100,10 +96,7 @@ check('external change toast', await waitFor(has('text=rules.json changed outsid
 await page.screenshot({ path: `${SHOTS}/p4-external.png` });
 // Wait for the gate to confirm the outside edit, so "the enforced file" is that one.
 const extSha = createHash('sha256').update(readFileSync(RULES)).digest('hex');
-check('the gate confirms the outside edit', await waitFor(async () => {
-  const r = (await (await fetch(`${BASE}/api/net/sessions/pi-search/rules`)).json()).rules;
-  return r.sha256 === extSha && r.enforcement === 'enforced';
-}, 15000));
+check('the gate confirms the outside edit', await gateEnforces('pi-search', extSha));
 
 // 6. Break the file by hand: rejected banner on all four tabs; revert
 const good = readFileSync(RULES, 'utf8');
@@ -139,8 +132,4 @@ if (allowT) {
   check('allowed once confirmed', await waitFor(has('button[aria-label="Block arxiv.org"]'), 15000));
 }
 
-check('no page errors', errors.length === 0, errors.slice(0, 3).join(' | '));
-await browser.close();
-for (const r of results) console.log(r.join('  '));
-console.log(`${results.filter((r) => r[0] === 'PASS').length}/${results.length} passed`);
-process.exitCode = results.every((r) => r[0] === 'PASS') ? 0 : 1;
+await finish();

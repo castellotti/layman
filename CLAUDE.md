@@ -149,7 +149,7 @@ linked above.
 
 9. **Analysis engine** (`packages/server/src/analysis/engine.ts`) — wraps Anthropic or OpenAI-compatible providers, supports `analyze()` (structured JSON → `AnalysisResult`) and `ask()` (free-form Q&A). Both return `{ text/result, tokens: { input, output }, latencyMs, model }`. Max 3 concurrent requests with a queue.
 
-10. **PII filter** (`packages/server/src/pii/filter.ts`) — regex-based redaction covering 24 categories (emails, API keys, passwords, credit cards, JWTs, etc.). Applied at the EventStore level so all live events are covered regardless of source. Events that reach SQLite *without* the store — history import (`SessionRecorder.importSession()`) and the JSON file import — get the same filter through `SessionRecorder.setImportFilter()` (`filterEventPii`), gloved when the transcript came from a glove root; any new write path that bypasses the store needs it too. The store passes each event's session to its filters, which is how `glove.showIpAddresses` keeps IPv4/IPv6 in gloved sessions only (those a passive watcher marked with `markGloved` from a glove root, never "has a session name", which a renamed Claude Code session also has); a kept category's matches are parked behind placeholders while the other patterns run, because the phone pattern otherwise eats part of an IPv4 address.
+10. **PII filter** (`packages/server/src/pii/filter.ts`) — regex-based redaction covering 24 categories (emails, API keys, passwords, credit cards, JWTs, etc.). Applied at the EventStore level so all live events are covered regardless of source. Events that reach SQLite *without* the store — history import (`SessionRecorder.importSession()`) and the JSON file import — get the same filter through `SessionRecorder.setImportFilter()` (`filterEventPii`), keyed on the same gloved mark as the store (history import calls `markGloved` for a transcript from a glove root, so there is one source of truth); any new write path that bypasses the store needs it too. The store passes each event's session to its filters, which is how `glove.showIpAddresses` keeps IPv4/IPv6 in gloved sessions only (those a passive watcher marked with `markGloved` from a glove root, never "has a session name", which a renamed Claude Code session also has); a kept category's matches are parked behind placeholders while the other patterns run, because the phone pattern otherwise eats part of an IPv4 address.
 
 11. **Client state** — Zustand store in `packages/web/src/stores/sessionStore.ts` holds all events, pending approvals, sessions list, active session filter, and investigation state. The `useEventStore()` hook at `packages/web/src/hooks/useEventStore.ts` applies session + UI filters on top.
 
@@ -354,10 +354,11 @@ Four rules that must not be relaxed casually:
   by adding them to the journal.
 
 - **IP addresses kept by `glove.showIpAddresses` never cross hosts**, for the same reason. With the
-  PII filter on, every outbound sync path (push, `/api/sync/snapshot`, `/api/sync/changes`) passes
-  event rows through `outboundRow()` (`sync/applier.ts`), which redacts them in full. Central cannot
-  tell a gloved session from a renamed one, so "keep what the origin recorded" is not an option. A new
-  outbound path must call it.
+  PII filter on, every outbound sync path (push, `/api/sync/snapshot`, `/api/sync/changes`) redacts
+  event rows in full. Central cannot tell a gloved session from a renamed one, so "keep what the
+  origin recorded" is not an option. The redaction lives in the entity readers an outbound path must
+  use (`loadOutbound`, `page`, `pageExcludingOrigin` in `sync/entities.ts`, each taking a required
+  `piiFilter`), so a new path cannot forget it; plain `load` is for local reads only.
 
 ### Key design decisions
 

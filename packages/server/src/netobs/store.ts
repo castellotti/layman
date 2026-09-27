@@ -26,7 +26,7 @@ import { BLOCK_STATES, aggregateState, classifyFlow, classifySession, flowFlags 
 import { groupKeyFor } from './domain.js';
 import { type NetSessionLocation } from './discovery.js';
 import { blankRulesView } from './control.js';
-import { predict as predictVerdict, type GateFacts, type RuleSet } from './rules.js';
+import { predict, type FlowFacts, type GateFacts, type RuleSet } from './rules.js';
 import type { CarryFlow, HistoryDest, HistorySession } from './history.js';
 import type {
   DestinationAggregate,
@@ -197,6 +197,18 @@ function pushUnique(list: string[], v: string | null | undefined, max = Infinity
     list.push(v);
     if (list.length > max) list.shift();
   }
+}
+
+/** A destination's predicted verdict under the enforced rule set and the one on disk. */
+function policyFor(
+  policy: SessionData['policy'], facts: FlowFacts, gate: GateFacts,
+): { enforced: PolicyVerdict | null; written: PolicyVerdict | null } {
+  const one = (set: RuleSet | null): PolicyVerdict | null => {
+    if (!set) return null;
+    const v = predict(set, facts, gate);
+    return { action: v.action, rule: v.rule };
+  };
+  return { enforced: one(policy.enforced), written: one(policy.written) };
 }
 
 export class NetStore extends EventEmitter {
@@ -755,14 +767,9 @@ export class NetStore extends EventEmitter {
       host: a.host, ip: a.ips[0] ?? null, port: a.port, service: a.services[0] ?? null, tool: a.tools[0] ?? null, scope: a.scope,
     };
     const gate = { proxy: this.viaProxy(s, a.services[0] ?? null, a.resolution), resolution: a.resolution };
-    const predict = (set: RuleSet | null): PolicyVerdict | null => {
-      if (!set) return null;
-      const v = predictVerdict(set, facts, gate);
-      return { action: v.action, rule: v.rule };
-    };
     return {
       ...a,
-      policy: { enforced: predict(s.policy.enforced), written: predict(s.policy.written) },
+      policy: policyFor(s.policy, facts, gate),
       // Only an IP glove resolved inside the tunnel (or a literal), never a local link.
       geo: this.geolocate && a.ips[0] && a.scope !== 'local' && (a.resolution === 'in-tunnel' || a.resolution === 'literal')
         ? this.geolocate(a.ips[0])
@@ -825,11 +832,6 @@ export class NetStore extends EventEmitter {
   private historyView(s: SessionData, h: HistoryDest, c: Seen): DestinationAggregate {
     const facts = { host: h.host, ip: h.lastIp, port: h.port, service: null, tool: h.tool, scope: h.scope };
     const gate = { proxy: this.viaProxy(s, null, h.resolution ?? null), resolution: h.resolution ?? null };
-    const predict = (set: RuleSet | null): PolicyVerdict | null => {
-      if (!set) return null;
-      const v = predictVerdict(set, facts, gate);
-      return { action: v.action, rule: v.rule };
-    };
     const scope = (h.scope ?? 'unknown') as FlowFlags['scope'];
     return {
       key: h.key, host: h.host, port: h.port, groupKey: h.groupKey, endpoint: h.host === null ? h.key.replace(/^@/, '') : null,
@@ -838,7 +840,7 @@ export class NetStore extends EventEmitter {
       bytesUp: c.up, bytesDown: c.down, flows: c.flows, openFlows: 0, blocked: c.blocked,
       firstSeen: h.firstSeen, lastSeen: h.lastSeen, state: h.lastState ?? 'finished', rule: null, blockedBy: {},
       flags: { scope, unresolved: !h.lastIp, noHost: h.host === null, cleartext: h.port === 80, fanout: h.tool === 'search-engine-fanout' },
-      spark: [], policy: { enforced: predict(s.policy.enforced), written: predict(s.policy.written) }, geo: null,
+      spark: [], policy: policyFor(s.policy, facts, gate), geo: null,
     };
   }
 

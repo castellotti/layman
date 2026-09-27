@@ -16,20 +16,29 @@ export async function fetchTrace(token: string, query: TraceQuery): Promise<Trac
   return r.json() as Promise<TraceView>;
 }
 
+/**
+ * Run `load` now and again `ms` after each run settles (0: once), never on a fixed beat,
+ * so a slow load (a long session's trace) never stacks requests behind it. `live()` turns
+ * false once cancelled; returns the cancel, for an effect's cleanup.
+ */
+export function pollSettled(load: (live: () => boolean) => Promise<unknown>, ms: number): () => void {
+  let live = true;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const run = () => {
+    void load(() => live).catch(() => {}).finally(() => { if (live && ms > 0) timer = setTimeout(run, ms); });
+  };
+  run();
+  return () => { live = false; clearTimeout(timer); };
+}
+
 /** The trace for `query`, re-read every `refreshMs` (0: once per query). `key` must change when the query does. */
 export function useNetTrace(token: string | null, query: TraceQuery, key: string, refreshMs = 0): { view: TraceView | null; error: string | null } {
   const [state, setState] = useState<{ view: TraceView | null; error: string | null; key: string | null }>({ view: null, error: null, key: null });
   useEffect(() => {
     if (!token) return;
-    let live = true;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    // Re-read once the previous request settles, so a slow build never stacks requests.
-    const load = () => fetchTrace(token, query)
-      .then((view) => { if (live) setState({ view, error: null, key }); })
-      .catch((e: Error) => { if (live) setState((s) => ({ ...s, error: e.message, key })); })
-      .finally(() => { if (live && refreshMs > 0) timer = setTimeout(load, refreshMs); });
-    void load();
-    return () => { live = false; clearTimeout(timer); };
+    return pollSettled((live) => fetchTrace(token, query)
+      .then((view) => { if (live()) setState({ view, error: null, key }); })
+      .catch((e: Error) => { if (live()) setState((s) => ({ ...s, error: e.message, key })); }), refreshMs);
     // `query` is described by `key`.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, key, refreshMs]);

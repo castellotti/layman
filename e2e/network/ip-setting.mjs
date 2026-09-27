@@ -1,18 +1,13 @@
 // glove network views browser check (ip-setting; was phase-9 check9). Run via scripts/netobs-e2e.sh.
-import { BASE, DATA, GLOVE, SHOTS, REPO, CONTAINER, ENGINE, launch, isForeign } from './env.mjs';
+import { BASE, SHOTS, openGloveSettings, startCheck } from './env.mjs';
 // Phase-9 follow-up: glove.showIpAddresses. Turn it on in Settings, wait for a new replay pass,
 // and require the cloud-metadata fetch to keep its IP and join the guard refusal in Trace.
-const results = [];
-const check = (name, ok, detail = '') => { results.push(ok); console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}  ${ok ? '' : detail}`); };
+const { page, check, finish } = await startCheck();
 const cfg = async () => (await (await fetch(`${BASE}/api/config`)).json());
-const b = await launch();
-const page = await b.newPage({ viewport: { width: 1440, height: 900 } });
-const errors = []; page.on('pageerror', (e) => errors.push(String(e)));
-await page.goto(`${BASE}/`); await page.waitForTimeout(800);
-await page.click('button:has-text("Settings")'); await page.waitForTimeout(500);
-const tab = await page.$('text=/^Glove$/'); if (tab) await tab.click().catch(() => {});
+const TOGGLE = 'xpath=//span[text()="Show IP addresses in sandboxed sessions"]/ancestor::div[1]//button';
+await openGloveSettings(page);
 await page.waitForTimeout(500);
-const row = page.locator('xpath=//span[text()="Show IP addresses in sandboxed sessions"]/ancestor::div[1]//button');
+const row = page.locator(TOGGLE);
 check('Settings shows the toggle under Glove', await row.count() > 0);
 const before = (await cfg()).glove?.showIpAddresses;
 if (before) { await row.click(); await page.waitForTimeout(800); }
@@ -55,12 +50,7 @@ if (hit) {
   await page.screenshot({ path: `${SHOTS}/p9-ip-trace.png` });
 }
 // Leave it as found.
-await page.goto(`${BASE}/`); await page.waitForTimeout(800);
-await page.click('button:has-text("Settings")'); await page.waitForTimeout(500);
-const tab2 = await page.$('text=/^Glove$/'); if (tab2) await tab2.click().catch(() => {});
-await page.locator('xpath=//span[text()="Show IP addresses in sandboxed sessions"]/ancestor::div[1]//button').click(); await page.waitForTimeout(800);
+await openGloveSettings(page);
+await page.locator(TOGGLE).click(); await page.waitForTimeout(800);
 check('turned back off', (await cfg()).glove?.showIpAddresses === false);
-check('no page errors', errors.length === 0, errors.join(' | '));
-console.log(`${results.filter(Boolean).length}/${results.length} passed`);
-await b.close();
-process.exitCode = results.every(Boolean) ? 0 : 1;
+await finish();

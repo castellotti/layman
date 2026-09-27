@@ -259,10 +259,10 @@ export function createServer(config: LaymanConfig): LaymanServer {
   );
   recorder.attach(eventStore);
   // History import and JSON import write straight to SQLite, never through EventStore,
-  // so they get the store's redaction here. `gloved` comes from the transcript's glove root.
-  recorder.setImportFilter((event, gloved) => {
+  // so they get the store's redaction here. History import marks a glove root's sessions gloved.
+  recorder.setImportFilter((event) => {
     if (!getConfig().piiFilter) return event;
-    return filterEventPii(event, gloved || eventStore.isGloved(event.sessionId) ? ipKeep() : undefined);
+    return filterEventPii(event, piiKeep(event.sessionId));
   });
 
   // ─── Multi-host sync ──────────────────────────────────────────────────────
