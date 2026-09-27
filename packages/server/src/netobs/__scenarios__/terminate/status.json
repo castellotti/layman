@@ -1,0 +1,31 @@
+{
+  "v": 1,
+  "gate": "0.1.0",
+  "state": "running",
+  "record": "metadata",
+  "upstream": {
+    "kind": "vpn",
+    "healthy": true
+  },
+  "resolver": {
+    "mode": "in-tunnel",
+    "healthy": true
+  },
+  "rules": {
+    "loaded_at": "2026-09-25T11:37:13.713Z",
+    "source_mtime": "2026-09-25T11:37:13.383Z",
+    "ok": true,
+    "error": null,
+    "active_count": 1,
+    "sha256": "370ed985625e6105f3dc3051c19148ce0748119b79f25f3ab5ec87e95355db94",
+    "last_rejected": null
+  },
+  "t": "2026-09-25T11:37:13.713Z",
+  "telemetry": {
+    "written": 6,
+    "dropped": 0,
+    "invalid": 0,
+    "rotations": 0,
+    "expired_files": 0
+  }
+}

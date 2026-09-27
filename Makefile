@@ -16,6 +16,12 @@ CONTAINER_ENGINE := $(shell \
 	else echo docker; fi)
 COMPOSE := $(CONTAINER_ENGINE) compose
 
+# ── glove (optional extension) ────────────────────────────────────────────────
+# glove's compose overlays, added only when glove's own folders already exist
+# (never creating ~/.glove); the rule and its reasons are in scripts/glove-compose.sh.
+GLOVE_COMPOSE := $(shell scripts/glove-compose.sh)
+GLOVE_NOTE := $(shell scripts/glove-compose.sh --note)
+
 # ── Local development ─────────────────────────────────────────────────────────
 
 install:
@@ -41,8 +47,9 @@ clean:
 start:
 	@mkdir -p "$${HOME}/.local/share/layman"
 	$(COMPOSE) -f docker-compose.ghcr.yml pull
+	@echo "$(GLOVE_NOTE)"
 	LAYMAN_HOST_NAME="$${LAYMAN_HOST_NAME:-$$(hostname)}" \
-	$(COMPOSE) -f docker-compose.ghcr.yml up -d
+	$(COMPOSE) -f docker-compose.ghcr.yml $(GLOVE_COMPOSE) up -d
 	@echo ""
 	@echo "Layman running at http://localhost:8880"
 
@@ -53,8 +60,9 @@ stop:
 update:
 	@mkdir -p "$${HOME}/.local/share/layman"
 	$(COMPOSE) -f docker-compose.ghcr.yml pull
+	@echo "$(GLOVE_NOTE)"
 	LAYMAN_HOST_NAME="$${LAYMAN_HOST_NAME:-$$(hostname)}" \
-	$(COMPOSE) -f docker-compose.ghcr.yml up -d
+	$(COMPOSE) -f docker-compose.ghcr.yml $(GLOVE_COMPOSE) up -d
 	@echo "Layman updated and restarted."
 
 # ── Container image (build from source) ───────────────────────────────────────
@@ -67,9 +75,10 @@ docker-build:
 # Override the project dir: make docker-run LAYMAN_PROJECT_DIR=/path/to/project
 docker-run: docker-build
 	@mkdir -p "$${HOME}/.local/share/layman"
+	@echo "$(GLOVE_NOTE)"
 	LAYMAN_PROJECT_DIR=$(or $(LAYMAN_PROJECT_DIR),$(CURDIR)) \
 	LAYMAN_HOST_NAME="$${LAYMAN_HOST_NAME:-$$(hostname)}" \
-	$(COMPOSE) up -d
+	$(COMPOSE) -f docker-compose.yml $(GLOVE_COMPOSE) up -d
 	@echo ""
 	@echo "Layman running at http://localhost:8880"
 	@echo "Hooks installed in $${LAYMAN_PROJECT_DIR:-.}/.claude/settings.local.json"

@@ -23,6 +23,7 @@ export type { BookmarkFolder, Bookmark, RecordedSession, QAEntry, HighlightFolde
 export type { SessionTimeMetrics } from '../db/time-metrics.js';
 export type { DriftLevel, DriftState, DriftThresholds, DriftCheckResult, DriftPreToolUseResult } from '../drift/types.js';
 export type { LiveStream, StreamDelta } from '../stream/live.js';
+export type * from '../netobs/types.js';
 
 // WebSocket protocol types
 import type { TimelineEvent } from '../events/types.js';
@@ -36,6 +37,7 @@ import type { BookmarkFolder, Bookmark, HighlightFolder, Highlight } from '../db
 import type { DriftState } from '../drift/types.js';
 import type { LiveStream } from '../stream/live.js';
 import type { SyncStatus, HostStats } from '../sync/protocol.js';
+import type { NetServerMessage, RulesOp } from '../netobs/index.js';
 
 export interface SessionStatus {
   connected: boolean;
@@ -108,7 +110,9 @@ export type ServerMessage =
   | { type: 'stream:update'; sessionId: string; stream: LiveStream }
   | { type: 'stream:end'; sessionId: string }
   | { type: 'sync:status'; status: SyncStatus }
-  | { type: 'sync:hosts'; hosts: HostStats[] };
+  | { type: 'sync:hosts'; hosts: HostStats[] }
+  // Network views of glove sessions (netobs/): list on connect, the rest per subscription.
+  | NetServerMessage;
 
 export type ClientMessage =
   | { type: 'approval:decide'; approvalId: string; decision: ApprovalDecision }
@@ -121,4 +125,8 @@ export type ClientMessage =
   | { type: 'bookmarks:get' }
   | { type: 'drift:reset'; sessionId: string }
   | { type: 'drift:dismiss'; sessionId: string; approvalId: string }
-  | { type: 'drift:dismiss-item'; sessionId: string; category: 'indicator' | 'patternBreak' | 'phantomReference' | 'violation'; value: string };
+  | { type: 'drift:dismiss-item'; sessionId: string; category: 'indicator' | 'patternBreak' | 'phantomReference' | 'violation'; value: string }
+  /** Network data for one glove session at a time per socket; null unsubscribes. */
+  | { type: 'net:subscribe'; token: string | null }
+  /** Change one glove session's rules.json; answered with `net:rules:result` to this socket. */
+  | { type: 'net:rules:apply'; token: string; op: RulesOp; opId: string };

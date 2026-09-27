@@ -137,9 +137,9 @@ describe('applyMigrations (multi-host sync migration)', () => {
       expect(row, `expected table ${t}`).toBeTruthy();
     }
 
-    // Both migration versions recorded.
+    // Every migration version recorded (3: glove network rollups, netobs/persist.ts).
     const versions = (db.prepare('SELECT version FROM schema_migrations ORDER BY version').all() as Array<{ version: number }>).map((r) => r.version);
-    expect(versions).toEqual([1, 2]);
+    expect(versions).toEqual([1, 2, 3]);
 
     // Journal triggers installed.
     const triggers = triggerNames(db);

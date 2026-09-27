@@ -408,6 +408,7 @@ export class VibeSessionWatcher {
     // Register session with EventStore. The sandbox label (undefined for native)
     // rides through as the session name so gloved sessions are tagged in the UI.
     this.eventStore.trackSession(sessionId, cwd, root.agentType, undefined, root.label);
+    if (root.label) this.eventStore.markGloved(sessionId);
     this.eventStore.add('session_start', sessionId, { source: 'startup' }, undefined, root.agentType);
     const tag = root.label ? ` [glove: ${root.label}]` : '';
     console.log(`[vibe] Tracking session ${sessionId.slice(0, 8)} (${basename(dirPath)})${tag}`);

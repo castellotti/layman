@@ -84,6 +84,7 @@ Intercept tool calls before they execute and approve, deny, or defer from the da
 
 - **Risk analysis & drift monitoring** - automatic risk classification per action, plus goal-drift and `CLAUDE.md`/`AGENTS.md` rules-drift scoring that can pause the agent -> [docs/features.md](docs/features.md)
 - **Multi-host sync** - run one central instance that collects sessions from many machines; each remote keeps recording locally and pushes to central, with clear host attribution, live remote sessions on the dashboard, and an optional offline mirror -> [docs/features.md](docs/features.md#multi-host-sync)
+- **glove network views** - for glove-sandboxed sessions: every connection the sandbox made, on a table, an offline world map, a route diagram and a per-turn trace that joins each tool call to its traffic, with blocking through glove's gate -> [docs/features.md](docs/features.md#glove-network-views)
 - **Session metrics** - model, context %, cost, tokens, rate limits, live per session
 - **Historical import** - pull in past Claude Code sessions from JSONL transcripts, even ones never monitored live
 - **File & URL access tracking** - everything touched, in one panel
@@ -122,7 +123,7 @@ Or build and run the container locally: `make docker-run` (see [Makefile](Makefi
 | [Installation & operation](docs/installation.md) | Quick start details, what gets mounted, port binding, updating, stopping, adding clients, running a central instance |
 | [Features in depth](docs/features.md) | Risk analysis, drift monitoring, PII filter, access tracking, metrics, historical import, multi-host sync |
 | [Claude Code](docs/harnesses/claude-code.md) · [Codex](docs/harnesses/codex.md) · [OpenCode](docs/harnesses/opencode.md) · [Vibe](docs/harnesses/vibe.md) · [Cline](docs/harnesses/cline.md) · [pi](docs/harnesses/pi.md) · [Open WebUI](docs/harnesses/open-webui.md) | Per-harness installation, activation, capability, and architecture notes |
-| [glove](docs/extensions/glove.md) | Read-only passive monitoring of glove-sandboxed sessions |
+| [glove](docs/extensions/glove.md) | Passive monitoring of glove-sandboxed sessions, and their network traffic with block/allow rules |
 | [Development](docs/development.md) | Building from source, workspace layout, testing, contributing |
 | [CHANGELOG.md](CHANGELOG.md) | Release history |
 

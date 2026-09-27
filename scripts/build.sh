@@ -20,9 +20,18 @@ if [ -z "${CONTAINER_ENGINE:-}" ]; then
   fi
 fi
 
+cd "$(dirname "${BASH_SOURCE[0]}")/.."
+
+# glove (optional extension): its overlays, only when glove's own folders exist.
+# Unquoted on purpose: the `-f` arguments split into words (none contain spaces).
+# shellcheck disable=SC2207
+COMPOSE_FILES=(-f docker-compose.yml $(scripts/glove-compose.sh))
+scripts/glove-compose.sh --note
+
 # Both engines accept the same compose/rm/logs verbs.
 "$CONTAINER_ENGINE" stop layman || true
 "$CONTAINER_ENGINE" rm layman || true
-"$CONTAINER_ENGINE" compose build
-"$CONTAINER_ENGINE" compose up -d
+"$CONTAINER_ENGINE" compose "${COMPOSE_FILES[@]}" build
+LAYMAN_HOST_NAME="${LAYMAN_HOST_NAME:-$(hostname)}" \
+  "$CONTAINER_ENGINE" compose "${COMPOSE_FILES[@]}" up -d
 "$CONTAINER_ENGINE" logs -f layman

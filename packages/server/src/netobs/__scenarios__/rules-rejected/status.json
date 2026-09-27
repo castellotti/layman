@@ -1,0 +1,36 @@
+{
+  "v": 1,
+  "gate": "0.1.0",
+  "state": "running",
+  "record": "metadata",
+  "upstream": {
+    "kind": "vpn",
+    "healthy": true
+  },
+  "resolver": {
+    "mode": "in-tunnel",
+    "healthy": true
+  },
+  "rules": {
+    "loaded_at": "2026-09-25T11:37:10.259Z",
+    "source_mtime": "2026-09-25T11:37:10.258Z",
+    "ok": false,
+    "error": "unknown top-level keys ['exec'] (allowed: ['default', 'env', 'rules', 'session', 'updated_at', 'updated_by', 'v'])",
+    "active_count": 1,
+    "sha256": "4630d5a8082c2ba0bd61051a26a8d8f1a373d145c9344d13cdd91f0dd821fbfe",
+    "last_rejected": {
+      "checked_at": "2026-09-25T11:37:12.077Z",
+      "source_mtime": "2026-09-25T11:37:10.260Z",
+      "sha256": "4510887b2c137f5418acc1cead2cdd38d5f986bd24bff79475b4f24c2623755a",
+      "error": "unknown top-level keys ['exec'] (allowed: ['default', 'env', 'rules', 'session', 'updated_at', 'updated_by', 'v'])"
+    }
+  },
+  "t": "2026-09-25T11:37:12.077Z",
+  "telemetry": {
+    "written": 9,
+    "dropped": 0,
+    "invalid": 0,
+    "rotations": 0,
+    "expired_files": 0
+  }
+}

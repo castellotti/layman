@@ -19,7 +19,8 @@ import { AnalysisEngine } from './analysis/engine.js';
 import { DriftMonitor } from './drift/monitor.js';
 import { LiveStreamStore, type LiveStream } from './stream/live.js';
 import { resolveEndpoint } from './analysis/providers/openai-compat.js';
-import { filterPii, redactValue, redactString } from './pii/filter.js';
+import type BetterSqlite3 from 'better-sqlite3';
+import { filterPii, IP_CATEGORIES, redactValue, redactString } from './pii/filter.js';
 import { PII_CATEGORIES, PII_GROUPS } from './pii/categories.js';
 import { scanPii, executePurge } from './pii/purge.js';
 import { updateConfig, saveConfig } from './config/config.js';
@@ -40,13 +41,16 @@ import { BookmarkStore } from './db/bookmarks.js';
 import { HighlightStore } from './db/highlights.js';
 import { TurnStore } from './turns/store.js';
 import { registerTurnRoutes } from './routes/turns.js';
+import { NetObs } from './netobs/index.js';
+import { registerNetRoutes } from './netobs/routes.js';
+import { SqliteNetHistory } from './netobs/persist.js';
 import { registerTtsRoutes } from './routes/tts.js';
 import { searchEvents, parseSearchQuery, matchesSearchTerms } from './db/search.js';
 import { computeTimeMetrics } from './db/time-metrics.js';
 import type { SearchRequest } from './db/search.js';
 import type { LaymanConfig } from './config/schema.js';
 import { VibeSessionWatcher } from './vibe/watcher.js';
-import { PiSessionWatcher } from './pi/watcher.js';
+import { PiSessionWatcher, recordedCursorFrom } from './pi/watcher.js';
 import { NativeVibeSource, NativePiSource, GloveSource } from './monitor/sources.js';
 import { recoverSessionGaps, importHistoricalSessions } from './hooks/recovery.js';
 import type { ServerMessage, ClientMessage, SessionStatus, SetupStatus } from './types/index.js';
@@ -105,14 +109,19 @@ export function createServer(config: LaymanConfig): LaymanServer {
   // The real broadcast is wired up after wsClients is defined below.
   let driftMonitor: DriftMonitor;
 
-  // Wire PII filter — checks config on every event so toggling takes effect immediately
-  eventStore.setDataFilter((data) => {
-    if (getConfig().piiFilter) return filterPii(data);
+  // Wire PII filter — checks config on every event so toggling takes effect immediately.
+  // `glove.showIpAddresses` keeps IP addresses in gloved sessions only: the addresses a sandbox
+  // reached are what the network views exist to show. Not "has a session name" — a renamed
+  // Claude Code session has one too, and is no sandbox.
+  const ipKeep = () => (getConfig().glove.showIpAddresses ? IP_CATEGORIES : undefined);
+  const piiKeep = (sessionId: string) => (eventStore.isGloved(sessionId) ? ipKeep() : undefined);
+  eventStore.setDataFilter((data, sessionId) => {
+    if (getConfig().piiFilter) return filterPii(data, piiKeep(sessionId));
     return data;
   });
   // Layman's-terms explanations bypass EventData entirely (attachLaymans), so they need
   // their own filter hook to get the same redaction as everything else leaving the store.
-  eventStore.setStringFilter((text) => (getConfig().piiFilter ? redactString(text) : text));
+  eventStore.setStringFilter((text, sessionId) => (getConfig().piiFilter ? redactString(text, piiKeep(sessionId)) : text));
 
   // In-memory queue of prompts to be relayed to OpenCode by the plugin.
   interface PendingPrompt { id: string; sessionId: string; prompt: string; queuedAt: number }
@@ -193,14 +202,47 @@ export function createServer(config: LaymanConfig): LaymanServer {
     const glove = getConfig().glove;
     return glove.enabled ? expandHome(glove.sessionsDir) : null;
   });
+  // Network views of gloved sessions read the same sessions dir, but by a
+  // plain glob of `*/sessions/*/net/` — see netobs/discovery.ts for why this
+  // is not routed through GloveSource.
+  const netObs = new NetObs({
+    getSessionsDir: () => {
+      const glove = getConfig().glove;
+      return glove.enabled && glove.network.enabled ? expandHome(glove.sessionsDir) : null;
+    },
+    // Only `request` (record: full) is agent-derived text; see netobs/store.ts.
+    stringFilter: (text) => (getConfig().piiFilter ? redactString(text, ipKeep()) : text),
+    controlEnabled: () => getConfig().glove.network.controlEnabled,
+    getGeoPath: () => {
+      const p = getConfig().glove.network.geoipDbPath.trim();
+      return p ? expandHome(p) : '';
+    },
+    // Rollups kept across restarts (netobs/persist.ts), only while recording is on,
+    // never synced. `db` is opened below; the history is first used when polling starts.
+    history: {
+      enabled: () => getConfig().sessionRecording,
+      load: () => netHistory().load(),
+      save: (rows) => netHistory().save(rows),
+    },
+  });
+  let netHistoryImpl: SqliteNetHistory | null = null;
+  const netHistory = () => (netHistoryImpl ??= new SqliteNetHistory(db, () => getConfig().sessionRecording));
   const vibeWatcher = new VibeSessionWatcher(eventStore, gate, getConfig, [
     new NativeVibeSource(),
     gloveSource,
   ]);
+  let recordedCursorStmt: BetterSqlite3.Statement<unknown[]> | null = null;
   const piWatcher = new PiSessionWatcher(eventStore, gate, getConfig, [
     new NativePiSource(),
     gloveSource,
-  ]);
+  ], (sessionId) => {
+    // Only a recorded session can be recorded twice; with recording off the replay is what shows it.
+    if (!getConfig().sessionRecording) return null;
+    recordedCursorStmt ??= db.prepare(`SELECT json_extract(data_json, '$.transcriptEventId') AS tid, json_extract(data_json, '$.transcriptAt') AS tat
+      FROM recorded_events WHERE session_id = ?`);
+    const rows = recordedCursorStmt.all(sessionId) as Array<{ tid: string | null; tat: number | null }>;
+    return recordedCursorFrom(rows, (id) => redactString(id));
+  });
 
   // Persistent storage
   const db = openDatabase();
@@ -596,6 +638,21 @@ export function createServer(config: LaymanConfig): LaymanServer {
     // Turn model + data egress (see docs: addressable URLs)
     registerTurnRoutes(fastify, { turnStore, bookmarkStore, getConfig });
 
+    // Network views of glove sessions. Trace joins them to the Layman sessions
+    // GloveSource named after the glove session (sessionName = token).
+    const sessionsNamedStmt = db.prepare('SELECT session_id FROM recorded_sessions WHERE session_name = ?');
+    registerNetRoutes(fastify, {
+      netObs,
+      trace: {
+        sessionsNamed: (token) => [...new Set([
+          ...eventStore.getSessions().filter((s) => s.sessionName === token).map((s) => s.sessionId),
+          ...(sessionsNamedStmt.all(token) as Array<{ session_id: string }>).map((r) => r.session_id),
+        ])],
+        turns: (sessionId) => turnStore.listTurns(sessionId),
+        events: (sessionId) => turnStore.eventsFor(sessionId),
+      },
+    });
+
     // Text-to-speech pass-through to speaches (speaches has CORS off by default)
     registerTtsRoutes(fastify, { getConfig });
 
@@ -689,7 +746,7 @@ export function createServer(config: LaymanConfig): LaymanServer {
           }
           result = { files, urls };
         }
-        return getConfig().piiFilter ? redactValue(result) : result;
+        return getConfig().piiFilter ? redactValue(result, piiKeep(sessionId)) : result;
       }
     );
 
@@ -699,7 +756,7 @@ export function createServer(config: LaymanConfig): LaymanServer {
       const applyPii = getConfig().piiFilter;
       for (const s of sessions) {
         const log = eventStore.getAccessLog(s.sessionId);
-        logs[s.sessionId] = applyPii ? redactValue(log) as typeof log : log;
+        logs[s.sessionId] = applyPii ? redactValue(log, piiKeep(s.sessionId)) as typeof log : log;
       }
       return logs;
     });
@@ -1699,9 +1756,24 @@ export function createServer(config: LaymanConfig): LaymanServer {
           } satisfies ServerMessage));
         }
 
+        // Network views: the glove session list only. Flow data follows a
+        // net:subscribe, so a dashboard that never opens the tabs never pays for it.
+        netObs.attach(ws);
+
         ws.on('message', (data: unknown) => {
           try {
             const message = JSON.parse(String(data)) as ClientMessage;
+            // Per-socket, so it cannot go through the socket-less handler below.
+            if (message.type === 'net:subscribe') {
+              netObs.subscribe(ws, typeof message.token === 'string' ? message.token : null);
+              return;
+            }
+            if (message.type === 'net:rules:apply') {
+              if (typeof message.token === 'string' && typeof message.opId === 'string' && message.op && typeof message.op.kind === 'string') {
+                netObs.applyFromSocket(ws, message.token, message.op, message.opId);
+              }
+              return;
+            }
             handleClientMessage(message);
           } catch {
             // Ignore malformed messages
@@ -1710,6 +1782,7 @@ export function createServer(config: LaymanConfig): LaymanServer {
 
         ws.on('close', () => {
           wsClients.delete(ws);
+          netObs.detach(ws);
         });
       });
     });
@@ -1940,6 +2013,7 @@ export function createServer(config: LaymanConfig): LaymanServer {
       registerRoutes();
       vibeWatcher.start();
       piWatcher.start();
+      netObs.start();
       reconcileSync();
       syncMaintenanceTimer = setInterval(runSyncMaintenance, SYNC_MAINTENANCE_MS);
 
@@ -1974,6 +2048,7 @@ export function createServer(config: LaymanConfig): LaymanServer {
     async stop() {
       vibeWatcher.stop();
       piWatcher.stop();
+      netObs.stop();
       liveStreams.stop();
       syncPusher?.stop();
       syncPuller?.stop();

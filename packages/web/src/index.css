@@ -42,6 +42,16 @@
   --info:   #5A9CF8;   /* user prompts, drop indicators */
   --agent:  #8B7CF6;   /* agent responses, subagent lanes */
 
+  /* Network views (glove) */
+  --net-tunnel:   #35C9B4;  /* tunnelled route, live arcs, "allowed" toggle fill */
+  --net-up:       #B58CF6;  /* sent */
+  --net-down:     #5A9CF8;  /* received */
+  --net-ocean:    #090C12;
+  --net-land:     #151B27;
+  --net-landline: #1F2736;
+  --net-fanout:   #7B6CE0;  /* SearXNG fan-out: traffic the search engine made, not the agent */
+  --net-local:    #5B6477;  /* local links (LLM, SearXNG): never leave the machine */
+
   /* Typography */
   --font-ui:   'IBM Plex Sans', system-ui, sans-serif;
   --font-mono: 'IBM Plex Mono', 'SF Mono', 'Fira Code', monospace;
@@ -210,4 +220,20 @@ body {
     margin: 1cm;
     size: A4;
   }
+}
+
+/* Network views: the gate strip's chip row scrolls sideways without a visible bar
+   (scrollbar-width covers Chrome/Firefox; this covers Safari). */
+.net-chip-row::-webkit-scrollbar { display: none; }
+
+/* Network map: live arcs carry a moving dash (plan §7.2). None when the user asks for reduced motion. */
+.net-live-dash { stroke-dasharray: 8 7; animation: net-dash 1.1s linear infinite; }
+.net-live-dash-trunk { stroke-dasharray: 10 6; animation: net-dash 1.4s linear infinite; }
+@keyframes net-dash { to { stroke-dashoffset: -30; } }
+/* Buttons in the network views are styled inline, which cannot reach :disabled; without this a
+   read-only "Cut all traffic now" looked exactly like a live one. Opacity yields to an inline one
+   (NetToggle keeps a locked toggle legible); the cursor must not. */
+.net-view button:disabled { opacity: 0.45; cursor: not-allowed !important; }
+@media (prefers-reduced-motion: reduce) {
+  .net-live-dash, .net-live-dash-trunk { animation: none; }
 }

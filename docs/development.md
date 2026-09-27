@@ -307,7 +307,12 @@ picked up automatically otherwise. Force one explicitly:
 make docker-run CONTAINER_ENGINE=podman
 ```
 
-`scripts/build.sh` honours the same `CONTAINER_ENGINE` environment variable.
+`scripts/build.sh` honours the same `CONTAINER_ENGINE` environment variable. Like
+`make docker-run`, it adds the glove overlays (`docker-compose.glove.yml`, and
+`docker-compose.glove-control.yml`) only when `~/.glove` (and `~/.glove/control`)
+already exist, and defaults `LAYMAN_HOST_NAME` to `$(hostname)`. Both take that overlay rule
+from `scripts/glove-compose.sh`, its one copy, so they cannot drift apart again. A bare
+`docker compose up` does neither, so it starts Layman blind to glove sessions.
 
 Podman runs the same `docker-compose.yml` unchanged. Two engine differences are worth
 knowing:

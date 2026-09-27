@@ -14,7 +14,16 @@ function computeHighlightedEventIds(highlights: Highlight[]): Set<string> {
   return ids;
 }
 
-export type ViewMode = 'dashboard' | 'stream' | 'flowchart' | 'sessions' | 'prompts';
+export type ViewMode =
+  | 'dashboard' | 'stream' | 'flowchart' | 'sessions' | 'prompts'
+  // Network views of glove sessions: exclusive full-content views, like Flow.
+  | 'network' | 'map' | 'topology' | 'trace';
+
+export const NETWORK_VIEW_MODES: readonly ViewMode[] = ['network', 'map', 'topology', 'trace'];
+
+export function isNetworkView(mode: ViewMode): boolean {
+  return (NETWORK_VIEW_MODES as readonly string[]).includes(mode);
+}
 
 // ─── Expanding-interface layout state ──────────────────────────────────────
 
@@ -92,6 +101,10 @@ const VIEW_NAME_BY_MODE: Record<ViewMode, ViewName> = {
   flowchart: 'flow',
   sessions: 'sessions',
   prompts: 'prompts',
+  network: 'network',
+  map: 'map',
+  topology: 'topology',
+  trace: 'trace',
 };
 
 const MODE_BY_VIEW_NAME: Record<ViewName, ViewMode> = {
@@ -100,6 +113,10 @@ const MODE_BY_VIEW_NAME: Record<ViewName, ViewMode> = {
   flow: 'flowchart',
   sessions: 'sessions',
   prompts: 'prompts',
+  network: 'network',
+  map: 'map',
+  topology: 'topology',
+  trace: 'trace',
 };
 
 export function viewNameForMode(mode: ViewMode): ViewName {
@@ -277,6 +294,14 @@ export interface SessionState {
   // Flowchart view
   flowchartOpen: boolean;
 
+  // Network views (glove). Selection only — the network *data* lives in
+  // netStore, which updates several times a second. These two are hydrated from
+  // `?glove=` / `?dest=` and read back by routeForState, so they belong here.
+  /** The glove session token shown, or null for "pick the default". */
+  netToken: string | null;
+  /** Selected destination host, shared across the four network tabs. */
+  netDest: string | null;
+
   // Dashboard view
   dashboardFocusedSession: string | null;
   dashboardSessionOrder: string[];
@@ -371,6 +396,9 @@ export interface SessionState {
   removeHighlight: (highlightId: string) => void;
   navigateFromPromptsToSession: (sessionId: string, promptEventId: string) => void;
   setSelectedHighlight: (highlightId: string | null) => void;
+  /** Choose the glove session the network views show; clears the destination selection. */
+  setNetToken: (token: string | null) => void;
+  setNetDest: (host: string | null) => void;
   selectTurn: (sessionId: string, promptEventId: string | null) => void;
   hydrateFromRoute: (route: LaymanRoute, opts: RouteOptions) => Promise<void>;
   clearRouteError: () => void;
@@ -462,6 +490,9 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   sessionsSearchSeed: null,
 
   flowchartOpen: false,
+
+  netToken: null,
+  netDest: null,
 
   dashboardFocusedSession: null,
   dashboardSessionOrder: [],
@@ -831,6 +862,9 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   setSelectedHighlight: (selectedHighlightId) =>
     set({ selectedHighlightId, ...(selectedHighlightId ? { routeFolderId: null } : {}) }),
 
+  setNetToken: (netToken) => set((s) => (s.netToken === netToken ? {} : { netToken, netDest: null })),
+  setNetDest: (netDest) => set({ netDest }),
+
   // An explicit user navigation to one turn — the URL becomes /s/<sid>/t/<pid>.
   selectTurn: (sessionId, promptEventId) => set({
     viewMode: 'sessions',
@@ -961,6 +995,9 @@ export const useSessionStore = create<SessionState>((set, get) => ({
           selectedHighlightId: null,
           ...(mode === 'dashboard' ? { dashboardOverride: true, logsOverride: false, splitOverrides: {} } : {}),
           ...(mode === 'stream' ? { logsOverride: true, dashboardOverride: false, splitOverrides: {} } : {}),
+          // A network deep link names its glove session and selection; any
+          // other view leaves the last choice alone for the next visit.
+          ...(isNetworkView(mode) ? { netToken: opts.glove ?? null, netDest: opts.dest ?? null } : {}),
         });
         return;
       }

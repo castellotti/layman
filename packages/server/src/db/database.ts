@@ -145,6 +145,60 @@ export function applyMigrations(db: Database): void {
 
   applySyncMigration(db);
   recordMigration(db, 2);
+
+  applyNetMigration(db);
+  recordMigration(db, 3);
+}
+
+/**
+ * Migration 3 — glove network rollups (docs/planning/network-views.md §5.6,
+ * `netobs/persist.ts`): one row per glove session and one per destination, never
+ * per flow. **Deliberately not synced**: no triggers and no SYNC_ENTITIES entry.
+ * These rows describe one host's sandbox traffic — where it browsed — and must
+ * not travel to a central instance or any other host.
+ */
+export function applyNetMigration(db: Database): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS net_sessions (
+      token            TEXT PRIMARY KEY,
+      env              TEXT NOT NULL,
+      session_name     TEXT NOT NULL,
+      first_seen       INTEGER NOT NULL,
+      last_seen        INTEGER NOT NULL,
+      watermark        INTEGER NOT NULL,
+      bytes_up         INTEGER NOT NULL DEFAULT 0,
+      bytes_down       INTEGER NOT NULL DEFAULT 0,
+      flows            INTEGER NOT NULL DEFAULT 0,
+      blocked          INTEGER NOT NULL DEFAULT 0,
+      blocked_guard    INTEGER NOT NULL DEFAULT 0,
+      blocked_rule     INTEGER NOT NULL DEFAULT 0,
+      blocked_default  INTEGER NOT NULL DEFAULT 0,
+      direct_flows     INTEGER NOT NULL DEFAULT 0,
+      last_exit_json   TEXT,
+      last_status_json TEXT,
+      session_json     TEXT,
+      carry_json       TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS net_destinations (
+      token       TEXT NOT NULL,
+      host        TEXT NOT NULL,
+      port        INTEGER NOT NULL DEFAULT 0,
+      group_key   TEXT NOT NULL,
+      last_ip     TEXT,
+      scope       TEXT,
+      resolution  TEXT,
+      tool        TEXT,
+      first_seen  INTEGER NOT NULL,
+      last_seen   INTEGER NOT NULL,
+      bytes_up    INTEGER NOT NULL DEFAULT 0,
+      bytes_down  INTEGER NOT NULL DEFAULT 0,
+      flows       INTEGER NOT NULL DEFAULT 0,
+      blocked     INTEGER NOT NULL DEFAULT 0,
+      last_state  TEXT,
+      PRIMARY KEY (token, host, port)
+    );
+  `);
 }
 
 function recordMigration(db: Database, version: number): void {

@@ -6,7 +6,7 @@ import { EventStore } from '../events/store.js';
 import { SessionGate } from '../hooks/gate.js';
 import type { LaymanConfig } from '../config/schema.js';
 import type { MonitorSource, WatchRoot } from '../monitor/sources.js';
-import { PiSessionWatcher } from './watcher.js';
+import { PiSessionWatcher, recordedCursorFrom, type RecordedCursor } from './watcher.js';
 
 const SESSION_ID = 'aaaaaaaa-0000-4000-8000-000000000000';
 const ENCODED_CWD = '--Users-test-proj--';
@@ -95,11 +95,74 @@ describe('PiSessionWatcher', () => {
     expect(session.cwd).toBe(CWD);
   });
 
+  it('keeps the transcript\'s own times beside the read time, for joining calls to network flows', () => {
+    vi.setSystemTime(new Date('2026-08-21T10:00:09.500Z'));
+    watcher.start();
+    const prompt = store.getAll().find((e) => e.type === 'user_prompt')!;
+    const tool = store.getAll().find((e) => e.type === 'tool_call_completed')!;
+    // Read time: when Layman saw it, unchanged.
+    expect(tool.timestamp).toBe(Date.parse('2026-08-21T10:00:09.500Z'));
+    expect(tool.data.completedAt).toBe(Date.parse('2026-08-21T10:00:09.500Z'));
+    // Transcript time: when pi says the call was made and answered.
+    expect(prompt.data.transcriptAt).toBe(Date.parse('2026-08-21T10:00:01.000Z'));
+    expect(tool.data.transcriptAt).toBe(Date.parse('2026-08-21T10:00:02.000Z'));
+    expect(tool.data.transcriptCompletedAt).toBe(Date.parse('2026-08-21T10:00:03.000Z'));
+  });
+
+  describe('a restart while the session is still young', () => {
+    /** What the database would hold after the first run, as the server's query reads it. */
+    const cursorFrom = (events: ReturnType<EventStore['getAll']>, legacy = false): RecordedCursor =>
+      recordedCursorFrom(events.map((e) => ({
+        tid: legacy ? null : e.data.transcriptEventId ?? null,
+        tat: e.data.transcriptAt ?? null,
+      })));
+    const restart = (recorded: (first: ReturnType<EventStore['getAll']>) => RecordedCursor | null) => {
+      watcher.start();
+      const first = store.getAll();
+      watcher.stop();
+      appendFileSync(transcript, APPENDED_LINE + '\n');
+      vi.setSystemTime(new Date('2026-08-21T10:00:07.000Z'));
+      const again = new EventStore();
+      const w = new PiSessionWatcher(again, new SessionGate(), makeConfig(), [
+        new FixedSource({ path: sessionsRoot, agentType: 'pi', label: 'pi-local' }),
+      ], () => recorded(first));
+      w.start();
+      w.stop();
+      return { first, again: again.getAll().map((e) => e.type) };
+    };
+
+    it('records only what arrived since, not the whole session again', () => {
+      const r = restart((first) => cursorFrom(first));
+      expect(r.first.every((e) => e.type === 'session_start' || typeof e.data.transcriptEventId === 'string')).toBe(true);
+      expect(r.again).toEqual(['session_start', 'agent_response']);
+    });
+
+    it('also skips rows recorded before the id was kept, by their transcript time', () => {
+      const r = restart((first) => cursorFrom(first, true));
+      expect(r.again).toEqual(['session_start', 'agent_response']);
+    });
+
+    it('matches ids the PII filter redacted before they were exempt from it', () => {
+      const mangle = (id: string) => id.replace(/\d{3,}/g, '[REDACTED]');
+      const r = restart((first) => {
+        const c = cursorFrom(first);
+        return { ...c, ids: new Set([...c.ids].map(mangle)), storedAs: mangle };
+      });
+      expect(r.again).toEqual(['session_start', 'agent_response']);
+    });
+
+    it('replays everything when nothing is recorded (recording off)', () => {
+      expect(restart(() => null).again).toEqual(['session_start', 'user_prompt', 'tool_call_completed', 'agent_response']);
+    });
+  });
+
   it('activates a glove (labelled) session even when autoActivateClients is empty', () => {
     // A labelled root is a glove sandbox: /layman can't reach the host from inside
     // it, so it has no other path onto the Dashboard and must always activate.
     watcher.start();
     expect(gate.isActive(SESSION_ID)).toBe(true);
+    // …and is marked gloved, which is what glove.showIpAddresses keys on (not the session name).
+    expect(store.isGloved(SESSION_ID)).toBe(true);
   });
 
   it('does not activate a native (unlabelled) session unless its agent type is opted in', () => {

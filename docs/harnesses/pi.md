@@ -162,6 +162,32 @@ nor drop one. (Keying by array position would; that was the original approach.) 
 live path (`add()`, fresh id) exactly as the Vibe watcher does, so a passively-tailed session is a
 `live` source and history import won't double-record it.
 
+Because it uses the live path, an event's `timestamp` (and a tool call's `completedAt`) is when Layman
+*read* the transcript, up to a poll (2 s) after the fact, and a call's start is not recorded at all.
+That is fine for a timeline and too coarse to join a tool call to the network flows glove saw for it,
+so the watcher also keeps the transcript's own times on every event it emits: `data.transcriptAt` (a
+tool call's start, a prompt's time) and, for a completed call, `data.transcriptCompletedAt`.
+`timestamp` and `completedAt` keep their meaning. The Trace tab's join (`netobs/correlate.ts`) uses
+the transcript times when present; events recorded before they were kept join by host only, marked
+"≈ time". Vibe's logs carry no per-message times, so its watcher has nothing to keep.
+
+**A restart does not record a young session twice.** Replay-from-start for a young session (touched
+in the last 5 minutes) runs whenever Layman starts, and every event goes through the live path, which
+gives it a fresh random id, so the database could not recognise what it already held: with recording
+on, each restart during an active pi session recorded its turns again (found while checking the Trace
+tab; a dev database reached 13 copies). The watcher now also keeps the parser's deterministic id as
+`data.transcriptEventId`, and before replaying asks the database (`RecordedCursor`, wired in
+`server.ts`) which of the session's events it holds, skipping those. Rows recorded before the id was
+kept are matched by `data.transcriptAt`: everything up to the latest recorded transcript time counts
+as recorded. With recording off nothing is skipped, since the replay is then the only way the session
+shows. Duplicates recorded before the fix stay in the database.
+
+`transcriptEventId` is exempt from the PII filter (`filterPii`). It is `<uuid>_<entryId>`, and the
+phone-number pattern matches a run of its digits (an all-digit entry id, or digits between the UUID's
+dashes), so a filtered id never matched on the next restart and those events were recorded again.
+Rows stored before the exemption hold the redacted form; `RecordedCursor.storedAs` redacts the fresh
+id the same way before looking again, so they match too.
+
 The reliability patterns are reused verbatim from the Vibe watcher: scan-tick reconciliation
 (fs.watch is unreliable on Docker bind mounts, and pi's files sit below the watched root anyway), the
 recent/idle windows, replay-from-start for young sessions, and **resurrection of a tombstoned

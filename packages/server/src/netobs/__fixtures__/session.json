@@ -1,0 +1,80 @@
+{
+  "v": 1,
+  "type": "session",
+  "env": "pi-search",
+  "session": "pi-search",
+  "harness": "pi",
+  "gate": "0.1.0",
+  "image": "glove/netgate:0.1.0-0000000000",
+  "record": "metadata",
+  "resolve": "in-tunnel",
+  "resolver": "dns://gluetun:53",
+  "exit_identity": "via-proxy:https://am.i.mullvad.net/json",
+  "upstream_kind": "vpn",
+  "rendered_at": "2026-09-23T14:14:43.397Z",
+  "rotate": {
+    "max_bytes": 67108864,
+    "keep": 8
+  },
+  "services": [
+    {
+      "service": "llm",
+      "listen": "glove-pi-search-llm:8080",
+      "observed": true,
+      "mode": "tcp",
+      "tool": "llm",
+      "scope": "local",
+      "upstream": "tcp:host.docker.internal:8080",
+      "route": {
+        "kind": "tcp",
+        "upstream": "tcp:host.docker.internal:8080"
+      }
+    },
+    {
+      "service": "search",
+      "listen": "glove-pi-search-search:8080",
+      "observed": true,
+      "mode": "tcp",
+      "tool": "web_search",
+      "scope": "local",
+      "upstream": "tcp:searxng:8080",
+      "route": {
+        "kind": "tcp",
+        "upstream": "tcp:searxng:8080"
+      }
+    },
+    {
+      "service": "proxy",
+      "listen": "glove-pi-search-proxy:8888",
+      "observed": true,
+      "mode": "http-proxy",
+      "tool": "web_fetch",
+      "scope": null,
+      "upstream": "chain:http://egress-proxy:8888",
+      "route": {
+        "kind": "vpn",
+        "upstream": "http://egress-proxy:8888"
+      }
+    },
+    {
+      "service": "fanout",
+      "listen": "glove-pi-search-fanout:8899",
+      "observed": true,
+      "harness": false,
+      "mode": "http-proxy",
+      "tool": "search-engine-fanout",
+      "scope": null,
+      "client": "searxng",
+      "upstream": "chain:http://egress-proxy:8888",
+      "route": {
+        "kind": "vpn",
+        "upstream": "http://egress-proxy:8888"
+      }
+    },
+    {
+      "service": "browser",
+      "listen": "glove-pi-search-browser:3001",
+      "observed": false
+    }
+  ]
+}

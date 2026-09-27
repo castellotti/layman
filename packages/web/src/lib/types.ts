@@ -118,6 +118,20 @@ export interface EventData {
   approvalId?: string;
   decision?: ApprovalDecision;
   completedAt?: number;
+  /**
+   * When the harness's own transcript says this happened, for events a passive
+   * watcher read after the fact (pi). `timestamp` and `completedAt` there are
+   * when Layman *read* the transcript, up to a poll late, which is too coarse to
+   * join a tool call to the network flows it made (netobs/correlate.ts).
+   */
+  transcriptAt?: number;
+  /** The transcript's own completion time for a tool call; see `transcriptAt`. */
+  transcriptCompletedAt?: number;
+  /**
+   * The transcript parser's deterministic id for this event (pi's passive watcher). The live path
+   * gives every event a fresh id, so this is how a restart knows what is already recorded.
+   */
+  transcriptEventId?: string;
   permissionRequestType?: 'tool_use' | 'execution_mode';
   permissionSuggestions?: PermissionSuggestion[];
   fileAccess?: FileAccess[];
@@ -317,7 +331,14 @@ export interface LaymanConfig {
   /** Live token streaming. Mirrors LiveTokensConfigSchema on the server. */
   liveTokens: { enabled: boolean; showThinking: boolean };
   /** Passive monitoring of glove-sandboxed harnesses. Mirrors GloveConfigSchema. */
-  glove: { enabled: boolean; sessionsDir: string };
+  glove: {
+    enabled: boolean;
+    sessionsDir: string;
+    /** Keep IP addresses unredacted in gloved sessions' events. */
+    showIpAddresses: boolean;
+    /** Network views of gloved sessions. Mirrors the server's `glove.network` block. */
+    network: { enabled: boolean; controlEnabled: boolean; geoipDbPath: string };
+  };
   /** Multi-host sync. Mirrors SyncConfigSchema on the server. */
   sync: SyncConfig;
   driftMonitoring: DriftMonitoringConfig;
