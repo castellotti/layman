@@ -155,6 +155,23 @@ describe('the fixture topology', () => {
     expect(t.captions.map((c) => c.text)).toEqual(['662 KB via SearXNG']);
   });
 
+  // glove's `search` scenario: the harness's web_search is a tcp flow to searxng:8080, open while
+  // SearXNG's fan-out runs. glove's main fixture has no such flow, so the design's box was untested.
+  it('draws the search flow as a local searxng:8080 box, beside the fan-out it triggers', () => {
+    const searxng = dest('searxng:8080', { services: ['search'], tools: ['web_search'], clients: ['harness'], ...local, port: 8080, bytesUp: 420, bytesDown: 18_000 });
+    const ts = layoutTopology(fixture({}, [...fixtureDests(), searxng]), 1400, 700);
+    const box = ts.nodes.find((n) => n.id === 'dest:searxng:8080');
+    expect([box?.title, box?.tone]).toEqual(['searxng:8080', 'local']);
+    const kind = (id: string) => ts.bands.find((b) => b.id === id)?.kind;
+    expect(kind('sandbox>svc:search')).toBe('local');
+    expect(kind('route:local>dest:searxng:8080')).toBe('local');
+    // The Local box names the first upstream and counts the rest: host.docker.internal (llm) + searxng.
+    expect(ts.nodes.find((n) => n.id === 'route:local')?.lines[0].text).toBe('host.docker.internal +1');
+    expect(ts.bands.find((b) => b.kind === 'trigger')).toMatchObject({ from: 'svc:search', to: 'svc:fanout' });
+    const path = pathHops(fixture({}, [...fixtureDests(), searxng]), 'searxng')!;
+    expect(path.hops.map((h) => [h.id, h.title])).toEqual(expect.arrayContaining([['service', 'search service'], ['dest', 'searxng:8080']]));
+  });
+
   it('labels sandbox bands with bytes and sizes them by the square root', () => {
     const p = t.bands.find((b) => b.id === 'sandbox>svc:proxy')!;
     const l = t.bands.find((b) => b.id === 'sandbox>svc:llm')!;

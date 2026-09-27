@@ -180,7 +180,16 @@ tab; a dev database reached 13 copies). The watcher now also keeps the parser's 
 `server.ts`) which of the session's events it holds, skipping those. Rows recorded before the id was
 kept are matched by `data.transcriptAt`: everything up to the latest recorded transcript time counts
 as recorded. With recording off nothing is skipped, since the replay is then the only way the session
-shows. Duplicates recorded before the fix stay in the database.
+shows. Duplicates recorded before the fix stay in the database until removed with
+`layman dedupe-pi-replays` (dry run; `--apply` deletes; `db/dedupe.ts`). It treats as copies only
+events with the same session, type and data, *including* the transcript's own `transcriptAt`, so a
+genuine re-send of the same prompt (another transcript time) is never touched; rows with no
+`transcriptAt` (pi before the Trace work) cannot be told from a re-send and are left alone. Two
+rows that both carry a `transcriptEventId` and differ are two transcript entries and never copies —
+identical parallel tool calls finishing in the same millisecond agree on every other field. The
+earliest copy is kept, and so is any copy a highlight or answer points at. Stop Layman first (or run
+it inside the container) so one process writes the database; the deletes are not journalled per
+event, so a sync central keeps its copies.
 
 `transcriptEventId` is exempt from the PII filter (`filterPii`). It is `<uuid>_<entryId>`, and the
 phone-number pattern matches a run of its digits (an all-digit entry id, or digits between the UUID's

@@ -22,7 +22,7 @@ export function detectContainer(): boolean {
 }
 
 /**
- * Resolve this host's display name (docs/planning/multi-host-sync.md §3.2):
+ * Resolve this host's display name:
  *   sync.hostName if set
  *   → LAYMAN_HOST_NAME env (compose passes it; `make docker-run` sets $(hostname))
  *   → in a container, `layman-<first 8 of hostId>` (a nag-to-name placeholder)

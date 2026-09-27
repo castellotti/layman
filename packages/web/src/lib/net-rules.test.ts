@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   blockChoices, blockOp, checkMatchValue, controlDisabledReason, decidedBy, draftRuleId, groupTarget, isCut, isDirty,
-  matchFor, moveRule, openToCut, previewRules, previewText, rebaseDraft, rejectedAuthor, siblingIds, startDraft, toggleFor,
+  matchFor, moveRule, openToCut, previewRules, previewText, rebaseDraft, rejectedAuthor, ruleHits, siblingIds, startDraft, toggleFor,
 } from './net-rules.js';
 import type { RulesFile, RulesOp } from './netobs-types.js';
 // The server's own opRules, imported across packages in a test only: the preview must never drift from what is written.
@@ -26,6 +26,20 @@ describe('toggleFor', () => {
     expect(toggleFor(dest('a.com:443', { state: 'user_rule' }))).toBe('block');
     expect(toggleFor(dest('a.com:443', { state: 'default_block' }))).toBe('default');
     expect(toggleFor(dest('a.com:443'))).toBe('allow');
+  });
+});
+
+describe('ruleHits', () => {
+  it('counts each block under the rule that made it, not the destination\'s latest rule', () => {
+    // Blocked twice by r_old, then once by r_new: the old count used to put all three on r_new.
+    const d = dest('a.com:443', { blocked: 3, rule: 'r_new', blockedBy: { r_old: 2, r_new: 1 } });
+    const hits = ruleHits([d, dest('b.com:443', { blocked: 1, rule: null, blockedBy: { '': 1 } })]);
+    expect(Object.fromEntries(hits)).toEqual({ r_old: 2, r_new: 1 });
+  });
+
+  it('puts blocks only the kept history knows on the latest rule', () => {
+    const hits = ruleHits([dest('a.com:443', { blocked: 5, rule: 'r_new', blockedBy: { r_old: 1 } })]);
+    expect(Object.fromEntries(hits)).toEqual({ r_old: 1, r_new: 4 });
   });
 });
 

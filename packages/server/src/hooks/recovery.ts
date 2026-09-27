@@ -635,6 +635,9 @@ export async function importHistoricalSessions(
       // phantom whose events all collide with the original's. Falls back to the
       // filename-derived id when the source can't resolve one.
       const sessionId = source.resolveSessionId?.(lines) ?? discovered.sessionId;
+      // A transcript from a glove root is gloved, as a watcher would have marked it:
+      // the PII filters key `glove.showIpAddresses` on this mark, on every write path.
+      if (discovered.label !== undefined) eventStore.markGloved(sessionId);
 
       const existingSource = existingSessions.get(sessionId);
       const isKnown = existingSource !== undefined;
@@ -696,7 +699,7 @@ export async function importHistoricalSessions(
           continue;
         }
 
-        // Use addRaw for enrichment — triggers recorder via event:new listener
+        // Use addRaw for enrichment — triggers recorder via event:new listener.
         for (const event of events) {
           eventStore.addRaw(event);
         }

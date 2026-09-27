@@ -1,7 +1,7 @@
 # glove netobs scenarios (copy)
 
 A byte-for-byte copy of glove's `tests/fixtures/netobs-scenarios/`: one complete `net/` directory per
-handoff §6.1 state that the original fixture (`../__fixtures__/`) lacks, written by glove's real
+state in glove's state table that the original fixture (`../__fixtures__/`) lacks, written by glove's real
 forwarder and collector code. glove's own `README.md` here says what each scenario contains and what
 was forced. Read by `../scenarios.test.ts`.
 

@@ -172,7 +172,7 @@ export function applyNetMessage(state: NetClientState, msg: NetServerMessage): N
 }
 
 /**
- * The glove session the tabs show when none is chosen (plan §1.2): the one whose
+ * The glove session the tabs show when none is chosen: the one whose
  * token is the `sessionName` of Layman's active session, if that is a gloved
  * one; otherwise the most recently active (the server sorts live first, then by
  * last activity).
@@ -185,7 +185,7 @@ export function defaultNetToken(sessions: NetSessionSummary[], activeSessionName
 export type NetTabSignal = 'alert' | 'live' | null;
 
 /**
- * The dot on the Network tab label (plan §6.2): red while a running gate reports
+ * The dot on the Network tab label: red while a running gate reports
  * rejected rules or has carried untunnelled traffic — the two failures that
  * must not be missable from another tab — else teal when a gate is running.
  * A finished session's history is not an alarm.

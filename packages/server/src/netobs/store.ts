@@ -26,7 +26,7 @@ import { BLOCK_STATES, aggregateState, classifyFlow, classifySession, flowFlags 
 import { groupKeyFor } from './domain.js';
 import { type NetSessionLocation } from './discovery.js';
 import { blankRulesView } from './control.js';
-import { evaluate, type RuleSet } from './rules.js';
+import { predict, type FlowFacts, type GateFacts, type RuleSet } from './rules.js';
 import type { CarryFlow, HistoryDest, HistorySession } from './history.js';
 import type {
   DestinationAggregate,
@@ -101,7 +101,7 @@ interface AggEntry {
   spark: Map<number, RateBucket>;
 }
 
-/** A gate process, keyed by its `run` id (handoff §2 "Additive fields"). */
+/** A gate process, keyed by its `run` id (glove's record contract). */
 interface RunState {
   service: string | null;
   ended: boolean;
@@ -197,6 +197,18 @@ function pushUnique(list: string[], v: string | null | undefined, max = Infinity
     list.push(v);
     if (list.length > max) list.shift();
   }
+}
+
+/** A destination's predicted verdict under the enforced rule set and the one on disk. */
+function policyFor(
+  policy: SessionData['policy'], facts: FlowFacts, gate: GateFacts,
+): { enforced: PolicyVerdict | null; written: PolicyVerdict | null } {
+  const one = (set: RuleSet | null): PolicyVerdict | null => {
+    if (!set) return null;
+    const v = predict(set, facts, gate);
+    return { action: v.action, rule: v.rule };
+  };
+  return { enforced: one(policy.enforced), written: one(policy.written) };
 }
 
 export class NetStore extends EventEmitter {
@@ -434,7 +446,7 @@ export class NetStore extends EventEmitter {
   }
 
   /**
-   * glove's gate lifecycle, read in file order (handoff §2 reader rule; this is
+   * glove's gate lifecycle, read in file order (glove's record contract; this is
    * a port of glove's reference `glove.netview.ended_runs` and must stay one).
    * A run ends at a `stop` for it, or when a later run appears for the same
    * service (the forwarder restarted); any later record of the run itself
@@ -505,7 +517,11 @@ export class NetStore extends EventEmitter {
     e.agg.bytesUp -= prev.rec.bytes.up;
     e.agg.bytesDown -= prev.rec.bytes.down;
     e.agg.flows--;
-    if (BLOCK_STATES.has(prev.state)) e.agg.blocked--;
+    if (BLOCK_STATES.has(prev.state)) {
+      e.agg.blocked--;
+      const k = prev.rec.rule ?? '';
+      if (--e.agg.blockedBy[k] <= 0) delete e.agg.blockedBy[k];
+    }
     e.open.delete(id);
     if (moving) {
       if (e.latest?.id === id) e.latest = null;
@@ -545,6 +561,7 @@ export class NetStore extends EventEmitter {
           firstSeen: next.tOpen,
           lastSeen: next.lastT,
           rule: null,
+          blockedBy: {},
           flags: next.flags,
         },
         open: new Map(),
@@ -561,6 +578,7 @@ export class NetStore extends EventEmitter {
 
     if (BLOCK_STATES.has(next.state)) {
       a.blocked++;
+      a.blockedBy[r.rule ?? ''] = (a.blockedBy[r.rule ?? ''] ?? 0) + 1;
       if (r.rule !== null || next.state === 'default_block') a.rule = r.rule;
     }
     if (r.phase !== 'close') e.open.set(id, next.state);
@@ -748,27 +766,35 @@ export class NetStore extends EventEmitter {
     const facts = {
       host: a.host, ip: a.ips[0] ?? null, port: a.port, service: a.services[0] ?? null, tool: a.tools[0] ?? null, scope: a.scope,
     };
-    const predict = (set: RuleSet | null): PolicyVerdict | null => {
-      if (!set) return null;
-      const v = evaluate(set, facts);
-      return { action: v.action, rule: v.rule };
-    };
+    const gate = { proxy: this.viaProxy(s, a.services[0] ?? null, a.resolution), resolution: a.resolution };
     return {
       ...a,
-      policy: { enforced: predict(s.policy.enforced), written: predict(s.policy.written) },
-      // Only an IP glove resolved inside the tunnel (or a literal), never a local link (plan §5.4).
+      policy: policyFor(s.policy, facts, gate),
+      // Only an IP glove resolved inside the tunnel (or a literal), never a local link.
       geo: this.geolocate && a.ips[0] && a.scope !== 'local' && (a.resolution === 'in-tunnel' || a.resolution === 'literal')
         ? this.geolocate(a.ips[0])
         : null,
       // A flow whose gate went away is unclosed but not open in any sense the UI means.
       openFlows: [...e.open.values()].filter((st) => st !== 'gate_lost').length,
       ips: [...a.ips],
+      blockedBy: { ...a.blockedBy },
       services: [...a.services],
       tools: [...a.tools],
       clients: [...a.clients],
       state: aggregateState(states),
       spark: sparkWindow(e.spark, s.lastT),
     };
+  }
+
+  /**
+   * Whether a destination came through an `http-proxy` listener, where glove's guard runs.
+   * The declared service says so; without one (a history-only destination), the resolution
+   * does: only a proxy destination is ever `unavailable` or `in-tunnel` (`ForwardSpec.display_ip`).
+   */
+  private viaProxy(s: SessionData, service: string | null, resolution: string | null): GateFacts['proxy'] {
+    const declared = service ? (s.session?.services ?? []).find((sv) => sv.service === service) : undefined;
+    if (declared?.mode) return declared.mode === 'http-proxy';
+    return resolution === 'unavailable' || resolution === 'in-tunnel';
   }
 
   /** What the kept history holds for a destination beyond what the files re-read: kept − seen. Null when nothing. */
@@ -805,20 +831,16 @@ export class NetStore extends EventEmitter {
   /** A destination only the kept history knows: what is left of it once the files are re-read. */
   private historyView(s: SessionData, h: HistoryDest, c: Seen): DestinationAggregate {
     const facts = { host: h.host, ip: h.lastIp, port: h.port, service: null, tool: h.tool, scope: h.scope };
-    const predict = (set: RuleSet | null): PolicyVerdict | null => {
-      if (!set) return null;
-      const v = evaluate(set, facts);
-      return { action: v.action, rule: v.rule };
-    };
+    const gate = { proxy: this.viaProxy(s, null, h.resolution ?? null), resolution: h.resolution ?? null };
     const scope = (h.scope ?? 'unknown') as FlowFlags['scope'];
     return {
       key: h.key, host: h.host, port: h.port, groupKey: h.groupKey, endpoint: h.host === null ? h.key.replace(/^@/, '') : null,
       ips: h.lastIp ? [h.lastIp] : [], services: [], tools: h.tool ? [h.tool] : [], clients: [],
       scope: h.scope ?? 'unknown', resolution: h.resolution ?? 'unavailable',
       bytesUp: c.up, bytesDown: c.down, flows: c.flows, openFlows: 0, blocked: c.blocked,
-      firstSeen: h.firstSeen, lastSeen: h.lastSeen, state: h.lastState ?? 'finished', rule: null,
+      firstSeen: h.firstSeen, lastSeen: h.lastSeen, state: h.lastState ?? 'finished', rule: null, blockedBy: {},
       flags: { scope, unresolved: !h.lastIp, noHost: h.host === null, cleartext: h.port === 80, fanout: h.tool === 'search-engine-fanout' },
-      spark: [], policy: { enforced: predict(s.policy.enforced), written: predict(s.policy.written) }, geo: null,
+      spark: [], policy: policyFor(s.policy, facts, gate), geo: null,
     };
   }
 

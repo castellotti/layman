@@ -58,7 +58,7 @@ class FakeCentralPull implements PullClient {
   }
   async snapshot(kind: SyncKind, cursor: string, limit: number): Promise<SnapshotPage> {
     const entity = SYNC_ENTITIES[kind];
-    const rows = entity.pageExcludingOrigin(this.central, { afterId: cursor, limit, excludeHostId: this.requester });
+    const rows = entity.pageExcludingOrigin(this.central, { afterId: cursor, limit, excludeHostId: this.requester, piiFilter: false });
     const entries: PushEntry[] = rows.map((r) => ({ op: 'upsert', kind, id: String(r[entity.idColumn]), row: r }));
     const nextCursor = rows.length === limit ? String(rows[rows.length - 1][entity.idColumn]) : null;
     return { kind, entries, nextCursor, headSeq: this.journal.headSeq(), hosts: hostsWithStats(this.central) };

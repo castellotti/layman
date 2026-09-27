@@ -41,7 +41,7 @@ export function peerToDTO(p: RawPeer): PeerDTO {
 }
 
 /**
- * Manages issued sync tokens on a central (docs/planning/multi-host-sync.md §3.7).
+ * Manages issued sync tokens on a central.
  * Enrolment is trust-on-first-use: a token binds to the first host id that
  * presents it, and any later hello with a different host id is rejected.
  */

@@ -5,7 +5,7 @@ import type { Database } from '../db/database.js';
  *
  * `sync_state` holds the local host id (read by the journal triggers, so it must
  * live in SQLite rather than only in config) plus the push/pull cursors used by
- * later phases. Keys are a closed set; see docs/planning/multi-host-sync.md §4.
+ * later phases. Keys are a closed set; see CLAUDE.md → Multi-host sync.
  */
 export type SyncStateKey =
   | 'hostId'

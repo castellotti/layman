@@ -11,7 +11,7 @@ import { dest, flow, rulesView, sessionData } from './net-test-fixtures.js';
 const T = Date.parse('2026-09-23T14:14:43Z');
 const LOCAL = { scope: 'local', unresolved: false, noHost: false, cleartext: false, fanout: false } as const;
 
-/** A session shaped like the ledger mockup, with one destination per flow state. */
+/** A session shaped like the Network tab's design, with one destination per flow state. */
 function ledger(): NetSessionData {
   const dests: DestinationAggregate[] = [
     dest('arxiv.org:443', { state: 'active', tools: ['web_fetch'], ips: ['151.101.3.42'], flows: 2, openFlows: 1, lastSeen: T,
@@ -70,7 +70,7 @@ const row = (rows: TableRow[], label: string) => {
 };
 
 describe('the state legend', () => {
-  it('has every row of handoff §6.1 plus cleartext HTTP, each fully described', () => {
+  it("has every row of glove's state table plus cleartext HTTP, each fully described", () => {
     expect(NET_LEGEND).toHaveLength(24);
     for (const s of NET_LEGEND) {
       for (const field of ['label', 'dataRule', 'icon', 'colourVar', 'mapTreatment', 'explanation'] as const) {

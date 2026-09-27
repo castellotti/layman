@@ -1,5 +1,5 @@
 /**
- * Offline IP geolocation for the Map (plan §5.4): a local MaxMind-format file
+ * Offline IP geolocation for the Map: a local MaxMind-format file
  * the user downloaded and pointed Settings at (DB-IP "IP to City Lite" is the
  * suggestion: CC BY 4.0, no account). Layman ships no database and never asks
  * a service where an IP is — that would tell someone what the sandboxed agent

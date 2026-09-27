@@ -4,7 +4,7 @@
  *
  * Deliberately *not* routed through `GloveSource`. That source grew registry and
  * `homes/` handling because a harness home can be relocated out of the session
- * directory; `net/` never is (handoff §1), so none of that applies here and
+ * directory; `net/` never is (glove's record contract), so none of that applies here and
  * reusing it would only couple two unrelated discovery rules.
  */
 import { readdirSync, statSync } from 'fs';
@@ -32,7 +32,7 @@ export interface NetSessionLocation {
 export const SAFE_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 
 /**
- * glove's session token (handoff §1): the env id for the default session, whose
+ * glove's session token (glove's record contract): the env id for the default session, whose
  * directory is named after the env, else `<env>-<name>`.
  */
 export function sessionToken(env: string, name: string): string {

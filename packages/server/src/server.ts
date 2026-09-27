@@ -20,7 +20,7 @@ import { DriftMonitor } from './drift/monitor.js';
 import { LiveStreamStore, type LiveStream } from './stream/live.js';
 import { resolveEndpoint } from './analysis/providers/openai-compat.js';
 import type BetterSqlite3 from 'better-sqlite3';
-import { filterPii, IP_CATEGORIES, redactValue, redactString } from './pii/filter.js';
+import { filterPii, filterEventPii, IP_CATEGORIES, redactValue, redactString } from './pii/filter.js';
 import { PII_CATEGORIES, PII_GROUPS } from './pii/categories.js';
 import { scanPii, executePurge } from './pii/purge.js';
 import { updateConfig, saveConfig } from './config/config.js';
@@ -258,10 +258,16 @@ export function createServer(config: LaymanConfig): LaymanServer {
     () => getConfig().piiFilter,
   );
   recorder.attach(eventStore);
+  // History import and JSON import write straight to SQLite, never through EventStore,
+  // so they get the store's redaction here. History import marks a glove root's sessions gloved.
+  recorder.setImportFilter((event) => {
+    if (!getConfig().piiFilter) return event;
+    return filterEventPii(event, piiKeep(event.sessionId));
+  });
 
   // ─── Multi-host sync ──────────────────────────────────────────────────────
   // Journal reads and applier writes go straight through SQLite (never through
-  // EventStore); the pusher runs only in the 'remote' role. See docs/planning.
+  // EventStore); the pusher runs only in the 'remote' role. See CLAUDE.md → Multi-host sync.
   const syncJournal = new SyncJournal(db);
   const syncApplier = new SyncApplier(db);
   const syncPeers = new PeerStore(db);
@@ -579,7 +585,10 @@ export function createServer(config: LaymanConfig): LaymanServer {
       credentials: true,
     });
 
-    await fastify.register(websocket);
+    // Compress only big frames: a glove session's net:snapshot is ~1 KB per flow (500 flows
+    // ≈ 520 KB) and repetitive JSON, while the frequent small frames (deltas, events) are not
+    // worth the CPU. Browsers negotiate permessage-deflate on their own.
+    await fastify.register(websocket, { options: { perMessageDeflate: { threshold: 8 * 1024 } } });
 
     // Multi-host sync routes (gzip request decompression scoped to them).
     await registerSyncRoutes(fastify, {
@@ -648,7 +657,7 @@ export function createServer(config: LaymanConfig): LaymanServer {
           ...eventStore.getSessions().filter((s) => s.sessionName === token).map((s) => s.sessionId),
           ...(sessionsNamedStmt.all(token) as Array<{ session_id: string }>).map((r) => r.session_id),
         ])],
-        turns: (sessionId) => turnStore.listTurns(sessionId),
+        session: (sessionId) => turnStore.listTurnsWithEvents(sessionId),
         events: (sessionId) => turnStore.eventsFor(sessionId),
       },
     });
@@ -1499,7 +1508,8 @@ export function createServer(config: LaymanConfig): LaymanServer {
         return reply.status(400).send({ error: 'No valid events found in payload' });
       }
 
-      recorder.saveEventsFromMemory(typed);
+      // A file from anywhere: redact it like a live event (save-current, below, is already filtered).
+      recorder.saveEventsFromMemory(recorder.filterImported(typed));
 
       // Group by sessionId to create one bookmark per session
       const bySession = new Map<string, { events: typeof typed; agentType: string }>();

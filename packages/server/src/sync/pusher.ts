@@ -122,8 +122,8 @@ interface BackfillCursor {
 }
 
 /**
- * Pushes this remote's own-origin data to central (docs/planning/multi-host-sync.md
- * §3.7): a one-time backfill (page every kind, own rows only) followed by
+ * Pushes this remote's own-origin data to central:
+ * a one-time backfill (page every kind, own rows only) followed by
  * incremental replay of the journal. Cursors live in `sync_state`, so an
  * interrupted backfill resumes at the next page and a failed incremental batch
  * simply re-sends. Every apply on central is an idempotent upsert, so re-sending
@@ -194,7 +194,7 @@ export class SyncPusher {
 
   // ── batch assembly ──────────────────────────────────────────────────────────
   private buildUpsertEntry(entity: SyncEntity, id: string): PushEntry | null {
-    const row = entity.load(this.db, [id])[0] as WireRow | undefined;
+    const row = entity.loadOutbound(this.db, [id], this.getConfig().piiFilter)[0] as WireRow | undefined;
     if (!row) return null; // deleted after journaling — skip (§3.7)
     return { op: 'upsert', kind: entity.kind, id, row };
   }
@@ -233,7 +233,9 @@ export class SyncPusher {
     while (cursor) {
       const entity = SYNC_ENTITIES[cursor.kind];
       this.backfillKind = cursor.kind;
-      const rows = entity.page(this.db, { afterId: cursor.lastId, limit: BATCH_MAX_ENTRIES, originHostId: hostId });
+      const rows = entity.page(this.db, {
+        afterId: cursor.lastId, limit: BATCH_MAX_ENTRIES, originHostId: hostId, piiFilter: this.getConfig().piiFilter,
+      });
       if (rows.length === 0) {
         cursor = this.nextKindCursor(cursor.kind);
         this.writeCursor(cursor);

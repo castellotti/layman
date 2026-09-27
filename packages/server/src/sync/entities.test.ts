@@ -34,10 +34,10 @@ describe('sync entity registry', () => {
     seedSession(db, 's-a2', HOST);
     seedSession(db, 's-b1', OTHER);
 
-    const page = SYNC_ENTITIES.session.page(db, { limit: 10, originHostId: HOST });
+    const page = SYNC_ENTITIES.session.page(db, { limit: 10, originHostId: HOST, piiFilter: false });
     expect(page.map((r) => r.session_id)).toEqual(['s-a1', 's-a2']);
 
-    const next = SYNC_ENTITIES.session.page(db, { afterId: 's-a1', limit: 10, originHostId: HOST });
+    const next = SYNC_ENTITIES.session.page(db, { afterId: 's-a1', limit: 10, originHostId: HOST, piiFilter: false });
     expect(next.map((r) => r.session_id)).toEqual(['s-a2']);
   });
 
@@ -73,7 +73,7 @@ describe('sync entity registry', () => {
       "INSERT INTO recorded_events (id, session_id, type, timestamp, agent_type, data_json) VALUES ('e-b', 's-b', 'user_prompt', 1, 'claude-code', '{}')",
     ).run();
 
-    const page = SYNC_ENTITIES.event.page(db, { limit: 10, originHostId: HOST });
+    const page = SYNC_ENTITIES.event.page(db, { limit: 10, originHostId: HOST, piiFilter: false });
     expect(page.map((r) => r.id)).toEqual(['e-a']);
   });
 
@@ -82,7 +82,7 @@ describe('sync entity registry', () => {
     db.prepare(
       "INSERT INTO recorded_qa (event_id, session_id, question, answer, created_at, sync_id) VALUES ('e1', 's1', 'q', 'a', 1, 'qa-sync-1')",
     ).run();
-    const page = SYNC_ENTITIES.qa.page(db, { limit: 10, originHostId: HOST });
+    const page = SYNC_ENTITIES.qa.page(db, { limit: 10, originHostId: HOST, piiFilter: false });
     expect(page).toHaveLength(1);
     expect(page[0].sync_id).toBe('qa-sync-1');
     expect(page[0].id).toBeUndefined(); // integer id not carried on the wire

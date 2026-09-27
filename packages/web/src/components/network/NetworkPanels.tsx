@@ -1,5 +1,5 @@
 /**
- * The Network tab's other pieces (plan §7.1, network-ledger.dc.html): the KPI
+ * The Network tab's other pieces: the KPI
  * row above the panels, the mini map, and the Rules panel's "View file" link. The Rules panel
  * itself is `RulesPanel.tsx`.
  */
@@ -68,7 +68,7 @@ export function KpiRow({ data }: { data: NetSessionData }) {
 // ─── Mini map ─────────────────────────────────────────────────────────────────
 
 /**
- * The Map tab's renderer at small size (plan §7.1): no labels, no pan or zoom,
+ * The Map tab's renderer at small size: no labels, no pan or zoom,
  * the trunk and arcs. A click opens the Map tab, with the selection kept.
  */
 export function MiniMap({ data }: { data: NetSessionData }) {

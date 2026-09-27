@@ -1,5 +1,5 @@
 /**
- * glove's scenario fixtures (its follow-up, handoff §6.1): one real `net/`
+ * glove's scenario fixtures: one real `net/`
  * directory per state the original fixture lacks, read through discovery → tail
  * → store exactly as a live session is. Each scenario's own README row is the
  * fact asserted.

@@ -37,7 +37,7 @@ tailed twice). Registry `home` paths are absolute *host* paths; in the container
 best-effort: a missing or malformed registry — including a stray non-object array element — degrades
 to enumeration. The full design — the glove-side registry field, the host→container translation, and
 the mount contract (a relocated home that a containerized Layman watches lives under `~/.glove`) — is
-in [`docs/planning/glove-session-discovery.md`](../planning/glove-session-discovery.md).
+the one described in this section.
 
 As a **registry-independent fallback**, `GloveSource` also enumerates `~/.glove/homes/<env-id>/`
 directly (a sibling of the sessions dir). glove's launcher scripts relocate a home there
@@ -115,7 +115,7 @@ per-session homes and reads the env-level `home/` only as a fallback for legacy 
 each readdir). A power-user `config_home_source` override relocates the home outside
 `~/.glove/envs/<env-id>/`; when the relocated home lands outside the sessions dir, where the glob
 cannot find it, `GloveSource` follows it via the resolved `home` glove records in
-`~/.glove/registry.json` (see [`glove-session-discovery.md`](../planning/glove-session-discovery.md)),
+`~/.glove/registry.json` (see the registry above),
 translating the host path onto the container home and requiring — for a containerized Layman — that
 the relocated home live under `~/.glove`.
 
@@ -143,18 +143,15 @@ hand-off this relies on.
 ## Network
 
 glove's netgate records every connection a sandboxed session makes, and Layman renders it as the
-Network, Map, Topology and Trace tabs. The implementation plan is
-[`docs/planning/network-views.md`](../planning/network-views.md); glove's data contract, frozen at v1,
-is glove's `docs/planning/network-observability-layman-handoff.md` ("the handoff"), and wins over the
-plan on any question of data format. Code: `packages/server/src/netobs/`. It is built in full: the
+Network, Map, Topology and Trace tabs. glove's data contract, frozen at v1, is its `net/` record
+format (glove's README → Network observability; "glove's record contract" in the code), and wins over
+anything here on any question of data format. Code: `packages/server/src/netobs/`. It is built in full: the
 **read side** (discovery, tailing, the store, classification, `net:*` WebSocket frames and a REST
 snapshot), the **client shell** shared by the four tabs, the **Network tab**, **writing rules** and the
 **Map tab** with offline geolocation, the **Topology tab**, the **Trace tab** (correlation with the
 transcript), and **persistence** of totals across restarts.
 
-glove answered Layman's follow-up questions in its
-`docs/planning/network-observability-layman-followup-results.md` (glove branch
-`netobs-layman-followup`): fail-closed on an unreadable `rules.json`, the permission contract for the
+glove answered Layman's follow-up questions in its PR #11: fail-closed on an unreadable `rules.json`, the permission contract for the
 rules writer, hash-based write confirmation, gate lifecycle records, and a scenario fixture for every
 state its first fixture lacked. What that changed on the read side is below, and the writer follows its
 contract (Writing rules).
@@ -180,7 +177,7 @@ mount; only writing rules needs the extra `control/` mount (Docker, below).
 
 - **Discovery is a plain glob** (`discovery.ts`), deliberately not routed through `GloveSource`: that
   source grew registry and `homes/` handling because a harness *home* can be relocated, but `net/`
-  never leaves the session directory (handoff §1).
+  never leaves the session directory (glove's record contract).
 - **Token and paths.** A session's token is `<env>` for the default session (whose directory is named
   after the env) and `<env>-<name>` otherwise. It is the value flows carry in `session` and the label
   `GloveSource` gives the Layman sessions it tails, so network data joins the transcript by it. The
@@ -252,7 +249,7 @@ data gets its own `NetStore` (`store.ts`) and its own frames, as `LiveStreamStor
   contribution and adding its new one. Closed flows are evicted beyond 5,000 per session without
   changing a total.
 - **Empty connections are folded**, not listed: an allowed flow with no destination that closed on
-  `eof`/`timeout` is proxy noise (handoff §2), counted in `emptyFolded`.
+  `eof`/`timeout` is proxy noise (glove's record contract), counted in `emptyFolded`.
 - Sparklines anchor on the session's latest record, not the wall clock, so when a gate stops its
   sparklines freeze rather than drain. There is one per destination and one per flow (the table draws
   both), each the last 60 s at 1 s, sent sparse: a flow with nothing in the window sends an empty list.
@@ -342,7 +339,7 @@ nothing for finished sessions (their history is not an alarm).
   reconnect (the server forgets subscriptions with the socket) and unsubscribes when the tabs close, so a
   dashboard that is not looking stops receiving deltas.
 - **Gate strip** (`GateStrip.tsx`, chips derived by `gateChips()` in `lib/net-format.ts`, tested): the
-  glove session picker, then gate state, the untunnelled alarm straight after it (the mockups' order, so
+  glove session picker, then gate state, the untunnelled alarm straight after it (the design's order, so
   it is the last thing clipped), route and exit (the exit's `source` is in the tooltip: Layman did not
   determine it), resolver, rules, record mode, and "View incomplete" when the gate dropped records, a
   rotated file vanished, or backfill hit its budget. The chip row shrinks and scrolls sideways before the
@@ -367,13 +364,13 @@ nothing for finished sessions (their history is not an alarm).
 
 ### The Network tab
 
-Built from `network-ledger.dc.html`: a KPI row, then the Destinations table (main column) and the mini
+A KPI row, then the Destinations table (main column) and the mini
 map and Rules panels (side column), plus Activity and Details, off by default. Details is the Map's
 detail card, docked (The Map tab, below). Activity (`ActivityChart.tsx`) draws received and sent bytes as
 bars over 1m / 5m / 1h, from the client's own 1 s buckets, or over the whole session from
 `GET …/buckets?window=session`. All deciding is in pure, tested modules; the components draw.
 
-- **The state legend is data** (`NET_LEGEND` in `lib/net-format.ts`): one entry per row of handoff §6.1,
+- **The state legend is data** (`NET_LEGEND` in `lib/net-format.ts`): one entry per row of glove's state table,
   plus cleartext HTTP, each with its label, data rule, icon, colour, badge, toggle kind, map treatment and
   explanation, and `NET_STATE_INFO` mapping every `NetState` to its entry. Every view reads colours and
   toggles from it, so the legend and the views cannot disagree. The Map, Topology and Trace tabs use
@@ -384,8 +381,8 @@ bars over 1m / 5m / 1h, from the client's own 1 s buckets, or over the whole ses
   level; `wikipedia.org` keeps its level because its host is `en.wikipedia.org`. Four groups are fixed
   whatever the grouping: Search fan-out, Local links, Refused by glove guard, and Not watched (declared
   `observed: false` services, which have no records at all). The guard and Not watched groups start
-  expanded: they are what a glance should catch. The mockup drew guard refusals as loose rows; the plan
-  requires the fixed group, and it wins. Not watched rows appear only unfiltered, since they have nothing
+  expanded: they are what a glance should catch. A fixed group, rather than loose rows, keeps them
+  together. Not watched rows appear only unfiltered, since they have nothing
   to match a filter on. Filter chips (All, Live, Blocked, Broken, Local, with counts) and a text filter
   over host, IP, tool, service, rule id and rule note apply per destination. A host expands to its flows
   newest first; a destination with more flows than the client holds says how many were not loaded. The
@@ -414,19 +411,20 @@ bars over 1m / 5m / 1h, from the client's own 1 s buckets, or over the whole ses
   (glove's guard as locked row 0 with its hit count, then the file's rules with theirs, and a `CUTS OPEN`
   badge for `terminate`), the default policy, and editing (Writing rules, below). When the gate has **rejected** the file, the list is headed "In
   rules.json · not enforced": the file on disk is not what the gate enforces, and Layman cannot see the
-  set that is. Listing it as the evaluation order would claim otherwise. Hit counts come from the
-  destination aggregates (each destination's block count under its latest rule), so they undercount a
-  destination blocked by two different rules over time. "View file" shows the host path and the file.
+  set that is. Listing it as the evaluation order would claim otherwise. Hit counts are exact over
+  the flows the files hold: each destination counts its blocks by the rule that made each one
+  (`DestinationAggregate.blockedBy`, `''` for the default; `ruleHits` in `lib/net-rules.ts`). Blocks
+  that only the kept history knows (files since deleted) have no rule on record and are counted under
+  the destination's latest rule, as an estimate. "View file" shows the host path and the file.
 - **Mini map** is the Map tab's renderer at small size (no labels, no pan or zoom), with how many
   destinations are placed and how many are in Unknown location. A click opens the Map tab with the
   selection kept.
 
 ### Writing rules
 
-Blocking and unblocking (plan §5.3, §6.4; `controls-block-unblock.dc.html`). This is the only place
-Layman writes into `~/.glove`. It follows glove's contract for a second writer: its follow-up results
-§3, as revised by its `layman-independence-results.md` §3 (glove PR #12). That contract overrode the
-plan in three places:
+Blocking and unblocking. This is the only place Layman writes into `~/.glove`. It follows glove's
+contract for a second writer (glove PR #11, as revised by glove PR #12). That contract overrode
+Layman's original design in three places:
 
 - **Never create the control directory.** glove creates `control/<env>/<name>/` (0700, the user's) when
   it renders a session with a gate. If it is absent the session has no gate yet, and the toggles say so
@@ -450,7 +448,7 @@ plan in three places:
 - **Confirm by hash, not time** (`control.ts`). `status.json` `rules.sha256` names the bytes the gate
   enforces and `rules.last_rejected.sha256` the bytes it last refused. So a write is `enforced` or
   `rejected` by its own hash, `superseded` when the file on disk no longer holds it (another writer),
-  and `pending`, then `unconfirmed` after 10 s. The plan's timestamp rule could not detect a rejection
+  and `pending`, then `unconfirmed` after 10 s. A timestamp rule could not detect a rejection
   at all, because `loaded_at` does not move on one. Confirmation lags enforcement by up to ~5 s (the
   collector re-reads the file when it writes `status.json`).
 
@@ -482,6 +480,18 @@ How it is built:
   (`DestinationAggregate.policy`). The toggle shows the enforced verdict, so a rejected write springs
   back by itself, and shows `pending` while the two differ. The observed state column stays the
   authority on what actually happened.
+- **The guard comes first in the prediction.** glove's gate refuses a proxy destination that is not
+  plainly public before any rule (`forward.py`): by the host's shape (an IP that is not globally
+  routable, a single-label name, a local-only suffix), then by the IP its in-tunnel resolver returned
+  (a host that resolves in-tunnel to `203.0.113.x` is refused as
+  `builtin:ssrf-guard`). `rules.ts` ports `guard.check` (with the legacy numeric IPv4 forms and Python's
+  `is_global` tables), and `predict()` applies it in the gate's order, then the rules. It runs only for
+  a destination that came through an `http-proxy` listener (the declared service's `mode`; for a
+  history-only destination, a resolution only a proxy produces), because a `tcp` listener goes to a
+  fixed endpoint. Without it, Details, Trace and Topology named the user's rule for a destination the
+  guard refuses. The cross-check requires the same answer as glove's own `guard.check` for 65 hosts;
+  its tables follow the Python that runs the check (3.14), while glove's gate image runs 3.12, whose
+  table may lack the newest entries (e.g. `3fff::/20`).
 - **The UI.** A toggle opens a popover. For an allowed destination, Block offers this host, the domain
   and every subdomain, or this IP (with the shared-CDN warning), plus "also cut the N open connections"
   (checked when there are some), a note, and the exact JSON. For your own rule, Unblock offers removing
@@ -509,7 +519,7 @@ How it is built:
 
 ### The Map tab
 
-Built from `map-route-map.dc.html`, with mockup A's Connection section in the detail card.
+The world map full-bleed, with a Connection section in the detail card.
 
 - **Offline, bundled map.** Natural Earth land (`world-atlas` `land-50m`, public domain) drawn with
   `d3-geo` and `topojson-client`. It is imported lazily into its own chunk (~174 KB gzipped) that
@@ -579,12 +589,14 @@ Built from `map-route-map.dc.html`, with mockup A's Connection section in the de
     flows, Unblock, or Allow.
   - **Agent asked for** says honestly that nothing is joined yet: joining flows to the transcript's
     tool calls is the Trace phase.
-- **Known limitation:** labels of nearby cities can overlap at the fitted zoom (Ashburn/Virginia,
-  London/Amsterdam). Zooming in separates them.
+- **Labels never overlap.** Nearby cities (Ashburn/Virginia, London/Roubaix/Frankfurt) are placed
+  greedily, biggest cluster first, right of the pin, then above right, left, above left
+  (`placeLabels` in `lib/net-geo.ts`, after the exit's label); a label with no free side is hidden,
+  and its pin's tooltip still names it. Zooming in brings it back.
 
 ### The Topology tab
 
-Built from `topology.dc.html`: the route a session's traffic takes, as a diagram of six columns, and a
+The route a session's traffic takes, as a diagram of six columns, and a
 Selected path panel that walks one destination's path hop by hop.
 
 - **Columns**, left to right:
@@ -614,7 +626,7 @@ Selected path panel that walks one destination's path hop by hop.
   - **Columns.** Destinations sit against the right edge. The route and origin columns keep their share
     of the width unless that would leave their bands under 40 and 90 px to bend (at 1280 px wide they
     otherwise collapsed into a vertical strip). The wall sits in the gap before the route.
-  - **Order.** Services keep glove's declared order rather than byte order, as the mockup draws them, so
+  - **Order.** Services keep glove's declared order rather than byte order, as the design draws them, so
     the column does not reshuffle while traffic flows. Destinations are ordered by bytes, as the plan
     says. Each column then gets one overlap-avoidance pass.
   - **Size.** Below 1000 × 420 the diagram is laid out at that size and scaled down, never scrolled.
@@ -637,7 +649,7 @@ Selected path panel that walks one destination's path hop by hop.
 
 ### The Trace tab
 
-Built from `trace-agent-trace.dc.html`: one turn at a time, each tool call the agent made over the
+One turn at a time, each tool call the agent made over the
 flows the gate saw for it. This is what Layman can do and glove cannot: glove never learns the URL
 behind an HTTPS `CONNECT`, but the harness transcript Layman records has the exact `web_fetch` call.
 The footnote says so: tool calls come from the transcript and flows from the gate, and glove never
@@ -670,7 +682,7 @@ links them.
   fan-out already open". These are named, never claimed: metadata cannot say how many of a pooled
   connection's bytes were which call's, so the flow stays with the call that opened it and the turn's
   counts include only flows it opened.
-- **Where the plan was wrong against the code: call times.** The plan's window assumes events carry the
+- **Call times.** A turn's window needs events that carry the
   call's real start and end. Gloved pi reaches Layman only through the passive watcher, which stamps
   every event with the time it *read* the transcript (up to a poll late) and records no start at all.
   The watcher now also keeps the transcript's own times (`data.transcriptAt`,
@@ -692,7 +704,9 @@ links them.
   not when it merely has a name: a renamed Claude Code session has one too, and an earlier "has a
   session name" check kept that session's IPs. The metadata fetch then keeps its IP, joins the guard refusal,
   and shows in Logs. It applies from the moment it is turned on: events already recorded stay redacted,
-  and "purge PII" still redacts IPs everywhere. The filter's keep-set had one trap: with the IPv4 pattern
+  and "purge PII" still redacts IPs everywhere (its confirmation says so). History import applies the
+  same keep-set to transcripts found under a glove root. The kept IPs never leave the host: with the
+  filter on, sync redacts event rows in full on the way out (the outbound readers in `sync/entities.ts`, and `CLAUDE.md`). The filter's keep-set had one trap: with the IPv4 pattern
   skipped, the phone-number pattern matched `169.254.169` inside the address. Kept matches are therefore
   parked behind private-use placeholders while the other patterns run (`redactString` in
   `pii/filter.ts`), and past a few thousand in one string the rest are redacted rather than left to
@@ -717,9 +731,14 @@ links them.
   turn". **Open in Trace** opens that turn with the flow selected. The Map's ribbon draws a marker for
   every tool call that started in its 60 s window, across turns (`/calls?from=&to=`).
 - **API.** `GET /api/net/sessions/:token/trace?turn=<event id>|at=<ms>` and
-  `GET /api/net/sessions/:token/calls?from=<ms>&to=<ms>` (at most an hour).
+  `GET /api/net/sessions/:token/calls?from=<ms>&to=<ms>` (at most an hour). The trace names the
+  shown turn's neighbours (`nav`: position, count, previous and next prompt id), not the whole list:
+  the tab refreshes every 3 s, and a list of every turn was 2.9 MB on a database with 28,000 turns. The
+  tab schedules each refresh once the previous one settles, so a slow build never stacks requests.
 - **Empty state.** With no Layman session named after the glove session, the tab says so; the other
-  three tabs work without one.
+  three tabs work without one. It also points to history import: the pi watcher replays only sessions
+  touched in the last 5 minutes, so a Layman started after the agent went idle has no turns for it
+  unless it was recording at the time.
 
 ### Persistence (`netobs/persist.ts`, `netobs/history.ts`)
 
@@ -760,7 +779,7 @@ the scheme is this:
 - **Known imprecision.** A record older than the watermark that arrives after a write, out of time
   order, is not counted.
 
-Two columns were added to the plan's schema:
+Two columns go beyond a plain total:
 - **`blocked_guard` / `blocked_rule` / `blocked_default`**, because the KPI row splits blocked by who
   refused.
 - **`watermark` and `carry_json`**, which the scheme needs.
@@ -785,7 +804,7 @@ is empty, so nothing changes for users who don't run it.
 
 `netobs/__fixtures__/` is a byte-for-byte copy of glove's `tests/fixtures/netobs/` (see its README for
 the source commit and how to refresh it). `fixture.test.ts` loads it through discovery, tailing and the
-store and asserts every fixture state in handoff §6.1 plus Appendix A's totals; a drift guard fails when
+store and asserts every fixture state in glove's state table plus the fixture's totals; a drift guard fails when
 the copy differs from `../glove`, and is skipped when glove is not checked out beside this repo.
 
 `netobs/__scenarios__/` is the same for glove's `tests/fixtures/netobs-scenarios/`: sixteen real `net/`
@@ -841,8 +860,7 @@ glove's existing `control/<env>/<name>/`, by glove's own contract (Writing rules
 path is safe to expose because the gate's schema can express only allow/block verdicts over
 destinations. An earlier draft of this phase had `make docker-run` create `~/.glove/control`, and the
 mounts carry the SELinux shared label `z` (which relabels host files). Both were taken out: they
-changed glove's folders from Layman's side. glove took over what they did (its
-`layman-independence-results.md`, PR #12):
+changed glove's folders from Layman's side. glove took over what they did (glove PR #12):
 
 - **`control/` exists whenever glove has set up its home.** Any registry write, `glove init` or
   `glove run` creates it as the user. An install that predates this needs one `glove init`/`run` (or

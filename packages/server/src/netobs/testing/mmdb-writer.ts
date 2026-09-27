@@ -1,6 +1,6 @@
 /**
  * A minimal MaxMind DB (MMDB v2) *writer*, for tests and the replay script's
- * demo map only. Layman ships no geolocation database (plan §5.4): the user
+ * demo map only. Layman ships no geolocation database: the user
  * points Settings at one they downloaded. To test the reader without one, this
  * writes a tiny IPv4 database in the real format, with records shaped like
  * DB-IP "IP to City Lite" / GeoLite2-City (`city.names.en`, `country.iso_code`,

@@ -181,7 +181,7 @@ export const GLOVE_ROOTS_TTL_MS = 1000;
  * glove records the *resolved* home per env in `~/.glove/registry.json` — the
  * single canonical pointer — so this source reads that registry and, for any env
  * whose recorded home lies outside `<sessionsDir>`, probes it too (see
- * `docs/planning/glove-session-discovery.md`). A registry home *inside*
+ * `docs/extensions/glove.md`). A registry home *inside*
  * `<sessionsDir>` is left to enumeration, which already owns it — probing it a
  * second time would break the no-double-tail invariant above. Registry paths are
  * **absolute host paths** (`/Users/you/.glove/...`); in the Docker deployment the
@@ -192,7 +192,7 @@ export const GLOVE_ROOTS_TTL_MS = 1000;
  * translated path that isn't under a mount simply won't exist and yields no root
  * — the same graceful outcome as a missing `home/`. The mount contract (a
  * relocated home a containerized Layman watches lives under `~/.glove`) is
- * documented in the planning doc. Reads are best-effort: a missing or malformed
+ * documented in docs/extensions/glove.md. Reads are best-effort: a missing or malformed
  * registry (including a stray non-object array element) degrades to enumeration.
  *
  * As a registry-independent fallback, this source also enumerates
@@ -350,7 +350,7 @@ export class GloveSource implements MonitorSource {
     // Enumerating that dir directly discovers such a session even when glove's
     // registry has no entry for it — which happens for a `glove <h> --env X
     // --config Y` one-off, whose forced env is not registered, so no `home` is ever
-    // recorded (see docs/planning/glove-session-discovery.md). `conventionHomes`
+    // recorded (see docs/extensions/glove.md). `conventionHomes`
     // takes `handledEnvs` and skips (before statting) any env the registry or
     // enumeration already resolved authoritatively, so a stale `homes/<env>` left
     // beside an env's real home — a *different* path `probed` could not collapse —

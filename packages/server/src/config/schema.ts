@@ -112,7 +112,7 @@ export const GloveConfigSchema = z.object({
 });
 
 /**
- * Multi-host sync (see docs/planning/multi-host-sync.md).
+ * Multi-host sync (docs/features.md → Multi-host sync; design in CLAUDE.md).
  *
  * `standalone` (default) is exactly today's behaviour — nothing new runs. A
  * `central` accepts pushes from enrolled remotes; a `remote` pushes its own data

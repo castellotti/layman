@@ -1,5 +1,5 @@
 /**
- * The Map tab (plan §7.2, map-route-map.dc.html): the world map full-bleed,
+ * The Map tab: the world map full-bleed,
  * floating cards in its corners, and the last 60 seconds as a band beneath.
  * Every card can be hidden from the Panels chips and dragged to another corner
  * (remembered per viewer, like panel order). The map geometry is
@@ -205,7 +205,7 @@ const MARKER_REFRESH_MS = 5000;
 function Ribbon({ data, now }: { data: NetSessionData; now: number }) {
   const anchor = sessionAnchor(data, now);
   const { lanes, more } = useMemo(() => ribbonLanes(data.flows.values(), anchor), [data.flows, anchor]);
-  // Tool-call markers (plan §7.2): every call that started in the window, whichever turn it belongs to.
+  // Tool-call markers: every call that started in the window, whichever turn it belongs to.
   const asked = Math.floor(anchor / MARKER_REFRESH_MS) * MARKER_REFRESH_MS;
   const calls = useNetCalls(data.token, asked - RIBBON_MS - MARKER_REFRESH_MS, asked + MARKER_REFRESH_MS);
   const markers = useMemo(() => calls
@@ -305,7 +305,7 @@ export function MapView({ data, panels }: { data: NetSessionData; panels: Return
   const live = [...data.destinations.values()].filter((d) => d.openFlows > 0).length;
   const disabled = controlDisabledReason(data.rules);
 
-  // Not dismissable while such a flow exists (plan §6.3); stacked in the top-centre column so it covers no card.
+  // Not dismissable while such a flow exists; stacked in the top-centre column so it covers no card.
   const directBanner = direct.length > 0 ? (
     <div role="alert" style={{ pointerEvents: 'auto', display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', borderRadius: 8, background: '#2A0F0E', border: '1px solid var(--error)', maxWidth: 620 }}>
             <NetIcon name="alert" size={18} color="var(--error)" strokeWidth={1.8} />

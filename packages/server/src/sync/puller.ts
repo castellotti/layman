@@ -29,7 +29,7 @@ const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms
 
 /**
  * Pulls every *other* host's data from central onto a mirror
- * (docs/planning/multi-host-sync.md §3.10): a one-time snapshot (paging each kind,
+ *: a one-time snapshot (paging each kind,
  * rows central owns on behalf of anyone but this host) followed by incremental
  * `changes`. Cursors live in `sync_state`, so an interrupted snapshot resumes and
  * a failed changes call simply re-requests. Everything is applied through the
@@ -114,7 +114,7 @@ export class SyncPuller {
       // stresses the mount enough to matter (see db/database.ts). Warn once so a
       // corruption is diagnosable; the pacing + deferred stats below mitigate it.
       if (detectContainer()) {
-        this.opts.log?.('sync: starting mirror snapshot; bulk import over a bind-mounted DB is paced to reduce (not eliminate) corruption risk — see docs/planning/multihost-sync-durability-followup.md');
+        this.opts.log?.('sync: starting mirror snapshot; bulk import over a bind-mounted DB is paced to reduce (not eliminate) corruption risk');
       }
     }
     let cursor: { kind: SyncKind; lastId: string } | null = this.readCursor();

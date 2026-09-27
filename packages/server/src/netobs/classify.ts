@@ -1,5 +1,5 @@
 /**
- * The single source of state logic for network views: which of handoff §6.1's
+ * The single source of state logic for network views: which of glove's state table's
  * states a flow, a destination, or a gate is in. Pure, and the web client
  * receives the results rather than recomputing them.
  */
@@ -13,10 +13,10 @@ import type {
   StatusRecord,
 } from './types.js';
 
-/** An open flow with no byte change for longer than this is "pooled, idle", not live (plan §3 rule 7). */
+/** An open flow with no byte change for longer than this is "pooled, idle", not live. */
 export const IDLE_MS = 3_000;
 
-/** A `running` gate whose heartbeat is older than this has stopped reporting (handoff §2). */
+/** A `running` gate whose heartbeat is older than this has stopped reporting (glove's record contract). */
 export const STALE_MS = 20_000;
 
 /** A flow's latest record plus the one fact the store tracks across records. */
@@ -25,7 +25,7 @@ export type ClassifiableFlow = Pick<
   'phase' | 'verdict' | 'rule' | 'close_reason' | 'dest' | 'scope' | 'proto' | 'client' | 'tool'
 > & {
   lastActivityAt: number;
-  /** The flow's `run` has ended (handoff §2 reader rule). Only an unclosed flow cares. */
+  /** The flow's `run` has ended (glove's record contract). Only an unclosed flow cares. */
   runEnded?: boolean;
 };
 
@@ -36,7 +36,7 @@ export const BLOCK_STATES: ReadonlySet<NetState> = new Set(['guard', 'user_rule'
  *
  * Blocks are checked first, and by `close_reason: "blocked"` as well as by
  * verdict: a `terminate: true` rule cuts an *established* flow, which closes
- * with `close_reason: "blocked"` and the rule's id (handoff §3), and that is the
+ * with `close_reason: "blocked"` and the rule's id (glove's record contract), and that is the
  * user's rule acting whatever verdict the flow was opened with.
  */
 export function classifyFlow(f: ClassifiableFlow, now: number): NetState {
@@ -59,7 +59,7 @@ export function classifyFlow(f: ClassifiableFlow, now: number): NetState {
       return 'broken';
     case 'timeout':
       // An idle proxy connection that never named a destination is noise; a
-      // timeout with a real destination is a broken path (plan §3 rules 6, 10).
+      // timeout with a real destination is a broken path.
       return f.dest.host === null ? 'empty' : 'broken';
     case 'eof':
       return f.dest.host === null ? 'empty' : 'finished';

@@ -1,5 +1,5 @@
 /**
- * Pure helpers for multi-host attribution (docs/planning/multi-host-sync.md §8.2).
+ * Pure helpers for multi-host attribution.
  * Kept side-effect-free so they can be unit-tested without a DOM.
  */
 

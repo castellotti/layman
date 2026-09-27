@@ -1,6 +1,5 @@
 /**
- * What clicking a destination's toggle offers (plan §6.4,
- * controls-block-unblock.dc.html): Block (host, domain or IP; cut open
+ * What clicking a destination's toggle offers: Block (host, domain or IP; cut open
  * connections; a note; the exact JSON), Unblock a rule of yours (remove it, or
  * allow just this host above it), or Allow a default-blocked destination. A
  * group row writes one rule over the group. Nothing is shown as done until the

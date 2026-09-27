@@ -39,6 +39,7 @@ export class SessionRecorder {
   private fillSessionModel: BetterSqlite3.Statement<unknown[]>;
   private fillSessionName: BetterSqlite3.Statement<unknown[]>;
   private insertQA: BetterSqlite3.Statement<unknown[]>;
+  private importFilter?: (event: TimelineEvent) => TimelineEvent;
 
   constructor(
     private db: Database,
@@ -82,6 +83,21 @@ export class SessionRecorder {
         (event_id, session_id, question, answer, model, tokens_in, tokens_out, latency_ms, created_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
+  }
+
+  /**
+   * The PII filter for events that reach the database without passing through
+   * `EventStore` (history import, a JSON file import). Live events are filtered
+   * by the store; these would otherwise be stored exactly as parsed.
+   */
+  setImportFilter(filter: (event: TimelineEvent) => TimelineEvent): void {
+    this.importFilter = filter;
+  }
+
+  /** Apply the import filter (a no-op until one is set). */
+  filterImported(events: TimelineEvent[]): TimelineEvent[] {
+    const filter = this.importFilter;
+    return filter ? events.map(filter) : events;
   }
 
   attach(store: EventStore): void {
@@ -232,17 +248,19 @@ export class SessionRecorder {
   /**
    * Import a historical session from transcript data.
    * Uses INSERT OR IGNORE for events (idempotent) and never downgrades
-   * a live session's source to 'imported'.
+   * a live session's source to 'imported'. Events are PII-filtered here
+   * (`setImportFilter`), since they never pass through `EventStore`.
    */
   importSession(
     sessionId: string,
     cwd: string,
     agentType: string,
-    events: TimelineEvent[],
+    parsed: TimelineEvent[],
     source: string,
-    sessionName?: string
+    sessionName?: string,
   ): void {
-    if (events.length === 0) return;
+    if (parsed.length === 0) return;
+    const events = this.filterImported(parsed);
     const upsertSess = this.db.prepare(`
       INSERT INTO recorded_sessions (session_id, cwd, agent_type, started_at, last_seen, source, session_name)
       VALUES (?, ?, ?, ?, ?, ?, ?)

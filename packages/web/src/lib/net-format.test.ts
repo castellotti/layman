@@ -23,7 +23,7 @@ describe('gateChips', () => {
     expect(chips.map((c) => [c.key, c.label, c.tone])).toEqual([['history', 'History only', 'muted']]);
   });
 
-  it('matches the mockup for the fixture session', () => {
+  it('matches the design for the fixture session', () => {
     expect(labels(data())).toEqual([
       'Gate running', 'VPN · exit verified · Switzerland', 'Resolver in-tunnel', '1 rule enforced', 'Record: metadata',
     ]);

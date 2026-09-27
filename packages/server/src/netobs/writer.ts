@@ -1,8 +1,7 @@
 /**
  * The only code in Layman that writes into `~/.glove`, and only
  * `control/<env>/<name>/rules.json`. It follows glove's contract for a second
- * writer (glove's `layman-independence-results.md` §3, handoff §3 "Ownership")
- * literally:
+ * writer (docs/extensions/glove.md → Writing rules) literally:
  *
  *  1. Never create, chmod, chown or relabel any directory under `~/.glove`. The
  *     session's control directory is glove's (the user's, 0700, created before

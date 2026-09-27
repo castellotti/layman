@@ -87,7 +87,7 @@ export function GloveSection({
 interface GeoStatus { configured: boolean; loaded: boolean; databaseType: string | null; buildDate: string | null; error: string | null; attribution: string | null; displayPath: string }
 
 /**
- * The Map's offline geolocation database (plan §5.4). Layman ships none and
+ * The Map's offline geolocation database. Layman ships none and
  * never looks an IP up anywhere: the user downloads DB-IP's free "IP to City
  * Lite" (.mmdb, CC BY 4.0, no account) and points this at it. In Docker the
  * file must be inside a mounted folder; Layman's own data folder is one.

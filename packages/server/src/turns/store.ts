@@ -94,6 +94,12 @@ export class TurnStore {
     return this.turnsFor(sessionId, this.eventsFor(sessionId));
   }
 
+  /** listTurns() plus the events it read, for a caller that needs both (the Trace tab) without a second read. */
+  listTurnsWithEvents(sessionId: string): { turns: Turn[]; events: TimelineEvent[] } {
+    const events = this.eventsFor(sessionId);
+    return { turns: this.turnsFor(sessionId, events), events };
+  }
+
   getTurn(sessionId: string, promptEventId: string): Turn | null {
     return this.getTurnWithEvents(sessionId, promptEventId)?.turn ?? null;
   }

@@ -229,7 +229,9 @@ export function PurgeDialog({
               ))}
             </ul>
             <p style={{ fontSize: 10.5, color: 'var(--error)', marginBottom: 16 }}>
-              This action cannot be undone. All matched PII will be replaced with [REDACTED].
+              This action cannot be undone. All matched PII will be replaced with [REDACTED],
+              including IP addresses in glove sessions: a purge is a wipe, so it ignores
+              “Show IP addresses in sandboxed sessions”.
             </p>
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
               <button onClick={onClose} style={btnStyle}>Cancel</button>
