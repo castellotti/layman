@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { redactString, filterPii } from './filter.js';
+import { redactString, filterPii, IP_CATEGORIES } from './filter.js';
+import { EventStore } from '../events/store.js';
 
 describe('redactString', () => {
   describe('email addresses', () => {
@@ -230,5 +231,61 @@ describe('filterPii', () => {
     const result = filterPii(data);
     expect(result.toolName).toBeUndefined();
     expect(result.toolInput).toBeUndefined();
+  });
+});
+
+describe('keeping categories (glove.showIpAddresses)', () => {
+  const text = 'fetch http://169.254.169.254/latest/meta-data/ and [fe80::1:2:3:4:5:6] as alice@example.com';
+  it('leaves IP addresses when asked, and still redacts everything else', () => {
+    const out = redactString(text, IP_CATEGORIES);
+    expect(out).toContain('169.254.169.254');
+    expect(out).toContain('fe80::1:2:3:4:5:6');
+    expect(out).not.toContain('alice@example.com');
+  });
+  it('redacts, never corrupts, past the placeholder limit', () => {
+    const many = Array.from({ length: 7000 }, (_, i) => `10.${(i >> 8) & 255}.${i & 255}.1`).join(' ');
+    const out = redactString(many, IP_CATEGORIES).split(' ');
+    expect(out).toHaveLength(7000);
+    expect(out[0]).toBe('10.0.0.1');
+    expect(out.every((w, i) => w === `10.${(i >> 8) & 255}.${i & 255}.1` || w.includes('[REDACTED]'))).toBe(true);
+    expect(out[6999]).toContain('[REDACTED]');
+  });
+  it('redacts them by default', () => {
+    expect(redactString(text)).not.toContain('169.254.169.254');
+  });
+  it('carries through nested event data', () => {
+    const d = filterPii({ toolInput: { url: 'http://10.0.0.5:8080/x', token: 'alice@example.com' } }, IP_CATEGORIES);
+    expect(d.toolInput).toEqual({ url: 'http://10.0.0.5:8080/x', token: '[REDACTED]' });
+  });
+});
+
+describe('transcriptEventId', () => {
+  it('is left alone: a parser id, and a digit run in it looks like a phone number', () => {
+    const id = '0f3c2a1e-9b7d-4c1a-8e2f-5d6b7a8c9e0f_1234567890';
+    expect(redactString(id)).not.toBe(id);
+    const out = filterPii({ transcriptEventId: id, text: 'call 555-123-4567' } as never);
+    expect(out.transcriptEventId).toBe(id);
+    expect((out as { text: string }).text).not.toContain('555-123-4567');
+  });
+});
+
+describe('gloved sessions', () => {
+  it('a session name alone (a renamed Claude Code session) does not make a session gloved', () => {
+    const store = new EventStore();
+    store.trackSession('renamed', '/w', 'claude-code', undefined, 'my-session');
+    expect(store.isGloved('renamed')).toBe(false);
+  });
+});
+
+describe('EventStore passes the session to its filters', () => {
+  it('lets a filter decide per session', () => {
+    const store = new EventStore();
+    store.trackSession('gloved', '/w', 'pi', undefined, 'pi-search');
+    store.markGloved('gloved');
+    store.trackSession('native', '/w', 'pi');
+    store.setDataFilter((data, sid) => filterPii(data, store.isGloved(sid) ? IP_CATEGORIES : undefined));
+    const a = store.add('tool_call_completed', 'gloved', { toolInput: { url: 'http://169.254.169.254/' } });
+    const b = store.add('tool_call_completed', 'native', { toolInput: { url: 'http://169.254.169.254/' } });
+    expect([a.data.toolInput, b.data.toolInput]).toEqual([{ url: 'http://169.254.169.254/' }, { url: 'http://[REDACTED]/' }]);
   });
 });

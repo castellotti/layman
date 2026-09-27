@@ -10,14 +10,21 @@
  *   /f/{folderId}              a bookmark folder
  *
  * Query parameters (orthogonal): ?view=… ?play=1 ?t=<ms>
+ *   ?glove=<token> ?dest=<host>   the glove session and selected destination on
+ *                                 the network views (network, map, topology, trace)
  *
  * Mirrored in packages/web/src/lib/layman-url.ts — the round-trip test in each
  * package is what keeps the two copies honest.  See CLAUDE.md "Type duplication".
  */
 
-export type ViewName = 'dashboard' | 'logs' | 'prompts' | 'flow' | 'sessions';
+export type ViewName =
+  | 'dashboard' | 'logs' | 'prompts' | 'flow' | 'sessions'
+  | 'network' | 'map' | 'topology' | 'trace';
 
-export const VIEW_NAMES: readonly ViewName[] = ['dashboard', 'logs', 'prompts', 'flow', 'sessions'];
+export const VIEW_NAMES: readonly ViewName[] = [
+  'dashboard', 'logs', 'prompts', 'flow', 'sessions',
+  'network', 'map', 'topology', 'trace',
+];
 
 export type LaymanRoute =
   | { kind: 'dashboard' }
@@ -34,6 +41,10 @@ export interface RouteOptions {
   play?: boolean;
   /** Scroll to a timestamp (ms) instead of an id. */
   t?: number;
+  /** Network views: the glove session token (not a Layman session id). */
+  glove?: string;
+  /** Network views: the selected destination host. */
+  dest?: string;
 }
 
 export interface ParsedRoute {
@@ -59,6 +70,8 @@ function buildQuery(opts: RouteOptions | undefined): string {
   if (opts.view) params.push(`view=${encodeURIComponent(opts.view)}`);
   if (opts.play) params.push('play=1');
   if (opts.t !== undefined && Number.isFinite(opts.t)) params.push(`t=${opts.t}`);
+  if (opts.glove) params.push(`glove=${encodeURIComponent(opts.glove)}`);
+  if (opts.dest) params.push(`dest=${encodeURIComponent(opts.dest)}`);
   return params.length > 0 ? `?${params.join('&')}` : '';
 }
 
@@ -107,6 +120,10 @@ function parseQuery(search: string): RouteOptions {
     } else if (key === 't') {
       const ms = Number(value);
       if (Number.isFinite(ms)) opts.t = ms;
+    } else if (key === 'glove' && value) {
+      opts.glove = value;
+    } else if (key === 'dest' && value) {
+      opts.dest = value;
     }
   }
   return opts;

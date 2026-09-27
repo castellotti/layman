@@ -93,8 +93,42 @@ linked above.
 
 4c. **pi passive watcher** (`packages/server/src/pi/watcher.ts`): tails pi's format-version-3 JSONL
    transcripts for glove-sandboxed pi (which cannot reach Layman over the network) and native pi with
-   no live extension. Design and reliability notes (why it never emits a trailing `tool_call_pending`,
+   no live extension. Events go through the live path (read-time `timestamp`), so it also keeps the
+   transcript's own times as `data.transcriptAt` / `data.transcriptCompletedAt`, and the parser's id as
+   `data.transcriptEventId`, which is how a restart's replay skips what is already recorded (live ids are
+   random, so without it every restart recorded a young session again). Design and reliability notes (why it never emits a trailing `tool_call_pending`,
    dedupe by committed id, tombstone resurrection) are in `docs/harnesses/pi.md`.
+
+4d. **Network observability (glove)** (`packages/server/src/netobs/`, plan
+   `docs/planning/network-views.md`): tails each gloved session's `net/` (flows, exit, status) into a
+   dedicated `NetStore` and `net:*` frames — **never `EventStore`** (same reason as live streaming).
+   Rotated files are identified by content, not inode (Docker Desktop's bind mount changes inodes on
+   rename). **Never make a network call keyed on gloved flow data**; tests in both packages enforce it.
+   Client: data in `stores/netStore.ts` (never `sessionStore`, which must not re-render per delta);
+   the selection (`netToken`, `netDest`) in `sessionStore` because the URL reads it. Which flows a
+   dead gate left open is glove's rule (`glove.netview.ended_runs`), ported in `NetStore` and held to it
+   by a cross-check that runs glove's own function — change both or neither. State labels, colours and
+   toggles come from one legend table (`NET_LEGEND` in `lib/net-format.ts`) that every view reads.
+   Rules: `netobs/rules.ts` is a port of glove's `policy.py` validator/evaluator, held to it by a
+   cross-check test that runs glove's own code; a write is confirmed only by glove's **hash rule**
+   (`status.json` `rules.sha256` / `rules.last_rejected.sha256`), never by timestamps, and toggles show
+   what the gate *enforces*, not what Layman wrote. The Map is fully offline: bundled Natural Earth land
+   (lazy chunk) and geolocation only from a local MMDB file the user supplies (`netobs/geo.ts`), looking
+   up only in-tunnel/literal destination IPs; the running-app check asserts every request goes to Layman.
+   Geometry is pure and tested, components only draw: the Map's in `lib/net-geo.ts`, the Topology
+   diagram's (columns, bands, the policy wall, the selected path's hops) in `lib/net-topology.ts`.
+   Trace joins a turn's tool calls to its flows in `netobs/correlate.ts` (pure; host + time, nearest
+   start, search → fan-out, else Unattributed — never guessed; a kept-alive connection a later call
+   rides is named in `openIds`, never claimed). Its Layman sessions are those whose
+   `sessionName` is the glove token. Call times come from the transcript (`data.transcriptAt` /
+   `transcriptCompletedAt`, kept by the pi watcher) because a passive watcher's `timestamp` is when it
+   *read* the call; without them a call joins by host only and is shown as approximate.
+   Totals survive restarts as SQLite rollups (`netobs/persist.ts`, `history.ts`), written every 30 s
+   while recording is on. They are kept with a watermark and a small carry list, and on restart the
+   store subtracts what the re-read files already account for, so nothing is counted twice and
+   traffic from deleted files is kept. A glove session whose files are gone is listed, history only.
+   Change the counting only with `history.test.ts`, which restarts at every record.
+   Design and rules: `docs/extensions/glove.md` → Network.
 
 5. **OpenCode plugin** (`docs/harnesses/opencode.md`): a bidirectional plugin (`packages/opencode-plugin`)
    that receives events from OpenCode and can send prompts back, registered in
@@ -113,7 +147,7 @@ linked above.
 
 9. **Analysis engine** (`packages/server/src/analysis/engine.ts`) — wraps Anthropic or OpenAI-compatible providers, supports `analyze()` (structured JSON → `AnalysisResult`) and `ask()` (free-form Q&A). Both return `{ text/result, tokens: { input, output }, latencyMs, model }`. Max 3 concurrent requests with a queue.
 
-10. **PII filter** (`packages/server/src/pii/filter.ts`) — regex-based redaction covering 24 categories (emails, API keys, passwords, credit cards, JWTs, etc.). Applied at the EventStore level so all events are covered regardless of source.
+10. **PII filter** (`packages/server/src/pii/filter.ts`) — regex-based redaction covering 24 categories (emails, API keys, passwords, credit cards, JWTs, etc.). Applied at the EventStore level so all events are covered regardless of source. The store passes each event's session to its filters, which is how `glove.showIpAddresses` keeps IPv4/IPv6 in gloved sessions only (those a passive watcher marked with `markGloved` from a glove root, never "has a session name", which a renamed Claude Code session also has); a kept category's matches are parked behind placeholders while the other patterns run, because the phone pattern otherwise eats part of an IPv4 address.
 
 11. **Client state** — Zustand store in `packages/web/src/stores/sessionStore.ts` holds all events, pending approvals, sessions list, active session filter, and investigation state. The `useEventStore()` hook at `packages/web/src/hooks/useEventStore.ts` applies session + UI filters on top.
 
@@ -147,6 +181,7 @@ store for unrecorded sessions, and memoizes per session until a new event arrive
 /s/{sessionId}/e/{eventId}           a single event
 /h/{id}  /b/{id}  /f/{id}            highlight / bookmark / bookmark folder
 ?view=dashboard|logs|prompts|flow|sessions   ?play=1   ?t=<ms>
+?view=network|map|topology|trace&glove=<token>&dest=<host>   glove network views
 ```
 
 Ids may be given as an unambiguous prefix of ≥8 characters; ambiguous prefixes return 409 with
@@ -312,6 +347,11 @@ Four rules that must not be relaxed casually:
   `openDatabase`), because the triggers read `sync_state.hostId`. `sync.hostId` is deep-merged in
   `config.ts` so a partial Settings update can never blank it and orphan every row.
 
+- **The glove network rollups are deliberately not synced** (`net_sessions`, `net_destinations`,
+  migration 3; `netobs/persist.ts`). No triggers, no `SYNC_ENTITIES` entry. They record where one
+  host's sandboxes browsed, and syncing them would ship that to a central instance. Do not "fix" this
+  by adding them to the journal.
+
 ### Key design decisions
 
 - **Blocking hooks**: `PreToolUse` and `PermissionRequest` (Claude Code) and `PreToolUse` (Cline) suspend the agent process until `PendingApprovalManager.resolveApproval()` is called. Claude Code's timeout is 300s (configurable); Cline's is 25s (Cline hardcodes 30s).
@@ -326,7 +366,7 @@ Four rules that must not be relaxed casually:
 
 - **`EventStore.setStringFilter()`**: `attachLaymans()` writes `event.laymans.explanation` directly, bypassing `EventData` and therefore the `dataFilter` PII redaction every other field gets. A separate `stringFilter` hook (wired in `server.ts` next to `setDataFilter`) redacts it at the same point. Any future field that rides outside `EventData` needs the same treatment — it will not be filtered by default.
 
-- **Docker mounts**: The container mounts `${HOME}/.local/share/layman` (Layman's own data dir — `layman.db` and `layman.json`; see storage note below), `${HOME}/.claude` (Claude Code hooks/commands/StatusLine relay), `${HOME}/.config` (OpenCode detection/commands), `${HOME}/.vibe` (Vibe log watching), `${HOME}/Documents/Cline` (Cline hook script installation), `${HOME}/.codex` (Codex hook script installation and hooks.json), and `${HOME}/.pi` (pi extension installation). The `HookInstaller` runs inside the container and writes through these mounts to the host filesystem. `${HOME}/.glove` is also mounted **read-only** (`:ro`) for `GloveSource` — it is the one mount Layman only ever reads, never writes, because writing into a sandbox is exactly what the feature must not do. The whole `~/.glove` is mounted (not just `envs/`) so `GloveSource` can read `~/.glove/registry.json` — glove's canonical record of each env's resolved home — and reach a home relocated under `~/.glove` (the mount contract for relocated homes; see `docs/planning/glove-session-discovery.md`).
+- **Docker mounts**: The container mounts `${HOME}/.local/share/layman` (Layman's own data dir — `layman.db` and `layman.json`; see storage note below), `${HOME}/.claude` (Claude Code hooks/commands/StatusLine relay), `${HOME}/.config` (OpenCode detection/commands), `${HOME}/.vibe` (Vibe log watching), `${HOME}/Documents/Cline` (Cline hook script installation), `${HOME}/.codex` (Codex hook script installation and hooks.json), and `${HOME}/.pi` (pi extension installation). The `HookInstaller` runs inside the container and writes through these mounts to the host filesystem. **glove is not mounted by `docker-compose.yml`**: Layman and glove are independent projects that meet only when the glove extension is enabled, and someone who only uses Layman must never get a `~/.glove` folder (Docker creates a missing bind source). The glove mounts are opt-in overlays the Makefile adds only when glove's own folders already exist: `docker-compose.glove.yml` mounts `${HOME}/.glove` **read-only** for `GloveSource` and the network views, because writing into a sandbox is exactly what the feature must not do; `docker-compose.glove-control.yml` mounts `${HOME}/.glove/control` writable over it, only if it exists, so Layman can write a session's `rules.json` — and nothing else — by glove's ownership contract (`netobs/writer.ts`; never create the directory; Layman-only temp file, explicit `chmod 0644`, no chown, atomic rename). **Layman never creates, chmods or relabels anything under `~/.glove`**; anything glove needs there (folders, permissions, SELinux labels) is glove's to do, and is asked of glove through a plan in its `docs/planning/`. SELinux-enforcing hosts are unsupported for the glove integration (glove itself does not run there yet); never add `z`/`Z` to the glove mounts. The whole `~/.glove` is mounted (not just `envs/`) so `GloveSource` can read `~/.glove/registry.json` — glove's canonical record of each env's resolved home — and reach a home relocated under `~/.glove` (the mount contract for relocated homes; see `docs/planning/glove-session-discovery.md`).
 
 - **Storage is harness-agnostic, not inside `~/.claude`** (`config/paths.ts`). Layman's SQLite
   database and runtime config are its own data, not Claude Code's — a user may run only Codex, Vibe,

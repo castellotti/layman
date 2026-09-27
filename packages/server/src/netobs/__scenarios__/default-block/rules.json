@@ -1,0 +1,18 @@
+{
+  "v": 1,
+  "env": "pi-search",
+  "session": "pi-search",
+  "updated_at": "2026-09-25T11:37:07.207Z",
+  "updated_by": "layman",
+  "default": "block",
+  "rules": [
+    {
+      "id": "r_01M3SCENALLOWWIKI000000000",
+      "action": "allow",
+      "match": {
+        "host": "en.wikipedia.org"
+      },
+      "note": "the one allowed destination"
+    }
+  ]
+}

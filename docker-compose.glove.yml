@@ -1,0 +1,23 @@
+# glove extension, read side (optional overlay).
+#
+# Layman and glove are independent projects that meet only when the glove
+# extension is enabled. This file is added by `make docker-run` / `make start`
+# / `make update` only when ~/.glove already exists on the host, so a Layman-only
+# user never gets a ~/.glove folder: Docker creates a missing bind source, and a
+# mount that is never declared cannot create anything. Layman never creates,
+# chmods or relabels anything under ~/.glove; glove owns all of that.
+#
+# By hand: docker compose -f docker-compose.yml -f docker-compose.glove.yml up -d
+# (or with docker-compose.ghcr.yml as the base file).
+#
+# No SELinux option: SELinux-enforcing hosts are unsupported for glove, which
+# does not run there yet; never add z/Z (it would relabel glove's files).
+#
+# Read-only. GloveSource tails glove-persisted harness transcripts, reads
+# ~/.glove/registry.json (each env's resolved home, including homes relocated
+# under ~/.glove), and the network views read each session's net/. The mount
+# adds nothing to what a sandboxed agent can see. See docs/extensions/glove.md.
+services:
+  layman:
+    volumes:
+      - ${HOME}/.glove:/root/.glove:ro

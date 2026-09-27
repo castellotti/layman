@@ -1,5 +1,6 @@
 import { useEffect, useRef, useCallback } from 'react';
 import { useSessionStore } from '../stores/sessionStore.js';
+import { useNetStore } from '../stores/netStore.js';
 import type { ServerMessage, ClientMessage } from '../lib/ws-protocol.js';
 
 const WS_URL = `ws://${window.location.host}/ws`;
@@ -184,6 +185,18 @@ export function useWebSocket(): { send: (msg: ClientMessage) => void } {
 
         case 'sync:hosts':
           setSyncHosts(message.hosts);
+          break;
+
+        // Network views (glove): their own store, so the rest of the app does
+        // not re-render on every coalesced delta.
+        case 'net:sessions':
+        case 'net:snapshot':
+        case 'net:delta':
+        case 'net:status':
+        case 'net:exit':
+        case 'net:rules':
+        case 'net:rules:result':
+          useNetStore.getState().apply(message);
           break;
       }
     },

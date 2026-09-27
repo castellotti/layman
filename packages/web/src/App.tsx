@@ -2,6 +2,8 @@ import React, { useRef, useState, useCallback, useEffect, Suspense, lazy } from 
 import { Header } from './components/layout/Header.js';
 import { ExpandingLayout } from './components/layout/ExpandingLayout.js';
 const FlowchartView = lazy(() => import('./components/flowchart/FlowchartView.js').then(m => ({ default: m.FlowchartView })));
+// Network, Map, Topology and Trace (glove): one lazy chunk, fetched only when opened.
+const NetworkView = lazy(() => import('./components/network/NetworkView.js'));
 import { InvestigationPanel } from './components/layout/InvestigationPanel.js';
 import { SetupBanner } from './components/layout/SetupBanner.js';
 import { SetupWizard } from './components/wizard/SetupWizard.js';
@@ -14,7 +16,7 @@ import { ChangelogModal } from './components/shared/ChangelogModal.js';
 import { RouteErrorPanel } from './components/layout/RouteErrorPanel.js';
 import { TTSBar } from './components/tts/TTSBar.js';
 import { BoltIcon } from './components/primitives/index.js';
-import { useSessionStore } from './stores/sessionStore.js';
+import { useSessionStore, isNetworkView } from './stores/sessionStore.js';
 import type { SessionState } from './stores/sessionStore.js';
 import { isSessionLive } from './lib/session-state.js';
 import { useWebSocket } from './hooks/useWebSocket.js';
@@ -210,6 +212,7 @@ export function App() {
   const flowchartOpen = useSessionStore((s) => s.flowchartOpen);
   const bookmarksOpen = useSessionStore((s) => s.bookmarksOpen);
   const promptsOpen = useSessionStore((s) => s.promptsOpen);
+  const viewMode = useSessionStore((s) => s.viewMode);
   const returnToDashboard = useSessionStore((s) => s.returnToDashboard);
   const returnFromDashboardDrilldown = useSessionStore((s) => s.returnFromDashboardDrilldown);
   const setSetupStatus = useSessionStore((s) => s.setSetupStatus);
@@ -275,6 +278,17 @@ export function App() {
         <div className="flex-1 overflow-hidden">
           <PromptsView />
         </div>
+      </AppShell>
+    );
+  }
+
+  // Network views (glove) take over the content area, like Sessions and Flow.
+  if (isNetworkView(viewMode)) {
+    return (
+      <AppShell onSend={send} onInstall={handleSetupInstall}>
+        <Suspense fallback={<div className="flex items-center justify-center h-full text-[#484f58] text-xs">Loading...</div>}>
+          <NetworkView tab={viewMode as 'network' | 'map' | 'topology' | 'trace'} onSend={send} />
+        </Suspense>
       </AppShell>
     );
   }

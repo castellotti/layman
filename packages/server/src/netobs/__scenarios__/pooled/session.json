@@ -1,0 +1,89 @@
+{
+  "v": 1,
+  "type": "session",
+  "env": "pi-search",
+  "session": "pi-search",
+  "harness": "pi",
+  "gate": "0.1.0",
+  "image": "glove/netgate:0.1.0-0000000000",
+  "record": "metadata",
+  "resolve": "in-tunnel",
+  "resolver": "dns://gluetun:53",
+  "exit_identity": "via-proxy:https://am.i.mullvad.net/json",
+  "upstream_kind": "vpn",
+  "rotate": {
+    "max_bytes": 67108864,
+    "keep": 8,
+    "retain_s": null
+  },
+  "record_headers": false,
+  "rendered_at": "2026-09-25T11:37:26.181Z",
+  "services": [
+    {
+      "service": "llm",
+      "listen": "glove-pi-search-llm:8080",
+      "observed": true,
+      "harness": true,
+      "mode": "tcp",
+      "tool": "llm",
+      "scope": "local",
+      "upstream": "tcp:host.docker.internal:8080",
+      "route": {
+        "kind": "tcp",
+        "upstream": "tcp:host.docker.internal:8080"
+      },
+      "client": "harness"
+    },
+    {
+      "service": "search",
+      "listen": "glove-pi-search-search:8080",
+      "observed": true,
+      "harness": true,
+      "mode": "tcp",
+      "tool": "web_search",
+      "scope": "local",
+      "upstream": "tcp:searxng:8080",
+      "route": {
+        "kind": "tcp",
+        "upstream": "tcp:searxng:8080"
+      },
+      "client": "harness"
+    },
+    {
+      "service": "proxy",
+      "listen": "glove-pi-search-proxy:8888",
+      "observed": true,
+      "harness": true,
+      "mode": "http-proxy",
+      "tool": "web_fetch",
+      "scope": null,
+      "upstream": "chain:http://egress-proxy:8888",
+      "route": {
+        "kind": "vpn",
+        "upstream": "http://egress-proxy:8888"
+      },
+      "client": "harness"
+    },
+    {
+      "service": "fanout",
+      "listen": "glove-pi-search-fanout:8899",
+      "observed": true,
+      "harness": false,
+      "mode": "http-proxy",
+      "tool": "search-engine-fanout",
+      "scope": null,
+      "client": "searxng",
+      "upstream": "chain:http://egress-proxy:8888",
+      "route": {
+        "kind": "vpn",
+        "upstream": "http://egress-proxy:8888"
+      }
+    },
+    {
+      "service": "browser",
+      "listen": "glove-pi-search-browser:3001",
+      "observed": false,
+      "harness": true
+    }
+  ]
+}

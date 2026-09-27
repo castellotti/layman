@@ -15,6 +15,7 @@ import type {
   SyncStatus,
   HostStats,
 } from './types.js';
+import type { NetServerMessage, RulesOp } from './netobs-types.js';
 
 export interface SessionInfo {
   sessionId: string;
@@ -66,7 +67,9 @@ export type ServerMessage =
   | { type: 'stream:update'; sessionId: string; stream: LiveStream }
   | { type: 'stream:end'; sessionId: string }
   | { type: 'sync:status'; status: SyncStatus }
-  | { type: 'sync:hosts'; hosts: HostStats[] };
+  | { type: 'sync:hosts'; hosts: HostStats[] }
+  // Network views of glove sessions: list on connect, the rest per subscription.
+  | NetServerMessage;
 
 export type ClientMessage =
   | { type: 'approval:decide'; approvalId: string; decision: ApprovalDecision }
@@ -79,4 +82,7 @@ export type ClientMessage =
   | { type: 'bookmarks:get' }
   | { type: 'drift:reset'; sessionId: string }
   | { type: 'drift:dismiss'; sessionId: string; approvalId: string }
-  | { type: 'drift:dismiss-item'; sessionId: string; category: 'indicator' | 'patternBreak' | 'phantomReference' | 'violation'; value: string };
+  | { type: 'drift:dismiss-item'; sessionId: string; category: 'indicator' | 'patternBreak' | 'phantomReference' | 'violation'; value: string }
+  /** Network data for one glove session at a time per socket; null unsubscribes. */
+  | { type: 'net:subscribe'; token: string | null }
+  | { type: 'net:rules:apply'; token: string; op: RulesOp; opId: string };

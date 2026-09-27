@@ -1,5 +1,8 @@
 import React, { useEffect } from 'react';
-import { useSessionStore, type ViewMode } from '../../stores/sessionStore.js';
+import { useSessionStore, isNetworkView, type ViewMode } from '../../stores/sessionStore.js';
+import { useNetStore } from '../../stores/netStore.js';
+import { networkTabSignal, type NetTabSignal } from '../../lib/net-state.js';
+import { NET_TABS } from '../network/tabs.js';
 import { sessionDisplayName } from '../../lib/session-state.js';
 
 function getSessionName(cwd: string, sessionId: string, agentType?: string, showAgentPrefix?: boolean, sessionName?: string): string {
@@ -16,7 +19,12 @@ const NAV_TABS_ARCHIVE: { key: ViewMode; label: string; shortcut: string }[] = [
   { key: 'prompts',  label: 'Prompts',  shortcut: '' },
 ];
 
-function NavTabButton({ label, shortcut, isActive, onClick }: { label: string; shortcut: string; isActive: boolean; onClick: () => void }) {
+const SIGNAL_DOT: Record<Exclude<NetTabSignal, null>, { color: string; title: string }> = {
+  alert: { color: 'var(--error)', title: 'A running glove session has rejected rules or untunnelled traffic' },
+  live: { color: 'var(--net-tunnel)', title: 'A glove gate is running' },
+};
+
+function NavTabButton({ label, shortcut, isActive, onClick, signal }: { label: string; shortcut: string; isActive: boolean; onClick: () => void; signal?: NetTabSignal }) {
   return (
     <button
       onClick={onClick}
@@ -45,6 +53,13 @@ function NavTabButton({ label, shortcut, isActive, onClick }: { label: string; s
       }}
     >
       {label}
+      {signal && (
+        <span
+          title={SIGNAL_DOT[signal].title}
+          aria-label={SIGNAL_DOT[signal].title}
+          style={{ marginLeft: 6, width: 6, height: 6, borderRadius: 3, background: SIGNAL_DOT[signal].color, flexShrink: 0 }}
+        />
+      )}
     </button>
   );
 }
@@ -63,13 +78,20 @@ export function Header() {
     toggleDashboardVisible,
     toggleLogsVisible,
     activateOnlyLiveTab,
+    config,
   } = useSessionStore();
+
+  // The Network group appears only with glove on and at least one glove session
+  // with network data; otherwise the header is exactly what it was without it.
+  const netSessions = useNetStore((s) => s.sessions);
+  const showNetwork = !!config?.glove.enabled && config.glove.network?.enabled !== false && netSessions.length > 0;
+  const netSignal = networkTabSignal(netSessions);
 
   // Dashboard/Logs are only meaningfully "active" while the live (non-exclusive)
   // view is showing — Flow/Sessions/Prompts take over the whole content area, and
   // panelLayout otherwise keeps its last-computed value since the layout hook that
   // updates it unmounts along with the panels themselves.
-  const inLiveMode = viewMode !== 'flowchart' && viewMode !== 'sessions' && viewMode !== 'prompts';
+  const inLiveMode = viewMode !== 'flowchart' && viewMode !== 'sessions' && viewMode !== 'prompts' && !isNetworkView(viewMode);
 
   // Clicking Dashboard/Logs (or D/S) while already in live mode toggles that
   // panel's visibility independently; arriving from Flow/Sessions/Prompts shows
@@ -94,6 +116,10 @@ export function Header() {
         case 'd': activateLiveTab('dashboard'); break;
         case 's': activateLiveTab('stream'); break;
         case 'f': setViewMode('flowchart'); break;
+        case 'n': if (showNetwork) setViewMode('network'); break;
+        case 'm': if (showNetwork) setViewMode('map'); break;
+        case 'o': if (showNetwork) setViewMode('topology'); break;
+        case 't': if (showNetwork) setViewMode('trace'); break;
         case 'escape':
           if (returnToDashboard) {
             returnFromDashboardDrilldown();
@@ -106,10 +132,12 @@ export function Header() {
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [setViewMode, bookmarksOpen, promptsOpen, returnToDashboard, returnFromDashboardDrilldown, inLiveMode, toggleDashboardVisible, toggleLogsVisible, activateOnlyLiveTab]);
+  }, [setViewMode, bookmarksOpen, promptsOpen, returnToDashboard, returnFromDashboardDrilldown, inLiveMode, toggleDashboardVisible, toggleLogsVisible, activateOnlyLiveTab, showNetwork]);
 
   // Session picker only makes sense once Logs (a single-session view) is showing.
-  const isDashboard = inLiveMode && !panelLayout.showLogs;
+  // The network tabs have their own glove session picker in the gate strip, and
+  // this one filters Logs, not network data — two side by side would mislead.
+  const hideSessionPicker = (inLiveMode && !panelLayout.showLogs) || isNetworkView(viewMode);
 
   return (
     <header
@@ -171,6 +199,25 @@ export function Header() {
         />
       </nav>
 
+      {/* Network views of glove sessions, between their own dividers */}
+      {showNetwork && (
+        <>
+          <div style={{ alignSelf: 'center', width: 1, height: 16, background: 'var(--border-strong)', margin: '0 12px' }} />
+          <nav aria-label="Network" style={{ display: 'flex', alignItems: 'stretch', height: '100%', gap: 0 }}>
+            {NET_TABS.map(({ key, label, shortcut }) => (
+              <NavTabButton
+                key={key}
+                label={label}
+                shortcut={shortcut}
+                isActive={viewMode === key}
+                onClick={() => setViewMode(key)}
+                signal={key === 'network' ? netSignal : undefined}
+              />
+            ))}
+          </nav>
+        </>
+      )}
+
       {/* Live / archive divider */}
       <div style={{ alignSelf: 'center', width: 1, height: 16, background: 'var(--border-strong)', margin: '0 12px' }} />
 
@@ -200,8 +247,8 @@ export function Header() {
         </span>
       )}
 
-      {/* Session picker — hidden on Dashboard (all-sessions view) */}
-      {!isDashboard && sessions.length > 0 && (
+      {/* Session picker — hidden on Dashboard (all-sessions view) and the network tabs */}
+      {!hideSessionPicker && sessions.length > 0 && (
         <div style={{ marginRight: 12 }}>
           {(() => {
             const agentTypes = new Set(sessions.map((s) => s.agentType));

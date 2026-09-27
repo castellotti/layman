@@ -23,16 +23,18 @@ export class EventStore extends EventEmitter {
   private eventById = new Map<string, TimelineEvent>();
   private maxEvents = 10000;
   private sessions: Map<string, { cwd: string; lastSeen: number; agentType: string; opencodeUrl?: string; sessionName?: string }> = new Map();
+  /** Sessions a passive watcher found under a glove sandbox root (see `markGloved`). */
+  private gloved = new Set<string>();
   private accessLogs: Map<string, { files: FileAccess[]; urls: UrlAccess[] }> = new Map();
-  private dataFilter?: (data: EventData) => EventData;
-  private stringFilter?: (text: string) => string;
+  private dataFilter?: (data: EventData, sessionId: string) => EventData;
+  private stringFilter?: (text: string, sessionId: string) => string;
 
-  setDataFilter(filter: (data: EventData) => EventData): void {
+  setDataFilter(filter: (data: EventData, sessionId: string) => EventData): void {
     this.dataFilter = filter;
   }
 
   /** Applied to freeform text that bypasses EventData, e.g. layman's-terms explanations. */
-  setStringFilter(filter: (text: string) => string): void {
+  setStringFilter(filter: (text: string, sessionId: string) => string): void {
     this.stringFilter = filter;
   }
 
@@ -43,7 +45,7 @@ export class EventStore extends EventEmitter {
     riskLevel?: 'low' | 'medium' | 'high',
     agentType: string = 'claude-code'
   ): TimelineEvent {
-    const filteredData = this.dataFilter ? this.dataFilter(data) : data;
+    const filteredData = this.dataFilter ? this.dataFilter(data, sessionId) : data;
     const event: TimelineEvent = {
       id: randomUUID(),
       type,
@@ -66,7 +68,7 @@ export class EventStore extends EventEmitter {
   }
 
   addRaw(event: TimelineEvent): void {
-    const filteredEvent = this.dataFilter ? { ...event, data: this.dataFilter(event.data) } : event;
+    const filteredEvent = this.dataFilter ? { ...event, data: this.dataFilter(event.data, event.sessionId) } : event;
     if (this.events.length >= this.maxEvents) {
       const evicted = this.events.shift()!;
       this.eventById.delete(evicted.id);
@@ -117,7 +119,7 @@ export class EventStore extends EventEmitter {
   attachLaymans(eventId: string, laymans: LaymansResult): TimelineEvent | undefined {
     const event = this.get(eventId);
     if (event) {
-      const explanation = this.stringFilter ? this.stringFilter(laymans.explanation) : laymans.explanation;
+      const explanation = this.stringFilter ? this.stringFilter(laymans.explanation, event.sessionId) : laymans.explanation;
       event.laymans = { ...laymans, explanation };
       this.emit('event:update', event);
     }
@@ -135,7 +137,7 @@ export class EventStore extends EventEmitter {
   updateData(eventId: string, dataUpdates: Partial<EventData>): void {
     const event = this.get(eventId);
     if (event) {
-      const filtered = this.dataFilter ? this.dataFilter(dataUpdates as EventData) : dataUpdates;
+      const filtered = this.dataFilter ? this.dataFilter(dataUpdates as EventData, event.sessionId) : dataUpdates;
       Object.assign(event.data, filtered);
       this.emit('event:update', event);
     }
@@ -158,6 +160,18 @@ export class EventStore extends EventEmitter {
     if (isNew || cwdChanged || (opencodeUrl && opencodeUrl !== existing?.opencodeUrl) || (sessionName && sessionName !== existing?.sessionName)) {
       this.emit('sessions:changed', this.getSessions());
     }
+  }
+
+  /**
+   * Marks a session as running in a glove sandbox. Only the passive watchers know that (from a
+   * labelled root); a session name alone does not, since Claude Code sessions can be renamed.
+   */
+  markGloved(sessionId: string): void {
+    this.gloved.add(sessionId);
+  }
+
+  isGloved(sessionId: string): boolean {
+    return this.gloved.has(sessionId);
   }
 
   getSessions(): SessionInfo[] {

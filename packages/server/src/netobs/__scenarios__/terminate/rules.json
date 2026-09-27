@@ -1,0 +1,19 @@
+{
+  "v": 1,
+  "env": "pi-search",
+  "session": "pi-search",
+  "updated_at": "2026-09-25T11:37:13.383Z",
+  "updated_by": "layman",
+  "default": "allow",
+  "rules": [
+    {
+      "id": "r_01M3SCENCUTARXIV0000000000",
+      "action": "block",
+      "match": {
+        "host": "arxiv.org"
+      },
+      "terminate": true,
+      "note": "cut it now"
+    }
+  ]
+}

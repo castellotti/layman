@@ -91,6 +91,7 @@ export class PiSessionWatcher {
     gate: SessionGate,
     getConfig: () => LaymanConfig,
     sources: MonitorSource[],
+    private recorded: (sessionId: string) => RecordedCursor | null = () => null,
   ) {
     this.eventStore = eventStore;
     this.gate = gate;
@@ -220,6 +221,7 @@ export class PiSessionWatcher {
       this.gate.activate(sessionId);
     }
     this.eventStore.trackSession(sessionId, cwd, root.agentType, undefined, root.label);
+    if (root.label) this.eventStore.markGloved(sessionId);
     this.eventStore.add('session_start', sessionId, { source: 'startup' }, undefined, root.agentType);
     const tag = root.label ? ` [glove: ${root.label}]` : '';
     console.log(`[pi] Tracking session ${sessionId.slice(0, 8)} (${basename(filePath)})${tag}`);
@@ -242,6 +244,10 @@ export class PiSessionWatcher {
     this.sessions.set(filePath, session);
 
     if (isRecent) {
+      // Replaying from the start re-sends events a previous run already recorded, and the live
+      // path gives each a fresh id, so the database cannot tell them apart. Skip what it holds.
+      const done = this.recorded(sessionId);
+      if (done) for (const ev of committed) if (isRecorded(ev, done)) session.emittedIds.add(ev.id);
       this.emitNew(session, committed);
     } else {
       // Old session: adopt the existing history as already-emitted so only future
@@ -296,6 +302,17 @@ export class PiSessionWatcher {
    */
   private emitEvent(session: TrackedSession, ev: TimelineEvent): void {
     const { sessionId, agentType } = session;
+    // The live path stamps the event with the time it was read; keep the
+    // transcript's own times beside it, for joining tool calls to glove's
+    // network flows (netobs/correlate.ts). `timestamp`/`completedAt` keep
+    // their meaning for everything else.
+    const transcript = {
+      // The parser's deterministic id: what a restart checks to skip events already recorded.
+      transcriptEventId: ev.id,
+      ...(ev.timestamp > 0 ? { transcriptAt: ev.timestamp } : {}),
+      ...(ev.type === 'tool_call_completed' && typeof ev.data.completedAt === 'number' && ev.data.completedAt > 0
+        ? { transcriptCompletedAt: ev.data.completedAt } : {}),
+    };
 
     if (ev.type === 'tool_call_completed') {
       const toolName = String(ev.data.toolName ?? 'unknown');
@@ -309,6 +326,7 @@ export class PiSessionWatcher {
 
       const event = this.eventStore.add('tool_call_completed', sessionId, {
         ...ev.data,
+        ...transcript,
         completedAt,
         fileAccess: filesWithId,
         urlAccess: urlsWithId,
@@ -322,7 +340,7 @@ export class PiSessionWatcher {
       return;
     }
 
-    this.eventStore.add(ev.type, sessionId, ev.data, ev.riskLevel, agentType);
+    this.eventStore.add(ev.type, sessionId, { ...ev.data, ...transcript }, ev.riskLevel, agentType);
   }
 
   private cleanupEndedSessions(): void {
@@ -418,6 +436,42 @@ export class PiSessionWatcher {
       return 0;
     }
   }
+}
+
+/** What the database already holds of a session, for a replay after a restart to skip. */
+export interface RecordedCursor {
+  /** `data.transcriptEventId` of every recorded event. */
+  ids: ReadonlySet<string>;
+  /**
+   * The latest `data.transcriptAt` among recorded events that have no `transcriptEventId`: rows
+   * recorded before the id was kept. Everything up to it counts as recorded.
+   */
+  legacyThrough: number | null;
+  /**
+   * How an id was stored before it was exempt from the PII filter, which redacted digit runs in
+   * some. Rows recorded then still hold that form; matching it keeps them from recording again.
+   */
+  storedAs?: (id: string) => string;
+}
+
+export function isRecorded(ev: Pick<TimelineEvent, 'id' | 'timestamp'>, done: RecordedCursor): boolean {
+  if (done.ids.has(ev.id)) return true;
+  if (done.storedAs && done.ids.has(done.storedAs(ev.id))) return true;
+  return done.legacyThrough !== null && ev.timestamp > 0 && ev.timestamp <= done.legacyThrough;
+}
+
+/** Folds recorded events' `transcriptEventId` / `transcriptAt` (`tid` / `tat`) into a cursor. */
+export function recordedCursorFrom(
+  rows: Iterable<{ tid: string | null; tat: number | null }>,
+  storedAs?: (id: string) => string,
+): RecordedCursor {
+  const ids = new Set<string>();
+  let legacyThrough: number | null = null;
+  for (const r of rows) {
+    if (typeof r.tid === 'string') ids.add(r.tid);
+    else if (typeof r.tat === 'number') legacyThrough = Math.max(legacyThrough ?? r.tat, r.tat);
+  }
+  return { ids, legacyThrough, storedAs };
 }
 
 /**

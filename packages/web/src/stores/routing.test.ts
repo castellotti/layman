@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { useSessionStore, viewModeForName, viewNameForMode, instanceUrlOf } from './sessionStore.js';
-import { routeForState } from '../hooks/useLaymanRoute.js';
+import { routeForState, historyModeFor } from '../hooks/useLaymanRoute.js';
 import { buildPath, parsePath, VIEW_NAMES } from '../lib/layman-url.js';
 import type { TimelineEvent, EventType, LaymanConfig } from '../lib/types.js';
 
@@ -76,6 +76,8 @@ beforeEach(() => {
     bookmarksScrollToEventId: null,
     expandedLogEventIds: 'all',
     config: null,
+    netToken: null,
+    netDest: null,
   });
 });
 
@@ -370,5 +372,83 @@ describe('hydrate → read back', () => {
     expect(state.viewingSessionId).toBeNull();
     const { route, opts } = routeForState(state);
     expect(buildPath(route, opts)).toBe('/');
+  });
+});
+
+describe('network views (glove)', () => {
+  const readBack = () => {
+    const { route, opts } = routeForState(useSessionStore.getState());
+    return buildPath(route, opts);
+  };
+
+  it.each([
+    '/?view=network&glove=pi-search',
+    '/?view=map&glove=pi-search&dest=arxiv.org',
+    '/?view=topology&glove=pi-search-review',
+    '/?view=trace&glove=pi-search',
+  ])('a hydrated %s deep link rebuilds the same path', async (path) => {
+    const parsed = parsePath(path);
+    await useSessionStore.getState().hydrateFromRoute(parsed!.route, parsed!.opts);
+    expect(useSessionStore.getState().viewMode).toBe(parsed!.opts.view);
+    expect(readBack()).toBe(path);
+  });
+
+  it('a network URL with no glove session hydrates to "pick the default"', async () => {
+    await useSessionStore.getState().hydrateFromRoute({ kind: 'dashboard' }, { view: 'network' });
+    expect(useSessionStore.getState().netToken).toBeNull();
+    expect(readBack()).toBe('/?view=network');
+    useSessionStore.getState().setNetToken('pi-search');
+    expect(readBack()).toBe('/?view=network&glove=pi-search');
+  });
+
+  it('switching tab keeps the glove session and the selected destination', async () => {
+    await useSessionStore.getState().hydrateFromRoute({ kind: 'dashboard' }, { view: 'network', glove: 'pi-search', dest: 'arxiv.org' });
+    useSessionStore.getState().setViewMode('topology');
+    expect(readBack()).toBe('/?view=topology&glove=pi-search&dest=arxiv.org');
+  });
+
+  it('choosing another glove session clears the destination selection', () => {
+    useSessionStore.setState({ viewMode: 'map', netToken: 'a', netDest: 'arxiv.org' });
+    useSessionStore.getState().setNetToken('b');
+    expect(readBack()).toBe('/?view=map&glove=b');
+  });
+
+  it('a stale folder id never outranks a network view', async () => {
+    stubFetch({ resolve: { kind: 'folder', id: 'f1' } });
+    await useSessionStore.getState().hydrateFromRoute({ kind: 'folder', folderId: 'f1' }, {});
+    useSessionStore.getState().setViewMode('network');
+    useSessionStore.getState().setNetToken('pi-search');
+    expect(readBack()).toBe('/?view=network&glove=pi-search');
+  });
+
+  it('leaving the network views keeps the choice for next time but drops it from the URL', () => {
+    useSessionStore.setState({ viewMode: 'map', netToken: 'pi-search', netDest: 'arxiv.org' });
+    useSessionStore.getState().setViewMode('dashboard');
+    expect(readBack()).toBe('/');
+    useSessionStore.getState().setViewMode('map');
+    expect(readBack()).toBe('/?view=map&glove=pi-search&dest=arxiv.org');
+  });
+});
+
+describe('historyModeFor', () => {
+  const at = (path: string) => parsePath(path)!;
+  const mode = (from: string, to: string) => {
+    const next = at(to);
+    return historyModeFor(at(from), next.route, next.opts);
+  };
+
+  it('replaces when only the network tab or the destination changes', () => {
+    expect(mode('/?view=network&glove=a', '/?view=map&glove=a')).toBe('replace');
+    expect(mode('/?view=map&glove=a', '/?view=map&glove=a&dest=x.org')).toBe('replace');
+  });
+  it('pushes when the glove session changes', () => {
+    expect(mode('/?view=map&glove=a', '/?view=map&glove=b')).toBe('push');
+  });
+  it('replaces when the default glove session is filled in (no Back trap)', () => {
+    expect(mode('/?view=network', '/?view=network&glove=a')).toBe('replace');
+  });
+  it('still pushes between Layman sessions', () => {
+    expect(mode('/s/one', '/s/two')).toBe('push');
+    expect(mode('/s/one', '/s/one?view=logs')).toBe('replace');
   });
 });
