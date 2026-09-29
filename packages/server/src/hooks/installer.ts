@@ -315,17 +315,9 @@ function buildLaymanHooks(serverUrl: string, hookTimeout: number): SettingsHooks
 const LAYMAN_HOOK_URL_PATTERN = /^https?:\/\/[^/]+\/hooks\/([A-Za-z]+)\/?$/;
 
 /**
- * Events Layman once registered and must now actively remove.
- *
- * `WorktreeCreate` and `WorktreeRemove` are not notifications: in claude-code,
- * *any* hook registered for them replaces git's own worktree handling. A
- * `WorktreeCreate` hook must create the worktree and return its path
- * (`hookSpecificOutput.worktreePath`), so an observe-only hook made every
- * worktree creation fail with "hook succeeded but returned no worktree path" —
- * even when the user asked Claude not to use the hook, because the harness,
- * not the model, decides. `WorktreeRemove` likewise takes over removal. Layman
- * runs in a container and cannot create worktrees on the host, so it must not
- * register either.
+ * Events Layman once registered and must now actively remove. Any hook for
+ * these replaces claude-code's own git worktree handling, so Layman's
+ * observe-only one broke worktree creation; see docs/harnesses/claude-code.md.
  */
 export const RETIRED_HOOK_EVENTS: readonly string[] = ['WorktreeCreate', 'WorktreeRemove'];
 
@@ -341,13 +333,6 @@ function getLaymanEventNames(): Set<string> {
     for (const name of RETIRED_HOOK_EVENTS) laymanEventNames.add(name);
   }
   return laymanEventNames;
-}
-
-/** Drops event keys left with no matchers, so settings.json stays tidy. */
-function pruneEmptyEvents(hooks: SettingsHooks, eventNames: readonly string[]): void {
-  for (const eventName of eventNames) {
-    if (hooks[eventName]?.length === 0) delete hooks[eventName];
-  }
 }
 
 /**
@@ -372,10 +357,9 @@ export function removeRetiredHooks(
   const settings = readSettings(settingsPath);
   if (!settings.hooks || !isValidSettingsHooks(settings.hooks)) return 0;
 
-  const removed = stripLaymanHooks(settings.hooks, [...RETIRED_HOOK_EVENTS], serverUrl);
+  const removed = stripLaymanHooks(settings.hooks, RETIRED_HOOK_EVENTS, serverUrl);
   if (removed === 0) return 0;
 
-  pruneEmptyEvents(settings.hooks, RETIRED_HOOK_EVENTS);
   if (Object.keys(settings.hooks).length === 0) delete settings.hooks;
   writeSettings(settingsPath, settings);
   return removed;
@@ -417,13 +401,13 @@ function isLaymanHook(hook: HookEntry, serverUrl?: string): boolean {
  *
  * Filters *within* each matcher rather than dropping whole matchers: a matcher
  * that contains both a Layman hook and someone else's would otherwise take the
- * foreign hook down with it.
+ * foreign hook down with it. An event this empties is deleted outright.
  *
  * Returns the number of hook entries removed.
  */
 function stripLaymanHooks(
   hooks: SettingsHooks,
-  eventNames: string[],
+  eventNames: Iterable<string>,
   serverUrl?: string,
 ): number {
   let removed = 0;
@@ -432,18 +416,28 @@ function stripLaymanHooks(
     const matchers = hooks[eventName];
     if (!matchers) continue;
 
-    hooks[eventName] = matchers
+    let removedHere = 0;
+    const kept = matchers
       .map((matcher) => {
-        const kept = matcher.hooks.filter((h) => !isLaymanHook(h as HookEntry, serverUrl));
-        removed += matcher.hooks.length - kept.length;
-        return { ...matcher, hooks: kept };
+        const keptHooks = matcher.hooks.filter((h) => !isLaymanHook(h as HookEntry, serverUrl));
+        removedHere += matcher.hooks.length - keptHooks.length;
+        return { ...matcher, hooks: keptHooks };
       })
       // Drop matchers we emptied, but keep ones that were already empty and
       // ones still holding foreign hooks.
       .filter((matcher) => matcher.hooks.length > 0);
+
+    removed += removedHere;
+    if (removedHere > 0 && kept.length === 0) delete hooks[eventName];
+    else hooks[eventName] = kept;
   }
 
   return removed;
+}
+
+/** Whether any matcher under one event holds a Layman hook. */
+function hasLaymanHook(matchers: HookMatcher[] | undefined, serverUrl?: string): boolean {
+  return (matchers ?? []).some((m) => m.hooks.some((h) => isLaymanHook(h as HookEntry, serverUrl)));
 }
 
 /** Hash of the expected command file content, used to detect staleness */
@@ -665,10 +659,8 @@ export class HookInstaller {
     // Merge: for each event, remove every existing Layman hook — at any URL, so
     // a changed port or --hook-url replaces rather than duplicates — then add
     // exactly one matcher back. This makes install idempotent and self-healing.
-    stripLaymanHooks(settings.hooks, Object.keys(laymanHooks), this.options.serverUrl);
-    // And drop the retired ones, which are no longer in laymanHooks to be replaced.
-    stripLaymanHooks(settings.hooks, [...RETIRED_HOOK_EVENTS], this.options.serverUrl);
-    pruneEmptyEvents(settings.hooks, RETIRED_HOOK_EVENTS);
+    // Stripping every event, not just laymanHooks', also drops retired ones.
+    stripLaymanHooks(settings.hooks, Object.keys(settings.hooks), this.options.serverUrl);
 
     for (const [eventName, matchers] of Object.entries(laymanHooks)) {
       if (!settings.hooks[eventName]) {
@@ -1430,10 +1422,7 @@ export class HookInstaller {
     const settings = readSettings(GLOBAL_SETTINGS_PATH);
     if (!settings.hooks) return false;
 
-    const preToolUse = settings.hooks['PreToolUse'];
-    if (!preToolUse) return false;
-
-    return preToolUse.some((m) => m.hooks.some((h) => isLaymanHook(h as HookEntry, this.options.serverUrl)));
+    return hasLaymanHook(settings.hooks['PreToolUse'], this.options.serverUrl);
   }
 
   getStatus(): SetupStatus {
@@ -1446,13 +1435,11 @@ export class HookInstaller {
       // structural changes (e.g. new hook event types added in a Layman update).
       const settings = readSettings(GLOBAL_SETTINGS_PATH);
       const expectedHooks = buildLaymanHooks(this.options.serverUrl, this.options.hookTimeout);
-      // A retired hook still present is stale too, and the harmful kind.
-      const hasRetired = RETIRED_HOOK_EVENTS.some((eventName) =>
-        (settings.hooks?.[eventName] ?? []).some((m) =>
-          m.hooks.some((h) => isLaymanHook(h as HookEntry, this.options.serverUrl)),
-        ),
+      // A Layman hook on an event no longer registered (e.g. a retired one) is stale too.
+      const hasStale = Object.entries(settings.hooks ?? {}).some(([eventName, matchers]) =>
+        !(eventName in expectedHooks) && hasLaymanHook(matchers, this.options.serverUrl),
       );
-      hooksUpToDate = !hasRetired && Object.entries(expectedHooks).every(([eventName, expectedMatchers]) => {
+      hooksUpToDate = !hasStale && Object.entries(expectedHooks).every(([eventName, expectedMatchers]) => {
         const installedMatchers = settings.hooks?.[eventName] ?? [];
         return expectedMatchers.every((expectedMatcher) =>
           expectedMatcher.hooks.every((expectedHook) =>

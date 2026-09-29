@@ -23,7 +23,7 @@ import type BetterSqlite3 from 'better-sqlite3';
 import { filterPii, filterEventPii, IP_CATEGORIES, redactValue, redactString } from './pii/filter.js';
 import { PII_CATEGORIES, PII_GROUPS } from './pii/categories.js';
 import { scanPii, executePurge } from './pii/purge.js';
-import { updateConfig, saveConfig } from './config/config.js';
+import { updateConfig, saveConfig, resolveHookUrl } from './config/config.js';
 import { openDatabase } from './db/database.js';
 import { ensureHostIdentity } from './sync/identity.js';
 import { SyncJournal } from './sync/journal.js';
@@ -149,8 +149,7 @@ export function createServer(config: LaymanConfig): LaymanServer {
   };
   const READONLY_CURATION = { error: 'This item belongs to another host and is read-only here' };
 
-  const resolvedServerUrl = (): string =>
-    activeConfig.hookUrl ?? `http://${activeConfig.host}:${activeConfig.port}`;
+  const resolvedServerUrl = (): string => resolveHookUrl(activeConfig);
 
   const makeInstaller = (): HookInstaller =>
     new HookInstaller({
@@ -1961,7 +1960,7 @@ export function createServer(config: LaymanConfig): LaymanServer {
         break;
       }
       case 'setup:install': {
-        const resolvedHookUrl = activeConfig.hookUrl ?? `http://${activeConfig.host}:${activeConfig.port}`;
+        const resolvedHookUrl = resolvedServerUrl();
         const installer = new HookInstaller({
           serverUrl: resolvedHookUrl,
           hookTimeout: activeConfig.hookTimeout,

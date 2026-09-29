@@ -8,7 +8,7 @@ import { tmpdir } from 'os';
 
 import { createServer } from './server.js';
 import { HookInstaller, findOrphanedProjectHooks, removeRetiredHooks, repairOrphanedProjectHooks } from './hooks/installer.js';
-import { loadConfig, setConfig } from './config/config.js';
+import { loadConfig, resolveHookUrl, setConfig } from './config/config.js';
 import { migrateLegacyData, laymanDbPath } from './config/paths.js';
 import type { LaymanConfig } from './config/schema.js';
 
@@ -231,10 +231,9 @@ async function startServer(
 
   const port = server.getPort();
 
-  // A WorktreeCreate/WorktreeRemove hook from an older Layman breaks worktree
-  // creation in claude-code, so it is removed whether or not the user reinstalls.
+  // Runs whether or not the user reinstalls: a retired hook breaks the harness.
   try {
-    const removed = removeRetiredHooks(config.hookUrl ?? `http://${config.host}:${config.port}`);
+    const removed = removeRetiredHooks(resolveHookUrl(config));
     if (removed > 0) console.log(`[layman] Removed ${removed} retired worktree hook(s) from ~/.claude/settings.json`);
   } catch (err) {
     console.warn('[layman] Could not remove retired hooks:', err);
@@ -294,7 +293,7 @@ program
   .action(async (dir: string | undefined, options: { dryRun?: boolean }) => {
     const projectDir = resolve(dir ?? process.cwd());
     const config = await loadConfig({});
-    const serverUrl = config.hookUrl ?? `http://${config.host}:${config.port}`;
+    const serverUrl = resolveHookUrl(config);
 
     const reports = options.dryRun
       ? findOrphanedProjectHooks(projectDir, serverUrl)
