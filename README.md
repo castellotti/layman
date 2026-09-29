@@ -38,7 +38,7 @@ Open **http://localhost:8880**, let the setup wizard install hooks for the clien
 
 | Harness | Monitoring | Activation | Tool approval | Prompt from UI | Live tokens |
 |---|---|---|:-:|:-:|:-:|
-| [Claude Code](docs/harnesses/claude-code.md) | Hooks (26 event types) | `/layman` or auto-activate | ✅ | ❌ | ❌ |
+| [Claude Code](docs/harnesses/claude-code.md) | Hooks (24 event types) | `/layman` or auto-activate | ✅ | ❌ | ❌ |
 | [Codex](docs/harnesses/codex.md) | Shell-script hooks | `$layman` per session | ✅ | ❌ | ❌ |
 | [OpenCode](docs/harnesses/opencode.md) | Bidirectional plugin | `/layman` per session | ❌ | ✅ | ✅ |
 | [Mistral Vibe](docs/harnesses/vibe.md) | Passive log watcher | Automatic | ❌ | ❌ | ❌ |

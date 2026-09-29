@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, existsSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
-import { findOrphanedProjectHooks, repairOrphanedProjectHooks } from './installer.js';
+import { findOrphanedProjectHooks, removeRetiredHooks, repairOrphanedProjectHooks } from './installer.js';
 
 let dir: string;
 
@@ -245,5 +245,57 @@ describe('repairOrphanedProjectHooks', () => {
     repairOrphanedProjectHooks(dir);
 
     expect(readFileSync(path, 'utf-8')).toBe(before);
+  });
+});
+
+describe('removeRetiredHooks', () => {
+  // A WorktreeCreate hook replaces claude-code's own git worktree handling, so
+  // Layman's observe-only one made every worktree creation fail.
+  it('removes Layman WorktreeCreate/WorktreeRemove hooks and keeps everything else', () => {
+    const path = writeProjectSettings('settings.json', {
+      permissions: { allow: ['Bash'] },
+      hooks: {
+        WorktreeCreate: [{ matcher: '', hooks: [laymanHook('WorktreeCreate')] }],
+        WorktreeRemove: [{ matcher: '', hooks: [laymanHook('WorktreeRemove', 'http://host.docker.internal:8880')] }],
+        Stop: [{ matcher: '', hooks: [laymanHook('Stop')] }],
+      },
+    });
+
+    expect(removeRetiredHooks(undefined, path)).toBe(2);
+
+    const settings = readJson(path);
+    expect(settings.permissions).toEqual({ allow: ['Bash'] });
+    expect(Object.keys(settings.hooks as object)).toEqual(['Stop']);
+  });
+
+  it('removes a hook installed under a --hook-url with a path', () => {
+    const serverUrl = 'https://host.example/layman';
+    const path = writeProjectSettings('settings.json', {
+      hooks: { WorktreeCreate: [{ matcher: '', hooks: [laymanHook('WorktreeCreate', serverUrl)] }] },
+    });
+
+    expect(removeRetiredHooks(serverUrl, path)).toBe(1);
+    expect(readJson(path).hooks).toBeUndefined();
+  });
+
+  it("keeps a user's own worktree hook", () => {
+    const userHook = { type: 'command', command: '/usr/local/bin/make-worktree.sh' };
+    const path = writeProjectSettings('settings.json', {
+      hooks: { WorktreeCreate: [{ matcher: '', hooks: [laymanHook('WorktreeCreate'), userHook] }] },
+    });
+
+    expect(removeRetiredHooks(undefined, path)).toBe(1);
+    expect(readJson(path).hooks).toEqual({ WorktreeCreate: [{ matcher: '', hooks: [userHook] }] });
+  });
+
+  it('leaves the file untouched when there is nothing to remove', () => {
+    const path = writeProjectSettings('settings.json', {
+      hooks: { Stop: [{ matcher: '', hooks: [laymanHook('Stop')] }] },
+    });
+    const before = readFileSync(path, 'utf-8');
+
+    expect(removeRetiredHooks(undefined, path)).toBe(0);
+    expect(readFileSync(path, 'utf-8')).toBe(before);
+    expect(removeRetiredHooks(undefined, join(dir, 'missing.json'))).toBe(0);
   });
 });

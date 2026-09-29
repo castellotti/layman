@@ -142,6 +142,11 @@ export async function loadConfig(
 
 let runtimeConfig: LaymanConfig | null = null;
 
+/** The URL hooks are installed under: `hookUrl` if set, else the listen address. */
+export function resolveHookUrl(config: Pick<LaymanConfig, 'hookUrl' | 'host' | 'port'>): string {
+  return config.hookUrl ?? `http://${config.host}:${config.port}`;
+}
+
 export function getConfig(): LaymanConfig {
   if (!runtimeConfig) throw new Error('Config not initialized. Call loadConfig() first.');
   return runtimeConfig;
