@@ -302,8 +302,7 @@ function buildLaymanHooks(serverUrl: string, hookTimeout: number): SettingsHooks
     TaskCreated: [asyncHook('TaskCreated')],
     TaskCompleted: [asyncHook('TaskCompleted')],
     TeammateIdle: [asyncHook('TeammateIdle')],
-    WorktreeCreate: [asyncHook('WorktreeCreate')],
-    WorktreeRemove: [asyncHook('WorktreeRemove')],
+    // WorktreeCreate / WorktreeRemove are deliberately absent: see RETIRED_HOOK_EVENTS.
     CwdChanged: [asyncHook('CwdChanged')],
     FileChanged: [asyncHook('FileChanged')],
   };
@@ -315,6 +314,21 @@ function buildLaymanHooks(serverUrl: string, hookTimeout: number): SettingsHooks
  */
 const LAYMAN_HOOK_URL_PATTERN = /^https?:\/\/[^/]+\/hooks\/([A-Za-z]+)\/?$/;
 
+/**
+ * Events Layman once registered and must now actively remove.
+ *
+ * `WorktreeCreate` and `WorktreeRemove` are not notifications: in claude-code,
+ * *any* hook registered for them replaces git's own worktree handling. A
+ * `WorktreeCreate` hook must create the worktree and return its path
+ * (`hookSpecificOutput.worktreePath`), so an observe-only hook made every
+ * worktree creation fail with "hook succeeded but returned no worktree path" —
+ * even when the user asked Claude not to use the hook, because the harness,
+ * not the model, decides. `WorktreeRemove` likewise takes over removal. Layman
+ * runs in a container and cannot create worktrees on the host, so it must not
+ * register either.
+ */
+export const RETIRED_HOOK_EVENTS: readonly string[] = ['WorktreeCreate', 'WorktreeRemove'];
+
 let laymanEventNames: Set<string> | null = null;
 
 /** Event names Layman registers, plus names it has registered historically. */
@@ -324,8 +338,40 @@ function getLaymanEventNames(): Set<string> {
     // Not currently registered (needs claude-code >= 2.1.89) but may exist in an
     // older settings file — recognise it so cleanup still removes it.
     laymanEventNames.add('PermissionDenied');
+    for (const name of RETIRED_HOOK_EVENTS) laymanEventNames.add(name);
   }
   return laymanEventNames;
+}
+
+/** Drops event keys left with no matchers, so settings.json stays tidy. */
+function pruneEmptyEvents(hooks: SettingsHooks, eventNames: readonly string[]): void {
+  for (const eventName of eventNames) {
+    if (hooks[eventName]?.length === 0) delete hooks[eventName];
+  }
+}
+
+/**
+ * Removes Layman's retired hooks (RETIRED_HOOK_EVENTS) from a settings file.
+ *
+ * Runs on server start, not only on reinstall: installation is opt-in, but a
+ * retired hook left behind by an older Layman actively breaks the harness, and
+ * it is Layman's own entry being removed. Foreign hooks for the same events are
+ * kept — a user's own `WorktreeCreate` script is theirs to have.
+ *
+ * Returns the number of hook entries removed.
+ */
+export function removeRetiredHooks(settingsPath: string = GLOBAL_SETTINGS_PATH): number {
+  if (!existsSync(settingsPath)) return 0;
+  const settings = readSettings(settingsPath);
+  if (!settings.hooks || !isValidSettingsHooks(settings.hooks)) return 0;
+
+  const removed = stripLaymanHooks(settings.hooks, [...RETIRED_HOOK_EVENTS]);
+  if (removed === 0) return 0;
+
+  pruneEmptyEvents(settings.hooks, RETIRED_HOOK_EVENTS);
+  if (Object.keys(settings.hooks).length === 0) delete settings.hooks;
+  writeSettings(settingsPath, settings);
+  return removed;
 }
 
 /**
@@ -613,6 +659,9 @@ export class HookInstaller {
     // a changed port or --hook-url replaces rather than duplicates — then add
     // exactly one matcher back. This makes install idempotent and self-healing.
     stripLaymanHooks(settings.hooks, Object.keys(laymanHooks), this.options.serverUrl);
+    // And drop the retired ones, which are no longer in laymanHooks to be replaced.
+    stripLaymanHooks(settings.hooks, [...RETIRED_HOOK_EVENTS], this.options.serverUrl);
+    pruneEmptyEvents(settings.hooks, RETIRED_HOOK_EVENTS);
 
     for (const [eventName, matchers] of Object.entries(laymanHooks)) {
       if (!settings.hooks[eventName]) {
@@ -1390,7 +1439,13 @@ export class HookInstaller {
       // structural changes (e.g. new hook event types added in a Layman update).
       const settings = readSettings(GLOBAL_SETTINGS_PATH);
       const expectedHooks = buildLaymanHooks(this.options.serverUrl, this.options.hookTimeout);
-      hooksUpToDate = Object.entries(expectedHooks).every(([eventName, expectedMatchers]) => {
+      // A retired hook still present is stale too, and the harmful kind.
+      const hasRetired = RETIRED_HOOK_EVENTS.some((eventName) =>
+        (settings.hooks?.[eventName] ?? []).some((m) =>
+          m.hooks.some((h) => isLaymanHook(h as HookEntry, this.options.serverUrl)),
+        ),
+      );
+      hooksUpToDate = !hasRetired && Object.entries(expectedHooks).every(([eventName, expectedMatchers]) => {
         const installedMatchers = settings.hooks?.[eventName] ?? [];
         return expectedMatchers.every((expectedMatcher) =>
           expectedMatcher.hooks.every((expectedHook) =>
