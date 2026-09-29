@@ -367,8 +367,10 @@ export function EventStream({ onSend, archived = false, archivedDate, turnRuler 
   const hasEvents = sessionEvents.length > 0;
   const bufferedCount = totalCount - events.length;
 
+  // min-h-0: under a header row in a flex column (the Sessions transcript),
+  // h-full alone overflows the parent and clips the last rows out of reach.
   return (
-    <div className="flex flex-col h-full w-full min-w-0">
+    <div className="flex flex-col h-full w-full min-w-0 min-h-0">
       <NavigationBar
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}

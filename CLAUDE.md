@@ -64,7 +64,7 @@ Each harness reaches Layman by a different mechanism. The summaries below are th
 per-harness event lists, blocking timeouts, and implementation/design notes are in the harness docs
 linked above.
 
-1. **Claude Code** (`docs/harnesses/claude-code.md`): HTTP POSTs to `/hooks/:eventName` (26
+1. **Claude Code** (`docs/harnesses/claude-code.md`): HTTP POSTs to `/hooks/:eventName` (24
    registered event types) plus a StatusLine relay for session metrics. The hook handler in
    `packages/server/src/hooks/handler.ts` processes each event, calls `EventStore.add()`, and for
    blocking hooks (`PreToolUse`, `PermissionRequest`) calls `PendingApprovalManager.createAndWait()`
@@ -458,6 +458,12 @@ Four rules that must not be relaxed casually:
   the markdown export — and the `pattern` fallback below it was unreachable. Pass `toolName` at any
   call site that renders a summary. Access tracking does not need it: `extractAccess()` switches on
   the tool name and handles `Grep`/`Glob` explicitly.
+
+- **Never register a claude-code hook that *replaces* harness behaviour.** `WorktreeCreate` and
+  `WorktreeRemove` look like notifications but take over git worktree handling, so Layman's
+  observe-only hooks broke worktree creation. They are in `RETIRED_HOOK_EVENTS` and removed on every
+  server start; check the hook reference before adding any new event. Detail in
+  `docs/harnesses/claude-code.md`.
 
 - **Claude Code hook & StatusLine design decisions live in `docs/harnesses/claude-code.md`** —
   structural (not tagged) hook identity and self-healing idempotent install, per-matcher hook

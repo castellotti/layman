@@ -28,8 +28,10 @@ function EventBlock({ event, kind }: { event: TimelineEvent; kind: 'prompt' | 'r
   const text = kind === 'prompt' ? (response.trim() || event.data.prompt || '') : response.trim();
   const accent = kind === 'prompt' ? 'var(--info)' : 'var(--agent)';
 
+  // flexShrink: 0 — this sits in a flex-column scroller, where an overflow-hidden
+  // item otherwise shrinks to fit (clipping its text) instead of scrolling.
   return (
-    <div style={{ borderRadius: 8, border: '1px solid var(--border)', overflow: 'hidden' }}>
+    <div style={{ borderRadius: 8, border: '1px solid var(--border)', overflow: 'hidden', flexShrink: 0 }}>
       <div style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         padding: '4px 12px', background: 'var(--bg-raised)', borderBottom: '1px solid var(--border)',

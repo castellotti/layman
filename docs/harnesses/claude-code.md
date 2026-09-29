@@ -1,6 +1,6 @@
 # Claude Code
 
-Full hook coverage (26 event types), StatusLine metrics relay, and tool approval from the Layman UI.
+Full hook coverage (24 event types), StatusLine metrics relay, and tool approval from the Layman UI.
 
 Hooks are installed to `~/.claude` by the setup wizard or **Settings -> Harness -> Install**.
 
@@ -32,16 +32,31 @@ You can activate multiple sessions across different projects - they all appear i
 
 ### Hooks
 
-Claude Code fires HTTP POSTs to `/hooks/:eventName`. Layman registers for 26 claude-code hook
+Claude Code fires HTTP POSTs to `/hooks/:eventName`. Layman registers for 24 claude-code hook
 events: `PreToolUse`, `PostToolUse`, `PostToolUseFailure`, `PermissionRequest`, `Notification`,
 `SessionStart`, `SessionEnd`, `Stop`, `UserPromptSubmit`, `SubagentStart`, `SubagentStop`,
 `StopFailure`, `PreCompact`, `PostCompact`, `Elicitation`, `ElicitationResult`, `Setup`,
 `ConfigChange`, `InstructionsLoaded`, `TaskCreated`, `TaskCompleted`, `TeammateIdle`,
-`WorktreeCreate`, `WorktreeRemove`, `CwdChanged`, `FileChanged`. (`PermissionDenied` requires
-claude-code ≥ 2.1.89 and is not yet registered.) The hook handler in
+`CwdChanged`, `FileChanged`. (`PermissionDenied` requires claude-code ≥ 2.1.89 and is not yet
+registered.) The hook handler in
 `packages/server/src/hooks/handler.ts` processes each event type, calls `EventStore.add()`, and for
 blocking hooks (`PreToolUse`, `PermissionRequest`) calls `PendingApprovalManager.createAndWait()`
 which suspends until the user decides. Claude Code's blocking-hook timeout is 300s (configurable).
+
+**`WorktreeCreate` and `WorktreeRemove` must never be registered.** They look like notifications
+but are not: any hook registered for them *replaces* claude-code's own git worktree handling. A
+`WorktreeCreate` hook has to create the worktree and return its path
+(`hookSpecificOutput.worktreePath`), so Layman's observe-only hook made every worktree creation
+fail with "hook succeeded but returned no worktree path" — including when the user told Claude not
+to use the hook, since the harness, not the model, runs it. Layman runs in a container and cannot
+create a worktree on the host, so it does not take them over. They are listed in
+`RETIRED_HOOK_EVENTS` (`hooks/installer.ts`): `install()` strips them, `getStatus()` reports hooks
+still carrying them as out of date, and `removeRetiredHooks()` removes them from
+`~/.claude/settings.json` on every server start, because installation is opt-in and a user who
+never reinstalls would otherwise keep the broken hook. It is given the configured hook URL, as
+every other strip is: a hook installed under a `--hook-url` with a path
+(`https://host/layman/hooks/WorktreeCreate`) does not match the origin-only URL pattern, and without
+the URL the startup cleanup would leave it in place. A user's own worktree hooks are left alone.
 
 ### StatusLine
 
