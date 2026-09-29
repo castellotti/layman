@@ -234,7 +234,7 @@ async function startServer(
   // A WorktreeCreate/WorktreeRemove hook from an older Layman breaks worktree
   // creation in claude-code, so it is removed whether or not the user reinstalls.
   try {
-    const removed = removeRetiredHooks();
+    const removed = removeRetiredHooks(config.hookUrl ?? `http://${config.host}:${config.port}`);
     if (removed > 0) console.log(`[layman] Removed ${removed} retired worktree hook(s) from ~/.claude/settings.json`);
   } catch (err) {
     console.warn('[layman] Could not remove retired hooks:', err);

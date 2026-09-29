@@ -358,14 +358,21 @@ function pruneEmptyEvents(hooks: SettingsHooks, eventNames: readonly string[]): 
  * it is Layman's own entry being removed. Foreign hooks for the same events are
  * kept — a user's own `WorktreeCreate` script is theirs to have.
  *
+ * `serverUrl` is the configured hook URL. Without it, a hook installed under a
+ * `--hook-url` with a path (`https://host/layman/hooks/WorktreeCreate`) does
+ * not match the origin-only URL pattern and would be left in place.
+ *
  * Returns the number of hook entries removed.
  */
-export function removeRetiredHooks(settingsPath: string = GLOBAL_SETTINGS_PATH): number {
+export function removeRetiredHooks(
+  serverUrl?: string,
+  settingsPath: string = GLOBAL_SETTINGS_PATH,
+): number {
   if (!existsSync(settingsPath)) return 0;
   const settings = readSettings(settingsPath);
   if (!settings.hooks || !isValidSettingsHooks(settings.hooks)) return 0;
 
-  const removed = stripLaymanHooks(settings.hooks, [...RETIRED_HOOK_EVENTS]);
+  const removed = stripLaymanHooks(settings.hooks, [...RETIRED_HOOK_EVENTS], serverUrl);
   if (removed === 0) return 0;
 
   pruneEmptyEvents(settings.hooks, RETIRED_HOOK_EVENTS);

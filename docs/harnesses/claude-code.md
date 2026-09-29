@@ -53,7 +53,10 @@ create a worktree on the host, so it does not take them over. They are listed in
 `RETIRED_HOOK_EVENTS` (`hooks/installer.ts`): `install()` strips them, `getStatus()` reports hooks
 still carrying them as out of date, and `removeRetiredHooks()` removes them from
 `~/.claude/settings.json` on every server start, because installation is opt-in and a user who
-never reinstalls would otherwise keep the broken hook. A user's own worktree hooks are left alone.
+never reinstalls would otherwise keep the broken hook. It is given the configured hook URL, as
+every other strip is: a hook installed under a `--hook-url` with a path
+(`https://host/layman/hooks/WorktreeCreate`) does not match the origin-only URL pattern, and without
+the URL the startup cleanup would leave it in place. A user's own worktree hooks are left alone.
 
 ### StatusLine
 

@@ -261,11 +261,21 @@ describe('removeRetiredHooks', () => {
       },
     });
 
-    expect(removeRetiredHooks(path)).toBe(2);
+    expect(removeRetiredHooks(undefined, path)).toBe(2);
 
     const settings = readJson(path);
     expect(settings.permissions).toEqual({ allow: ['Bash'] });
     expect(Object.keys(settings.hooks as object)).toEqual(['Stop']);
+  });
+
+  it('removes a hook installed under a --hook-url with a path', () => {
+    const serverUrl = 'https://host.example/layman';
+    const path = writeProjectSettings('settings.json', {
+      hooks: { WorktreeCreate: [{ matcher: '', hooks: [laymanHook('WorktreeCreate', serverUrl)] }] },
+    });
+
+    expect(removeRetiredHooks(serverUrl, path)).toBe(1);
+    expect(readJson(path).hooks).toBeUndefined();
   });
 
   it("keeps a user's own worktree hook", () => {
@@ -274,7 +284,7 @@ describe('removeRetiredHooks', () => {
       hooks: { WorktreeCreate: [{ matcher: '', hooks: [laymanHook('WorktreeCreate'), userHook] }] },
     });
 
-    expect(removeRetiredHooks(path)).toBe(1);
+    expect(removeRetiredHooks(undefined, path)).toBe(1);
     expect(readJson(path).hooks).toEqual({ WorktreeCreate: [{ matcher: '', hooks: [userHook] }] });
   });
 
@@ -284,8 +294,8 @@ describe('removeRetiredHooks', () => {
     });
     const before = readFileSync(path, 'utf-8');
 
-    expect(removeRetiredHooks(path)).toBe(0);
+    expect(removeRetiredHooks(undefined, path)).toBe(0);
     expect(readFileSync(path, 'utf-8')).toBe(before);
-    expect(removeRetiredHooks(join(dir, 'missing.json'))).toBe(0);
+    expect(removeRetiredHooks(undefined, join(dir, 'missing.json'))).toBe(0);
   });
 });
