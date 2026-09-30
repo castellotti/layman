@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { CommandBlock } from './CommandBlock.js';
+import { usePrintExpandable } from '../../hooks/usePrinting.js';
 
 const SHELL_LANGUAGES = new Set(['bash', 'shell', 'sh']);
 
@@ -20,7 +21,7 @@ export function CodeBlock({ code, language = 'text', maxLines, className = '', s
 }
 
 function CodeBlockInner({ code, language = 'text', maxLines, className = '', showWrapToggle = false, defaultWrapped = false }: CodeBlockProps) {
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = usePrintExpandable();
   const [wrapped, setWrapped] = useState(defaultWrapped);
   const [copied, setCopied] = useState(false);
 

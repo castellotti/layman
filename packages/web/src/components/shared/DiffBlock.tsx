@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useMemo } from 'react';
+import { usePrintExpandable } from '../../hooks/usePrinting.js';
 
 interface DiffLine {
   type: 'same' | 'remove' | 'add';
@@ -61,40 +62,52 @@ interface DiffBlockProps {
 }
 
 export function DiffBlock({ filePath, oldText, newText, addedText, maxLines = 40 }: DiffBlockProps) {
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = usePrintExpandable();
 
-  let lines: DiffLine[];
+  // computeDiff is O(m×n); memoized so a re-render that only changes what is shown (expanding,
+  // or every block at once on beforeprint) does not recompute it.
+  const diff = useMemo(() => {
+    let lines: DiffLine[];
+    if (addedText !== undefined) {
+      // Write / new file — all lines are added
+      lines = addedText.split('\n').map((line, i) => ({
+        type: 'add' as const,
+        line,
+        newNum: i + 1,
+      }));
+    } else if (oldText !== undefined && newText !== undefined) {
+      lines = computeDiff(oldText, newText);
+    } else {
+      return null;
+    }
+    let added = 0;
+    let removed = 0;
+    for (const l of lines) {
+      if (l.type === 'add') added++;
+      else if (l.type === 'remove') removed++;
+    }
+    return { lines, added, removed };
+  }, [oldText, newText, addedText]);
 
-  if (addedText !== undefined) {
-    // Write / new file — all lines are added
-    lines = addedText.split('\n').map((line, i) => ({
-      type: 'add' as const,
-      line,
-      newNum: i + 1,
-    }));
-  } else if (oldText !== undefined && newText !== undefined) {
-    lines = computeDiff(oldText, newText);
-  } else {
-    return null;
-  }
+  if (!diff) return null;
+  const { lines, added, removed } = diff;
 
-  const changed = lines.filter((l) => l.type !== 'same').length;
   const truncated = !expanded && lines.length > maxLines;
   const visible = truncated ? lines.slice(0, maxLines) : lines;
 
   return (
-    <div className="rounded-md overflow-hidden border border-[#30363d] text-[11px] font-mono">
+    <div className="rounded-md overflow-hidden border border-[var(--border-strong)] text-[11px] font-mono">
       {/* Header */}
       {filePath && (
-        <div className="flex items-center justify-between px-3 py-1.5 bg-[#161b22] border-b border-[#30363d]">
-          <span className="text-[#8b949e] truncate">{filePath}</span>
-          {changed > 0 && (
+        <div className="flex items-center justify-between px-3 py-1.5 bg-[var(--bg-card)] border-b border-[var(--border-strong)]">
+          <span className="text-[var(--text-muted)] truncate">{filePath}</span>
+          {added + removed > 0 && (
             <span className="text-[10px] shrink-0 ml-2">
-              {lines.filter((l) => l.type === 'add').length > 0 && (
-                <span className="text-[#3fb950]">+{lines.filter((l) => l.type === 'add').length}</span>
+              {added > 0 && (
+                <span className="text-[var(--ok)]">+{added}</span>
               )}
-              {lines.filter((l) => l.type === 'remove').length > 0 && (
-                <span className="text-[#f85149] ml-1">-{lines.filter((l) => l.type === 'remove').length}</span>
+              {removed > 0 && (
+                <span className="text-[var(--error)] ml-1">-{removed}</span>
               )}
             </span>
           )}
@@ -102,35 +115,35 @@ export function DiffBlock({ filePath, oldText, newText, addedText, maxLines = 40
       )}
 
       {/* Diff lines */}
-      <div className="overflow-x-auto bg-[#0d1117]">
+      <div className="overflow-x-auto bg-[var(--bg-code)]">
         <table className="w-full border-collapse">
           <tbody>
             {visible.map((entry, idx) => {
               const bg =
-                entry.type === 'add' ? 'bg-[#0f2a1a]' :
-                entry.type === 'remove' ? 'bg-[#2a0f0f]' :
+                entry.type === 'add' ? 'bg-[var(--diff-add-bg)]' :
+                entry.type === 'remove' ? 'bg-[var(--diff-remove-bg)]' :
                 '';
               const prefix =
                 entry.type === 'add' ? '+' :
                 entry.type === 'remove' ? '-' :
                 ' ';
               const textColor =
-                entry.type === 'add' ? 'text-[#aff5b4]' :
-                entry.type === 'remove' ? 'text-[#ffc0c0]' :
-                'text-[#8b949e]';
+                entry.type === 'add' ? 'text-[var(--diff-add-text)]' :
+                entry.type === 'remove' ? 'text-[var(--diff-remove-text)]' :
+                'text-[var(--text-muted)]';
               const prefixColor =
-                entry.type === 'add' ? 'text-[#3fb950]' :
-                entry.type === 'remove' ? 'text-[#f85149]' :
-                'text-[#484f58]';
+                entry.type === 'add' ? 'text-[var(--ok)]' :
+                entry.type === 'remove' ? 'text-[var(--error)]' :
+                'text-[var(--text-faint)]';
 
               return (
                 <tr key={idx} className={bg}>
                   {/* Old line number */}
-                  <td className="select-none w-8 px-2 text-right text-[#484f58] border-r border-[#30363d]/50 align-top">
+                  <td className="select-none w-8 px-2 text-right text-[var(--text-faint)] border-r border-[color-mix(in_srgb,var(--border-strong)_50%,transparent)] align-top">
                     {entry.oldNum ?? ''}
                   </td>
                   {/* New line number */}
-                  <td className="select-none w-8 px-2 text-right text-[#484f58] border-r border-[#30363d]/50 align-top">
+                  <td className="select-none w-8 px-2 text-right text-[var(--text-faint)] border-r border-[color-mix(in_srgb,var(--border-strong)_50%,transparent)] align-top">
                     {entry.newNum ?? ''}
                   </td>
                   {/* +/- prefix */}
@@ -150,7 +163,7 @@ export function DiffBlock({ filePath, oldText, newText, addedText, maxLines = 40
         {truncated && (
           <button
             onClick={(e) => { e.stopPropagation(); setExpanded(true); }}
-            className="w-full py-1.5 text-[10px] text-[#58a6ff] hover:text-[#79c0ff] bg-[#161b22] border-t border-[#30363d] transition-colors"
+            className="w-full py-1.5 text-[10px] text-[var(--info)] hover:text-[var(--code)] bg-[var(--bg-card)] border-t border-[var(--border-strong)] transition-colors"
           >
             ↓ Show {lines.length - maxLines} more lines
           </button>

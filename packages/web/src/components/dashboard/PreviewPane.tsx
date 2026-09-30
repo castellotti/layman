@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { StatusDot, Meter, StateChip } from '../primitives/index.js';
 import { useNow } from '../../hooks/useNow.js';
+import { usePrinting } from '../../hooks/usePrinting.js';
 import { fetchRecordedSessionEventsTail } from '../../stores/sessionStore.js';
 import type { TimelineEvent, DriftState } from '../../lib/types.js';
 import type { SessionInfo } from '../../lib/ws-protocol.js';
@@ -136,6 +137,9 @@ function ActivityStrip({
 // Upper bound purely to protect render performance on very long sessions —
 // the visible count is otherwise governed by the scroll container's height.
 const MAX_TAIL_EVENTS = 500;
+// The Dashboard prints as a snapshot: each pane with its newest rows only (two panes to an A4
+// page). Unclipped, a pane's 500 would be pages per session.
+const PRINT_TAIL_EVENTS = 20;
 
 function RecentTail({ events, onOpenInLogs, sessionId, scrollRef }: {
   events: TimelineEvent[];
@@ -150,6 +154,8 @@ function RecentTail({ events, onOpenInLogs, sessionId, scrollRef }: {
     // folding thinking back into the response it preceded.
     return withThinkingRows(meaningful).slice(-MAX_TAIL_EVENTS);
   }, [events]);
+  const printing = usePrinting();
+  const shown = printing ? tail.slice(-PRINT_TAIL_EVENTS) : tail;
 
   // Built once per `events` change so each tail row can look up its position in O(1)
   // instead of `events.indexOf(event)` (O(n) per row, O(n·tail.length) overall).
@@ -190,7 +196,7 @@ function RecentTail({ events, onOpenInLogs, sessionId, scrollRef }: {
 
   return (
     <div style={{ padding: '0 4px' }}>
-      {tail.map((event, i) => {
+      {shown.map((event, i) => {
         const color = EVENT_KIND_COLOR[event.type] ?? 'var(--text-muted)';
         const detail = eventDetail(event);
         const realId = baseEventId(event.id);
@@ -406,6 +412,7 @@ export const PreviewPane = React.memo(function PreviewPane({
 
   return (
     <div
+      data-print-pane
       style={{
         display: 'flex',
         flexDirection: 'column',
@@ -489,7 +496,7 @@ export const PreviewPane = React.memo(function PreviewPane({
       </div>
 
       {/* Recent tail */}
-      <div ref={tailScrollRef} style={{ flex: 1, overflowY: 'auto', paddingBottom: 4 }}>
+      <div ref={tailScrollRef} data-print-tail style={{ flex: 1, overflowY: 'auto', paddingBottom: 4 }}>
         <RecentTail
           events={mergedEvents}
           onOpenInLogs={onOpenEventInLogs}

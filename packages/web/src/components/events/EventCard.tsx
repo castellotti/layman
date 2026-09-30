@@ -7,6 +7,7 @@ import { AnalysisCard } from '../analysis/AnalysisCard.js';
 import { CodeBlock } from '../shared/CodeBlock.js';
 import { DiffBlock } from '../shared/DiffBlock.js';
 import { usePendingApprovals } from '../../hooks/usePendingApprovals.js';
+import { usePrintExpandable } from '../../hooks/usePrinting.js';
 import { useSessionStore } from '../../stores/sessionStore.js';
 import { DRIFT_COLORS } from '../../lib/event-styles.js';
 import { toolFilePath, toolLineRange } from '../../lib/tool-input.js';
@@ -185,7 +186,7 @@ export function EventDetailBody({ event, onSend }: EventDetailBodyProps) {
               {event.data.permissionRequestType && (
                 <div className="flex items-center gap-2">
                   <span className="text-[10px] text-[var(--text-faint)] font-mono uppercase">Permission type</span>
-                  <span className="text-[10px] font-medium text-[var(--warn)] bg-[var(--warn)]/10 border border-[var(--warn)]/20 px-1.5 py-0.5 rounded">
+                  <span className="text-[10px] font-medium text-[var(--warn)] bg-[color-mix(in_srgb,var(--warn)_10%,transparent)] border border-[color-mix(in_srgb,var(--warn)_20%,transparent)] px-1.5 py-0.5 rounded">
                     {event.data.permissionRequestType === 'tool_use' ? 'Tool Use' : 'Execution Mode'}
                   </span>
                 </div>
@@ -233,7 +234,7 @@ export function EventDetailBody({ event, onSend }: EventDetailBodyProps) {
                     </button>
                   </div>
                 </div>
-                <div className={`p-3 border-l-2 ${isUserPrompt ? 'border-[var(--accent)]' : isAgentThinking ? 'border-[#6e40c9]/50' : 'border-[var(--ok)]/50'} ${MARKDOWN_PROSE}`}>
+                <div className={`p-3 border-l-2 ${isUserPrompt ? 'border-[var(--accent)]' : isAgentThinking ? 'border-[color-mix(in_srgb,var(--thinking)_50%,transparent)]' : 'border-[color-mix(in_srgb,var(--ok)_50%,transparent)]'} ${MARKDOWN_PROSE}`}>
                   <ReactMarkdown remarkPlugins={REMARK_PLUGINS}>{effectivePrompt!}</ReactMarkdown>
                 </div>
               </div>
@@ -259,7 +260,7 @@ export function EventDetailBody({ event, onSend }: EventDetailBodyProps) {
           {event.data.error && (
             <div>
               <p className="text-[10px] text-[var(--error)] mb-1 font-mono uppercase">Error</p>
-              <CodeBlock code={event.data.error} maxLines={15} className="border-[var(--error)]/30" />
+              <CodeBlock code={event.data.error} maxLines={15} className="border-[color-mix(in_srgb,var(--error)_30%,transparent)]" />
             </div>
           )}
 
@@ -313,7 +314,7 @@ export function EventDetailBody({ event, onSend }: EventDetailBodyProps) {
                     {event.data.webSearchQueries.map((q, i) => (
                       <span
                         key={i}
-                        className="text-[11px] text-[var(--accent)] bg-[var(--accent)]/10 border border-[var(--accent)]/20 px-2 py-0.5 rounded font-mono"
+                        className="text-[11px] text-[var(--accent)] border border-[color-mix(in_srgb,var(--accent)_20%,transparent)] px-2 py-0.5 rounded font-mono"
                       >
                         {q}
                       </span>
@@ -334,10 +335,10 @@ export function EventDetailBody({ event, onSend }: EventDetailBodyProps) {
                         target="_blank"
                         rel="noopener noreferrer"
                         onClick={(e) => e.stopPropagation()}
-                        className="flex flex-col gap-0.5 rounded-md border border-[var(--border-strong)] bg-[var(--bg)] px-3 py-2 hover:border-[var(--accent)]/40 hover:bg-[var(--accent)]/5 transition-colors group"
+                        className="flex flex-col gap-0.5 rounded-md border border-[var(--border-strong)] bg-[var(--bg)] px-3 py-2 hover:border-[color-mix(in_srgb,var(--accent)_40%,transparent)] transition-colors group"
                       >
                         <div className="flex items-center gap-2">
-                          <span className="text-[10px] text-[var(--accent)] bg-[var(--accent)]/10 border border-[var(--accent)]/20 px-1.5 py-0.5 rounded font-mono shrink-0">
+                          <span className="text-[10px] text-[var(--accent)] border border-[color-mix(in_srgb,var(--accent)_20%,transparent)] px-1.5 py-0.5 rounded font-mono shrink-0">
                             {src.hostname}
                           </span>
                           <span className="text-[11px] text-[var(--text)] font-medium truncate group-hover:text-[var(--accent)] transition-colors">
@@ -421,7 +422,7 @@ function DriftApprovalBar({
       <div className="flex gap-2">
         <button
           onClick={handleContinue}
-          className="flex-1 px-3 py-2 text-xs font-semibold rounded-md bg-[var(--ok)] hover:bg-[var(--ok)] text-white transition-colors border border-[var(--ok)]/30"
+          className="flex-1 px-3 py-2 text-xs font-semibold rounded-md bg-[var(--ok)] hover:bg-[var(--ok)] text-white transition-colors border border-[color-mix(in_srgb,var(--ok)_30%,transparent)]"
         >
           Continue
         </button>
@@ -438,7 +439,7 @@ function DriftApprovalBar({
         </button>
         <button
           onClick={handleDeny}
-          className="flex-1 px-3 py-2 text-xs font-semibold rounded-md bg-[var(--error)]/20 hover:bg-[var(--error)]/30 text-[var(--error)] transition-colors border border-[var(--error)]/30"
+          className="flex-1 px-3 py-2 text-xs font-semibold rounded-md bg-[color-mix(in_srgb,var(--error)_20%,transparent)] hover:bg-[color-mix(in_srgb,var(--error)_30%,transparent)] text-[var(--error)] transition-colors border border-[color-mix(in_srgb,var(--error)_30%,transparent)]"
         >
           Deny
         </button>
@@ -486,8 +487,8 @@ function DriftDetailSection({
       <div className="flex items-center gap-3">
         <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${
           event.data.driftType === 'rules'
-            ? 'bg-[var(--accent)]/10 text-[var(--accent)] border border-[var(--accent)]/20'
-            : 'bg-[var(--warn)]/10 text-[var(--warn)] border border-[var(--warn)]/20'
+            ? 'text-[var(--accent)] border border-[color-mix(in_srgb,var(--accent)_20%,transparent)]'
+            : 'bg-[color-mix(in_srgb,var(--warn)_10%,transparent)] text-[var(--warn)] border border-[color-mix(in_srgb,var(--warn)_20%,transparent)]'
         }`}>
           {event.data.driftType === 'rules' ? 'RULES DRIFT' : 'SESSION DRIFT'}
         </span>
@@ -530,7 +531,7 @@ function DriftDetailSection({
                 <div key={i} className={`text-[11px] bg-[var(--bg)] rounded px-2 py-1 border border-[var(--border-strong)] flex items-center ${isDismissed ? 'line-through opacity-40' : ''}`}>
                   <span className="flex-1">
                     <span className={`font-medium ${
-                      v.severity === 'critical' ? 'text-[var(--error)]' : v.severity === 'major' ? 'text-[#ff9100]' : 'text-[#ffb300]'
+                      v.severity === 'critical' ? 'text-[var(--error)]' : v.severity === 'major' ? 'text-[var(--severity-major)]' : 'text-[var(--severity-minor)]'
                     }`}>{v.severity}</span>
                     <span className="text-[var(--text-faint)] mx-1">|</span>
                     <span className="text-[var(--text-muted)]">{v.rule}</span>
@@ -568,7 +569,7 @@ function DriftDetailSection({
               const isDismissed = dismissed?.patternBreaks?.includes(pb);
               return (
                 <li key={i} className={`text-[11px] flex items-start gap-1.5 ${isDismissed ? 'line-through opacity-40' : 'text-[var(--text-muted)]'}`}>
-                  <span className="text-[#ff9100] mt-0.5 shrink-0">&#8226;</span>
+                  <span className="text-[var(--severity-major)] mt-0.5 shrink-0">&#8226;</span>
                   <span className="flex-1">{pb}</span>
                   {!isDismissed && <DismissItemButton sessionId={event.sessionId} category="patternBreak" value={pb} onSend={onSend} />}
                 </li>
@@ -593,7 +594,7 @@ function getInputPreview(inp: Record<string, unknown>, toolName?: string): strin
 }
 
 function SubagentTranscriptView({ entries }: { entries: SubagentTranscriptEntry[] }) {
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = usePrintExpandable();
   const toolCount = entries.filter(e => e.role === 'tool').length;
 
   return (
@@ -603,13 +604,13 @@ function SubagentTranscriptView({ entries }: { entries: SubagentTranscriptEntry[
         onClick={(e) => { e.stopPropagation(); setExpanded(v => !v); }}
       >
         <span className="text-[10px] text-[var(--text-faint)] font-mono uppercase">Sub-agent transcript</span>
-        <span className="text-[10px] text-[var(--accent)] bg-[var(--accent)]/10 border border-[var(--accent)]/20 px-1.5 py-0.5 rounded font-mono">
+        <span className="text-[10px] text-[var(--accent)] border border-[color-mix(in_srgb,var(--accent)_20%,transparent)] px-1.5 py-0.5 rounded font-mono">
           {toolCount} {toolCount === 1 ? 'call' : 'calls'}
         </span>
         <span className="ml-auto text-[var(--text-faint)] text-[10px]">{expanded ? '▲' : '▼'}</span>
       </button>
       {expanded && (
-        <div className="divide-y divide-[var(--border-strong)]/50 bg-[var(--bg)]">
+        <div className="divide-y divide-[color-mix(in_srgb,var(--border-strong)_50%,transparent)] bg-[var(--bg)]">
           {entries.map((entry, i) => (
             <div key={i} className="px-3 py-2 space-y-1">
               {entry.role === 'assistant' && entry.text && (
