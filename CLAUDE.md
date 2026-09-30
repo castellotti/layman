@@ -429,6 +429,9 @@ Four rules that must not be relaxed casually:
   `min-width: 0` on them too, or one unbreakable line widens the page to 27,000 px and it is
   clipped; and Tailwind 3 drops opacity modifiers on variables (`bg-[var(--ok)]/10` emits nothing),
   so use `bg-[color-mix(in_srgb,var(--ok)_10%,transparent)]`.
+  Print layout is driven by data attributes, not body classes: `data-print-hide`, `data-print-stream`
+  (the Logs transcript), `data-print-tail` / `data-print-pane` (Dashboard panes, last 20 rows) and
+  `data-print-stack` (side-by-side panels print one after another).
 
 - **Auto-activate**: The `autoActivateClients` config array (in `~/.local/share/layman/layman.json`) lists client agent types (e.g. `'claude-code'`) whose sessions should auto-activate without requiring `/layman`. When a hook event arrives from a matching agent, `handler.ts` calls `gate.activate()` before the gate check, so events flow immediately. The toggle is in Settings → Client Setup on each client's row. Off by default.
 

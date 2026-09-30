@@ -176,6 +176,7 @@ export function DashboardView({ onSend, sessionListWidth, onResizeSessionList }:
     <div className="dashboard-root" style={{ display: 'flex', height: '100%', width: '100%', minWidth: 0 }}>
       {/* ── Left: session list ── */}
       <div
+        data-print-hide
         style={{
           width: listWidth,
           flexShrink: 0,

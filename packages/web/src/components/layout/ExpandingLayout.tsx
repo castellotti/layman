@@ -32,7 +32,7 @@ export function ExpandingLayout({ onSend }: ExpandingLayoutProps) {
   const showInvestigationDrawer = investigationOpen && selectedEventId !== null && !layout.showInvestigation;
 
   return (
-    <div ref={containerRef} style={{ display: 'flex', flex: 1, overflow: 'hidden', minHeight: 0 }}>
+    <div ref={containerRef} data-print-stack style={{ display: 'flex', flex: 1, overflow: 'hidden', minHeight: 0 }}>
       {layout.showDashboard && (
         <div
           style={{

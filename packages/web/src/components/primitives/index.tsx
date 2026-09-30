@@ -112,8 +112,10 @@ export function StatusDot({ state, size = 8 }: StatusDotProps) {
 export type StateChipVariant = 'permission' | 'running' | 'error' | 'idle' | 'ended' | 'live' | 'paused' | 'archived';
 
 const STATE_CHIP_STYLES: Record<StateChipVariant, { bg: string; color: string; border?: string }> = {
-  permission: { bg: 'rgba(229,168,59,0.18)',  color: 'var(--text-on-fill)', border: 'none' },
-  running:    { bg: 'rgba(76,195,138,0.18)',   color: 'var(--text-on-fill)', border: 'none' },
+  // A tint, not a fill, so the text takes the semantic colour (as live/paused do) —
+  // --text-on-fill is for solid fills and was near-invisible here.
+  permission: { bg: 'rgba(229,168,59,0.18)',  color: 'var(--warn)', border: 'none' },
+  running:    { bg: 'rgba(76,195,138,0.18)',   color: 'var(--ok)',   border: 'none' },
   error:      { bg: 'var(--error)',             color: '#fff',           border: 'none' },
   idle:       { bg: 'var(--border)',            color: 'var(--text-muted)', border: 'none' },
   ended:      { bg: 'var(--border)',            color: 'var(--text-muted)', border: 'none' },

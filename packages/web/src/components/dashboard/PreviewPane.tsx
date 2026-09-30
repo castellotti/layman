@@ -406,6 +406,7 @@ export const PreviewPane = React.memo(function PreviewPane({
 
   return (
     <div
+      data-print-pane
       style={{
         display: 'flex',
         flexDirection: 'column',
@@ -489,7 +490,7 @@ export const PreviewPane = React.memo(function PreviewPane({
       </div>
 
       {/* Recent tail */}
-      <div ref={tailScrollRef} style={{ flex: 1, overflowY: 'auto', paddingBottom: 4 }}>
+      <div ref={tailScrollRef} data-print-tail style={{ flex: 1, overflowY: 'auto', paddingBottom: 4 }}>
         <RecentTail
           events={mergedEvents}
           onOpenInLogs={onOpenEventInLogs}
