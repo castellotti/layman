@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { CommandBlock } from './CommandBlock.js';
-import { usePrinting } from '../../hooks/usePrinting.js';
+import { usePrintExpandable } from '../../hooks/usePrinting.js';
 
 const SHELL_LANGUAGES = new Set(['bash', 'shell', 'sh']);
 
@@ -21,14 +21,13 @@ export function CodeBlock({ code, language = 'text', maxLines, className = '', s
 }
 
 function CodeBlockInner({ code, language = 'text', maxLines, className = '', showWrapToggle = false, defaultWrapped = false }: CodeBlockProps) {
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = usePrintExpandable();
   const [wrapped, setWrapped] = useState(defaultWrapped);
   const [copied, setCopied] = useState(false);
-  const printing = usePrinting();
 
   const lines = code.split('\n');
   const isLong = maxLines !== undefined && lines.length > maxLines;
-  const displayCode = isLong && !expanded && !printing ? lines.slice(0, maxLines).join('\n') + '\n...' : code;
+  const displayCode = isLong && !expanded ? lines.slice(0, maxLines).join('\n') + '\n...' : code;
 
   const handleCopy = (e: React.MouseEvent) => {
     e.stopPropagation();

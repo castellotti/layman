@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { usePrinting } from '../../hooks/usePrinting.js';
+import React, { useMemo } from 'react';
+import { usePrintExpandable } from '../../hooks/usePrinting.js';
 
 interface DiffLine {
   type: 'same' | 'remove' | 'add';
@@ -62,26 +62,37 @@ interface DiffBlockProps {
 }
 
 export function DiffBlock({ filePath, oldText, newText, addedText, maxLines = 40 }: DiffBlockProps) {
-  const [expanded, setExpanded] = useState(false);
-  const printing = usePrinting();
+  const [expanded, setExpanded] = usePrintExpandable();
 
-  let lines: DiffLine[];
+  // computeDiff is O(m×n); memoized so a re-render that only changes what is shown (expanding,
+  // or every block at once on beforeprint) does not recompute it.
+  const diff = useMemo(() => {
+    let lines: DiffLine[];
+    if (addedText !== undefined) {
+      // Write / new file — all lines are added
+      lines = addedText.split('\n').map((line, i) => ({
+        type: 'add' as const,
+        line,
+        newNum: i + 1,
+      }));
+    } else if (oldText !== undefined && newText !== undefined) {
+      lines = computeDiff(oldText, newText);
+    } else {
+      return null;
+    }
+    let added = 0;
+    let removed = 0;
+    for (const l of lines) {
+      if (l.type === 'add') added++;
+      else if (l.type === 'remove') removed++;
+    }
+    return { lines, added, removed };
+  }, [oldText, newText, addedText]);
 
-  if (addedText !== undefined) {
-    // Write / new file — all lines are added
-    lines = addedText.split('\n').map((line, i) => ({
-      type: 'add' as const,
-      line,
-      newNum: i + 1,
-    }));
-  } else if (oldText !== undefined && newText !== undefined) {
-    lines = computeDiff(oldText, newText);
-  } else {
-    return null;
-  }
+  if (!diff) return null;
+  const { lines, added, removed } = diff;
 
-  const changed = lines.filter((l) => l.type !== 'same').length;
-  const truncated = !expanded && !printing && lines.length > maxLines;
+  const truncated = !expanded && lines.length > maxLines;
   const visible = truncated ? lines.slice(0, maxLines) : lines;
 
   return (
@@ -90,13 +101,13 @@ export function DiffBlock({ filePath, oldText, newText, addedText, maxLines = 40
       {filePath && (
         <div className="flex items-center justify-between px-3 py-1.5 bg-[var(--bg-card)] border-b border-[var(--border-strong)]">
           <span className="text-[var(--text-muted)] truncate">{filePath}</span>
-          {changed > 0 && (
+          {added + removed > 0 && (
             <span className="text-[10px] shrink-0 ml-2">
-              {lines.filter((l) => l.type === 'add').length > 0 && (
-                <span className="text-[var(--ok)]">+{lines.filter((l) => l.type === 'add').length}</span>
+              {added > 0 && (
+                <span className="text-[var(--ok)]">+{added}</span>
               )}
-              {lines.filter((l) => l.type === 'remove').length > 0 && (
-                <span className="text-[var(--error)] ml-1">-{lines.filter((l) => l.type === 'remove').length}</span>
+              {removed > 0 && (
+                <span className="text-[var(--error)] ml-1">-{removed}</span>
               )}
             </span>
           )}

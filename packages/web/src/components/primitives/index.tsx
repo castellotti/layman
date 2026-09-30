@@ -114,13 +114,13 @@ export type StateChipVariant = 'permission' | 'running' | 'error' | 'idle' | 'en
 const STATE_CHIP_STYLES: Record<StateChipVariant, { bg: string; color: string; border?: string }> = {
   // A tint, not a fill, so the text takes the semantic colour (as live/paused do) —
   // --text-on-fill is for solid fills and was near-invisible here.
-  permission: { bg: 'rgba(229,168,59,0.18)',  color: 'var(--warn)', border: 'none' },
-  running:    { bg: 'rgba(76,195,138,0.18)',   color: 'var(--ok)',   border: 'none' },
+  permission: { bg: 'color-mix(in srgb, var(--warn) 18%, transparent)', color: 'var(--warn)', border: 'none' },
+  running:    { bg: 'color-mix(in srgb, var(--ok) 18%, transparent)',   color: 'var(--ok)',   border: 'none' },
   error:      { bg: 'var(--error)',             color: '#fff',           border: 'none' },
   idle:       { bg: 'var(--border)',            color: 'var(--text-muted)', border: 'none' },
   ended:      { bg: 'var(--border)',            color: 'var(--text-muted)', border: 'none' },
-  live:       { bg: 'rgba(76,195,138,0.15)',   color: 'var(--ok)',      border: '1px solid rgba(76,195,138,0.3)' },
-  paused:     { bg: 'rgba(229,168,59,0.15)',   color: 'var(--warn)',    border: '1px solid rgba(229,168,59,0.3)' },
+  live:       { bg: 'color-mix(in srgb, var(--ok) 15%, transparent)',   color: 'var(--ok)',   border: '1px solid color-mix(in srgb, var(--ok) 30%, transparent)' },
+  paused:     { bg: 'color-mix(in srgb, var(--warn) 15%, transparent)', color: 'var(--warn)', border: '1px solid color-mix(in srgb, var(--warn) 30%, transparent)' },
   archived:   { bg: 'var(--bg-card)',           color: 'var(--text-muted)', border: '1px solid var(--border-strong)' },
 };
 

@@ -406,7 +406,7 @@ export function SessionsView({ onSend }: SessionsViewProps) {
       {/* Left sidebar */}
       <div
         ref={sidebarRef}
-        data-bookmarks-sidebar
+        data-print-hide
         tabIndex={0}
         style={{
           width: 280, flexShrink: 0,

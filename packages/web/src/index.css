@@ -231,7 +231,6 @@ body {
      the toggle hides no content. */
   header,
   [data-print-hide],
-  [data-bookmarks-sidebar],
   .fixed,
   #root button {
     display: none !important;
@@ -269,11 +268,7 @@ body {
     flex: none !important;
   }
 
-  /* The Dashboard prints as a snapshot: each session pane with its last 20 rows (two panes to an A4 page). A pane keeps up to
-     500 on screen, scrolled to the newest; unclipped, that would be pages per session. */
-  [data-print-tail] > div > :nth-last-child(n+21) {
-    display: none !important;
-  }
+  /* The Dashboard prints as a snapshot (RecentTail keeps each pane to its newest rows while printing). */
   [data-print-pane] {
     flex: none !important;  /* flex-basis 0 in a column of auto height: panes collapsed and overlapped */
     break-inside: avoid;
@@ -281,14 +276,6 @@ body {
 
   [data-event-card] {
     break-inside: avoid;
-    page-break-inside: avoid;
-  }
-
-  /* Content a component expands only for print (a Thinking block, see usePrinting) is capped
-     and scrolled on screen; on paper the cap would clip it. */
-  [data-print-expand] {
-    max-height: none !important;
-    overflow: visible !important;
   }
 
   /* Wrap rather than clip: a scrollable code block or diff has no scrollbar on paper. */
