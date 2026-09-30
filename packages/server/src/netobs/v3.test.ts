@@ -136,6 +136,33 @@ describe('glove v3 grant states', () => {
     expect(existsSync(join(h, 'control', id))).toBe(false);
   });
 
+  it('filter re-granted: a new grant whose directory glove has not made yet is granted, not revoked', () => {
+    const id = 'filter-revoked-0f1a2b';
+    const h = home('filter-revoked');
+    const net = join(h, 'observe', id, 'net');
+    const facts = JSON.parse(readFileSync(join(net, 'session.json'), 'utf8'));
+    const grant = (since: string) => {
+      facts.grants.filter = { granted: true, since };
+      writeFileSync(join(net, 'session.json'), JSON.stringify(facts));
+    };
+    grant('2026-10-01T11:00:00.000Z');
+    mkdirSync(join(h, 'control', id));
+    const obs = open(h);
+    expect(obs.store.rules(id)!.control.state).toBe('ok');
+    // The directory goes under the same grant: being revoked.
+    rmSync(join(h, 'control', id), { recursive: true });
+    obs.poll(NOW + 1000);
+    expect(summary(obs, id).glove.filter).toBe('revoked');
+    // glove up with `filter: {}` again: a new `since`, before glove makes control/<id>/.
+    grant('2026-10-01T12:30:00.000Z');
+    obs.poll(NOW + 2000);
+    expect(summary(obs, id).glove.filter).toBe('granted');
+    expect(obs.store.rules(id)!.control.state).toBe('no-dir');
+    mkdirSync(join(h, 'control', id));
+    obs.poll(NOW + 3000);
+    expect(obs.store.rules(id)!.control.state).toBe('ok');
+  });
+
   it('orphaned: session deleted, export retained, read-only history', () => {
     const obs = open(home('orphaned'));
     const id = 'orphaned-0f1a2b';

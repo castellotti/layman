@@ -148,8 +148,12 @@ export class NetObs {
   private readonly getGloveHome: () => string | null;
   /** glove's grant per session, as of the last poll: the writer checks it again on every apply. */
   private readonly access = new Map<string, ControlAccess>();
-  /** Sessions whose control directory Layman has seen: one that disappears while granted is being revoked. */
-  private readonly hadControlDir = new Set<string>();
+  /**
+   * The grant (its `since`) under which Layman saw each session's control directory: one that
+   * disappears under the same grant is being revoked. A new `since` is a re-grant whose
+   * directory glove has not made yet, so it starts afresh.
+   */
+  private readonly hadControlDir = new Map<string, string>();
   private registry: GloveRegistryView = { state: 'absent', detail: '' };
   private notObservable: NetSessionSummary[] = [];
   private readonly control: RulesControl;
@@ -289,14 +293,16 @@ export class NetObs {
     const token = loc.token;
     const grant = info.grants.filter;
     const granted = grant?.granted === true;
-    if (granted) this.store.noteFilterSince(token, grant.since ?? '');
+    const since = grant?.since ?? '';
+    if (granted) this.store.noteFilterSince(token, since);
+    if (granted && this.hadControlDir.has(token) && this.hadControlDir.get(token) !== since) this.hadControlDir.delete(token);
     let dir = false;
     try {
       dir = statSync(loc.controlDir).isDirectory();
     } catch {
       dir = false;
     }
-    if (granted && dir) this.hadControlDir.add(token);
+    if (granted && dir) this.hadControlDir.set(token, since);
     let filter: FilterAccess;
     if (granted) filter = !dir && this.hadControlDir.has(token) ? 'revoked' : 'granted';
     else filter = this.store.filterSince(token) !== null ? 'revoked' : 'not-granted';

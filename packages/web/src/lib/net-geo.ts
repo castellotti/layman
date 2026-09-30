@@ -122,6 +122,8 @@ export interface Cluster {
   bytes: number;
   live: boolean;
   direct: boolean;
+  /** Holds something reached through the tunnel, so its arc leaves from the exit (a `cloud` LLM link or a direct flow does not). */
+  tunnelled: boolean;
 }
 
 /** Destinations in the same city (or at the same point) share one pin with a count. */
@@ -131,11 +133,12 @@ export function clusterDestinations(dests: Iterable<DestinationAggregate>): Clus
     if (!isMappable(d)) continue;
     const g = d.geo!;
     const key = g.city ? `${g.city}|${g.countryCode ?? ''}` : `${g.lat.toFixed(1)}|${g.lon.toFixed(1)}`;
-    const c = m.get(key) ?? { key, lon: g.lon, lat: g.lat, label: g.city ?? g.country ?? `${g.lat.toFixed(1)}, ${g.lon.toFixed(1)}`, dests: [], bytes: 0, live: false, direct: false };
+    const c = m.get(key) ?? { key, lon: g.lon, lat: g.lat, label: g.city ?? g.country ?? `${g.lat.toFixed(1)}, ${g.lon.toFixed(1)}`, dests: [], bytes: 0, live: false, direct: false, tunnelled: false };
     c.dests.push(d);
     c.bytes += d.bytesUp + d.bytesDown;
     c.live ||= d.state === 'active';
     c.direct ||= d.scope === 'direct';
+    c.tunnelled ||= d.scope !== 'direct' && d.scope !== 'cloud';
     m.set(key, c);
   }
   return [...m.values()].sort((a, b) => b.bytes - a.bytes);

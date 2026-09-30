@@ -178,7 +178,11 @@ rules needs the extra `control/` mount (Docker, below).
   extension (an inference server on the LAN, or a provider on the internet reached by the llm link
   rather than the tunnel). Both are expected, never an alert, never "untunnelled", and never placed
   or bucketed as unresolved on the map when `lan`; the Route column says `LAN · LLM` / `cloud · LLM`
-  (before, they fell through to the route name and read as the VPN). `client: playwright` and
+  (before, they fell through to the route name and read as the VPN). Every view reads them the same
+  way: Topology draws both through their own **LLM link** route (local-toned, never through the
+  tunnel or the exit; `routeOf` in `lib/net-topology.ts`), and the Map draws a `cloud` pin with a
+  plain solid line straight from the sandbox, not an arc from the exit (`Cluster.tunnelled` in
+  `lib/net-geo.ts`), and neither red like `direct`. `client: playwright` and
   `tool: browser` come from glove's browser extension and need no special handling. SearXNG's engine
   requests arrive through their own `searxng-egress` gate (`client: searxng`), so a `web_search` shows
   every engine it reached, as the fan-out treatment already expects.
@@ -467,7 +471,9 @@ it no setting or mount could make a write take effect: an observe-only gate neve
   remembers the last `grants.filter.since` it saw, in memory and in the `net_sessions` rollup
   (`filter_since`, migration 4; local only, never synced), and calls a grant that has gone `revoked`,
   across restarts. A control directory that disappears while the grant still reads `granted` (glove
-  mid-revocation, or `glove rm`) is `revoked` too. Controls disable at the next poll, and Layman never
+  mid-revocation, or `glove rm`) is `revoked` too, but only under the grant (the `since`) Layman saw
+  the directory with: a re-grant carries a new `since` and glove writes it before it creates
+  `control/<id>/`, so in that gap the session is `granted` with `no-dir`, not `revoked`. Controls disable at the next poll, and Layman never
   recreates the directory or the file. A Layman that never saw the grant (recording off, or a fresh
   database) can only say "not granted".
 - **Not enforced yet**: granted, but `status.json` has no `rules` object (gates starting). The Rules
