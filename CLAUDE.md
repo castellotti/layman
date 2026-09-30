@@ -431,7 +431,9 @@ Four rules that must not be relaxed casually:
   so use `bg-[color-mix(in_srgb,var(--ok)_10%,transparent)]`.
   Print layout is driven by data attributes, not body classes: `data-print-hide`, `data-print-stream`
   (the Logs transcript), `data-print-tail` / `data-print-pane` (Dashboard panes, last 20 rows) and
-  `data-print-stack` (side-by-side panels print one after another).
+  `data-print-stack` (side-by-side panels print one after another). Print hides every button, so
+  content collapsed behind one (a `maxLines` code block or diff, a Thinking block) must render in full
+  while printing: read `usePrinting()` (`hooks/usePrinting.ts`), or the export silently truncates.
 
 - **Auto-activate**: The `autoActivateClients` config array (in `~/.local/share/layman/layman.json`) lists client agent types (e.g. `'claude-code'`) whose sessions should auto-activate without requiring `/layman`. When a hook event arrives from a matching agent, `handler.ts` calls `gate.activate()` before the gate check, so events flow immediately. The toggle is in Settings → Client Setup on each client's row. Off by default.
 

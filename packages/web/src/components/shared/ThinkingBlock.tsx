@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { MARKDOWN_PROSE, REMARK_PLUGINS } from '../../lib/markdown.js';
+import { usePrinting } from '../../hooks/usePrinting.js';
 
 export function ThinkingBlock({ thinking }: { thinking: string }) {
   const [open, setOpen] = useState(false);
+  const printing = usePrinting();
   return (
     <div className="rounded-md border border-[color-mix(in_srgb,var(--thinking)_30%,transparent)] overflow-hidden">
       <button
@@ -13,8 +15,8 @@ export function ThinkingBlock({ thinking }: { thinking: string }) {
         <span className="text-[10px] text-[var(--thinking)] font-mono uppercase">Thinking {open ? '▲' : '▼'}</span>
         <span className="text-[10px] text-[var(--text-faint)]">{thinking.length} chars</span>
       </button>
-      {open && (
-        <div className={`p-3 border-l-2 border-[color-mix(in_srgb,var(--thinking)_50%,transparent)] max-h-64 overflow-y-auto text-[var(--text-muted)] ${MARKDOWN_PROSE}`}>
+      {(open || printing) && (
+        <div data-print-expand className={`p-3 border-l-2 border-[color-mix(in_srgb,var(--thinking)_50%,transparent)] max-h-64 overflow-y-auto text-[var(--text-muted)] ${MARKDOWN_PROSE}`}>
           <ReactMarkdown remarkPlugins={REMARK_PLUGINS}>{thinking}</ReactMarkdown>
         </div>
       )}

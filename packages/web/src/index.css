@@ -226,7 +226,9 @@ body {
   /* Print only the stream: chrome, the Sessions sidebar and overlays are not part of the record.
      Unconditional rather than keyed on a body class, so the browser's own Print (⌘P) produces the
      same document as the Export button. Buttons are all controls (Copy, Highlight, Investigate, Link,
-     Flow, wrap and show-more toggles), which mean nothing on paper; no content is a button. */
+     Flow, wrap and show-more toggles), which mean nothing on paper; no content is a button.
+     Content collapsed behind a toggle is rendered in full while printing (usePrinting), so hiding
+     the toggle hides no content. */
   header,
   [data-print-hide],
   [data-bookmarks-sidebar],
@@ -280,6 +282,13 @@ body {
   [data-event-card] {
     break-inside: avoid;
     page-break-inside: avoid;
+  }
+
+  /* Content a component expands only for print (a Thinking block, see usePrinting) is capped
+     and scrolled on screen; on paper the cap would clip it. */
+  [data-print-expand] {
+    max-height: none !important;
+    overflow: visible !important;
   }
 
   /* Wrap rather than clip: a scrollable code block or diff has no scrollbar on paper. */

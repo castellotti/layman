@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { usePrinting } from '../../hooks/usePrinting.js';
 
 interface DiffLine {
   type: 'same' | 'remove' | 'add';
@@ -62,6 +63,7 @@ interface DiffBlockProps {
 
 export function DiffBlock({ filePath, oldText, newText, addedText, maxLines = 40 }: DiffBlockProps) {
   const [expanded, setExpanded] = useState(false);
+  const printing = usePrinting();
 
   let lines: DiffLine[];
 
@@ -79,7 +81,7 @@ export function DiffBlock({ filePath, oldText, newText, addedText, maxLines = 40
   }
 
   const changed = lines.filter((l) => l.type !== 'same').length;
-  const truncated = !expanded && lines.length > maxLines;
+  const truncated = !expanded && !printing && lines.length > maxLines;
   const visible = truncated ? lines.slice(0, maxLines) : lines;
 
   return (

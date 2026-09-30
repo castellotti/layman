@@ -7,6 +7,7 @@ import { AnalysisCard } from '../analysis/AnalysisCard.js';
 import { CodeBlock } from '../shared/CodeBlock.js';
 import { DiffBlock } from '../shared/DiffBlock.js';
 import { usePendingApprovals } from '../../hooks/usePendingApprovals.js';
+import { usePrinting } from '../../hooks/usePrinting.js';
 import { useSessionStore } from '../../stores/sessionStore.js';
 import { DRIFT_COLORS } from '../../lib/event-styles.js';
 import { toolFilePath, toolLineRange } from '../../lib/tool-input.js';
@@ -594,6 +595,7 @@ function getInputPreview(inp: Record<string, unknown>, toolName?: string): strin
 
 function SubagentTranscriptView({ entries }: { entries: SubagentTranscriptEntry[] }) {
   const [expanded, setExpanded] = useState(false);
+  const printing = usePrinting();
   const toolCount = entries.filter(e => e.role === 'tool').length;
 
   return (
@@ -608,7 +610,7 @@ function SubagentTranscriptView({ entries }: { entries: SubagentTranscriptEntry[
         </span>
         <span className="ml-auto text-[var(--text-faint)] text-[10px]">{expanded ? '▲' : '▼'}</span>
       </button>
-      {expanded && (
+      {(expanded || printing) && (
         <div className="divide-y divide-[color-mix(in_srgb,var(--border-strong)_50%,transparent)] bg-[var(--bg)]">
           {entries.map((entry, i) => (
             <div key={i} className="px-3 py-2 space-y-1">
