@@ -235,13 +235,8 @@ export function EventStream({ onSend, archived = false, archivedDate, turnRuler 
     }
   }, [displayEvents]);
 
+  // The print stylesheet (index.css, @media print) does the work, so this and ⌘P print the same.
   const handlePrint = useCallback(() => {
-    document.body.classList.add('layman-print-live');
-    const cleanup = () => {
-      document.body.classList.remove('layman-print-live');
-      window.removeEventListener('afterprint', cleanup);
-    };
-    window.addEventListener('afterprint', cleanup);
     window.print();
   }, []);
 

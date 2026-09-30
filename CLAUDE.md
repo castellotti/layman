@@ -421,6 +421,15 @@ Four rules that must not be relaxed casually:
   block to a reminder explicitly, recording the `drift_alert` the block branch would have. Losing
   the block is the point of the toggle; losing the signal never was.
 
+- **Export to PDF is the browser's print, restyled** (`@media print` in `packages/web/src/index.css`).
+  It prints light by redefining the colour tokens (`--bg`, `--text`, `--code`, `--diff-*`, …), so a
+  component prints correctly only if its colours come from `var(--…)`. A hex literal stays dark on
+  white paper, which is how the export used to print as black bars. Two more traps: the stream's
+  ancestors are made `overflow: visible` so the whole transcript prints, which requires
+  `min-width: 0` on them too, or one unbreakable line widens the page to 27,000 px and it is
+  clipped; and Tailwind 3 drops opacity modifiers on variables (`bg-[var(--ok)]/10` emits nothing),
+  so use `bg-[color-mix(in_srgb,var(--ok)_10%,transparent)]`.
+
 - **Auto-activate**: The `autoActivateClients` config array (in `~/.local/share/layman/layman.json`) lists client agent types (e.g. `'claude-code'`) whose sessions should auto-activate without requiring `/layman`. When a hook event arrives from a matching agent, `handler.ts` calls `gate.activate()` before the gate check, so events flow immediately. The toggle is in Settings → Client Setup on each client's row. Off by default.
 
 - **Duplicate prompts are collapsed at extraction time, not deleted from the DB**: the hook

@@ -41,6 +41,17 @@
   --error:  #F0564A;   /* HIGH risk, errors, stopped */
   --info:   #5A9CF8;   /* user prompts, drop indicators */
   --agent:  #8B7CF6;   /* agent responses, subagent lanes */
+  --thinking: #8957E5; /* agent reasoning */
+  --severity-major: #FF9100;  /* drift/rules violation, major */
+  --severity-minor: #FFB300;  /* drift/rules violation, minor */
+
+  /* Code and diffs (markdown code spans/blocks, DiffBlock) */
+  --code:             #79C0FF;
+  --bg-code:          #0D1117;
+  --diff-add-bg:      #0F2A1A;
+  --diff-add-text:    #AFF5B4;
+  --diff-remove-bg:   #2A0F0F;
+  --diff-remove-text: #FFC0C0;
 
   /* Network views (glove) */
   --net-tunnel:   #35C9B4;  /* tunnelled route, live arcs, "allowed" toggle fill */
@@ -137,7 +148,71 @@ body {
 }
 
 /* ===== Print / Export to PDF ===== */
+/* The export is a record, not a screenshot: it prints in a light palette so it is legible on
+   paper and does not spend a page of toner per page of transcript. The palette is swapped at the
+   token level, so every component keeps its on-screen layout (markdown, tables, diffs, badges) and
+   only its colours change. A colour that bypasses the tokens (a hex literal in a component) stays
+   dark on the page — which is how the export used to print as black bars — so stream components
+   must use var(--…) colours. */
 @media print {
+  :root {
+    --bg:          #FFFFFF;
+    --bg-raised:   #FFFFFF;
+    --bg-card:     #F6F8FA;
+    --bg-selected: #EEF2F7;
+    --bg-pill:     #EEF1F5;
+    --text-on-fill: #FFFFFF;
+
+    --border:        #D0D7DE;
+    --border-subtle: #E4E8EE;
+    --border-strong: #B8C0CC;
+
+    --text:       #1F2328;
+    --text-body:  #2F363F;
+    --text-muted: #57606A;
+    --text-faint: #6E7781;
+
+    --accent:   #0969DA;
+    --ok:       #1A7F37;
+    --warn:     #9A6700;
+    --error:    #CF222E;
+    --info:     #0969DA;
+    --agent:    #6639BA;
+    --thinking: #8250DF;
+    --severity-major: #BC4C00;
+    --severity-minor: #9A6700;
+
+    --code:             #0550AE;
+    --bg-code:          #F6F8FA;
+    --diff-add-bg:      #DAFBE1;
+    --diff-add-text:    #116329;
+    --diff-remove-bg:   #FFEBE9;
+    --diff-remove-text: #82071E;
+  }
+
+  /* Markdown is rendered with Tailwind Typography's prose-invert, whose colours are its own
+     variables rather than ours; point them at the tokens so tables, rules, quotes and lists
+     follow the light palette too. */
+  .prose-invert {
+    --tw-prose-invert-body: var(--text);
+    --tw-prose-invert-headings: var(--text);
+    --tw-prose-invert-lead: var(--text-body);
+    --tw-prose-invert-links: var(--info);
+    --tw-prose-invert-bold: var(--text);
+    --tw-prose-invert-counters: var(--text-muted);
+    --tw-prose-invert-bullets: var(--text-muted);
+    --tw-prose-invert-hr: var(--border);
+    --tw-prose-invert-quotes: var(--text-muted);
+    --tw-prose-invert-quote-borders: var(--border);
+    --tw-prose-invert-captions: var(--text-muted);
+    --tw-prose-invert-kbd: var(--text);
+    --tw-prose-invert-code: var(--code);
+    --tw-prose-invert-pre-code: var(--text);
+    --tw-prose-invert-pre-bg: var(--bg-code);
+    --tw-prose-invert-th-borders: var(--border-strong);
+    --tw-prose-invert-td-borders: var(--border);
+  }
+
   *, *::before, *::after {
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
@@ -146,45 +221,33 @@ body {
   html, body, #root {
     height: auto !important;
     overflow: visible !important;
-    background: white !important;
-    color: #1f2328 !important;
   }
 
-  /* --- Live view print mode (body.layman-print-live) --- */
-
-  /* Hide everything that isn't the event stream */
-  body.layman-print-live header,
-  body.layman-print-live [data-print-hide],
-  body.layman-print-live .fixed {
+  /* Print only the stream: chrome, the Sessions sidebar and overlays are not part of the record.
+     Unconditional rather than keyed on a body class, so the browser's own Print (⌘P) produces the
+     same document as the Export button. Buttons are all controls (Copy, Highlight, Investigate, Link,
+     Flow, wrap and show-more toggles), which mean nothing on paper; no content is a button. */
+  header,
+  [data-print-hide],
+  [data-bookmarks-sidebar],
+  .fixed,
+  #root button {
     display: none !important;
   }
 
-  /* --- Historical view print mode (body.layman-print-historical) --- */
-
-  body.layman-print-historical header,
-  body.layman-print-historical [data-print-hide],
-  body.layman-print-historical [data-bookmarks-sidebar],
-  body.layman-print-historical .fixed {
-    display: none !important;
-  }
-
-  /* --- Shared print styles --- */
-
+  /* Every ancestor of the stream, however deep the view nests it, grows to its content so the
+     whole transcript prints rather than one screenful. min-width: 0 is what keeps it on the page:
+     once overflow is visible, a flex item's minimum width becomes its widest unbreakable content —
+     a one-line Bash summary laid the stream out 27,000px wide and the page clipped it. */
   #root,
-  #root > div,
-  #root > div > div,
-  #root > div > div > div,
-  #root > div > div > div > div,
-  #root > div > div > div > div > div,
+  div:has([data-print-stream]),
   [data-print-stream],
   [data-print-stream] > * {
     overflow: visible !important;
     height: auto !important;
     max-height: none !important;
-  }
-
-  #root > div {
     min-height: 0 !important;
+    min-width: 0 !important;
   }
 
   .flex-1,
@@ -195,25 +258,16 @@ body {
   [data-event-card] {
     break-inside: avoid;
     page-break-inside: avoid;
-    background: white !important;
-    border-color: #d0d7de !important;
-    margin: 4px 0 !important;
   }
 
-  [data-event-card] * {
-    color: #1f2328 !important;
-  }
-
-  [data-event-card] > div[class*="border-l"] {
-    border-left-width: 3px !important;
-  }
-
-  pre, code, .font-mono {
-    background: #f6f8fa !important;
-    color: #1f2328 !important;
-    border-color: #d0d7de !important;
+  /* Wrap rather than clip: a scrollable code block or diff has no scrollbar on paper. */
+  pre, code,
+  [data-print-stream] .whitespace-pre {
     white-space: pre-wrap !important;
-    word-break: break-word !important;
+    overflow-wrap: anywhere !important;
+  }
+  [data-print-stream] .overflow-x-auto {
+    overflow: visible !important;
   }
 
   @page {

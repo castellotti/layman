@@ -233,7 +233,7 @@ export function EventDetailBody({ event, onSend }: EventDetailBodyProps) {
                     </button>
                   </div>
                 </div>
-                <div className={`p-3 border-l-2 ${isUserPrompt ? 'border-[var(--accent)]' : isAgentThinking ? 'border-[#6e40c9]/50' : 'border-[var(--ok)]/50'} ${MARKDOWN_PROSE}`}>
+                <div className={`p-3 border-l-2 ${isUserPrompt ? 'border-[var(--accent)]' : isAgentThinking ? 'border-[color-mix(in_srgb,var(--thinking)_50%,transparent)]' : 'border-[color-mix(in_srgb,var(--ok)_50%,transparent)]'} ${MARKDOWN_PROSE}`}>
                   <ReactMarkdown remarkPlugins={REMARK_PLUGINS}>{effectivePrompt!}</ReactMarkdown>
                 </div>
               </div>
@@ -530,7 +530,7 @@ function DriftDetailSection({
                 <div key={i} className={`text-[11px] bg-[var(--bg)] rounded px-2 py-1 border border-[var(--border-strong)] flex items-center ${isDismissed ? 'line-through opacity-40' : ''}`}>
                   <span className="flex-1">
                     <span className={`font-medium ${
-                      v.severity === 'critical' ? 'text-[var(--error)]' : v.severity === 'major' ? 'text-[#ff9100]' : 'text-[#ffb300]'
+                      v.severity === 'critical' ? 'text-[var(--error)]' : v.severity === 'major' ? 'text-[var(--severity-major)]' : 'text-[var(--severity-minor)]'
                     }`}>{v.severity}</span>
                     <span className="text-[var(--text-faint)] mx-1">|</span>
                     <span className="text-[var(--text-muted)]">{v.rule}</span>
@@ -568,7 +568,7 @@ function DriftDetailSection({
               const isDismissed = dismissed?.patternBreaks?.includes(pb);
               return (
                 <li key={i} className={`text-[11px] flex items-start gap-1.5 ${isDismissed ? 'line-through opacity-40' : 'text-[var(--text-muted)]'}`}>
-                  <span className="text-[#ff9100] mt-0.5 shrink-0">&#8226;</span>
+                  <span className="text-[var(--severity-major)] mt-0.5 shrink-0">&#8226;</span>
                   <span className="flex-1">{pb}</span>
                   {!isDismissed && <DismissItemButton sessionId={event.sessionId} category="patternBreak" value={pb} onSend={onSend} />}
                 </li>

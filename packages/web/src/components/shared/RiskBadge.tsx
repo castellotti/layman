@@ -6,9 +6,9 @@ interface RiskBadgeProps {
 }
 
 const RISK_CONFIG = {
-  low: { label: 'LOW', dot: '🟢', textColor: 'text-[#3fb950]', bgColor: 'bg-[#3fb950]/10', borderColor: 'border-[#3fb950]/30' },
-  medium: { label: 'MED', dot: '🟡', textColor: 'text-[#d29922]', bgColor: 'bg-[#d29922]/10', borderColor: 'border-[#d29922]/30' },
-  high: { label: 'HIGH', dot: '🔴', textColor: 'text-[#f85149]', bgColor: 'bg-[#f85149]/10', borderColor: 'border-[#f85149]/30' },
+  low: { label: 'LOW', dot: '🟢', textColor: 'text-[var(--ok)]', bgColor: 'bg-[color-mix(in_srgb,var(--ok)_10%,transparent)]', borderColor: 'border-[color-mix(in_srgb,var(--ok)_30%,transparent)]' },
+  medium: { label: 'MED', dot: '🟡', textColor: 'text-[var(--warn)]', bgColor: 'bg-[color-mix(in_srgb,var(--warn)_10%,transparent)]', borderColor: 'border-[color-mix(in_srgb,var(--warn)_30%,transparent)]' },
+  high: { label: 'HIGH', dot: '🔴', textColor: 'text-[var(--error)]', bgColor: 'bg-[color-mix(in_srgb,var(--error)_10%,transparent)]', borderColor: 'border-[color-mix(in_srgb,var(--error)_30%,transparent)]' },
 };
 
 export function RiskBadge({ level, compact = false }: RiskBadgeProps) {

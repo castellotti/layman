@@ -19,9 +19,9 @@ const RISK_ICONS: Record<string, string> = {
 };
 
 const RISK_COLORS: Record<string, string> = {
-  low: 'text-[#3fb950]',
-  medium: 'text-[#d29922]',
-  high: 'text-[#f85149]',
+  low: 'text-[var(--ok)]',
+  medium: 'text-[var(--warn)]',
+  high: 'text-[var(--error)]',
 };
 
 const FIELD_TOOLTIPS = {
@@ -36,38 +36,38 @@ export function AnalysisCard({ analysis, compact = false }: AnalysisCardProps) {
   return (
     <div className="text-xs space-y-1.5 font-mono">
       <div className="flex gap-2">
-        <span className="text-[#8b949e] shrink-0 w-20 cursor-help underline decoration-dotted decoration-[#484f58]" title={FIELD_TOOLTIPS.intent}>Intent:</span>
-        <span className="text-[#e6edf3]">{analysis.meaning}</span>
+        <span className="text-[var(--text-muted)] shrink-0 w-20 cursor-help underline decoration-dotted decoration-[color:var(--text-faint)]" title={FIELD_TOOLTIPS.intent}>Intent:</span>
+        <span className="text-[var(--text)]">{analysis.meaning}</span>
       </div>
       <div className="flex gap-2">
-        <span className="text-[#8b949e] shrink-0 w-20 cursor-help underline decoration-dotted decoration-[#484f58]" title={FIELD_TOOLTIPS.goal}>Goal:</span>
-        <span className="text-[#e6edf3]">{analysis.goal}</span>
+        <span className="text-[var(--text-muted)] shrink-0 w-20 cursor-help underline decoration-dotted decoration-[color:var(--text-faint)]" title={FIELD_TOOLTIPS.goal}>Goal:</span>
+        <span className="text-[var(--text)]">{analysis.goal}</span>
       </div>
       <div className="flex gap-2">
-        <span className="text-[#8b949e] shrink-0 w-20 cursor-help underline decoration-dotted decoration-[#484f58]" title={FIELD_TOOLTIPS.safety}>Safety:</span>
-        <span className="text-[#e6edf3]">
+        <span className="text-[var(--text-muted)] shrink-0 w-20 cursor-help underline decoration-dotted decoration-[color:var(--text-faint)]" title={FIELD_TOOLTIPS.safety}>Safety:</span>
+        <span className="text-[var(--text)]">
           {SAFETY_ICONS[analysis.safety.level]} {analysis.safety.summary}
         </span>
       </div>
       <div className="flex gap-2">
-        <span className="text-[#8b949e] shrink-0 w-20 cursor-help underline decoration-dotted decoration-[#484f58]" title={FIELD_TOOLTIPS.security}>Security:</span>
-        <span className="text-[#e6edf3]">
+        <span className="text-[var(--text-muted)] shrink-0 w-20 cursor-help underline decoration-dotted decoration-[color:var(--text-faint)]" title={FIELD_TOOLTIPS.security}>Security:</span>
+        <span className="text-[var(--text)]">
           {SAFETY_ICONS[analysis.security.level]} {analysis.security.summary}
         </span>
       </div>
       <div className="flex gap-2">
-        <span className="text-[#8b949e] shrink-0 w-20 cursor-help underline decoration-dotted decoration-[#484f58]" title={FIELD_TOOLTIPS.risk}>Risk:</span>
+        <span className="text-[var(--text-muted)] shrink-0 w-20 cursor-help underline decoration-dotted decoration-[color:var(--text-faint)]" title={FIELD_TOOLTIPS.risk}>Risk:</span>
         <span className={RISK_COLORS[analysis.risk.level]}>
           {RISK_ICONS[analysis.risk.level]} {analysis.risk.level.toUpperCase()} — {analysis.risk.summary}
         </span>
       </div>
 
-      <div className={`mt-2 pt-2 border-t border-[#30363d] flex items-center gap-2 text-[10px] text-[#484f58] flex-wrap`}>
+      <div className={`mt-2 pt-2 border-t border-[var(--border-strong)] flex items-center gap-2 text-[10px] text-[var(--text-faint)] flex-wrap`}>
         {!compact && <><span>Model: {analysis.model}</span><span>·</span></>}
         <span>{analysis.latencyMs}ms</span>
         <span>·</span>
-        <span className="text-[#3fb950]/70">↑{analysis.tokens.input.toLocaleString()}</span>
-        <span className="text-[#58a6ff]/70">↓{analysis.tokens.output.toLocaleString()}</span>
+        <span className="text-[color-mix(in_srgb,var(--ok)_70%,transparent)]">↑{analysis.tokens.input.toLocaleString()}</span>
+        <span className="text-[color-mix(in_srgb,var(--info)_70%,transparent)]">↓{analysis.tokens.output.toLocaleString()}</span>
         {!compact && <><span>·</span><span>{(analysis.tokens.input + analysis.tokens.output).toLocaleString()} total</span></>}
       </div>
     </div>

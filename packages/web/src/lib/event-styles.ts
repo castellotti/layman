@@ -12,7 +12,7 @@ export const EVENT_KIND_COLOR: Record<string, string> = {
   permission_request:  'var(--warn)',
   user_prompt:         'var(--info)',
   agent_response:      'var(--ok)',
-  agent_thinking:      '#8957e5',
+  agent_thinking:      'var(--thinking)',
   subagent_start:      'var(--agent)',
   subagent_stop:       'var(--agent)',
   session_start:       'var(--ok)',
