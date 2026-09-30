@@ -1,0 +1,2 @@
+{"type": "session", "id": "0f1a2b3c", "timestamp": "2026-10-01T12:00:00.000Z", "cwd": "/work"}
+{"type": "message", "timestamp": "2026-10-01T12:00:00.000Z", "message": {"role": "user", "content": [{"type": "text", "text": "hello"}]}}

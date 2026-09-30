@@ -3,14 +3,15 @@ import type { ClientMessage } from '../../../lib/ws-protocol.js';
 import type { LaymanConfig } from '../../../lib/types.js';
 import { SectionTitle, ToggleRow, CustomRow } from './primitives.js';
 
-const DEFAULT_SESSIONS_DIR = '~/.glove/envs';
+const DEFAULT_HOME = '~/.glove';
 const DEFAULT_NETWORK = { enabled: true, controlEnabled: true, geoipDbPath: '' };
 
 /**
- * glove — passive monitoring of sandboxed harnesses. Enabling it points the
- * existing file watchers at glove's per-environment homes in addition to the
- * native ones; native monitoring is unaffected either way. Read-only: nothing is
- * written into a sandbox. See CLAUDE.md "Type duplication" — mirrors GloveConfigSchema.
+ * glove (v3) — passive monitoring of sandboxed harnesses. Enabling it points the
+ * existing file watchers at what each session's observe grant exports under
+ * glove's home, in addition to the native ones; native monitoring is unaffected
+ * either way. Read-only: nothing is written into a sandbox. See CLAUDE.md "Type
+ * duplication" — mirrors GloveConfigSchema.
  */
 export function GloveSection({
   config, onSend,
@@ -19,7 +20,7 @@ export function GloveSection({
   onSend: (msg: ClientMessage) => void;
 }) {
   const updateConfig = (updates: Partial<LaymanConfig>) => onSend({ type: 'config:update', config: updates });
-  const glove = config.glove ?? { enabled: false, sessionsDir: DEFAULT_SESSIONS_DIR, showIpAddresses: false, network: DEFAULT_NETWORK };
+  const glove = config.glove ?? { enabled: false, home: DEFAULT_HOME, showIpAddresses: false, network: DEFAULT_NETWORK };
   const network = glove.network ?? DEFAULT_NETWORK;
   // The server deep-merges glove and glove.network, so sending only the changed field is safe.
   const setNetwork = (updates: Partial<typeof network>) => updateConfig({ glove: { ...glove, network: { ...network, ...updates } } });
@@ -30,26 +31,27 @@ export function GloveSection({
 
       <ToggleRow
         label="Monitor sandboxed sessions"
-        desc="Tail harness logs from glove sandboxes alongside native sessions. Read-only; only harnesses that persist a transcript (Mistral Vibe and pi) are discovered. Sandboxed sessions are tagged with their environment id."
+        desc="Tail transcripts from glove v3 sessions alongside native sessions. Read-only; only sessions whose observe grant exports transcripts are read, and only pi and Mistral Vibe transcripts are parsed. Sandboxed sessions are tagged with their glove session id."
         checked={glove.enabled}
         onChange={() => updateConfig({ glove: { ...glove, enabled: !glove.enabled } })}
       />
 
       <CustomRow>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <span style={{ fontSize: 12, color: 'var(--text)', flex: 1 }}>Sessions directory</span>
+          <span style={{ fontSize: 12, color: 'var(--text)', flex: 1 }}>glove home</span>
           <input
             type="text"
-            value={glove.sessionsDir ?? DEFAULT_SESSIONS_DIR}
-            onChange={(e) => updateConfig({ glove: { ...glove, sessionsDir: e.target.value } })}
+            value={glove.home ?? DEFAULT_HOME}
+            onChange={(e) => updateConfig({ glove: { ...glove, home: e.target.value } })}
             spellCheck={false}
             style={{ width: 220, padding: '4px 6px', fontSize: 11, fontFamily: 'var(--font-mono)', background: 'var(--bg-card)', border: '1px solid var(--border-strong)', borderRadius: 5, color: 'var(--text)', outline: 'none' }}
           />
         </div>
         <span style={{ fontSize: 10.5, color: 'var(--text-faint)', lineHeight: 1.5 }}>
-          Host directory glove persists environment homes under; each is scanned at
-          <code style={{ margin: '0 3px', fontFamily: 'var(--font-mono)' }}>&lt;dir&gt;/&lt;env-id&gt;/home/</code>.
-          In Docker this must match the mount in docker-compose.yml (default maps to the container's <code style={{ fontFamily: 'var(--font-mono)' }}>~/.glove/envs</code>).
+          glove's home: its <code style={{ fontFamily: 'var(--font-mono)' }}>registry.json</code>, and what each session's grants export under
+          <code style={{ margin: '0 3px', fontFamily: 'var(--font-mono)' }}>observe/&lt;id&gt;/</code> and
+          <code style={{ margin: '0 3px', fontFamily: 'var(--font-mono)' }}>control/&lt;id&gt;/</code>.
+          Layman follows this setting, not <code style={{ fontFamily: 'var(--font-mono)' }}>$GLOVE_HOME</code>; in Docker only <code style={{ fontFamily: 'var(--font-mono)' }}>~/.glove</code> is mounted.
         </span>
       </CustomRow>
 
@@ -64,7 +66,7 @@ export function GloveSection({
       {glove.enabled && network.enabled && (
       <ToggleRow
         label="Allow blocking from Layman"
-        desc="Let the network views write the session's rules.json (block, unblock, cut all traffic). Off makes every toggle read-only. In Docker, `make docker-run` adds the writable ~/.glove/control mount once glove has created that folder."
+        desc="Let the network views write the session's rules.json (block, unblock, cut all traffic), for sessions that grant filter access (`filter: {}` in glove-session.yml). Off makes every toggle read-only. In Docker, `make docker-run` adds the writable ~/.glove/control mount once glove has created that folder."
         checked={network.controlEnabled}
         onChange={() => setNetwork({ controlEnabled: !network.controlEnabled })}
       />

@@ -1,7 +1,7 @@
 // glove network views browser check (map; was phase-5 check5). Run via scripts/netobs-e2e.sh.
-import { BASE, SHOTS, openGloveSettings, overflowX, startCheck } from './env.mjs';
+import { BASE, SHOTS, openGloveSettings, overflowX, startCheck, PI, sid } from './env.mjs';
 const { page, check, waitFor, finish } = await startCheck();
-await page.goto(`${BASE}/?view=map&glove=pi-search`);
+await page.goto(`${BASE}/?view=map&glove=${PI}`);
 await page.evaluate(() => localStorage.clear()); // once: a reload must keep what the page saved
 await page.reload();
 check('land drawn from the bundled atlas', await waitFor(async () => (await page.$$eval('svg[aria-label^="Map of where"] path', (ps) => Math.max(...ps.map((p) => (p.getAttribute('d') ?? '').length)))) > 5000));
@@ -66,7 +66,7 @@ await page.emulateMedia({ reducedMotion: 'no-preference' });
 await page.screenshot({ path: `${SHOTS}/p5-map-final.png` });
 
 // Network tab: live mini map, Details and Activity panels
-await page.goto(`${BASE}/?view=network&glove=pi-search&dest=arxiv.org`);
+await page.goto(`${BASE}/?view=network&glove=${PI}&dest=arxiv.org`);
 await page.waitForSelector('[role=table][aria-label=Destinations] [role=row] >> nth=2');
 check('mini map is the live renderer', await waitFor(async () => (await page.$$('[aria-label="Open the Map tab"] g[data-pin]')).length >= 6));
 await page.click('button[aria-pressed]:has-text("Details")');
@@ -89,7 +89,7 @@ check('Settings shows the loaded database', await waitFor(async () => /Loaded La
 
 // 1280×800
 await page.setViewportSize({ width: 1280, height: 800 });
-await page.goto(`${BASE}/?view=map&glove=pi-search`);
+await page.goto(`${BASE}/?view=map&glove=${PI}`);
 await page.waitForTimeout(2500);
 const overflow = await overflowX(page);
 check('no horizontal page scroll at 1280×800', overflow <= 0, overflow);

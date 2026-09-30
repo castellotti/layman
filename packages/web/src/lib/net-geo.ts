@@ -100,7 +100,7 @@ export function strokeWidth(bytes: number, maxBytes: number): number {
 
 /** On the map: has a location, is not a local link, and was not refused before it left. */
 export function isMappable(d: DestinationAggregate): boolean {
-  return d.geo !== null && d.scope !== 'local' && !BLOCK_STATES.has(d.state);
+  return d.geo !== null && d.scope !== 'local' && d.scope !== 'lan' && !BLOCK_STATES.has(d.state);
 }
 
 /**
@@ -108,7 +108,7 @@ export function isMappable(d: DestinationAggregate): boolean {
  * no IP from glove, or no database, or not in it. Never looked up elsewhere.
  */
 export function unknownLocation(dests: Iterable<DestinationAggregate>): DestinationAggregate[] {
-  return [...dests].filter((d) => d.scope !== 'local' && !BLOCK_STATES.has(d.state) && d.host !== null && d.geo === null)
+  return [...dests].filter((d) => d.scope !== 'local' && d.scope !== 'lan' && !BLOCK_STATES.has(d.state) && d.host !== null && d.geo === null)
     .sort((a, b) => b.lastSeen - a.lastSeen);
 }
 

@@ -82,7 +82,7 @@ describe('what the store looks up', () => {
     geo.refresh();
     const store = new NetStore({ geolocate: (ip) => { looked.push(ip); return geo.lookup(ip); } });
     mkdirSync(join(dir, 'x'));
-    store.ensure({ token: 'e', env: 'e', name: 'e', netDir: dir, controlDir: join(dir, 'c', 'e', 'e'), rulesPath: join(dir, 'c', 'e', 'e', 'rules.json') });
+    store.ensure({ token: 'e', netDir: dir, controlDir: join(dir, 'c', 'e', 'e'), rulesPath: join(dir, 'c', 'e', 'e', 'rules.json') });
     store.ingestFlow('e', rec('f1', 'arxiv.org', '151.101.3.42', 'in-tunnel', 'tunnelled'), T);
     store.ingestFlow('e', rec('f2', '203.0.113.9', '203.0.113.9', 'literal', 'tunnelled'), T);
     store.ingestFlow('e', rec('f3', 'llm.lan', '151.101.9.9', 'in-tunnel', 'local'), T);
@@ -99,7 +99,7 @@ describe('what the store looks up', () => {
 
   it('re-sends every destination when the database changes', () => {
     const store = new NetStore({ geolocate: () => null });
-    store.ensure({ token: 'e', env: 'e', name: 'e', netDir: dir, controlDir: join(dir, 'c', 'e', 'e'), rulesPath: join(dir, 'c', 'e', 'e', 'rules.json') });
+    store.ensure({ token: 'e', netDir: dir, controlDir: join(dir, 'c', 'e', 'e'), rulesPath: join(dir, 'c', 'e', 'e', 'rules.json') });
     store.ingestFlow('e', rec('f1', 'arxiv.org', '151.101.3.42', 'in-tunnel', 'tunnelled'), T);
     store.takeDelta('e');
     store.refreshGeo();

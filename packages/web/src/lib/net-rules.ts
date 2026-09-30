@@ -146,7 +146,11 @@ export function previewRules(op: RulesOp): Array<Omit<Rule, 'id'>> {
       ];
     case 'cutAll': {
       const cut = (scope: string) => ({ action: 'block' as const, match: { scope }, terminate: true });
-      return [...(op.keepLlm ? [{ action: 'allow' as const, match: { service: 'llm' } }] : []), cut('tunnelled'), cut('direct'), cut('local')];
+      // glove v3's llm link can be scope `lan` or `cloud`, which no rule may name: kept or cut by its service.
+      const llm = op.keepLlm
+        ? { action: 'allow' as const, match: { service: 'llm' } }
+        : { action: 'block' as const, match: { service: 'llm' }, terminate: true };
+      return [llm, cut('tunnelled'), cut('direct'), cut('local')];
     }
     default:
       return [];

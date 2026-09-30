@@ -137,9 +137,12 @@ describe('applyMigrations (multi-host sync migration)', () => {
       expect(row, `expected table ${t}`).toBeTruthy();
     }
 
-    // Every migration version recorded (3: glove network rollups, netobs/persist.ts).
+    // Every migration version recorded (3: glove network rollups, netobs/persist.ts; 4: their
+    // filter_since, how a revoked glove filter grant is remembered).
     const versions = (db.prepare('SELECT version FROM schema_migrations ORDER BY version').all() as Array<{ version: number }>).map((r) => r.version);
-    expect(versions).toEqual([1, 2, 3]);
+    expect(versions).toEqual([1, 2, 3, 4]);
+    const netCols = (db.prepare('PRAGMA table_info(net_sessions)').all() as Array<{ name: string }>).map((c) => c.name);
+    expect(netCols).toContain('filter_since');
 
     // Journal triggers installed.
     const triggers = triggerNames(db);

@@ -270,7 +270,7 @@ describe('the selected path', () => {
   it('walks sandbox → service → policy → tunnel → exit → destination, saying what is declared and what verified', () => {
     const p = pathHops(fixture(), 'arxiv.org')!;
     expect(p.hops.map((h) => [h.id, h.title, h.detail, h.status, h.evidence])).toEqual([
-      ['sandbox', 'pi-search sandbox', 'pi harness', 'gate running · heartbeat 2 s', 'observed'],
+      ['sandbox', 'pi-search-0f1a2b sandbox', 'pi harness', 'gate running · heartbeat 2 s', 'observed'],
       ['service', 'proxy service', 'glove-pi-search-proxy:8888', 'observed · web_fetch', 'observed'],
       ['policy', 'Policy', 'no rule matched', 'allowed by default', 'observed'],
       ['route', 'VPN tunnel', 'egress-proxy:8888', 'declared vpn · upstream healthy', 'declared'],

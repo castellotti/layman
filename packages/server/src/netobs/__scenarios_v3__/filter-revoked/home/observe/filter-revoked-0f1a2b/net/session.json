@@ -1,0 +1,62 @@
+{
+  "v": 1,
+  "type": "session",
+  "env": "filter-revoked-0f1a2b",
+  "session": "filter-revoked-0f1a2b",
+  "harness": "pi",
+  "gate": "0.2.0",
+  "image": "glove/ext-gate-netgate:fixtureixture",
+  "record": "metadata",
+  "resolve": "in-tunnel",
+  "resolver": null,
+  "exit_identity": "none",
+  "upstream_kind": "direct",
+  "rotate": {
+    "max_bytes": 67108864,
+    "keep": 8,
+    "retain_s": null
+  },
+  "record_headers": false,
+  "rendered_at": "2026-10-01T12:00:00.000Z",
+  "services": [
+    {
+      "service": "llm",
+      "listen": "glove-filter-revoked-0f1a2b-llm:8080",
+      "observed": true,
+      "harness": true,
+      "mode": "tcp",
+      "tool": "llm",
+      "scope": "local",
+      "upstream": "tcp:host.docker.internal:8080",
+      "route": {
+        "kind": "tcp",
+        "upstream": "tcp:host.docker.internal:8080"
+      },
+      "client": "harness"
+    },
+    {
+      "service": "proxy",
+      "listen": "glove-filter-revoked-0f1a2b-proxy:8888",
+      "observed": true,
+      "harness": true,
+      "mode": "http-proxy",
+      "tool": "web_fetch",
+      "scope": null,
+      "upstream": "chain:http://glove-filter-revoked-0f1a2b-direct-proxy:8888",
+      "route": {
+        "kind": "direct",
+        "upstream": "http://glove-filter-revoked-0f1a2b-direct-proxy:8888"
+      },
+      "client": "harness"
+    }
+  ],
+  "grants": {
+    "observe": {
+      "net": true,
+      "transcripts": true
+    },
+    "filter": {
+      "granted": false
+    }
+  }
+}

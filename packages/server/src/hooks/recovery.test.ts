@@ -145,20 +145,19 @@ function writePiFixture(prompt?: string): string {
 const GLOVE_PI_SESSION_ID = '44444444-4444-4444-4444-444444444444';
 
 /**
- * Write a pi transcript inside a glove sandbox home and return the pi watch
- * root (`.../.pi/agent/sessions`) a GloveSource would report for it, plus the
- * env id label. Sits outside `home` deliberately — a glove session lives under
- * the glove sessions dir, not the native pi home.
+ * Write a pi transcript into a glove v3 observe export and return the pi watch
+ * root (`~/.glove/observe/<id>/transcripts`) a GloveSource would report for it,
+ * plus the session id label. Sits outside the native pi home deliberately.
  */
-function writeGlovePiFixture(envId: string, prompt?: string): { root: string; label: string } {
-  const sessionsDir = join(home, '.glove', 'envs', envId, 'home', '.pi', 'agent', 'sessions');
+function writeGlovePiFixture(id: string, prompt?: string): { root: string; label: string } {
+  const sessionsDir = join(home, '.glove', 'observe', id, 'transcripts');
   const projectDir = join(sessionsDir, '--Users-test-pi-project--');
   mkdirSync(projectDir, { recursive: true });
   const content = readFileSync(join(FIXTURES_DIR, 'linear.jsonl'), 'utf-8')
     .replace('aaaaaaaa-0000-7000-8000-000000000000', GLOVE_PI_SESSION_ID)
     .replace('Read notes.md then summarize it', prompt ?? 'Read notes.md then summarize it');
   writeFileSync(join(projectDir, `2026-08-21T09-00-00-000Z_${GLOVE_PI_SESSION_ID}.jsonl`), content);
-  return { root: sessionsDir, label: envId };
+  return { root: sessionsDir, label: id };
 }
 
 let discoverTranscriptFiles: typeof DiscoverFn;
@@ -201,7 +200,7 @@ describe('discoverTranscriptFiles', () => {
   });
 
   it('ignores glove roots by default (none passed) but discovers pi sessions under them when given', () => {
-    const { root, label } = writeGlovePiFixture('pi-local');
+    const { root, label } = writeGlovePiFixture('pi-local-0f1a2b');
 
     // Without glove roots, the native scan finds nothing here.
     expect(discoverTranscriptFiles()).toEqual([]);
@@ -210,13 +209,13 @@ describe('discoverTranscriptFiles', () => {
     expect(found).toHaveLength(1);
     expect(found[0].sessionId).toBe(GLOVE_PI_SESSION_ID);
     expect(found[0].agentType).toBe('pi');
-    expect(found[0].label).toBe('pi-local');
+    expect(found[0].label).toBe('pi-local-0f1a2b');
   });
 
   it('does not scan a non-pi glove root (vibe has no history importer)', () => {
-    const { root } = writeGlovePiFixture('both');
+    const { root } = writeGlovePiFixture('both-0f1a2b');
     // A vibe-typed root pointing at the same tree must be ignored, not parsed as pi.
-    expect(discoverTranscriptFiles([{ path: root, agentType: 'mistral-vibe', label: 'both' }])).toEqual([]);
+    expect(discoverTranscriptFiles([{ path: root, agentType: 'mistral-vibe', label: 'both-0f1a2b' }])).toEqual([]);
   });
 });
 
@@ -261,7 +260,7 @@ describe('importHistoricalSessions', () => {
   });
 
   it('imports a gloved pi session from a glove root and tags it with the env id', async () => {
-    const { root, label } = writeGlovePiFixture('pi-local');
+    const { root, label } = writeGlovePiFixture('pi-local-0f1a2b');
     const db = new FakeDb();
     const recorder = makeRecorder(db);
     const eventStore = new EventStore();
@@ -276,7 +275,7 @@ describe('importHistoricalSessions', () => {
     expect(session.agentType).toBe('pi');
     // The env id rides through to the session name, so the gloved import is
     // tagged just like a passively-watched gloved session.
-    expect(db.sessions.get(GLOVE_PI_SESSION_ID)?.session_name).toBe('pi-local');
+    expect(db.sessions.get(GLOVE_PI_SESSION_ID)?.session_name).toBe('pi-local-0f1a2b');
   });
 
   // Imported events never pass through EventStore, so the recorder applies the
@@ -304,7 +303,7 @@ describe('importHistoricalSessions', () => {
   });
 
   it('keeps IP addresses in an imported gloved transcript when the IP setting is on, and nothing else', async () => {
-    const { root, label } = writeGlovePiFixture('pi-local', SECRET_PROMPT);
+    const { root, label } = writeGlovePiFixture('pi-local-0f1a2b', SECRET_PROMPT);
     const db = new FakeDb();
     const store = new EventStore();
     await importHistoricalSessions(db as unknown as Database, store, piiRecorder(db, store, true), {

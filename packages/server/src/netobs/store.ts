@@ -39,6 +39,7 @@ import type {
   NetCounters,
   NetDelta,
   NetGateView,
+  NetGloveInfo,
   NetSessionFile,
   NetSessionSummary,
   NetSnapshot,
@@ -49,6 +50,9 @@ import type {
   RulesView,
   StatusRecord,
 } from './types.js';
+
+/** Before discovery has said anything about a session. */
+const UNKNOWN_GLOVE: NetGloveInfo = { template: null, filter: null, transcripts: null, orphaned: false, notObservable: false };
 
 const SECOND = 1000;
 const MINUTE = 60 * SECOND;
@@ -109,6 +113,10 @@ interface RunState {
 
 interface SessionData {
   loc: NetSessionLocation;
+  /** What glove says about it (`setGlove`), for the picker. */
+  glove: NetGloveInfo;
+  /** The last filter grant's `since` Layman saw (`history.ts`): what makes a revocation visible. */
+  filterSince: string | null;
   /** What Layman kept from before this process, and its destinations by key. */
   history: { s: HistorySession; dests: Map<string, HistoryDest> } | null;
   /** No files: shown from `history` alone. */
@@ -206,7 +214,8 @@ function policyFor(
   const one = (set: RuleSet | null): PolicyVerdict | null => {
     if (!set) return null;
     const v = predict(set, facts, gate);
-    return { action: v.action, rule: v.rule };
+    // On a corporate route an allow only reaches the corporate proxy, whose allowlist decides.
+    return gate.corporate && v.action === 'allow' ? { action: v.action, rule: v.rule, allowlist: true } : { action: v.action, rule: v.rule };
   };
   return { enforced: one(policy.enforced), written: one(policy.written) };
 }
@@ -242,6 +251,8 @@ export class NetStore extends EventEmitter {
     if (this.sessions.has(loc.token)) return;
     this.sessions.set(loc.token, {
       loc,
+      glove: { ...UNKNOWN_GLOVE },
+      filterSince: null,
       history: null,
       historyOnly: false,
       seen: { up: 0, down: 0, flows: 0, guard: 0, userRule: 0, def: 0, direct: 0 },
@@ -288,7 +299,7 @@ export class NetStore extends EventEmitter {
    */
   setHistory(h: HistorySession, now = Date.now()): void {
     if (!this.sessions.has(h.token)) {
-      this.ensure({ token: h.token, env: h.env, name: h.name, netDir: '', controlDir: '', rulesPath: '' });
+      this.ensure({ token: h.token, netDir: '', controlDir: '', rulesPath: '' });
       const s = this.sessions.get(h.token)!;
       s.historyOnly = true;
       // Nothing to write to: every toggle and the Rules panel say why.
@@ -299,6 +310,7 @@ export class NetStore extends EventEmitter {
       this.refreshGate(s, now, false);
     }
     const s = this.sessions.get(h.token)!;
+    s.filterSince ??= h.filterSince;
     if (s.counters.records > 0) return; // too late to tell re-read records from new ones
     s.history = { s: h, dests: new Map(h.destinations.map((d) => [d.key, d])) };
   }
@@ -310,6 +322,24 @@ export class NetStore extends EventEmitter {
     s.loc = loc;
     s.historyOnly = false;
     s.rules = blankRulesView(loc);
+  }
+
+  /** What glove says about a session now (discovery, every poll). */
+  setGlove(token: string, glove: NetGloveInfo): void {
+    const s = this.sessions.get(token);
+    if (s) s.glove = glove;
+  }
+
+  /** Remember the filter grant's `since` while it is granted. */
+  noteFilterSince(token: string, since: string): void {
+    const s = this.sessions.get(token);
+    if (s) s.filterSince = since;
+  }
+
+  /** The last filter grant Layman saw for this session, from this process or kept history. */
+  filterSince(token: string): string | null {
+    const s = this.sessions.get(token);
+    return s ? s.filterSince ?? s.history?.s.filterSince ?? null : null;
   }
 
   isHistoryOnly(token: string): boolean {
@@ -447,7 +477,7 @@ export class NetStore extends EventEmitter {
 
   /**
    * glove's gate lifecycle, read in file order (glove's record contract; this is
-   * a port of glove's reference `glove.netview.ended_runs` and must stay one).
+   * a port of glove's reference `ended_runs`, `extensions/observe/netview.py`, and must stay one).
    * A run ends at a `stop` for it, or when a later run appears for the same
    * service (the forwarder restarted); any later record of the run itself
    * revives it. A `stop` ends only its own run and never displaces the service's
@@ -766,12 +796,12 @@ export class NetStore extends EventEmitter {
     const facts = {
       host: a.host, ip: a.ips[0] ?? null, port: a.port, service: a.services[0] ?? null, tool: a.tools[0] ?? null, scope: a.scope,
     };
-    const gate = { proxy: this.viaProxy(s, a.services[0] ?? null, a.resolution), resolution: a.resolution };
+    const gate = { proxy: this.viaProxy(s, a.services[0] ?? null, a.resolution), resolution: a.resolution, corporate: this.corporate(s, a.services[0] ?? null) };
     return {
       ...a,
       policy: policyFor(s.policy, facts, gate),
       // Only an IP glove resolved inside the tunnel (or a literal), never a local link.
-      geo: this.geolocate && a.ips[0] && a.scope !== 'local' && (a.resolution === 'in-tunnel' || a.resolution === 'literal')
+      geo: this.geolocate && a.ips[0] && a.scope !== 'local' && a.scope !== 'lan' && (a.resolution === 'in-tunnel' || a.resolution === 'literal')
         ? this.geolocate(a.ips[0])
         : null,
       // A flow whose gate went away is unclosed but not open in any sense the UI means.
@@ -795,6 +825,16 @@ export class NetStore extends EventEmitter {
     const declared = service ? (s.session?.services ?? []).find((sv) => sv.service === service) : undefined;
     if (declared?.mode) return declared.mode === 'http-proxy';
     return resolution === 'unavailable' || resolution === 'in-tunnel';
+  }
+
+  /**
+   * Whether a destination went out through glove's `corporate` egress: its service's
+   * declared route, or, without one, the session's `upstream_kind`.
+   */
+  private corporate(s: SessionData, service: string | null): boolean {
+    const declared = service ? (s.session?.services ?? []).find((sv) => sv.service === service) : undefined;
+    if (declared?.route) return declared.route.kind === 'corporate';
+    return s.session?.upstream_kind === 'corporate';
   }
 
   /** What the kept history holds for a destination beyond what the files re-read: kept − seen. Null when nothing. */
@@ -831,7 +871,7 @@ export class NetStore extends EventEmitter {
   /** A destination only the kept history knows: what is left of it once the files are re-read. */
   private historyView(s: SessionData, h: HistoryDest, c: Seen): DestinationAggregate {
     const facts = { host: h.host, ip: h.lastIp, port: h.port, service: null, tool: h.tool, scope: h.scope };
-    const gate = { proxy: this.viaProxy(s, null, h.resolution ?? null), resolution: h.resolution ?? null };
+    const gate = { proxy: this.viaProxy(s, null, h.resolution ?? null), resolution: h.resolution ?? null, corporate: this.corporate(s, null) };
     const scope = (h.scope ?? 'unknown') as FlowFlags['scope'];
     return {
       key: h.key, host: h.host, port: h.port, groupKey: h.groupKey, endpoint: h.host === null ? h.key.replace(/^@/, '') : null,
@@ -909,7 +949,7 @@ export class NetStore extends EventEmitter {
     const dests = this.destViews(s);
     const first = Math.min(s.firstSeen ?? Infinity, h?.firstSeen ?? Infinity, ...dests.map((d) => d.firstSeen));
     return {
-      token, env: s.loc.env, name: s.loc.name,
+      token, filterSince: s.filterSince ?? h?.filterSince ?? null,
       firstSeen: Number.isFinite(first) ? first : 0,
       lastSeen: Math.max(s.lastT ?? 0, h?.lastSeen ?? 0),
       watermark: Math.max(s.lastT ?? -Infinity, h?.watermark ?? -Infinity),
@@ -963,8 +1003,6 @@ export class NetStore extends EventEmitter {
     );
     return {
       token,
-      env: s.loc.env,
-      name: s.loc.name,
       session: s.session,
       gate: s.gate,
       exit: s.exits[s.exits.length - 1] ?? null,
@@ -1098,9 +1136,8 @@ export class NetStore extends EventEmitter {
         const h = s.history?.s;
         return {
           token: s.loc.token,
-          env: s.loc.env,
-          name: s.loc.name,
           harness: s.session?.harness ?? null,
+          glove: s.historyOnly ? { ...UNKNOWN_GLOVE, filter: null } : { ...s.glove },
           live: !s.historyOnly && s.gate.freshness === 'running',
           firstSeen: s.firstSeen === null ? h?.firstSeen ?? null : Math.min(s.firstSeen, h?.firstSeen ?? Infinity),
           lastSeen: s.lastT === null ? h?.lastSeen ?? null : Math.max(s.lastT, h?.lastSeen ?? 0),

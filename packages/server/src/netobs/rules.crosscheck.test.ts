@@ -1,8 +1,8 @@
 /**
- * The rules validator and evaluator exist twice: glove's `glove/netgate/policy.py`
+ * The rules validator and evaluator exist twice: glove's `extensions/gate/netgate/policy.py`
  * (what the gate runs) and the port in `rules.ts` (what Layman refuses to write
  * past). This feeds one corpus to both and requires the same verdict for every
- * file and the same matching rule for every flow. Also runs `glove net validate`
+ * file and the same matching rule for every flow. Also runs `glove filter validate`
  * itself once, on a file Layman wrote, since that is the documented entry point.
  * Skipped when glove or `uv` is not beside the repo.
  */
@@ -17,7 +17,8 @@ import { applyOp, emptyRules, evaluate, GUARD_RULE, guardRefuses, parseRulesByte
 const GLOVE = join(dirname(fileURLToPath(import.meta.url)), '../../../../../glove');
 
 function available(): boolean {
-  if (!existsSync(join(GLOVE, 'glove', 'netgate', 'policy.py'))) return false;
+  // glove v3 moved the gate into the `gate` extension; a v2 checkout (glove/netgate/) is not cross-checked.
+  if (!existsSync(join(GLOVE, 'extensions', 'gate', 'netgate', 'policy.py'))) return false;
   try {
     execFileSync('uv', ['--version'], { stdio: 'ignore' });
     return true;
@@ -31,7 +32,8 @@ const python = (script: string, input: unknown): unknown =>
     input: JSON.stringify(input), encoding: 'utf8', maxBuffer: 64 * 1024 * 1024,
   }));
 
-const ENV = 'pi-search';
+// glove v3: the session id is both `env` and `session`.
+const ENV = 'pi-search-0f1a2b';
 const base = { v: 1, env: ENV, session: ENV, default: 'allow' };
 const r = (match: unknown, over: Record<string, unknown> = {}) => ({ id: 'r_a', action: 'block', match, ...over });
 const file = (...rules: unknown[]) => ({ ...base, rules });
@@ -114,11 +116,11 @@ const GUARD_HOSTS = [
 ];
 
 const GUARD = `import json,sys
-from glove.netgate.guard import check
+from extensions.gate.netgate.guard import check
 print(json.dumps([check(h)[0] is not None for h in json.load(sys.stdin)]))`;
 
 const VALIDATE = `import json,sys
-from glove.netgate.policy import parse_bytes, PolicyError
+from extensions.gate.netgate.policy import parse_bytes, PolicyError
 out=[]
 for s in json.load(sys.stdin):
     try:
@@ -127,11 +129,11 @@ for s in json.load(sys.stdin):
 print(json.dumps(out))`;
 
 const EVALUATE = `import json,sys
-from glove.netgate.policy import validate
+from extensions.gate.netgate.policy import validate
 d=json.load(sys.stdin)
 print(json.dumps([[list(validate(rs).evaluate(f)) for f in d["facts"]] for rs in d["sets"]]))`;
 
-describe('rules cross-check against glove/netgate/policy.py', () => {
+describe('rules cross-check against glove\'s extensions/gate/netgate/policy.py', () => {
   const ready = available();
 
   it.skipIf(!ready)('accepts and rejects exactly the files glove does', () => {
@@ -181,7 +183,7 @@ describe('rules cross-check against glove/netgate/policy.py', () => {
     expect(predict(set, facts, { proxy: false, resolution: 'in-tunnel' }).rule).toBe('r_user');
   });
 
-  it.skipIf(!ready)('`glove net validate` accepts a file Layman wrote', () => {
+  it.skipIf(!ready)('`glove filter validate` accepts a file Layman wrote', () => {
     const dir = mkdtempSync(join(tmpdir(), 'rules-xcheck-'));
     try {
       let n = 0;
@@ -189,7 +191,7 @@ describe('rules cross-check against glove/netgate/policy.py', () => {
         { env: ENV, token: ENV, now: Date.now(), newId: () => `r_X${++n}`, currentSha256: null });
       const path = join(dir, 'rules.json');
       writeFileSync(path, serializeRules(f));
-      const out = JSON.parse(execFileSync('uv', ['run', '--quiet', '--project', GLOVE, 'glove', 'net', 'validate', path,
+      const out = JSON.parse(execFileSync('uv', ['run', '--quiet', '--project', GLOVE, 'glove', 'filter', 'validate', path,
         '--env', ENV, '--session', ENV, '--json'], { encoding: 'utf8' }));
       expect(out).toMatchObject({ ok: true, active_count: 2 });
     } finally {

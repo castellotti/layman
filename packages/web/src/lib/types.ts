@@ -333,7 +333,8 @@ export interface LaymanConfig {
   /** Passive monitoring of glove-sandboxed harnesses. Mirrors GloveConfigSchema. */
   glove: {
     enabled: boolean;
-    sessionsDir: string;
+    /** glove's home (`~/.glove`): registry.json, observe/, control/. glove v3 only. */
+    home: string;
     /** Keep IP addresses unredacted in gloved sessions' events. */
     showIpAddresses: boolean;
     /** Network views of gloved sessions. Mirrors the server's `glove.network` block. */

@@ -1,8 +1,8 @@
 // glove network views browser check (control; was phase-4 check4). Run via scripts/netobs-e2e.sh.
-import { BASE, GLOVE, SHOTS, REPO, startCheck } from './env.mjs';
+import { BASE, GLOVE, SHOTS, REPO, startCheck, PI, sid } from './env.mjs';
 import { readFileSync, writeFileSync } from 'fs';
 import { createHash } from 'crypto';
-const RULES = `${GLOVE}/control/pi-search/pi-search/rules.json`;
+const RULES = `${GLOVE}/control/${PI}/rules.json`;
 const { page, check, waitFor, has, finish } = await startCheck();
 const rulesText = () => page.$eval('section:has(h2:text-is("Rules"))', (s) => s.innerText);
 
@@ -10,7 +10,7 @@ const rulesText = () => page.$eval('section:has(h2:text-is("Rules"))', (s) => s.
 const SCEN = `${REPO}/packages/server/src/netobs`;
 const reset = (session, src) => {
   const text = readFileSync(src, 'utf8').replace(/"env": *"[^"]*"/, `"env": "${session}"`).replace(/"session": *"[^"]*"/, `"session": "${session}"`);
-  writeFileSync(`${GLOVE}/control/${session}/${session}/rules.json`, text, { mode: 0o644 });
+  writeFileSync(`${GLOVE}/control/${session}/rules.json`, text, { mode: 0o644 });
   return createHash('sha256').update(text).digest('hex');
 };
 /** The gate reports enforcing exactly this file. */
@@ -18,12 +18,12 @@ const gateEnforces = (session, sha) => waitFor(async () => {
   const r = (await (await fetch(`${BASE}/api/net/sessions/${session}/rules`)).json()).rules;
   return r.sha256 === sha && r.enforcement === 'enforced';
 }, 15000);
-const resets = { 'pi-search': reset('pi-search', `${SCEN}/__fixtures__/rules.json`), 'default-block': reset('default-block', `${SCEN}/__scenarios__/default-block/rules.json`) };
+const resets = { [PI]: reset(PI, `${SCEN}/__fixtures__/rules.json`), [sid('default-block')]: reset(sid('default-block'), `${SCEN}/__scenarios__/default-block/rules.json`) };
 for (const [session, sha] of Object.entries(resets)) {
   check(`reset ${session} to its fixture rules`, await gateEnforces(session, sha));
 }
 
-await page.goto(`${BASE}/?view=network&glove=pi-search`);
+await page.goto(`${BASE}/?view=network&glove=${PI}`);
 await page.waitForSelector('[role=table][aria-label=Destinations] [role=row] >> nth=2', { timeout: 15000 });
 await page.waitForTimeout(1500);
 
@@ -70,7 +70,7 @@ check('draft saved and enforced', await waitFor(async () => { const t = await ru
 await page.click('button:has-text("Cut all traffic now")');
 await page.waitForSelector('[role=alertdialog]');
 const kd = await page.$eval('[role=alertdialog]', (d) => d.innerText);
-check('kill switch dialog with keep-LLM checked', /Cut all traffic for pi-search\?/.test(kd) && (await page.$eval('[role=alertdialog] input[type=checkbox]', (c) => c.checked)), kd.replace(/\n/g, ' | '));
+check('kill switch dialog with keep-LLM checked', new RegExp(`Cut all traffic for ${PI}\\?`).test(kd) && (await page.$eval('[role=alertdialog] input[type=checkbox]', (c) => c.checked)), kd.replace(/\n/g, ' | '));
 await page.screenshot({ path: `${SHOTS}/p4-killswitch.png` });
 await page.click('[role=alertdialog] button:has-text("Cut all traffic")');
 check('strip shows ALL TRAFFIC CUT', await waitFor(has('span:text-is("ALL TRAFFIC CUT")'), 8000));
@@ -84,7 +84,7 @@ await restoreBtn?.click();
 const restored = await waitFor(async () => !(await page.$('span:text-is("ALL TRAFFIC CUT")')) && JSON.parse(readFileSync(RULES, 'utf8')).default === 'allow', 10000);
 const diag = restored ? '' : JSON.stringify({ restoreDisabled, file: JSON.parse(readFileSync(RULES, 'utf8')).default,
   chip: !!(await page.$('span:text-is("ALL TRAFFIC CUT")')), toasts: await page.$$eval('[role=alert]', (as) => as.map((a) => a.innerText)),
-  write: (await (await fetch(`${BASE}/api/net/sessions/pi-search/rules`)).json()).rules.write });
+  write: (await (await fetch(`${BASE}/api/net/sessions/${PI}/rules`)).json()).rules.write });
 check('restore clears the chip and the default', restored, diag);
 await waitFor(async () => /Enforced by the gate|in force/.test(await rulesText()), 10000);
 
@@ -96,7 +96,7 @@ check('external change toast', await waitFor(has('text=rules.json changed outsid
 await page.screenshot({ path: `${SHOTS}/p4-external.png` });
 // Wait for the gate to confirm the outside edit, so "the enforced file" is that one.
 const extSha = createHash('sha256').update(readFileSync(RULES)).digest('hex');
-check('the gate confirms the outside edit', await gateEnforces('pi-search', extSha));
+check('the gate confirms the outside edit', await gateEnforces(PI, extSha));
 
 // 6. Break the file by hand: rejected banner on all four tabs; revert
 const good = readFileSync(RULES, 'utf8');
@@ -109,17 +109,17 @@ check('toggles still show what is enforced (the fixture rule)', toggleStill !== 
 check('panel labels the file not enforced', /IN RULES\.JSON · NOT ENFORCED/.test(await rulesText()));
 await page.screenshot({ path: `${SHOTS}/p4-rejected.png` });
 for (const v of ['map', 'topology', 'trace']) {
-  await page.goto(`${BASE}/?view=${v}&glove=pi-search`);
+  await page.goto(`${BASE}/?view=${v}&glove=${PI}`);
   check(`banner on ${v}`, await waitFor(has('[role=alert]:has-text("glove rejected rules.json")'), 8000));
 }
-await page.goto(`${BASE}/?view=network&glove=pi-search`);
+await page.goto(`${BASE}/?view=network&glove=${PI}`);
 await waitFor(has('[role=alert]:has-text("glove rejected rules.json")'), 8000);
 await page.click('button:has-text("Revert to enforced rules")');
 check('revert restores the enforced file and clears the banner', await waitFor(async () => !(await page.$('[role=alert]:has-text("glove rejected rules.json")')), 15000));
 check('reverted bytes equal the last good file', readFileSync(RULES, 'utf8') === good);
 
 // 7. Default block session: allow from the row
-await page.goto(`${BASE}/?view=network&glove=default-block`);
+await page.goto(`${BASE}/?view=network&glove=${sid('default-block')}`);
 await page.waitForSelector('[role=table][aria-label=Destinations] [role=row] >> nth=1');
 await page.waitForTimeout(1000);
 const allowT = await page.$('button[aria-label="Allow arxiv.org"]');

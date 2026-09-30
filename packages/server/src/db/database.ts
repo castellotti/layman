@@ -148,6 +148,12 @@ export function applyMigrations(db: Database): void {
 
   applyNetMigration(db);
   recordMigration(db, 3);
+
+  // Migration 4 — glove v3: the last filter grant Layman saw, so a revoked grant
+  // (which glove records nowhere) still reads as revoked after a restart. Local
+  // only, like the rest of the network rollups.
+  addColumn(db, 'net_sessions', 'filter_since', 'filter_since TEXT');
+  recordMigration(db, 4);
 }
 
 /**

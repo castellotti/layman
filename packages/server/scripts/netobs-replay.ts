@@ -2,7 +2,7 @@
  * A fake glove home and a replaying gate, for developing and checking Layman's
  * network views without running glove.
  *
- * Builds `<dir>/envs/pi-search/sessions/pi-search/net/` from glove's fixture
+ * Builds a glove v3 home: `<dir>/observe/pi-search-c0ffee/net/`, from glove's fixture
  * (`src/netobs/__fixtures__/`), with every timestamp rewritten to "now", then
  * replays the flow records at their original relative pace so the live views
  * animate. It heartbeats `status.json` every 5 s like a running gate, and marks
@@ -17,7 +17,9 @@
  *   pnpm --filter ./packages/server netobs:replay -- [options]     (via tsx)
  *   node packages/server/scripts/netobs-replay.ts [options]         (Node ≥ 23, no loader)
  *
- * then point Layman at it: `glove.enabled: true`, `glove.sessionsDir: <dir>/envs`.
+ * then point Layman at it: `glove.enabled: true`, `glove.home: <dir>`. Each
+ * session is registered in `<dir>/registry.json` (v2) with the observe grant and
+ * the filter grant, so its rules can be changed from Layman.
  *
  * Options:
  *   --dir <path>         fake glove home (default /tmp/layman-netobs/glove)
@@ -36,7 +38,7 @@
  *                        The prompt is written when a pass starts but its calls only when it ends, so the
  *                        turn in progress shows no calls until then (a real agent writes each call as it
  *                        finishes); a check wanting calls should look at the previous turn.
- *   --gate               fake gate: validate control/<env>/<name>/rules.json with Layman's port of glove's
+ *   --gate               fake gate: validate control/<id>/rules.json with Layman's port of glove's
  *                        validator, report it in status.json as glove's collector does (sha256,
  *                        last_rejected, last good set kept on a rejection), and apply its verdicts to the
  *                        replayed flows (blocked opens; `terminate` rules cut open flows)
@@ -50,8 +52,9 @@ import { fileURLToPath } from 'node:url';
 
 const FIXTURE = join(dirname(fileURLToPath(import.meta.url)), '..', 'src', 'netobs', '__fixtures__');
 const SCENARIOS = join(dirname(fileURLToPath(import.meta.url)), '..', 'src', 'netobs', '__scenarios__');
-const ENV = 'pi-search';
-const NAME = 'pi-search';
+/** A fixed glove v3 id suffix (`<name>-<6 hex>`), so a restarted replay keeps its sessions. */
+const ID_SUFFIX = 'c0ffee';
+const FIXTURE_ID = `pi-search-${ID_SUFFIX}`;
 
 interface Options {
   dir: string;
@@ -195,14 +198,71 @@ async function main(): Promise<void> {
     process.exit(0);
   });
   console.log(`Fake glove home: ${o.dir}`);
-  console.log(`Set in Layman:   glove.enabled = true, glove.sessionsDir = ${join(o.dir, 'envs')}`);
+  console.log(`Set in Layman:   glove.enabled = true, glove.home = ${o.dir}`);
   if (o.scenarios.length) {
     console.log(`Replaying scenarios ${o.scenarios.join(', ')}, each as its own session. Ctrl-C to stop the gates.`);
-    await Promise.all(o.scenarios.map((n) => replay(o, loadSource(join(SCENARIOS, n)), n, n, false)));
+    await Promise.all(o.scenarios.map((n) => replay(o, loadSource(join(SCENARIOS, n)), `${n}-${ID_SUFFIX}`, false)));
   } else {
-    await replay(o, loadSource(FIXTURE), ENV, NAME, o.direct, o.transcript ? new FakeTranscript(o.dir, ENV, NAME) : null);
+    await replay(o, loadSource(FIXTURE), FIXTURE_ID, o.direct, o.transcript ? new FakeTranscript(o.dir, FIXTURE_ID) : null);
   }
   console.log('Replay finished; the gate keeps heartbeating. Ctrl-C to stop it.');
+}
+
+/**
+ * Add or replace a row in the fake home's `registry.json` (glove's v2 format),
+ * atomically like glove, keeping rows for other sessions.
+ */
+function register(dir: string, row: Record<string, unknown> & { id: string }): void {
+  withRegistryLock(dir, () => registerUnlocked(dir, row));
+}
+
+/**
+ * Serialize registry writes between replays (glove holds `registry.json.lock` for
+ * the same reason): an unlocked read-modify-write from two replays at once drops a
+ * row, and Layman then calls that session orphaned. mkdir is atomic, so a directory
+ * is the lock; a stale one from a killed replay is taken over after 2 s.
+ */
+function withRegistryLock(dir: string, fn: () => void): void {
+  const lock = join(dir, '.registry.replay-lock');
+  mkdirSync(dir, { recursive: true });
+  const until = Date.now() + 2_000;
+  for (;;) {
+    try {
+      mkdirSync(lock);
+      break;
+    } catch {
+      if (Date.now() > until) break; // stale: take it over
+      const wait = Date.now() + 10;
+      while (Date.now() < wait) { /* spin briefly: this is a dev script */ }
+    }
+  }
+  try {
+    fn();
+  } finally {
+    rmSync(lock, { recursive: true, force: true });
+  }
+}
+
+function registerUnlocked(dir: string, row: Record<string, unknown> & { id: string }): void {
+  const path = join(dir, 'registry.json');
+  let rows: Array<Record<string, unknown>> = [];
+  try {
+    const data = JSON.parse(readFileSync(path, 'utf8'));
+    if (data && data.v === 2 && Array.isArray(data.sessions)) rows = data.sessions;
+  } catch { /* none yet */ }
+  rows = [...rows.filter((r) => r.id !== row.id), row];
+  mkdirSync(dir, { recursive: true });
+  writeAtomic(path, JSON.stringify({ v: 2, sessions: rows }, null, 2) + '\n');
+}
+
+/** Whether the fake home's registry has a row for this id. */
+function registered(dir: string, id: string): boolean {
+  try {
+    const data = JSON.parse(readFileSync(join(dir, 'registry.json'), 'utf8'));
+    return Array.isArray(data?.sessions) && data.sessions.some((r: { id?: string }) => r.id === id);
+  } catch {
+    return false;
+  }
 }
 
 /** status.json `rules`, as glove's collector reports them. */
@@ -276,13 +336,13 @@ class FakeGate {
 }
 
 /**
- * Replay one source into `<dir>/envs/<env>/sessions/<name>/net/`, rewriting
- * times to now and `env`/`session` to this session's. A later pass gets fresh
+ * Replay one source into `<dir>/observe/<id>/net/`, rewriting times to now and
+ * `env`/`session` to the id (glove v3 writes the id as both). A later pass gets fresh
  * flow and run ids, so to the reader each pass is a restarted gate.
  */
 /**
  * A pi session running in the fake glove session: one turn per pass, written
- * where GloveSource looks (`envs/<env>/sessions/<name>/home/.pi/agent/sessions/`),
+ * where GloveSource looks (the observe export, `observe/<id>/transcripts/<cwd>/`),
  * in pi's format-3 JSONL, so the pi watcher records it as a gloved session
  * named after the glove token. Its calls are the fixture's: a web search at the
  * fan-out's moment, a fetch per host the proxy saw, and the arxiv PDF three
@@ -294,8 +354,8 @@ class FakeTranscript {
   private last: string | null = null;
   private n = 0;
 
-  constructor(dir: string, env: string, name: string) {
-    const home = join(dir, 'envs', env, 'sessions', name, 'home', '.pi', 'agent', 'sessions', '--work--');
+  constructor(dir: string, id: string) {
+    const home = join(dir, 'observe', id, 'transcripts', '--work--');
     mkdirSync(home, { recursive: true });
     const now = Date.now();
     this.path = join(home, `${iso(now).replace(/[:.]/g, '-')}_${randomUUID()}.jsonl`);
@@ -342,17 +402,26 @@ class FakeTranscript {
   }
 }
 
-async function replay(o: Options, src: Source, env: string, name: string, direct: boolean, transcript: FakeTranscript | null = null): Promise<void> {
-  const token = name === env ? env : `${env}-${name}`;
-  const net = join(o.dir, 'envs', env, 'sessions', name, 'net');
-  const control = join(o.dir, 'control', env, name);
+async function replay(o: Options, src: Source, id: string, direct: boolean, transcript: FakeTranscript | null = null): Promise<void> {
+  const env = id;
+  const token = id;
+  const net = join(o.dir, 'observe', id, 'net');
+  const control = join(o.dir, 'control', id);
   // Only ever clear the fake session's own net/ dir, never anything above it.
   rmSync(net, { recursive: true, force: true });
   mkdirSync(net, { recursive: true });
   mkdirSync(control, { recursive: true });
 
   const start = Date.now();
-  writeAtomic(join(net, 'session.json'), JSON.stringify({ ...src.session, env, session: token, rendered_at: iso(start) }, null, 2) + '\n');
+  const grants = { observe: { net: true, transcripts: transcript !== null }, filter: { granted: true, since: iso(start) } };
+  const harness = typeof src.session.harness === 'string' ? src.session.harness : 'pi';
+  writeAtomic(join(net, 'session.json'), JSON.stringify({ ...src.session, env, session: token, rendered_at: iso(start), grants }, null, 2) + '\n');
+  // The session directory glove would have: `.glove/id` names the session, or Layman calls it orphaned.
+  const sessionDir = join(o.dir, 'sessions', id);
+  mkdirSync(join(sessionDir, '.glove'), { recursive: true });
+  writeFileSync(join(sessionDir, '.glove', 'id'), `${id}\n`);
+  const row = { id, dir: sessionDir, harness, template: null, created: iso(start), grants, subnet: null };
+  register(o.dir, row);
   // The source's rule set, as if a user had written it. Never clobber a file
   // already there: that is Layman's (or the user's) to own.
   const rulesPath = join(control, 'rules.json');
@@ -366,6 +435,8 @@ async function replay(o: Options, src: Source, env: string, name: string, direct
   const gate = o.gate ? new FakeGate(rulesPath, env, token) : null;
   gate?.poll();
   const heartbeat = () => {
+    // Belt and braces for a writer that does not take the lock (e2e/network/make-big.mjs).
+    if (!registered(o.dir, id)) register(o.dir, row);
     const rules = gate ? gate.rules : src.status.rules ?? {};
     writeAtomic(
       join(net, 'status.json'),

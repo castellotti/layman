@@ -15,7 +15,13 @@
 // ─── glove's records ─────────────────────────────────────────────────────────
 
 export type FlowPhase = 'open' | 'update' | 'close';
-export type FlowScope = 'tunnelled' | 'local' | 'direct';
+/**
+ * glove's scopes. `lan` and `cloud` are glove v3's llm link (an inference server
+ * on the LAN, or a provider on the internet): expected, never an alert, and not
+ * matchable by a rule (glove's `RULE_SCOPES`).
+ */
+export const FLOW_SCOPES = ['tunnelled', 'local', 'direct', 'lan', 'cloud'] as const;
+export type FlowScope = (typeof FLOW_SCOPES)[number];
 export type FlowResolution = 'in-tunnel' | 'literal' | 'unavailable' | 'disabled';
 
 export interface FlowDest {
@@ -375,6 +381,11 @@ export interface PolicyVerdict {
   action: RuleAction;
   /** The matching rule's id, or null when the default decided. */
   rule: string | null;
+  /**
+   * An allow on a `corporate` route: the rules let it through to glove's corporate
+   * proxy, whose own allowlist (from the session file) then decides. Rules cannot widen it.
+   */
+  allowlist?: boolean;
 }
 
 export type GateFreshness = 'running' | 'stale' | 'stopped' | 'unknown';
@@ -388,7 +399,7 @@ export interface NetGateView {
   heartbeatAgeMs: number | null;
   record: string;
   route: {
-    /** Declared route kind: `vpn`, `tor`, `direct`, `tcp`, or null when unknown. */
+    /** Declared route kind: `vpn`, `tor`, `direct`, `corporate`, `tcp`, or null when unknown. */
     kind: string | null;
     /** True only while the latest exit record is healthy. */
     verified: boolean;
@@ -445,7 +456,37 @@ export interface RulesWriteView {
   error: string | null;
 }
 
-export type ControlState = 'ok' | 'disabled' | 'no-dir' | 'read-only';
+/**
+ * Whether Layman may write a session's rules.json. `not-granted`, `revoked` and
+ * `orphaned` come from glove's grant and registry; the others from Layman's
+ * setting and the control directory.
+ */
+export type ControlState = 'ok' | 'disabled' | 'not-granted' | 'revoked' | 'orphaned' | 'no-dir' | 'read-only';
+
+/** The session's filter grant as Layman knows it: `revoked` = Layman saw it granted before, and it is not now. */
+export type FilterAccess = 'granted' | 'not-granted' | 'revoked';
+
+/** What glove says about a session (registry row and `session.json`), as the picker and header show it. */
+export interface NetGloveInfo {
+  template: string | null;
+  /** Null for a history-only session: glove's files are gone, so nothing is known now. */
+  filter: FilterAccess | null;
+  /** The observe grant exports transcripts too. Null when unknown. */
+  transcripts: boolean | null;
+  /** Session deleted; export retained (glove's orphan rule). `glove gc` removes it. */
+  orphaned: boolean;
+  /** Registered without the observe grant: listed greyed out, never read. */
+  notObservable: boolean;
+}
+
+/**
+ * The state of `~/.glove/registry.json`. `v2-home` is a glove v2 registry, which
+ * Layman does not read (glove v3 only); the UI asks the user to upgrade glove.
+ */
+export interface GloveRegistryView {
+  state: 'ok' | 'absent' | 'v2-home' | 'unsupported' | 'unreadable';
+  detail: string;
+}
 
 /** rules.json as Layman last read it from the control directory, and whether Layman may change it. */
 export interface RulesView {
@@ -499,11 +540,10 @@ export interface NetTotals {
 }
 
 export interface NetSessionSummary {
+  /** glove's session id. */
   token: string;
-  env: string;
-  /** Directory name under `envs/<env>/sessions/`. */
-  name: string;
   harness: string | null;
+  glove: NetGloveInfo;
   /** Gate running and its heartbeat fresh. */
   live: boolean;
   firstSeen: number | null;
@@ -519,8 +559,6 @@ export interface NetSessionSummary {
 
 export interface NetSnapshot {
   token: string;
-  env: string;
-  name: string;
   session: NetSessionFile | null;
   gate: NetGateView;
   exit: ExitRecord | null;

@@ -17,7 +17,7 @@ import {
   RulesError, applyOp, asRulesFile, emptyRules, newRuleId, parseRulesBytes, serializeRules, validateRules,
   type RuleSet,
 } from './rules.js';
-import { controlStatus, removeRules, writeRules } from './writer.js';
+import { controlStatus, removeRules, writeRules, type ControlAccess } from './writer.js';
 import { toHostPath, type NetSessionLocation } from './discovery.js';
 import type { RulesFile, RulesOp, RulesView, RulesWriteView, StatusRecord } from './types.js';
 
@@ -36,6 +36,8 @@ interface Known {
 
 interface SessionRules {
   loc: NetSessionLocation;
+  /** glove's grant, as of the last poll. */
+  access: ControlAccess;
   sig: string | null;
   exists: boolean;
   bytes: Buffer | null;
@@ -59,8 +61,11 @@ export interface ApplyResult {
   error: string | null;
 }
 
-/** The session's `control/` root: two levels above its control directory. */
-const controlRoot = (loc: NetSessionLocation) => resolve(loc.controlDir, '..', '..');
+/** The session's `control/` root: the parent of its control directory (`control/<id>/`). */
+const controlRoot = (loc: NetSessionLocation) => resolve(loc.controlDir, '..');
+
+/** Until the first poll says otherwise: nothing may be written. */
+const NO_ACCESS: ControlAccess = { filter: 'not-granted', orphaned: false };
 
 function blankView(loc: NetSessionLocation): RulesView {
   return {
@@ -116,7 +121,7 @@ export class RulesControl {
     let s = this.sessions.get(loc.token);
     if (!s) {
       s = {
-        loc, sig: null, exists: false, bytes: null, sha256: null, mtimeMs: null, readError: null,
+        loc, access: NO_ACCESS, sig: null, exists: false, bytes: null, sha256: null, mtimeMs: null, readError: null,
         display: { file: null, error: null }, strict: null, invalid: null, cache: new Map(),
         write: null, externalChange: null, view: blankView(loc), viewSig: '', sets: { enforced: null, written: null },
       };
@@ -131,9 +136,9 @@ export class RulesControl {
     while (s.cache.size > CACHE_SIZE) s.cache.delete(s.cache.keys().next().value!);
   }
 
-  /** Strictly parse bytes for this session, as its gate would. */
+  /** Strictly parse bytes for this session, as its gate would. glove v3 writes the id as both `env` and `session`. */
   private strict(loc: NetSessionLocation, bytes: Buffer): Known {
-    const { set, data } = parseRulesBytes(bytes, { env: loc.env, session: loc.token });
+    const { set, data } = parseRulesBytes(bytes, { env: loc.token, session: loc.token });
     return { bytes, file: asRulesFile(data), set };
   }
 
@@ -186,7 +191,7 @@ export class RulesControl {
 
     let enforced: Known | null = null;
     const empty = (): Known => {
-      const file = emptyRules(s.loc.env, s.loc.token);
+      const file = emptyRules(s.loc.token, s.loc.token);
       return { bytes: Buffer.alloc(0), file, set: validateRules(file) };
     };
     if (r?.sha256) enforced = s.cache.get(r.sha256) ?? null;
@@ -224,15 +229,16 @@ export class RulesControl {
       invalid: s.invalid,
       enforcement,
       enforced: enforced?.file ?? null,
-      control: controlStatus(controlRoot(s.loc), s.loc.rulesPath, this.controlEnabled()),
+      control: controlStatus(controlRoot(s.loc), s.loc.rulesPath, this.controlEnabled(), s.access),
       write: w ? { ...w } : null,
       externalChange: s.externalChange,
     };
   }
 
   /** Read and settle; true when the view changed (the caller sends `net:rules`). */
-  poll(loc: NetSessionLocation, status: StatusRecord | null, now: number): boolean {
+  poll(loc: NetSessionLocation, status: StatusRecord | null, now: number, access: ControlAccess): boolean {
     const s = this.session(loc);
+    s.access = access;
     this.readDisk(s, now);
     this.settle(s, status, now);
     const sig = JSON.stringify({ ...s.view, sets: [s.sets.enforced !== null, s.sets.written !== null] });
@@ -247,9 +253,10 @@ export class RulesControl {
    * when the file on disk is one the gate would reject (someone else's broken
    * write is theirs to fix, or to revert), or when the result would not validate.
    */
-  apply(loc: NetSessionLocation, status: StatusRecord | null, op: RulesOp, opId: string, now: number): ApplyResult {
+  apply(loc: NetSessionLocation, status: StatusRecord | null, op: RulesOp, opId: string, now: number, access: ControlAccess): ApplyResult {
     const s = this.session(loc);
-    const control = controlStatus(controlRoot(loc), loc.rulesPath, this.controlEnabled());
+    s.access = access;
+    const control = controlStatus(controlRoot(loc), loc.rulesPath, this.controlEnabled(), access);
     if (control.state !== 'ok') return { ok: false, error: control.detail };
 
     this.readDisk(s, now, true);
@@ -277,9 +284,9 @@ export class RulesControl {
         if (!s.bytes) return fail('there is no rules.json to write again');
         bytes = s.bytes;
       } else {
-        const current = s.strict?.file ?? emptyRules(loc.env, loc.token);
+        const current = s.strict?.file ?? emptyRules(loc.token, loc.token);
         const next = applyOp(current, op, {
-          env: loc.env, token: loc.token, now, currentSha256: s.sha256,
+          env: loc.token, token: loc.token, now, currentSha256: s.sha256,
           newId: () => newRuleId(now, this.random),
         });
         bytes = serializeRules(next);

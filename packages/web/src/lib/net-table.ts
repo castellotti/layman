@@ -104,7 +104,7 @@ export interface TableModel {
 // ─── Small helpers ────────────────────────────────────────────────────────────
 
 const LIVE: ReadonlySet<NetState> = new Set(['active', 'pooled']);
-const ROUTE_NAME: Record<string, string> = { vpn: 'VPN', tor: 'Tor', direct: 'Direct' };
+const ROUTE_NAME: Record<string, string> = { vpn: 'VPN', tor: 'Tor', direct: 'Direct', corporate: 'Corporate' };
 const TOOL_LABEL: Record<string, string> = { 'search-engine-fanout': 'fan-out' };
 /** How the Local links group names its members. */
 const LOCAL_NAME: Record<string, string> = { llm: 'LLM', web_search: 'SearXNG' };
@@ -257,6 +257,9 @@ function routeCell(ctx: Ctx, d: { state: NetState; scope: string }): CellText {
     return { text: 'never left', colourVar: 'var(--text-faint)', icon: 'shield' };
   }
   if (d.scope === 'local') return { text: 'local', colourVar: 'var(--text-muted)', icon: 'home' };
+  // glove's llm link: neither the tunnel nor an untunnelled leak (LEGEND lan / cloud).
+  if (d.scope === 'lan') return { text: 'LAN · LLM', colourVar: 'var(--text-muted)', icon: LEGEND_BY_KEY.lan.icon };
+  if (d.scope === 'cloud') return { text: 'cloud · LLM', colourVar: 'var(--text-muted)', icon: LEGEND_BY_KEY.cloud.icon };
   if (d.scope === 'direct') return { text: 'Direct', colourVar: 'var(--error)', icon: 'direct' };
   const kind = ctx.data.gate.route.kind;
   const name = kind ? ROUTE_NAME[kind] ?? kind : 'tunnel';

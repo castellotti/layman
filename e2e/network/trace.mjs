@@ -1,11 +1,11 @@
 // glove network views browser check (trace; was phase-7 check7). Run via scripts/netobs-e2e.sh.
-import { BASE, overflowX, startCheck } from './env.mjs';
+import { BASE, overflowX, startCheck, PI, sid } from './env.mjs';
 const { page, check, waitFor, finish } = await startCheck();
 const prompt = () => page.$eval('[role=region][aria-label="Turn"]', (r) => r.innerText);
 const rowText = () => page.$$eval('[role=table] [role=row]', (rs) => rs.map((r) => r.innerText.replace(/\s+/g, ' ')));
 const details = () => page.$eval('section:has(h2:text-is("Details"))', (s) => s.innerText);
 
-await page.goto(`${BASE}/?view=trace&glove=pi-search`);
+await page.goto(`${BASE}/?view=trace&glove=${PI}`);
 await page.evaluate(() => localStorage.clear());
 await page.reload();
 check('turn bar shows a turn', await waitFor(async () => /TURN \d+ OF \d+/.test(await prompt().catch(() => ''))), await prompt().catch(() => ''));
@@ -61,7 +61,7 @@ const href = await page.$eval('a:has-text("Open turn")', (a) => a.getAttribute('
 await page.click('a:has-text("Open turn")');
 check('Open turn goes to /s/{session}/t/{prompt}', /^\/s\/[^/]+\/t\/[^/?]+/.test(href) && await waitFor(async () => new URL(page.url()).pathname === href.split('?')[0]), `${href} → ${page.url()}`);
 // The detail card's "Agent asked for", and Open in Trace.
-await page.goto(`${BASE}/?view=map&glove=pi-search&dest=en.wikipedia.org`);
+await page.goto(`${BASE}/?view=map&glove=${PI}&dest=en.wikipedia.org`);
 const asked = async () => page.evaluate(() => {
   const h = [...document.querySelectorAll('div')].find((d) => d.textContent === 'Agent asked for');
   return h ? h.parentElement.innerText : '';
@@ -71,11 +71,11 @@ await page.click('button:has-text("Open in Trace")');
 check('Open in Trace: the Trace tab, that flow selected', await waitFor(async () => new URL(page.url()).searchParams.get('view') === 'trace'
   && (await page.$$eval('[role=row][aria-selected=true]', (rs) => rs.map((r) => r.innerText))).some((t) => t.includes('en.wikipedia.org'))), page.url());
 // The ribbon's tool-call markers.
-await page.goto(`${BASE}/?view=map&glove=pi-search`);
+await page.goto(`${BASE}/?view=map&glove=${PI}`);
 check('ribbon draws tool-call markers', await waitFor(async () => (await page.$$('g[data-call-marker]')).length > 0, 40000),
   (await page.$$('g[data-call-marker]')).length);
 // Switching tabs in place keeps each tab's own panels (a Phase 2 bug showed "Every panel is hidden").
-await page.goto(`${BASE}/?view=network&glove=pi-search`);
+await page.goto(`${BASE}/?view=network&glove=${PI}`);
 await page.evaluate(() => localStorage.clear());
 await page.reload();
 await waitFor(async () => (await page.$('[role=table]')) !== null);
@@ -91,12 +91,12 @@ check('switching tabs in place shows each tab\'s own panels', tabResults.every((
 const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('layman.net.panels.topology') ?? 'null'));
 check('and never saves one tab\'s panels under another', !stored || stored.order.includes('routes'), JSON.stringify(stored));
 // A glove session no Layman session is named after.
-await page.goto(`${BASE}/?view=trace&glove=direct`);
+await page.goto(`${BASE}/?view=trace&glove=${sid('direct')}`);
 check('empty state when no Layman session is named after the glove session', await waitFor(async () => (await page.$('text=No Layman session is named')) !== null));
 // Sizes.
 for (const [w, h] of [[1440, 900], [1280, 800]]) {
   await page.setViewportSize({ width: w, height: h });
-  await page.goto(`${BASE}/?view=trace&glove=pi-search`);
+  await page.goto(`${BASE}/?view=trace&glove=${PI}`);
   await waitFor(async () => (await page.$$('[role=table] [role=row]')).length > 5);
   const overflow = await overflowX(page);
   check(`no horizontal scroll at ${w}×${h}`, overflow <= 0, overflow);

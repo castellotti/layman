@@ -11,7 +11,7 @@ function db() {
 }
 
 const session = (over: Partial<HistorySession> = {}): HistorySession => ({
-  token: 'pi-search', env: 'pi-search', name: 'pi-search', firstSeen: 1000, lastSeen: 9000, watermark: 9000,
+  token: 'pi-search-0f1a2b', filterSince: '2026-10-01T12:00:00Z', firstSeen: 1000, lastSeen: 9000, watermark: 9000,
   carry: { f1: { key: 'arxiv.org:443', up: 10, down: 200, blocked: null, direct: false } },
   bytesUp: 100, bytesDown: 5000, flows: 3, blockedGuard: 1, blockedRule: 1, blockedDefault: 0, directFlows: 0,
   lastExit: null, lastStatus: null, sessionFile: null,
@@ -57,9 +57,9 @@ describe('SqliteNetHistory', () => {
     expect(h.enabled()).toBe(true);
   });
 
-  it('is migration 3, and never synced: no journal triggers on its tables', () => {
+  it('is migrations 3 and 4, and never synced: no journal triggers on its tables', () => {
     const d = db();
-    expect(d.prepare('SELECT version FROM schema_migrations ORDER BY version').all()).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }]);
+    expect(d.prepare('SELECT version FROM schema_migrations ORDER BY version').all()).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }, { version: 4 }]);
     const triggers = d.prepare("SELECT name FROM sqlite_master WHERE type = 'trigger' AND tbl_name LIKE 'net_%'").all();
     expect(triggers).toEqual([]);
   });

@@ -1,11 +1,11 @@
 // glove network views browser check (network; was phase-3 check3). Run via scripts/netobs-e2e.sh.
-import { BASE, SHOTS, overflowX, startCheck } from './env.mjs';
+import { BASE, SHOTS, overflowX, startCheck, PI, sid } from './env.mjs';
 const { page, check, finish } = await startCheck();
 
 const rowsText = () => page.$$eval('[role=table][aria-label=Destinations] [role=row]', (rs) => rs.map((r) => r.innerText.replace(/\s+/g, ' ').trim()));
 const stateTexts = () => page.$$eval('[role=table][aria-label=Destinations] [role=row] [role=cell]:last-child', (cs) => cs.map((c) => c.innerText.trim()));
 
-await page.goto(`${BASE}/?view=network&glove=pi-search`);
+await page.goto(`${BASE}/?view=network&glove=${PI}`);
 await page.waitForSelector('[role=table][aria-label=Destinations] [role=row] >> nth=2', { timeout: 15000 });
 await page.waitForTimeout(8000); // let the replay progress
 await page.screenshot({ path: `${SHOTS}/network-1440.png` });
@@ -62,7 +62,7 @@ check('mini map opens the Map tab', page.url().includes('view=map'), page.url())
 const seen = new Set();
 const sweep = async (shots) => {
   for (const s of ['pi-search', 'default-block', 'direct', 'empty', 'gate-lost', 'pooled', 'record-full', 'resolver-down', 'rules-rejected', 'search', 'stopped', 'terminate', 'telemetry-dropped']) {
-    await page.goto(`${BASE}/?view=network&glove=${s}`);
+    await page.goto(`${BASE}/?view=network&glove=${sid(s)}`);
     await page.waitForSelector('[role=table][aria-label=Destinations]', { timeout: 10000 });
     await page.waitForTimeout(600);
     // expand everything collapsed, so host and flow rows show their states
@@ -97,7 +97,7 @@ for (let i = 0; i < 4; i++) {
 for (const [k, re] of Object.entries(want)) check(`state rendered: ${k}`, [...seen].some((t) => re.test(t)), '');
 
 // Windowing
-await page.goto(`${BASE}/?view=network&glove=big`);
+await page.goto(`${BASE}/?view=network&glove=${sid('big')}`);
 await page.waitForSelector('[role=table][aria-label=Destinations] [role=row] >> nth=2');
 await page.selectOption('select[aria-label="Group by"]', 'tool');
 await page.click('button[aria-label="Expand web_fetch"]');
@@ -112,7 +112,7 @@ check('windowing scrolls to the end', lastRows.some((r) => /host0\./.test(r)) ||
 
 // 1280×800: no horizontal page scroll
 await page.setViewportSize({ width: 1280, height: 800 });
-await page.goto(`${BASE}/?view=network&glove=pi-search`);
+await page.goto(`${BASE}/?view=network&glove=${PI}`);
 await page.waitForSelector('[role=table][aria-label=Destinations] [role=row] >> nth=2');
 await page.waitForTimeout(500);
 const overflow = await overflowX(page);

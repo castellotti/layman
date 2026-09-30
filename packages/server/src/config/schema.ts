@@ -79,16 +79,22 @@ export const LiveTokensConfigSchema = z.object({
 /**
  * glove — passive monitoring of sandboxed harnesses (github.com/castellotti/glove).
  *
- * glove runs harnesses in containers with a per-environment fake home persisted
- * on the host under `sessionsDir`. When enabled, the passive file watchers
- * discover those environments and tail their harness logs (Vibe and pi)
- * alongside native ones, read-only. Off by default: native monitoring is
- * entirely unaffected either way.
+ * glove v3 only. A glove session is a directory the user chose; the only data
+ * Layman reads is what the session's grants export under `home`: with the
+ * **observe** grant, `observe/<id>/net/` (network records) and
+ * `observe/<id>/transcripts/` (Vibe and pi transcripts, tailed alongside native
+ * ones, read-only); with the **filter** grant, `control/<id>/rules.json`, the one
+ * file Layman may write. Off by default: native monitoring is entirely
+ * unaffected either way.
  */
 export const GloveConfigSchema = z.object({
   enabled: z.boolean().default(false),
-  /** Host dir glove persists environments under; homes live at `<sessionsDir>/<env-id>/sessions/<name>/home/`. */
-  sessionsDir: z.string().default('~/.glove/envs'),
+  /**
+   * glove's home: `registry.json`, `observe/`, `control/`. Layman follows this
+   * setting only, never `$GLOVE_HOME` (the container mounts `~/.glove`).
+   * Replaces glove v2's `sessionsDir` (`~/.glove/envs`); `config.ts` migrates it.
+   */
+  home: z.string().default('~/.glove'),
   /**
    * Leave IP addresses unredacted by the PII filter in gloved sessions' events, so the network
    * views can join and show them (a fetch of `http://169.254.169.254/` stays joinable). Off:

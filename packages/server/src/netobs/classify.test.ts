@@ -49,6 +49,12 @@ describe('flowFlags', () => {
   it('direct is its own scope', () => {
     expect(flowFlags(flow({ scope: 'direct' })).scope).toBe('direct');
   });
+  it('glove v3\'s llm link scopes (lan, cloud) are kept, and a LAN link is never "unresolved"', () => {
+    const unresolved = { host: 'llm.example', port: 8080, ip: null, resolution: 'unavailable' };
+    expect(flowFlags(flow({ scope: 'lan', dest: unresolved }))).toMatchObject({ scope: 'lan', unresolved: false });
+    expect(flowFlags(flow({ scope: 'cloud', dest: unresolved }))).toMatchObject({ scope: 'cloud', unresolved: true });
+    expect(flowFlags(flow({ scope: 'wormhole' })).scope).toBe('unknown');
+  });
   it('unresolved only for traffic that would be mapped', () => {
     const unresolved = { host: 'duckduckgo.com', port: 443, ip: null, resolution: 'unavailable' };
     expect(flowFlags(flow({ dest: unresolved })).unresolved).toBe(true);

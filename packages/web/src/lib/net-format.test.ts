@@ -31,6 +31,12 @@ describe('gateChips', () => {
     expect(chip(data(), 'route')!.title).toContain('not looked up by Layman');
   });
 
+  it('names a corporate route as allowlist-only, with no exit to verify', () => {
+    const c = chip(data({ route: { kind: 'corporate', verified: false, exitIdentityOff: true, upstreamHealthy: null } }), 'route')!;
+    expect([c.label, c.tone]).toEqual(['Corporate route · allowlist only', 'neutral']);
+    expect(c.title).toMatch(/cannot allow more/);
+  });
+
   it('puts the untunnelled alarm straight after the gate chip', () => {
     const l = labels(data({}, { totals: { ...data().totals, directFlows: 1 } }));
     expect(l[1]).toBe('1 UNTUNNELLED FLOW');

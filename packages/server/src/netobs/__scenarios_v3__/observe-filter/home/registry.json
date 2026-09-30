@@ -1,0 +1,23 @@
+{
+  "v": 2,
+  "sessions": [
+    {
+      "id": "observe-filter-0f1a2b",
+      "dir": "/home/user/work/observe-filter",
+      "harness": "pi",
+      "template": "pi-search",
+      "created": "2026-10-01T12:00:00.000Z",
+      "grants": {
+        "observe": {
+          "net": true,
+          "transcripts": true
+        },
+        "filter": {
+          "granted": true,
+          "since": "2026-10-01T12:00:00.000Z"
+        }
+      },
+      "subnet": "172.31.0.0/24"
+    }
+  ]
+}

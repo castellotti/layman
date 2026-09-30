@@ -22,7 +22,7 @@ import { LiveStreamStore } from '../stream/live.js';
  */
 
 const SESSION = 'pi-session-1';
-const CWD = '/Users/alice/development/ai/pi-local';
+const CWD = '/Users/alice/projects/pi-local';
 
 interface Harness {
   app: FastifyInstance;

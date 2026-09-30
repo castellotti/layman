@@ -21,8 +21,12 @@ const bannerButton: React.CSSProperties = {
 function sessionOption(s: NetSessionSummary): string {
   const parts = [s.token];
   if (s.harness) parts.push(s.harness);
+  if (s.glove.notObservable) parts.push('not observable');
   if (s.live) parts.push('live');
   if (s.historyOnly) parts.push('history');
+  if (s.glove.orphaned) parts.push('deleted · export retained');
+  if (s.glove.filter === 'granted') parts.push('filter');
+  if (s.glove.filter === 'revoked') parts.push('filter revoked');
   return `${s.live ? '● ' : ''}${parts.join(' · ')}`;
 }
 
@@ -55,7 +59,8 @@ export function GateStrip({ sessions, token, onPick, data, panels, isVisible, on
             }}
           >
             {!known && <option value="">{token ?? 'choose a session'}</option>}
-            {sessions.map((s) => <option key={s.token} value={s.token}>{sessionOption(s)}</option>)}
+            {/* A session without the observe grant is listed greyed out: Layman may not read it. */}
+            {sessions.map((s) => <option key={s.token} value={s.token} disabled={s.glove.notObservable}>{sessionOption(s)}</option>)}
           </select>
         ) : (
           <span>{token ?? 'no sessions'}</span>

@@ -8,17 +8,18 @@
  * second after its status.json heartbeat.
  */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from 'fs';
+import { cpSync, existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { NetObs } from './index.js';
+import { TEST_ID, addGloveSession, asId } from './testing/glove-home.js';
 import type { FlowView, NetSnapshot, NetState } from './types.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCENARIOS = join(HERE, '__scenarios__');
 const GLOVE_SCENARIOS = join(HERE, '../../../../../glove/tests/fixtures/netobs-scenarios');
-const TOKEN = 'pi-search';
+const TOKEN = TEST_ID;
 
 let home: string;
 beforeEach(() => {
@@ -28,19 +29,14 @@ afterEach(() => rmSync(home, { recursive: true, force: true }));
 
 function load(name: string, nowOffsetMs = 1_000): NetSnapshot {
   const src = join(SCENARIOS, name);
-  const net = join(home, 'envs', TOKEN, 'sessions', TOKEN, 'net');
-  mkdirSync(net, { recursive: true });
+  const { net, control } = addGloveSession(home, TOKEN);
   for (const f of readdirSync(src)) {
-    if (f === 'rules.json') {
-      const control = join(home, 'control', TOKEN, TOKEN);
-      mkdirSync(control, { recursive: true });
-      cpSync(join(src, f), join(control, f));
-    } else {
-      cpSync(join(src, f), join(net, f));
-    }
+    // The v2 scenarios name their session `pi-search`; in glove v3 the id is both `env` and `session`.
+    if (f === 'rules.json') writeFileSync(join(control, f), asId(readFileSync(join(src, f), 'utf8'), TOKEN));
+    else cpSync(join(src, f), join(net, f));
   }
   const status = JSON.parse(readFileSync(join(src, 'status.json'), 'utf8')) as { t: string };
-  const obs = new NetObs({ getSessionsDir: () => join(home, 'envs') });
+  const obs = new NetObs({ getGloveHome: () => home });
   obs.poll(Date.parse(status.t) + nowOffsetMs);
   const snap = obs.store.snapshot(TOKEN);
   expect(snap).not.toBeNull();

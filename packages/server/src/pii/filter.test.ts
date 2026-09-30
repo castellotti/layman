@@ -152,8 +152,8 @@ describe('redactString', () => {
 
   describe('user home directory paths', () => {
     it('replaces macOS home path prefix with ~', () => {
-      expect(redactString('/Users/alice/development/castellotti/layman/README.md'))
-        .toBe('~/development/castellotti/layman/README.md');
+      expect(redactString('/Users/alice/projects/layman/README.md'))
+        .toBe('~/projects/layman/README.md');
     });
     it('replaces Linux home path prefix with ~', () => {
       expect(redactString('/home/alice/projects/app')).toBe('~/projects/app');

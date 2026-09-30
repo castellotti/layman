@@ -36,9 +36,10 @@ each session inherits its root's agent type and optional sandbox label.
 
 - **The 1-hour "recent enough to track" gate keys off log activity, not `start_time`.** A native
   `vibe` launch mints a fresh session directory per run, so its `start_time` tracks liveness — but
-  glove reuses one persistent env home (`~/.glove/envs/<env-id>/home/`) across `glove vibe`
-  invocations, freezing `start_time` at the env's first launch while the same session keeps producing
-  turns. `tryAddSession()` therefore admits a session whose `messages.jsonl` was written within the
+  glove keeps one persistent transcript directory per session (the observe export,
+  `~/.glove/observe/<id>/transcripts/`) across `glove up` runs, and `glove up --resume` continues the
+  same Vibe session, freezing `start_time` at its first launch while it keeps producing turns.
+  (Where a gloved Vibe really writes is unverified on glove's side; see `docs/extensions/glove.md`.) `tryAddSession()` therefore admits a session whose `messages.jsonl` was written within the
   last hour even if its `start_time` is days old; without that, an actively-used but long-lived gloved
   Vibe session is silently never tracked. It still tails from EOF (the 5-minute replay window is
   unchanged), so no stale history is replayed live — that is what the history importer is for.

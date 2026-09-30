@@ -199,7 +199,7 @@ describe('joining', () => {
 describe('the glove fixture', () => {
   // Every flow in the fixture, as NetStore sees it.
   const store = new NetStore();
-  store.ensure({ token: 'pi-search', env: 'pi-search', name: 'pi-search', netDir: '/n', controlDir: '/c', rulesPath: '/c/rules.json' });
+  store.ensure({ token: 'pi-search', netDir: '/n', controlDir: '/c', rulesPath: '/c/rules.json' });
   for (const line of readFileSync(join(FIXTURE, 'flows.ndjson'), 'utf8').split('\n').filter(Boolean)) {
     const p = parseLine(line);
     if (p.kind === 'flow') store.ingestFlow('pi-search', p.record, Date.parse('2026-09-23T14:14:48Z'));

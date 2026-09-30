@@ -107,7 +107,8 @@ function alreadyOpen(call: TraceCall, open: FlowView[]): Outcome {
   return { text: `${call.failed ? 'failed · ' : ''}no new connection · ${what} already open`, tone: 'muted', icon: call.kind === 'search' ? 'fanout' : 'globe' };
 }
 
-const flowTone = (f: FlowView): Tone => (f.flags.fanout ? 'fanout' : f.flags.scope === 'local' ? 'local' : f.flags.scope === 'direct' ? 'error' : 'tunnel');
+// The llm link (`lan`, `cloud`) is not the tunnel: drawn like a local link, never as a leak.
+const flowTone = (f: FlowView): Tone => (f.flags.fanout ? 'fanout' : f.flags.scope === 'local' || f.flags.scope === 'lan' || f.flags.scope === 'cloud' ? 'local' : f.flags.scope === 'direct' ? 'error' : 'tunnel');
 const hasTraffic = (flowIds: string[], fanoutIds: string[]) => flowIds.length + fanoutIds.length > 0;
 
 /** Rows open by default: every call and Unattributed; the fan-out group starts folded. */

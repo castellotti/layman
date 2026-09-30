@@ -6,8 +6,9 @@
  * Wiring lives here so `server.ts` makes one constructor call, one `start()`,
  * and hands each WebSocket to `attach()`/`subscribe()`.
  */
-import { NetSessionSource, type NetSessionLocation } from './discovery.js';
+import { NetSessionSource, type GloveSessionInfo, type NetSessionLocation } from './discovery.js';
 import { RulesControl, type ApplyResult } from './control.js';
+import type { ControlAccess } from './writer.js';
 import { GeoLocator } from './geo.js';
 import { parseLine, parseSessionFile, parseStatus } from './parse.js';
 import type { NetHistory } from './history.js';
@@ -15,6 +16,8 @@ import { NetStore } from './store.js';
 import { DEFAULT_BACKFILL_BYTES, JsonFileWatcher, NdjsonTailer } from './tail.js';
 import type {
   ExitRecord,
+  FilterAccess,
+  GloveRegistryView,
   NetDelta,
   NetGateView,
   NetSessionFile,
@@ -24,6 +27,7 @@ import type {
   RulesView,
   StatusRecord,
 } from './types.js';
+import { statSync } from 'fs';
 import { join } from 'path';
 
 export { NetStore } from './store.js';
@@ -31,7 +35,7 @@ export type * from './types.js';
 
 /** The `net:*` frames this module sends. Part of `ServerMessage` (types/index.ts). */
 export type NetServerMessage =
-  | { type: 'net:sessions'; sessions: NetSessionSummary[] }
+  | { type: 'net:sessions'; sessions: NetSessionSummary[]; registry: GloveRegistryView }
   | { type: 'net:snapshot'; token: string; snapshot: NetSnapshot }
   | { type: 'net:delta'; token: string; delta: NetDelta }
   | { type: 'net:status'; token: string; status: NetGateView }
@@ -52,8 +56,8 @@ export const POLL_MS = 1_000;
 export const COALESCE_MS = 500;
 
 export interface NetObsOptions {
-  /** Expanded glove sessions dir, or null when glove or its network views are off. */
-  getSessionsDir: () => string | null;
+  /** Expanded glove home (`~/.glove`), or null when glove or its network views are off. */
+  getGloveHome: () => string | null;
   stringFilter?: (text: string) => string;
   /** `glove.network.controlEnabled`: false leaves every toggle read-only. */
   controlEnabled?: () => boolean;
@@ -69,6 +73,15 @@ export interface NetObsOptions {
 }
 
 const PERSIST_MS = 30_000;
+
+/** A registered session without the observe grant: no data, and none will be looked for. */
+function notObservableSummary(token: string, harness: string, template: string | null): NetSessionSummary {
+  return {
+    token, harness, live: false, firstSeen: null, lastSeen: null, bytesUp: 0, bytesDown: 0, flows: 0, directFlows: 0,
+    rulesOk: null, historyOnly: false,
+    glove: { template, filter: null, transcripts: null, orphaned: false, notObservable: true },
+  };
+}
 
 class SessionReader {
   readonly flows: NdjsonTailer;
@@ -132,14 +145,20 @@ export class NetObs {
   private readonly pollMs: number;
   private readonly coalesceMs: number;
   private readonly budgetBytes: number;
-  private readonly getSessionsDir: () => string | null;
+  private readonly getGloveHome: () => string | null;
+  /** glove's grant per session, as of the last poll: the writer checks it again on every apply. */
+  private readonly access = new Map<string, ControlAccess>();
+  /** Sessions whose control directory Layman has seen: one that disappears while granted is being revoked. */
+  private readonly hadControlDir = new Set<string>();
+  private registry: GloveRegistryView = { state: 'absent', detail: '' };
+  private notObservable: NetSessionSummary[] = [];
   private readonly control: RulesControl;
   readonly geo: GeoLocator;
 
   constructor(opts: NetObsOptions) {
-    this.getSessionsDir = opts.getSessionsDir;
+    this.getGloveHome = opts.getGloveHome;
     this.control = new RulesControl({ controlEnabled: opts.controlEnabled ?? (() => true) });
-    this.source = new NetSessionSource(opts.getSessionsDir);
+    this.source = new NetSessionSource(opts.getGloveHome);
     this.geo = new GeoLocator(opts.getGeoPath ?? (() => ''));
     this.geo.refresh();
     this.store = new NetStore({ stringFilter: opts.stringFilter, geolocate: (ip) => this.geo.lookup(ip) });
@@ -184,7 +203,7 @@ export class NetObs {
 
   /** One discovery + read pass. Public so tests can drive it without timers. */
   poll(now = Date.now()): void {
-    if (this.getSessionsDir() === null) {
+    if (this.getGloveHome() === null) {
       // Glove (or its network views) switched off: keep what was read, then
       // forget everything, so the header goes back to exactly what it was.
       this.persist();
@@ -194,6 +213,9 @@ export class NetObs {
       for (const token of this.readers.keys()) this.control.forget(token);
       this.readers.clear();
       for (const token of this.store.tokens()) this.store.remove(token);
+      this.access.clear();
+      this.registry = { state: 'absent', detail: '' };
+      this.notObservable = [];
       this.maybeBroadcastSessions();
       return;
     }
@@ -207,10 +229,12 @@ export class NetObs {
       }
     }
     const found = this.source.discover();
+    this.registry = found.registry;
+    this.notObservable = found.notObservable.map((n) => notObservableSummary(n.token, n.harness, n.template));
     if (this.geo.refresh()) this.store.refreshGeo();
 
     const seen = new Set<string>();
-    for (const loc of found) {
+    for (const { loc, info } of found.sessions) {
       seen.add(loc.token);
       if (!this.readers.has(loc.token)) {
         if (this.store.isHistoryOnly(loc.token)) this.store.relocate(loc);
@@ -219,6 +243,7 @@ export class NetObs {
       }
       try {
         this.readers.get(loc.token)!.poll(this.store, now);
+        this.noteGlove(loc, info);
         this.pollRules(loc, now);
       } catch (err) {
         // A read error on one session must not stop the others, or the poll loop.
@@ -254,9 +279,45 @@ export class NetObs {
     }
   }
 
+  /**
+   * glove's grants for a session, every poll. glove records a revocation
+   * nowhere (the grant just reads `granted: false` again, and `control/<id>/`
+   * goes), so Layman remembers the last grant it saw, across restarts too
+   * (`history.ts`), and calls a grant that has gone `revoked`.
+   */
+  private noteGlove(loc: NetSessionLocation, info: GloveSessionInfo): void {
+    const token = loc.token;
+    const grant = info.grants.filter;
+    const granted = grant?.granted === true;
+    if (granted) this.store.noteFilterSince(token, grant.since ?? '');
+    let dir = false;
+    try {
+      dir = statSync(loc.controlDir).isDirectory();
+    } catch {
+      dir = false;
+    }
+    if (granted && dir) this.hadControlDir.add(token);
+    let filter: FilterAccess;
+    if (granted) filter = !dir && this.hadControlDir.has(token) ? 'revoked' : 'granted';
+    else filter = this.store.filterSince(token) !== null ? 'revoked' : 'not-granted';
+    const orphaned = info.orphaned !== null;
+    this.access.set(token, { filter, orphaned });
+    this.store.setGlove(token, {
+      template: info.template,
+      filter,
+      transcripts: info.grants.observe ? info.grants.observe.transcripts : null,
+      orphaned,
+      notObservable: false,
+    });
+  }
+
+  private accessOf(token: string): ControlAccess {
+    return this.access.get(token) ?? { filter: 'not-granted', orphaned: false };
+  }
+
   /** rules.json and the gate's verdict on it; pushes `net:rules` and new policy predictions when they change. */
   private pollRules(loc: NetSessionLocation, now: number): void {
-    if (!this.control.poll(loc, this.store.statusRecord(loc.token), now)) return;
+    if (!this.control.poll(loc, this.store.statusRecord(loc.token), now, this.accessOf(loc.token))) return;
     this.store.setRules(loc.token, this.control.view(loc.token)!);
     this.store.setPolicy(loc.token, this.control.sets(loc.token));
   }
@@ -269,7 +330,7 @@ export class NetObs {
   applyRules(token: string, op: RulesOp, opId: string, now = Date.now()): ApplyResult {
     const loc = this.store.location(token);
     if (!loc) return { ok: false, error: `No glove network session '${token}'` };
-    const result = this.control.apply(loc, this.store.statusRecord(token), op, opId, now);
+    const result = this.control.apply(loc, this.store.statusRecord(token), op, opId, now, this.accessOf(token));
     this.store.setRules(token, this.control.view(token)!);
     this.store.setPolicy(token, this.control.sets(token));
     return result;
@@ -281,8 +342,16 @@ export class NetObs {
     this.send(socket, { type: 'net:rules:result', token, opId, ...result });
   }
 
+  /** Every session with an export, then the registered ones Layman may not read (greyed out in the picker). */
   sessions(): NetSessionSummary[] {
-    return this.store.summaries();
+    const listed = this.store.summaries();
+    const known = new Set(listed.map((s) => s.token));
+    return [...listed, ...this.notObservable.filter((s) => !known.has(s.token))];
+  }
+
+  /** The state of glove's registry, for the "upgrade glove" notice. */
+  registryView(): GloveRegistryView {
+    return this.registry;
   }
 
   // ─── Sockets ──────────────────────────────────────────────────────────────
@@ -290,7 +359,7 @@ export class NetObs {
   /** A new WebSocket: it gets the (small) session list, and nothing else until it subscribes. */
   attach(socket: NetSocket): void {
     this.subs.set(socket, null);
-    this.send(socket, { type: 'net:sessions', sessions: this.sessions() });
+    this.send(socket, { type: 'net:sessions', sessions: this.sessions(), registry: this.registry });
   }
 
   detach(socket: NetSocket): void {
@@ -348,9 +417,9 @@ export class NetObs {
   /** Re-send the list only when something the picker shows changed. */
   private maybeBroadcastSessions(): void {
     const sessions = this.sessions();
-    const sig = JSON.stringify(sessions.map((s) => [s.token, s.live, s.rulesOk, s.directFlows > 0, s.harness]));
+    const sig = JSON.stringify([this.registry, sessions.map((s) => [s.token, s.live, s.rulesOk, s.directFlows > 0, s.harness, s.glove])]);
     if (sig === this.listSig) return;
     this.listSig = sig;
-    for (const socket of this.subs.keys()) this.send(socket, { type: 'net:sessions', sessions });
+    for (const socket of this.subs.keys()) this.send(socket, { type: 'net:sessions', sessions, registry: this.registry });
   }
 }

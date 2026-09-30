@@ -129,12 +129,15 @@ export default function NetworkView({ tab, onSend }: { tab: NetTab; onSend: (msg
   const setSettingsOpen = useSessionStore((s) => s.setSettingsOpen);
   const activeSessionName = useSessionStore((s) =>
     s.sessions.find((x) => x.sessionId === s.activeSessionId)?.sessionName ?? null);
-  const { sessions, sessionsKnown, data, setSubscribed } = useNetStore();
+  const { sessions, sessionsKnown, registry, data, setSubscribed } = useNetStore();
   const panels = useNetPanels(tab, TAB_PANELS[tab]);
 
   const enabled = !!config?.glove.enabled && config.glove.network?.enabled !== false;
   const token = netToken ?? defaultNetToken(sessions, activeSessionName);
   const listed = token !== null && sessions.some((s) => s.token === token);
+  const picked = token === null ? undefined : sessions.find((s) => s.token === token);
+  // A registered session without the observe grant has nothing to subscribe to.
+  const readable = listed && !picked?.glove.notObservable;
 
   // Make the default explicit, so the address bar names the session shown.
   useEffect(() => {
@@ -144,7 +147,7 @@ export default function NetworkView({ tab, onSend }: { tab: NetTab; onSend: (msg
   // One subscription per socket. Re-sent after a reconnect (the server forgets
   // subscriptions with the socket), and dropped when the tabs close so a
   // dashboard that is not looking stops receiving deltas.
-  const subscribeTo = listed ? token : null;
+  const subscribeTo = readable ? token : null;
   useEffect(() => {
     if (wsStatus !== 'connected') return;
     setSubscribed(subscribeTo);
@@ -171,19 +174,38 @@ export default function NetworkView({ tab, onSend }: { tab: NetTab; onSend: (msg
       );
     }
     if (!sessionsKnown) return <EmptyState title="Connecting…" />;
+    if (registry.state === 'v2-home' || registry.state === 'unsupported') {
+      return (
+        <EmptyState title={registry.state === 'v2-home' ? 'glove v2 home: upgrade glove' : 'Unsupported glove registry'}>
+          {registry.detail}
+        </EmptyState>
+      );
+    }
     if (sessions.length === 0) {
       return (
         <EmptyState title="No glove network data">
-          No glove session under <span style={{ fontFamily: 'var(--font-mono)' }}>{config?.glove.sessionsDir}</span> has
-          a <span style={{ fontFamily: 'var(--font-mono)' }}>net/</span> directory yet. glove writes one for sessions run
-          with network observation on.
+          No glove session under <span style={{ fontFamily: 'var(--font-mono)' }}>{config?.glove.home}</span> has
+          an observe export (<span style={{ fontFamily: 'var(--font-mono)' }}>observe/&lt;id&gt;/net/</span>) yet. glove
+          writes one for sessions with <span style={{ fontFamily: 'var(--font-mono)' }}>observe: {'{}'}</span> under
+          <span style={{ fontFamily: 'var(--font-mono)' }}> extensions:</span> in their glove-session.yml.
+          {registry.state === 'unreadable' ? ` (${registry.detail})` : ''}
         </EmptyState>
       );
     }
     if (!listed) {
       return (
         <EmptyState title={`No glove session “${token}” on this instance`}>
-          Choose one of the {sessions.length} glove session{sessions.length === 1 ? '' : 's'} with network data from the picker above.
+          Choose one of the {sessions.length} glove session{sessions.length === 1 ? '' : 's'} from the picker above.
+        </EmptyState>
+      );
+    }
+    if (!readable) {
+      return (
+        <EmptyState title={`${token} is not observable`}>
+          This glove session does not grant observe access, so it exports no network records or transcripts and Layman
+          does not look for any. To grant it, add <span style={{ fontFamily: 'var(--font-mono)' }}>observe: {'{}'}</span> under
+          <span style={{ fontFamily: 'var(--font-mono)' }}> extensions:</span> in its glove-session.yml and re-run
+          <span style={{ fontFamily: 'var(--font-mono)' }}> glove up</span>.
         </EmptyState>
       );
     }
@@ -196,7 +218,7 @@ export default function NetworkView({ tab, onSend }: { tab: NetTab; onSend: (msg
           : tab === 'map' ? <MapView data={data} panels={panels} /> : <Board tab={tab} panels={panels} data={data} />}
       </>
     );
-  }, [enabled, sessionsKnown, sessions.length, listed, token, data, tab, panels, config?.glove.sessionsDir, setSettingsOpen]);
+  }, [enabled, sessionsKnown, registry, sessions.length, listed, readable, token, data, tab, panels, config?.glove.home, setSettingsOpen]);
 
   const shown = data && data.token === token ? data : null;
   return (

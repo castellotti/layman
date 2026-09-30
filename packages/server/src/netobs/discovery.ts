@@ -1,81 +1,71 @@
 /**
- * Where glove's network records are: a plain glob of
- * `<gloveHome>/envs/*\/sessions/*\/net/`.
+ * Where glove v3's network records are: `<gloveHome>/observe/<id>/net/`, one per
+ * session with the **observe** grant. The id is the token: the directory name
+ * under `observe/` and under `control/`, and the `env` and `session` of every
+ * record and of `rules.json`.
  *
- * Deliberately *not* routed through `GloveSource`. That source grew registry and
- * `homes/` handling because a harness home can be relocated out of the session
- * directory; `net/` never is (glove's record contract), so none of that applies here and
- * reusing it would only couple two unrelated discovery rules.
+ * Grants and the orphan state come from glove's own files (`glove/registry.ts`):
+ * `session.json` (what the gates were rendered with), else the registry row. A
+ * registry row with no observe export is listed as not observable and is never
+ * looked for anywhere else.
  */
-import { readdirSync, statSync } from 'fs';
-import { dirname, join, resolve, sep } from 'path';
+import { statSync } from 'fs';
+import { join, resolve, sep } from 'path';
 import { homedir } from 'os';
+import {
+  observeIds, readRegistry, readSessionFacts, sessionDirState, SESSION_ID,
+  type GloveGrants, type RegistryRow, type RegistryState,
+} from '../glove/registry.js';
 
 export interface NetSessionLocation {
-  /** glove's session token: what flows carry in `session`, and `GloveSource`'s WatchRoot label. */
+  /** glove's session id: what flows carry in `session`, and `GloveSource`'s WatchRoot label. */
   token: string;
-  env: string;
-  /** Directory name under `envs/<env>/sessions/`. Differs from the token for a named session. */
-  name: string;
   netDir: string;
-  /** `<gloveHome>/control/<env>/<name>/` — keyed by the directory name, not the token. */
+  /** `<gloveHome>/control/<id>/`: exists only while the session has the filter grant. */
   controlDir: string;
   rulesPath: string;
 }
 
-/**
- * The only env and session directory names Layman will act on. glove's own ids
- * fit it; anything else (a stray `..`, a name with a separator) is skipped rather
- * than turned into a path, since the same names later address the one directory
- * Layman may write to.
- */
-export const SAFE_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
-
-/**
- * glove's session token (glove's record contract): the env id for the default session, whose
- * directory is named after the env, else `<env>-<name>`.
- */
-export function sessionToken(env: string, name: string): string {
-  return name === env ? env : `${env}-${name}`;
+/** What glove says about a session with an observe export. */
+export interface GloveSessionInfo {
+  harness: string | null;
+  template: string | null;
+  grants: GloveGrants;
+  /**
+   * glove's orphan rule (`glove gc`): no registry row, or the row's directory is
+   * gone or holds another session. Null when it is not an orphan, or when this
+   * process cannot see the directory to tell.
+   */
+  orphaned: 'no-row' | 'missing' | 'stale' | null;
 }
 
-/** `~/.glove` from `~/.glove/envs`: the control dir is a sibling of the sessions dir. */
-export function gloveHomeFromSessionsDir(sessionsDir: string): string {
-  return dirname(resolve(sessionsDir));
+/** A registered session Layman may not read: no observe grant, so no export. */
+export interface NotObservableSession {
+  token: string;
+  harness: string;
+  template: string | null;
 }
 
+export interface NetDiscovery {
+  registry: { state: RegistryState; detail: string };
+  sessions: Array<{ loc: NetSessionLocation; info: GloveSessionInfo }>;
+  notObservable: NotObservableSession[];
+}
+
+/** The id pattern Layman acts on (glove's `ID_RE`). Anything else is skipped, never turned into a path. */
+export const SAFE_NAME = SESSION_ID;
+
 /**
- * Where rules.json lives for a session. Uses the **directory name**, while the
- * file's own `session` field is the **token**; for a named session the two
- * differ, and mixing them up makes the gate ignore the file. Returns null for a
- * name that is unsafe, or that would resolve outside `<gloveHome>/control`.
+ * Where rules.json lives for a session: `<gloveHome>/control/<id>/rules.json`.
+ * Null for an id that is not a glove id, or that would resolve outside
+ * `<gloveHome>/control`.
  */
-export function controlPaths(
-  gloveHome: string,
-  env: string,
-  name: string,
-): { controlDir: string; rulesPath: string } | null {
-  if (!SAFE_NAME.test(env) || !SAFE_NAME.test(name)) return null;
+export function controlPaths(gloveHome: string, id: string): { controlDir: string; rulesPath: string } | null {
+  if (!SAFE_NAME.test(id)) return null;
   const root = resolve(gloveHome, 'control');
-  const controlDir = resolve(root, env, name);
+  const controlDir = resolve(root, id);
   if (!controlDir.startsWith(root + sep)) return null;
   return { controlDir, rulesPath: join(controlDir, 'rules.json') };
-}
-
-function subdirs(dir: string): string[] {
-  let names: string[];
-  try {
-    names = readdirSync(dir);
-  } catch {
-    return [];
-  }
-  return names.filter((n) => {
-    try {
-      return statSync(join(dir, n)).isDirectory();
-    } catch {
-      return false;
-    }
-  });
 }
 
 /**
@@ -83,7 +73,7 @@ function subdirs(dir: string): string[] {
  * mounted at the container home (`HOST_HOME` names it), so a path Layman shows
  * must be translated back, or "Show file" points at `/root/.glove/…`, which does
  * not exist on the user's machine. The inverse of `rebaseGloveHome`
- * (monitor/sources.ts); a no-op for native Layman.
+ * (glove/registry.ts); a no-op for native Layman.
  */
 export function toHostPath(p: string, hostHome = process.env.HOST_HOME, containerHome = homedir()): string {
   if (!hostHome || hostHome === containerHome) return p;
@@ -91,30 +81,55 @@ export function toHostPath(p: string, hostHome = process.env.HOST_HOME, containe
   return p.startsWith(containerHome + sep) ? join(hostHome, p.slice(containerHome.length + 1)) : p;
 }
 
-export class NetSessionSource {
-  /** @param getSessionsDir the expanded glove sessions dir, or null when network views are off. */
-  constructor(private readonly getSessionsDir: () => string | null) {}
+const isDir = (p: string): boolean => {
+  try {
+    return statSync(p).isDirectory();
+  } catch {
+    return false;
+  }
+};
 
-  discover(): NetSessionLocation[] {
-    const sessionsDir = this.getSessionsDir();
-    if (!sessionsDir) return [];
-    const gloveHome = gloveHomeFromSessionsDir(sessionsDir);
-    const out: NetSessionLocation[] = [];
-    for (const env of subdirs(sessionsDir)) {
-      if (!SAFE_NAME.test(env)) continue;
-      const sessionsRoot = join(sessionsDir, env, 'sessions');
-      for (const name of subdirs(sessionsRoot)) {
-        const netDir = join(sessionsRoot, name, 'net');
-        try {
-          if (!statSync(netDir).isDirectory()) continue;
-        } catch {
-          continue;
-        }
-        const control = controlPaths(gloveHome, env, name);
-        if (!control) continue;
-        out.push({ token: sessionToken(env, name), env, name, netDir, ...control });
+const EMPTY: NetDiscovery = { registry: { state: 'absent', detail: '' }, sessions: [], notObservable: [] };
+
+export class NetSessionSource {
+  /** @param getGloveHome the expanded glove home (`~/.glove`), or null when network views are off. */
+  constructor(private readonly getGloveHome: () => string | null) {}
+
+  discover(): NetDiscovery {
+    const home = this.getGloveHome();
+    if (!home) return EMPTY;
+    const registry = readRegistry(home);
+    const rows = new Map<string, RegistryRow>(registry.rows.map((r) => [r.id, r]));
+    const sessions: NetDiscovery['sessions'] = [];
+    const exported = new Set<string>();
+    for (const id of observeIds(home)) {
+      const netDir = join(home, 'observe', id, 'net');
+      if (!isDir(netDir)) continue;
+      const control = controlPaths(home, id);
+      if (!control) continue;
+      exported.add(id);
+      const row = rows.get(id);
+      const facts = readSessionFacts(netDir);
+      let orphaned: GloveSessionInfo['orphaned'] = null;
+      // Only a readable v2 registry can say a row is missing; an unreadable one proves nothing.
+      if (!row) orphaned = registry.state === 'ok' ? 'no-row' : null;
+      else {
+        const dir = sessionDirState(row);
+        if (dir === 'missing' || dir === 'stale') orphaned = dir;
       }
+      sessions.push({
+        loc: { token: id, netDir, ...control },
+        info: {
+          harness: row?.harness ?? facts?.harness ?? null,
+          template: row?.template ?? null,
+          grants: facts?.grants ?? row?.grants ?? { observe: null, filter: null },
+          orphaned,
+        },
+      });
     }
-    return out;
+    const notObservable = registry.rows
+      .filter((r) => !exported.has(r.id) && r.grants.observe === null)
+      .map((r) => ({ token: r.id, harness: r.harness, template: r.template }));
+    return { registry: { state: registry.state, detail: registry.detail }, sessions, notObservable };
   }
 }

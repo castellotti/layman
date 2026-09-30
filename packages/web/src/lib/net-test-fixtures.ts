@@ -42,7 +42,7 @@ export const rulesView = (over: Partial<RulesView> = {}): RulesView => ({
 
 /** One session's client-side data, the fixture session by default. */
 export const sessionData = (g: Partial<NetGateView> = {}, over: Partial<NetSessionData> = {}): NetSessionData => ({
-  token: 'pi-search', env: 'pi-search', name: 'pi-search', session: null, gate: gate(g),
+  token: 'pi-search-0f1a2b', session: null, gate: gate(g),
   exit: { v: 1, type: 'exit', t: 't', env: 'e', session: 'e', kind: 'vpn', ip: '195.177.93.17', country: 'Switzerland', city: null, lat: 47.36, lon: 8.54, source: 'via-proxy:am.i.mullvad.net', healthy: true },
   exits: [],
   rules: rulesView(),

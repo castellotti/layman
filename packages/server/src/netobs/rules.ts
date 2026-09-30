@@ -1,6 +1,6 @@
 /**
  * rules.json, the one thing Layman writes into glove: a strict port of glove's
- * validator and first-match evaluation (`glove/netgate/policy.py`), and the
+ * validator and first-match evaluation (glove's `extensions/gate/netgate/policy.py`), and the
  * operations the UI performs on the file. Pure: the filesystem side is
  * `writer.ts`.
  *
@@ -335,7 +335,7 @@ export function evaluate(set: RuleSet, facts: FlowFacts): Verdict {
   return { action: set.default, rule: null, terminate: false };
 }
 
-// ─── The built-in guard (glove/netgate/guard.py) ─────────────────────────────
+// ─── The built-in guard (glove's extensions/gate/netgate/guard.py) ──────────
 
 /**
  * glove refuses, before any rule, a proxy destination that is not plainly public
@@ -425,14 +425,24 @@ export interface GateFacts {
   proxy: boolean;
   /** `dest.resolution`: the guard re-checks the IP only when it came from the in-tunnel resolver. */
   resolution: string | null;
+  /**
+   * The listener chains to glove's `corporate` egress. Its guard then carries the
+   * operator's allowlist as exceptions (private CIDRs and hosts from the session
+   * file, never from rules.json, and not in session.json), so Layman cannot tell
+   * which non-public destinations it refuses, and the corporate proxy decides
+   * everything the rules allow against its own default-block allowlist.
+   */
+  corporate?: boolean;
 }
 
 /**
  * What the gate would decide for these facts, in its order: the guard on the host,
- * the guard on the in-tunnel IP, then the rules (`evaluate`).
+ * the guard on the in-tunnel IP, then the rules (`evaluate`). On a corporate
+ * route the guard is not predicted (its exceptions are invisible to Layman), only
+ * the rules; the observed verdict still shows what the guard did.
  */
 export function predict(set: RuleSet, facts: FlowFacts, gate: GateFacts): Verdict {
-  if (gate.proxy && facts.host) {
+  if (gate.proxy && facts.host && !gate.corporate) {
     const byIp = gate.resolution === 'in-tunnel' && facts.ip !== null && guardRefuses(facts.ip);
     if (guardRefuses(facts.host.toLowerCase()) || byIp) return { action: 'block', rule: GUARD_RULE, terminate: false };
   }
@@ -489,10 +499,12 @@ export function opRules(op: RulesOp): Array<Omit<Rule, 'id'>> {
       ];
     case 'cutAll': {
       const cut = (scope: string) => ({ action: 'block' as const, match: { scope }, terminate: true });
-      return [
-        ...(op.keepLlm ? [{ action: 'allow' as const, match: { service: 'llm' } }] : []),
-        cut('tunnelled'), cut('direct'), cut('local'),
-      ];
+      // glove v3's llm link can be scope `lan` or `cloud`, which no rule may name
+      // (`RULE_SCOPES`): kept or cut by its service, never by scope alone.
+      const llm = op.keepLlm
+        ? { action: 'allow' as const, match: { service: 'llm' } }
+        : { action: 'block' as const, match: { service: 'llm' }, terminate: true };
+      return [llm, cut('tunnelled'), cut('direct'), cut('local')];
     }
     default:
       return [];
