@@ -36,7 +36,7 @@ describe('net REST routes', () => {
     const res = await app.inject('/api/net/sessions');
     expect(res.statusCode).toBe(200);
     expect(res.json().registry).toEqual({ state: 'ok', detail: '' });
-    expect(res.json().sessions).toMatchObject([{ token: TEST_ID, harness: 'pi', flows: 15, glove: { filter: 'granted', orphaned: false, notObservable: false } }]);
+    expect(res.json().sessions).toMatchObject([{ token: TEST_ID, harness: 'pi', flows: 15, glove: { filter: 'granted', orphaned: false } }]);
   });
 
   it('GET /api/net/sessions/:token returns 15 flows with their states', async () => {

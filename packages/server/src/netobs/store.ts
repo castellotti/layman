@@ -53,7 +53,7 @@ import type {
 } from './types.js';
 
 /** Before discovery has said anything about a session. */
-const UNKNOWN_GLOVE: NetGloveInfo = { template: null, filter: null, transcripts: null, orphaned: false, notObservable: false };
+const UNKNOWN_GLOVE: NetGloveInfo = { template: null, filter: null, transcripts: null, orphaned: false };
 
 const SECOND = 1000;
 const MINUTE = 60 * SECOND;
@@ -118,6 +118,8 @@ interface SessionData {
   glove: NetGloveInfo;
   /** The last filter grant's `since` Layman saw (`history.ts`): what makes a revocation visible. */
   filterSince: string | null;
+  /** Whether the control directory was seen under that grant (`history.ts`). */
+  filterSawDir: boolean;
   /** What Layman kept from before this process, and its destinations by key. */
   history: { s: HistorySession; dests: Map<string, HistoryDest> } | null;
   /** No files: shown from `history` alone. */
@@ -254,6 +256,7 @@ export class NetStore extends EventEmitter {
       loc,
       glove: { ...UNKNOWN_GLOVE },
       filterSince: null,
+      filterSawDir: false,
       history: null,
       historyOnly: false,
       seen: { up: 0, down: 0, flows: 0, guard: 0, userRule: 0, def: 0, direct: 0 },
@@ -311,7 +314,10 @@ export class NetStore extends EventEmitter {
       this.refreshGate(s, now, false);
     }
     const s = this.sessions.get(h.token)!;
-    s.filterSince ??= h.filterSince;
+    if (s.filterSince === null) {
+      s.filterSince = h.filterSince;
+      s.filterSawDir = h.filterSawDir;
+    }
     if (s.counters.records > 0) return; // too late to tell re-read records from new ones
     s.history = { s: h, dests: new Map(h.destinations.map((d) => [d.key, d])) };
   }
@@ -331,10 +337,20 @@ export class NetStore extends EventEmitter {
     if (s) s.glove = glove;
   }
 
-  /** Remember the filter grant's `since` while it is granted. */
-  noteFilterSince(token: string, since: string): void {
+  /**
+   * Remember the filter grant's `since` while it is granted, and whether its control directory
+   * is there. A new `since` is a re-grant whose directory glove has not made yet, so it starts
+   * unseen. Returns true when the directory went away under the same grant: a revocation.
+   */
+  noteFilterGrant(token: string, since: string, dirPresent: boolean): boolean {
     const s = this.sessions.get(token);
-    if (s) s.filterSince = since;
+    if (!s) return false;
+    if (s.filterSince !== since) {
+      s.filterSince = since;
+      s.filterSawDir = false;
+    }
+    if (dirPresent) s.filterSawDir = true;
+    return !dirPresent && s.filterSawDir;
   }
 
   /** The last filter grant Layman saw for this session, from this process or kept history (`setHistory` folds it in). */
@@ -949,7 +965,7 @@ export class NetStore extends EventEmitter {
     const dests = this.destViews(s);
     const first = Math.min(s.firstSeen ?? Infinity, h?.firstSeen ?? Infinity, ...dests.map((d) => d.firstSeen));
     return {
-      token, filterSince: s.filterSince,
+      token, filterSince: s.filterSince, filterSawDir: s.filterSawDir,
       firstSeen: Number.isFinite(first) ? first : 0,
       lastSeen: Math.max(s.lastT ?? 0, h?.lastSeen ?? 0),
       watermark: Math.max(s.lastT ?? -Infinity, h?.watermark ?? -Infinity),

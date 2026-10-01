@@ -150,9 +150,10 @@ export function applyMigrations(db: Database): void {
   recordMigration(db, 3);
 
   // Migration 4 — glove v3: the last filter grant Layman saw, so a revoked grant
-  // (which glove records nowhere) still reads as revoked after a restart. Local
-  // only, like the rest of the network rollups.
+  // (which glove records nowhere) still reads as revoked after a restart, and
+  // whether its control directory was seen under that grant. Local only, like the rest of the network rollups.
   addColumn(db, 'net_sessions', 'filter_since', 'filter_since TEXT');
+  addColumn(db, 'net_sessions', 'filter_saw_dir', 'filter_saw_dir INTEGER NOT NULL DEFAULT 0');
   recordMigration(db, 4);
 }
 

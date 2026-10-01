@@ -23,9 +23,15 @@ const subscribed = (token: string): NetClientState => ({ ...initialNetState, sub
 
 describe('applyNetMessage', () => {
   it('records the session list, and that it has been told', () => {
-    const s = applyNetMessage(initialNetState, { type: 'net:sessions', sessions: [], registry: { state: 'v2-home', detail: 'upgrade glove' } });
+    const s = applyNetMessage(initialNetState, {
+      type: 'net:sessions', sessions: [], notObservable: [{ token: 'dark', harness: 'pi', template: null }],
+      registry: { state: 'v2-home', detail: 'upgrade glove' },
+    });
     expect(s.sessionsKnown).toBe(true);
     expect(s.registry.state).toBe('v2-home');
+    expect(s.notObservable.map((n) => n.token)).toEqual(['dark']);
+    // A session without data is never a default to show.
+    expect(defaultNetToken(s.sessions, 'dark')).toBeNull();
   });
 
   it('ignores frames for a token it did not subscribe to', () => {
@@ -82,7 +88,7 @@ describe('applyNetMessage', () => {
 const summary = (token: string, over: Partial<NetSessionSummary> = {}): NetSessionSummary => ({
   token, harness: 'pi', live: false, firstSeen: 0, lastSeen: 0,
   bytesUp: 0, bytesDown: 0, flows: 0, directFlows: 0, rulesOk: true, historyOnly: false,
-  glove: { template: null, filter: 'not-granted', transcripts: true, orphaned: false, notObservable: false }, ...over,
+  glove: { template: null, filter: 'not-granted', transcripts: true, orphaned: false }, ...over,
 });
 
 describe('defaultNetToken', () => {
@@ -95,11 +101,6 @@ describe('defaultNetToken', () => {
   });
   it('null with no sessions', () => {
     expect(defaultNetToken([], 'x')).toBeNull();
-  });
-  it('never picks a session Layman may not read (no observe grant)', () => {
-    const dark = summary('a', { glove: { template: null, filter: null, transcripts: null, orphaned: false, notObservable: true } });
-    expect(defaultNetToken([dark, summary('b')], 'a')).toBe('b');
-    expect(defaultNetToken([dark], null)).toBeNull();
   });
 });
 

@@ -20,6 +20,7 @@ import type {
   NetDelta,
   NetGateView,
   NetSessionFile,
+  NetNotObservable,
   NetSessionSummary,
   NetSnapshot,
   RulesOp,
@@ -34,7 +35,7 @@ export type * from './types.js';
 
 /** The `net:*` frames this module sends. Part of `ServerMessage` (types/index.ts). */
 export type NetServerMessage =
-  | { type: 'net:sessions'; sessions: NetSessionSummary[]; registry: GloveRegistryView }
+  | { type: 'net:sessions'; sessions: NetSessionSummary[]; notObservable: NetNotObservable[]; registry: GloveRegistryView }
   | { type: 'net:snapshot'; token: string; snapshot: NetSnapshot }
   | { type: 'net:delta'; token: string; delta: NetDelta }
   | { type: 'net:status'; token: string; status: NetGateView }
@@ -72,15 +73,6 @@ export interface NetObsOptions {
 }
 
 const PERSIST_MS = 30_000;
-
-/** A registered session without the observe grant: no data, and none will be looked for. */
-function notObservableSummary(token: string, harness: string, template: string | null): NetSessionSummary {
-  return {
-    token, harness, live: false, firstSeen: null, lastSeen: null, bytesUp: 0, bytesDown: 0, flows: 0, directFlows: 0,
-    rulesOk: null, historyOnly: false,
-    glove: { template, filter: null, transcripts: null, orphaned: false, notObservable: true },
-  };
-}
 
 class SessionReader {
   readonly flows: NdjsonTailer;
@@ -145,14 +137,8 @@ export class NetObs {
   private readonly coalesceMs: number;
   private readonly budgetBytes: number;
   private readonly getGloveHome: () => string | null;
-  /**
-   * The grant (its `since`) under which Layman saw each session's control directory: one that
-   * disappears under the same grant is being revoked. A new `since` is a re-grant whose
-   * directory glove has not made yet, so it starts afresh.
-   */
-  private readonly hadControlDir = new Map<string, string>();
   private registry: GloveRegistryView = { state: 'absent', detail: '' };
-  private notObservable: NetSessionSummary[] = [];
+  private notObservable: NetNotObservable[] = [];
   private readonly control: RulesControl;
   readonly geo: GeoLocator;
 
@@ -230,7 +216,7 @@ export class NetObs {
     }
     const found = this.source.discover();
     this.registry = found.registry;
-    this.notObservable = found.notObservable.map((n) => notObservableSummary(n.token, n.harness, n.template));
+    this.notObservable = found.notObservable;
     if (this.geo.refresh()) this.store.refreshGeo();
 
     const seen = new Set<string>();
@@ -292,12 +278,7 @@ export class NetObs {
     const since = grant?.since ?? '';
     let filter: FilterAccess;
     if (granted) {
-      this.store.noteFilterSince(token, since);
-      const had = this.hadControlDir;
-      const dir = isDir(loc.controlDir);
-      if (dir) had.set(token, since);
-      else if (had.get(token) !== since) had.delete(token);
-      filter = !dir && had.has(token) ? 'revoked' : 'granted';
+      filter = this.store.noteFilterGrant(token, since, isDir(loc.controlDir)) ? 'revoked' : 'granted';
     } else {
       filter = this.store.filterSince(token) !== null ? 'revoked' : 'not-granted';
     }
@@ -308,7 +289,6 @@ export class NetObs {
       filter,
       transcripts: info.grants.observe ? info.grants.observe.transcripts : null,
       orphaned,
-      notObservable: false,
     });
   }
 
@@ -339,11 +319,15 @@ export class NetObs {
     this.send(socket, { type: 'net:rules:result', token, opId, ...result });
   }
 
-  /** Every session with an export, then the registered ones Layman may not read (greyed out in the picker). */
+  /** Every session with data: an observe export, or history kept from one. */
   sessions(): NetSessionSummary[] {
-    const listed = this.store.summaries();
-    const known = new Set(listed.map((s) => s.token));
-    return [...listed, ...this.notObservable.filter((s) => !known.has(s.token))];
+    return this.store.summaries();
+  }
+
+  /** The registered sessions Layman may not read, for the picker to list disabled. Never among `sessions()`. */
+  notObservableSessions(): NetNotObservable[] {
+    const known = new Set(this.store.summaries().map((s) => s.token));
+    return this.notObservable.filter((n) => !known.has(n.token));
   }
 
   /** The state of glove's registry, for the "upgrade glove" notice. */
@@ -356,7 +340,7 @@ export class NetObs {
   /** A new WebSocket: it gets the (small) session list, and nothing else until it subscribes. */
   attach(socket: NetSocket): void {
     this.subs.set(socket, null);
-    this.send(socket, { type: 'net:sessions', sessions: this.sessions(), registry: this.registry });
+    this.send(socket, { type: 'net:sessions', sessions: this.sessions(), notObservable: this.notObservableSessions(), registry: this.registry });
   }
 
   detach(socket: NetSocket): void {
@@ -414,9 +398,10 @@ export class NetObs {
   /** Re-send the list only when something the picker shows changed. */
   private maybeBroadcastSessions(): void {
     const sessions = this.sessions();
-    const sig = JSON.stringify([this.registry, sessions.map((s) => [s.token, s.live, s.rulesOk, s.directFlows > 0, s.harness, s.glove])]);
+    const notObservable = this.notObservableSessions();
+    const sig = JSON.stringify([this.registry, notObservable, sessions.map((s) => [s.token, s.live, s.rulesOk, s.directFlows > 0, s.harness, s.glove])]);
     if (sig === this.listSig) return;
     this.listSig = sig;
-    for (const socket of this.subs.keys()) this.send(socket, { type: 'net:sessions', sessions, registry: this.registry });
+    for (const socket of this.subs.keys()) this.send(socket, { type: 'net:sessions', sessions, notObservable, registry: this.registry });
   }
 }

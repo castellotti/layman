@@ -165,7 +165,8 @@ rules needs the extra `control/` mount (Docker, below).
   row. `transcripts: false` means flows only.
 - **Session states** (the session picker, `NetGloveInfo`):
   - *not observable*: a registry row with `grants.observe: null` and no export. Listed greyed out and
-    not selectable; Layman never goes looking for its data.
+    not selectable; Layman never goes looking for its data. These travel in their own `notObservable`
+    list (`net:sessions`, `GET /api/net/sessions`), never among `sessions`, so only the picker shows them.
   - *orphaned* ("session deleted; export retained"): glove's own rule from `glove gc`, either an
     export with no registry row, or a row whose directory is gone or now holds another id
     (`<dir>/.glove/id`). Read-only; the Rules panel names `glove gc`, which removes it. Layman never
@@ -468,11 +469,12 @@ it no setting or mount could make a write take effect: an observe-only gate neve
   directory (`.glove/ext/filter/rules.revoked.json`), remove `control/<id>/`, and set the grant back to
   exactly `{"granted": false}`. glove records the revocation **nowhere**: on disk a revoked session is
   identical to one never granted (compare the `filter-revoked` and `observe-only` fixtures). So Layman
-  remembers the last `grants.filter.since` it saw, in memory and in the `net_sessions` rollup
-  (`filter_since`, migration 4; local only, never synced), and calls a grant that has gone `revoked`,
-  across restarts. A control directory that disappears while the grant still reads `granted` (glove
-  mid-revocation, or `glove rm`) is `revoked` too, but only under the grant (the `since`) Layman saw
-  the directory with: a re-grant carries a new `since` and glove writes it before it creates
+  remembers the last `grants.filter.since` it saw, and whether it saw the control directory under that
+  grant, in the `net_sessions` rollup (`filter_since` and `filter_saw_dir`, migration 4; local only,
+  never synced), and calls a grant that has gone `revoked`, across restarts. A control directory that
+  disappears while the grant still reads `granted` (glove mid-revocation, or `glove rm`) is `revoked`
+  too, but only under the grant (the `since`) Layman saw the directory with, which survives a restart
+  (a new `since` resets it, in `NetStore.noteFilterGrant`): a re-grant carries a new `since` and glove writes it before it creates
   `control/<id>/`, so in that gap the session is `granted` with `no-dir`, not `revoked`. Controls disable at the next poll, and Layman never
   recreates the directory or the file. A Layman that never saw the grant (recording off, or a fresh
   database) can only say "not granted".

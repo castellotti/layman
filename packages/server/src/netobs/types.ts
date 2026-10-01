@@ -479,8 +479,16 @@ export interface NetGloveInfo {
   transcripts: boolean | null;
   /** Session deleted; export retained (glove's orphan rule). `glove gc` removes it. */
   orphaned: boolean;
-  /** Registered without the observe grant: listed greyed out, never read. */
-  notObservable: boolean;
+}
+
+/**
+ * A registered session without the observe grant: no export, so no data, and Layman does not look for any.
+ * Kept out of the session list (every consumer of which means "sessions with data"); only the picker shows it, disabled.
+ */
+export interface NetNotObservable {
+  token: string;
+  harness: string;
+  template: string | null;
 }
 
 /**

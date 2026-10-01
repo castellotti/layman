@@ -11,7 +11,7 @@ function db() {
 }
 
 const session = (over: Partial<HistorySession> = {}): HistorySession => ({
-  token: 'pi-search-0f1a2b', filterSince: '2026-10-01T12:00:00Z', firstSeen: 1000, lastSeen: 9000, watermark: 9000,
+  token: 'pi-search-0f1a2b', filterSince: '2026-10-01T12:00:00Z', filterSawDir: true, firstSeen: 1000, lastSeen: 9000, watermark: 9000,
   carry: { f1: { key: 'arxiv.org:443', up: 10, down: 200, blocked: null, direct: false } },
   bytesUp: 100, bytesDown: 5000, flows: 3, blockedGuard: 1, blockedRule: 1, blockedDefault: 0, directFlows: 0,
   lastExit: null, lastStatus: null, sessionFile: null,

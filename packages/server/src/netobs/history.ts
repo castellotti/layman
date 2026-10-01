@@ -57,6 +57,8 @@ export interface HistorySession {
    * how a revoked session still reads as revoked after a restart.
    */
   filterSince: string | null;
+  /** Whether `control/<id>/` was seen under that grant: only a directory that went away under it is a revocation. */
+  filterSawDir: boolean;
   firstSeen: number;
   lastSeen: number;
   /** The latest record time these totals include: every record before it was read. */

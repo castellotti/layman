@@ -70,7 +70,7 @@ describe('glove v3 grant states', () => {
     const id = 'observe-only-0f1a2b';
     expect(summary(obs, id)).toMatchObject({
       harness: 'pi', flows: 2,
-      glove: { template: 'pi-search', filter: 'not-granted', transcripts: true, orphaned: false, notObservable: false },
+      glove: { template: 'pi-search', filter: 'not-granted', transcripts: true, orphaned: false },
     });
     expect(obs.store.rules(id)!.control).toMatchObject({ state: 'not-granted', detail: expect.stringContaining('filter: {}') });
     expect(obs.applyRules(id, block, 'op', NOW).ok).toBe(false);
@@ -136,6 +136,27 @@ describe('glove v3 grant states', () => {
     expect(existsSync(join(h, 'control', id))).toBe(false);
   });
 
+  it('filter-revoked: still granted when Layman restarts, its directory already gone, is revoked', () => {
+    const history = new MemHistory();
+    const id = 'filter-revoked-0f1a2b';
+    const h = home('filter-revoked');
+    const net = join(h, 'observe', id, 'net');
+    const granted = JSON.parse(readFileSync(join(net, 'session.json'), 'utf8'));
+    granted.grants.filter = { granted: true, since: '2026-10-01T11:00:00.000Z' };
+    writeFileSync(join(net, 'session.json'), JSON.stringify(granted));
+    mkdirSync(join(h, 'control', id));
+    const first = open(h, history);
+    expect(summary(first, id).glove.filter).toBe('granted');
+    first.persist();
+    // The directory goes while Layman is not running; the grant still reads granted.
+    rmSync(join(h, 'control', id), { recursive: true });
+    const again = open(h, history);
+    expect(summary(again, id).glove.filter).toBe('revoked');
+    // A grant Layman never saw the directory under stays granted: glove has not made it yet.
+    const fresh = open(h, new MemHistory());
+    expect(summary(fresh, id).glove.filter).toBe('granted');
+  });
+
   it('filter re-granted: a new grant whose directory glove has not made yet is granted, not revoked', () => {
     const id = 'filter-revoked-0f1a2b';
     const h = home('filter-revoked');
@@ -172,10 +193,9 @@ describe('glove v3 grant states', () => {
 
   it('not-observable: listed greyed out, with no data and nothing looked for', () => {
     const obs = open(home('not-observable'));
-    expect(obs.sessions()).toEqual([expect.objectContaining({
-      token: 'not-observable-0f1a2b', harness: 'pi', flows: 0, live: false,
-      glove: expect.objectContaining({ notObservable: true, template: 'pi-search' }),
-    })]);
+    // Not among the sessions (those all have data); listed on their own for the picker.
+    expect(obs.sessions()).toEqual([]);
+    expect(obs.notObservableSessions()).toEqual([{ token: 'not-observable-0f1a2b', harness: 'pi', template: 'pi-search' }]);
     expect(obs.store.snapshot('not-observable-0f1a2b')).toBeNull();
   });
 

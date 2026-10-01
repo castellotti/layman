@@ -15,6 +15,7 @@ import {
   gloveExports, isDir, NO_GRANTS, readSessionFacts, sessionDirState, SESSION_ID,
   type GloveGrants, type RegistryState,
 } from '../glove/registry.js';
+import type { NetNotObservable } from './types.js';
 
 export interface NetSessionLocation {
   /** glove's session id: what flows carry in `session`, and `GloveSource`'s WatchRoot label. */
@@ -38,17 +39,10 @@ export interface GloveSessionInfo {
   orphaned: 'no-row' | 'missing' | 'stale' | null;
 }
 
-/** A registered session Layman may not read: no observe grant, so no export. */
-export interface NotObservableSession {
-  token: string;
-  harness: string;
-  template: string | null;
-}
-
 export interface NetDiscovery {
   registry: { state: RegistryState; detail: string };
   sessions: Array<{ loc: NetSessionLocation; info: GloveSessionInfo }>;
-  notObservable: NotObservableSession[];
+  notObservable: NetNotObservable[];
 }
 
 /**
