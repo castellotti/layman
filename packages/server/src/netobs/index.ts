@@ -8,7 +8,6 @@
  */
 import { NetSessionSource, type GloveSessionInfo, type NetSessionLocation } from './discovery.js';
 import { RulesControl, type ApplyResult } from './control.js';
-import type { ControlAccess } from './writer.js';
 import { GeoLocator } from './geo.js';
 import { parseLine, parseSessionFile, parseStatus } from './parse.js';
 import type { NetHistory } from './history.js';
@@ -27,7 +26,7 @@ import type {
   RulesView,
   StatusRecord,
 } from './types.js';
-import { statSync } from 'fs';
+import { isDir } from '../glove/registry.js';
 import { join } from 'path';
 
 export { NetStore } from './store.js';
@@ -146,8 +145,6 @@ export class NetObs {
   private readonly coalesceMs: number;
   private readonly budgetBytes: number;
   private readonly getGloveHome: () => string | null;
-  /** glove's grant per session, as of the last poll: the writer checks it again on every apply. */
-  private readonly access = new Map<string, ControlAccess>();
   /**
    * The grant (its `since`) under which Layman saw each session's control directory: one that
    * disappears under the same grant is being revoked. A new `since` is a re-grant whose
@@ -217,7 +214,6 @@ export class NetObs {
       for (const token of this.readers.keys()) this.control.forget(token);
       this.readers.clear();
       for (const token of this.store.tokens()) this.store.remove(token);
-      this.access.clear();
       this.registry = { state: 'absent', detail: '' };
       this.notObservable = [];
       this.maybeBroadcastSessions();
@@ -294,20 +290,19 @@ export class NetObs {
     const grant = info.grants.filter;
     const granted = grant?.granted === true;
     const since = grant?.since ?? '';
-    if (granted) this.store.noteFilterSince(token, since);
-    if (granted && this.hadControlDir.has(token) && this.hadControlDir.get(token) !== since) this.hadControlDir.delete(token);
-    let dir = false;
-    try {
-      dir = statSync(loc.controlDir).isDirectory();
-    } catch {
-      dir = false;
-    }
-    if (granted && dir) this.hadControlDir.set(token, since);
     let filter: FilterAccess;
-    if (granted) filter = !dir && this.hadControlDir.has(token) ? 'revoked' : 'granted';
-    else filter = this.store.filterSince(token) !== null ? 'revoked' : 'not-granted';
+    if (granted) {
+      this.store.noteFilterSince(token, since);
+      const had = this.hadControlDir;
+      const dir = isDir(loc.controlDir);
+      if (dir) had.set(token, since);
+      else if (had.get(token) !== since) had.delete(token);
+      filter = !dir && had.has(token) ? 'revoked' : 'granted';
+    } else {
+      filter = this.store.filterSince(token) !== null ? 'revoked' : 'not-granted';
+    }
     const orphaned = info.orphaned !== null;
-    this.access.set(token, { filter, orphaned });
+    this.control.setAccess(loc, { filter, orphaned });
     this.store.setGlove(token, {
       template: info.template,
       filter,
@@ -317,13 +312,9 @@ export class NetObs {
     });
   }
 
-  private accessOf(token: string): ControlAccess {
-    return this.access.get(token) ?? { filter: 'not-granted', orphaned: false };
-  }
-
   /** rules.json and the gate's verdict on it; pushes `net:rules` and new policy predictions when they change. */
   private pollRules(loc: NetSessionLocation, now: number): void {
-    if (!this.control.poll(loc, this.store.statusRecord(loc.token), now, this.accessOf(loc.token))) return;
+    if (!this.control.poll(loc, this.store.statusRecord(loc.token), now)) return;
     this.store.setRules(loc.token, this.control.view(loc.token)!);
     this.store.setPolicy(loc.token, this.control.sets(loc.token));
   }
@@ -336,7 +327,7 @@ export class NetObs {
   applyRules(token: string, op: RulesOp, opId: string, now = Date.now()): ApplyResult {
     const loc = this.store.location(token);
     if (!loc) return { ok: false, error: `No glove network session '${token}'` };
-    const result = this.control.apply(loc, this.store.statusRecord(token), op, opId, now, this.accessOf(token));
+    const result = this.control.apply(loc, this.store.statusRecord(token), op, opId, now);
     this.store.setRules(token, this.control.view(token)!);
     this.store.setPolicy(token, this.control.sets(token));
     return result;

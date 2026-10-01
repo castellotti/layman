@@ -28,6 +28,7 @@ import { type NetSessionLocation } from './discovery.js';
 import { blankRulesView } from './control.js';
 import { predict, type FlowFacts, type GateFacts, type RuleSet } from './rules.js';
 import type { CarryFlow, HistoryDest, HistorySession } from './history.js';
+import { neverMapped } from './types.js';
 import type {
   DestinationAggregate,
   ExitRecord,
@@ -215,7 +216,7 @@ function policyFor(
     if (!set) return null;
     const v = predict(set, facts, gate);
     // On a corporate route an allow only reaches the corporate proxy, whose allowlist decides.
-    return gate.corporate && v.action === 'allow' ? { action: v.action, rule: v.rule, allowlist: true } : { action: v.action, rule: v.rule };
+    return { action: v.action, rule: v.rule, ...(gate.corporate && v.action === 'allow' ? { allowlist: true } : {}) };
   };
   return { enforced: one(policy.enforced), written: one(policy.written) };
 }
@@ -336,10 +337,9 @@ export class NetStore extends EventEmitter {
     if (s) s.filterSince = since;
   }
 
-  /** The last filter grant Layman saw for this session, from this process or kept history. */
+  /** The last filter grant Layman saw for this session, from this process or kept history (`setHistory` folds it in). */
   filterSince(token: string): string | null {
-    const s = this.sessions.get(token);
-    return s ? s.filterSince ?? s.history?.s.filterSince ?? null : null;
+    return this.sessions.get(token)?.filterSince ?? null;
   }
 
   isHistoryOnly(token: string): boolean {
@@ -801,7 +801,7 @@ export class NetStore extends EventEmitter {
       ...a,
       policy: policyFor(s.policy, facts, gate),
       // Only an IP glove resolved inside the tunnel (or a literal), never a local link.
-      geo: this.geolocate && a.ips[0] && a.scope !== 'local' && a.scope !== 'lan' && (a.resolution === 'in-tunnel' || a.resolution === 'literal')
+      geo: this.geolocate && a.ips[0] && !neverMapped(a.scope) && (a.resolution === 'in-tunnel' || a.resolution === 'literal')
         ? this.geolocate(a.ips[0])
         : null,
       // A flow whose gate went away is unclosed but not open in any sense the UI means.
@@ -949,7 +949,7 @@ export class NetStore extends EventEmitter {
     const dests = this.destViews(s);
     const first = Math.min(s.firstSeen ?? Infinity, h?.firstSeen ?? Infinity, ...dests.map((d) => d.firstSeen));
     return {
-      token, filterSince: s.filterSince ?? h?.filterSince ?? null,
+      token, filterSince: s.filterSince,
       firstSeen: Number.isFinite(first) ? first : 0,
       lastSeen: Math.max(s.lastT ?? 0, h?.lastSeen ?? 0),
       watermark: Math.max(s.lastT ?? -Infinity, h?.watermark ?? -Infinity),
@@ -1137,7 +1137,7 @@ export class NetStore extends EventEmitter {
         return {
           token: s.loc.token,
           harness: s.session?.harness ?? null,
-          glove: s.historyOnly ? { ...UNKNOWN_GLOVE, filter: null } : { ...s.glove },
+          glove: { ...(s.historyOnly ? UNKNOWN_GLOVE : s.glove) },
           live: !s.historyOnly && s.gate.freshness === 'running',
           firstSeen: s.firstSeen === null ? h?.firstSeen ?? null : Math.min(s.firstSeen, h?.firstSeen ?? Infinity),
           lastSeen: s.lastT === null ? h?.lastSeen ?? null : Math.max(s.lastT, h?.lastSeen ?? 0),

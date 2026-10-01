@@ -26,13 +26,9 @@
  */
 import { accessSync, closeSync, constants, fchmodSync, fsyncSync, lstatSync, openSync, renameSync, statSync, unlinkSync, writeSync } from 'fs';
 import { dirname, join, relative, resolve, sep } from 'path';
+import type { ControlState, FilterAccess } from './types.js';
 
 export const TEMP_NAME = 'rules.json.layman.tmp';
-
-export type ControlState = 'ok' | 'disabled' | 'not-granted' | 'revoked' | 'orphaned' | 'no-dir' | 'read-only';
-
-/** The session's filter grant as Layman knows it: `revoked` = seen granted before, not now. */
-export type FilterAccess = 'granted' | 'not-granted' | 'revoked';
 
 /** What glove says about writing this session's rules, decided before any file is looked at. */
 export interface ControlAccess {
@@ -40,6 +36,9 @@ export interface ControlAccess {
   /** Session deleted; export retained (glove's orphan rule). */
   orphaned: boolean;
 }
+
+/** Until glove's grant is known: nothing may be written. */
+export const NO_ACCESS: ControlAccess = { filter: 'not-granted', orphaned: false };
 
 const GRANT_HINT = 'add `filter: {}` under `extensions:` in its glove-session.yml and re-run `glove up`';
 

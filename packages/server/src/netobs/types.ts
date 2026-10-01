@@ -22,6 +22,10 @@ export type FlowPhase = 'open' | 'update' | 'close';
  */
 export const FLOW_SCOPES = ['tunnelled', 'local', 'direct', 'lan', 'cloud'] as const;
 export type FlowScope = (typeof FLOW_SCOPES)[number];
+/** glove's llm link (`lan`/`cloud`): never the tunnel, never an alert. */
+export const isLlmScope = (scope: string): boolean => scope === 'lan' || scope === 'cloud';
+/** Never placed on the map nor geolocated: a local link, or the llm link on the LAN. */
+export const neverMapped = (scope: string): boolean => scope === 'local' || scope === 'lan';
 export type FlowResolution = 'in-tunnel' | 'literal' | 'unavailable' | 'disabled';
 
 export interface FlowDest {

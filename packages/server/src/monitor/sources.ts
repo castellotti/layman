@@ -18,9 +18,9 @@
  * scan without a restart.
  */
 
-import { existsSync, statSync } from 'fs';
+import { existsSync } from 'fs';
 import { join } from 'path';
-import { observeIds, readRegistry, readSessionFacts } from '../glove/registry.js';
+import { gloveExports, isDir, readSessionFacts } from '../glove/registry.js';
 import { homedir } from 'os';
 
 /** A single directory the watcher should tail, plus how to attribute what it finds. */
@@ -190,20 +190,11 @@ export class GloveSource implements MonitorSource {
   private scan(): WatchRoot[] {
     const home = this.getGloveHome();
     if (!home) return [];
-    const ids = observeIds(home);
-    if (!ids.length) return [];
-    const registry = readRegistry(home);
-    const harnessById = new Map(registry.rows.map((r) => [r.id, r.harness]));
     const roots: WatchRoot[] = [];
-    for (const id of ids) {
-      const exportDir = join(home, 'observe', id);
-      const path = join(exportDir, 'transcripts');
-      try {
-        if (!statSync(path).isDirectory()) continue;
-      } catch {
-        continue;
-      }
-      const harness = harnessById.get(id) ?? readSessionFacts(join(exportDir, 'net'))?.harness ?? null;
+    for (const { id, dir, row } of gloveExports(home).exports) {
+      const path = join(dir, 'transcripts');
+      if (!isDir(path)) continue;
+      const harness = row?.harness ?? readSessionFacts(join(dir, 'net'))?.harness ?? null;
       const agentType = harness ? GLOVE_HARNESS_AGENT[harness] : undefined;
       if (agentType) roots.push({ path, agentType, label: id });
     }

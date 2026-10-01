@@ -15,7 +15,7 @@
  * anything up; every label comes from glove's files or the user's rules.
  */
 import type { NetSessionData } from './net-state.js';
-import type { DestinationAggregate, FlowView, NetService, Rule } from './netobs-types.js';
+import { isLlmScope, type DestinationAggregate, type FlowView, type NetService, type Rule } from './netobs-types.js';
 import { BLOCK_STATES, formatBytes } from './net-format.js';
 import { guardReason, hostLabel, toolLabel } from './net-table.js';
 
@@ -174,7 +174,7 @@ type RouteId = 'local' | 'llm' | 'tunnel' | 'direct';
 
 function routeOf(d: DestinationAggregate, svc: NetService | undefined): RouteId {
   if (d.scope === 'local') return 'local';
-  if (d.scope === 'lan' || d.scope === 'cloud') return 'llm';
+  if (isLlmScope(d.scope)) return 'llm';
   if (d.scope === 'direct') return 'direct';
   if (d.scope === 'tunnelled') return 'tunnel';
   const kind = svc?.route?.kind ?? (svc?.mode === 'tcp' ? 'tcp' : null);

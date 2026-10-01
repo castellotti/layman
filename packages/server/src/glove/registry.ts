@@ -54,7 +54,7 @@ export interface RegistryRead {
 
 export const REGISTRY_VERSION = 2;
 
-const NO_GRANTS: GloveGrants = { observe: null, filter: null };
+export const NO_GRANTS: GloveGrants = { observe: null, filter: null };
 
 const str = (v: unknown): string | null => (typeof v === 'string' ? v : null);
 const obj = (v: unknown): Record<string, unknown> | null =>
@@ -125,14 +125,35 @@ export function observeIds(home: string): string[] {
   } catch {
     return [];
   }
-  return names.filter((n) => {
-    if (!SESSION_ID.test(n)) return false;
-    try {
-      return statSync(join(root, n)).isDirectory();
-    } catch {
-      return false;
-    }
-  }).sort();
+  return names.filter((n) => SESSION_ID.test(n) && isDir(join(root, n))).sort();
+}
+
+/** An observe export joined to its registry row (absent for an orphan or an unreadable registry). */
+export interface GloveExport {
+  id: string;
+  /** `<home>/observe/<id>`. */
+  dir: string;
+  row: RegistryRow | undefined;
+}
+
+/**
+ * Every observe export with its registry row, and the registry read itself: the
+ * one join both readers of glove's home use. Each then keeps the exports whose
+ * subdirectory it reads (`transcripts/` or `net/`).
+ */
+export function gloveExports(home: string): { registry: RegistryRead; exports: GloveExport[] } {
+  const registry = readRegistry(home);
+  const rows = new Map(registry.rows.map((r) => [r.id, r]));
+  const exports = observeIds(home).map((id) => ({ id, dir: join(home, 'observe', id), row: rows.get(id) }));
+  return { registry, exports };
+}
+
+export function isDir(p: string): boolean {
+  try {
+    return statSync(p).isDirectory();
+  } catch {
+    return false;
+  }
 }
 
 /**

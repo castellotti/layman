@@ -7,6 +7,7 @@ import React from 'react';
 import { useSessionStore } from '../../stores/sessionStore.js';
 import { BLOCK_STATES, formatBytes } from '../../lib/net-format.js';
 import type { NetSessionData } from '../../lib/net-state.js';
+import { neverMapped } from '../../lib/netobs-types.js';
 import { NetIcon, type NetIconName } from './netui.js';
 import { WorldMap } from './WorldMap.js';
 
@@ -74,7 +75,7 @@ export function KpiRow({ data }: { data: NetSessionData }) {
 export function MiniMap({ data }: { data: NetSessionData }) {
   const setViewMode = useSessionStore((s) => s.setViewMode);
   const netDest = useSessionStore((s) => s.netDest);
-  const dests = [...data.destinations.values()].filter((d) => d.scope !== 'local' && !BLOCK_STATES.has(d.state));
+  const dests = [...data.destinations.values()].filter((d) => !neverMapped(d.scope) && !BLOCK_STATES.has(d.state));
   const placed = dests.filter((d) => d.geo).length;
   const exit = data.exit?.healthy ? data.exit : null;
   const origin = exit ? `exit ${exit.city ? `${exit.city}, ` : ''}${exit.country ?? exit.ip ?? ''}` : 'exit not observed';

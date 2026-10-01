@@ -9,12 +9,11 @@
  * registry row with no observe export is listed as not observable and is never
  * looked for anywhere else.
  */
-import { statSync } from 'fs';
 import { join, resolve, sep } from 'path';
 import { homedir } from 'os';
 import {
-  observeIds, readRegistry, readSessionFacts, sessionDirState, SESSION_ID,
-  type GloveGrants, type RegistryRow, type RegistryState,
+  gloveExports, isDir, NO_GRANTS, readSessionFacts, sessionDirState, SESSION_ID,
+  type GloveGrants, type RegistryState,
 } from '../glove/registry.js';
 
 export interface NetSessionLocation {
@@ -52,16 +51,14 @@ export interface NetDiscovery {
   notObservable: NotObservableSession[];
 }
 
-/** The id pattern Layman acts on (glove's `ID_RE`). Anything else is skipped, never turned into a path. */
-export const SAFE_NAME = SESSION_ID;
-
 /**
  * Where rules.json lives for a session: `<gloveHome>/control/<id>/rules.json`.
  * Null for an id that is not a glove id, or that would resolve outside
  * `<gloveHome>/control`.
  */
 export function controlPaths(gloveHome: string, id: string): { controlDir: string; rulesPath: string } | null {
-  if (!SAFE_NAME.test(id)) return null;
+  // Only a glove id (`ID_RE`) is ever turned into a path.
+  if (!SESSION_ID.test(id)) return null;
   const root = resolve(gloveHome, 'control');
   const controlDir = resolve(root, id);
   if (!controlDir.startsWith(root + sep)) return null;
@@ -81,14 +78,6 @@ export function toHostPath(p: string, hostHome = process.env.HOST_HOME, containe
   return p.startsWith(containerHome + sep) ? join(hostHome, p.slice(containerHome.length + 1)) : p;
 }
 
-const isDir = (p: string): boolean => {
-  try {
-    return statSync(p).isDirectory();
-  } catch {
-    return false;
-  }
-};
-
 const EMPTY: NetDiscovery = { registry: { state: 'absent', detail: '' }, sessions: [], notObservable: [] };
 
 export class NetSessionSource {
@@ -98,17 +87,15 @@ export class NetSessionSource {
   discover(): NetDiscovery {
     const home = this.getGloveHome();
     if (!home) return EMPTY;
-    const registry = readRegistry(home);
-    const rows = new Map<string, RegistryRow>(registry.rows.map((r) => [r.id, r]));
+    const { registry, exports } = gloveExports(home);
     const sessions: NetDiscovery['sessions'] = [];
     const exported = new Set<string>();
-    for (const id of observeIds(home)) {
-      const netDir = join(home, 'observe', id, 'net');
+    for (const { id, dir: exportDir, row } of exports) {
+      const netDir = join(exportDir, 'net');
       if (!isDir(netDir)) continue;
-      const control = controlPaths(home, id);
-      if (!control) continue;
+      // Never null: observeIds() only yields glove ids.
+      const control = controlPaths(home, id)!;
       exported.add(id);
-      const row = rows.get(id);
       const facts = readSessionFacts(netDir);
       let orphaned: GloveSessionInfo['orphaned'] = null;
       // Only a readable v2 registry can say a row is missing; an unreadable one proves nothing.
@@ -122,7 +109,7 @@ export class NetSessionSource {
         info: {
           harness: row?.harness ?? facts?.harness ?? null,
           template: row?.template ?? null,
-          grants: facts?.grants ?? row?.grants ?? { observe: null, filter: null },
+          grants: facts?.grants ?? row?.grants ?? NO_GRANTS,
           orphaned,
         },
       });

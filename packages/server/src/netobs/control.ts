@@ -17,7 +17,7 @@ import {
   RulesError, applyOp, asRulesFile, emptyRules, newRuleId, parseRulesBytes, serializeRules, validateRules,
   type RuleSet,
 } from './rules.js';
-import { controlStatus, removeRules, writeRules, type ControlAccess } from './writer.js';
+import { controlStatus, NO_ACCESS, removeRules, writeRules, type ControlAccess } from './writer.js';
 import { toHostPath, type NetSessionLocation } from './discovery.js';
 import type { RulesFile, RulesOp, RulesView, RulesWriteView, StatusRecord } from './types.js';
 
@@ -63,9 +63,6 @@ export interface ApplyResult {
 
 /** The session's `control/` root: the parent of its control directory (`control/<id>/`). */
 const controlRoot = (loc: NetSessionLocation) => resolve(loc.controlDir, '..');
-
-/** Until the first poll says otherwise: nothing may be written. */
-const NO_ACCESS: ControlAccess = { filter: 'not-granted', orphaned: false };
 
 function blankView(loc: NetSessionLocation): RulesView {
   return {
@@ -235,10 +232,14 @@ export class RulesControl {
     };
   }
 
+  /** glove's grant for a session, as of the last discovery: checked again on every poll and apply. */
+  setAccess(loc: NetSessionLocation, access: ControlAccess): void {
+    this.session(loc).access = access;
+  }
+
   /** Read and settle; true when the view changed (the caller sends `net:rules`). */
-  poll(loc: NetSessionLocation, status: StatusRecord | null, now: number, access: ControlAccess): boolean {
+  poll(loc: NetSessionLocation, status: StatusRecord | null, now: number): boolean {
     const s = this.session(loc);
-    s.access = access;
     this.readDisk(s, now);
     this.settle(s, status, now);
     const sig = JSON.stringify({ ...s.view, sets: [s.sets.enforced !== null, s.sets.written !== null] });
@@ -253,10 +254,9 @@ export class RulesControl {
    * when the file on disk is one the gate would reject (someone else's broken
    * write is theirs to fix, or to revert), or when the result would not validate.
    */
-  apply(loc: NetSessionLocation, status: StatusRecord | null, op: RulesOp, opId: string, now: number, access: ControlAccess): ApplyResult {
+  apply(loc: NetSessionLocation, status: StatusRecord | null, op: RulesOp, opId: string, now: number): ApplyResult {
     const s = this.session(loc);
-    s.access = access;
-    const control = controlStatus(controlRoot(loc), loc.rulesPath, this.controlEnabled(), access);
+    const control = controlStatus(controlRoot(loc), loc.rulesPath, this.controlEnabled(), s.access);
     if (control.state !== 'ok') return { ok: false, error: control.detail };
 
     this.readDisk(s, now, true);

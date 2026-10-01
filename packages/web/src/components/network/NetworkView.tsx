@@ -134,8 +134,8 @@ export default function NetworkView({ tab, onSend }: { tab: NetTab; onSend: (msg
 
   const enabled = !!config?.glove.enabled && config.glove.network?.enabled !== false;
   const token = netToken ?? defaultNetToken(sessions, activeSessionName);
-  const listed = token !== null && sessions.some((s) => s.token === token);
   const picked = token === null ? undefined : sessions.find((s) => s.token === token);
+  const listed = picked !== undefined;
   // A registered session without the observe grant has nothing to subscribe to.
   const readable = listed && !picked?.glove.notObservable;
 

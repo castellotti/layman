@@ -45,6 +45,7 @@
  */
 import { createHash, randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync, appendFileSync } from 'node:fs';
+import { readRegistry } from '../src/glove/registry.ts';
 import { evaluate, parseRulesBytes, type RuleSet } from '../src/netobs/rules.ts';
 import { writeMmdb } from '../src/netobs/testing/mmdb-writer.ts';
 import { dirname, join, resolve } from 'node:path';
@@ -257,12 +258,7 @@ function registerUnlocked(dir: string, row: Record<string, unknown> & { id: stri
 
 /** Whether the fake home's registry has a row for this id. */
 function registered(dir: string, id: string): boolean {
-  try {
-    const data = JSON.parse(readFileSync(join(dir, 'registry.json'), 'utf8'));
-    return Array.isArray(data?.sessions) && data.sessions.some((r: { id?: string }) => r.id === id);
-  } catch {
-    return false;
-  }
+  return readRegistry(dir).rows.some((r) => r.id === id);
 }
 
 /** status.json `rules`, as glove's collector reports them. */

@@ -5,7 +5,7 @@
  * call claimed under "Unattributed". Rows, the time axis, each flow's outcome
  * text and the default selection live here; `TraceView.tsx` only draws.
  */
-import type { FlowView, Rule, TraceCall, TraceView } from './netobs-types.js';
+import { isLlmScope, type FlowView, type Rule, type TraceCall, type TraceView } from './netobs-types.js';
 
 export type Tone = 'muted' | 'ok' | 'tunnel' | 'warn' | 'error' | 'fanout' | 'local';
 export type TraceIcon = 'search' | 'fetch' | 'tool' | 'llm' | 'globe' | 'lock' | 'blocked' | 'broken' | 'cut' | 'home' | 'fanout' | 'alert' | 'check' | 'pulse' | 'fold';
@@ -108,7 +108,7 @@ function alreadyOpen(call: TraceCall, open: FlowView[]): Outcome {
 }
 
 // The llm link (`lan`, `cloud`) is not the tunnel: drawn like a local link, never as a leak.
-const flowTone = (f: FlowView): Tone => (f.flags.fanout ? 'fanout' : f.flags.scope === 'local' || f.flags.scope === 'lan' || f.flags.scope === 'cloud' ? 'local' : f.flags.scope === 'direct' ? 'error' : 'tunnel');
+const flowTone = (f: FlowView): Tone => (f.flags.fanout ? 'fanout' : f.flags.scope === 'local' || isLlmScope(f.flags.scope) ? 'local' : f.flags.scope === 'direct' ? 'error' : 'tunnel');
 const hasTraffic = (flowIds: string[], fanoutIds: string[]) => flowIds.length + fanoutIds.length > 0;
 
 /** Rows open by default: every call and Unattributed; the fan-out group starts folded. */
