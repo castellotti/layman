@@ -1,62 +1,71 @@
 # glove
 
-[glove](https://github.com/glovebox-ai/glove) sandboxes a coding harness inside a container and
-persists its fake home on the host under `~/.glove/envs/<env-id>/sessions/<name>/home/`. Layman monitors gloved
-sessions **passively and read-only** by tailing those already-persisted transcript logs from
-outside the sandbox — it adds nothing to what the sandboxed agent can see. The feature is off by
-default (`glove.enabled`) and enabling or disabling it never affects native monitoring. The one thing
-Layman ever writes is a session's network rules file, `~/.glove/control/<env>/<name>/rules.json`,
-outside the sandbox and only when the user blocks or allows something (Network → Writing rules).
+[glove](https://github.com/castellotti/glove) sandboxes a coding harness inside a container. Layman
+supports **glove v3 only** (a clean break from v2; see "glove v2 homes" below). In glove v3 a session
+is a directory the user chose (`glove new <template> <dir>`); its state is private to it, in
+`<dir>/.glove/`. The only data outside it is what the session's two explicit, per-session **grants**
+export, and that is all Layman reads or writes:
 
-Only harnesses that persist a tailable transcript are discoverable this way today: **Mistral Vibe**
-and **pi**. A network-hook harness inside a net-restricted sandbox cannot reach Layman and persists
-nothing to tail, so it needs a different mechanism (a glove-provided forwarder), not `GloveSource`.
+| Grant | glove extension | What Layman gets |
+|---|---|---|
+| **observe** (read) | `observe` | flow records under `~/.glove/observe/<id>/net/` and, with `transcripts: true` (the default), the harness's transcripts under `~/.glove/observe/<id>/transcripts/` |
+| **filter** (write) | `filter` (needs `observe`) | `~/.glove/control/<id>/rules.json`, enforced by every gate, which Layman may write |
+
+Layman monitors gloved sessions **passively and read-only** by tailing those exports from outside the
+sandbox; it adds nothing to what the sandboxed agent can see. The feature is off by default
+(`glove.enabled`), and enabling or disabling it never affects native monitoring. The one thing Layman
+ever writes is a session's `control/<id>/rules.json`, only with the filter grant, and only when the user
+blocks or allows something (Network → Writing rules).
+
+Only harnesses that persist a tailable transcript are discoverable this way: **pi** and **Mistral
+Vibe**. glove exports no Claude Code transcripts (its profile has no transcript directory), and a
+network-hook harness inside a net-restricted sandbox cannot reach Layman.
 
 ## How it works
 
-`GloveSource` (`packages/server/src/monitor/sources.ts`) globs `~/.glove/envs/*/sessions/*/home/` and
-returns a labelled `WatchRoot` for each harness log tree it finds there — a Vibe root
-(`.vibe/logs/session`) and/or a pi root (`.pi/agent/sessions`), so one sandbox can yield both. Each
-root declares its own `agentType` and an optional sandbox `label` (glove's session token — the env id
-for the default session, else `<env-id>-<name>`). For envs created by older glove (or a
-`config_home_source` override), which persist a single env-level `<env-id>/home/`, it falls back to
-that home when the env has no per-session home — never both, so a session that a glove upgrade left
-copied under both is not tailed and recorded twice. The passive watchers
-(`VibeSessionWatcher`, `PiSessionWatcher`) each filter `roots()` down to the agent type they parse,
-so the single shared `GloveSource` instance feeds both; native sources precede glove in the list, so
-native wins any path collision. See the "Monitor sources" note in the root `CLAUDE.md` for the
-`MonitorSource` abstraction this plugs into.
+**The session id is the token.** A glove v3 id is `<dirname>-<6 lowercase hex>` (for example
+`research-1-3fa9c1`), stable for the life of the session directory (`<dir>/.glove/id`). It is the
+directory name under both `observe/` and `control/`, the `env` *and* `session` of every flow record and
+of `rules.json`, and the label Layman gives the sessions it tails, so a transcript joins its traffic by
+it. Layman acts only on names matching glove's own pattern, `^[a-z0-9][a-z0-9_-]{0,39}-[0-9a-f]{6}$`
+(`SESSION_ID` in `packages/server/src/glove/registry.ts`); `glove gc` touches nothing else either.
 
-A `config_home_source` override can relocate a home **entirely outside** `~/.glove/envs/`, where the
-per-session/env-level globbing above structurally cannot reach it. glove records the run-time-resolved
-`home` per env in **`~/.glove/registry.json`** — the single canonical pointer — so `GloveSource` reads
-that registry and, for any env whose recorded home lies outside the sessions dir, probes it too (a
-registry home *inside* the sessions dir is left to enumeration, which already owns it, so it is never
-tailed twice). Registry `home` paths are absolute *host* paths; in the container they are rebased from
-`HOST_HOME` onto the container home before probing (native Layman leaves this a no-op). Reads are
-best-effort: a missing or malformed registry — including a stray non-object array element — degrades
-to enumeration. The full design — the glove-side registry field, the host→container translation, and
-the mount contract (a relocated home that a containerized Layman watches lives under `~/.glove`) — is
-the one described in this section.
+**One reader for glove's home** (`packages/server/src/glove/registry.ts`) serves both consumers:
+`readRegistry()` reads `~/.glove/registry.json`, `observeIds()` lists the observe exports, and
+`sessionDirState()` applies glove's orphan rule. `glove.home` (default `~/.glove`) is the only setting;
+Layman follows it, never `$GLOVE_HOME`, because the container mounts `~/.glove`.
 
-As a **registry-independent fallback**, `GloveSource` also enumerates `~/.glove/homes/<env-id>/`
-directly (a sibling of the sessions dir). glove's launcher scripts relocate a home there
-(`config_home_source: ~/.glove/homes/<env-id>`), and the mount contract already keeps any watched
-relocated home under `~/.glove`, so a session is discovered even when glove never recorded its `home`.
-That is exactly what a `glove <harness> --env X --config Y` one-off produces: a forced `--env` with
-`--config` (no prior `glove init`) is *not registered*, so `record_home` finds no registry row to
-update and writes nothing — leaving the registry blind to the session. Enumerating `homes/` closes
-that gap without depending on the registry being complete. It is redundant with the registry on
-purpose, and the no-double-tail invariant is held by a single `handledEnvs` set — every env id the
-registry or enumeration already resolved authoritatively. The convention loop skips any env in that
-set, which covers both overlap shapes at once: the **same-tree** case (registry and convention name
-the identical home) and the **stale** case (the env's real home is elsewhere but a dead `homes/<env>`
-lingers from a prior one-off, a different path a raw dedup could not collapse). Because the env id is
-the `homes/<env>` dir name, the skip lands before the twin is ever probed. Registry homes are
-canonicalized where they are read (glove may record a `home` with a trailing slash, which `path.join`
-preserves; every other home is built from slash-free segments), so the `probed` path dedup stays
-spelling-agnostic without a per-probe workaround. The paired glove-side fix — registering the forced
-`--env` so the registry stays complete for every consumer — lives in the glove repo.
+**The registry** is `{"v": 2, "sessions": [{id, dir, harness, template, created, grants, subnet}]}`,
+written atomically by glove. Rows missing a required key, or whose id is not a glove id, are skipped,
+and unknown keys are ignored, as glove itself does.
+
+**Transcripts** (`GloveSource`, `packages/server/src/monitor/sources.ts`). For every
+`observe/<id>/` with a `transcripts/` directory, `GloveSource` returns one labelled `WatchRoot`: the
+path is `transcripts/` itself, because glove bind-mounts it *over* the harness's transcript directory
+(pi's `.pi/agent/sessions`, Vibe's `.vibe/logs/session`), so it holds exactly the layout the watchers
+already parse (pi's per-cwd subdirectories such as `--work--/`). The harness comes from glove, never
+from the layout: the registry row's `harness`, else `session.json`'s. `pi` maps to the pi watcher,
+`vibe` to the Vibe watcher, anything else yields no root. A session without the observe grant has no
+export and is never looked for anywhere else (its private `<dir>/.glove/home/` is off limits). The
+passive watchers (`VibeSessionWatcher`, `PiSessionWatcher`) each filter `roots()` down to the agent
+type they parse, so the single shared `GloveSource` instance feeds both; native sources precede glove
+in the list, so native wins any path collision. `roots()` is memoized for 1 s, since both watchers call
+it every scan tick against a FUSE-backed bind mount on macOS. See the "Monitor sources" note in the
+root `CLAUDE.md` for the `MonitorSource` abstraction this plugs into.
+
+**Mistral Vibe under glove is untested.** glove's Vibe profile exports `logs/session`
+(`transcript_subdir`) while its `sessions_subdir` still says `sessions`, and glove has no Vibe fixture,
+so where a gloved Vibe really writes is unverified on glove's side. Layman reads the export as a
+`logs/session` directory, which is what glove binds, and guesses nothing beyond that.
+
+### glove v2 homes
+
+glove v3 refuses a v2 `registry.json` (a bare array of environments) rather than migrating it, and so
+does Layman: `readRegistry()` reports `v2-home`, the Network views show "glove v2 home: upgrade glove"
+with glove's instruction (move the old registry aside, recreate sessions with `glove new`), and nothing
+under `envs/` or `homes/` is read. Any other registry version is "unsupported". The setting
+`glove.sessionsDir` (`~/.glove/envs`) became `glove.home`; `config.ts` (`migrateGloveHome`) takes its
+parent once when `home` is absent and drops the old key.
 
 ## Design notes
 
@@ -79,45 +88,17 @@ worked while gloved pi did not.
 
 ### Read-only by design (`monitor/sources.ts`, `GloveConfigSchema`)
 
-glove persists the sandboxed home on the host (bind-mounted to `/home/agent` inside the container —
-glove v2 runs the harness non-root, but Layman reads the persisted *host* files so the in-container
-path is irrelevant); Layman tails those already-persisted logs from outside. The feature adds nothing
-to what the sandboxed agent can see — no new mount into the container, no egress — which is a
-deliberate fit for glove's security model, and the reason the host mount is `:ro`. Interception /
-blocking of a sandboxed harness would be a separate mechanism (a glove-provided forwarder) — this
-watcher is logging only. (Blocking *network traffic* is different: glove's gate reads a rules file
-Layman may write, outside the sandbox; see Network → Writing rules.)
+glove writes the observe export on the host; Layman tails it from outside. The feature adds nothing to
+what the sandboxed agent can see (no new mount into the container, no egress), which is a deliberate
+fit for glove's security model and the reason the host mount is `:ro`. glove itself refuses to render a
+session in which a harness mount could reach its own `net/` or `control/<id>/`, so the agent can
+neither read nor forge the record Layman shows. Interception or blocking of a sandboxed harness's
+*tool calls* would be a separate mechanism; this watcher is logging only. (Blocking *network traffic*
+is different: with the filter grant, glove's gates read a rules file Layman may write, outside the
+sandbox; see Network → Writing rules.)
 
-glove cooperates with this integration: its Vibe renderer pre-creates `home/.vibe/logs/session/` on
-launch *specifically so an external monitor can attach before the first turn*
-(`glove/harnessconfig.py`); pi's `home/.pi/agent/sessions/` is not pre-created and appears on pi's
-first turn instead, which `GloveSource` picks up on the next scan tick.
-
-**glove v2 also ships an experimental `claude-code` harness**, but `GloveSource` does not discover it:
-native Claude Code uses live hooks and Layman has no *passive* Claude Code tail-watcher, so a gloved
-Claude Code session would need one built (a new watcher, not just a `GloveSource` branch).
-
-### The on-disk unit is an *environment*, not a session (glove `registry.py`)
-
-An env is the pair `(invocation_dir, harness)` bound to a stable `env-id` (invocation-dir basename,
-or `<base>-<harness>` for a second harness in one dir, or `<base>-<shorthash>` on a cross-dir basename
-collision). All env state lives under `~/.glove/envs/<env-id>/`, which contains `glove.yaml` and a
-`sessions/<name>/` subtree per `glove run --name` (compose file, rendered enforcer policies, browser
-media) — **and the harness home Layman tails is inside that subtree**, at `sessions/<name>/home/`.
-glove's `_home_dir()` resolves the home per session, not per env, because the rendered harness config
-embeds session-scoped values (its own LLM sidecar URL) that two live sessions must not share; the
-default unnamed session is named after the env, so its home is `sessions/<env-id>/home/`. Each session
-is therefore tagged with glove's session token (`<env-id>` for the default, else `<env-id>-<name>`),
-not one shared env-id — a change from older glove, which bind-mounted a single env-level
-`<env-id>/home/` and where all of an env's sessions did share one home. `GloveSource` prefers the
-per-session homes and reads the env-level `home/` only as a fallback for legacy envs; sibling
-`glove.yaml`, `registry.json`, and a stray `.DS_Store` are ignored (`statSync().isDirectory()` guards
-each readdir). A power-user `config_home_source` override relocates the home outside
-`~/.glove/envs/<env-id>/`; when the relocated home lands outside the sessions dir, where the glob
-cannot find it, `GloveSource` follows it via the resolved `home` glove records in
-`~/.glove/registry.json` (see the registry above),
-translating the host path onto the container home and requiring — for a containerized Layman — that
-the relocated home live under `~/.glove`.
+`transcripts/` is created by glove's first `glove up` with `transcripts: true`; pi writes into it on
+its first turn, which `GloveSource` picks up on the next scan tick.
 
 ### History import discovers glove pi *and* Vibe sessions too (`recovery.ts`, `transcript-pi.ts`, `transcript-vibe.ts`)
 
@@ -129,7 +110,7 @@ Import session history**. Each importer filters `gloveRoots` down to the agent t
 (`discoverGlovePiSessions` / `discoverGloveVibeSessions`), exactly as the passive watchers do; glove's
 experimental claude-code harness is still not imported (no passive Claude Code watcher — see above), so
 its roots are ignored. `gloveRoots` is empty when glove is disabled, leaving native import byte-for-byte
-unchanged. The env id rides through `DiscoveredTranscript.label` into `importSession(..., sessionName)`
+unchanged. The session id rides through `DiscoveredTranscript.label` into `importSession(..., sessionName)`
 so a gloved import is tagged exactly like a passively-watched gloved session. Double-import against the
 live watcher is prevented by the live-source rule (see the root `CLAUDE.md` history-enrichment note): a
 session a watcher recorded is `source === 'live'` and is skipped.
@@ -170,22 +151,42 @@ so the guard needs no exemptions.
 
 ### What is read, and from where
 
-Per session, `~/.glove/envs/<env>/sessions/<name>/net/`: `flows.ndjson` and its rotated
-`flows-<stamp>.ndjson`, `exit.ndjson` (which rotates the same way), `status.json`, `session.json`; and
-`~/.glove/control/<env>/<name>/rules.json`. All of it is inside the existing read-only `~/.glove`
-mount; only writing rules needs the extra `control/` mount (Docker, below).
+Per session with the observe grant, `~/.glove/observe/<id>/net/`: `flows.ndjson` and its rotated
+`flows-<stamp>[-<n>].ndjson`, `exit.ndjson` (only with `exit_identity: via-proxy`; it rotates the same
+way), `status.json` and `session.json`; with the filter grant, `~/.glove/control/<id>/rules.json`; and
+`~/.glove/registry.json`. All of it is inside the existing read-only `~/.glove` mount; only writing
+rules needs the extra `control/` mount (Docker, below).
 
-- **Discovery is a plain glob** (`discovery.ts`), deliberately not routed through `GloveSource`: that
-  source grew registry and `homes/` handling because a harness *home* can be relocated, but `net/`
-  never leaves the session directory (glove's record contract).
-- **Token and paths.** A session's token is `<env>` for the default session (whose directory is named
-  after the env) and `<env>-<name>` otherwise. It is the value flows carry in `session` and the label
-  `GloveSource` gives the Layman sessions it tails, so network data joins the transcript by it. The
-  control path uses the **directory name** `<name>`, while the rules file's own `session` field is the
-  **token**; for a named session the two differ, and mixing them up makes the gate ignore the file.
-  Env and session names must match `^[A-Za-z0-9][A-Za-z0-9._-]*$` and the resolved control path must
-  stay inside `~/.glove/control`, or the session is skipped — those names address the one
-  directory Layman is allowed to write.
+- **Discovery** (`discovery.ts`) lists `observe/<id>/` directories with a `net/` and reads glove's
+  registry through the shared reader (`glove/registry.ts`). The id is the token everywhere; it must be
+  a glove id, and the resolved control path must stay inside `~/.glove/control`, or the session is
+  skipped: the id addresses the one directory Layman is allowed to write.
+- **Grants** come from `session.json` `grants` (what the gates were rendered with), else the registry
+  row. `transcripts: false` means flows only.
+- **Session states** (the session picker, `NetGloveInfo`):
+  - *not observable*: a registry row with `grants.observe: null` and no export. Listed greyed out and
+    not selectable; Layman never goes looking for its data. These travel in their own `notObservable`
+    list (`net:sessions`, `GET /api/net/sessions`), never among `sessions`, so only the picker shows them.
+  - *orphaned* ("session deleted; export retained"): glove's own rule from `glove gc`, either an
+    export with no registry row, or a row whose directory is gone or now holds another id
+    (`<dir>/.glove/id`). Read-only; the Rules panel names `glove gc`, which removes it. Layman never
+    deletes an export: `~/.glove` is mounted read-only. **A containerized Layman cannot see arbitrary
+    session directories** (only `~/.glove` and harness folders are mounted), so there it proves only
+    the no-row form; a directory it cannot see is never reported missing (`sessionDirState` →
+    `unknown`). Native Layman applies both forms. An unreadable registry orphans nothing.
+  - *revoked*: see Writing rules → The filter grant.
+- **New labels in v3.** `route` gains `corporate`; `scope` gains `lan` and `cloud`, from glove's `llm`
+  extension (an inference server on the LAN, or a provider on the internet reached by the llm link
+  rather than the tunnel). Both are expected, never an alert, never "untunnelled", and never placed
+  or bucketed as unresolved on the map when `lan`; the Route column says `LAN · LLM` / `cloud · LLM`
+  (before, they fell through to the route name and read as the VPN). Every view reads them the same
+  way: Topology draws both through their own **LLM link** route (local-toned, never through the
+  tunnel or the exit; `routeOf` in `lib/net-topology.ts`), and the Map draws a `cloud` pin with a
+  plain solid line straight from the sandbox, not an arc from the exit (`Cluster.tunnelled` in
+  `lib/net-geo.ts`), and neither red like `direct`. `client: playwright` and
+  `tool: browser` come from glove's browser extension and need no special handling. SearXNG's engine
+  requests arrive through their own `searxng-egress` gate (`client: searxng`), so a `web_search` shows
+  every engine it reached, as the fan-out treatment already expects.
 - **Reading is tolerant** (`parse.ts`): unknown fields are ignored, an unknown record `type` is skipped,
   and a line that does not parse or carries `v` other than 1 is counted (`counters.invalid`), never
   thrown. A glove-side addition must never break a deployed Layman.
@@ -288,7 +289,8 @@ start/stop records into `flows.ndjson`, including an `"inferred": true` stop for
 same service; any later record of the run revives it; an unclosed flow of an ended run was cut by the
 gate going away.
 
-`NetStore.ingestGate()` and `noteRun()` are a **port of glove's reference `glove.netview.ended_runs`**,
+`NetStore.ingestGate()` and `noteRun()` are a **port of glove's reference `ended_runs`** (glove v3:
+`extensions/observe/netview.py`),
 and must stay one: two readers that disagree about which flows are live is exactly the bug class this
 avoids. Three details come straight from the reference. A `stop` ends only its own run and never
 displaces the service's current one — glove fixed this during the follow-up (`d855a1c`) after a crashed
@@ -426,9 +428,10 @@ Blocking and unblocking. This is the only place Layman writes into `~/.glove`. I
 contract for a second writer (glove PR #11, as revised by glove PR #12). That contract overrode
 Layman's original design in three places:
 
-- **Never create the control directory.** glove creates `control/<env>/<name>/` (0700, the user's) when
-  it renders a session with a gate. If it is absent the session has no gate yet, and the toggles say so
-  (`control.state: 'no-dir'`). The plan had Layman create it.
+- **Never create the control directory.** glove creates `control/<id>/` (0700, the user's) only for a
+  session with the filter grant, before its gates start. If it is absent, the toggles say why
+  (`control.state`: `not-granted`, `revoked`, or `no-dir` when granted but not created yet). The plan
+  had Layman create it.
 - **A file the gate's user can read, and no ownership changes** (`writer.ts`). The gate runs as the
   user who ran glove and only reads the file. So Layman writes `rules.json.layman.tmp` in that
   directory, fsyncs it, `chmod 0644`s it **explicitly**, and renames it onto `rules.json`. On any
@@ -443,7 +446,7 @@ Layman's original design in three places:
   The first version of this contract had Layman chown the file to the directory's owner and set 0600.
   glove dropped that at Layman's request so that Layman changes no ownership at all, and verified the
   0644 form on Docker Desktop and on rootless and rootful Podman. The writer refuses a directory that
-  is a symlink or not exactly `control/<env>/<name>`, and never writes anything else there. The plan
+  is a symlink or not exactly `control/<id>`, and never writes anything else there. The plan
   used a shared `rules.json.tmp` name, which another writer could clobber.
 - **Confirm by hash, not time** (`control.ts`). `status.json` `rules.sha256` names the bytes the gate
   enforces and `rules.last_rejected.sha256` the bytes it last refused. So a write is `enforced` or
@@ -452,14 +455,51 @@ Layman's original design in three places:
   at all, because `loaded_at` does not move on one. Confirmation lags enforcement by up to ~5 s (the
   collector re-reads the file when it writes `status.json`).
 
+#### The filter grant (glove v3)
+
+Controls are enabled only when all three hold (`writer.ts` `controlStatus`, glove's handoff §5):
+`glove.network.controlEnabled` is on; the session's filter grant is `granted: true`; and
+`control/<id>/` exists in the writable control mount. glove's grant is checked first, because without
+it no setting or mount could make a write take effect: an observe-only gate never reads a rules file.
+
+- **Not granted**: "this session does not grant filter access", with the fix (add `filter: {}` under
+  `extensions:` in its `glove-session.yml` and re-run `glove up`). There is deliberately no way for
+  Layman to grant itself access; the hint is text only.
+- **Revoked.** Removing `filter:` makes the next `glove up` move `rules.json` into the session
+  directory (`.glove/ext/filter/rules.revoked.json`), remove `control/<id>/`, and set the grant back to
+  exactly `{"granted": false}`. glove records the revocation **nowhere**: on disk a revoked session is
+  identical to one never granted (compare the `filter-revoked` and `observe-only` fixtures). So Layman
+  remembers the last `grants.filter.since` it saw, and whether it saw the control directory under that
+  grant, in the `net_sessions` rollup (`filter_since` and `filter_saw_dir`, migration 4; local only,
+  never synced), and calls a grant that has gone `revoked`, across restarts. A control directory that
+  disappears while the grant still reads `granted` (glove mid-revocation, or `glove rm`) is `revoked`
+  too, but only under the grant (the `since`) Layman saw the directory with, which survives a restart
+  (a new `since` resets it, in `NetStore.noteFilterGrant`): a re-grant carries a new `since` and glove writes it before it creates
+  `control/<id>/`, so in that gap the session is `granted` with `no-dir`, not `revoked`. Controls disable at the next poll, and Layman never
+  recreates the directory or the file. A Layman that never saw the grant (recording off, or a fresh
+  database) can only say "not granted".
+- **Not enforced yet**: granted, but `status.json` has no `rules` object (gates starting). The Rules
+  panel says so.
+- **Corporate route.** glove's `corporate` egress passes the operator's allowlist to the gate as SSRF
+  guard exceptions (from `glove-session.yml` only; `rules.json` has no key for it, and the v1 validator
+  already rejects any unknown key), and its proxy runs a fixed `default: block` baseline that never
+  reads `rules.json`. None of that is in `session.json`, so on a corporate route `predict()` does not
+  predict the guard, and an `allow` is marked `allowlist`: "up to the corporate allowlist". Rules can
+  block more there; they cannot allow more. The observed verdict still shows what really happened.
+- **Cut all traffic** blocks the llm link by `service: llm`, not by scope, because glove v3's
+  `lan`/`cloud` scopes cannot be named in a rule (`RULE_SCOPES`).
+
 How it is built:
 
-- **The validator is a port of glove's `policy.py`** (`rules.ts`). It covers every rejection, Python's
+- **The validator is a port of glove's `policy.py`** (`rules.ts`; glove v3: `extensions/gate/netgate/policy.py`,
+  unchanged for Layman except the corporate `StaticPolicy`, which is not a rules.json path). It covers every rejection, Python's
   quirks included: `v: true` passes as 1, an explicit `terminate: null` fails, netmasks and hostmasks
   in `ip`, and IPv6 scope ids accepted and ignored, which the cross-check found. Layman refuses to
   write anything it rejects. `rules.crosscheck.test.ts` feeds ~120 files and a set of flows to both
   the port and glove's own `parse_bytes` / `RuleSet.evaluate`, requires identical verdicts and matching
-  rules, and runs `glove net validate` on a file Layman wrote. It is skipped without glove or `uv`.
+  rules, and runs `glove filter validate` on a file Layman wrote. It is skipped without glove or `uv`.
+  Both cross-checks look for glove's v3 module paths; under glove v2 they skip (they used to skip
+  silently against v3 until the paths were updated, which is worth remembering when glove moves code).
   Known and harmless: JSON cannot tell `443.0` from `443`, which Python rejects as a port; Layman never
   writes the former.
 - **Operations** (`RulesOp`, applied to a fresh read, new rules on top): `blockHost`, `blockDomain`
@@ -796,7 +836,7 @@ again, from its watermark.
 `controlEnabled` (default true; false makes every toggle read-only, and is the Settings toggle "Allow
 blocking from Layman") and `geoipDbPath` (the Map's offline geolocation database; empty means none). `glove` and `glove.network` are deep-merged in
 both `loadConfig()` and `updateConfig()` — before this, `glove` was not, so a Settings update carrying
-only `glove.enabled` would have blanked `sessionsDir`, and one carrying a single network toggle would
+only `glove.enabled` would have blanked the glove path (`sessionsDir` then, `home` now), and one carrying a single network toggle would
 have reset the others. With glove (or its network views) off, the store is emptied and the session list
 is empty, so nothing changes for users who don't run it.
 
@@ -806,6 +846,17 @@ is empty, so nothing changes for users who don't run it.
 the source commit and how to refresh it). `fixture.test.ts` loads it through discovery, tailing and the
 store and asserts every fixture state in glove's state table plus the fixture's totals; a drift guard fails when
 the copy differs from `../glove`, and is skipped when glove is not checked out beside this repo.
+
+The v2-era fixtures are copied unchanged and laid out as a glove v3 session in the tests
+(`netobs/testing/glove-home.ts`: `observe/<id>/net/`, a v2 registry row with grants, the session
+directory with its `.glove/id`, and `control/<id>/` with the filter grant; `asId()` rewrites a fixture's
+`env`/`session` to the id).
+
+`netobs/__scenarios_v3__/` is a copy of glove's `tests/fixtures/netobs-v3/`: one whole `~/.glove` per
+grant state (`observe-only`, `observe-filter`, `observe-no-transcripts`, `filter-revoked`, `orphaned`,
+`not-observable`). `v3.test.ts` reads each through discovery, the store and the rules control and
+asserts the control lifecycle above, plus the corporate prediction; `monitor/sources.test.ts` reads the
+same homes through `GloveSource`. It has its own drift guard.
 
 `netobs/__scenarios__/` is the same for glove's `tests/fixtures/netobs-scenarios/`: sixteen real `net/`
 directories, one per state the first fixture lacks (`default-block`, `direct`, `rules-rejected`,
@@ -817,21 +868,23 @@ has its own drift guard.
 
 `packages/server/scripts/netobs-replay.ts` builds a fake glove home from the fixture with timestamps
 moved to now and replays it at its recorded pace (`--speed`, `--loop`, `--rotate-every N`, `--direct`).
+The home it writes is a glove v3 one: each session is `observe/<name>-c0ffee/`, registered in a v2
+`registry.json` with the observe and filter grants, with its session directory and `control/<id>/`.
 `--gate` adds a fake gate: it polls the session's `rules.json`, validates it with the port, reports
 `status.json` `rules` as glove's collector does (hash, `last_rejected`, the last good set kept on a
 rejection, a ~5 s status lag), refuses matching new connections, and cuts open flows for `terminate`
-rules. `--scenario <names|all>` replays scenarios instead, each into its own glove session named after it, so
+rules. `--scenario <names|all>` replays scenarios instead, each into its own glove session (`<scenario>-c0ffee`), so
 every state can be looked at in the session picker; a later `--loop` pass gets fresh flow **and run**
 ids, which to the reader is a restarted gate. `--transcript` also writes a pi session into the fake
-session's home (`envs/pi-search/sessions/pi-search/home/.pi/agent/sessions/`), one turn per pass whose
+session's transcript export (`observe/pi-search-c0ffee/transcripts/--work--/`), one turn per pass whose
 `web_search` and `web_fetch` calls match the fixture's flows at the fixture's moments. GloveSource and
-the pi watcher then record it as a real gloved session named `pi-search`, which gives the Trace tab
+the pi watcher then record it as a real gloved session named `pi-search-c0ffee`, which gives the Trace tab
 something to join:
 
 ```bash
 pnpm --filter ./packages/server netobs:replay -- --dir /tmp/layman-netobs/glove --speed 0.2 --loop --rotate-every 30 --transcript
 pnpm --filter ./packages/server netobs:replay -- --dir /tmp/layman-netobs/glove --scenario all
-# then: glove.enabled = true, glove.sessionsDir = /tmp/layman-netobs/glove/envs
+# then: glove.enabled = true, glove.home = /tmp/layman-netobs/glove
 ```
 
 ## Docker
@@ -854,17 +907,18 @@ are read at start, so a glove installed, or a `control/` created, after Layman s
 restarted. Until then Layman sees no glove data, or shows the session's traffic with read-only toggles
 whose tooltip says why.
 
-**Layman never creates, chmods or relabels anything under `~/.glove`.** `control/` is created by glove
-when it renders a session with a network gate. The only write is a session's `rules.json` inside
-glove's existing `control/<env>/<name>/`, by glove's own contract (Writing rules, above). The writable
+**Layman never creates, chmods or relabels anything under `~/.glove`.** glove v3 creates `control/`
+with its home (`glove new`, any registry write), and `control/<id>/` only for a session with the filter
+grant. The only write is that session's `rules.json` inside glove's existing `control/<id>/`, by
+glove's own contract (Writing rules, above). The mounts are unchanged from glove v2. The writable
 path is safe to expose because the gate's schema can express only allow/block verdicts over
 destinations. An earlier draft of this phase had `make docker-run` create `~/.glove/control`, and the
 mounts carry the SELinux shared label `z` (which relabels host files). Both were taken out: they
 changed glove's folders from Layman's side. glove took over what they did (glove PR #12):
 
-- **`control/` exists whenever glove has set up its home.** Any registry write, `glove init` or
-  `glove run` creates it as the user. An install that predates this needs one `glove init`/`run` (or
-  `mkdir ~/.glove/control`).
+- **`control/` exists whenever glove has set up its home.** Any registry write (in v3, `glove new` or
+  `glove up`) creates it as the user, and glove warns, with the `sudo chown` that fixes it, when it
+  belongs to someone else.
 - **SELinux-enforcing hosts (Fedora, RHEL) are unsupported, for glove and for Layman alike.** glove
   itself does not run there yet, because its harness binds are unlabelled. There, Layman's binds are
   denied, and that is expected. Layman must not add `z`/`Z`: that would relabel glove's files from

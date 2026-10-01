@@ -25,7 +25,7 @@ export function registerNetRoutes(fastify: FastifyInstance, deps: { netObs: NetO
   const store = netObs.store;
   const notFound = (token: string) => ({ error: `No glove network session '${token}'` });
 
-  fastify.get('/api/net/sessions', async () => ({ sessions: netObs.sessions() }));
+  fastify.get('/api/net/sessions', async () => ({ sessions: netObs.sessions(), notObservable: netObs.notObservableSessions(), registry: netObs.registryView() }));
 
   fastify.get('/api/net/geo', async () => {
     netObs.geo.refresh();

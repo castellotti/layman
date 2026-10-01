@@ -5,6 +5,7 @@ import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { COALESCE_MS, NetObs, type NetServerMessage, type NetSocket } from './index.js';
 import { NetStore } from './store.js';
+import { addGloveSession } from './testing/glove-home.js';
 import { GUARD_RULE, parseRulesBytes } from './rules.js';
 import type { NetSessionLocation } from './discovery.js';
 import type { FlowRecord, GateRecord, NetSessionFile } from './types.js';
@@ -23,7 +24,7 @@ function rec(id: string, phase: FlowRecord['phase'], dt: number, over: Partial<F
 }
 
 const loc = (token: string): NetSessionLocation => ({
-  token, env: token, name: token, netDir: '/nonexistent', controlDir: '/nonexistent', rulesPath: '/nonexistent/rules.json',
+  token, netDir: '/nonexistent', controlDir: '/nonexistent', rulesPath: '/nonexistent/rules.json',
 });
 
 class FakeSocket implements NetSocket {
@@ -215,6 +216,8 @@ describe('NetStore', () => {
 });
 
 describe('NetObs sockets and coalescing', () => {
+  const E = 'e-000000';
+  const OTHER = 'other-000000';
   let home: string;
   let obs: NetObs;
   let net: string;
@@ -222,10 +225,10 @@ describe('NetObs sockets and coalescing', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     home = mkdtempSync(join(tmpdir(), 'netobs-obs-'));
-    for (const t of ['e', 'other']) mkdirSync(join(home, 'envs', t, 'sessions', t, 'net'), { recursive: true });
-    net = join(home, 'envs', 'e', 'sessions', 'e', 'net');
+    net = addGloveSession(home, E).net;
+    addGloveSession(home, OTHER);
     writeFileSync(join(net, 'flows.ndjson'), '');
-    obs = new NetObs({ getSessionsDir: () => join(home, 'envs') });
+    obs = new NetObs({ getGloveHome: () => home });
     obs.poll(T0);
   });
   afterEach(() => {
@@ -238,21 +241,21 @@ describe('NetObs sockets and coalescing', () => {
     const s = new FakeSocket();
     obs.attach(s);
     expect(s.sent.map((m) => m.type)).toEqual(['net:sessions']);
-    expect(s.of('net:sessions')[0].sessions.map((x) => x.token).sort()).toEqual(['e', 'other']);
+    expect(s.of('net:sessions')[0].sessions.map((x) => x.token).sort()).toEqual([E, OTHER]);
   });
 
   it('a subscriber gets a snapshot, then one coalesced delta per burst', () => {
     const s = new FakeSocket();
     obs.attach(s);
-    obs.subscribe(s, 'e');
+    obs.subscribe(s, E);
     expect(s.of('net:snapshot')).toHaveLength(1);
-    for (let i = 0; i < 20; i++) obs.store.ingestFlow('e', rec(`f${i}`, 'open', i * 10), T0);
+    for (let i = 0; i < 20; i++) obs.store.ingestFlow(E, rec(`f${i}`, 'open', i * 10), T0);
     vi.advanceTimersByTime(COALESCE_MS - 1);
     expect(s.of('net:delta')).toHaveLength(0);
     vi.advanceTimersByTime(1);
     expect(s.of('net:delta')).toHaveLength(1);
     expect(s.of('net:delta')[0].delta.flows).toHaveLength(20);
-    obs.store.ingestFlow('e', rec('f0', 'update', 400), T0);
+    obs.store.ingestFlow(E, rec('f0', 'update', 400), T0);
     vi.advanceTimersByTime(COALESCE_MS);
     expect(s.of('net:delta')).toHaveLength(2);
   });
@@ -260,20 +263,20 @@ describe('NetObs sockets and coalescing', () => {
   it('sends nothing for a session nobody subscribed to', () => {
     const s = new FakeSocket();
     obs.attach(s);
-    obs.subscribe(s, 'e');
+    obs.subscribe(s, E);
     const before = s.sent.length;
-    for (let i = 0; i < 5; i++) obs.store.ingestFlow('other', rec(`g${i}`, 'open', i), T0);
+    for (let i = 0; i < 5; i++) obs.store.ingestFlow(OTHER, rec(`g${i}`, 'open', i), T0);
     vi.advanceTimersByTime(COALESCE_MS * 4);
     expect(s.sent.length).toBe(before);
     // …and a later subscriber starts from a snapshot that already includes them.
-    obs.subscribe(s, 'other');
+    obs.subscribe(s, OTHER);
     expect(s.of('net:snapshot').at(-1)!.snapshot.flows).toHaveLength(5);
   });
 
   it('tails the live file into deltas on each poll', () => {
     const s = new FakeSocket();
     obs.attach(s);
-    obs.subscribe(s, 'e');
+    obs.subscribe(s, E);
     appendFileSync(join(net, 'flows.ndjson'), JSON.stringify(rec('f1', 'open', 0)) + '\n');
     obs.poll(T0);
     vi.advanceTimersByTime(COALESCE_MS);
@@ -288,21 +291,21 @@ describe('NetObs sockets and coalescing', () => {
       country: null, city: null, lat: null, lon: null, source: 'via-proxy:x', healthy: false,
     }) + '\n');
     let listed = true;
-    const flaky = new NetObs({ getSessionsDir: () => (listed ? join(home, 'envs') : join(home, 'nothing')) });
+    const flaky = new NetObs({ getGloveHome: () => (listed ? home : join(home, 'nothing')) });
     flaky.poll(T0);
-    const before = flaky.store.snapshot('e')!;
+    const before = flaky.store.snapshot(E)!;
     expect(before.exits).toHaveLength(1);
     listed = false;
     flaky.poll(T0);
     listed = true;
     flaky.poll(T0);
-    expect(flaky.store.snapshot('e')).toEqual(before);
+    expect(flaky.store.snapshot(E)).toEqual(before);
     flaky.stop();
   });
 
   it('forgets every session when glove is switched off', () => {
     let on = true;
-    const toggled = new NetObs({ getSessionsDir: () => (on ? join(home, 'envs') : null) });
+    const toggled = new NetObs({ getGloveHome: () => (on ? home : null) });
     toggled.poll(T0);
     expect(toggled.sessions()).toHaveLength(2);
     const s = new FakeSocket();
@@ -321,7 +324,11 @@ describe('NetObs sockets and coalescing', () => {
  */
 describe('no-network guard (server netobs/)', () => {
   const root = dirname(fileURLToPath(import.meta.url));
-  const files = readdirSync(root).filter((f) => f.endsWith('.ts') && !f.endsWith('.test.ts'));
+  // netobs/ and the glove home reader it (and GloveSource) discovers sessions with.
+  const files = [
+    ...readdirSync(root).filter((f) => f.endsWith('.ts') && !f.endsWith('.test.ts')),
+    ...readdirSync(join(root, '..', 'glove')).filter((f) => f.endsWith('.ts') && !f.endsWith('.test.ts')).map((f) => join('..', 'glove', f)),
+  ];
   const banned: Array<[string, RegExp]> = [
     ["import from 'dns'", /from ['"](node:)?dns(\/promises)?['"]/],
     ["import from 'net'", /from ['"](node:)?net['"]/],

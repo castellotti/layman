@@ -24,6 +24,10 @@ export const DATA = join(WORK, 'data');
 export const SHOTS = join(WORK, 'shots');
 export const CONTAINER = process.env.LAYMAN_E2E_NAME ?? 'layman-netobs-e2e';
 export const ENGINE = process.env.CONTAINER_ENGINE ?? 'docker';
+/** A replayed session's glove v3 id: `<name>-<6 hex>`, the suffix `netobs-replay.ts` uses. */
+export const sid = (name) => `${name}-c0ffee`;
+/** The fixture session. */
+export const PI = sid('pi-search');
 mkdirSync(SHOTS, { recursive: true });
 
 const pwPath = process.env.PLAYWRIGHT_CORE ?? join(WORK, 'pw/node_modules/playwright-core');

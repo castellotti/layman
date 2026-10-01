@@ -138,7 +138,7 @@ describe('turnToMarkdown', () => {
 describe('sessionToMarkdown', () => {
   const session: RecordedSession = {
     sessionId: 'sess-1',
-    cwd: '/Users/alice/development/castellotti/3D/joystick',
+    cwd: '/Users/alice/projects/joystick',
     agentType: 'claude-code',
     startedAt: 0,
     lastSeen: 0,

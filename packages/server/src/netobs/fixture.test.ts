@@ -4,37 +4,38 @@
  * Facts asserted here are glove's §6.1.
  */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'fs';
+import { copyFileSync, existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { NetObs } from './index.js';
+import { TEST_ID, addGloveSession, asId } from './testing/glove-home.js';
 import type { DestinationAggregate, FlowView, NetSnapshot } from './types.js';
 
 const FIXTURE = join(dirname(fileURLToPath(import.meta.url)), '__fixtures__');
 const GLOVE_FIXTURE = join(dirname(fileURLToPath(import.meta.url)), '../../../../../glove/tests/fixtures/netobs');
-const TOKEN = 'pi-search';
+const TOKEN = TEST_ID;
 const STATUS_T = Date.parse('2026-09-23T14:14:47.625Z');
 
 const FLOW_LINES = readFileSync(join(FIXTURE, 'flows.ndjson'), 'utf8').split('\n').filter(Boolean);
 
 let home: string;
 
-/** A fake `~/.glove` holding the fixture as `envs/pi-search/sessions/pi-search/net/`. */
+/**
+ * A fake glove v3 home holding the (v2) fixture as `observe/<id>/net/`, with the
+ * filter grant and its rules.json rewritten to the id, as glove v3 writes it.
+ */
 function makeGloveHome(flowLines = FLOW_LINES): string {
-  const net = join(home, 'envs', TOKEN, 'sessions', TOKEN, 'net');
-  mkdirSync(net, { recursive: true });
+  const { net, control } = addGloveSession(home, TOKEN);
   for (const f of ['session.json', 'status.json', 'exit.ndjson']) copyFileSync(join(FIXTURE, f), join(net, f));
   writeFileSync(join(net, 'flows.ndjson'), flowLines.map((l) => l + '\n').join(''));
-  const control = join(home, 'control', TOKEN, TOKEN);
-  mkdirSync(control, { recursive: true });
-  copyFileSync(join(FIXTURE, 'rules.json'), join(control, 'rules.json'));
-  return join(home, 'envs');
+  writeFileSync(join(control, 'rules.json'), asId(readFileSync(join(FIXTURE, 'rules.json'), 'utf8'), TOKEN));
+  return home;
 }
 
 function load(now = STATUS_T + 1_000, flowLines = FLOW_LINES): NetSnapshot {
-  const sessionsDir = makeGloveHome(flowLines);
-  const obs = new NetObs({ getSessionsDir: () => sessionsDir });
+  const gloveHome = makeGloveHome(flowLines);
+  const obs = new NetObs({ getGloveHome: () => gloveHome });
   obs.poll(now);
   const snap = obs.store.snapshot(TOKEN);
   expect(snap).not.toBeNull();
@@ -58,8 +59,6 @@ describe('glove netobs fixture', () => {
   it('discovers the session under its token and reads every record', () => {
     const snap = load();
     expect(snap.token).toBe(TOKEN);
-    expect(snap.env).toBe(TOKEN);
-    expect(snap.name).toBe(TOKEN);
     expect(new Set(snap.flows.map((f) => f.id)).size).toBe(15);
     expect(snap.totals.flows).toBe(15);
     expect(snap.counters).toEqual({ records: 84, invalid: 0, skipped: 0, gaps: 0 }); // 83 flow + 1 exit
@@ -168,7 +167,7 @@ describe('glove netobs fixture', () => {
     expect(load(STATUS_T + 21_000).gate.freshness).toBe('stale');
   });
 
-  it('reads rules.json from control/<env>/<name>/', () => {
+  it('reads rules.json from control/<id>/', () => {
     const snap = load();
     expect(snap.rules.exists).toBe(true);
     expect(snap.rules.readError).toBeNull();

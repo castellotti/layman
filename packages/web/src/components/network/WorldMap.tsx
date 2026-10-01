@@ -128,6 +128,7 @@ export function WorldMap({ data, selected, onSelect, compact = false, sandboxAnc
   });
 
   const direct = dests.filter((d) => d.scope === 'direct' && d.geo);
+  const cloud = dests.filter((d) => d.scope === 'cloud' && d.geo);
   // A drag never starts on a pin or a control: its pointer capture would steal their click.
   const g = `translate(${view.x},${view.y}) scale(${view.k})`;
 
@@ -146,7 +147,7 @@ export function WorldMap({ data, selected, onSelect, compact = false, sandboxAnc
           {trunk.exit && clusters.map((c) => {
             const live = c.live;
             const w = strokeWidth(c.bytes, maxBytes);
-            return c.direct ? null : (
+            return !c.tunnelled ? null : (
               <path key={`arc-${c.key}`} d={arcPath(base, trunk.exit!, [c.lon, c.lat], size.w)} fill="none"
                 stroke="var(--net-tunnel)" strokeWidth={compact ? Math.max(1, w * 0.6) : w} vectorEffect="non-scaling-stroke"
                 opacity={live ? 0.95 : 0.4} className={live ? 'net-live-dash' : undefined} strokeLinecap="round" />
@@ -160,7 +161,7 @@ export function WorldMap({ data, selected, onSelect, compact = false, sandboxAnc
             strokeDasharray={trunk.kind === 'declared' ? '7 5' : undefined} opacity={0.9} className={trunk.kind === 'verified' && clusters.some((c) => c.live) ? 'net-live-dash-trunk' : undefined} />
         )}
         {/* With no exit to pin, arcs leave from the sandbox card itself. */}
-        {!trunk.exit && clusters.filter((c) => !c.direct).map((c) => {
+        {!trunk.exit && clusters.filter((c) => c.tunnelled).map((c) => {
           const b = base([c.lon, c.lat]);
           return b ? <path key={`s-${c.key}`} d={screenCurve(sandbox, toScreen(b))} fill="none" stroke="var(--net-tunnel)"
             strokeWidth={strokeWidth(c.bytes, maxBytes)} strokeDasharray="7 5" opacity={c.live ? 0.9 : 0.4} /> : null;
@@ -170,6 +171,13 @@ export function WorldMap({ data, selected, onSelect, compact = false, sandboxAnc
           const b = base([d.geo!.lon, d.geo!.lat]);
           return b ? <path key={`d-${d.key}`} d={screenCurve(sandbox, toScreen(b), 0.2)} fill="none" stroke="var(--error)"
             strokeWidth={2.2} strokeDasharray="6 5" opacity={0.95} /> : null;
+        })}
+
+        {/* glove's llm link to a cloud provider: expected, so plain and solid, and it skips the exit too. */}
+        {cloud.map((d) => {
+          const b = base([d.geo!.lon, d.geo!.lat]);
+          return b ? <path key={`l-${d.key}`} d={screenCurve(sandbox, toScreen(b), 0.2)} fill="none" stroke="var(--text-muted)"
+            strokeWidth={1.8} opacity={0.8} /> : null;
         })}
 
         {exitScreen && (
@@ -183,7 +191,7 @@ export function WorldMap({ data, selected, onSelect, compact = false, sandboxAnc
           if (!b) return null;
           const [x, y] = toScreen(b);
           const isSel = c.dests.some((d) => d.host === selected);
-          const colour = c.direct ? 'var(--error)' : 'var(--net-tunnel)';
+          const colour = c.direct ? 'var(--error)' : c.tunnelled ? 'var(--net-tunnel)' : 'var(--text-muted)';
           return (
             <g key={`pin-${c.key}`} data-pin="1" style={{ cursor: onSelect ? 'pointer' : 'default' }}
               onClick={(e) => { e.stopPropagation(); onSelect?.(isSel ? null : c.dests[0].host); }}>

@@ -1,0 +1,31 @@
+{
+  "v": 1,
+  "gate": "0.2.0",
+  "state": "running",
+  "record": "metadata",
+  "upstream": {
+    "kind": "direct",
+    "healthy": null
+  },
+  "resolver": {
+    "mode": "in-tunnel",
+    "healthy": null
+  },
+  "rules": {
+    "loaded_at": "2026-10-01T12:00:00.000Z",
+    "source_mtime": "2026-10-01T12:00:00.000Z",
+    "ok": true,
+    "error": null,
+    "active_count": 1,
+    "sha256": "40949d0ae47c353a26abc21995a1749322f1fab8658f293308b882e3c6a9c1f4",
+    "last_rejected": null
+  },
+  "t": "2026-10-01T12:00:00.000Z",
+  "telemetry": {
+    "written": 0,
+    "dropped": 0,
+    "invalid": 0,
+    "rotations": 0,
+    "expired_files": 0
+  }
+}

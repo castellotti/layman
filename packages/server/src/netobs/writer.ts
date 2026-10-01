@@ -1,11 +1,14 @@
 /**
  * The only code in Layman that writes into `~/.glove`, and only
- * `control/<env>/<name>/rules.json`. It follows glove's contract for a second
+ * `control/<id>/rules.json`, and only while the session has glove's **filter**
+ * grant. It follows glove's contract for a second
  * writer (docs/extensions/glove.md → Writing rules) literally:
  *
  *  1. Never create, chmod, chown or relabel any directory under `~/.glove`. The
  *     session's control directory is glove's (the user's, 0700, created before
- *     any gate starts). No directory → no controls.
+ *     any gate starts, and only with the filter grant). No directory → no
+ *     controls. When the grant is revoked glove moves rules.json into the
+ *     session directory and removes this one; Layman must not recreate it.
  *  2. Write a temp file *in that directory* under a name unique to Layman,
  *     fsync it, `chmod 0644` it explicitly, then rename it onto rules.json. On
  *     any failure, delete the temp file.
@@ -23,10 +26,21 @@
  */
 import { accessSync, closeSync, constants, fchmodSync, fsyncSync, lstatSync, openSync, renameSync, statSync, unlinkSync, writeSync } from 'fs';
 import { dirname, join, relative, resolve, sep } from 'path';
+import type { ControlState, FilterAccess } from './types.js';
 
 export const TEMP_NAME = 'rules.json.layman.tmp';
 
-export type ControlState = 'ok' | 'disabled' | 'no-dir' | 'read-only';
+/** What glove says about writing this session's rules, decided before any file is looked at. */
+export interface ControlAccess {
+  filter: FilterAccess;
+  /** Session deleted; export retained (glove's orphan rule). */
+  orphaned: boolean;
+}
+
+/** Until glove's grant is known: nothing may be written. */
+export const NO_ACCESS: ControlAccess = { filter: 'not-granted', orphaned: false };
+
+const GRANT_HINT = 'add `filter: {}` under `extensions:` in its glove-session.yml and re-run `glove up`';
 
 export interface ControlStatus {
   state: ControlState;
@@ -37,21 +51,36 @@ export interface ControlStatus {
 export class WriteError extends Error {}
 
 /**
- * The session's control directory, checked to be a real directory directly
- * inside `controlRoot` (not a symlink out of it): the writer has one job and
- * one directory.
+ * The session's control directory, checked to be `controlRoot/<id>` (not a
+ * symlink out of it): the writer has one job and one directory.
  */
 function checkedDir(controlRoot: string, rulesPath: string): string {
   const dir = dirname(resolve(rulesPath));
   const rel = relative(resolve(controlRoot), dir);
-  if (!rel || rel.startsWith('..') || rel.split(sep).length !== 2 || resolve(rulesPath) !== join(dir, 'rules.json')) {
+  if (!rel || rel.startsWith('..') || rel.split(sep).length !== 1 || resolve(rulesPath) !== join(dir, 'rules.json')) {
     throw new WriteError(`refusing to write outside ${controlRoot}: ${rulesPath}`);
   }
   return dir;
 }
 
-/** Whether Layman may write this session's rules, and if not, why. No files are created to find out. */
-export function controlStatus(controlRoot: string, rulesPath: string, enabled: boolean): ControlStatus {
+/**
+ * Whether Layman may write this session's rules, and if not, why. No files are
+ * created to find out. glove's grant comes first: without it no setting or
+ * mount could make a write take effect.
+ */
+export function controlStatus(controlRoot: string, rulesPath: string, enabled: boolean, access: ControlAccess): ControlStatus {
+  if (access.orphaned) {
+    return { state: 'orphaned', detail: 'Session deleted; export retained. There are no rules to change. `glove gc` removes the export.' };
+  }
+  if (access.filter === 'revoked') {
+    return {
+      state: 'revoked',
+      detail: `Filter access revoked: glove moved this session's rules into its directory (.glove/ext/filter/rules.revoked.json) and Layman will not recreate them. To grant it again, ${GRANT_HINT}.`,
+    };
+  }
+  if (access.filter === 'not-granted') {
+    return { state: 'not-granted', detail: `This session does not grant filter access. To allow blocking, ${GRANT_HINT}.` };
+  }
   if (!enabled) {
     return { state: 'disabled', detail: 'Blocking from Layman is off (Settings → Glove → Allow blocking from Layman).' };
   }
@@ -67,7 +96,7 @@ export function controlStatus(controlRoot: string, rulesPath: string, enabled: b
   } catch {
     return {
       state: 'no-dir',
-      detail: 'This session has no control directory: glove creates it when it renders a session with a gate. Layman never creates it.',
+      detail: 'This session grants filter access but has no control directory yet: glove creates it on `glove up`. Layman never creates it.',
     };
   }
   try {

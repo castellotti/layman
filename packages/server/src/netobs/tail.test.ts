@@ -169,7 +169,7 @@ describe('flow state across rotated files', () => {
         scope: 'tunnelled', route: { kind: 'vpn', upstream: null }, bytes: { up, down: up * 10 },
         verdict: 'allow', rule: null, close_reason: null, request: null, ...extra,
       }) + '\n';
-    const loc: NetSessionLocation = { token: 'e', env: 'e', name: 'e', netDir: dir, controlDir: dir, rulesPath: join(dir, 'r') };
+    const loc: NetSessionLocation = { token: 'e', netDir: dir, controlDir: dir, rulesPath: join(dir, 'r') };
     const store = new NetStore();
     store.ensure(loc);
     const t = new NdjsonTailer(dir, 'flows');

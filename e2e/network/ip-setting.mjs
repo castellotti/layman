@@ -1,5 +1,5 @@
 // glove network views browser check (ip-setting; was phase-9 check9). Run via scripts/netobs-e2e.sh.
-import { BASE, SHOTS, openGloveSettings, startCheck } from './env.mjs';
+import { BASE, SHOTS, openGloveSettings, startCheck, PI, sid } from './env.mjs';
 // Phase-9 follow-up: glove.showIpAddresses. Turn it on in Settings, wait for a new replay pass,
 // and require the cloud-metadata fetch to keep its IP and join the guard refusal in Trace.
 const { page, check, finish } = await startCheck();
@@ -20,7 +20,7 @@ const since = Date.now();
 let hit = null;
 for (let i = 0; i < 60 && !hit; i++) {
   await page.waitForTimeout(3000);
-  const t = await (await fetch(`${BASE}/api/net/sessions/pi-search/trace`)).json();
+  const t = await (await fetch(`${BASE}/api/net/sessions/${PI}/trace`)).json();
   if (!t.turn || t.turn.startedAt < since) continue;
   const it = t.items.find((x) => x.kind === 'call' && /169\.254\.169\.254|\[REDACTED/.test(x.call.label));
   if (it) hit = { it, t };
@@ -31,7 +31,7 @@ if (hit) {
   const f = t.flows.find((x) => it.flowIds.includes(x.id));
   check('the metadata fetch keeps its IP', it.call.label.startsWith('http://169.254.169.254/') && !it.call.redacted, it.call.label);
   check('and joins the guard refusal', f?.state === 'guard', JSON.stringify(f?.state));
-  await page.goto(`${BASE}/?view=trace&glove=pi-search`);
+  await page.goto(`${BASE}/?view=trace&glove=${PI}`);
   // A large database can take a few seconds to build the trace: wait for the turn bar.
   const body = () => page.evaluate(() => document.body.innerText);
   const turnLabel = async () => (await body()).match(/TURN (\d+) OF (\d+)/);

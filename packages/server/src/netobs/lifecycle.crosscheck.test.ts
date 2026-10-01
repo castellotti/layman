@@ -1,6 +1,6 @@
 /**
  * The gate-lifecycle rule (glove's record contract) exists in two places: glove's reference
- * `glove.netview.ended_runs` and its port in `NetStore`. This runs both on the
+ * `ended_runs` (glove v3: `extensions/observe/netview.py`) and its port in `NetStore`. This runs both on the
  * same records — every scenario fixture plus a few hundred seeded random
  * sequences — and requires the same ended runs. Skipped when glove (or `uv`)
  * is not available next to this repo, like the fixture drift guards.
@@ -18,7 +18,7 @@ const GLOVE = join(HERE, '../../../../../glove');
 const SCENARIOS = join(HERE, '__scenarios__');
 
 function uvAvailable(): boolean {
-  if (!existsSync(join(GLOVE, 'glove', 'netview.py'))) return false;
+  if (!existsSync(join(GLOVE, 'extensions', 'observe', 'netview.py'))) return false;
   try {
     execFileSync('uv', ['--version'], { stdio: 'ignore' });
     return true;
@@ -29,7 +29,7 @@ function uvAvailable(): boolean {
 
 /** glove's answer for many record lists at once (one interpreter start). */
 function gloveEndedRuns(batches: unknown[][]): string[][] {
-  const script = 'import json,sys\nfrom glove.netview import ended_runs\n'
+  const script = 'import json,sys\nfrom extensions.observe.netview import ended_runs\n'
     + 'print(json.dumps([sorted(ended_runs(b)) for b in json.load(sys.stdin)]))';
   const out = execFileSync('uv', ['run', '--quiet', '--project', GLOVE, 'python', '-c', script], {
     input: JSON.stringify(batches), encoding: 'utf8', maxBuffer: 64 * 1024 * 1024,
@@ -39,7 +39,7 @@ function gloveEndedRuns(batches: unknown[][]): string[][] {
 
 function laymanEndedRuns(records: unknown[]): string[] {
   const store = new NetStore();
-  store.ensure({ token: 'x', env: 'x', name: 'x', netDir: '/nonexistent', controlDir: '/nonexistent', rulesPath: '/nonexistent/rules.json' });
+  store.ensure({ token: 'x', netDir: '/nonexistent', controlDir: '/nonexistent', rulesPath: '/nonexistent/rules.json' });
   for (const rec of records) {
     const p = parseLine(JSON.stringify(rec));
     if (p.kind === 'flow') store.ingestFlow('x', p.record, 0);
@@ -94,7 +94,7 @@ const scenarioRecords = (name: string): unknown[] => {
     .flatMap((f) => readFileSync(join(dir, f), 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l)));
 };
 
-describe('gate lifecycle cross-check against glove.netview.ended_runs', () => {
+describe('gate lifecycle cross-check against glove\'s extensions/observe/netview.ended_runs', () => {
   const available = uvAvailable();
 
   it.skipIf(!available)('agrees on every scenario and on 300 random sequences', () => {

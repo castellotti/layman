@@ -108,7 +108,10 @@ function Policy({ data, d }: { data: NetSessionData; d: DestinationAggregate }) 
   let badge: { text: string; colour: string; sub: string };
   if (d.state === 'guard') badge = { text: 'Refused by glove guard', colour: 'var(--warn)', sub: 'no rule can allow it' };
   else if (!v) badge = { text: 'Unknown', colour: 'var(--text-muted)', sub: 'Layman has not seen the rules the gate enforces' };
-  else if (v.action === 'allow') badge = { text: 'Allowed', colour: 'var(--net-tunnel)', sub: v.rule ? `by rule ${v.rule}` : 'by default · no rule matches' };
+  else if (v.action === 'allow' && v.allowlist) {
+    // Corporate route: the rules pass it on; the corporate allowlist (glove-session.yml) decides, and no rule can widen it.
+    badge = { text: 'Up to the corporate allowlist', colour: 'var(--text-body)', sub: `${v.rule ? `rule ${v.rule} lets it through` : 'no rule blocks it'}; the session’s corporate allowlist decides` };
+  } else if (v.action === 'allow') badge = { text: 'Allowed', colour: 'var(--net-tunnel)', sub: v.rule ? `by rule ${v.rule}` : 'by default · no rule matches' };
   else badge = { text: v.rule ? 'Blocked by your rule' : 'Blocked by the default', colour: 'var(--error)', sub: v.rule ?? 'nothing allowed it' };
   const host = d.host;
   const apex = d.groupKey.includes('.') && d.groupKey !== host ? d.groupKey : null;

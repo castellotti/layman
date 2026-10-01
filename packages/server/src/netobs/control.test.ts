@@ -13,10 +13,11 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, 
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { NetObs } from './index.js';
+import { TEST_ID, addGloveSession } from './testing/glove-home.js';
 import { TEMP_NAME, controlStatus, writeRules } from './writer.js';
 import type { RulesOp, RulesView } from './types.js';
 
-const TOKEN = 'pi-search';
+const TOKEN = TEST_ID;
 const T0 = Date.parse('2026-09-25T12:00:00Z');
 const sha = (b: Buffer | string) => createHash('sha256').update(b).digest('hex');
 
@@ -48,15 +49,12 @@ const block = (host: string): RulesOp => ({ kind: 'blockHost', host, terminate: 
 
 beforeEach(() => {
   home = mkdtempSync(join(tmpdir(), 'netobs-control-'));
-  net = join(home, 'envs', TOKEN, 'sessions', TOKEN, 'net');
-  control = join(home, 'control', TOKEN, TOKEN);
+  ({ net, control } = addGloveSession(home, TOKEN));
   rulesPath = join(control, 'rules.json');
-  mkdirSync(net, { recursive: true });
-  mkdirSync(control, { recursive: true });
   writeFileSync(join(net, 'flows.ndjson'), '');
   status({});
   controlOn = true;
-  obs = new NetObs({ getSessionsDir: () => join(home, 'envs'), controlEnabled: () => controlOn });
+  obs = new NetObs({ getGloveHome: () => home, controlEnabled: () => controlOn });
   obs.poll(T0);
 });
 afterEach(() => rmSync(home, { recursive: true, force: true }));
@@ -64,7 +62,7 @@ afterEach(() => rmSync(home, { recursive: true, force: true }));
 describe('writing rules.json', () => {
   it('shows the rules again after glove is switched off and back on', () => {
     let on = true;
-    const toggled = new NetObs({ getSessionsDir: () => (on ? join(home, 'envs') : null), controlEnabled: () => controlOn });
+    const toggled = new NetObs({ getGloveHome: () => (on ? home : null), controlEnabled: () => controlOn });
     toggled.poll(T0);
     const before = toggled.store.rules(TOKEN)!;
     expect(before.control.state).not.toBe('no-dir');
@@ -114,10 +112,21 @@ describe('writing rules.json', () => {
 
   it('never creates the control directory: no directory, no controls', () => {
     rmSync(join(home, 'control'), { recursive: true });
-    obs.poll(T0);
-    expect(rules().control.state).toBe('no-dir');
-    expect(apply(block('arxiv.org')).ok).toBe(false);
+    // Granted, but glove has not created control/<id>/ (yet): nothing to write to.
+    const fresh = new NetObs({ getGloveHome: () => home, controlEnabled: () => controlOn });
+    fresh.poll(T0);
+    expect(fresh.store.rules(TOKEN)!.control.state).toBe('no-dir');
+    expect(fresh.applyRules(TOKEN, block('arxiv.org'), 'op', T0).ok).toBe(false);
     expect(existsSync(join(home, 'control'))).toBe(false);
+  });
+
+  it('a control directory that disappears while granted is a revocation, and is not recreated', () => {
+    apply(block('arxiv.org'));
+    rmSync(control, { recursive: true }); // glove revoking: rules.json moved into the session, the directory removed
+    obs.poll(T0 + 1000);
+    expect(rules().control).toMatchObject({ state: 'revoked', detail: expect.stringContaining('rules.revoked.json') });
+    expect(apply(block('b.com'), T0 + 2000).ok).toBe(false);
+    expect(existsSync(control)).toBe(false);
   });
 
   it('refuses a control directory that is a symlink, and paths outside control/', () => {
@@ -127,7 +136,7 @@ describe('writing rules.json', () => {
     symlinkSync(elsewhere, control);
     expect(apply(block('arxiv.org')).ok).toBe(false);
     expect(readdirSync(elsewhere)).toEqual([]);
-    for (const p of [join(home, 'control', '..', 'x', 'y', 'rules.json'), join(home, 'control', 'rules.json'), join(home, 'control', 'a', 'b', 'c', 'rules.json'), join(home, 'control', 'a', 'b', 'other.json')]) {
+    for (const p of [join(home, 'control', '..', 'x', 'rules.json'), join(home, 'control', 'rules.json'), join(home, 'control', 'a', 'b', 'rules.json'), join(home, 'control', 'a', 'other.json')]) {
       expect(() => writeRules(join(home, 'control'), p, Buffer.from('{}')), p).toThrow(/refusing to write outside/);
     }
   });
@@ -264,7 +273,7 @@ describe('confirmation by hash', () => {
   });
 
   it('controlStatus never writes a probe file', () => {
-    controlStatus(join(home, 'control'), rulesPath, true);
+    controlStatus(join(home, 'control'), rulesPath, true, { filter: 'granted', orphaned: false });
     expect(readdirSync(control)).toEqual([]);
   });
 });

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  CUT_PREFIX, RulesError, applyOp, emptyRules, evaluate, inNetwork, newRuleId, opRules, parseIp, parseNetwork,
+  CUT_PREFIX, GUARD_RULE, RulesError, applyOp, emptyRules, evaluate, inNetwork, predict, newRuleId, opRules, parseIp, parseNetwork,
   parseRulesBytes, serializeRules, validateRules, type ApplyContext, type FlowFacts,
 } from './rules.js';
 import type { RulesFile } from './types.js';
@@ -166,6 +166,12 @@ describe('operations', () => {
     expect({ default: back.default, rules: back.rules }).toEqual({ default: 'allow', rules: start.rules });
     expect(() => applyOp(back, { kind: 'restoreAll' }, ctx())).toThrow(/not cut/);
   });
+  it('cutAll without keeping the LLM cuts its link by service: glove v3\'s lan/cloud scopes cannot be named in a rule', () => {
+    const cut = applyOp({ ...file(), default: 'allow' as const }, { kind: 'cutAll', keepLlm: false }, ctx());
+    expect(cut.rules.filter((r) => r.id.startsWith(CUT_PREFIX))[0]).toMatchObject({ action: 'block', match: { service: 'llm' }, terminate: true });
+    valid(cut);
+    for (const scope of ['lan', 'cloud']) bad({ ...base, rules: [rule({ match: { scope } })] }, /scope/);
+  });
   it('saves a draft only onto the file it was made from', () => {
     const op = { kind: 'saveDraft' as const, baseSha256: 'aaa', default: 'block' as const, rules: [] };
     expect(() => applyOp(file(), op, ctx({ currentSha256: 'bbb' }))).toThrow(/changed since you started/);
@@ -175,5 +181,17 @@ describe('operations', () => {
     const id = newRuleId(Date.UTC(2026, 8, 25), (k) => new Uint8Array(k).fill(7));
     expect(id).toMatch(/^r_[0-9A-HJKMNP-TV-Z]{26}$/);
     expect(opRules({ kind: 'allowHost', host: 'A.com' })).toEqual([{ action: 'allow', match: { host: 'a.com' } }]);
+  });
+});
+
+describe('predict on a corporate route', () => {
+  const set = validateRules({ ...base, rules: [rule({ id: 'r_x', match: { host: 'x.com' } })] });
+  const facts = (host: string): FlowFacts => ({ host, ip: null, port: 443, service: 'proxy', tool: 'web_fetch', scope: 'direct' });
+  it('elsewhere the guard refuses a non-public destination before any rule', () => {
+    expect(predict(set, facts('wiki.corp'), { proxy: true, resolution: 'unavailable' }).rule).toBe(GUARD_RULE);
+  });
+  it('with corporate egress the guard is not predicted: the allowlist (invisible to Layman) decides', () => {
+    expect(predict(set, facts('wiki.corp'), { proxy: true, resolution: 'unavailable', corporate: true })).toEqual({ action: 'allow', rule: null, terminate: false });
+    expect(predict(set, facts('x.com'), { proxy: true, resolution: 'unavailable', corporate: true }).rule).toBe('r_x'); // a rule still blocks
   });
 });

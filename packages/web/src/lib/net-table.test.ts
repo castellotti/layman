@@ -70,8 +70,12 @@ const row = (rows: TableRow[], label: string) => {
 };
 
 describe('the state legend', () => {
-  it("has every row of glove's state table plus cleartext HTTP, each fully described", () => {
-    expect(NET_LEGEND).toHaveLength(24);
+  it("has every row of glove's state table plus cleartext HTTP and glove v3's labels, each fully described", () => {
+    expect(NET_LEGEND).toHaveLength(27);
+    // glove v3: the llm link's scopes and the corporate route.
+    expect(NET_LEGEND.filter((s) => ['lan', 'cloud', 'route_corporate'].includes(s.key)).map((s) => s.dataRule))
+      .toEqual(['scope: lan', 'scope: cloud', 'route.kind: corporate']);
+    expect(NET_LEGEND.filter((s) => s.key === 'lan' || s.key === 'cloud').every((s) => !s.loud)).toBe(true);
     for (const s of NET_LEGEND) {
       for (const field of ['label', 'dataRule', 'icon', 'colourVar', 'mapTreatment', 'explanation'] as const) {
         expect(s[field], `${s.key}.${field}`).toBeTruthy();
@@ -147,6 +151,17 @@ describe('buildTable', () => {
     expect(row(rows, '169.254.169.254')).toMatchObject({ depth: 1, sublabel: 'cloud metadata' });
     expect(row(rows, 'proxy endpoint')).toMatchObject({ sublabel: 'no destination', toggle: 'locked' });
     expect(row(rows, 'browser :3001')).toMatchObject({ kind: 'unwatched', toggle: 'none', route: { text: 'unknown' } });
+  });
+
+  it('names glove v3\'s llm link (lan, cloud) as such: never the tunnel, never a leak', () => {
+    const d = ledger();
+    for (const [host, scope] of [['llm.home.example', 'lan'], ['api.provider.example', 'cloud']] as const) {
+      d.destinations.set(`${host}:443`, dest(`${host}:443`, { groupKey: host, scope, state: 'finished', tools: ['llm'],
+        flags: { scope, unresolved: false, noHost: false, cleartext: false, fanout: false } }));
+    }
+    const rows = buildTable(d, opts()).rows;
+    expect(row(rows, 'llm.home.example')).toMatchObject({ loud: false, route: { text: 'LAN · LLM' } });
+    expect(row(rows, 'api.provider.example')).toMatchObject({ loud: false, route: { text: 'cloud · LLM' } });
   });
 
   it('marks untunnelled rows loud, with a Direct route', () => {

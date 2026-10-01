@@ -9,17 +9,18 @@
  * one of them displacing the others.
  *
  * The interface deliberately separates *where* to watch (a source) from *how* to
- * parse (the watcher's format logic). Each root declares its `agentType`, so a
- * single glove sandbox can yield both a Vibe root and a pi root; each passive
- * watcher filters `roots()` down to the agent type it knows how to parse.
+ * parse (the watcher's format logic). Each root declares its `agentType`, so
+ * one source can yield Vibe roots and pi roots; each passive watcher filters
+ * `roots()` down to the agent type it knows how to parse.
  *
  * `roots()` is re-queried on every scan tick, so sources are dynamic: a glove
  * sandbox that appears or disappears mid-run is picked up or dropped on the next
  * scan without a restart.
  */
 
-import { existsSync, readdirSync, readFileSync, statSync } from 'fs';
-import { dirname, join, sep } from 'path';
+import { existsSync } from 'fs';
+import { join } from 'path';
+import { gloveExports, isDir, readSessionFacts } from '../glove/registry.js';
 import { homedir } from 'os';
 
 /** A single directory the watcher should tail, plus how to attribute what it finds. */
@@ -132,119 +133,51 @@ export class NativePiSource implements MonitorSource {
   }
 }
 
+
 /**
- * How long a `GloveSource.roots()` result is reused before the tree is re-walked.
- * The single shared instance feeds both passive watchers (`VibeSessionWatcher`
- * and `PiSessionWatcher`), each polling every ~2s, so `roots()` is called about
- * twice per scan tick — and each call now walks *two* directory levels
- * (`readdir` + `statSync` per env and per session) against a read-only,
- * FUSE-backed bind mount on macOS. Memoizing for a window well under the scan
- * interval collapses those paired calls into one filesystem walk while keeping
- * discovery dynamic: a sandbox that appears or disappears is still picked up
- * within roughly one scan tick.
+ * How long a `GloveSource.roots()` result is reused before `~/.glove` is read
+ * again. The single shared instance feeds both passive watchers
+ * (`VibeSessionWatcher` and `PiSessionWatcher`), each polling every ~2s, so
+ * `roots()` is called about twice per scan tick against a read-only, FUSE-backed
+ * bind mount on macOS. Memoizing for a window well under the scan interval
+ * collapses those paired calls into one read while keeping discovery dynamic.
  */
 export const GLOVE_ROOTS_TTL_MS = 1000;
 
+/** glove's `harness` names → the Layman agent types whose transcripts a passive watcher parses. */
+const GLOVE_HARNESS_AGENT: Record<string, string> = { pi: PI_AGENT_TYPE, vibe: VIBE_AGENT_TYPE };
+
 /**
- * Sandboxed harness logs produced by glove (github.com/castellotti/glove).
+ * Sandboxed harness transcripts exported by glove v3 (github.com/castellotti/glove).
  *
- * glove's unit of identity is an *environment* — the pair `(invocation_dir,
- * harness)` bound to a stable `env-id` — and all its state lives under
- * `<sessionsDir>/<env-id>/` (glove v2's `~/.glove/envs/<env-id>/`). That dir
- * holds `glove.yaml` and a per-run `sessions/<name>/` subtree (compose file,
- * enforcer policies, browser media) that also carries the `home/` tree glove
- * bind-mounts as the harness home. **The home is per-session, not per-env**:
- * glove's `_home_dir()` resolves it to `<env-id>/sessions/<name>/home` because a
- * rendered harness config embeds session-scoped values (its own LLM sidecar URL),
- * so two live sessions of one env must not share a home. The default unnamed
- * session is named after the env, so its home is `<env-id>/sessions/<env-id>/home`.
- * Transcripts live under that home, mirroring the real dotfile layout: a gloved
- * Vibe writes `.../home/.vibe/logs/session/...` and a gloved pi writes
- * `.../home/.pi/agent/sessions/...` — exactly the layouts the passive watchers
- * already understand, only rooted elsewhere.
+ * A glove v3 session is a directory the user chose; its state is private to it.
+ * The only transcripts Layman may read are the ones the session's **observe**
+ * grant exports: with `transcripts: true`, glove bind-mounts
+ * `~/.glove/observe/<id>/transcripts/` over the harness's transcript directory
+ * (pi's `.pi/agent/sessions`, Vibe's `.vibe/logs/session`), so that export *is*
+ * the transcript directory, in the layout the watchers already parse (pi's
+ * per-cwd subdirectories such as `--work--/`, Vibe's per-session directories).
+ * A session without the grant has no directory there and is never looked for
+ * anywhere else.
  *
- * Older glove (and a `config_home_source` override) instead bind-mounted a single
- * env-level `<env-id>/home/`, and envs created under it still hold their
- * transcripts there. We therefore probe per-session homes first and fall back to
- * the env-level `home/` only when per-session probing found *no transcripts* —
- * not merely when a session dir is absent, since a session home can exist but be
- * empty (pi's sessions dir appears only at runtime), and older env-level
- * transcripts would otherwise be silently dropped. The fallback is never taken
- * once a per-session home yields a transcript, so a session present under both (a
- * stale env-level copy plus its live per-session copy, as happens after a glove
- * upgrade) is tailed only once — never twice, which would record every turn twice
- * since the passive path mints fresh ids the live dedupe can't collapse across
- * two roots.
+ * The harness comes from glove, never from the directory's layout: the registry
+ * row's `harness`, else `session.json`'s. Harnesses without a passive watcher
+ * (claude-code, whose transcripts glove does not export) yield no root.
  *
- * A `config_home_source` override can also relocate a home *entirely outside*
- * `<sessionsDir>`, where the enumeration above structurally cannot reach it.
- * glove records the *resolved* home per env in `~/.glove/registry.json` — the
- * single canonical pointer — so this source reads that registry and, for any env
- * whose recorded home lies outside `<sessionsDir>`, probes it too (see
- * `docs/extensions/glove.md`). A registry home *inside*
- * `<sessionsDir>` is left to enumeration, which already owns it — probing it a
- * second time would break the no-double-tail invariant above. Registry paths are
- * **absolute host paths** (`/Users/you/.glove/...`); in the Docker deployment the
- * same tree is mounted at `/root/.glove/...`, so a registry home is translated
- * from the host home prefix (`HOST_HOME`, the env var Layman already receives) to
- * the container home (`homedir()`) before probing. Native Layman leaves
- * `HOST_HOME` unset (or equal to `homedir()`), so the translation is a no-op. A
- * translated path that isn't under a mount simply won't exist and yields no root
- * — the same graceful outcome as a missing `home/`. The mount contract (a
- * relocated home a containerized Layman watches lives under `~/.glove`) is
- * documented in docs/extensions/glove.md. Reads are best-effort: a missing or malformed
- * registry (including a stray non-object array element) degrades to enumeration.
- *
- * As a registry-independent fallback, this source also enumerates
- * `<glove-home>/homes/<env-id>/` directly (a sibling of `<sessionsDir>`). glove's
- * launcher scripts relocate a home there and the mount contract keeps any watched
- * relocated home under `~/.glove`, so a session is still discovered when glove
- * never recorded its `home` — which is exactly what a `glove <h> --env X --config
- * Y` one-off produces, since a forced `--env` is not registered and so no home is
- * ever written. This overlaps the registry deliberately; a `handledEnvs` set of
- * env ids already resolved by the registry or enumeration suppresses the
- * convention copy of any such env, so an env is never tailed twice.
- *
- * Each root is labelled with glove's session token — the env id for the default
- * session (e.g. `pi-local`), else `<env-id>-<name>` (e.g. `pi-local-myrepo`), and
- * the env id for a registry-relocated home — so its sessions are tagged and
- * distinguishable in the UI. A single env may run both harnesses, so it can yield
- * a vibe root *and* a pi root. Non-directory and unrelated siblings (`glove.yaml`,
- * a stray `.DS_Store`) are ignored — the `statSync().isDirectory()` guard skips
- * non-dirs, and only the two known subpaths are probed. It reads only what the
- * sandbox already persisted: no new mount into the container, no egress, nothing
- * added to what the sandboxed agent can see — read-only "outside looking in".
- *
- * Vibe and pi are discovered because both persist a tailable transcript on the
- * host. The other network-hook harnesses (codex, cline, opencode) POST *to*
- * Layman, which a net-restricted sandbox cannot reach, and persist nothing to
- * tail — monitoring those from a sandbox is a separate mechanism (a
- * glove-provided forwarder), not this source.
+ * Each root is labelled with the session id, which is also the token in the
+ * session's flow records, so Trace can join a transcript to its traffic. It
+ * reads only what the sandbox already exported: no new mount, no egress,
+ * nothing added to what the sandboxed agent can see.
  */
-
-/** One entry of glove's `registry.json`. Extra fields tolerated; `home` is new. */
-interface GloveRegistryEntry {
-  env_id?: string;
-  harness?: string;
-  dir?: string;
-  /** Absolute, realpath-resolved harness home; absent on pre-upgrade glove. */
-  home?: string;
-}
-
 export class GloveSource implements MonitorSource {
   readonly id = 'glove';
-  private getSessionsDir: () => string | null;
-  private now: () => number;
   private cache: { at: number; roots: WatchRoot[] } | null = null;
 
   /**
-   * @param getSessionsDir resolves the current glove sessions dir, or null when disabled.
+   * @param getGloveHome resolves the glove home (`~/.glove`), or null when the extension is off.
    * @param now clock for the roots cache; injectable so tests can advance past the TTL.
    */
-  constructor(getSessionsDir: () => string | null, now: () => number = Date.now) {
-    this.getSessionsDir = getSessionsDir;
-    this.now = now;
-  }
+  constructor(private readonly getGloveHome: () => string | null, private readonly now: () => number = Date.now) {}
 
   roots(): WatchRoot[] {
     const at = this.now();
@@ -255,287 +188,16 @@ export class GloveSource implements MonitorSource {
   }
 
   private scan(): WatchRoot[] {
-    const base = this.getSessionsDir();
-    if (!base) return [];
-
+    const home = this.getGloveHome();
+    if (!home) return [];
     const roots: WatchRoot[] = [];
-    // Home dirs already probed, keyed so the same home is never tailed twice —
-    // the no-double-tail invariant (a second root over the same tree records
-    // every turn twice, since the passive path mints fresh ids the live dedupe
-    // can't collapse across two roots).
-    const probed = new Set<string>();
-    const probe = (home: string, label: string): boolean => {
-      // Every home reaching here is separator-normalized: registry homes are
-      // canonicalized where the `relocated` map is built (the one site a trailing
-      // slash enters, since every other home is `join`ed from slash-free
-      // segments), so a plain raw-path dedup is sound.
-      if (probed.has(home)) return false;
-      probed.add(home);
-      return this.probeHome(home, label, roots);
-    };
-
-    // Registry: glove's canonical, run-time-resolved home per env. Read even when
-    // `base` is absent (registry-only relocation, or `envs/` not yet created), so
-    // it can still carry discovery. Only homes *outside* `base` are contributed
-    // here; a home under `base` is owned by enumeration below. Keyed by env id so
-    // the enumeration loop can suppress the env-level fallback for a relocated env.
-    const relocated = new Map<string, string>();
-    for (const entry of this.readRegistry(base)) {
-      if (!entry.env_id || !entry.home) continue;
-      // Canonicalize here — the one site a trailing slash enters the pipeline
-      // (glove may record `home` with one; every other home is `join`ed from
-      // slash-free segments) — so all downstream path comparisons stay
-      // spelling-agnostic without a per-probe workaround.
-      const home = normalizeHome(this.toContainerPath(entry.home));
-      if (!isUnder(home, base)) relocated.set(entry.env_id, home);
+    for (const { id, dir, row } of gloveExports(home).exports) {
+      const path = join(dir, 'transcripts');
+      if (!isDir(path)) continue;
+      const harness = row?.harness ?? readSessionFacts(join(dir, 'net'))?.harness ?? null;
+      const agentType = harness ? GLOVE_HARNESS_AGENT[harness] : undefined;
+      if (agentType) roots.push({ path, agentType, label: id });
     }
-
-    // Env ids whose home has already been resolved authoritatively — by the
-    // registry (relocated) or by enumeration below. The convention fallback is
-    // suppressed for these so a stale `~/.glove/homes/<env>` left from a prior
-    // one-off is not tailed *alongside* the env's real home (a different path,
-    // so `probed` cannot collapse it) under a duplicate label.
-    const handledEnvs = new Set<string>(relocated.keys());
-
-    // Enumeration under `base` (per-session homes, env-level fallback).
-    if (existsSync(base)) {
-      let envs: string[] = [];
-      try {
-        envs = readdirSync(base);
-      } catch {
-        envs = []; // unreadable dir; the registry may still supply homes
-      }
-      for (const env of envs) {
-        const envDir = join(base, env);
-        try {
-          if (!statSync(envDir).isDirectory()) continue;
-        } catch {
-          continue; // vanished between readdir and stat
-        }
-
-        // Current glove: one home per session under `<env>/sessions/<name>/home`.
-        // Fall back to the env-level `home/` only when per-session probing found
-        // no transcripts — not merely when no session dir exists — since a
-        // per-session home can be present but empty (pi's sessions dir appears
-        // only at runtime) and older env-level transcripts would otherwise be
-        // dropped. Once a per-session home yields a transcript the env-level copy
-        // is never tailed, keeping the no-double-tail invariant.
-        // An env dir under `base` is authoritative for that env id: its real
-        // home is either here (per-session / env-level) or relocated via the
-        // registry. Either way the convention fallback must not re-tail a stale
-        // `homes/<env>` for it.
-        handledEnvs.add(env);
-        let found = false;
-        for (const { home, label } of this.sessionHomes(envDir, env)) {
-          if (probe(home, label)) found = true;
-        }
-        // Legacy / `config_home_source` override: a single env-level `home/`.
-        // Skipped when the registry records a home relocated outside `base` for
-        // this env — that recorded home is canonical and is probed below, so the
-        // (usually stale) env-level copy must not be tailed alongside it.
-        if (!found && !relocated.has(env)) this.probeHome(join(envDir, 'home'), env, roots);
-      }
-    }
-
-    // Registry-relocated homes (outside `base`): the case enumeration cannot
-    // reach. A missing/unreadable path simply yields no root.
-    for (const [env, home] of relocated) {
-      if (existsSync(home)) probe(home, env);
-    }
-
-    // Convention-based fallback: relocated homes under `<glove-home>/homes/<env-id>/`.
-    // The mount contract already requires a relocated home a containerized Layman
-    // watches to live under `~/.glove`, and glove's launcher scripts standardize on
-    // the `homes/` subdir for it (`config_home_source: ~/.glove/homes/<env-id>`).
-    // Enumerating that dir directly discovers such a session even when glove's
-    // registry has no entry for it — which happens for a `glove <h> --env X
-    // --config Y` one-off, whose forced env is not registered, so no `home` is ever
-    // recorded (see docs/extensions/glove.md). `conventionHomes`
-    // takes `handledEnvs` and skips (before statting) any env the registry or
-    // enumeration already resolved authoritatively, so a stale `homes/<env>` left
-    // beside an env's real home — a *different* path `probed` could not collapse —
-    // is not re-tailed under a duplicate label; that same skip also drops the
-    // registry-relocated same-tree twin. What survives has already been
-    // `statSync`'d as a directory, so probe directly. These paths are
-    // container-local (a sibling of `base`), so no host→container rebasing is
-    // needed. Reads are best-effort — a missing `homes/` yields nothing.
-    for (const { home, label } of this.conventionHomes(dirname(base), handledEnvs)) {
-      probe(home, label);
-    }
-
     return roots;
   }
-
-  /**
-   * Reads `<glove-home>/registry.json` (a sibling of the sessions dir), the
-   * single file glove uses to bind each env to its identity and — since the
-   * registry-resolved-home change — its resolved home. Best-effort: a missing or
-   * malformed registry yields `[]`, leaving enumeration to carry discovery.
-   */
-  private readRegistry(base: string): GloveRegistryEntry[] {
-    const path = join(dirname(base), 'registry.json');
-    let raw: string;
-    try {
-      raw = readFileSync(path, 'utf8');
-    } catch {
-      return []; // no registry (or unreadable) — enumeration still works
-    }
-    try {
-      const data = JSON.parse(raw);
-      if (!Array.isArray(data)) return [];
-      // Keep only object entries: a stray `null` or primitive in the array would
-      // otherwise throw on `entry.env_id` in scan(), which runs on every scan
-      // tick — a bad element must degrade to enumeration, not crash the scan.
-      return data.filter(
-        (e): e is GloveRegistryEntry => typeof e === 'object' && e !== null,
-      );
-    } catch {
-      return []; // malformed JSON — don't let it break discovery
-    }
-  }
-
-  /**
-   * Translates an absolute host path from the registry into the path this
-   * process can read, using this process's `HOST_HOME` and `homedir()`.
-   */
-  private toContainerPath(hostPath: string): string {
-    return rebaseGloveHome(hostPath, process.env.HOST_HOME, homedir());
-  }
-
-  /**
-   * Per-session home dirs for an env: `<env>/sessions/<name>/home` for each
-   * session subdir that has one, each labelled with glove's session token (the
-   * env id for the default session named after the env, else `<env>-<name>`).
-   * Empty when the env has no `sessions/` tree or no session home yet — the
-   * caller then falls back to the env-level `home/`.
-   */
-  private sessionHomes(envDir: string, env: string): Array<{ home: string; label: string }> {
-    const sessionsRoot = join(envDir, 'sessions');
-    let names: string[];
-    try {
-      names = readdirSync(sessionsRoot);
-    } catch {
-      return []; // no sessions/ dir (or unreadable)
-    }
-    const homes: Array<{ home: string; label: string }> = [];
-    for (const name of names) {
-      const home = join(sessionsRoot, name, 'home');
-      try {
-        if (!statSync(home).isDirectory()) continue;
-      } catch {
-        continue;
-      }
-      homes.push({ home, label: name === env ? env : `${env}-${name}` });
-    }
-    return homes;
-  }
-
-  /**
-   * Relocated harness homes discovered by convention, one per subdir of
-   * `<glove-home>/homes/`, each labelled with its dir name (the env id). glove's
-   * launcher scripts relocate a home there (`config_home_source:
-   * ~/.glove/homes/<env-id>`) and the mount contract keeps any watched relocated
-   * home under `~/.glove`, so enumerating this sibling of the sessions dir finds a
-   * relocated session that the registry never recorded. Empty when there is no
-   * `homes/` dir (the common case: no env relocates a home).
-   *
-   * `handled` is the set of env ids already resolved authoritatively (registry or
-   * enumeration); those are skipped *before* the per-entry `statSync`, so a stale
-   * `homes/<env>` left beside an env's real home costs no filesystem call on the
-   * read-only FUSE mount and is never re-tailed under a duplicate label.
-   */
-  private conventionHomes(
-    gloveHome: string,
-    handled: ReadonlySet<string>,
-  ): Array<{ home: string; label: string }> {
-    const homesRoot = join(gloveHome, 'homes');
-    let names: string[];
-    try {
-      names = readdirSync(homesRoot);
-    } catch {
-      return []; // no homes/ dir (or unreadable)
-    }
-    const out: Array<{ home: string; label: string }> = [];
-    for (const name of names) {
-      if (handled.has(name)) continue; // env already resolved — skip before statting
-      const home = join(homesRoot, name);
-      try {
-        if (!statSync(home).isDirectory()) continue;
-      } catch {
-        continue; // vanished between readdir and stat, or unreadable
-      }
-      out.push({ home, label: name });
-    }
-    return out;
-  }
-
-  /**
-   * Probe a harness home for tailable Vibe and pi transcript dirs, appending
-   * roots. Returns whether it appended at least one — the caller uses that to
-   * decide the env-level fallback, so an empty home reads as "nothing here yet".
-   */
-  private probeHome(home: string, label: string, roots: WatchRoot[]): boolean {
-    let found = false;
-    const vibeDir = join(home, VIBE_SESSION_SUBPATH);
-    if (existsSync(vibeDir)) {
-      roots.push({ path: vibeDir, agentType: VIBE_AGENT_TYPE, label });
-      found = true;
-    }
-    const piDir = join(home, PI_SESSION_SUBPATH);
-    if (existsSync(piDir)) {
-      roots.push({ path: piDir, agentType: PI_AGENT_TYPE, label });
-      found = true;
-    }
-    return found;
-  }
-}
-
-/**
- * Whether `p` is `base` itself or lives under it, path-boundary aware so a
- * sibling that merely shares a string prefix (`.../envs-other`) is not treated as
- * being under `.../envs`. A trailing separator on `base` is normalized away.
- */
-function isUnder(p: string, base: string): boolean {
-  const b = normalizeHome(base);
-  return p === b || p.startsWith(b + sep);
-}
-
-/**
- * Strips trailing path separators so two spellings of the same directory —
- * `.../homes/pi-rag` and `.../homes/pi-rag/` — compare equal. Shared by
- * `isUnder`, `rebaseGloveHome`, and the registry-home canonicalization in
- * `GloveSource.scan`: glove may record a `home` with a trailing slash (which
- * `path.join` preserves on its final segment), and normalizing it at the one
- * site it enters keeps every downstream path comparison spelling-agnostic.
- */
-function normalizeHome(p: string): string {
-  let s = p;
-  while (s.length > 1 && s.endsWith(sep)) s = s.slice(0, -sep.length);
-  return s;
-}
-
-/**
- * Rebases an absolute host path onto the container home. In Docker the host home
- * (`hostHome`, from `HOST_HOME`) is bind-mounted at the container home
- * (`containerHome`, `homedir()`), so a registry `home` recorded as a host path is
- * rebased onto the container home. Native Layman (no `HOST_HOME`, or
- * `HOST_HOME === homedir()`) returns the path unchanged. The match is
- * path-boundary aware so `/Users/alice-other` is never treated as living under
- * `/Users/alice`. A trailing separator on `hostHome` is normalized away so the
- * translation does not depend on how `HOST_HOME` happens to be spelled.
- * Exported for direct testing.
- */
-export function rebaseGloveHome(
-  hostPath: string,
-  hostHome: string | undefined,
-  containerHome: string,
-): string {
-  if (!hostHome) return hostPath;
-  const home = normalizeHome(hostHome);
-  if (home === containerHome) return hostPath;
-  if (hostPath === home) return containerHome;
-  if (hostPath.startsWith(home + sep)) {
-    return join(containerHome, hostPath.slice(home.length + 1));
-  }
-  return hostPath;
 }

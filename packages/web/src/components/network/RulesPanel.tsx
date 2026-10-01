@@ -50,6 +50,15 @@ function enforcementBox(data: NetSessionData, now: number): React.ReactNode {
   const w = view.write;
   const recent = w && now - w.at < 60_000;
   const at = (ms: number) => <span style={{ fontFamily: 'var(--font-mono)' }}>{clockTime(ms)}</span>;
+  // glove's grant decides before anything Layman wrote: without it the gates read no rules at all.
+  switch (view.control.state) {
+    case 'not-granted':
+      return <StatusBox tone="neutral" title="No filter access" sub={view.control.detail} />;
+    case 'revoked':
+      return <StatusBox role="alert" tone="warn" title="Filter access revoked" sub={view.control.detail} />;
+    case 'orphaned':
+      return <StatusBox tone="neutral" title="Session deleted; export retained" sub={view.control.detail} />;
+  }
   if (w && (w.state === 'pending' || w.state === 'unconfirmed' || w.state === 'rejected' || w.state === 'failed' || (recent && w.state !== 'enforced'))) {
     switch (w.state) {
       case 'pending':
@@ -67,7 +76,9 @@ function enforcementBox(data: NetSessionData, now: number): React.ReactNode {
         return <StatusBox tone="neutral" title="Another writer replaced Layman’s change" sub="rules.json changed before the gate read Layman’s write; what is shown is the file now." />;
     }
   }
-  if (!status) return <StatusBox tone="neutral" title="The gate has not reported its rules" sub="No status.json has been read for this session." />;
+  if (!status) {
+    return <StatusBox tone="neutral" title="Not enforced yet" sub="The gate has not reported loading rules.json: its gates may still be starting (status.json has no rules yet)." />;
+  }
   if (!status.ok) {
     const unreadable = status.error?.startsWith('cannot read');
     return (

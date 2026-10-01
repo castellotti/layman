@@ -10,11 +10,12 @@ import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import type { HistorySession, NetHistory } from './history.js';
 import { NetObs } from './index.js';
+import { TEST_ID, addGloveSession } from './testing/glove-home.js';
 import type { DestinationAggregate, NetSnapshot, NetTotals } from './types.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const FIXTURE = join(HERE, '__fixtures__');
-const TOKEN = 'pi-search';
+const TOKEN = TEST_ID;
 const NOW = Date.parse('2026-09-23T14:14:48.000Z');
 const LINES = readFileSync(join(FIXTURE, 'flows.ndjson'), 'utf8').split('\n').filter(Boolean);
 
@@ -36,15 +37,14 @@ beforeEach(() => { home = mkdtempSync(join(tmpdir(), 'netobs-history-')); });
 afterEach(() => rmSync(home, { recursive: true, force: true }));
 
 function writeSession(lines: string[], dir = FIXTURE, token = TOKEN): void {
-  const net = join(home, 'envs', token, 'sessions', token, 'net');
-  mkdirSync(net, { recursive: true });
+  const { net } = addGloveSession(home, token);
   for (const f of ['session.json', 'status.json', 'exit.ndjson']) if (existsSync(join(dir, f))) copyFileSync(join(dir, f), join(net, f));
   writeFileSync(join(net, 'flows.ndjson'), lines.map((l) => l + '\n').join(''));
 }
 
 /** A Layman process: start, read what is there, return what it shows. */
 function run(history: MemHistory, token = TOKEN): { obs: NetObs; snap: NetSnapshot } {
-  const obs = new NetObs({ getSessionsDir: () => join(home, 'envs'), history });
+  const obs = new NetObs({ getGloveHome: () => home, history });
   obs.poll(NOW);
   return { obs, snap: obs.store.snapshot(token)! };
 }
@@ -100,8 +100,7 @@ describe('kept network history', () => {
     writeSession(LINES);
     const full = run(h);
     full.obs.persist();
-    rmSync(join(home, 'envs', TOKEN), { recursive: true, force: true });
-    mkdirSync(join(home, 'envs'), { recursive: true });
+    rmSync(join(home, 'observe', TOKEN), { recursive: true, force: true });
     const { obs, snap } = run(h);
     const summary = obs.sessions().find((s) => s.token === TOKEN)!;
     expect([summary.historyOnly, summary.live, summary.bytesDown]).toEqual([true, false, full.snap.totals.bytesDown]);
@@ -123,8 +122,7 @@ describe('kept network history', () => {
     const half = Math.floor(LINES.length / 2);
     writeSession(LINES.slice(0, half));
     run(h).obs.persist();
-    rmSync(join(home, 'envs', TOKEN), { recursive: true, force: true });
-    mkdirSync(join(home, 'envs'), { recursive: true });
+    rmSync(join(home, 'observe', TOKEN), { recursive: true, force: true });
     const { obs } = run(h);
     expect(obs.store.isHistoryOnly(TOKEN)).toBe(true);
     writeSession(LINES);
@@ -174,8 +172,8 @@ describe('kept network history', () => {
   it.each(['@fixture', 'gate-lost', 'terminate', 'default-block', 'direct', 'pooled'])('holds when Layman restarts after every record of %s', (name) => {
     const dir = name === '@fixture' ? FIXTURE : join(HERE, '__scenarios__', name);
     const lines = readFileSync(join(dir, 'flows.ndjson'), 'utf8').split('\n').filter(Boolean);
-    const first = lines.map((l) => JSON.parse(l)).find((r) => r.type === 'flow');
-    const token = first.session as string;
+    // The v2 records name their session; the store keys it by the glove v3 id it was discovered under.
+    const token = TEST_ID;
     const h = new MemHistory();
     for (let i = 1; i <= lines.length; i++) {
       writeSession(lines.slice(0, i), dir, token);
@@ -191,7 +189,7 @@ describe('kept network history', () => {
   it('never counts a refined destination twice', () => {
     const scen = join(HERE, '__scenarios__', 'sni-refined');
     const lines = readFileSync(join(scen, 'flows.ndjson'), 'utf8').split('\n').filter(Boolean);
-    const token = JSON.parse(lines.find((l) => l.includes('"flow"'))!).session as string;
+    const token = TEST_ID;
     const h = new MemHistory();
     // Persist between every record: the worst case for a refinement landing across a write.
     for (let i = 1; i <= lines.length; i++) {

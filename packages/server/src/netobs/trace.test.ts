@@ -7,6 +7,7 @@ import { fileURLToPath } from 'url';
 import type { TimelineEvent } from '../events/types.js';
 import { extractTurns } from '../turns/extract.js';
 import { NetObs } from './index.js';
+import { TEST_ID, addGloveSession } from './testing/glove-home.js';
 import { registerNetRoutes } from './routes.js';
 import { buildTrace, callsBetween, type TraceDeps } from './trace.js';
 import type { TraceView } from './types.js';
@@ -40,20 +41,21 @@ function sessions(): Record<string, TimelineEvent[]> {
   };
 }
 
+const TOKEN = TEST_ID;
+
 let home: string;
 let netObs: NetObs;
 let deps: TraceDeps;
 
 beforeEach(() => {
   home = mkdtempSync(join(tmpdir(), 'netobs-trace-'));
-  const net = join(home, 'envs', 'pi-search', 'sessions', 'pi-search', 'net');
-  mkdirSync(net, { recursive: true });
+  const { net } = addGloveSession(home, TOKEN);
   for (const f of ['flows.ndjson', 'exit.ndjson', 'session.json', 'status.json']) copyFileSync(join(FIXTURE, f), join(net, f));
-  netObs = new NetObs({ getSessionsDir: () => join(home, 'envs') });
+  netObs = new NetObs({ getGloveHome: () => home });
   netObs.poll(at('14:48.000'));
   const all = sessions();
   deps = {
-    sessionsNamed: (token) => (token === 'pi-search' ? ['run1', 'run2', 'old'] : []),
+    sessionsNamed: (token) => (token === TOKEN ? ['run1', 'run2', 'old'] : []),
     session: (sid) => ({ turns: extractTurns(all[sid] ?? []), events: all[sid] ?? [] }),
     events: (sid) => all[sid] ?? [],
   };
@@ -62,11 +64,11 @@ afterEach(() => rmSync(home, { recursive: true, force: true }));
 
 describe('buildTrace', () => {
   it('lists the turns of every run in the glove session, in time order, within its span', () => {
-    const t = buildTrace(netObs.store, 'pi-search', deps, null, at('14:55.000'))!;
+    const t = buildTrace(netObs.store, TOKEN, deps, null, at('14:55.000'))!;
     expect(t.sessionIds).toEqual(['run1', 'run2', 'old']);
     // Walk back from the latest turn by `nav.prev`: the response names neighbours, not the list.
     const seen: Array<[string, string, number]> = [];
-    for (let v: TraceView | null = t; v?.turn; v = v.nav.prev ? buildTrace(netObs.store, 'pi-search', deps, { turn: v.nav.prev }, at('14:55.000')) : null) {
+    for (let v: TraceView | null = t; v?.turn; v = v.nav.prev ? buildTrace(netObs.store, TOKEN, deps, { turn: v.nav.prev }, at('14:55.000')) : null) {
       seen.unshift([v.turn.sessionId, v.turn.promptText, v.nav.index]);
       expect(v.nav.count).toBe(3);
     }
@@ -77,7 +79,7 @@ describe('buildTrace', () => {
   });
 
   it('shows the latest turn by default, and uses the transcript\'s prompt time', () => {
-    const t = buildTrace(netObs.store, 'pi-search', deps, null, at('14:55.000'))!;
+    const t = buildTrace(netObs.store, TOKEN, deps, null, at('14:55.000'))!;
     expect(t.turn?.promptText).toBe('a later run');
     expect(t.turn?.startedAt).toBe(at('14:50.000'));
     expect(t.items).toEqual([]);
@@ -91,7 +93,7 @@ describe('buildTrace', () => {
       fetch_('run3', 'https://en.wikipedia.org/wiki/Onion_routing', at('14:45.200')),
     ];
     const d: TraceDeps = { sessionsNamed: () => ['run3'], session: () => ({ turns: extractTurns(run3), events: run3 }), events: () => run3 };
-    const t = buildTrace(netObs.store, 'pi-search', d, null, at('14:48.000'))!;
+    const t = buildTrace(netObs.store, TOKEN, d, null, at('14:48.000'))!;
     const host = (id: string) => t.flows.find((f) => f.id === id)?.dest.host;
     const open = t.items.flatMap((i) => (i.kind === 'call' ? [[i.call.toolName, i.flowIds.length, i.openIds.map(host)]] : []));
     expect(open).toEqual([
@@ -103,8 +105,8 @@ describe('buildTrace', () => {
   });
 
   it('joins a chosen turn\'s calls to the flows opened before the next prompt', () => {
-    const second = buildTrace(netObs.store, 'pi-search', deps, null)!.nav.prev!;
-    const t = buildTrace(netObs.store, 'pi-search', deps, { turn: second }, at('14:55.000'))!;
+    const second = buildTrace(netObs.store, TOKEN, deps, null)!.nav.prev!;
+    const t = buildTrace(netObs.store, TOKEN, deps, { turn: second }, at('14:55.000'))!;
     expect(t.window).toEqual({ from: at('14:42.000'), to: at('14:49.000') });
     const hosts = (ids: string[]) => ids.map((id) => t.flows.find((f) => f.id === id)!.dest.host);
     const calls = t.items.flatMap((i) => (i.kind === 'call' ? [[i.call.label, hosts([...i.flowIds, ...i.fanoutIds]).length, i.call.timing]] : []));
@@ -121,15 +123,15 @@ describe('buildTrace', () => {
   });
 
   it('accepts any event id in the turn, and says so when the turn is not this session\'s', () => {
-    const second = buildTrace(netObs.store, 'pi-search', deps, null)!.nav.prev!;
+    const second = buildTrace(netObs.store, TOKEN, deps, null)!.nav.prev!;
     const events = deps.events('run1');
-    expect(buildTrace(netObs.store, 'pi-search', deps, { turn: events[4].id })!.turn?.promptEventId).toBe(second);
-    const none = buildTrace(netObs.store, 'pi-search', deps, { turn: 'elsewhere-e1' })!;
+    expect(buildTrace(netObs.store, TOKEN, deps, { turn: events[4].id })!.turn?.promptEventId).toBe(second);
+    const none = buildTrace(netObs.store, TOKEN, deps, { turn: 'elsewhere-e1' })!;
     expect([none.turn, none.items, none.nav]).toEqual([null, [], { index: -1, count: 3, prev: null, next: null }]);
   });
 
   it('finds the turn in progress at a moment, for the detail card and the ribbon', () => {
-    const pick = (t: number) => buildTrace(netObs.store, 'pi-search', deps, { at: t }, at('14:55.000'))!.turn?.promptText;
+    const pick = (t: number) => buildTrace(netObs.store, TOKEN, deps, { at: t }, at('14:55.000'))!.turn?.promptText;
     expect(pick(at('14:46.423'))).toBe('Research the history of onion routing');
     expect(pick(at('10:30.000'))).toBe('an earlier turn');
     expect(pick(at('14:52.000'))).toBe('a later run');
@@ -138,7 +140,7 @@ describe('buildTrace', () => {
   });
 
   it('lists the calls in a time range across turns and runs, for the ribbon', () => {
-    const calls = callsBetween(netObs.store, 'pi-search', deps, at('10:00.500'), at('14:44.000'))!;
+    const calls = callsBetween(netObs.store, TOKEN, deps, at('10:00.500'), at('14:44.000'))!;
     expect(calls.map((c) => c.label)).toEqual([
       'https://example.org/', 'onion routing', 'https://arxiv.org/abs/2403.01234', 'http://169.254.169.254/latest/meta-data/',
     ]);
@@ -147,7 +149,7 @@ describe('buildTrace', () => {
 
   it('is null for an unknown glove session, and empty when no Layman session is named after it', () => {
     expect(buildTrace(netObs.store, 'nope', deps, null)).toBeNull();
-    const t = buildTrace(netObs.store, 'pi-search', { ...deps, sessionsNamed: () => [] }, null)!;
+    const t = buildTrace(netObs.store, TOKEN, { ...deps, sessionsNamed: () => [] }, null)!;
     expect([t.nav.count, t.turn]).toEqual([0, null]);
   });
 });
@@ -160,19 +162,19 @@ describe('GET /api/net/sessions/:token/trace', () => {
     app = Fastify();
     registerNetRoutes(app, { netObs, trace: deps });
     await app.ready();
-    const res = await app.inject('/api/net/sessions/pi-search/trace');
+    const res = await app.inject(`/api/net/sessions/${TOKEN}/trace`);
     expect(res.statusCode).toBe(200);
     expect((res.json() as TraceView).nav).toMatchObject({ index: 2, count: 3, next: null });
-    const byTime = await app.inject(`/api/net/sessions/pi-search/trace?at=${at('10:30.000')}`);
+    const byTime = await app.inject(`/api/net/sessions/${TOKEN}/trace?at=${at('10:30.000')}`);
     expect((byTime.json() as TraceView).turn?.promptText).toBe('an earlier turn');
-    const calls = await app.inject(`/api/net/sessions/pi-search/calls?from=${at('14:43.000')}&to=${at('14:47.000')}`);
+    const calls = await app.inject(`/api/net/sessions/${TOKEN}/calls?from=${at('14:43.000')}&to=${at('14:47.000')}`);
     expect(calls.json().calls).toHaveLength(4);
-    expect((await app.inject('/api/net/sessions/pi-search/calls?from=0&to=99999999999')).statusCode).toBe(400);
+    expect((await app.inject(`/api/net/sessions/${TOKEN}/calls?from=0&to=99999999999`)).statusCode).toBe(400);
     expect((await app.inject('/api/net/sessions/nope/trace')).statusCode).toBe(404);
     await app.close();
     app = Fastify();
     registerNetRoutes(app, { netObs });
     await app.ready();
-    expect((await app.inject('/api/net/sessions/pi-search/trace')).statusCode).toBe(501);
+    expect((await app.inject(`/api/net/sessions/${TOKEN}/trace`)).statusCode).toBe(501);
   });
 });

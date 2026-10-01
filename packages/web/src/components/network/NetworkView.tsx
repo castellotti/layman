@@ -129,12 +129,15 @@ export default function NetworkView({ tab, onSend }: { tab: NetTab; onSend: (msg
   const setSettingsOpen = useSessionStore((s) => s.setSettingsOpen);
   const activeSessionName = useSessionStore((s) =>
     s.sessions.find((x) => x.sessionId === s.activeSessionId)?.sessionName ?? null);
-  const { sessions, sessionsKnown, data, setSubscribed } = useNetStore();
+  const { sessions, notObservable, sessionsKnown, registry, data, setSubscribed } = useNetStore();
   const panels = useNetPanels(tab, TAB_PANELS[tab]);
 
   const enabled = !!config?.glove.enabled && config.glove.network?.enabled !== false;
   const token = netToken ?? defaultNetToken(sessions, activeSessionName);
-  const listed = token !== null && sessions.some((s) => s.token === token);
+  const picked = token === null ? undefined : sessions.find((s) => s.token === token);
+  const listed = picked !== undefined;
+  // A registered session without the observe grant has nothing to subscribe to.
+  const dark = token !== null && !listed && notObservable.some((s) => s.token === token);
 
   // Make the default explicit, so the address bar names the session shown.
   useEffect(() => {
@@ -171,19 +174,38 @@ export default function NetworkView({ tab, onSend }: { tab: NetTab; onSend: (msg
       );
     }
     if (!sessionsKnown) return <EmptyState title="Connecting…" />;
+    if (registry.state === 'v2-home' || registry.state === 'unsupported') {
+      return (
+        <EmptyState title={registry.state === 'v2-home' ? 'glove v2 home: upgrade glove' : 'Unsupported glove registry'}>
+          {registry.detail}
+        </EmptyState>
+      );
+    }
+    if (dark) {
+      return (
+        <EmptyState title={`${token} is not observable`}>
+          This glove session does not grant observe access, so it exports no network records or transcripts and Layman
+          does not look for any. To grant it, add <span style={{ fontFamily: 'var(--font-mono)' }}>observe: {'{}'}</span> under
+          <span style={{ fontFamily: 'var(--font-mono)' }}> extensions:</span> in its glove-session.yml and re-run
+          <span style={{ fontFamily: 'var(--font-mono)' }}> glove up</span>.
+        </EmptyState>
+      );
+    }
     if (sessions.length === 0) {
       return (
         <EmptyState title="No glove network data">
-          No glove session under <span style={{ fontFamily: 'var(--font-mono)' }}>{config?.glove.sessionsDir}</span> has
-          a <span style={{ fontFamily: 'var(--font-mono)' }}>net/</span> directory yet. glove writes one for sessions run
-          with network observation on.
+          No glove session under <span style={{ fontFamily: 'var(--font-mono)' }}>{config?.glove.home}</span> has
+          an observe export (<span style={{ fontFamily: 'var(--font-mono)' }}>observe/&lt;id&gt;/net/</span>) yet. glove
+          writes one for sessions with <span style={{ fontFamily: 'var(--font-mono)' }}>observe: {'{}'}</span> under
+          <span style={{ fontFamily: 'var(--font-mono)' }}> extensions:</span> in their glove-session.yml.
+          {registry.state === 'unreadable' ? ` (${registry.detail})` : ''}
         </EmptyState>
       );
     }
     if (!listed) {
       return (
         <EmptyState title={`No glove session “${token}” on this instance`}>
-          Choose one of the {sessions.length} glove session{sessions.length === 1 ? '' : 's'} with network data from the picker above.
+          Choose one of the {sessions.length} glove session{sessions.length === 1 ? '' : 's'} from the picker above.
         </EmptyState>
       );
     }
@@ -196,13 +218,14 @@ export default function NetworkView({ tab, onSend }: { tab: NetTab; onSend: (msg
           : tab === 'map' ? <MapView data={data} panels={panels} /> : <Board tab={tab} panels={panels} data={data} />}
       </>
     );
-  }, [enabled, sessionsKnown, sessions.length, listed, token, data, tab, panels, config?.glove.sessionsDir, setSettingsOpen]);
+  }, [enabled, sessionsKnown, registry, sessions.length, listed, dark, token, data, tab, panels, config?.glove.home, setSettingsOpen]);
 
   const shown = data && data.token === token ? data : null;
   return (
     <div className="net-view" style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, overflow: 'hidden', background: 'var(--bg)' }}>
       <GateStrip
         sessions={sessions}
+        notObservable={notObservable}
         token={token}
         onPick={setNetToken}
         data={shown}

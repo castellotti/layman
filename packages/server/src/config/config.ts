@@ -122,7 +122,7 @@ export async function loadConfig(
       ...cliFlags.sync,
     },
     // Deep-merge glove and glove.network so a partial config (e.g. only
-    // `glove.enabled`) can neither blank sessionsDir nor reset the network block.
+    // `glove.enabled`) can neither blank `home` nor reset the network block.
     glove: {
       ...envConfig.glove,
       ...fileConfig.glove,
@@ -137,7 +137,21 @@ export async function loadConfig(
     },
   };
 
+  merged.glove = migrateGloveHome(merged.glove);
   return LaymanConfigSchema.parse(merged);
+}
+
+/**
+ * glove v2's `glove.sessionsDir` (`~/.glove/envs`) became v3's `glove.home`
+ * (`~/.glove`): its parent. Read once, when `home` is absent; the schema then
+ * drops the old key, and the next save writes only `home`.
+ */
+export function migrateGloveHome<T extends Record<string, unknown> | undefined>(glove: T): T {
+  if (!glove || typeof glove.home === 'string' || typeof glove.sessionsDir !== 'string') return glove;
+  const { sessionsDir, ...rest } = glove;
+  const trimmed = (sessionsDir as string).replace(/\/+$/, '');
+  const home = trimmed.includes('/') ? trimmed.slice(0, trimmed.lastIndexOf('/')) || '/' : '~/.glove';
+  return { ...rest, home } as unknown as T;
 }
 
 let runtimeConfig: LaymanConfig | null = null;
@@ -167,7 +181,7 @@ export function updateConfig(updates: Partial<LaymanConfig>): LaymanConfig {
     // role change) keeps the persisted identity instead of minting a new one.
     sync: { ...runtimeConfig.sync, ...updates.sync },
     // Deep-merge so a Settings update carrying only `glove.enabled` keeps
-    // sessionsDir and the network block (and one carrying only a network
+    // `home` and the network block (and one carrying only a network
     // toggle keeps the rest of it).
     glove: {
       ...runtimeConfig.glove,

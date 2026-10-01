@@ -34,7 +34,7 @@ up() {
   rm -rf "$DIR" && mkdir -p "$DIR/data" "$DIR/shots" "$DIR/glove/control"
   cat >"$DIR/data/layman.json" <<'JSON'
 {"setupWizardComplete": true, "sessionRecording": true,
- "glove": {"enabled": true, "sessionsDir": "~/.glove/envs", "network": {"geoipDbPath": "~/.local/share/layman/demo-geo.mmdb"}}}
+ "glove": {"enabled": true, "home": "~/.glove", "network": {"geoipDbPath": "~/.local/share/layman/demo-geo.mmdb"}}}
 JSON
   echo "playwright-core → $DIR/pw (outside the repo and the image)"
   npm install --silent --no-save --prefix "$DIR/pw" playwright-core@1.63.0 >/dev/null
@@ -45,7 +45,7 @@ JSON
   replay --scenario rules-rejected,default-block,gate-lost,terminate --gate --loop --loop-gap 20
   replay --scenario direct,empty,pooled,record-full,resolver-down,search,stopped,telemetry-dropped,exit-none,exit-unhealthy,sni-refined,rotation
   node "$REPO/e2e/network/make-big.mjs"
-  for _ in $(seq 30); do [ -d "$DIR/glove/envs/pi-search" ] && break; sleep 1; done
+  for _ in $(seq 30); do [ -d "$DIR/glove/observe/pi-search-c0ffee" ] && break; sleep 1; done
 
   "$CONTAINER_ENGINE" run -d --name "$NAME" -p "127.0.0.1:$PORT:8880" -e HOST_HOME="$HOME" \
     -v "$DIR/data:/root/.local/share/layman" -v "$DIR/glove:/root/.glove:ro" -v "$DIR/glove/control:/root/.glove/control" \

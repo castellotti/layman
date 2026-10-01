@@ -11,10 +11,12 @@ import type {
   DestinationAggregate,
   ExitRecord,
   FlowView,
+  GloveRegistryView,
   NetCounters,
   NetGateView,
   NetServerMessage,
   NetSessionFile,
+  NetNotObservable,
   NetSessionSummary,
   NetTotals,
   RateBucket,
@@ -27,9 +29,8 @@ export const MAX_CLOSED_FLOWS = 2_000;
 export const MAX_BUCKETS = 3_600;
 
 export interface NetSessionData {
+  /** glove's session id. */
   token: string;
-  env: string;
-  name: string;
   session: NetSessionFile | null;
   gate: NetGateView;
   exit: ExitRecord | null;
@@ -58,8 +59,12 @@ export interface NetOpResult {
 
 export interface NetClientState {
   sessions: NetSessionSummary[];
+  /** Registered without the observe grant: no data, listed disabled in the picker only. */
+  notObservable: NetNotObservable[];
   /** False until the first `net:sessions` frame: "no sessions" and "not told yet" differ. */
   sessionsKnown: boolean;
+  /** glove's registry.json: `v2-home` means a glove v2 home, which Layman does not read. */
+  registry: GloveRegistryView;
   /** The token this client asked the server for (at most one). */
   subscribed: string | null;
   /** Data for `subscribed`; null until its snapshot arrives. */
@@ -70,7 +75,9 @@ export interface NetClientState {
 
 export const initialNetState: NetClientState = {
   sessions: [],
+  notObservable: [],
   sessionsKnown: false,
+  registry: { state: 'absent', detail: '' },
   subscribed: null,
   data: null,
   ops: {},
@@ -101,7 +108,7 @@ function trimBuckets(buckets: Map<number, RateBucket>): Map<number, RateBucket> 
 
 /** Fold one `net:*` frame into the state. Frames for a token this client is not subscribed to are ignored. */
 export function applyNetMessage(state: NetClientState, msg: NetServerMessage): NetClientState {
-  if (msg.type === 'net:sessions') return { ...state, sessions: msg.sessions, sessionsKnown: true };
+  if (msg.type === 'net:sessions') return { ...state, sessions: msg.sessions, notObservable: msg.notObservable, registry: msg.registry, sessionsKnown: true };
   if (msg.type === 'net:rules:result') {
     const op = state.ops[msg.opId];
     if (!op) return state;
@@ -115,8 +122,6 @@ export function applyNetMessage(state: NetClientState, msg: NetServerMessage): N
       ...state,
       data: {
         token: s.token,
-        env: s.env,
-        name: s.name,
         session: s.session,
         gate: s.gate,
         exit: s.exit,

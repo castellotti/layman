@@ -109,6 +109,10 @@ export function gateChips(data: NetSessionData): GateChip[] {
       chips.push({ key: 'route', label: `${name} · declared, not verified${unhealthy}`, tone: 'warn', icon: 'tunnel',
         title: `${exitDetail} Trust the label less than an observed exit.` });
     }
+  } else if (kind === 'corporate') {
+    const unhealthy = gate.route.upstreamHealthy === false ? ' · upstream failing' : '';
+    chips.push({ key: 'route', label: `Corporate route · allowlist only${unhealthy}`, tone: unhealthy ? 'warn' : 'neutral', icon: 'shield',
+      title: `${LEGEND_BY_KEY.route_corporate.explanation} Its exit is your corporate network, so there is no exit to verify.` });
   } else if (kind === 'tcp') {
     chips.push({ key: 'route', label: 'Local services only', tone: 'neutral', icon: 'tunnel',
       title: 'This session has no proxy service: only point-to-point links to configured endpoints.' });
@@ -225,6 +229,15 @@ export const NET_LEGEND: readonly StateInfo[] = [
   { key: 'direct', level: 'flag', loud: true, label: 'Untunnelled', dataRule: 'scope: direct', icon: 'alert', colourVar: 'var(--error)',
     badge: 'DIRECT', toggleKind: 'allow', mapTreatment: 'red dashed, skips the exit',
     explanation: 'The anonymity failure. Red banner, red strip chip, red tab dot.' },
+  { key: 'lan', level: 'flag', label: 'LAN link (LLM)', dataRule: 'scope: lan', icon: 'home', colourVar: 'var(--text-body)',
+    badge: null, toggleKind: 'allow', mapTreatment: 'in the sandbox card only',
+    explanation: 'The inference server on your local network (glove’s llm extension). Expected, not an alert. Never on the map.' },
+  { key: 'cloud', level: 'flag', label: 'Cloud LLM', dataRule: 'scope: cloud', icon: 'globe', colourVar: 'var(--text-body)',
+    badge: null, toggleKind: 'allow', mapTreatment: 'placed when glove has its IP',
+    explanation: 'The LLM provider on the internet, reached by glove’s llm link rather than the tunnel. Expected, not an alert.' },
+  { key: 'route_corporate', level: 'session', label: 'Corporate route', dataRule: 'route.kind: corporate', icon: 'shield',
+    colourVar: 'var(--text-body)', badge: null, toggleKind: 'none', mapTreatment: 'no exit pin',
+    explanation: 'Web traffic goes only to what the session’s corporate allowlist names (glove-session.yml). Your rules can block more; they cannot allow more.' },
   { key: 'route_declared', level: 'session', label: 'Route declared, not verified', dataRule: 'route.kind, no healthy exit record', icon: 'tunnel',
     colourVar: 'var(--warn)', badge: 'UNVERIFIED', toggleKind: 'none', mapTreatment: 'dashed trunk, no exit pin',
     explanation: 'Trust the label less than an observed exit.' },

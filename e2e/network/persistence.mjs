@@ -1,11 +1,12 @@
 // glove network views browser check (persistence; was phase-8 check8). Run via scripts/netobs-e2e.sh.
-import { BASE, DATA, GLOVE, SHOTS, CONTAINER, ENGINE, startCheck } from './env.mjs';
+import { BASE, DATA, GLOVE, SHOTS, CONTAINER, ENGINE, sid, startCheck } from './env.mjs';
 // Phase 8: rollups keep totals across restarts, never double count, and a glove
 // session whose files are gone stays listed, history only.
 import { execSync } from 'child_process';
 import { cpSync, readFileSync, writeFileSync, rmSync, readdirSync, existsSync } from 'fs';
 import { join } from 'path';
-const ENVS = `${GLOVE}/envs`;
+const OBSERVE = `${GLOVE}/observe`;
+const STOPPED = sid('stopped');
 const DB = `${DATA}/layman.db`;
 const { page, check, finish } = await startCheck();
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -22,35 +23,36 @@ const view = async (token) => {
 const sql = (q) => execSync(`sqlite3 -readonly ${DB} "${q}"`).toString().trim();
 
 // A glove session of our own, copied from a finished scenario, that we can later delete.
-const TOKEN = 'history-demo';
-rmSync(join(ENVS, TOKEN), { recursive: true, force: true });
-cpSync(join(ENVS, 'direct'), join(ENVS, TOKEN), { recursive: true });
-const net = join(ENVS, TOKEN, 'sessions', TOKEN);
-execSync(`mv ${join(ENVS, TOKEN, 'sessions', 'direct')} ${net}`);
+// It has no registry row, so it is also listed as orphaned (glove's rule); that does not change its totals.
+const TOKEN = sid('history-demo');
+const DIRECT = sid('direct');
+rmSync(join(OBSERVE, TOKEN), { recursive: true, force: true });
+cpSync(join(OBSERVE, DIRECT), join(OBSERVE, TOKEN), { recursive: true });
+const net = join(OBSERVE, TOKEN);
 for (const f of readdirSync(join(net, 'net'))) {
   const p = join(net, 'net', f);
-  writeFileSync(p, readFileSync(p, 'utf8').replaceAll('"env": "direct"', `"env": "${TOKEN}"`).replaceAll('"env":"direct"', `"env":"${TOKEN}"`)
-    .replaceAll('"session": "direct"', `"session": "${TOKEN}"`).replaceAll('"session":"direct"', `"session":"${TOKEN}"`));
+  writeFileSync(p, readFileSync(p, 'utf8').replaceAll(`"env": "${DIRECT}"`, `"env": "${TOKEN}"`).replaceAll(`"env":"${DIRECT}"`, `"env":"${TOKEN}"`)
+    .replaceAll(`"session": "${DIRECT}"`, `"session": "${TOKEN}"`).replaceAll(`"session":"${DIRECT}"`, `"session":"${TOKEN}"`));
 }
 await up();
 for (let i = 0; i < 20 && !(await get('/api/net/sessions')).sessions.some((s) => s.token === TOKEN); i++) await sleep(1000);
 const before = await view(TOKEN);
-const beforeStopped = await view('stopped');
+const beforeStopped = await view(STOPPED);
 check('the copied session is read', JSON.parse(before.key).flows > 0, before.key);
 // Rollups are written every 30 s and on shutdown.
 await sleep(33_000);
-const rows = sql(`SELECT token || ':' || flows FROM net_sessions WHERE token IN ('${TOKEN}','stopped') ORDER BY token`);
+const rows = sql(`SELECT token || ':' || flows FROM net_sessions WHERE token IN ('${TOKEN}','${STOPPED}') ORDER BY token`);
 check('rollups written to net_sessions (recording is on)', rows.split('\n').length === 2, rows);
 check('destinations kept per session', Number(sql(`SELECT COUNT(*) FROM net_destinations WHERE token = '${TOKEN}'`)) === JSON.parse(before.key).destinations);
 check('never synced: no triggers on the net tables', sql("SELECT COUNT(*) FROM sqlite_master WHERE type='trigger' AND tbl_name LIKE 'net_%'") === '0');
 await restart();
 const after1 = await view(TOKEN);
 check('restart keeps totals and destinations exactly (no double counting)', after1.key === before.key, `${before.key} → ${after1.key}`);
-check('…for a finished scenario too', (await view('stopped')).key === beforeStopped.key);
+check('…for a finished scenario too', (await view(STOPPED)).key === beforeStopped.key);
 await restart();
 check('…and after a second restart', (await view(TOKEN)).key === before.key);
 // Files gone: history only.
-rmSync(join(ENVS, TOKEN), { recursive: true, force: true });
+rmSync(join(OBSERVE, TOKEN), { recursive: true, force: true });
 await restart();
 const summary = (await get('/api/net/sessions')).sessions.find((s) => s.token === TOKEN);
 check('a session whose files are gone is still listed, history only', summary?.historyOnly === true && summary.live === false, JSON.stringify(summary));

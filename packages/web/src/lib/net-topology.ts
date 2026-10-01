@@ -15,7 +15,7 @@
  * anything up; every label comes from glove's files or the user's rules.
  */
 import type { NetSessionData } from './net-state.js';
-import type { DestinationAggregate, FlowView, NetService, Rule } from './netobs-types.js';
+import { isLlmScope, type DestinationAggregate, type FlowView, type NetService, type Rule } from './netobs-types.js';
 import { BLOCK_STATES, formatBytes } from './net-format.js';
 import { guardReason, hostLabel, toolLabel } from './net-table.js';
 
@@ -169,10 +169,12 @@ export function exitSourceHost(source: string | null): string | null {
 const isFanoutService = (s: NetService | undefined) =>
   !!s && (s.harness === false || s.client === 'searxng' || s.tool === 'search-engine-fanout');
 
-type RouteId = 'local' | 'tunnel' | 'direct';
+/** `llm`: glove's llm link (`lan`/`cloud` scope), which never rides the tunnel and is expected. */
+type RouteId = 'local' | 'llm' | 'tunnel' | 'direct';
 
 function routeOf(d: DestinationAggregate, svc: NetService | undefined): RouteId {
   if (d.scope === 'local') return 'local';
+  if (isLlmScope(d.scope)) return 'llm';
   if (d.scope === 'direct') return 'direct';
   if (d.scope === 'tunnelled') return 'tunnel';
   const kind = svc?.route?.kind ?? (svc?.mode === 'tcp' ? 'tcp' : null);
@@ -354,7 +356,7 @@ export function layoutTopology(data: TopoInput, width: number, height: number): 
     ], tone: 'tunnel', hosts: uniq(legs.filter((l) => !l.fanout).map((l) => l.host)), live: legs.some((l) => l.live && !l.fanout),
   });
 
-  // Route column: local, the declared tunnel, direct — in that order.
+  // Route column: local, the llm link, the declared tunnel, direct — in that order.
   const routeKind = data.gate.route.kind;
   const tunnelName = routeKind === 'tor' ? 'Tor tunnel' : routeKind === 'vpn' ? 'VPN tunnel' : 'Tunnel';
   const reachedOrBroken = legs.filter((l) => l.outcome !== 'refused');
@@ -381,6 +383,13 @@ export function layoutTopology(data: TopoInput, width: number, height: number): 
     if (localUp.length) lines.push({ text: localUp.length > 1 ? `${localUp[0]} +${localUp.length - 1}` : localUp[0], tone: 'faint' });
     lines.push({ text: 'never mapped', tone: 'faint' });
     specs.push({ id: 'local', title: 'Local', lines, tone: 'local', dashed: false, icon: null, want: want('local') ?? TOP + 60 });
+  }
+  const llmLegs = reachedOrBroken.filter((l) => l.route === 'llm');
+  if (llmLegs.length) {
+    const lines: TopoLine[] = [];
+    if (llmLegs.some((l) => l.d.scope === 'lan')) lines.push({ text: 'LAN · never mapped', tone: 'faint' });
+    if (llmLegs.some((l) => l.d.scope === 'cloud')) lines.push({ text: 'cloud · not the tunnel', tone: 'faint' });
+    specs.push({ id: 'llm', title: 'LLM link', lines, tone: 'local', dashed: false, icon: null, want: want('llm') ?? TOP + 60 });
   }
   if (hasTunnel) {
     const lines: TopoLine[] = [{ text: `declared: ${routeKind ?? 'unknown'}`, tone: 'faint' }];
@@ -450,7 +459,7 @@ export function layoutTopology(data: TopoInput, width: number, height: number): 
   const exitNode = originNode.get('exit') ?? null;
 
   // Destinations: local, then the harness's tunnelled, then the fan-out's, then direct; bytes within each.
-  const group = (l: Leg) => (l.route === 'local' ? 0 : l.route === 'direct' ? 3 : l.fanout ? 2 : 1);
+  const group = (l: Leg) => (l.route === 'local' || l.route === 'llm' ? 0 : l.route === 'direct' ? 3 : l.fanout ? 2 : 1);
   const reached = new Map<string, { d: DestinationAggregate; legs: Leg[]; group: number; bytes: number }>();
   for (const l of legs) {
     if (l.outcome !== 'reached') continue;
@@ -543,7 +552,7 @@ export function layoutTopology(data: TopoInput, width: number, height: number): 
   // Bands. Widths are relative to the busiest band anywhere in the diagram.
   type Draft = { id: string; kind: BandKind; from: TopoNode; to: TopoNode | { x: number; y: number }; legs: Leg[]; dashed?: boolean; label?: TopoBand['label'] };
   const drafts: Draft[] = [];
-  const kindOf = (l: Leg): BandKind => (l.fanout ? 'fanout' : l.route === 'local' ? 'local' : l.route === 'direct' ? 'direct' : 'tunnel');
+  const kindOf = (l: Leg): BandKind => (l.fanout ? 'fanout' : l.route === 'local' || l.route === 'llm' ? 'local' : l.route === 'direct' ? 'direct' : 'tunnel');
   const bucket = (id: string, kind: BandKind, from: TopoNode, to: TopoNode, l: Leg) => {
     const found = drafts.find((x) => x.id === id);
     if (found) found.legs.push(l);
@@ -725,6 +734,12 @@ export function pathHops(data: TopoInput, host: string): { dest: DestinationAggr
   const route = routeOf(d, svc);
   if (route === 'local') {
     hops.push({ id: 'route', title: 'Local link', detail: upstreamHost(svc?.upstream ?? svc?.route?.upstream, true), status: 'never leaves the machine · never mapped', evidence: 'declared' });
+  } else if (route === 'llm') {
+    const lan = d.scope === 'lan';
+    hops.push({
+      id: 'route', title: lan ? 'LAN link (LLM)' : 'LLM link', detail: upstreamHost(svc?.upstream ?? svc?.route?.upstream, true),
+      status: lan ? 'glove’s llm link · your local network · never mapped' : 'glove’s llm link · not the tunnel', evidence: 'declared',
+    });
   } else if (route === 'direct') {
     hops.push({ id: 'route', title: 'Direct', detail: 'no tunnel', status: 'the operator’s real IP', evidence: 'observed' });
   } else {
@@ -752,7 +767,7 @@ export function pathHops(data: TopoInput, host: string): { dest: DestinationAggr
   const where = d.geo ? [d.geo.city, d.geo.country].filter(Boolean).join(', ') || `${d.geo.lat.toFixed(2)}, ${d.geo.lon.toFixed(2)}` : null;
   hops.push({
     id: 'dest', title: hostLabel(d), detail: [d.ips[0], d.port !== null ? `:${d.port}` : null].filter(Boolean).join(' ') || null,
-    status: where ? `${where} · offline lookup` : route === 'local' ? 'local link' : 'location unknown',
+    status: where ? `${where} · offline lookup` : route === 'local' ? 'local link' : d.scope === 'lan' ? 'LAN link' : 'location unknown',
     evidence: 'observed',
   });
   return { dest: d, hops };

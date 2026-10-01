@@ -87,6 +87,14 @@ describe('what goes where', () => {
       ['San Francisco', 2, true, false], ['Amsterdam', 2, false, true],
     ]);
   });
+  it('arcs only tunnelled traffic from the exit: glove\'s cloud LLM link and direct flows skip it', () => {
+    const cloud = dest('api.anthropic.com:443', { geo: AMS, scope: 'cloud', bytesDown: 10 });
+    const tokyo = { lat: 35.68, lon: 139.69, city: 'Tokyo', country: 'Japan', countryCode: 'JP' };
+    const cs = clusterDestinations([...ds, cloud, dest('llm.example:443', { geo: tokyo, scope: 'cloud' }), dest('api.lan:8080', { geo: SF, scope: 'lan' })]);
+    expect(cs.map((c) => [c.label, c.dests.length, c.direct, c.tunnelled])).toEqual([
+      ['San Francisco', 2, false, true], ['Amsterdam', 3, true, true], ['Tokyo', 1, false, false],
+    ]);
+  });
 });
 
 describe('labels', () => {

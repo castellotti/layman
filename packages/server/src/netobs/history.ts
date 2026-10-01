@@ -49,9 +49,16 @@ export interface CarryFlow {
 }
 
 export interface HistorySession {
+  /** glove's session id. */
   token: string;
-  env: string;
-  name: string;
+  /**
+   * The last `grants.filter.since` Layman saw while the session had the filter
+   * grant. glove drops it on revocation and leaves no other trace, so this is
+   * how a revoked session still reads as revoked after a restart.
+   */
+  filterSince: string | null;
+  /** Whether `control/<id>/` was seen under that grant: only a directory that went away under it is a revocation. */
+  filterSawDir: boolean;
   firstSeen: number;
   lastSeen: number;
   /** The latest record time these totals include: every record before it was read. */

@@ -195,19 +195,19 @@ export function createServer(config: LaymanConfig): LaymanServer {
 
   // Passive-watcher sources: the native root always, plus glove sandbox roots
   // when enabled. Native precedes glove so it wins any path collision. The glove
-  // source emits both Vibe and pi roots; each watcher filters roots() to the
-  // agent type it parses, so the shared source instance feeds both.
+  // source emits both Vibe and pi roots (`observe/<id>/transcripts/`); each
+  // watcher filters roots() to the agent type it parses, so the shared source
+  // instance feeds both.
   const gloveSource = new GloveSource(() => {
     const glove = getConfig().glove;
-    return glove.enabled ? expandHome(glove.sessionsDir) : null;
+    return glove.enabled ? expandHome(glove.home) : null;
   });
-  // Network views of gloved sessions read the same sessions dir, but by a
-  // plain glob of `*/sessions/*/net/` — see netobs/discovery.ts for why this
-  // is not routed through GloveSource.
+  // Network views of gloved sessions: `observe/<id>/net/` under the same home,
+  // with grants from glove's registry and session.json (netobs/discovery.ts).
   const netObs = new NetObs({
-    getSessionsDir: () => {
+    getGloveHome: () => {
       const glove = getConfig().glove;
-      return glove.enabled && glove.network.enabled ? expandHome(glove.sessionsDir) : null;
+      return glove.enabled && glove.network.enabled ? expandHome(glove.home) : null;
     },
     // Only `request` (record: full) is agent-derived text; see netobs/store.ts.
     stringFilter: (text) => (getConfig().piiFilter ? redactString(text, ipKeep()) : text),

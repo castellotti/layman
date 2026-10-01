@@ -4,7 +4,7 @@
  * right the tab's Panels chips.
  */
 import React from 'react';
-import type { NetSessionSummary } from '../../lib/netobs-types.js';
+import type { NetNotObservable, NetSessionSummary } from '../../lib/netobs-types.js';
 import type { NetSessionData } from '../../lib/net-state.js';
 import type { PanelDef } from '../../lib/net-panels.js';
 import { gateChips } from '../../lib/net-format.js';
@@ -23,11 +23,15 @@ function sessionOption(s: NetSessionSummary): string {
   if (s.harness) parts.push(s.harness);
   if (s.live) parts.push('live');
   if (s.historyOnly) parts.push('history');
+  if (s.glove.orphaned) parts.push('deleted · export retained');
+  if (s.glove.filter === 'granted') parts.push('filter');
+  if (s.glove.filter === 'revoked') parts.push('filter revoked');
   return `${s.live ? '● ' : ''}${parts.join(' · ')}`;
 }
 
-export function GateStrip({ sessions, token, onPick, data, panels, isVisible, onToggle }: {
+export function GateStrip({ sessions, notObservable, token, onPick, data, panels, isVisible, onToggle }: {
   sessions: NetSessionSummary[];
+  notObservable: NetNotObservable[];
   token: string | null;
   onPick: (token: string) => void;
   data: NetSessionData | null;
@@ -35,7 +39,7 @@ export function GateStrip({ sessions, token, onPick, data, panels, isVisible, on
   isVisible: (id: string) => boolean;
   onToggle: (id: string) => void;
 }) {
-  const known = token !== null && sessions.some((s) => s.token === token);
+  const known = token !== null && (sessions.some((s) => s.token === token) || notObservable.some((s) => s.token === token));
   return (
     <div style={{
       display: 'flex', alignItems: 'center', gap: 6, height: 34, padding: '0 12px', background: 'var(--bg)',
@@ -43,7 +47,7 @@ export function GateStrip({ sessions, token, onPick, data, panels, isVisible, on
     }}>
       <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 10, letterSpacing: '0.08em', color: 'var(--text-faint)', fontWeight: 600, marginRight: 4, flexShrink: 0 }}>
         GLOVE ·
-        {sessions.length > 0 ? (
+        {sessions.length + notObservable.length > 0 ? (
           <select
             aria-label="Glove session"
             value={known ? token! : ''}
@@ -55,7 +59,9 @@ export function GateStrip({ sessions, token, onPick, data, panels, isVisible, on
             }}
           >
             {!known && <option value="">{token ?? 'choose a session'}</option>}
+            {/* A session without the observe grant is listed greyed out: Layman may not read it. */}
             {sessions.map((s) => <option key={s.token} value={s.token}>{sessionOption(s)}</option>)}
+            {notObservable.map((s) => <option key={s.token} value={s.token} disabled>{[s.token, s.harness, 'not observable'].filter(Boolean).join(' · ')}</option>)}
           </select>
         ) : (
           <span>{token ?? 'no sessions'}</span>

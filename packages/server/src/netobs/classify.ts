@@ -7,11 +7,13 @@ import type {
   ExitRecord,
   FlowFlags,
   FlowRecord,
+  FlowScope,
   NetGateView,
   NetSessionFile,
   NetState,
   StatusRecord,
 } from './types.js';
+import { FLOW_SCOPES, neverMapped } from './types.js';
 
 /** An open flow with no byte change for longer than this is "pooled, idle", not live. */
 export const IDLE_MS = 3_000;
@@ -69,13 +71,13 @@ export function classifyFlow(f: ClassifiableFlow, now: number): NetState {
 }
 
 export function flowFlags(f: Pick<FlowRecord, 'dest' | 'scope' | 'proto' | 'client' | 'tool'>): FlowFlags {
-  const scope = f.scope === 'tunnelled' || f.scope === 'local' || f.scope === 'direct' ? f.scope : 'unknown';
+  const scope = (FLOW_SCOPES as readonly string[]).includes(f.scope) ? (f.scope as FlowScope) : 'unknown';
   return {
     scope,
     // Local links are never mapped (rule 11), so "unresolved" only means
     // something for traffic that would otherwise be placed on the map.
     unresolved:
-      scope !== 'local' && f.dest.host !== null && (f.dest.ip === null || f.dest.resolution === 'unavailable'),
+      !neverMapped(scope) && f.dest.host !== null && (f.dest.ip === null || f.dest.resolution === 'unavailable'),
     noHost: f.dest.host === null,
     cleartext: f.proto === 'http' || f.dest.port === 80,
     fanout: f.client === 'searxng' || f.tool === 'search-engine-fanout',

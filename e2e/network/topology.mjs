@@ -1,10 +1,10 @@
 // glove network views browser check (topology; was phase-6 check6). Run via scripts/netobs-e2e.sh.
-import { BASE, SHOTS, overflowX, startCheck } from './env.mjs';
+import { BASE, SHOTS, overflowX, startCheck, PI, sid } from './env.mjs';
 const { page, check, waitFor, finish } = await startCheck();
 const DIAG = 'svg[aria-label^="Routes from"]';
 const nodeTitles = (kind) => page.$$eval(`${DIAG} g[data-node^="${kind}"] > text:first-of-type`, (ts) => ts.map((t) => t.textContent));
 
-await page.goto(`${BASE}/?view=topology&glove=pi-search`);
+await page.goto(`${BASE}/?view=topology&glove=${PI}`);
 await page.evaluate(() => localStorage.clear());
 await page.reload();
 check('diagram drawn', await waitFor(async () => (await page.$$(`${DIAG} g[data-node]`)).length > 10));
@@ -33,31 +33,31 @@ check('direct destination drawn from the Direct route', await page.$(`${DIAG} g[
 await page.click(`${DIAG} g[data-node="dest:arxiv.org:443"]`);
 check('clicking a destination sets dest= in the URL', await waitFor(async () => new URL(page.url()).searchParams.get('dest') === 'arxiv.org'), page.url());
 const hops = await page.$$eval('ol[aria-label="Hops"] > li', (ls) => ls.map((l) => l.innerText.split('\n')[0]));
-check('hop list sandbox → service → policy → tunnel → exit → destination', hops.join('|') === 'pi-search sandbox|proxy service|Policy|VPN tunnel|Exit · Switzerland|arxiv.org', hops.join('|'));
+check('hop list sandbox → service → policy → tunnel → exit → destination', hops.join('|') === `${PI} sandbox|proxy service|Policy|VPN tunnel|Exit · Switzerland|arxiv.org`, hops.join('|'));
 const hopText = await page.$eval('ol[aria-label="Hops"]', (o) => o.innerText);
 check('declared vs verified said per hop', hopText.includes('declared vpn') && hopText.includes('verified by exit identity'), hopText.replace(/\n/g, ' / '));
 const dimmed = await page.$$eval(`${DIAG} g[data-band] > path:first-child`, (ps) => ps.filter((p) => Number(p.getAttribute('stroke-opacity')) < 0.2).length);
 check('other paths dimmed', dimmed > 3, dimmed);
 check('Block arxiv.org and Open in map offered', await page.$('button:has-text("Block arxiv.org")') !== null && await page.$('button:has-text("Open in map")') !== null);
 // A refusal's path stops at the wall.
-await page.goto(`${BASE}/?view=topology&glove=pi-search&dest=ads.tracker.example`);
+await page.goto(`${BASE}/?view=topology&glove=${PI}&dest=ads.tracker.example`);
 await waitFor(async () => (await page.$$('ol[aria-label="Hops"] > li')).length > 0);
 const refusedHops = await page.$$eval('ol[aria-label="Hops"] > li', (ls) => ls.map((l) => l.innerText.split('\n')[0]));
-check('a refusal stops at the policy hop (deep link)', refusedHops.join('|') === 'pi-search sandbox|proxy service|Policy', refusedHops.join('|'));
+check('a refusal stops at the policy hop (deep link)', refusedHops.join('|') === `${PI} sandbox|proxy service|Policy`, refusedHops.join('|'));
 // A band click picks that path.
-await page.goto(`${BASE}/?view=topology&glove=pi-search`);
+await page.goto(`${BASE}/?view=topology&glove=${PI}`);
 await waitFor(async () => (await page.$$(`${DIAG} g[data-node]`)).length > 10);
 await page.evaluate(() => { const u = new URL(location.href); u.searchParams.delete('dest'); history.replaceState(null, '', u); });
 const bandSel = `${DIAG} g[data-band^="origin:exit>dest:www.nature.com"] path[stroke="transparent"]`;
 await page.$eval(bandSel, (p) => p.dispatchEvent(new MouseEvent('click', { bubbles: true })));
 check('clicking a band selects its destination', await waitFor(async () => new URL(page.url()).searchParams.get('dest') === 'www.nature.com'), page.url());
 // Open in map keeps the selection.
-await page.goto(`${BASE}/?view=topology&glove=pi-search&dest=arxiv.org`);
+await page.goto(`${BASE}/?view=topology&glove=${PI}&dest=arxiv.org`);
 await page.waitForSelector('button:has-text("Open in map")');
 await page.click('button:has-text("Open in map")');
 check('Open in map → Map tab, same destination', await waitFor(async () => { const u = new URL(page.url()); return u.searchParams.get('view') === 'map' && u.searchParams.get('dest') === 'arxiv.org'; }), page.url());
 // Panels.
-await page.goto(`${BASE}/?view=topology&glove=pi-search`);
+await page.goto(`${BASE}/?view=topology&glove=${PI}`);
 await page.waitForSelector('button[aria-label="Hide Selected path panel"]');
 await page.click('button[aria-label="Hide Selected path panel"]');
 check('Selected path panel hides', await waitFor(async () => (await page.$('button[aria-label="Hide Selected path panel"]')) === null));
@@ -67,7 +67,7 @@ check('hidden panel stays hidden after reload', await page.$('button[aria-label=
 await page.evaluate(() => localStorage.clear());
 // Other sessions draw too.
 for (const s of ['direct', 'gate-lost', 'stopped', 'exit-none', 'default-block', 'big']) {
-  await page.goto(`${BASE}/?view=topology&glove=${s}`);
+  await page.goto(`${BASE}/?view=topology&glove=${sid(s)}`);
   const ok = await waitFor(async () => (await page.$$(`${DIAG} g[data-node]`)).length > 3, 8000);
   check(`session ${s} draws`, ok);
 }
@@ -76,7 +76,7 @@ check('big session folds quiet destinations into "+N more"', bigFold.length > 0,
 // Sizes.
 for (const [w, h] of [[1440, 900], [1280, 800]]) {
   await page.setViewportSize({ width: w, height: h });
-  await page.goto(`${BASE}/?view=topology&glove=pi-search&dest=arxiv.org`);
+  await page.goto(`${BASE}/?view=topology&glove=${PI}&dest=arxiv.org`);
   await waitFor(async () => (await page.$$(`${DIAG} g[data-node]`)).length > 10);
   await page.waitForTimeout(800);
   const overflow = await overflowX(page);

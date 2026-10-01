@@ -5,8 +5,8 @@
 #
 # Layman and glove are independent: the glove mounts live in overlay files that
 # are added only when glove's own folders already exist, so starting Layman never
-# creates ~/.glove (Docker would create a missing bind source). glove creates
-# ~/.glove/control when it renders a session with a network gate; until then
+# creates ~/.glove (Docker would create a missing bind source). glove (v3)
+# creates ~/.glove/control with its home; until then
 # Layman can show that session's traffic but not change its rules. Layman never
 # creates or changes permissions on anything under ~/.glove.
 set -euo pipefail

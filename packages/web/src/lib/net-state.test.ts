@@ -9,7 +9,7 @@ import type {
 import { dest, flow, gate, rulesView, totals } from './net-test-fixtures.js';
 
 const snapshot = (token: string, over: Partial<NetSnapshot> = {}): NetSnapshot => ({
-  token, env: token, name: token, session: null, gate: gate(), exit: null, exits: [],
+  token, session: null, gate: gate(), exit: null, exits: [],
   rules: rulesView({ exists: false, file: null }),
   destinations: [dest('arxiv.org:443'), dest('gone.example:443')], flows: [flow('f1')], buckets: [{ t: 1000, up: 1, down: 2 }],
   totals: totals({ flows: 1 }), counters: { records: 1, invalid: 0, skipped: 0, gaps: 0 }, emptyFolded: 0,
@@ -23,8 +23,15 @@ const subscribed = (token: string): NetClientState => ({ ...initialNetState, sub
 
 describe('applyNetMessage', () => {
   it('records the session list, and that it has been told', () => {
-    const s = applyNetMessage(initialNetState, { type: 'net:sessions', sessions: [] });
+    const s = applyNetMessage(initialNetState, {
+      type: 'net:sessions', sessions: [], notObservable: [{ token: 'dark', harness: 'pi', template: null }],
+      registry: { state: 'v2-home', detail: 'upgrade glove' },
+    });
     expect(s.sessionsKnown).toBe(true);
+    expect(s.registry.state).toBe('v2-home');
+    expect(s.notObservable.map((n) => n.token)).toEqual(['dark']);
+    // A session without data is never a default to show.
+    expect(defaultNetToken(s.sessions, 'dark')).toBeNull();
   });
 
   it('ignores frames for a token it did not subscribe to', () => {
@@ -79,8 +86,9 @@ describe('applyNetMessage', () => {
 });
 
 const summary = (token: string, over: Partial<NetSessionSummary> = {}): NetSessionSummary => ({
-  token, env: token, name: token, harness: 'pi', live: false, firstSeen: 0, lastSeen: 0,
-  bytesUp: 0, bytesDown: 0, flows: 0, directFlows: 0, rulesOk: true, historyOnly: false, ...over,
+  token, harness: 'pi', live: false, firstSeen: 0, lastSeen: 0,
+  bytesUp: 0, bytesDown: 0, flows: 0, directFlows: 0, rulesOk: true, historyOnly: false,
+  glove: { template: null, filter: 'not-granted', transcripts: true, orphaned: false }, ...over,
 });
 
 describe('defaultNetToken', () => {

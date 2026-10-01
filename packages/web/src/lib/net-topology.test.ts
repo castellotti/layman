@@ -235,6 +235,25 @@ describe('other sessions', () => {
     expect(t.nodes.filter((n) => n.kind === 'dest').at(-1)?.title).toBe('api.github.com');
   });
 
+  it('draws glove\'s llm link (lan and cloud) through its own route, never the tunnel', () => {
+    const flags = (scope: 'lan' | 'cloud') => ({ scope, flags: { scope, unresolved: false, noHost: false, cleartext: false, fanout: false } });
+    const svc = { services: ['llm'], tools: ['llm'], clients: ['harness'] };
+    const gpu = dest('gpu.lan:8080', { ...svc, ...flags('lan'), port: 8080, bytesDown: 5000 });
+    const api = dest('api.anthropic.com:443', { ...svc, ...flags('cloud'), bytesDown: 4000 });
+    // The llm service of a v3 session is not a tcp service, so the service's route alone would say tunnel.
+    const session = { ...SESSION, services: SESSION.services.map((s) => (s.service === 'llm' ? { ...s, mode: 'http-proxy', scope: null, route: { kind: 'vpn', upstream: 'http://egress-proxy:8888' } } : s)) };
+    const data = fixture({ session }, [...fixtureDests(), gpu, api]);
+    const t = layoutTopology(data, 1080, 780);
+    expect(byId(t, 'route:llm')).toMatchObject({ title: 'LLM link', tone: 'local' });
+    expect(byId(t, 'route:llm').lines.map((l) => l.text)).toEqual(['LAN · never mapped', 'cloud · not the tunnel']);
+    for (const host of ['gpu.lan:8080', 'api.anthropic.com:443']) {
+      expect(t.bands.find((b) => b.id === `route:llm>dest:${host}`)?.kind).toBe('local');
+      expect(t.bands.some((b) => b.id.endsWith(`>dest:${host}`) && b.id.startsWith('origin:exit'))).toBe(false);
+    }
+    expect(pathHops(data, 'gpu.lan')!.hops.find((h) => h.id === 'route')).toMatchObject({ title: 'LAN link (LLM)', status: expect.stringContaining('never mapped') });
+    expect(pathHops(data, 'api.anthropic.com')!.hops.map((h) => h.id)).toEqual(['sandbox', 'service', 'policy', 'route', 'dest']);
+  });
+
   it('folds what does not fit into one "+N more" per route, keeping the busiest', () => {
     const many = Array.from({ length: 60 }, (_, i) => dest(`h${String(i).padStart(2, '0')}.example:443`, { ...proxy, bytesDown: 1000 + i }));
     const t = layoutTopology(fixture({}, many), 1080, 500);
@@ -270,7 +289,7 @@ describe('the selected path', () => {
   it('walks sandbox → service → policy → tunnel → exit → destination, saying what is declared and what verified', () => {
     const p = pathHops(fixture(), 'arxiv.org')!;
     expect(p.hops.map((h) => [h.id, h.title, h.detail, h.status, h.evidence])).toEqual([
-      ['sandbox', 'pi-search sandbox', 'pi harness', 'gate running · heartbeat 2 s', 'observed'],
+      ['sandbox', 'pi-search-0f1a2b sandbox', 'pi harness', 'gate running · heartbeat 2 s', 'observed'],
       ['service', 'proxy service', 'glove-pi-search-proxy:8888', 'observed · web_fetch', 'observed'],
       ['policy', 'Policy', 'no rule matched', 'allowed by default', 'observed'],
       ['route', 'VPN tunnel', 'egress-proxy:8888', 'declared vpn · upstream healthy', 'declared'],
