@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync, readFileSync } from 'fs';
+import { cpSync, mkdtempSync, mkdirSync, rmSync, writeFileSync, readFileSync } from 'fs';
 import { join, dirname } from 'path';
 import { tmpdir } from 'os';
 import { randomUUID } from 'crypto';
@@ -160,6 +160,18 @@ function writeGlovePiFixture(id: string, prompt?: string): { root: string; label
   return { root: sessionsDir, label: id };
 }
 
+/** glove's `claude-code` scenario (`netobs/__scenarios_v3__/`): Claude Code's layout in an observe export. */
+const GLOVE_CC_FIXTURE = join(dirname(fileURLToPath(import.meta.url)), '..', 'netobs', '__scenarios_v3__', 'claude-code', 'home', 'observe', 'claude-code-0f1a2b', 'transcripts');
+const GLOVE_CC_ID = 'claude-code-0f1a2b';
+const GLOVE_CC_SESSION_ID = '7c1d2e3f-0000-4000-8000-0f1a2b3c4d5e';
+
+/** Copy the fixture's transcripts into an observe export under the test home; returns the watch root. */
+function writeGloveClaudeFixture(): { root: string; label: string } {
+  const root = join(home, '.glove', 'observe', GLOVE_CC_ID, 'transcripts');
+  cpSync(GLOVE_CC_FIXTURE, root, { recursive: true });
+  return { root, label: GLOVE_CC_ID };
+}
+
 let discoverTranscriptFiles: typeof DiscoverFn;
 let importHistoricalSessions: typeof ImportFn;
 
@@ -210,6 +222,17 @@ describe('discoverTranscriptFiles', () => {
     expect(found[0].sessionId).toBe(GLOVE_PI_SESSION_ID);
     expect(found[0].agentType).toBe('pi');
     expect(found[0].label).toBe('pi-local-0f1a2b');
+  });
+
+  it('discovers a gloved claude-code session from its root, main transcript only, labelled', () => {
+    const { root, label } = writeGloveClaudeFixture();
+    expect(discoverTranscriptFiles()).toEqual([]);
+    const found = discoverTranscriptFiles([{ path: root, agentType: 'claude-code', label }]);
+    // The subagent transcript under <uuid>/subagents/ is not a session of its own.
+    expect(found).toEqual([{
+      path: join(root, '-work', `${GLOVE_CC_SESSION_ID}.jsonl`), sessionId: GLOVE_CC_SESSION_ID,
+      projectDir: '-work', agentType: 'claude-code', label,
+    }]);
   });
 
   it('does not scan a non-pi glove root (vibe has no history importer)', () => {
@@ -276,6 +299,33 @@ describe('importHistoricalSessions', () => {
     // The env id rides through to the session name, so the gloved import is
     // tagged just like a passively-watched gloved session.
     expect(db.sessions.get(GLOVE_PI_SESSION_ID)?.session_name).toBe('pi-local-0f1a2b');
+  });
+
+  it('imports a gloved claude-code session never watched live, tagged and marked gloved', async () => {
+    const { root, label } = writeGloveClaudeFixture();
+    const db = new FakeDb();
+    const eventStore = new EventStore();
+    const result = await importHistoricalSessions(db as unknown as Database, eventStore, makeRecorder(db), {
+      gloveRoots: [{ path: root, agentType: 'claude-code', label }],
+    });
+    expect(result.discovered).toBe(1);
+    expect(result.sessions[0]).toMatchObject({ sessionId: GLOVE_CC_SESSION_ID, agentType: 'claude-code', cwd: '/work', userPromptCount: 1 });
+    expect(db.sessions.get(GLOVE_CC_SESSION_ID)?.session_name).toBe(GLOVE_CC_ID);
+    expect(eventStore.isGloved(GLOVE_CC_SESSION_ID)).toBe(true);
+  });
+
+  it('leaves a gloved claude-code session its watcher recorded live alone when enriching', async () => {
+    const { root, label } = writeGloveClaudeFixture();
+    const db = new FakeDb();
+    // Recorded by the watcher at read time, which is earlier here than the transcript's lines:
+    // a parseAfter cutoff would add them a second time.
+    db.sessions.set(GLOVE_CC_SESSION_ID, { session_id: GLOVE_CC_SESSION_ID, cwd: '/work', agent_type: 'claude-code', started_at: 1, last_seen: 2, source: 'live', session_name: label });
+    db.events.set('live-a', { id: 'live-a', session_id: GLOVE_CC_SESSION_ID, type: 'user_prompt', timestamp: 2 });
+    const result = await importHistoricalSessions(db as unknown as Database, new EventStore(), makeRecorder(db), {
+      enrichExisting: true, gloveRoots: [{ path: root, agentType: 'claude-code', label }],
+    });
+    expect(result).toMatchObject({ discovered: 0, enriched: 0, skipped: 1 });
+    expect(db.events.size).toBe(1);
   });
 
   // Imported events never pass through EventStore, so the recorder applies the

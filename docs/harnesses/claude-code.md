@@ -123,3 +123,13 @@ status bar text).
   `DELETE` at the start of each scan removes existing 0-event `imported` phantoms (reported as
   `removedPhantoms`) — safe because `importSession()` returns early on empty input, so a 0-event
   `imported` row can only be such a phantom.
+
+### Under glove
+
+A Claude Code run inside a [glove](../extensions/glove.md) sandbox cannot post hooks to Layman, so
+it is watched passively instead: glove's observe grant exports its `~/.claude/projects`, and
+`ClaudeCodeSessionWatcher` (`packages/server/src/claude/watcher.ts`) tails it with this harness's own
+transcript parser, labelled with the glove session id. It is read-only (no approvals, no drift
+blocking), its subagent tool calls are tagged `subagentId` in the parent session, and native Claude
+Code is never tailed (hooks record it). Details: `docs/extensions/glove.md` → "Gloved Claude Code is
+watched passively".

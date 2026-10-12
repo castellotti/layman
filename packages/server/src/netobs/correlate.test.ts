@@ -3,7 +3,7 @@ import { readFileSync } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import type { TimelineEvent } from '../events/types.js';
-import { callsFrom, callTiming, correlate, flowRole, joinDistance, urlsOf, urlTarget } from './correlate.js';
+import { callsFrom, callTiming, correlate, flowRole, isFetchTool, joinDistance, urlsOf, urlTarget } from './correlate.js';
 import { parseLine, parseSessionFile } from './parse.js';
 import { NetStore } from './store.js';
 import type { FlowView, NetService, TraceCall } from './types.js';
@@ -193,6 +193,61 @@ describe('joining', () => {
     expect(flowRole({ service: 'search', tool: null, client: null, flags: FLAGS }, SERVICES)).toBe('search');
     expect(flowRole({ service: 'fanout', tool: null, client: 'searxng', flags: FLAGS }, SERVICES)).toBe('fanout');
     expect(flowRole({ service: 'proxy', tool: 'web_fetch', client: 'harness', flags: FLAGS }, SERVICES)).toBe('other');
+  });
+});
+
+describe('MCP sidecar hops (Vibe, Claude Code)', () => {
+  // As glove declares them: harness → sidecar over TCP, and the fetcher's own gate.
+  const MCP: NetService[] = [
+    { service: 'llm', listen: null, observed: true, mode: 'tcp', tool: 'llm', scope: 'local', client: 'harness' },
+    { service: 'search-mcp', listen: 'glove-v-search-mcp:8000', observed: true, mode: 'tcp', tool: 'web_search', scope: 'local', client: 'harness', harness: true },
+    { service: 'webfetch-mcp', listen: 'glove-v-webfetch-mcp:8000', observed: true, mode: 'tcp', tool: 'web_fetch', scope: 'local', client: 'harness', harness: true },
+    { service: 'webfetch-egress', listen: 'glove-v-webfetch-egress:8888', observed: true, mode: 'http-proxy', tool: 'web_fetch', client: 'webfetch', harness: false },
+  ];
+  const hop = (id: string, service: string, tool: string, tOpen: number) =>
+    flow(id, `glove-v-${service}`, tOpen, { service, tool, proto: 'tcp', scope: 'local', flags: { ...FLAGS, scope: 'local' } });
+
+  it('classifies the fetcher hop apart from a proxy and from the fetcher\'s egress', () => {
+    expect(flowRole({ service: 'webfetch-mcp', tool: 'web_fetch', client: 'harness', flags: FLAGS }, MCP)).toBe('fetchhop');
+    expect(flowRole({ service: 'webfetch-egress', tool: 'web_fetch', client: 'webfetch', flags: FLAGS }, MCP)).toBe('other');
+    expect(flowRole({ service: 'search-mcp', tool: 'web_search', client: 'harness', flags: FLAGS }, MCP)).toBe('search');
+  });
+
+  it('a fetch claims its hop to the sidecar and the sidecar\'s flow to the host; a search claims search-mcp', () => {
+    const cs = callsFrom([
+      call('mcp__searxng__web_search', { query: 'onion routing' }, T, T + 800),
+      call('webfetch_fetch_url', { url: 'https://example.com/' }, T + 1000, T + 2000),
+    ]);
+    const r = correlate({
+      calls: cs, services: MCP, from: T - 5000, flows: [
+        hop('s1', 'search-mcp', 'web_search', T + 50),
+        hop('h1', 'webfetch-mcp', 'web_fetch', T + 1050),
+        flow('e1', 'example.com', T + 1100, { service: 'webfetch-egress', client: 'webfetch' }),
+      ],
+    });
+    expect(claimedBy(r)).toEqual({ 'onion routing': ['s1'], 'https://example.com/': ['h1', 'e1'] });
+    expect(r.unattributed).toEqual([]);
+  });
+
+  it('never gives the sidecar hop to a shell command that names a URL, nor names it as riding it', () => {
+    const cs = callsFrom([
+      call('webfetch_fetch_url', { url: 'https://example.com/' }, T + 1000, T + 2000),
+      // Starts nearer the hop's open time than the fetch does.
+      call('Bash', { command: 'curl https://other.example/' }, T + 1040, T + 1500),
+    ]);
+    const kept = hop('h0', 'webfetch-mcp', 'web_fetch', T - 4000);
+    const r = correlate({
+      calls: cs, services: MCP, from: T - 5000, flows: [hop('h1', 'webfetch-mcp', 'web_fetch', T + 1050)],
+      earlier: [{ ...kept, tClose: null, state: 'pooled' }],
+    });
+    expect(claimedBy(r)).toEqual({ 'https://example.com/': ['h1'], 'https://other.example/': [] });
+    const items = r.items.filter((i) => i.kind === 'call');
+    expect(items.map((i) => i.kind === 'call' && [i.call.toolName, i.openIds])).toEqual([['webfetch_fetch_url', ['h0']], ['Bash', []]]);
+  });
+
+  it('knows each harness\'s fetch tool', () => {
+    for (const name of ['web_fetch', 'WebFetch', 'webfetch_fetch_url', 'mcp__webfetch__fetch_url']) expect(isFetchTool(name), name).toBe(true);
+    for (const name of ['Bash', 'web_search', 'Read', 'prefetch']) expect(isFetchTool(name), name).toBe(false);
   });
 });
 

@@ -51,6 +51,7 @@ import type { SearchRequest } from './db/search.js';
 import type { LaymanConfig } from './config/schema.js';
 import { VibeSessionWatcher } from './vibe/watcher.js';
 import { PiSessionWatcher, recordedCursorFrom } from './pi/watcher.js';
+import { ClaudeCodeSessionWatcher } from './claude/watcher.js';
 import { NativeVibeSource, NativePiSource, GloveSource } from './monitor/sources.js';
 import { recoverSessionGaps, importHistoricalSessions } from './hooks/recovery.js';
 import type { ServerMessage, ClientMessage, SessionStatus, SetupStatus } from './types/index.js';
@@ -195,9 +196,9 @@ export function createServer(config: LaymanConfig): LaymanServer {
 
   // Passive-watcher sources: the native root always, plus glove sandbox roots
   // when enabled. Native precedes glove so it wins any path collision. The glove
-  // source emits both Vibe and pi roots (`observe/<id>/transcripts/`); each
+  // source emits Vibe, pi and Claude Code roots (`observe/<id>/transcripts/`); each
   // watcher filters roots() to the agent type it parses, so the shared source
-  // instance feeds both.
+  // instance feeds all three.
   const gloveSource = new GloveSource(() => {
     const glove = getConfig().glove;
     return glove.enabled ? expandHome(glove.home) : null;
@@ -231,17 +232,21 @@ export function createServer(config: LaymanConfig): LaymanServer {
     gloveSource,
   ]);
   let recordedCursorStmt: BetterSqlite3.Statement<unknown[]> | null = null;
-  const piWatcher = new PiSessionWatcher(eventStore, gate, getConfig, [
-    new NativePiSource(),
-    gloveSource,
-  ], (sessionId) => {
+  // What a passive watcher's restart replay must skip: shared by the pi and gloved Claude Code watchers.
+  const recordedCursor = (sessionId: string) => {
     // Only a recorded session can be recorded twice; with recording off the replay is what shows it.
     if (!getConfig().sessionRecording) return null;
     recordedCursorStmt ??= db.prepare(`SELECT json_extract(data_json, '$.transcriptEventId') AS tid, json_extract(data_json, '$.transcriptAt') AS tat
       FROM recorded_events WHERE session_id = ?`);
     const rows = recordedCursorStmt.all(sessionId) as Array<{ tid: string | null; tat: number | null }>;
     return recordedCursorFrom(rows, (id) => redactString(id));
-  });
+  };
+  const piWatcher = new PiSessionWatcher(eventStore, gate, getConfig, [
+    new NativePiSource(),
+    gloveSource,
+  ], recordedCursor);
+  // Gloved Claude Code only: native Claude Code is recorded over hooks, so it has no source here.
+  const claudeCodeWatcher = new ClaudeCodeSessionWatcher(eventStore, gate, getConfig, [gloveSource], recordedCursor);
 
   // Persistent storage
   const db = openDatabase();
@@ -2022,6 +2027,7 @@ export function createServer(config: LaymanConfig): LaymanServer {
       registerRoutes();
       vibeWatcher.start();
       piWatcher.start();
+      claudeCodeWatcher.start();
       netObs.start();
       reconcileSync();
       syncMaintenanceTimer = setInterval(runSyncMaintenance, SYNC_MAINTENANCE_MS);
@@ -2057,6 +2063,7 @@ export function createServer(config: LaymanConfig): LaymanServer {
     async stop() {
       vibeWatcher.stop();
       piWatcher.stop();
+      claudeCodeWatcher.stop();
       netObs.stop();
       liveStreams.stop();
       syncPusher?.stop();

@@ -254,6 +254,30 @@ describe('other sessions', () => {
     expect(pathHops(data, 'api.anthropic.com')!.hops.map((h) => h.id)).toEqual(['sandbox', 'service', 'policy', 'route', 'dest']);
   });
 
+  // glove's Vibe/Claude Code sidecars: the harness reaches search and fetch over MCP (local tcp hops),
+  // and each sidecar goes out through its own gate (`harness: false`).
+  it('links each MCP sidecar to its own egress, and names the web fetcher', () => {
+    const vibe: NetSessionFile = {
+      ...SESSION, harness: 'vibe', services: [
+        SESSION.services[0],
+        { service: 'search-mcp', listen: 'glove-v-search-mcp:8000', observed: true, harness: true, mode: 'tcp', tool: 'web_search', scope: 'local', client: 'harness' },
+        { service: 'webfetch-mcp', listen: 'glove-v-webfetch-mcp:8000', observed: true, harness: true, mode: 'tcp', tool: 'web_fetch', scope: 'local', client: 'harness' },
+        { service: 'webfetch-egress', listen: 'glove-v-webfetch-egress:8888', observed: true, harness: false, mode: 'http-proxy', tool: 'web_fetch', client: 'webfetch', route: { kind: 'vpn', upstream: 'http://egress-proxy:8888' } },
+        { ...SESSION.services[3], service: 'searxng-egress' },
+      ],
+    };
+    const fetched = dest('example.com:443', { services: ['webfetch-egress'], tools: ['web_fetch'], clients: ['webfetch'], bytesUp: 500, bytesDown: 40_000 });
+    const engine = dest('www.mojeek.com:443', { ...fan, services: ['searxng-egress'], bytesDown: 9000 });
+    const data = fixture({ session: vibe }, [fetched, engine]);
+    const t = layoutTopology(data, 1400, 780);
+    const triggers = t.bands.filter((b) => b.kind === 'trigger').map((b) => [b.from, b.to]).sort();
+    expect(triggers).toEqual([['svc:search-mcp', 'svc:searxng-egress'], ['svc:webfetch-mcp', 'svc:webfetch-egress']]);
+    expect(byId(t, 'svc:webfetch-egress').lines.map((l) => l.text)).toEqual(['Web fetch → gate', 'not the harness']);
+    expect(t.captions.map((c) => c.text).sort()).toEqual(['40.5 KB via Web fetch', '9 KB via SearXNG']);
+    expect(pathHops(data, 'example.com')!.hops[0]).toMatchObject({ title: 'Web fetch (not the harness)', detail: 'page fetch', status: 'triggered by a web fetch' });
+    expect(pathHops(data, 'www.mojeek.com')!.hops[0]).toMatchObject({ title: 'SearXNG (not the harness)', detail: 'search engine fan-out' });
+  });
+
   it('folds what does not fit into one "+N more" per route, keeping the busiest', () => {
     const many = Array.from({ length: 60 }, (_, i) => dest(`h${String(i).padStart(2, '0')}.example:443`, { ...proxy, bytesDown: 1000 + i }));
     const t = layoutTopology(fixture({}, many), 1080, 500);

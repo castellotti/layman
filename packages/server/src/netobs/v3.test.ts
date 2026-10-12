@@ -199,6 +199,21 @@ describe('glove v3 grant states', () => {
     expect(obs.store.snapshot('not-observable-0f1a2b')).toBeNull();
   });
 
+  it('claude-code: a Claude Code session, its WebFetch through proxy, the guard refusing the metadata address', () => {
+    const obs = open(home('claude-code'));
+    const id = 'claude-code-0f1a2b';
+    expect(summary(obs, id)).toMatchObject({
+      harness: 'claude-code', flows: 2,
+      glove: { template: 'claude-code', filter: 'not-granted', transcripts: true, orphaned: false },
+    });
+    const snap = obs.store.snapshot(id)!;
+    expect(snap.session).toMatchObject({ harness: 'claude-code', env: id, session: id });
+    expect(snap.session!.services.map((sv) => [sv.service, sv.tool, sv.mode])).toEqual([['llm', 'llm', 'tcp'], ['proxy', 'web_fetch', 'http-proxy']]);
+    const dest = (host: string) => snap.destinations.find((d) => d.host === host)!;
+    expect(dest('en.wikipedia.org')).toMatchObject({ services: ['proxy'], tools: ['web_fetch'], scope: 'direct' });
+    expect(dest('169.254.169.254').state).toBe('guard');
+  });
+
   it('a glove v2 home is reported on the session list, not read', () => {
     const h = join(root, 'v2');
     mkdirSync(join(h, 'envs', 'pi-local', 'sessions', 'pi-local', 'net'), { recursive: true });

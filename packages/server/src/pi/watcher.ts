@@ -204,8 +204,8 @@ export class PiSessionWatcher {
     // Size before read, so a concurrent append can only make the stored size an
     // under-estimate (re-parsed next poll, then deduped) — never an over-estimate
     // that would skip a real append.
-    const size = this.sizeOf(filePath);
-    const lines = this.readLines(filePath);
+    const size = sizeOf(filePath);
+    const lines = readLines(filePath);
     if (!lines) return;
 
     const { events, metadata } = parsePiTranscript(lines, sessionId);
@@ -227,7 +227,7 @@ export class PiSessionWatcher {
     console.log(`[pi] Tracking session ${sessionId.slice(0, 8)} (${basename(filePath)})${tag}`);
 
     // Replay recently-touched sessions from the beginning; skip history for old ones.
-    const lastTouchedMs = metadata.lastTimestamp || this.mtimeOf(filePath);
+    const lastTouchedMs = metadata.lastTimestamp || mtimeOf(filePath);
     const isRecent = Date.now() - lastTouchedMs < REPLAY_WINDOW_MS;
 
     const session: TrackedSession = {
@@ -261,10 +261,10 @@ export class PiSessionWatcher {
   private pollSession(session: TrackedSession): void {
     // pi only appends: an unchanged file size means no new lines, so skip the
     // full re-read + re-parse (which grows O(n) with the transcript) entirely.
-    const size = this.sizeOf(session.file);
+    const size = sizeOf(session.file);
     if (size <= session.lastSize) return;
 
-    const lines = this.readLines(session.file);
+    const lines = readLines(session.file);
     if (!lines) return;
     session.lastSize = size;
 
@@ -293,54 +293,8 @@ export class PiSessionWatcher {
     }
   }
 
-  /**
-   * Translate one parsed event into an EventStore.add() call. Uses the store's
-   * live path (fresh id, current timestamp) exactly as the vibe watcher does, so
-   * a passively-tailed session is a `live` source and history-import re-parsing
-   * won't double-record it. Tool completions get the same file/url access
-   * extraction the vibe watcher performs.
-   */
   private emitEvent(session: TrackedSession, ev: TimelineEvent): void {
-    const { sessionId, agentType } = session;
-    // The live path stamps the event with the time it was read; keep the
-    // transcript's own times beside it, for joining tool calls to glove's
-    // network flows (netobs/correlate.ts). `timestamp`/`completedAt` keep
-    // their meaning for everything else.
-    const transcript = {
-      // The parser's deterministic id: what a restart checks to skip events already recorded.
-      transcriptEventId: ev.id,
-      ...(ev.timestamp > 0 ? { transcriptAt: ev.timestamp } : {}),
-      ...(ev.type === 'tool_call_completed' && typeof ev.data.completedAt === 'number' && ev.data.completedAt > 0
-        ? { transcriptCompletedAt: ev.data.completedAt } : {}),
-    };
-
-    if (ev.type === 'tool_call_completed') {
-      const toolName = String(ev.data.toolName ?? 'unknown');
-      const toolInput = (ev.data.toolInput as Record<string, unknown>) ?? {};
-      const toolOutput = ev.data.toolOutput ?? '';
-      const completedAt = Date.now();
-
-      const access = extractAccess(toolName, toolInput, toolOutput, '', completedAt);
-      const filesWithId = access.files.length > 0 ? access.files : undefined;
-      const urlsWithId = access.urls.length > 0 ? access.urls : undefined;
-
-      const event = this.eventStore.add('tool_call_completed', sessionId, {
-        ...ev.data,
-        ...transcript,
-        completedAt,
-        fileAccess: filesWithId,
-        urlAccess: urlsWithId,
-      }, ev.riskLevel, agentType);
-
-      if (filesWithId) filesWithId.forEach(f => f.eventId = event.id);
-      if (urlsWithId) urlsWithId.forEach(u => u.eventId = event.id);
-      if (filesWithId || urlsWithId) {
-        this.eventStore.recordAccess(sessionId, filesWithId ?? [], urlsWithId ?? []);
-      }
-      return;
-    }
-
-    this.eventStore.add(ev.type, sessionId, { ...ev.data, ...transcript }, ev.riskLevel, agentType);
+    emitTranscriptEvent(this.eventStore, session.sessionId, session.agentType, ev);
   }
 
   private cleanupEndedSessions(): void {
@@ -386,10 +340,10 @@ export class PiSessionWatcher {
   private tryResumeSession(session: TrackedSession): void {
     // A tombstone stays in the map forever; short-circuit on unchanged size so an
     // ended session isn't re-read and re-parsed on every scan tick indefinitely.
-    const size = this.sizeOf(session.file);
+    const size = sizeOf(session.file);
     if (size <= session.lastSize) return;
 
-    const lines = this.readLines(session.file);
+    const lines = readLines(session.file);
     if (!lines) return;
     session.lastSize = size;
 
@@ -412,30 +366,55 @@ export class PiSessionWatcher {
     console.log(`[pi] Session ${session.sessionId.slice(0, 8)} resumed (gap ${gapMinutes}m)`);
   }
 
-  private readLines(filePath: string): string[] | null {
-    try {
-      const content = readFileSync(filePath, 'utf-8');
-      return content.length === 0 ? [] : content.split('\n').filter(Boolean);
-    } catch {
-      return null;
+}
+
+/**
+ * Translate one parsed event into an EventStore.add() call. Uses the store's
+ * live path (fresh id, current timestamp) exactly as the vibe watcher does, so
+ * a passively-tailed session is a `live` source and history-import re-parsing
+ * won't double-record it. Tool completions get the same file/url access
+ * extraction the vibe watcher performs. Shared with `ClaudeCodeSessionWatcher`.
+ */
+export function emitTranscriptEvent(eventStore: EventStore, sessionId: string, agentType: string, ev: TimelineEvent): void {
+  // The live path stamps the event with the time it was read; keep the
+  // transcript's own times beside it, for joining tool calls to glove's
+  // network flows (netobs/correlate.ts). `timestamp`/`completedAt` keep
+  // their meaning for everything else.
+  const transcript = {
+    // The parser's deterministic id: what a restart checks to skip events already recorded.
+    transcriptEventId: ev.id,
+    ...(ev.timestamp > 0 ? { transcriptAt: ev.timestamp } : {}),
+    ...(ev.type === 'tool_call_completed' && typeof ev.data.completedAt === 'number' && ev.data.completedAt > 0
+      ? { transcriptCompletedAt: ev.data.completedAt } : {}),
+  };
+
+  if (ev.type === 'tool_call_completed') {
+    const toolName = String(ev.data.toolName ?? 'unknown');
+    const toolInput = (ev.data.toolInput as Record<string, unknown>) ?? {};
+    const toolOutput = ev.data.toolOutput ?? '';
+    const completedAt = Date.now();
+
+    const access = extractAccess(toolName, toolInput, toolOutput, '', completedAt);
+    const filesWithId = access.files.length > 0 ? access.files : undefined;
+    const urlsWithId = access.urls.length > 0 ? access.urls : undefined;
+
+    const event = eventStore.add('tool_call_completed', sessionId, {
+      ...ev.data,
+      ...transcript,
+      completedAt,
+      fileAccess: filesWithId,
+      urlAccess: urlsWithId,
+    }, ev.riskLevel, agentType);
+
+    if (filesWithId) filesWithId.forEach(f => f.eventId = event.id);
+    if (urlsWithId) urlsWithId.forEach(u => u.eventId = event.id);
+    if (filesWithId || urlsWithId) {
+      eventStore.recordAccess(sessionId, filesWithId ?? [], urlsWithId ?? []);
     }
+    return;
   }
 
-  private mtimeOf(filePath: string): number {
-    try {
-      return statSync(filePath).mtimeMs;
-    } catch {
-      return 0;
-    }
-  }
-
-  private sizeOf(filePath: string): number {
-    try {
-      return statSync(filePath).size;
-    } catch {
-      return 0;
-    }
-  }
+  eventStore.add(ev.type, sessionId, { ...ev.data, ...transcript }, ev.riskLevel, agentType);
 }
 
 /** What the database already holds of a session, for a replay after a restart to skip. */
@@ -484,4 +463,30 @@ export function recordedCursorFrom(
  */
 function committedEvents(events: TimelineEvent[]): TimelineEvent[] {
   return events.filter((e) => e.type !== 'tool_call_pending');
+}
+
+/** Shared with `ClaudeCodeSessionWatcher`. */
+export function readLines(filePath: string): string[] | null {
+  try {
+    const content = readFileSync(filePath, 'utf-8');
+    return content.length === 0 ? [] : content.split('\n').filter(Boolean);
+  } catch {
+    return null;
+  }
+}
+
+export function mtimeOf(filePath: string): number {
+  try {
+    return statSync(filePath).mtimeMs;
+  } catch {
+    return 0;
+  }
+}
+
+export function sizeOf(filePath: string): number {
+  try {
+    return statSync(filePath).size;
+  } catch {
+    return 0;
+  }
 }
