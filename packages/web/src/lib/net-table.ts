@@ -11,7 +11,7 @@
 import { BLOCK_STATES, LEGEND_BY_KEY, NET_STATE_INFO, formatAge, type StateIcon, type ToggleKind } from './net-format.js';
 import type { NetSessionData } from './net-state.js';
 import { CUT_PREFIX, toggleFor } from './net-rules.js';
-import type { DestinationAggregate, FlowView, NetService, NetState, RateBucket, Rule } from './netobs-types.js';
+import { isLanOnlyRule, type DestinationAggregate, type FlowView, type NetService, type NetState, type RateBucket, type Rule } from './netobs-types.js';
 
 export type GroupBy = 'domain' | 'route' | 'tool';
 export type SortBy = 'recent' | 'bytes';
@@ -105,11 +105,16 @@ export interface TableModel {
 
 const LIVE: ReadonlySet<NetState> = new Set(['active', 'pooled']);
 const ROUTE_NAME: Record<string, string> = { vpn: 'VPN', tor: 'Tor', direct: 'Direct', corporate: 'Corporate' };
-const TOOL_LABEL: Record<string, string> = { 'search-engine-fanout': 'fan-out' };
+const TOOL_LABEL: Record<string, string> = { 'search-engine-fanout': 'fan-out', gh: 'GitHub', ssh: 'SSH' };
 /** How the Local links group names its members. */
-const LOCAL_NAME: Record<string, string> = { llm: 'LLM', web_search: 'SearXNG', web_fetch: 'Web fetch' };
+const LOCAL_NAME: Record<string, string> = {
+  llm: 'LLM', web_search: 'SearXNG', web_fetch: 'Web fetch', web_download: 'Web download', gh: 'GitHub', ssh: 'SSH',
+};
+/** What a `lan` host is, by its tool: the scope is shared by the llm link and glove's relays. */
+const LAN_NAME: Record<string, string> = { llm: 'LLM', ssh: 'SSH' };
 
-const isLocalLink = (d: DestinationAggregate) => d.flags.scope === 'local' && d.state !== 'guard';
+/** A local link, or a hop to a sidecar (the `llm` hop to llm-auth), which is one whatever its scope says. */
+const isLocalLink = (d: DestinationAggregate) => (d.flags.scope === 'local' || d.flags.hop) && d.state !== 'guard';
 
 export function toolLabel(tool: string): string {
   return TOOL_LABEL[tool] ?? tool;
@@ -138,6 +143,7 @@ export function hostLabel(d: Pick<DestinationAggregate, 'host' | 'port' | 'endpo
 
 /** Why glove's guard refused a destination, as the design's sublabels put it. */
 export function guardReason(d: Pick<DestinationAggregate, 'host' | 'rule'>): string {
+  if (isLanOnlyRule(d.rule)) return 'LAN name resolved to a public address';
   if (d.rule === 'builtin:malformed-request' || d.host === null) return 'no destination';
   const h = d.host.toLowerCase();
   if (h === '169.254.169.254' || h === 'metadata.google.internal') return 'cloud metadata';
@@ -217,7 +223,8 @@ function stateCell(
         : c(`finished · ${s.closeReason ?? 'eof'}`);
       break;
     case 'guard':
-      cell = c(s.rule === 'builtin:malformed-request' ? 'refused · malformed request' : 'refused by glove guard');
+      cell = c(s.rule === 'builtin:malformed-request' ? 'refused · malformed request'
+        : isLanOnlyRule(s.rule) ? 'refused · LAN name resolved to a public address' : 'refused by glove guard');
       break;
     case 'user_rule': {
       if (s.rule?.startsWith(CUT_PREFIX)) {
@@ -252,13 +259,18 @@ function stateCell(
 }
 
 /** The Route column: how the traffic left, or that it never did. */
-function routeCell(ctx: Ctx, d: { state: NetState; scope: string }): CellText {
-  if (d.state === 'guard' || (BLOCK_STATES.has(d.state) && d.scope === 'local')) {
+function routeCell(ctx: Ctx, d: { state: NetState; scope: string; flags: { hop: boolean }; tool?: string | null; tools?: string[] }): CellText {
+  if (d.state === 'guard' || (BLOCK_STATES.has(d.state) && (d.scope === 'local' || d.flags.hop))) {
     return { text: 'never left', colourVar: 'var(--text-faint)', icon: 'shield' };
   }
   if (d.scope === 'local') return { text: 'local', colourVar: 'var(--text-muted)', icon: 'home' };
-  // glove's llm link: neither the tunnel nor an untunnelled leak (LEGEND lan / cloud).
-  if (d.scope === 'lan') return { text: 'LAN · LLM', colourVar: 'var(--text-muted)', icon: LEGEND_BY_KEY.lan.icon };
+  // The llm hop ends at glove's llm-auth sidecar; the provider leg (llm-upstream) is the one that leaves.
+  if (d.flags.hop) return { text: 'local · hop', colourVar: 'var(--text-muted)', icon: LEGEND_BY_KEY.hop.icon };
+  // glove's llm link and its LAN relays: neither the tunnel nor an untunnelled leak (LEGEND lan / cloud).
+  if (d.scope === 'lan') {
+    const name = LAN_NAME[d.tool ?? d.tools?.[0] ?? ''];
+    return { text: name ? `LAN · ${name}` : 'LAN', colourVar: 'var(--text-muted)', icon: LEGEND_BY_KEY.lan.icon };
+  }
   if (d.scope === 'cloud') return { text: 'cloud · LLM', colourVar: 'var(--text-muted)', icon: LEGEND_BY_KEY.cloud.icon };
   if (d.scope === 'direct') return { text: 'Direct', colourVar: 'var(--error)', icon: 'direct' };
   const kind = ctx.data.gate.route.kind;

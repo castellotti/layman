@@ -1,7 +1,8 @@
 /**
  * The four network tabs and each one's panels. Order here is the
  * default order; visibility defaults follow the plan (Network: Table, Map and
- * Rules on, Activity and Details off; Trace keeps only Trace and Details).
+ * Rules on, Activity and Details off; Trace keeps Trace, Details and the
+ * session's Downloads).
  */
 import type { ViewMode } from '../../stores/sessionStore.js';
 import type { PanelDef } from '../../lib/net-panels.js';
@@ -39,5 +40,6 @@ export const TAB_PANELS: Record<NetTab, readonly PanelDef[]> = {
   trace: [
     { id: 'trace', title: 'Agent trace', chip: 'Trace', icon: 'trace', defaultVisible: true, column: 'main' },
     { id: 'details', title: 'Details', chip: 'Details', icon: 'details', defaultVisible: true, column: 'side' },
+    { id: 'downloads', title: 'Downloads', chip: 'Downloads', icon: 'pin', defaultVisible: true, column: 'side' },
   ],
 };

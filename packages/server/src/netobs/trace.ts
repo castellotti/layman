@@ -13,7 +13,7 @@ import type { TimelineEvent } from '../events/types.js';
 import type { Turn } from '../turns/types.js';
 import { callsFrom, correlate, JOIN_BEFORE_MS } from './correlate.js';
 import type { NetStore } from './store.js';
-import type { TraceCall, TraceCounts, TraceNav, TraceTurn, TraceView } from './types.js';
+import type { SessionDownload, TraceCall, TraceCounts, TraceNav, TraceTurn, TraceView } from './types.js';
 
 export interface TraceDeps {
   /** Layman session ids whose `sessionName` is this token. */
@@ -93,12 +93,36 @@ export function buildTrace(store: NetStore, token: string, deps: TraceDeps, sele
 
   const counts: TraceCounts = { ...empty, calls: calls.length, flows: flows.length };
   for (const f of flows) {
-    counts.bytesUp += f.bytes.up;
-    counts.bytesDown += f.bytes.down;
+    // A hop's bytes are its next leg's too (the llm hop to llm-auth): counted once, as the session totals do.
+    if (!f.flags.hop) {
+      counts.bytesUp += f.bytes.up;
+      counts.bytesDown += f.bytes.down;
+    }
     if (f.state === 'guard') counts.refused++;
     else if (f.state === 'user_rule' || f.state === 'default_block') counts.blocked++;
   }
   return { ...base, turn: view(cur), window: { from, to }, items, unattributed, flows: shown, counts };
+}
+
+/**
+ * Every file a `web_download` call of the glove session reported saved, oldest first: read from
+ * the results Layman already recorded, never from the sandbox. `web_download_status` repeats a
+ * finished job, so a file is listed once, under the first call that reported it.
+ */
+export function downloadsIn(store: NetStore, token: string, deps: TraceDeps): SessionDownload[] | null {
+  if (!store.has(token)) return null;
+  const seen = new Set<string>();
+  const out: SessionDownload[] = [];
+  const calls = deps.sessionsNamed(token).flatMap((sid) => callsFrom(deps.events(sid))).sort((a, b) => a.start - b.start);
+  for (const c of calls) {
+    for (const d of c.downloads) {
+      const key = `${d.path}\n${d.sha256 ?? ''}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push({ ...d, eventId: c.eventId, sessionId: c.sessionId, toolName: c.toolName, url: c.targets.length ? c.label : null, at: c.start });
+    }
+  }
+  return out;
 }
 
 /** Every tool call of the glove session's Layman sessions that started in [from, to]: the Map ribbon's markers. */

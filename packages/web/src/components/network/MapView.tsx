@@ -15,7 +15,7 @@ import { clockTime, destinationRow, rateOf, sessionAnchor, toolLabel, type Table
 import { RIBBON_MS, ribbonLanes, unknownLocation } from '../../lib/net-geo.js';
 import { useNetCalls } from '../../hooks/useNetTrace.js';
 import { controlDisabledReason } from '../../lib/net-rules.js';
-import type { DestinationAggregate } from '../../lib/netobs-types.js';
+import { offMap, type DestinationAggregate } from '../../lib/netobs-types.js';
 import type { useNetPanels } from '../../hooks/useNetPanels.js';
 import { NetToggle } from './cells.js';
 import { ControlPopover, buttonStyle } from './ControlPopover.js';
@@ -160,8 +160,11 @@ function UnknownCard({ data, select }: { data: NetSessionData; select: (h: strin
 }
 
 function SandboxCard({ data }: { data: NetSessionData }) {
-  const locals = [...data.destinations.values()].filter((d) => d.scope === 'local' && d.state !== 'guard');
-  const names = [...new Set(locals.map((d) => (d.tools.includes('llm') ? 'LLM' : d.tools.includes('web_search') ? 'SearXNG' : d.tools.includes('web_fetch') ? 'Web fetch' : d.host ?? d.endpoint ?? 'local')))];
+  // Never on the map: local links, LAN hosts (the llm link or an ssh relay host) and hops to a sidecar.
+  const locals = [...data.destinations.values()].filter((d) => offMap(d) && d.state !== 'guard');
+  const names = [...new Set(locals.map((d) => (d.tools.includes('llm') ? 'LLM' : d.tools.includes('web_search') ? 'SearXNG'
+    : d.tools.includes('web_fetch') ? 'Web fetch' : d.tools.includes('web_download') ? 'Web download'
+      : d.tools.includes('ssh') ? `SSH ${d.host ?? ''}`.trim() : d.host ?? d.endpoint ?? 'local')))];
   const unwatched = data.gate.unwatchedServices;
   const chip = (text: string, faint: boolean, icon: NetIconName) => (
     <span key={text} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, height: 22, padding: '0 8px', borderRadius: 11, fontSize: 10.5, color: faint ? 'var(--text-faint)' : 'var(--text-body)', border: '1px solid var(--border-strong)' }}>

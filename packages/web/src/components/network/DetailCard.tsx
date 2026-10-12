@@ -13,7 +13,7 @@ import { formatBytes, formatAge } from '../../lib/net-format.js';
 import type { NetSessionData } from '../../lib/net-state.js';
 import { clockTime, flowLabel, toolLabel } from '../../lib/net-table.js';
 import { controlDisabledReason, siblingIds } from '../../lib/net-rules.js';
-import type { DestinationAggregate, FlowView, GeoStatus, RulesOp, TraceView } from '../../lib/netobs-types.js';
+import { isLanOnlyRule, type DestinationAggregate, type FlowView, type GeoStatus, type RulesOp, type TraceView } from '../../lib/netobs-types.js';
 import { buttonStyle } from './ControlPopover.js';
 import { NetIcon } from './netui.js';
 import { useNetTrace } from '../../hooks/useNetTrace.js';
@@ -95,6 +95,8 @@ function locationText(d: DestinationAggregate, geo: GeoStatus | null): { v: stri
     return { v: where || `${d.geo.lat.toFixed(2)}, ${d.geo.lon.toFixed(2)}`, sub: `offline ${geo?.databaseType ?? 'database'} · file lookup` };
   }
   if (d.scope === 'local') return { v: 'not placed', sub: 'a local link is never on the map' };
+  if (d.flags.hop) return { v: 'not placed', sub: 'a hop to glove’s llm-auth sidecar; the provider leg is the one that leaves' };
+  if (d.scope === 'lan') return { v: 'not placed', sub: 'a host on your local network is never on the map' };
   if (!d.ips.length) return { v: 'unknown', sub: 'glove has no IP for it; Layman never looks one up' };
   if (!geo?.loaded) return { v: 'unknown', sub: 'no geolocation database (Settings → Glove)' };
   return { v: 'unknown', sub: 'not in the geolocation database' };
@@ -106,13 +108,17 @@ function Policy({ data, d }: { data: NetSessionData; d: DestinationAggregate }) 
   const apply = (op: RulesOp) => useNetStore.getState().applyRules(op);
   const pending = d.policy.written && v && (d.policy.written.action !== v.action || d.policy.written.rule !== v.rule);
   let badge: { text: string; colour: string; sub: string };
-  if (d.state === 'guard') badge = { text: 'Refused by glove guard', colour: 'var(--warn)', sub: 'no rule can allow it' };
+  if (d.state === 'guard' && isLanOnlyRule(d.rule)) {
+    badge = { text: 'Refused by glove · LAN only', colour: 'var(--warn)', sub: 'its name resolved to a public address; glove decides this at each connection, so it is not predicted' };
+  } else if (d.state === 'guard') badge = { text: 'Refused by glove guard', colour: 'var(--warn)', sub: 'no rule can allow it' };
   else if (!v) badge = { text: 'Unknown', colour: 'var(--text-muted)', sub: 'Layman has not seen the rules the gate enforces' };
   else if (v.action === 'allow' && v.allowlist) {
     // Corporate route: the rules pass it on; the corporate allowlist (glove-session.yml) decides, and no rule can widen it.
     badge = { text: 'Up to the corporate allowlist', colour: 'var(--text-body)', sub: `${v.rule ? `rule ${v.rule} lets it through` : 'no rule blocks it'}; the session’s corporate allowlist decides` };
   } else if (v.action === 'allow') badge = { text: 'Allowed', colour: 'var(--net-tunnel)', sub: v.rule ? `by rule ${v.rule}` : 'by default · no rule matches' };
   else badge = { text: v.rule ? 'Blocked by your rule' : 'Blocked by the default', colour: 'var(--error)', sub: v.rule ?? 'nothing allowed it' };
+  // glove's --lan-only refused it before: whether the next connection goes through depends on a resolution Layman never sees.
+  if (v?.lanOnly && d.state !== 'guard') badge = { ...badge, sub: `${badge.sub} · glove has also refused it as LAN-only (decided per connection, not predicted)` };
   const host = d.host;
   const apex = d.groupKey.includes('.') && d.groupKey !== host ? d.groupKey : null;
   const rules = data.rules.enforced?.rules ?? data.rules.file?.rules ?? [];

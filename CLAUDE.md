@@ -124,6 +124,11 @@ linked above.
    dead gate left open is glove's rule (`ended_runs`, glove v3 `extensions/observe/netview.py`), ported in `NetStore` and held to it
    by a cross-check that runs glove's own function — change both or neither. State labels, colours and
    toggles come from one legend table (`NET_LEGEND` in `lib/net-format.ts`) that every view reads.
+   `scope: lan` is not only the LLM (glove's ssh relay uses it too): name it by its tool
+   (`isInferenceScope`), and Cut all covers what rides `lan`/`cloud` by `tool: llm` (both legs of an
+   llm-auth call) and `tool: ssh`, never by scope, which no rule may name. A hop to a sidecar that goes
+   on through another gate (`FlowFlags.hop`, the `llm` hop to llm-auth) is a local link whose bytes
+   count once, at the next leg (design: glove.md → "llm-auth, the relays and downloads").
    Rules: `netobs/rules.ts` is a port of glove's `policy.py` validator/evaluator (v3: `extensions/gate/netgate/`) and of its built-in
    `guard.check` (which refuses non-public proxy destinations by host shape and by in-tunnel IP before
    any rule, so a prediction must go through `predict()`, never `evaluate()` alone), held to both by a

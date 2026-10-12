@@ -329,6 +329,71 @@ section). It is not "open" in any sense the UI means, so `totals.openFlows` and 
 new `sha256` (of the file now enforced) and `last_rejected` (`{checked_at, source_mtime, sha256, error}`,
 kept after a later acceptance); they are how the rules writer confirms a write.
 
+### llm-auth, the relays and downloads (glove rounds 1–10)
+
+glove's record contract did not change, but its gates now record traffic the views first misread.
+Layman matches these by `tool`, `client` and `harness`, not by service names, except where noted.
+
+- **A model call through llm-auth is two flows.** With an injected API key (or `auth: oauth`), the
+  harness's `llm` forwarder ends at glove's `llm-auth` sidecar, which adds the key and dials the
+  provider through a second gate, `llm-upstream` (`harness: false`, client `llm`, same `tool: llm` and
+  scope). `nextServices()` (`types.ts`, both mirrors) says which service goes on through which. It
+  uses glove's `next` field when `session.json` has one (asked of glove, additive), and otherwise
+  the one pair it knows: a harness-side `tool: llm` service → the `harness: false` `tool: llm`
+  services. Its flows carry `FlowFlags.hop`:
+  - **Counted once.** A hop's bytes are left out of the session totals and rate buckets, and so out
+    of what history keeps (`setPre` skips them in `seen` too). The provider leg counts them. The
+    hop's own destination keeps its bytes. `history.test.ts` restarts at every record of this case.
+  - **A local link, whatever its scope says.** The hop carries the provider's `cloud`, but it is
+    never geolocated or mapped (`offMap`), it sits in "Local links", and its route reads "local · hop".
+  - **Trace** gives one LLM row per request. Each hop is folded into the nearest upstream leg that
+    opened while it was open, one to one, so pooling on either side never merges two requests. A
+    leftover hop or leg is a row of its own. The row expands to both flows. Its bytes are the leg's.
+  - **Topology** draws `llm-upstream` as a service, not an egress consumer: no sandbox band, and a
+    band from `llm` to it labelled with the sidecar ("via llm-auth"). The selected path is sandbox →
+    `llm` → llm-auth (adds the API key) → `llm-upstream` → LLM link → provider.
+- **`scope: lan` is not only the LLM.** glove's ssh relay sets it explicitly on its per-host gates
+  (`ssh-<name>`, client `ssh`, `tool: ssh`). `isInferenceScope(scope, tool)` is the llm link
+  (`cloud`, or `lan` with `tool: llm`). `isOffTunnelScope` is "never tunnelled, never an alert".
+  The table names a `lan` host by its tool ("LAN · LLM", "LAN · SSH", else "LAN"). Topology routes
+  an ssh host as a LAN link (local, never the llm route), and the legend row is "LAN link".
+- **Cut all** matches by tool, because `lan` and `cloud` cannot be named in a rule (`RULE_SCOPES`).
+  It writes `tool: llm` (kept or cut, which covers both legs: matching `service: llm` left
+  `llm-upstream` to the new default block, so "keep the LLM" broke the LLM). It adds
+  `{block, tool: ssh, terminate: true}`, since without it the default would refuse new ssh
+  connections but leave open ones running. The server's `opRules` and the client's `previewRules`
+  change together.
+- **`--lan-only`** refuses a `via: lan` name that resolved to a public address, with
+  `rule: "lan-only"`. That is glove refusing, not a user's rule, so `classifyFlow` reads it as
+  `guard` (and `builtin:lan-only`, should glove rename it). The rule is decided at each connection,
+  on a resolution Layman never sees, so it is not predicted. A destination it refused carries
+  `policy.*.lanOnly`, and the Details card says so instead of promising an allow.
+- **Downloads.** `web_download` reaches the same fetcher as `webdownload-mcp`
+  (`tool: web_download`) and goes out through `webdownload-egress` (client `webfetch`). In Trace,
+  only the download tools (`web_download`, `web_download_status`, and their MCP spellings) claim
+  the download hop and its egress. A fetch call claims neither, and a download call claims no fetch
+  hop. A status call names no URL, so it can claim only the hop. A long download stays with the
+  call whose window it opened in. Topology takes an egress consumer's trigger from its own `tool`
+  first, so `webdownload-egress` hangs off `webdownload-mcp`, not the fetch hop. The saved files
+  come from the recorded results (`saved:`, `bytes:`, `sha256:`, `content_type:`, `final_url:`):
+  - in a download call's Details;
+  - in the Trace tab's Downloads panel (`GET /api/net/sessions/:token/downloads`, one entry per
+    file, under the call that first reported it).
+
+  Nothing is read from the sandbox. Layman makes no "safe to open" claim, and glove quarantines
+  the files on macOS at `glove down`.
+- **Relays in Trace.** A shell command claims its relay's flows in its window, read from its leading
+  words only (`shell.ts`): quotes respected, `cd …&&`, `VAR=x` and wrappers skipped. `gh …`, and git
+  `push`/`pull`/`fetch`/`clone`/`ls-remote` (glove's git shim relays only those), claim `client: github`
+  flows. `ssh [opts] <name> …` claims the gate `ssh-<name>` first, and any ssh flow only when no gate
+  has that name. `echo "gh pr list"` claims nothing. Such calls are `kind: 'relay'` and carry
+  `relay: {via, host}`.
+- **Client labels are open.** `EGRESS_CLIENTS` (`net-topology.ts`) no longer calls `github`/`ssh`
+  "planned", and it names `llm` (llm-auth) for labelling only. An unknown client shows raw.
+
+Until glove ships netobs-v3 scenarios for these (asked of glove), the tests use hand-made records
+(`netobs/testing/rounds.ts`, `rounds.test.ts`, web `net-rounds.test.ts`). Replace them when glove's land.
+
 ### Gate lifecycle: flows that never close
 
 Before glove's follow-up, a forwarder killed with SIGKILL left its open flows looking pooled forever:

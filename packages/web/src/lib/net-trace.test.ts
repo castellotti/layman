@@ -6,12 +6,12 @@ import type { FlowView, TraceCall, TraceView } from './netobs-types.js';
 const T = 1_000_000;
 const call = (eventId: string, kind: TraceCall['kind'], label: string, start: number, over: Partial<TraceCall> = {}): TraceCall => ({
   eventId, sessionId: 's1', toolName: kind === 'search' ? 'web_search' : kind === 'fetch' ? 'web_fetch' : 'Bash', kind, label,
-  targets: [], redacted: false, start, end: start + 800, timing: 'exact', failed: false, ...over,
+  targets: [], redacted: false, start, end: start + 800, timing: 'exact', failed: false, relay: null, downloads: [], nested: [], ...over,
 });
 const closed = (id: string, host: string | null, tOpen: number, over: Partial<FlowView> = {}) =>
   flow(id, { phase: 'close', tOpen, tClose: tOpen + 600, lastT: tOpen + 600, closeReason: 'eof', state: 'finished', dest: { host, port: 443, ip: '151.101.3.42', resolution: 'in-tunnel' }, ...over });
-const FAN = { scope: 'tunnelled' as const, unresolved: false, noHost: false, cleartext: false, fanout: true };
-const LOCAL = { scope: 'local' as const, unresolved: false, noHost: false, cleartext: false, fanout: false };
+const FAN = { scope: 'tunnelled' as const, unresolved: false, noHost: false, cleartext: false, fanout: true, hop: false };
+const LOCAL = { scope: 'local' as const, unresolved: false, noHost: false, cleartext: false, fanout: false, hop: false };
 
 function view(): TraceView {
   const flows = [
@@ -30,7 +30,7 @@ function view(): TraceView {
     turn: { sessionId: 's1', promptEventId: 'p1', responseEventId: 'r1', index: 2, startedAt: T, promptText: 'onion routing', toolCallCount: 4 },
     window: { from: T - 1000, to: T + 60_000 },
     items: [
-      { kind: 'llm', flowId: 'llm1' },
+      { kind: 'llm', flowId: 'llm1', hopIds: [] },
       { kind: 'call', call: call('c1', 'search', 'history of onion routing', T + 1000), flowIds: ['s'], fanoutIds: ['f1', 'f2'], openIds: [] },
       { kind: 'call', call: call('c2', 'fetch', 'https://arxiv.org/abs/1', T + 2900), flowIds: ['a'], fanoutIds: [], openIds: [] },
       { kind: 'call', call: call('c3', 'fetch', 'http://169.254.169.254/latest/meta-data/', T + 3900), flowIds: ['g'], fanoutIds: [], openIds: [] },
@@ -148,7 +148,7 @@ describe('selection', () => {
     expect(f({ state: 'default_block' })).toBe('blocked · the default');
     expect(f({ state: 'broken', closeReason: 'upstream_unreachable' })).toBe('path broken · upstream');
     expect(f({ state: 'gate_shutdown' })).toBe('cut · gate shutdown');
-    expect(f({ flags: { scope: 'tunnelled', unresolved: false, noHost: false, cleartext: true, fanout: false } })).toBe('finished · cleartext');
-    expect(f({ flags: { scope: 'direct', unresolved: false, noHost: false, cleartext: false, fanout: false } })).toBe('finished · untunnelled');
+    expect(f({ flags: { scope: 'tunnelled', unresolved: false, noHost: false, cleartext: true, fanout: false, hop: false } })).toBe('finished · cleartext');
+    expect(f({ flags: { scope: 'direct', unresolved: false, noHost: false, cleartext: false, fanout: false, hop: false } })).toBe('finished · untunnelled');
   });
 });

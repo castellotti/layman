@@ -11,6 +11,7 @@ import { fileURLToPath } from 'url';
 import type { HistorySession, NetHistory } from './history.js';
 import { NetObs } from './index.js';
 import { TEST_ID, addGloveSession } from './testing/glove-home.js';
+import { roundsRecords, roundsSessionFile } from './testing/rounds.js';
 import type { DestinationAggregate, NetSnapshot, NetTotals } from './types.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -184,6 +185,33 @@ describe('kept network history', () => {
     const ref = run(new MemHistory(false), token).snap;
     expect(totals(after.totals)).toEqual(totals(ref.totals));
     expect(dests(after.destinations)).toEqual(dests(ref.destinations));
+  });
+
+  // llm-auth's hop is left out of the session totals (counted at the provider leg) but keeps
+  // its own destination: both must survive a restart at every record. Hand-made records until
+  // glove's llm-auth scenario exists (`testing/rounds.ts`).
+  it('holds for llm-auth\'s hops, the relays and downloads when Layman restarts after every record', () => {
+    const lines = roundsRecords().map((r) => JSON.stringify({ ...r, session: TEST_ID, env: TEST_ID }));
+    const write = (ls: string[]) => {
+      const { net } = addGloveSession(home, TEST_ID);
+      writeFileSync(join(net, 'session.json'), JSON.stringify({ ...roundsSessionFile(), env: TEST_ID, session: TEST_ID }));
+      writeFileSync(join(net, 'flows.ndjson'), ls.map((l) => l + '\n').join(''));
+    };
+    const h = new MemHistory();
+    for (let i = 1; i <= lines.length; i++) {
+      write(lines.slice(0, i));
+      run(h).obs.persist();
+    }
+    const after = run(h).snap;
+    write(lines);
+    const ref = run(new MemHistory(false)).snap;
+    expect(totals(after.totals)).toEqual(totals(ref.totals));
+    expect(dests(after.destinations)).toEqual(dests(ref.destinations));
+    // …and with the older half expired from the files.
+    write(lines.slice(Math.floor(lines.length / 2)));
+    const expired = run(h).snap;
+    expect(totals(expired.totals)).toEqual(totals(ref.totals));
+    expect(dests(expired.destinations)).toEqual(dests(ref.destinations));
   });
 
   it('never counts a refined destination twice', () => {

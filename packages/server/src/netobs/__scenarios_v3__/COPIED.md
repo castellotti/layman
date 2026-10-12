@@ -17,9 +17,11 @@ glove creates `control/` in every home; git cannot keep an empty directory, so i
 (as it is in glove's repository) and the tests create it in their temporary copy. Read by
 `../v3.test.ts`, `../../monitor/sources.test.ts` and `../../claude/watcher.test.ts`.
 
-- Copied: 2026-10-03
-- From glove branch `cc-vibe-extensions` at `f56e377` (the Claude Code harness, not yet merged to
-  glove `main`; re-copy from `main` once it lands). Only `claude-code/` changed since `58275f4`.
+- Copied: 2026-10-03; source re-pointed 2026-10-12
+- From glove `main` at `5f97a5e` (the Claude Code harness, merged; the content is byte-identical to
+  the `cc-vibe-extensions` `f56e377` copy, and to glove `research-downloads` at `7c8f07a`). Only
+  `claude-code/` changed since `58275f4`. glove has no scenarios yet for llm-auth, the github and
+  ssh relays or `web_download`: until it does, `../testing/rounds.ts` holds hand-made records for them.
 
 Do not edit these files (this one excepted). To refresh:
 

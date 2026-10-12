@@ -9,7 +9,7 @@ import type { DestinationAggregate, FlowView, NetSessionFile, NetState } from '.
 import { dest, flow, rulesView, sessionData } from './net-test-fixtures.js';
 
 const T = Date.parse('2026-09-23T14:14:43Z');
-const LOCAL = { scope: 'local', unresolved: false, noHost: false, cleartext: false, fanout: false } as const;
+const LOCAL = { scope: 'local', unresolved: false, noHost: false, cleartext: false, fanout: false, hop: false } as const;
 
 /** A session shaped like the Network tab's design, with one destination per flow state. */
 function ledger(): NetSessionData {
@@ -18,13 +18,13 @@ function ledger(): NetSessionData {
       bytesUp: 3100, bytesDown: 229_000, spark: [{ t: T - 1000, up: 100, down: 380_000 }, { t: T, up: 100, down: 760_000 }] }),
     dest('en.wikipedia.org:443', { groupKey: 'wikipedia.org', state: 'finished', tools: ['web_fetch'], lastSeen: T - 5000 }),
     dest('example.org:80', { port: 80, state: 'finished', tools: ['web_fetch'], lastSeen: T - 6000,
-      flags: { scope: 'tunnelled', unresolved: false, noHost: false, cleartext: true, fanout: false } }),
+      flags: { scope: 'tunnelled', unresolved: false, noHost: false, cleartext: true, fanout: false, hop: false } }),
     dest('duckduckgo.com:443', { state: 'broken', tools: ['web_fetch'], lastSeen: T - 7000,
-      flags: { scope: 'tunnelled', unresolved: true, noHost: false, cleartext: false, fanout: false } }),
+      flags: { scope: 'tunnelled', unresolved: true, noHost: false, cleartext: false, fanout: false, hop: false } }),
     dest('search.brave.com:443', { groupKey: 'brave.com', state: 'pooled', tools: ['search-engine-fanout'], lastSeen: T - 4000,
-      flags: { scope: 'tunnelled', unresolved: false, noHost: false, cleartext: false, fanout: true } }),
+      flags: { scope: 'tunnelled', unresolved: false, noHost: false, cleartext: false, fanout: true, hop: false } }),
     dest('api.qwant.com:443', { groupKey: 'qwant.com', state: 'finished', tools: ['search-engine-fanout'], lastSeen: T - 8000,
-      flags: { scope: 'tunnelled', unresolved: false, noHost: false, cleartext: false, fanout: true } }),
+      flags: { scope: 'tunnelled', unresolved: false, noHost: false, cleartext: false, fanout: true, hop: false } }),
     dest('ads.tracker.example:443', { groupKey: 'tracker.example', state: 'user_rule', rule: 'r_ads', blocked: 1, lastSeen: T - 9000 }),
     dest('www.nature.com:443', { groupKey: 'nature.com', state: 'default_block', blocked: 1, lastSeen: T - 9500 }),
     dest('llm.operator.lan:8080', { groupKey: 'operator.lan', scope: 'local', state: 'active', tools: ['llm'], lastSeen: T, flags: LOCAL }),
@@ -32,7 +32,7 @@ function ledger(): NetSessionData {
     dest('@proxy', { host: null, port: null, groupKey: '@proxy', endpoint: 'glove-pi-search-proxy:8888', scope: 'local', state: 'guard',
       rule: 'builtin:malformed-request', blocked: 1, lastSeen: T - 11_000, flags: { ...LOCAL, noHost: true } }),
     dest('github.com:443', { state: 'finished', scope: 'direct', lastSeen: T - 12_000,
-      flags: { scope: 'direct', unresolved: false, noHost: false, cleartext: false, fanout: false } }),
+      flags: { scope: 'direct', unresolved: false, noHost: false, cleartext: false, fanout: false, hop: false } }),
     dest('files.example.net:443', { groupKey: 'example.net', state: 'gate_shutdown', lastSeen: T - 13_000 }),
     dest('cdn.example.io:443', { groupKey: 'example.io', state: 'gate_lost', lastSeen: T - 14_000 }),
   ];
@@ -71,7 +71,7 @@ const row = (rows: TableRow[], label: string) => {
 
 describe('the state legend', () => {
   it("has every row of glove's state table plus cleartext HTTP and glove v3's labels, each fully described", () => {
-    expect(NET_LEGEND).toHaveLength(27);
+    expect(NET_LEGEND).toHaveLength(28);
     // glove v3: the llm link's scopes and the corporate route.
     expect(NET_LEGEND.filter((s) => ['lan', 'cloud', 'route_corporate'].includes(s.key)).map((s) => s.dataRule))
       .toEqual(['scope: lan', 'scope: cloud', 'route.kind: corporate']);
@@ -157,7 +157,7 @@ describe('buildTable', () => {
     const d = ledger();
     for (const [host, scope] of [['llm.home.example', 'lan'], ['api.provider.example', 'cloud']] as const) {
       d.destinations.set(`${host}:443`, dest(`${host}:443`, { groupKey: host, scope, state: 'finished', tools: ['llm'],
-        flags: { scope, unresolved: false, noHost: false, cleartext: false, fanout: false } }));
+        flags: { scope, unresolved: false, noHost: false, cleartext: false, fanout: false, hop: false } }));
     }
     const rows = buildTable(d, opts()).rows;
     expect(row(rows, 'llm.home.example')).toMatchObject({ loud: false, route: { text: 'LAN · LLM' } });

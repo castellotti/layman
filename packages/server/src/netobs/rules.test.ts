@@ -158,7 +158,7 @@ describe('operations', () => {
     const cut = applyOp(start, { kind: 'cutAll', keepLlm: true }, ctx());
     expect(cut.default).toBe('block');
     expect(cut.rules.filter((r) => r.id.startsWith(CUT_PREFIX)).map((r) => [r.action, r.match])).toEqual([
-      ['allow', { service: 'llm' }], ['block', { scope: 'tunnelled' }], ['block', { scope: 'direct' }], ['block', { scope: 'local' }],
+      ['allow', { tool: 'llm' }], ['block', { tool: 'ssh' }], ['block', { scope: 'tunnelled' }], ['block', { scope: 'direct' }], ['block', { scope: 'local' }],
     ]);
     valid(cut);
     expect(() => applyOp(cut, { kind: 'cutAll', keepLlm: false }, ctx())).toThrow(/already cut/);
@@ -166,9 +166,9 @@ describe('operations', () => {
     expect({ default: back.default, rules: back.rules }).toEqual({ default: 'allow', rules: start.rules });
     expect(() => applyOp(back, { kind: 'restoreAll' }, ctx())).toThrow(/not cut/);
   });
-  it('cutAll without keeping the LLM cuts its link by service: glove v3\'s lan/cloud scopes cannot be named in a rule', () => {
+  it('cutAll without keeping the LLM cuts its link by tool: glove v3\'s lan/cloud scopes cannot be named in a rule', () => {
     const cut = applyOp({ ...file(), default: 'allow' as const }, { kind: 'cutAll', keepLlm: false }, ctx());
-    expect(cut.rules.filter((r) => r.id.startsWith(CUT_PREFIX))[0]).toMatchObject({ action: 'block', match: { service: 'llm' }, terminate: true });
+    expect(cut.rules.filter((r) => r.id.startsWith(CUT_PREFIX))[0]).toMatchObject({ action: 'block', match: { tool: 'llm' }, terminate: true });
     valid(cut);
     for (const scope of ['lan', 'cloud']) bad({ ...base, rules: [rule({ match: { scope } })] }, /scope/);
   });

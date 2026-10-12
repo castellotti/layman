@@ -5,7 +5,8 @@
  * call claimed under "Unattributed". Rows, the time axis, each flow's outcome
  * text and the default selection live here; `TraceView.tsx` only draws.
  */
-import { isLlmScope, type FlowView, type Rule, type TraceCall, type TraceView } from './netobs-types.js';
+import { formatBytes } from './net-format.js';
+import { isOffTunnelScope, type FlowView, type Rule, type TraceCall, type TraceView } from './netobs-types.js';
 
 export type Tone = 'muted' | 'ok' | 'tunnel' | 'warn' | 'error' | 'fanout' | 'local';
 export type TraceIcon = 'search' | 'fetch' | 'tool' | 'llm' | 'globe' | 'lock' | 'blocked' | 'broken' | 'cut' | 'home' | 'fanout' | 'alert' | 'check' | 'pulse' | 'fold';
@@ -107,13 +108,24 @@ function alreadyOpen(call: TraceCall, open: FlowView[]): Outcome {
   return { text: `${call.failed ? 'failed · ' : ''}no new connection · ${what} already open`, tone: 'muted', icon: call.kind === 'search' ? 'fanout' : 'globe' };
 }
 
-// The llm link (`lan`, `cloud`) is not the tunnel: drawn like a local link, never as a leak.
-const flowTone = (f: FlowView): Tone => (f.flags.fanout ? 'fanout' : f.flags.scope === 'local' || isLlmScope(f.flags.scope) ? 'local' : f.flags.scope === 'direct' ? 'error' : 'tunnel');
+// The llm link and LAN hosts (`lan`, `cloud`) are not the tunnel, and a hop ends at a sidecar:
+// drawn like a local link, never as a leak.
+const flowTone = (f: FlowView): Tone => (f.flags.fanout ? 'fanout'
+  : f.flags.scope === 'local' || f.flags.hop || isOffTunnelScope(f.flags.scope) ? 'local' : f.flags.scope === 'direct' ? 'error' : 'tunnel');
 const hasTraffic = (flowIds: string[], fanoutIds: string[]) => flowIds.length + fanoutIds.length > 0;
 
-/** Rows open by default: every call and Unattributed; the fan-out group starts folded. */
+/** Rows open by default: every call and Unattributed; the fan-out group and an LLM request's legs start folded. */
 export function isRowExpanded(id: string, toggled: ReadonlySet<string>): boolean {
-  return !id.startsWith('fan:') !== toggled.has(id);
+  return !(id.startsWith('fan:') || id.startsWith('llm:')) !== toggled.has(id);
+}
+
+/** A download's result line: `saved report.pdf · 2.1 MB`. */
+export function downloadSummary(call: TraceCall): string | null {
+  if (!call.downloads.length) return null;
+  const d = call.downloads[0];
+  const name = d.path.replace(/^.*\//, '');
+  const more = call.downloads.length > 1 ? ` +${call.downloads.length - 1}` : '';
+  return `saved ${name}${d.bytes !== null ? ` · ${formatBytes(d.bytes)}` : ''}${more}`;
 }
 
 export interface RowOptions {
@@ -143,11 +155,20 @@ export function traceRows(view: TraceView, axis: TraceAxis, opts: RowOptions): T
       if (!f) continue;
       llmN++;
       const secs = ((f.tClose ?? f.lastT) - f.tOpen) / 1000;
+      const hops = item.hopIds.map((fid) => byId.get(fid)).filter((h): h is FlowView => !!h);
+      const where = f.flags.hop ? 'via llm-auth' : f.flags.scope === 'cloud' ? 'cloud' : f.flags.scope === 'lan' ? 'LAN' : 'local';
+      const id = `llm:${f.id}`;
+      const expanded = hops.length > 0 && isRowExpanded(id, opts.toggled);
       rows.push({
-        id: `llm:${f.id}`, kind: 'llm', depth: 0, icon: 'llm', title: `llm request ${llmN}`, detail: null,
-        outcome: { text: `local · ${secs.toFixed(1)} s`, tone: 'local', icon: 'home' }, bytes: f.bytes.up + f.bytes.down,
-        bar: barFor(f, axis, 'local', opts.now), flowId: f.id, call: null, expandable: false, expanded: false,
+        id, kind: 'llm', depth: 0, icon: 'llm', title: `llm request ${llmN}`,
+        // The provider, when this is the leg that reached it; a hop's own destination is the sidecar.
+        detail: f.flags.scope === 'cloud' && !f.flags.hop ? f.dest.host : null,
+        outcome: { text: `${where} · ${secs.toFixed(1)} s${hops.length ? ' · through llm-auth' : ''}`, tone: 'local', icon: 'home' },
+        // Counted once: the hop to llm-auth carries the same request as the leg to the provider.
+        bytes: f.bytes.up + f.bytes.down,
+        bar: barFor(f, axis, 'local', opts.now), flowId: f.id, call: null, expandable: hops.length > 0, expanded,
       });
+      if (expanded) for (const x of [...hops, f]) rows.push(flowRow(x, 1));
       continue;
     }
     const { call, flowIds, fanoutIds, openIds } = item;
@@ -162,7 +183,8 @@ export function traceRows(view: TraceView, axis: TraceAxis, opts: RowOptions): T
       outcome: call.kind === 'search' && any ? { text: [flowIds.length ? `${flowIds.length} local` : null, fanoutIds.length ? `${fanoutIds.length} fan-out` : null].filter(Boolean).join(' + '), tone: 'fanout', icon: 'fanout' }
         : !any && call.redacted ? { text: 'host redacted · not joined', tone: 'warn', icon: 'alert' }
           : !any && openIds.length ? alreadyOpen(call, openIds.map((fid) => byId.get(fid)).filter((f): f is FlowView => !!f))
-            : !any && call.kind !== 'other' ? { text: call.failed ? 'failed · no traffic seen' : 'no traffic seen', tone: 'muted', icon: 'fold' } : null,
+            : !any && call.kind !== 'other' ? { text: call.failed ? 'failed · no traffic seen' : downloadSummary(call) ?? 'no traffic seen', tone: 'muted', icon: 'fold' }
+              : downloadSummary(call) ? { text: downloadSummary(call)!, tone: 'ok', icon: 'check' } : null,
       bytes: null, bar: null, flowId: null, call, expandable: any, expanded: any && expanded,
     });
     if (!any || !expanded) continue;

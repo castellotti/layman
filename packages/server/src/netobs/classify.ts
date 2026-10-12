@@ -13,7 +13,9 @@ import type {
   NetState,
   StatusRecord,
 } from './types.js';
-import { FLOW_SCOPES, neverMapped } from './types.js';
+import { FLOW_SCOPES, isLanOnlyRule, neverMapped } from './types.js';
+
+export { isLanOnlyRule };
 
 /** An open flow with no byte change for longer than this is "pooled, idle", not live. */
 export const IDLE_MS = 3_000;
@@ -33,6 +35,7 @@ export type ClassifiableFlow = Pick<
 
 export const BLOCK_STATES: ReadonlySet<NetState> = new Set(['guard', 'user_rule', 'default_block']);
 
+
 /**
  * A flow's primary state.
  *
@@ -43,7 +46,7 @@ export const BLOCK_STATES: ReadonlySet<NetState> = new Set(['guard', 'user_rule'
  */
 export function classifyFlow(f: ClassifiableFlow, now: number): NetState {
   if (f.verdict === 'block' || f.close_reason === 'blocked') {
-    if (f.rule?.startsWith('builtin:')) return 'guard';
+    if (f.rule?.startsWith('builtin:') || isLanOnlyRule(f.rule)) return 'guard';
     if (f.rule) return 'user_rule';
     return 'default_block';
   }
@@ -70,17 +73,23 @@ export function classifyFlow(f: ClassifiableFlow, now: number): NetState {
   }
 }
 
-export function flowFlags(f: Pick<FlowRecord, 'dest' | 'scope' | 'proto' | 'client' | 'tool'>): FlowFlags {
+/**
+ * `hop`: the flow's service goes on through another gate (`nextServices`), so it
+ * is a local link to a sidecar whatever its scope says (the `llm` hop to llm-auth
+ * carries the provider's `cloud`).
+ */
+export function flowFlags(f: Pick<FlowRecord, 'dest' | 'scope' | 'proto' | 'client' | 'tool'>, hop = false): FlowFlags {
   const scope = (FLOW_SCOPES as readonly string[]).includes(f.scope) ? (f.scope as FlowScope) : 'unknown';
   return {
     scope,
     // Local links are never mapped (rule 11), so "unresolved" only means
     // something for traffic that would otherwise be placed on the map.
     unresolved:
-      !neverMapped(scope) && f.dest.host !== null && (f.dest.ip === null || f.dest.resolution === 'unavailable'),
+      !hop && !neverMapped(scope) && f.dest.host !== null && (f.dest.ip === null || f.dest.resolution === 'unavailable'),
     noHost: f.dest.host === null,
     cleartext: f.proto === 'http' || f.dest.port === 80,
     fanout: f.client === 'searxng' || f.tool === 'search-engine-fanout',
+    hop,
   };
 }
 

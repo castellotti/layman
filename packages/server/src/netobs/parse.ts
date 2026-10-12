@@ -229,6 +229,7 @@ function parseService(v: unknown): NetService | null {
   if ('upstream' in v) s.upstream = str(v.upstream);
   if ('route' in v) s.route = parseRoute(v.route);
   if (typeof v.harness === 'boolean') s.harness = v.harness;
+  if (Array.isArray(v.next)) s.next = v.next.filter((n): n is string => typeof n === 'string');
   return s;
 }
 

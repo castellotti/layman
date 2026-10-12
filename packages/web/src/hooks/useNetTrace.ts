@@ -5,7 +5,7 @@
  * Layman is ever asked.
  */
 import { useEffect, useState } from 'react';
-import type { TraceCall, TraceView } from '../lib/netobs-types.js';
+import type { SessionDownload, TraceCall, TraceView } from '../lib/netobs-types.js';
 
 export type TraceQuery = { turn: string } | { at: number } | null;
 
@@ -57,4 +57,17 @@ export function useNetCalls(token: string, from: number, to: number): TraceCall[
     return () => { live = false; };
   }, [token, from, to]);
   return calls;
+}
+
+/** Files `web_download` saved in the glove session, re-read every `refreshMs` (the Trace tab's Downloads panel). */
+export function useNetDownloads(token: string, refreshMs = 10_000): { downloads: SessionDownload[] | null; error: string | null } {
+  const [state, setState] = useState<{ token: string; downloads: SessionDownload[] | null; error: string | null }>({ token, downloads: null, error: null });
+  useEffect(() => pollSettled((live) => fetch(`/api/net/sessions/${encodeURIComponent(token)}/downloads`)
+    .then(async (r) => {
+      if (!r.ok) throw new Error((await r.json().catch(() => null))?.error ?? `HTTP ${r.status}`);
+      return r.json() as Promise<{ downloads: SessionDownload[] }>;
+    })
+    .then((j) => { if (live()) setState({ token, downloads: j.downloads, error: null }); })
+    .catch((e: Error) => { if (live()) setState((s) => ({ ...s, token, error: e.message })); }), refreshMs), [token, refreshMs]);
+  return state.token === token ? { downloads: state.downloads, error: state.error } : { downloads: null, error: null };
 }

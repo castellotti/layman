@@ -16,7 +16,7 @@ export const totals = (over: Partial<NetTotals> = {}): NetTotals => ({
   blocked: { guard: 0, userRule: 0, default: 0 }, directFlows: 0, broken: 0, ...over,
 });
 
-const FLAGS = { scope: 'tunnelled', unresolved: false, noHost: false, cleartext: false, fanout: false } as const;
+const FLAGS = { scope: 'tunnelled', unresolved: false, noHost: false, cleartext: false, fanout: false, hop: false } as const;
 
 export const flow = (id: string, over: Partial<FlowView> = {}): FlowView => ({
   id, phase: 'open', tOpen: 1, tClose: null, lastT: 1, lastActivityAt: 1, service: 'proxy', tool: 'web_fetch',

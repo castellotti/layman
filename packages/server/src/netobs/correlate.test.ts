@@ -20,7 +20,7 @@ function call(toolName: string, toolInput: Record<string, unknown>, start: numbe
   };
 }
 
-const FLAGS = { scope: 'tunnelled' as const, unresolved: false, noHost: false, cleartext: false, fanout: false };
+const FLAGS = { scope: 'tunnelled' as const, unresolved: false, noHost: false, cleartext: false, fanout: false, hop: false };
 function flow(id: string, host: string | null, tOpen: number, over: Partial<FlowView> = {}): FlowView {
   return {
     id, phase: 'close', tOpen, tClose: tOpen + 500, lastT: tOpen + 500, lastActivityAt: tOpen + 500, service: 'proxy', tool: 'web_fetch', client: 'harness',

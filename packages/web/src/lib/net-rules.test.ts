@@ -20,7 +20,7 @@ describe('toggleFor', () => {
   });
   it('the guard and a host-less endpoint are locked whatever the rules say', () => {
     expect(toggleFor(dest('x:80', { state: 'guard', policy: { enforced: allow, written: allow } }))).toBe('locked');
-    expect(toggleFor(dest('@proxy', { flags: { scope: 'local', unresolved: false, noHost: true, cleartext: false, fanout: false } }))).toBe('locked');
+    expect(toggleFor(dest('@proxy', { flags: { scope: 'local', unresolved: false, noHost: true, cleartext: false, fanout: false, hop: false } }))).toBe('locked');
   });
   it('falls back to the observed state when the enforced set is unknown', () => {
     expect(toggleFor(dest('a.com:443', { state: 'user_rule' }))).toBe('block');
@@ -114,8 +114,13 @@ describe('rules in the file', () => {
   it('detects the kill switch and counts what it would cut', () => {
     expect(isCut({ v: 1, env: 'e', session: 'e', default: 'block', rules: [{ id: 'r_layman_cut_X_0', action: 'block', match: { scope: 'local' } }] })).toBe(true);
     expect(isCut({ v: 1, env: 'e', session: 'e', default: 'allow', rules })).toBe(false);
-    const ds = [dest('llm:8080', { services: ['llm'], openFlows: 1 }), dest('a.com:443', { services: ['proxy'], openFlows: 3 })];
-    expect([openToCut(ds, true), openToCut(ds, false)]).toEqual([3, 4]);
+    // With llm-auth the model call is two legs, `llm` and `llm-upstream`, both `tool: llm`: both are kept.
+    const ds = [
+      dest('llm:8080', { services: ['llm'], tools: ['llm'], openFlows: 1 }),
+      dest('api.anthropic.com:443', { services: ['llm-upstream'], tools: ['llm'], openFlows: 1 }),
+      dest('a.com:443', { services: ['proxy'], tools: ['web_fetch'], openFlows: 3 }),
+    ];
+    expect([openToCut(ds, true), openToCut(ds, false)]).toEqual([3, 5]);
   });
 });
 

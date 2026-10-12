@@ -22,7 +22,7 @@ import { DetailCard } from './DetailCard.js';
 import { ActivityChart } from './ActivityChart.js';
 import { NetNotices } from './NetNotices.js';
 import { SelectedPath, TopologyDiagram, TopologyLegend } from './TopologyView.js';
-import { TraceActions, TraceDetails, TraceWaterfall, TurnBar } from './TraceView.js';
+import { DownloadsList, TraceActions, TraceDetails, TraceWaterfall, TurnBar } from './TraceView.js';
 import { useNow } from '../../hooks/useNow.js';
 import { EmptyState, PanelFrame } from './netui.js';
 import { TAB_PANELS, type NetTab } from './tabs.js';
@@ -70,6 +70,8 @@ function panelContent(tab: NetTab, id: string, data: NetSessionData, now: number
       return { body: <TraceWaterfall data={data} />, actions: <TraceActions />, ownScroll: true };
     case 'trace/details':
       return { body: <TraceDetails data={data} /> };
+    case 'trace/downloads':
+      return { body: <DownloadsList data={data} />, flex: '0 0 auto' };
     default:
       return null;
   }
