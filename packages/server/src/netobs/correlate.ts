@@ -9,8 +9,8 @@
  *      the URL spells one out) that opened between its start − 1 s and its end
  *      + 2 s. Several calls could claim one flow: the nearest start wins.
  *   2. A search call claims the `search` service's flows and SearXNG's fan-out
- *      opened in its window, nearest start again. A fetch call likewise claims
- *      the hop to a fetcher sidecar (Vibe's `webfetch-mcp`), whose destination
+ *      opened in its window, nearest start again. A fetch tool's call (never a
+ *      shell command that names a URL) likewise claims the hop to a fetcher sidecar (Vibe's `webfetch-mcp`), whose destination
  *      is the sidecar rather than the URL's host; the sidecar's own egress
  *      (client `webfetch`) names the host and joins by rule 1.
  *   3. `llm` service flows become LLM rows between the calls.
@@ -39,6 +39,13 @@ export const JOIN_AFTER_MS = 2000;
 const URL_RE = /\bhttps?:\/\/[^\s'"<>`)\]}]+/gi;
 const URL_KEYS = ['url', 'uri', 'href', 'link'];
 const SEARCH_NAME = /^(web_?search|websearch|search)$/i;
+/**
+ * The harnesses' own fetch tools: pi's `web_fetch`, Claude Code's `WebFetch`, Vibe's
+ * `webfetch_fetch_url` (an MCP `fetch_url`). Only these reach a fetcher sidecar; a
+ * shell `curl` names a URL too, but never rides the sidecar's connection.
+ */
+const FETCH_TOOL = /(^|_)(web_?fetch|fetch_url)$/i;
+export const isFetchTool = (toolName: string) => FETCH_TOOL.test(toolName);
 
 /** A URL's host, lower-case and without IPv6 brackets, and its port only when written out. */
 export function urlTarget(raw: string): { host: string; port: number | null } | null {
@@ -211,7 +218,7 @@ export function correlate({ calls, flows, earlier = [], services, from }: Correl
       continue;
     }
     if (role === 'fetchhop') {
-      const c = nearest(fetches, f);
+      const c = nearest(fetches.filter((x) => isFetchTool(x.toolName)), f);
       if (c) claimed.get(c.eventId)!.flowIds.push(f.id);
       else unattributed.push(f.id);
       continue;
@@ -230,7 +237,7 @@ export function correlate({ calls, flows, earlier = [], services, from }: Correl
       .filter((f) => !mine.has(f.id) && f.state !== 'gate_lost' && f.tOpen < call.start && (f.tClose ?? Infinity) >= call.start)
       .filter((f) => {
         const role = flowRole(f, services);
-        return call.kind === 'search' ? role === 'search' || role === 'fanout' : role === 'fetchhop' || (role === 'other' && targets(call, f));
+        return call.kind === 'search' ? role === 'search' || role === 'fanout' : (role === 'fetchhop' && isFetchTool(call.toolName)) || (role === 'other' && targets(call, f));
       })
       .sort((a, b) => a.tOpen - b.tOpen)
       .map((f) => f.id);

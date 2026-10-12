@@ -116,11 +116,13 @@ the parser history import and gap recovery already use, so there is one Claude C
 - **Only glove roots.** There is no native Claude Code source: native Claude Code is recorded over
   hooks, and tailing its transcript as well would record every turn twice.
 - **Identity** is the `sessionId` on the lines, not the filename: a resume/fork writes a new file that
-  keeps the original id. All files of one session share one set of emitted ids, so a resume file that
-  repeats earlier lines adds only the new ones.
+  keeps the original id. A session is tracked once however many files it spans, so a resume file that
+  repeats earlier lines adds only the new ones, and the session has one idle timer: it is not ended
+  while any of its files grows, and a resume file brings back a session that had already ended.
 - **Subagents** (`<uuid>/subagents/agent-<id>.jsonl`, also older sidechain lines in the main file)
   are attributed as the hook path attributes them: a `subagent_start` marker, then the subagent's tool
-  calls in the parent session tagged `subagentId`. Its prompt and prose are left out: they are the Task
+  calls in the parent session tagged `subagentId` (in-file sidechain lines are grouped by `agentId`
+  first). Its prompt and prose are left out: they are the Task
   tool's input and output, and a `user_prompt` would split the parent's turn in two.
 - **Read-only.** A gloved Claude Code cannot reach Layman's hooks (Claude Code refuses an `http` hook
   to a private address, and glove's `command` hooks have no network), so there is no live gate:
@@ -760,7 +762,9 @@ links them.
   2. A search call (`web_search`) claims the `search` service's flows and SearXNG's fan-out, grouped
      as "fan-out · N engines". A fetch call likewise claims the hop to a fetcher sidecar
      (`webfetch-mcp`: a tcp listener for `web_fetch`, unlike the `proxy`), whose destination is the
-     sidecar; the sidecar's own egress joins by host under rule 1.
+     sidecar; the sidecar's own egress joins by host under rule 1. Only the harness's fetch tool
+     (`isFetchTool`: `web_fetch`, `WebFetch`, `…fetch_url`) claims that hop or is shown riding a kept
+     connection to it; a shell `curl` names a URL too, but never goes through the sidecar.
   3. `llm` service flows are rows of their own between the calls.
   4. Anything else is **Unattributed**. Nothing is guessed.
 

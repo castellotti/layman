@@ -3,7 +3,7 @@ import { readFileSync } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import type { TimelineEvent } from '../events/types.js';
-import { callsFrom, callTiming, correlate, flowRole, joinDistance, urlsOf, urlTarget } from './correlate.js';
+import { callsFrom, callTiming, correlate, flowRole, isFetchTool, joinDistance, urlsOf, urlTarget } from './correlate.js';
 import { parseLine, parseSessionFile } from './parse.js';
 import { NetStore } from './store.js';
 import type { FlowView, NetService, TraceCall } from './types.js';
@@ -227,6 +227,27 @@ describe('MCP sidecar hops (Vibe, Claude Code)', () => {
     });
     expect(claimedBy(r)).toEqual({ 'onion routing': ['s1'], 'https://example.com/': ['h1', 'e1'] });
     expect(r.unattributed).toEqual([]);
+  });
+
+  it('never gives the sidecar hop to a shell command that names a URL, nor names it as riding it', () => {
+    const cs = callsFrom([
+      call('webfetch_fetch_url', { url: 'https://example.com/' }, T + 1000, T + 2000),
+      // Starts nearer the hop's open time than the fetch does.
+      call('Bash', { command: 'curl https://other.example/' }, T + 1040, T + 1500),
+    ]);
+    const kept = hop('h0', 'webfetch-mcp', 'web_fetch', T - 4000);
+    const r = correlate({
+      calls: cs, services: MCP, from: T - 5000, flows: [hop('h1', 'webfetch-mcp', 'web_fetch', T + 1050)],
+      earlier: [{ ...kept, tClose: null, state: 'pooled' }],
+    });
+    expect(claimedBy(r)).toEqual({ 'https://example.com/': ['h1'], 'https://other.example/': [] });
+    const items = r.items.filter((i) => i.kind === 'call');
+    expect(items.map((i) => i.kind === 'call' && [i.call.toolName, i.openIds])).toEqual([['webfetch_fetch_url', ['h0']], ['Bash', []]]);
+  });
+
+  it('knows each harness\'s fetch tool', () => {
+    for (const name of ['web_fetch', 'WebFetch', 'webfetch_fetch_url', 'mcp__webfetch__fetch_url']) expect(isFetchTool(name), name).toBe(true);
+    for (const name of ['Bash', 'web_search', 'Read', 'prefetch']) expect(isFetchTool(name), name).toBe(false);
   });
 });
 

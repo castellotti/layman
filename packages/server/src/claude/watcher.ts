@@ -18,7 +18,7 @@
  * same parser history import and gap recovery use, so there is no second
  * Claude Code parser to keep in sync. The session is the `sessionId` stamped on
  * the lines, not the filename (a resume/fork writes a new file that keeps the
- * original id), and every file of one session shares one set of emitted ids.
+ * original id), and a session is tracked once however many files it spans.
  *
  * Subagents are attributed the way the hook path attributes them: a subagent's
  * tool calls land in the parent session tagged `subagentId`, after one
@@ -63,15 +63,20 @@ interface TrackedFile {
   subagentId?: string;
 }
 
+/**
+ * One Claude Code session, however many files it spans: a resume/fork writes a
+ * new main transcript under the same `sessionId`, and every subagent has its own
+ * file. One entry per session means one idle timer, one `session_end` and one
+ * resume, whichever file is growing.
+ */
 interface TrackedSession {
   sessionId: string;
   cwd: string;
-  /** The main transcript, which keys the session in `sessions`. */
-  mainFile: string;
-  /** `<project>/<file uuid>/subagents`, polled for new subagent files. */
-  subagentDir: string;
+  /** Every main transcript and subagent file of the session, keyed by path. */
   files: Map<string, TrackedFile>;
-  /** Parser ids already emitted. Shared by every tracked file of the same `sessionId`. */
+  /** `<project>/<file uuid>/subagents` of each main transcript, polled for new subagent files. */
+  subagentDirs: Set<string>;
+  /** Parser ids already emitted, across all of the session's files. */
   emittedIds: Set<string>;
   pollTimer: ReturnType<typeof setInterval> | null;
   lastActivityMs: number;
@@ -80,10 +85,10 @@ interface TrackedSession {
 }
 
 export class ClaudeCodeSessionWatcher {
-  /** Tracked sessions, keyed by absolute main-transcript path. */
+  /** Tracked sessions, keyed by session id. */
   private sessions = new Map<string, TrackedSession>();
-  /** Emitted ids per session id, so a resume/fork file of a tracked session does not re-emit. */
-  private emittedBySession = new Map<string, Set<string>>();
+  /** Main transcripts already claimed by a session, so discovery skips them. */
+  private mainFiles = new Set<string>();
   private activeRoots = new Map<string, WatchRoot>();
   private scanTimer: ReturnType<typeof setInterval> | null = null;
 
@@ -114,7 +119,7 @@ export class ClaudeCodeSessionWatcher {
       if (session.pollTimer) clearInterval(session.pollTimer);
     }
     this.sessions.clear();
-    this.emittedBySession.clear();
+    this.mainFiles.clear();
     this.activeRoots.clear();
   }
 
@@ -141,7 +146,7 @@ export class ClaudeCodeSessionWatcher {
     }
   }
 
-  /** Enumerate `<root>/<project>/<uuid>.jsonl` and register any recent, untracked main transcript. */
+  /** Enumerate `<root>/<project>/<uuid>.jsonl` and register any recent, unclaimed main transcript. */
   private scanExistingSessions(): void {
     const now = Date.now();
     for (const root of this.activeRoots.values()) {
@@ -152,20 +157,24 @@ export class ClaudeCodeSessionWatcher {
           const m = UUID_FILE_RE.exec(file);
           if (!m) continue;
           const filePath = join(projectPath, file);
-          if (this.sessions.has(filePath)) continue;
+          if (this.mainFiles.has(filePath)) continue;
           try {
             const stat = statSync(filePath);
             if (!stat.isFile() || now - stat.mtimeMs > RECENT_SESSION_THRESHOLD_MS) continue;
           } catch {
             continue;
           }
-          this.tryAddSession(filePath, join(projectPath, m[1], 'subagents'), projectDir, root, m[1]);
+          this.tryAddMainFile(filePath, join(projectPath, m[1], 'subagents'), projectDir, root, m[1]);
         }
       }
     }
   }
 
-  private tryAddSession(mainFile: string, subagentDir: string, projectDir: string, root: WatchRoot, fileUuid: string): void {
+  /**
+   * Claim a main transcript: start tracking its session, or, when its lines name
+   * a session already tracked (a resume/fork), add it to that session.
+   */
+  private tryAddMainFile(mainFile: string, subagentDir: string, projectDir: string, root: WatchRoot, fileUuid: string): void {
     // Size before read: a concurrent append can only make it an under-estimate (re-read, deduped).
     const size = sizeOf(mainFile);
     const lines = readLines(mainFile);
@@ -173,14 +182,17 @@ export class ClaudeCodeSessionWatcher {
     if (!lines || lines.length === 0) return;
 
     const sessionId = resolveClaudeCodeSessionId(lines) ?? fileUuid;
-    const { events, metadata } = parseTranscriptLines(mainLines(lines), sessionId, AGENT_TYPE);
-    const cwd = metadata.cwd || projectDir.replace(/-/g, '/');
+    const { events, metadata } = mainFileEvents(lines, sessionId);
 
-    // A second file of a session already tracked (a resume/fork) shares its ids and its start.
-    const known = this.emittedBySession.get(sessionId);
-    const emittedIds = known ?? new Set<string>();
-    this.emittedBySession.set(sessionId, emittedIds);
-    if (!known) {
+    let session = this.sessions.get(sessionId);
+    const known = !!session;
+    if (!session) {
+      const cwd = metadata.cwd || projectDir.replace(/-/g, '/');
+      session = {
+        sessionId, cwd, files: new Map(), subagentDirs: new Set(), emittedIds: new Set(),
+        pollTimer: null, lastActivityMs: Date.now(), agentType: root.agentType, label: root.label,
+      };
+      this.sessions.set(sessionId, session);
       if (shouldActivateWatchedSession(root.agentType, root.label, this.getConfig().autoActivateClients)) {
         this.gate.activate(sessionId);
       }
@@ -188,43 +200,44 @@ export class ClaudeCodeSessionWatcher {
       if (root.label) this.eventStore.markGloved(sessionId);
       this.eventStore.add('session_start', sessionId, { source: 'startup' }, undefined, root.agentType);
     }
+    this.mainFiles.add(mainFile);
+    session.files.set(mainFile, { path: mainFile, size });
+    session.subagentDirs.add(subagentDir);
     const tag = root.label ? ` [glove: ${root.label}]` : '';
     console.log(`[claude-code] Tracking session ${sessionId.slice(0, 8)} (${basename(mainFile)})${tag}`);
 
-    const session: TrackedSession = {
-      sessionId, cwd, mainFile, subagentDir,
-      files: new Map([[mainFile, { path: mainFile, size }]]),
-      emittedIds, pollTimer: null, lastActivityMs: Date.now(), agentType: root.agentType, label: root.label,
-    };
-    this.sessions.set(mainFile, session);
-
+    const all = [...events, ...this.discoverSubagents(session).flatMap((f) => this.readFile(session!, f, true) ?? [])];
     const lastTouchedMs = metadata.lastTimestamp || mtimeOf(mainFile);
-    const isRecent = Date.now() - lastTouchedMs < REPLAY_WINDOW_MS;
-    const all = [...events, ...this.discoverSubagents(session).flatMap((f) => this.readFile(session, f, true) ?? [])];
-    if (isRecent) {
+    if (Date.now() - lastTouchedMs < REPLAY_WINDOW_MS) {
       // Replaying re-sends what a previous run recorded under fresh live ids; skip what the database holds.
       const done = this.recorded(sessionId);
-      if (done) for (const ev of all) if (isRecorded(ev, done)) emittedIds.add(ev.id);
-      this.emitNew(session, all.sort(byTime));
+      if (done) for (const ev of all) if (isRecorded(ev, done)) session.emittedIds.add(ev.id);
+      const fresh = all.filter((ev) => !session!.emittedIds.has(ev.id)).sort(byTime);
+      // A resume file of a session that had already ended brings it back.
+      if (known && !session.pollTimer && fresh.length > 0) this.wake(session);
+      this.emitNew(session, fresh);
+      if (fresh.length > 0) session.lastActivityMs = Date.now();
     } else {
-      // Old session: adopt its history as emitted, so only future turns are recorded.
-      for (const ev of all) emittedIds.add(ev.id);
+      // Old file: adopt its history as emitted, so only future turns are recorded.
+      for (const ev of all) session.emittedIds.add(ev.id);
     }
 
-    session.pollTimer = setInterval(() => this.pollSession(session), SCAN_INTERVAL_MS);
+    if (!known) session.pollTimer = setInterval(() => this.pollSession(session!), SCAN_INTERVAL_MS);
   }
 
   /** Register subagent files not yet tracked, returning the new ones (with size 0, so they are read). */
   private discoverSubagents(session: TrackedSession): TrackedFile[] {
     const added: TrackedFile[] = [];
-    for (const file of listDir(session.subagentDir)) {
-      const m = SUBAGENT_FILE_RE.exec(file);
-      if (!m) continue;
-      const path = join(session.subagentDir, file);
-      if (session.files.has(path)) continue;
-      const tracked: TrackedFile = { path, size: 0, subagentId: m[1] };
-      session.files.set(path, tracked);
-      added.push(tracked);
+    for (const dir of session.subagentDirs) {
+      for (const file of listDir(dir)) {
+        const m = SUBAGENT_FILE_RE.exec(file);
+        if (!m) continue;
+        const path = join(dir, file);
+        if (session.files.has(path)) continue;
+        const tracked: TrackedFile = { path, size: 0, subagentId: m[1] };
+        session.files.set(path, tracked);
+        added.push(tracked);
+      }
     }
     return added;
   }
@@ -240,7 +253,7 @@ export class ClaudeCodeSessionWatcher {
     const lines = readLines(file.path);
     if (!lines) return null;
     file.size = size;
-    if (file.subagentId === undefined) return parseTranscriptLines(mainLines(lines), session.sessionId, AGENT_TYPE).events;
+    if (file.subagentId === undefined) return mainFileEvents(lines, session.sessionId).events;
     return subagentEvents(lines, session.sessionId, file.subagentId);
   }
 
@@ -272,7 +285,7 @@ export class ClaudeCodeSessionWatcher {
 
   private cleanupEndedSessions(): void {
     for (const session of this.sessions.values()) {
-      // Tombstone: the only place a resumed session comes back (discovery skips tracked paths).
+      // Tombstone: the only place a resumed session comes back (discovery skips claimed files).
       if (!session.pollTimer) {
         this.tryResumeSession(session);
         continue;
@@ -297,7 +310,12 @@ export class ClaudeCodeSessionWatcher {
   private tryResumeSession(session: TrackedSession): void {
     const events = this.readGrown(session);
     if (events.length === 0) return;
+    this.wake(session);
+    this.emitNew(session, events);
+  }
 
+  /** Bring a tombstoned session back: a `resumed` marker, its activation restored, polling again. */
+  private wake(session: TrackedSession): void {
     const lastStored = this.eventStore.findLast((e) => e.sessionId === session.sessionId);
     const resumedAt = Date.now();
     const gapMinutes = lastStored ? Math.round((resumedAt - lastStored.timestamp) / 60000) : 0;
@@ -305,8 +323,6 @@ export class ClaudeCodeSessionWatcher {
     this.eventStore.trackSession(session.sessionId, session.cwd, session.agentType, undefined, session.label);
     this.eventStore.add('session_start', session.sessionId, { source: 'resumed', gapMinutes }, undefined, session.agentType);
     this.gate.resume(session.sessionId);
-
-    this.emitNew(session, events);
     session.lastActivityMs = resumedAt;
     session.pollTimer = setInterval(() => this.pollSession(session), SCAN_INTERVAL_MS);
     console.log(`[claude-code] Session ${session.sessionId.slice(0, 8)} resumed (gap ${gapMinutes}m)`);
@@ -314,12 +330,27 @@ export class ClaudeCodeSessionWatcher {
 }
 
 /**
- * The main session's own lines. Older Claude Code versions wrote subagent
- * (sidechain) lines into the main transcript; they are attributed like a
- * subagent file's, never as the main session's turns.
+ * A main transcript's events. Older Claude Code versions wrote subagent
+ * (sidechain) lines into the main transcript; those are grouped by `agentId`
+ * and attributed as a subagent file's are (`subagentEvents`), never as the main
+ * session's turns.
  */
-function mainLines(lines: string[]): string[] {
-  return lines.filter((l) => !/"isSidechain"\s*:\s*true/.test(l));
+export function mainFileEvents(lines: string[], sessionId: string): ReturnType<typeof parseTranscriptLines> {
+  const main: string[] = [];
+  const sidechains = new Map<string, string[]>();
+  for (const line of lines) {
+    let obj: Record<string, unknown> | null = null;
+    try { obj = JSON.parse(line) as Record<string, unknown>; } catch { /* left to the parser, which skips it */ }
+    if (obj?.isSidechain !== true) {
+      main.push(line);
+      continue;
+    }
+    const agentId = typeof obj.agentId === 'string' && obj.agentId ? obj.agentId : 'sidechain';
+    sidechains.set(agentId, [...(sidechains.get(agentId) ?? []), line]);
+  }
+  const parsed = parseTranscriptLines(main, sessionId, AGENT_TYPE);
+  const side = [...sidechains].flatMap(([agentId, ls]) => subagentEvents(ls, sessionId, agentId));
+  return { events: [...parsed.events, ...side], metadata: parsed.metadata };
 }
 
 /**

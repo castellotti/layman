@@ -135,6 +135,50 @@ describe('ClaudeCodeSessionWatcher (gloved Claude Code)', () => {
     expect(store.getAll()[3].data.prompt).toBe('and again');
   });
 
+  describe('a resume file', () => {
+    const RESUMED = () => join(projects, '-work', '99999999-0000-4000-8000-000000000000.jsonl');
+    const prompt = (uuid: string, at: string, text: string) => line({ type: 'user', uuid, parentUuid: null, timestamp: at, message: { role: 'user', content: text } });
+    const IDLE = 15 * 60 * 1000;
+
+    it('keeps the session active while it grows, though the original went quiet, and ends it once', () => {
+      watcher.start();
+      writeFileSync(RESUMED(), prompt('r-1', '2026-10-01T12:00:06.000Z', 'resumed'));
+      vi.advanceTimersByTime(2000);
+      // The original file stays silent while the resume file keeps writing.
+      for (let i = 0; i < 9; i++) {
+        vi.advanceTimersByTime(2 * 60 * 1000);
+        appendFileSync(RESUMED(), prompt(`r-${i + 2}`, new Date(Date.now()).toISOString(), `turn ${i}`));
+      }
+      vi.advanceTimersByTime(2000);
+      expect(types()).not.toContain('session_end');
+      expect(gate.isActive(SESSION_ID)).toBe(true);
+      vi.advanceTimersByTime(IDLE + 4000);
+      expect(types().filter((t) => t === 'session_end')).toHaveLength(1);
+      expect(gate.isActive(SESSION_ID)).toBe(false);
+    });
+
+    it('brings back a session that had already ended', () => {
+      watcher.start();
+      vi.advanceTimersByTime(IDLE + 4000);
+      expect(types().at(-1)).toBe('session_end');
+      expect(gate.isActive(SESSION_ID)).toBe(false);
+      writeFileSync(RESUMED(), prompt('r-1', new Date(Date.now()).toISOString(), 'back again'));
+      vi.advanceTimersByTime(2000);
+      expect(types().slice(-2)).toEqual(['session_start', 'user_prompt']);
+      expect(store.getAll().at(-2)!.data.source).toBe('resumed');
+      expect(gate.isActive(SESSION_ID)).toBe(true);
+    });
+  });
+
+  it('attributes sidechain lines an older Claude Code wrote into the main transcript to their subagent', () => {
+    rmSync(join(projects, '-work', SESSION_ID), { recursive: true });
+    appendFileSync(main, SUBAGENT_CALL);
+    watcher.start();
+    expect(types()).toEqual(['session_start', 'user_prompt', 'subagent_start', 'tool_call_completed']);
+    expect(store.getAll()[3].data).toMatchObject({ toolName: 'WebFetch', subagentId: 'a1b2c3' });
+    expect(store.getAll().filter((e) => e.type === 'agent_response')).toEqual([]); // "searching" is the subagent's prose
+  });
+
   it('records only what arrived since on a restart, skipping what the database holds', () => {
     watcher.start();
     const first = store.getAll();
