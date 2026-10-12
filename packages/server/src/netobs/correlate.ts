@@ -205,6 +205,9 @@ export function correlate({ calls, flows, earlier = [], services, from }: Correl
     }
     return best;
   };
+  // A fetcher sidecar's hop goes to the fetch tool's calls; any other flow to the call whose URL names its host.
+  const fetchMayClaim = (call: TraceCall, f: FlowView, role: FlowRole) =>
+    role === 'fetchhop' ? isFetchTool(call.toolName) : role === 'other' && targets(call, f);
   const searches = calls.filter((c) => c.kind === 'search');
   const fetches = calls.filter((c) => c.kind === 'fetch');
 
@@ -217,13 +220,7 @@ export function correlate({ calls, flows, earlier = [], services, from }: Correl
       unattributed.push(f.id);
       continue;
     }
-    if (role === 'fetchhop') {
-      const c = nearest(fetches.filter((x) => isFetchTool(x.toolName)), f);
-      if (c) claimed.get(c.eventId)!.flowIds.push(f.id);
-      else unattributed.push(f.id);
-      continue;
-    }
-    const c = nearest(fetches.filter((x) => targets(x, f)), f);
+    const c = nearest(fetches.filter((x) => fetchMayClaim(x, f, role)), f);
     if (c) claimed.get(c.eventId)!.flowIds.push(f.id);
     else unattributed.push(f.id);
   }
@@ -237,7 +234,7 @@ export function correlate({ calls, flows, earlier = [], services, from }: Correl
       .filter((f) => !mine.has(f.id) && f.state !== 'gate_lost' && f.tOpen < call.start && (f.tClose ?? Infinity) >= call.start)
       .filter((f) => {
         const role = flowRole(f, services);
-        return call.kind === 'search' ? role === 'search' || role === 'fanout' : (role === 'fetchhop' && isFetchTool(call.toolName)) || (role === 'other' && targets(call, f));
+        return call.kind === 'search' ? role === 'search' || role === 'fanout' : fetchMayClaim(call, f, role);
       })
       .sort((a, b) => a.tOpen - b.tOpen)
       .map((f) => f.id);

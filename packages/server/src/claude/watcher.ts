@@ -32,7 +32,7 @@
  * resurrect when a file grows.
  */
 
-import { existsSync, readdirSync, statSync, readFileSync } from 'fs';
+import { readdirSync, statSync } from 'fs';
 import { join, basename } from 'path';
 import type { EventStore } from '../events/store.js';
 import type { SessionGate } from '../hooks/gate.js';
@@ -41,8 +41,8 @@ import { shouldActivateWatchedSession } from '../monitor/sources.js';
 import type { MonitorSource, WatchRoot } from '../monitor/sources.js';
 import type { TimelineEvent } from '../events/types.js';
 import { buildEvent } from '../hooks/transcript-shared.js';
-import { parseTranscriptLines, resolveClaudeCodeSessionId } from '../hooks/recovery.js';
-import { emitTranscriptEvent, isRecorded, type RecordedCursor } from '../pi/watcher.js';
+import { discoverClaudeCodeUnder, parseTranscriptLines, resolveClaudeCodeSessionId } from '../hooks/recovery.js';
+import { emitTranscriptEvent, isRecorded, mtimeOf, readLines, sizeOf, type RecordedCursor } from '../pi/watcher.js';
 
 const AGENT_TYPE = 'claude-code';
 const SCAN_INTERVAL_MS = 2000;
@@ -52,8 +52,8 @@ const REPLAY_WINDOW_MS = 5 * 60 * 1000; // 5 minutes
 /** If no transcript file of the session has grown in this long, it is treated as ended. */
 const SESSION_IDLE_TIMEOUT_MS = 15 * 60 * 1000; // 15 minutes
 
-const UUID_FILE_RE = /^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.jsonl$/;
 const SUBAGENT_FILE_RE = /^agent-(.+)\.jsonl$/;
+const SIDECHAIN_RE = /"isSidechain"\s*:\s*true/;
 
 interface TrackedFile {
   path: string;
@@ -150,22 +150,15 @@ export class ClaudeCodeSessionWatcher {
   private scanExistingSessions(): void {
     const now = Date.now();
     for (const root of this.activeRoots.values()) {
-      for (const projectDir of listDir(root.path)) {
-        const projectPath = join(root.path, projectDir);
-        if (!isDirectory(projectPath)) continue;
-        for (const file of listDir(projectPath)) {
-          const m = UUID_FILE_RE.exec(file);
-          if (!m) continue;
-          const filePath = join(projectPath, file);
-          if (this.mainFiles.has(filePath)) continue;
-          try {
-            const stat = statSync(filePath);
-            if (!stat.isFile() || now - stat.mtimeMs > RECENT_SESSION_THRESHOLD_MS) continue;
-          } catch {
-            continue;
-          }
-          this.tryAddMainFile(filePath, join(projectPath, m[1], 'subagents'), projectDir, root, m[1]);
+      for (const t of discoverClaudeCodeUnder(root.path)) {
+        if (this.mainFiles.has(t.path)) continue;
+        try {
+          const stat = statSync(t.path);
+          if (!stat.isFile() || now - stat.mtimeMs > RECENT_SESSION_THRESHOLD_MS) continue;
+        } catch {
+          continue;
         }
+        this.tryAddMainFile(t.path, join(root.path, t.projectDir, t.sessionId, 'subagents'), t.projectDir, root, t.sessionId);
       }
     }
   }
@@ -268,9 +261,11 @@ export class ClaudeCodeSessionWatcher {
     return out.sort(byTime);
   }
 
+  /** Emit what the session's files gained; a tombstoned session whose file grew comes back first. */
   private pollSession(session: TrackedSession): void {
     const events = this.readGrown(session);
     if (events.length === 0) return;
+    if (!session.pollTimer) this.wake(session);
     this.emitNew(session, events);
     session.lastActivityMs = Date.now();
   }
@@ -287,7 +282,7 @@ export class ClaudeCodeSessionWatcher {
     for (const session of this.sessions.values()) {
       // Tombstone: the only place a resumed session comes back (discovery skips claimed files).
       if (!session.pollTimer) {
-        this.tryResumeSession(session);
+        this.pollSession(session);
         continue;
       }
       const idleMs = Date.now() - session.lastActivityMs;
@@ -305,13 +300,6 @@ export class ClaudeCodeSessionWatcher {
       session.pollTimer = null;
       console.log(`[claude-code] Session ${session.sessionId.slice(0, 8)} ended (idle ${Math.round(idleMs / 60000)}m)`);
     }
-  }
-
-  private tryResumeSession(session: TrackedSession): void {
-    const events = this.readGrown(session);
-    if (events.length === 0) return;
-    this.wake(session);
-    this.emitNew(session, events);
   }
 
   /** Bring a tombstoned session back: a `resumed` marker, its activation restored, polling again. */
@@ -339,14 +327,19 @@ export function mainFileEvents(lines: string[], sessionId: string): ReturnType<t
   const main: string[] = [];
   const sidechains = new Map<string, string[]>();
   for (const line of lines) {
+    // Most lines are not sidechains; only those that might be are parsed here (the parser parses them all).
     let obj: Record<string, unknown> | null = null;
-    try { obj = JSON.parse(line) as Record<string, unknown>; } catch { /* left to the parser, which skips it */ }
+    if (SIDECHAIN_RE.test(line)) {
+      try { obj = JSON.parse(line) as Record<string, unknown>; } catch { /* left to the parser, which skips it */ }
+    }
     if (obj?.isSidechain !== true) {
       main.push(line);
       continue;
     }
     const agentId = typeof obj.agentId === 'string' && obj.agentId ? obj.agentId : 'sidechain';
-    sidechains.set(agentId, [...(sidechains.get(agentId) ?? []), line]);
+    const group = sidechains.get(agentId);
+    if (group) group.push(line);
+    else sidechains.set(agentId, [line]);
   }
   const parsed = parseTranscriptLines(main, sessionId, AGENT_TYPE);
   const side = [...sidechains].flatMap(([agentId, ls]) => subagentEvents(ls, sessionId, agentId));
@@ -378,41 +371,8 @@ const byTime = (a: TimelineEvent, b: TimelineEvent) => a.timestamp - b.timestamp
 
 function listDir(path: string): string[] {
   try {
-    return existsSync(path) ? readdirSync(path) : [];
+    return readdirSync(path);
   } catch {
     return [];
-  }
-}
-
-function isDirectory(path: string): boolean {
-  try {
-    return statSync(path).isDirectory();
-  } catch {
-    return false;
-  }
-}
-
-function readLines(filePath: string): string[] | null {
-  try {
-    const content = readFileSync(filePath, 'utf-8');
-    return content.length === 0 ? [] : content.split('\n').filter(Boolean);
-  } catch {
-    return null;
-  }
-}
-
-function mtimeOf(filePath: string): number {
-  try {
-    return statSync(filePath).mtimeMs;
-  } catch {
-    return 0;
-  }
-}
-
-function sizeOf(filePath: string): number {
-  try {
-    return statSync(filePath).size;
-  } catch {
-    return 0;
   }
 }

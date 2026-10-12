@@ -204,8 +204,8 @@ export class PiSessionWatcher {
     // Size before read, so a concurrent append can only make the stored size an
     // under-estimate (re-parsed next poll, then deduped) — never an over-estimate
     // that would skip a real append.
-    const size = this.sizeOf(filePath);
-    const lines = this.readLines(filePath);
+    const size = sizeOf(filePath);
+    const lines = readLines(filePath);
     if (!lines) return;
 
     const { events, metadata } = parsePiTranscript(lines, sessionId);
@@ -227,7 +227,7 @@ export class PiSessionWatcher {
     console.log(`[pi] Tracking session ${sessionId.slice(0, 8)} (${basename(filePath)})${tag}`);
 
     // Replay recently-touched sessions from the beginning; skip history for old ones.
-    const lastTouchedMs = metadata.lastTimestamp || this.mtimeOf(filePath);
+    const lastTouchedMs = metadata.lastTimestamp || mtimeOf(filePath);
     const isRecent = Date.now() - lastTouchedMs < REPLAY_WINDOW_MS;
 
     const session: TrackedSession = {
@@ -261,10 +261,10 @@ export class PiSessionWatcher {
   private pollSession(session: TrackedSession): void {
     // pi only appends: an unchanged file size means no new lines, so skip the
     // full re-read + re-parse (which grows O(n) with the transcript) entirely.
-    const size = this.sizeOf(session.file);
+    const size = sizeOf(session.file);
     if (size <= session.lastSize) return;
 
-    const lines = this.readLines(session.file);
+    const lines = readLines(session.file);
     if (!lines) return;
     session.lastSize = size;
 
@@ -340,10 +340,10 @@ export class PiSessionWatcher {
   private tryResumeSession(session: TrackedSession): void {
     // A tombstone stays in the map forever; short-circuit on unchanged size so an
     // ended session isn't re-read and re-parsed on every scan tick indefinitely.
-    const size = this.sizeOf(session.file);
+    const size = sizeOf(session.file);
     if (size <= session.lastSize) return;
 
-    const lines = this.readLines(session.file);
+    const lines = readLines(session.file);
     if (!lines) return;
     session.lastSize = size;
 
@@ -366,30 +366,6 @@ export class PiSessionWatcher {
     console.log(`[pi] Session ${session.sessionId.slice(0, 8)} resumed (gap ${gapMinutes}m)`);
   }
 
-  private readLines(filePath: string): string[] | null {
-    try {
-      const content = readFileSync(filePath, 'utf-8');
-      return content.length === 0 ? [] : content.split('\n').filter(Boolean);
-    } catch {
-      return null;
-    }
-  }
-
-  private mtimeOf(filePath: string): number {
-    try {
-      return statSync(filePath).mtimeMs;
-    } catch {
-      return 0;
-    }
-  }
-
-  private sizeOf(filePath: string): number {
-    try {
-      return statSync(filePath).size;
-    } catch {
-      return 0;
-    }
-  }
 }
 
 /**
@@ -487,4 +463,30 @@ export function recordedCursorFrom(
  */
 function committedEvents(events: TimelineEvent[]): TimelineEvent[] {
   return events.filter((e) => e.type !== 'tool_call_pending');
+}
+
+/** Shared with `ClaudeCodeSessionWatcher`. */
+export function readLines(filePath: string): string[] | null {
+  try {
+    const content = readFileSync(filePath, 'utf-8');
+    return content.length === 0 ? [] : content.split('\n').filter(Boolean);
+  } catch {
+    return null;
+  }
+}
+
+export function mtimeOf(filePath: string): number {
+  try {
+    return statSync(filePath).mtimeMs;
+  } catch {
+    return 0;
+  }
+}
+
+export function sizeOf(filePath: string): number {
+  try {
+    return statSync(filePath).size;
+  } catch {
+    return 0;
+  }
 }

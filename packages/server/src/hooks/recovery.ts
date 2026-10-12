@@ -311,7 +311,7 @@ const CLAUDE_CODE_SESSION_FILE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{
  * `<project>/<uuid>.jsonl` (subagent transcripts, one level deeper, are not
  * sessions of their own). `label` tags each with a glove session id.
  */
-function discoverClaudeCodeUnder(base: string, label?: string): DiscoveredTranscript[] {
+export function discoverClaudeCodeUnder(base: string, label?: string): DiscoveredTranscript[] {
   const results: DiscoveredTranscript[] = [];
   if (!existsSync(base)) return results;
 
