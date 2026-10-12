@@ -196,6 +196,40 @@ describe('joining', () => {
   });
 });
 
+describe('MCP sidecar hops (Vibe, Claude Code)', () => {
+  // As glove declares them: harness → sidecar over TCP, and the fetcher's own gate.
+  const MCP: NetService[] = [
+    { service: 'llm', listen: null, observed: true, mode: 'tcp', tool: 'llm', scope: 'local', client: 'harness' },
+    { service: 'search-mcp', listen: 'glove-v-search-mcp:8000', observed: true, mode: 'tcp', tool: 'web_search', scope: 'local', client: 'harness', harness: true },
+    { service: 'webfetch-mcp', listen: 'glove-v-webfetch-mcp:8000', observed: true, mode: 'tcp', tool: 'web_fetch', scope: 'local', client: 'harness', harness: true },
+    { service: 'webfetch-egress', listen: 'glove-v-webfetch-egress:8888', observed: true, mode: 'http-proxy', tool: 'web_fetch', client: 'webfetch', harness: false },
+  ];
+  const hop = (id: string, service: string, tool: string, tOpen: number) =>
+    flow(id, `glove-v-${service}`, tOpen, { service, tool, proto: 'tcp', scope: 'local', flags: { ...FLAGS, scope: 'local' } });
+
+  it('classifies the fetcher hop apart from a proxy and from the fetcher\'s egress', () => {
+    expect(flowRole({ service: 'webfetch-mcp', tool: 'web_fetch', client: 'harness', flags: FLAGS }, MCP)).toBe('fetchhop');
+    expect(flowRole({ service: 'webfetch-egress', tool: 'web_fetch', client: 'webfetch', flags: FLAGS }, MCP)).toBe('other');
+    expect(flowRole({ service: 'search-mcp', tool: 'web_search', client: 'harness', flags: FLAGS }, MCP)).toBe('search');
+  });
+
+  it('a fetch claims its hop to the sidecar and the sidecar\'s flow to the host; a search claims search-mcp', () => {
+    const cs = callsFrom([
+      call('mcp__searxng__web_search', { query: 'onion routing' }, T, T + 800),
+      call('webfetch_fetch_url', { url: 'https://example.com/' }, T + 1000, T + 2000),
+    ]);
+    const r = correlate({
+      calls: cs, services: MCP, from: T - 5000, flows: [
+        hop('s1', 'search-mcp', 'web_search', T + 50),
+        hop('h1', 'webfetch-mcp', 'web_fetch', T + 1050),
+        flow('e1', 'example.com', T + 1100, { service: 'webfetch-egress', client: 'webfetch' }),
+      ],
+    });
+    expect(claimedBy(r)).toEqual({ 'onion routing': ['s1'], 'https://example.com/': ['h1', 'e1'] });
+    expect(r.unattributed).toEqual([]);
+  });
+});
+
 describe('the glove fixture', () => {
   // Every flow in the fixture, as NetStore sees it.
   const store = new NetStore();

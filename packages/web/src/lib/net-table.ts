@@ -107,7 +107,7 @@ const LIVE: ReadonlySet<NetState> = new Set(['active', 'pooled']);
 const ROUTE_NAME: Record<string, string> = { vpn: 'VPN', tor: 'Tor', direct: 'Direct', corporate: 'Corporate' };
 const TOOL_LABEL: Record<string, string> = { 'search-engine-fanout': 'fan-out' };
 /** How the Local links group names its members. */
-const LOCAL_NAME: Record<string, string> = { llm: 'LLM', web_search: 'SearXNG' };
+const LOCAL_NAME: Record<string, string> = { llm: 'LLM', web_search: 'SearXNG', web_fetch: 'Web fetch' };
 
 const isLocalLink = (d: DestinationAggregate) => d.flags.scope === 'local' && d.state !== 'guard';
 

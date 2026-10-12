@@ -9,7 +9,10 @@
  *      the URL spells one out) that opened between its start − 1 s and its end
  *      + 2 s. Several calls could claim one flow: the nearest start wins.
  *   2. A search call claims the `search` service's flows and SearXNG's fan-out
- *      opened in its window, nearest start again.
+ *      opened in its window, nearest start again. A fetch call likewise claims
+ *      the hop to a fetcher sidecar (Vibe's `webfetch-mcp`), whose destination
+ *      is the sidecar rather than the URL's host; the sidecar's own egress
+ *      (client `webfetch`) names the host and joins by rule 1.
  *   3. `llm` service flows become LLM rows between the calls.
  *   4. Anything else in the turn is Unattributed. Never guess.
  *
@@ -126,14 +129,19 @@ function dedupeTargets(ts: Array<{ host: string; port: number | null }>) {
   });
 }
 
-export type FlowRole = 'llm' | 'search' | 'fanout' | 'other';
+/** `fetchhop`: the harness's hop to a fetcher sidecar, which fetches on its behalf. */
+export type FlowRole = 'llm' | 'search' | 'fanout' | 'fetchhop' | 'other';
 
 /** What a flow is, from its own fields and the service glove declared for it. */
-export function flowRole(f: Pick<FlowView, 'service' | 'tool' | 'client' | 'flags'>, services: readonly NetService[]): FlowRole {
+export function flowRole(f: Pick<FlowView, 'service' | 'tool' | 'client' | 'flags'> & { proto?: string | null }, services: readonly NetService[]): FlowRole {
   if (f.flags.fanout || f.client === 'searxng') return 'fanout';
-  const tool = f.tool ?? services.find((s) => s.service === f.service)?.tool ?? null;
+  const svc = services.find((s) => s.service === f.service);
+  const tool = f.tool ?? svc?.tool ?? null;
   if (tool === 'llm' || f.service === 'llm') return 'llm';
   if (tool === 'web_search') return 'search';
+  // A plain TCP listener for web_fetch is a fetcher sidecar; Pi's and Claude Code's
+  // `proxy` (an http-proxy) carries the destination itself and joins by host.
+  if (tool === 'web_fetch' && (f.client ?? svc?.client) === 'harness' && (svc?.mode ?? f.proto) === 'tcp') return 'fetchhop';
   return 'other';
 }
 
@@ -202,6 +210,12 @@ export function correlate({ calls, flows, earlier = [], services, from }: Correl
       unattributed.push(f.id);
       continue;
     }
+    if (role === 'fetchhop') {
+      const c = nearest(fetches, f);
+      if (c) claimed.get(c.eventId)!.flowIds.push(f.id);
+      else unattributed.push(f.id);
+      continue;
+    }
     const c = nearest(fetches.filter((x) => targets(x, f)), f);
     if (c) claimed.get(c.eventId)!.flowIds.push(f.id);
     else unattributed.push(f.id);
@@ -216,7 +230,7 @@ export function correlate({ calls, flows, earlier = [], services, from }: Correl
       .filter((f) => !mine.has(f.id) && f.state !== 'gate_lost' && f.tOpen < call.start && (f.tClose ?? Infinity) >= call.start)
       .filter((f) => {
         const role = flowRole(f, services);
-        return call.kind === 'search' ? role === 'search' || role === 'fanout' : role === 'other' && targets(call, f);
+        return call.kind === 'search' ? role === 'search' || role === 'fanout' : role === 'fetchhop' || (role === 'other' && targets(call, f));
       })
       .sort((a, b) => a.tOpen - b.tOpen)
       .map((f) => f.id);

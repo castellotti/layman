@@ -1,7 +1,7 @@
 /**
  * Monitor sources — where the passive file watcher looks for harness logs.
  *
- * Layman's passive monitoring (currently Mistral Vibe) tails on-disk transcripts
+ * Layman's passive monitoring (Mistral Vibe, pi, gloved Claude Code) tails on-disk transcripts
  * rather than receiving network hooks. Historically the watch path was a single
  * hardcoded directory (`~/.vibe/logs/session`). A `MonitorSource` generalises
  * that: it enumerates *watch roots* on demand, so several roots — the native
@@ -54,7 +54,7 @@ export interface MonitorSource {
  * therefore always activate. Native roots (no label) keep the
  * `autoActivateClients` gate.
  *
- * Shared by both passive watchers (`VibeSessionWatcher`, `PiSessionWatcher`) so
+ * Shared by the passive watchers (Vibe, pi, gloved Claude Code) so
  * this load-bearing rule lives in exactly one place. Note this governs only the
  * *initial* activation — resume re-activation is handled by
  * `SessionGate.suspend`/`resume`, which restore the activation state captured at
@@ -74,6 +74,12 @@ const VIBE_AGENT_TYPE = 'mistral-vibe';
 const VIBE_SESSION_SUBPATH = join('.vibe', 'logs', 'session');
 
 const PI_AGENT_TYPE = 'pi';
+/**
+ * Claude Code has no native source: native Claude Code is recorded over hooks (plus
+ * transcript gap recovery), and a native root here would record it twice. Only
+ * glove-exported Claude Code transcripts are tailed passively.
+ */
+const CLAUDE_CODE_AGENT_TYPE = 'claude-code';
 /** Relative path from a home directory to pi's session-log dir. */
 const PI_SESSION_SUBPATH = join('.pi', 'agent', 'sessions');
 /**
@@ -145,7 +151,7 @@ export class NativePiSource implements MonitorSource {
 export const GLOVE_ROOTS_TTL_MS = 1000;
 
 /** glove's `harness` names → the Layman agent types whose transcripts a passive watcher parses. */
-const GLOVE_HARNESS_AGENT: Record<string, string> = { pi: PI_AGENT_TYPE, vibe: VIBE_AGENT_TYPE };
+const GLOVE_HARNESS_AGENT: Record<string, string> = { pi: PI_AGENT_TYPE, vibe: VIBE_AGENT_TYPE, 'claude-code': CLAUDE_CODE_AGENT_TYPE };
 
 /**
  * Sandboxed harness transcripts exported by glove v3 (github.com/castellotti/glove).
@@ -154,15 +160,17 @@ const GLOVE_HARNESS_AGENT: Record<string, string> = { pi: PI_AGENT_TYPE, vibe: V
  * The only transcripts Layman may read are the ones the session's **observe**
  * grant exports: with `transcripts: true`, glove bind-mounts
  * `~/.glove/observe/<id>/transcripts/` over the harness's transcript directory
- * (pi's `.pi/agent/sessions`, Vibe's `.vibe/logs/session`), so that export *is*
- * the transcript directory, in the layout the watchers already parse (pi's
- * per-cwd subdirectories such as `--work--/`, Vibe's per-session directories).
+ * (pi's `.pi/agent/sessions`, Vibe's `.vibe/logs/session`, Claude Code's
+ * `.claude/projects`), so that export *is* the transcript directory, in the
+ * layout the watchers already parse (pi's per-cwd subdirectories such as
+ * `--work--/`, Vibe's per-session directories, Claude Code's `-work/<uuid>.jsonl`
+ * with its `<uuid>/subagents/`).
  * A session without the grant has no directory there and is never looked for
  * anywhere else.
  *
  * The harness comes from glove, never from the directory's layout: the registry
- * row's `harness`, else `session.json`'s. Harnesses without a passive watcher
- * (claude-code, whose transcripts glove does not export) yield no root.
+ * row's `harness`, else `session.json`'s. A harness without a passive watcher
+ * yields no root.
  *
  * Each root is labelled with the session id, which is also the token in the
  * session's flow records, so Trace can join a transcript to its traffic. It

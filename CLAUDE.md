@@ -85,9 +85,11 @@ linked above.
 4b. **Monitor sources** (`packages/server/src/monitor/sources.ts`): a `MonitorSource` enumerates
    `WatchRoot`s (a harness log dir plus the agent type and an optional sandbox `label`) for the
    passive watchers, on demand, separating *where* to watch (a source) from *how* to parse (a
-   per-format watcher). `NativeVibeSource`, `NativePiSource`, and `GloveSource` implement it; each of
-   the two passive watchers (`VibeSessionWatcher`, `PiSessionWatcher`) filters `roots()` down to the
-   agent type it parses, so the single shared `GloveSource` instance feeds both. A future passive
+   per-format watcher). `NativeVibeSource`, `NativePiSource`, and `GloveSource` implement it; each
+   passive watcher (`VibeSessionWatcher`, `PiSessionWatcher`, `ClaudeCodeSessionWatcher`) filters
+   `roots()` down to the agent type it parses, so the single shared `GloveSource` instance feeds all
+   three. Claude Code has **no native source** (hooks record native Claude Code; a native root would
+   record it twice): `claude/watcher.ts` tails only glove-exported transcripts, read-only. A future passive
    harness adds a source plus a watcher and nothing else changes. Glove specifics:
    `docs/extensions/glove.md`.
 

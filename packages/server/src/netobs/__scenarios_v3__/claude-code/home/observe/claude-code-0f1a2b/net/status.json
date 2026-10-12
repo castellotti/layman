@@ -1,0 +1,22 @@
+{
+  "v": 1,
+  "gate": "0.2.0",
+  "state": "running",
+  "record": "metadata",
+  "upstream": {
+    "kind": "direct",
+    "healthy": null
+  },
+  "resolver": {
+    "mode": "in-tunnel",
+    "healthy": null
+  },
+  "t": "2026-10-01T12:00:00.000Z",
+  "telemetry": {
+    "written": 0,
+    "dropped": 0,
+    "invalid": 0,
+    "rotations": 0,
+    "expired_files": 0
+  }
+}

@@ -293,54 +293,8 @@ export class PiSessionWatcher {
     }
   }
 
-  /**
-   * Translate one parsed event into an EventStore.add() call. Uses the store's
-   * live path (fresh id, current timestamp) exactly as the vibe watcher does, so
-   * a passively-tailed session is a `live` source and history-import re-parsing
-   * won't double-record it. Tool completions get the same file/url access
-   * extraction the vibe watcher performs.
-   */
   private emitEvent(session: TrackedSession, ev: TimelineEvent): void {
-    const { sessionId, agentType } = session;
-    // The live path stamps the event with the time it was read; keep the
-    // transcript's own times beside it, for joining tool calls to glove's
-    // network flows (netobs/correlate.ts). `timestamp`/`completedAt` keep
-    // their meaning for everything else.
-    const transcript = {
-      // The parser's deterministic id: what a restart checks to skip events already recorded.
-      transcriptEventId: ev.id,
-      ...(ev.timestamp > 0 ? { transcriptAt: ev.timestamp } : {}),
-      ...(ev.type === 'tool_call_completed' && typeof ev.data.completedAt === 'number' && ev.data.completedAt > 0
-        ? { transcriptCompletedAt: ev.data.completedAt } : {}),
-    };
-
-    if (ev.type === 'tool_call_completed') {
-      const toolName = String(ev.data.toolName ?? 'unknown');
-      const toolInput = (ev.data.toolInput as Record<string, unknown>) ?? {};
-      const toolOutput = ev.data.toolOutput ?? '';
-      const completedAt = Date.now();
-
-      const access = extractAccess(toolName, toolInput, toolOutput, '', completedAt);
-      const filesWithId = access.files.length > 0 ? access.files : undefined;
-      const urlsWithId = access.urls.length > 0 ? access.urls : undefined;
-
-      const event = this.eventStore.add('tool_call_completed', sessionId, {
-        ...ev.data,
-        ...transcript,
-        completedAt,
-        fileAccess: filesWithId,
-        urlAccess: urlsWithId,
-      }, ev.riskLevel, agentType);
-
-      if (filesWithId) filesWithId.forEach(f => f.eventId = event.id);
-      if (urlsWithId) urlsWithId.forEach(u => u.eventId = event.id);
-      if (filesWithId || urlsWithId) {
-        this.eventStore.recordAccess(sessionId, filesWithId ?? [], urlsWithId ?? []);
-      }
-      return;
-    }
-
-    this.eventStore.add(ev.type, sessionId, { ...ev.data, ...transcript }, ev.riskLevel, agentType);
+    emitTranscriptEvent(this.eventStore, session.sessionId, session.agentType, ev);
   }
 
   private cleanupEndedSessions(): void {
@@ -436,6 +390,55 @@ export class PiSessionWatcher {
       return 0;
     }
   }
+}
+
+/**
+ * Translate one parsed event into an EventStore.add() call. Uses the store's
+ * live path (fresh id, current timestamp) exactly as the vibe watcher does, so
+ * a passively-tailed session is a `live` source and history-import re-parsing
+ * won't double-record it. Tool completions get the same file/url access
+ * extraction the vibe watcher performs. Shared with `ClaudeCodeSessionWatcher`.
+ */
+export function emitTranscriptEvent(eventStore: EventStore, sessionId: string, agentType: string, ev: TimelineEvent): void {
+  // The live path stamps the event with the time it was read; keep the
+  // transcript's own times beside it, for joining tool calls to glove's
+  // network flows (netobs/correlate.ts). `timestamp`/`completedAt` keep
+  // their meaning for everything else.
+  const transcript = {
+    // The parser's deterministic id: what a restart checks to skip events already recorded.
+    transcriptEventId: ev.id,
+    ...(ev.timestamp > 0 ? { transcriptAt: ev.timestamp } : {}),
+    ...(ev.type === 'tool_call_completed' && typeof ev.data.completedAt === 'number' && ev.data.completedAt > 0
+      ? { transcriptCompletedAt: ev.data.completedAt } : {}),
+  };
+
+  if (ev.type === 'tool_call_completed') {
+    const toolName = String(ev.data.toolName ?? 'unknown');
+    const toolInput = (ev.data.toolInput as Record<string, unknown>) ?? {};
+    const toolOutput = ev.data.toolOutput ?? '';
+    const completedAt = Date.now();
+
+    const access = extractAccess(toolName, toolInput, toolOutput, '', completedAt);
+    const filesWithId = access.files.length > 0 ? access.files : undefined;
+    const urlsWithId = access.urls.length > 0 ? access.urls : undefined;
+
+    const event = eventStore.add('tool_call_completed', sessionId, {
+      ...ev.data,
+      ...transcript,
+      completedAt,
+      fileAccess: filesWithId,
+      urlAccess: urlsWithId,
+    }, ev.riskLevel, agentType);
+
+    if (filesWithId) filesWithId.forEach(f => f.eventId = event.id);
+    if (urlsWithId) urlsWithId.forEach(u => u.eventId = event.id);
+    if (filesWithId || urlsWithId) {
+      eventStore.recordAccess(sessionId, filesWithId ?? [], urlsWithId ?? []);
+    }
+    return;
+  }
+
+  eventStore.add(ev.type, sessionId, { ...ev.data, ...transcript }, ev.riskLevel, agentType);
 }
 
 /** What the database already holds of a session, for a replay after a restart to skip. */

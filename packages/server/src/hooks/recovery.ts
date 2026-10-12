@@ -304,49 +304,68 @@ function tryParse(line: string): Record<string, unknown> | null {
 // there is no other place agentType is hardcoded for either function.
 // ---------------------------------------------------------------------------
 
+const CLAUDE_CODE_SESSION_FILE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+/**
+ * Main Claude Code transcripts under one `projects/` directory, one per
+ * `<project>/<uuid>.jsonl` (subagent transcripts, one level deeper, are not
+ * sessions of their own). `label` tags each with a glove session id.
+ */
+function discoverClaudeCodeUnder(base: string, label?: string): DiscoveredTranscript[] {
+  const results: DiscoveredTranscript[] = [];
+  if (!existsSync(base)) return results;
+
+  let projectDirs: string[];
+  try { projectDirs = readdirSync(base); } catch { return results; }
+
+  for (const projectDir of projectDirs) {
+    const projectPath = join(base, projectDir);
+    let stat;
+    try { stat = statSync(projectPath); } catch { continue; }
+    if (!stat.isDirectory()) continue;
+
+    let files: string[];
+    try { files = readdirSync(projectPath); } catch { continue; }
+
+    for (const file of files) {
+      if (!file.endsWith('.jsonl')) continue;
+      // Skip non-UUID filenames (e.g. config files)
+      const sessionId = file.replace('.jsonl', '');
+      if (!CLAUDE_CODE_SESSION_FILE.test(sessionId)) continue;
+
+      results.push({
+        path: join(projectPath, file),
+        sessionId,
+        projectDir,
+        agentType: 'claude-code',
+        ...(label !== undefined ? { label } : {}),
+      });
+    }
+  }
+  return results;
+}
+
 /**
  * Discover all Claude Code JSONL transcript files from ~/.claude/projects/.
  * Returns one entry per main transcript file (excludes subagent transcripts).
  */
 function discoverClaudeCodeTranscripts(): DiscoveredTranscript[] {
-  const results: DiscoveredTranscript[] = [];
-  const basePaths = ['/root/.claude/projects', join(homedir(), '.claude', 'projects')];
-
-  for (const base of basePaths) {
-    if (!existsSync(base)) continue;
-
-    let projectDirs: string[];
-    try { projectDirs = readdirSync(base); } catch { continue; }
-
-    for (const projectDir of projectDirs) {
-      const projectPath = join(base, projectDir);
-      let stat;
-      try { stat = statSync(projectPath); } catch { continue; }
-      if (!stat.isDirectory()) continue;
-
-      let files: string[];
-      try { files = readdirSync(projectPath); } catch { continue; }
-
-      for (const file of files) {
-        if (!file.endsWith('.jsonl')) continue;
-        // Skip non-UUID filenames (e.g. config files)
-        const sessionId = file.replace('.jsonl', '');
-        if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(sessionId)) continue;
-
-        results.push({
-          path: join(projectPath, file),
-          sessionId,
-          projectDir,
-          agentType: 'claude-code',
-        });
-      }
-    }
-
-    // Only use the first base path that exists (Docker or native)
-    if (results.length > 0) break;
+  for (const base of ['/root/.claude/projects', join(homedir(), '.claude', 'projects')]) {
+    const results = discoverClaudeCodeUnder(base);
+    // Only use the first base path that has transcripts (Docker or native)
+    if (results.length > 0) return results;
   }
+  return [];
+}
 
-  return results;
+/**
+ * Claude Code sessions inside glove observe exports. `roots` are the
+ * claude-code roots `GloveSource` reports (each `observe/<id>/transcripts`,
+ * which glove mounts over the sandbox's `~/.claude/projects`, plus its id
+ * label), so **Import session history** covers gloved runs never watched live.
+ */
+export function discoverGloveClaudeSessions(roots: Array<{ path: string; label?: string }>): DiscoveredTranscript[] {
+  return roots.flatMap((root) => discoverClaudeCodeUnder(root.path, root.label));
 }
 
 const claudeCodeSource: TranscriptSource = {
@@ -462,6 +481,12 @@ function resolveTranscriptPath(cwd: string, sessionId: string): string | null {
  * session's path from here. Reading this off the registry's own agentType,
  * rather than a second `'claude-code'` string literal, keeps this list from
  * silently drifting from the one in TRANSCRIPT_SOURCES.
+ *
+ * A gloved Claude Code session is never gap-recovered here: its transcript is
+ * in the observe export, not the native `~/.claude/projects` that
+ * resolveTranscriptPath() searches, and its passive watcher fills its own gaps
+ * on restart. Reading the export here as well would record those lines twice
+ * (parser ids here, live ids there).
  */
 const GAP_RECOVERY_AGENT_TYPES = [claudeCodeSource.agentType];
 
@@ -551,17 +576,17 @@ export interface ImportResult {
  * it, and every entry already carries the agentType that claimed it.
  *
  * `gloveRoots` (the passive watchers' current watch roots) extends discovery
- * into glove sandbox homes: any pi or Vibe root among them is scanned too, so a
- * gloved run that was never monitored live is still importable. Empty when glove
- * is disabled. claude-code isn't run under glove, so its roots (if any) are
- * ignored here — each importer filters `gloveRoots` down to the agent type it
- * parses, exactly as the passive watchers do.
+ * into glove observe exports: any pi, Vibe or Claude Code root among them is
+ * scanned too, so a gloved run that was never monitored live is still
+ * importable. Empty when glove is disabled. Each importer filters `gloveRoots`
+ * down to the agent type it parses, exactly as the passive watchers do.
  */
 export function discoverTranscriptFiles(gloveRoots: WatchRoot[] = []): DiscoveredTranscript[] {
   const native = TRANSCRIPT_SOURCES.flatMap((source) => source.discover());
   const glovePi = discoverGlovePiSessions(gloveRoots.filter((r) => r.agentType === piTranscriptSource.agentType));
   const gloveVibe = discoverGloveVibeSessions(gloveRoots.filter((r) => r.agentType === vibeTranscriptSource.agentType));
-  return [...native, ...glovePi, ...gloveVibe];
+  const gloveClaude = discoverGloveClaudeSessions(gloveRoots.filter((r) => r.agentType === claudeCodeSource.agentType));
+  return [...native, ...glovePi, ...gloveVibe, ...gloveClaude];
 }
 
 /**
@@ -683,6 +708,14 @@ export async function importHistoricalSessions(
           userPromptCount,
           status: 'discovered',
         });
+
+      } else if (enrichExisting && existingSource === 'live' && discovered.label !== undefined) {
+        // A gloved session a passive watcher recorded is the watcher's: it fills
+        // its own gaps on restart, skipping by `transcriptEventId`. A `parseAfter`
+        // cutoff here would insert parser ids for the same lines the watcher's
+        // replay records under live ids, so both would land.
+        result.skipped++;
+        continue;
 
       } else if (enrichExisting && source.parseAfter) {
         // Enrich existing session — find events after last recorded timestamp

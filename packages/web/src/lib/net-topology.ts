@@ -189,9 +189,33 @@ function serviceRoute(s: NetService): RouteId {
   return 'tunnel';
 }
 
+/**
+ * glove's netgate client labels for egress consumers (a sidecar that goes out on
+ * the harness's behalf, `harness: false`): display name, what it carries, and
+ * the tool service whose calls make it go out (`trigger`, matched on the
+ * service's `tool`; a service named `<trigger>-mcp` is preferred, as that is the
+ * MCP harnesses' hop). `github`/`ssh` are labels glove has planned, not yet built.
+ */
+const EGRESS_CLIENTS: Record<string, { name: string; what: string; why: string; trigger: string | null }> = {
+  searxng: { name: 'SearXNG', what: 'search engine fan-out', why: 'triggered by a web search', trigger: 'web_search' },
+  webfetch: { name: 'Web fetch', what: 'page fetch', why: 'triggered by a web fetch', trigger: 'web_fetch' },
+  playwright: { name: 'Playwright', what: 'browser traffic', why: 'driven by a browser tool', trigger: null },
+  github: { name: 'GitHub relay', what: 'GitHub traffic', why: 'driven by gh', trigger: null },
+  ssh: { name: 'SSH relay', what: 'SSH traffic', why: 'driven by ssh', trigger: null },
+};
+
 function clientName(client: string | null | undefined): string {
   if (!client) return 'another client';
-  return client === 'searxng' ? 'SearXNG' : client;
+  return EGRESS_CLIENTS[client]?.name ?? client;
+}
+
+/** The harness service whose calls make an egress consumer go out, if glove declared one. */
+function triggerOf(consumer: NetService, services: readonly NetService[]): NetService | null {
+  const client = consumer.client ?? (consumer.tool === 'search-engine-fanout' ? 'searxng' : null);
+  const tool = client ? EGRESS_CLIENTS[client]?.trigger ?? null : null;
+  if (!tool) return null;
+  const harness = services.filter((s) => s.tool === tool && !isFanoutService(s));
+  return harness.find((s) => s.service.endsWith('-mcp')) ?? harness.find((s) => s.mode === 'tcp') ?? harness[0] ?? null;
 }
 
 /** Everything the gate declared, plus any service seen in traffic that it did not. */
@@ -639,11 +663,12 @@ export function layoutTopology(data: TopoInput, width: number, height: number): 
   });
 
   const captions: Caption[] = [];
-  // The fan-out: labelled by what it carried, and linked from the search service that triggers it.
-  const fanNode = svcNodes.find((n) => isFanoutService(byName.get(n.title)));
-  if (fanNode) {
+  // Each egress consumer (SearXNG's fan-out, the web fetcher): labelled by what it carried, and
+  // linked from the tool service that triggers it.
+  for (const fanNode of svcNodes.filter((n) => isFanoutService(byName.get(n.title)))) {
     const fanBytes = legs.filter((l) => l.service === fanNode.title).reduce((a, l) => a + l.bytes, 0);
-    const search = svcNodes.find((n) => byName.get(n.title)?.tool === 'web_search' || n.title === 'search');
+    const trigger = triggerOf(byName.get(fanNode.title)!, services);
+    const search = trigger ? svcNodes.find((n) => n.title === trigger.service) : undefined;
     if (search) {
       const x = search.x + search.w - 50;
       const y1 = search.y + search.h;
@@ -699,7 +724,8 @@ export function pathHops(data: TopoInput, host: string): { dest: DestinationAggr
   const g = data.gate;
 
   if (fan) {
-    hops.push({ id: 'sandbox', title: `${clientName(svc?.client)} (not the harness)`, detail: 'search engine fan-out', status: 'triggered by a web search', evidence: 'observed' });
+    const info = EGRESS_CLIENTS[svc?.client ?? (d.flags.fanout ? 'searxng' : '')];
+    hops.push({ id: 'sandbox', title: `${clientName(svc?.client)} (not the harness)`, detail: info?.what ?? 'egress on the harness’s behalf', status: info?.why ?? 'not a harness connection', evidence: 'observed' });
   } else {
     hops.push({
       id: 'sandbox', title: `${data.token} sandbox`, detail: data.session?.harness ? `${data.session.harness} harness` : null,

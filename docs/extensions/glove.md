@@ -17,9 +17,10 @@ sandbox; it adds nothing to what the sandboxed agent can see. The feature is off
 ever writes is a session's `control/<id>/rules.json`, only with the filter grant, and only when the user
 blocks or allows something (Network → Writing rules).
 
-Only harnesses that persist a tailable transcript are discoverable this way: **pi** and **Mistral
-Vibe**. glove exports no Claude Code transcripts (its profile has no transcript directory), and a
-network-hook harness inside a net-restricted sandbox cannot reach Layman.
+Only harnesses that persist a tailable transcript are discoverable this way: **pi**, **Mistral
+Vibe** and **Claude Code**. A network-hook harness inside a net-restricted sandbox cannot reach Layman,
+so a gloved Claude Code is read from its exported transcripts, never through hooks: Layman shows it
+but cannot approve, deny or rewrite its tool calls (see "Gloved Claude Code is watched passively").
 
 ## How it works
 
@@ -42,21 +43,23 @@ and unknown keys are ignored, as glove itself does.
 **Transcripts** (`GloveSource`, `packages/server/src/monitor/sources.ts`). For every
 `observe/<id>/` with a `transcripts/` directory, `GloveSource` returns one labelled `WatchRoot`: the
 path is `transcripts/` itself, because glove bind-mounts it *over* the harness's transcript directory
-(pi's `.pi/agent/sessions`, Vibe's `.vibe/logs/session`), so it holds exactly the layout the watchers
-already parse (pi's per-cwd subdirectories such as `--work--/`). The harness comes from glove, never
-from the layout: the registry row's `harness`, else `session.json`'s. `pi` maps to the pi watcher,
-`vibe` to the Vibe watcher, anything else yields no root. A session without the observe grant has no
-export and is never looked for anywhere else (its private `<dir>/.glove/home/` is off limits). The
-passive watchers (`VibeSessionWatcher`, `PiSessionWatcher`) each filter `roots()` down to the agent
-type they parse, so the single shared `GloveSource` instance feeds both; native sources precede glove
-in the list, so native wins any path collision. `roots()` is memoized for 1 s, since both watchers call
-it every scan tick against a FUSE-backed bind mount on macOS. See the "Monitor sources" note in the
+(pi's `.pi/agent/sessions`, Vibe's `.vibe/logs/session`, Claude Code's `.claude/projects`), so it holds
+exactly the layout the watchers already parse (pi's per-cwd subdirectories such as `--work--/`; for
+Claude Code, `-work/<uuid>.jsonl` and `-work/<uuid>/subagents/agent-<id>.jsonl`, the cwd being always
+`/work`). The harness comes from glove, never from the layout: the registry row's `harness`, else
+`session.json`'s. `pi` maps to the pi watcher, `vibe` to the Vibe watcher, `claude-code` to the Claude
+Code watcher, anything else yields no root. A session without the observe grant has no export and is
+never looked for anywhere else (its private `<dir>/.glove/home/` is off limits). The passive watchers
+(`VibeSessionWatcher`, `PiSessionWatcher`, `ClaudeCodeSessionWatcher`) each filter `roots()` down to
+the agent type they parse, so the single shared `GloveSource` instance feeds all three; native sources
+precede glove in the list, so native wins any path collision. `roots()` is memoized for 1 s, since every
+watcher calls it each scan tick against a FUSE-backed bind mount on macOS. See the "Monitor sources" note in the
 root `CLAUDE.md` for the `MonitorSource` abstraction this plugs into.
 
-**Mistral Vibe under glove is untested.** glove's Vibe profile exports `logs/session`
-(`transcript_subdir`) while its `sessions_subdir` still says `sessions`, and glove has no Vibe fixture,
-so where a gloved Vibe really writes is unverified on glove's side. Layman reads the export as a
-`logs/session` directory, which is what glove binds, and guesses nothing beyond that.
+**Mistral Vibe under glove is verified on glove's side, not yet live in Layman.** glove fixed its Vibe
+profile (Vibe writes `logs/session`, which is what glove binds) and its tests have checked a gloved Vibe
+run live. Layman reads the export as that `logs/session` directory; its own live check against a gloved
+Vibe is still to do.
 
 ### glove v2 homes
 
@@ -71,7 +74,7 @@ parent once when `home` is absent and drops the old key.
 
 > These moved here from the root `CLAUDE.md` to keep it under its size limit.
 
-### Gloved sessions always activate on the Dashboard (`pi/watcher.ts`, `vibe/watcher.ts`)
+### Gloved sessions always activate on the Dashboard (`pi/watcher.ts`, `vibe/watcher.ts`, `claude/watcher.ts`)
 
 Activation — the gate flag `buildSessionsList()` reads as a session's `active`, which the Dashboard
 filters on (`DashboardView.tsx`: `s.active !== false`) — is normally driven by `autoActivateClients`
@@ -79,7 +82,7 @@ or the `/layman` slash command. A gloved session has neither path: `/layman` run
 sandbox and cannot reach the host, and the sandbox agent never posts hooks. So a passively-tailed
 session whose `WatchRoot` carries a `label` (i.e. it came from `GloveSource`) **always activates**,
 independent of `autoActivateClients`; native (unlabelled) roots keep the `autoActivateClients` gate.
-Both watchers apply this through a shared `shouldActivate(agentType, label)` helper, at add *and* at
+Every watcher applies this through the shared `shouldActivateWatchedSession()` helper, at add *and* at
 resume time — a session tombstoned by the 15-minute idle timeout re-activates when its transcript
 grows again, so it returns to the Dashboard on the next prompt rather than staying hidden. Without
 this, a gloved run recorded to Sessions history but never appeared live on the Dashboard unless its
@@ -100,20 +103,48 @@ sandbox; see Network → Writing rules.)
 `transcripts/` is created by glove's first `glove up` with `transcripts: true`; pi writes into it on
 its first turn, which `GloveSource` picks up on the next scan tick.
 
-### History import discovers glove pi *and* Vibe sessions too (`recovery.ts`, `transcript-pi.ts`, `transcript-vibe.ts`)
+### Gloved Claude Code is watched passively (`claude/watcher.ts`)
 
-`discoverTranscriptFiles(gloveRoots)` scans, in addition to the native `~/.pi/agent/sessions` and
-`~/.vibe/logs/session` roots, every *pi* and *Vibe* root the passive watchers report
-(`gloveSource.roots()` threaded from the two `importHistoricalSessions()` call sites in `server.ts`),
-so a gloved pi or Vibe run that was never monitored live is still importable from **Settings -> Data ->
-Import session history**. Each importer filters `gloveRoots` down to the agent type it parses
-(`discoverGlovePiSessions` / `discoverGloveVibeSessions`), exactly as the passive watchers do; glove's
-experimental claude-code harness is still not imported (no passive Claude Code watcher — see above), so
-its roots are ignored. `gloveRoots` is empty when glove is disabled, leaving native import byte-for-byte
-unchanged. The session id rides through `DiscoveredTranscript.label` into `importSession(..., sessionName)`
+glove's `claude-code` harness exports Claude Code's own `~/.claude/projects`, and
+`ClaudeCodeSessionWatcher` tails it as `PiSessionWatcher` tails pi: scan-tick discovery, replay from
+the start for a session touched in the last 5 minutes (skipping what the database already holds by
+`transcriptEventId`), adoption without replay for older ones, a 15-minute idle tombstone that
+resurrects when a file grows, and the transcript's own times kept as `transcriptAt` /
+`transcriptCompletedAt` for Trace. Lines are parsed with `parseTranscriptLines()` from `recovery.ts`,
+the parser history import and gap recovery already use, so there is one Claude Code parser.
+
+- **Only glove roots.** There is no native Claude Code source: native Claude Code is recorded over
+  hooks, and tailing its transcript as well would record every turn twice.
+- **Identity** is the `sessionId` on the lines, not the filename: a resume/fork writes a new file that
+  keeps the original id. All files of one session share one set of emitted ids, so a resume file that
+  repeats earlier lines adds only the new ones.
+- **Subagents** (`<uuid>/subagents/agent-<id>.jsonl`, also older sidechain lines in the main file)
+  are attributed as the hook path attributes them: a `subagent_start` marker, then the subagent's tool
+  calls in the parent session tagged `subagentId`. Its prompt and prose are left out: they are the Task
+  tool's input and output, and a `user_prompt` would split the parent's turn in two.
+- **Read-only.** A gloved Claude Code cannot reach Layman's hooks (Claude Code refuses an `http` hook
+  to a private address, and glove's `command` hooks have no network), so there is no live gate:
+  Layman cannot block, approve or rewrite its tool calls, and drift blocking does not apply. A
+  loopback relay that would allow it is an opt-in glove feature that does not exist yet.
+- **No gap recovery.** Startup gap recovery looks only in the native `~/.claude/projects`, so it never
+  reads an export. That is deliberate: the watcher's restart replay fills a gloved session's gaps, and
+  recovery reading the export too would record those lines twice (parser ids there, live ids here).
+
+### History import discovers glove pi, Vibe *and* Claude Code sessions too (`recovery.ts`, `transcript-pi.ts`, `transcript-vibe.ts`)
+
+`discoverTranscriptFiles(gloveRoots)` scans, in addition to the native roots, every *pi*, *Vibe* and
+*Claude Code* root the passive watchers report (`gloveSource.roots()` threaded from the two
+`importHistoricalSessions()` call sites in `server.ts`), so a gloved run that was never monitored live
+is still importable from **Settings -> Data -> Import session history**. Each importer filters
+`gloveRoots` down to the agent type it parses (`discoverGlovePiSessions` / `discoverGloveVibeSessions`
+/ `discoverGloveClaudeSessions`), exactly as the passive watchers do. As natively, only Claude Code's
+main transcripts are imported, not its subagent files. `gloveRoots` is empty when glove is disabled,
+leaving native import byte-for-byte unchanged. The session id rides through `DiscoveredTranscript.label` into `importSession(..., sessionName)`
 so a gloved import is tagged exactly like a passively-watched gloved session. Double-import against the
 live watcher is prevented by the live-source rule (see the root `CLAUDE.md` history-enrichment note): a
-session a watcher recorded is `source === 'live'` and is skipped.
+session a watcher recorded is `source === 'live'` and is skipped. For a gloved session this check comes
+before Claude Code's `parseAfter` enrichment, which would otherwise insert parser ids for lines the
+watcher's restart replay records under live ids.
 
 Vibe's transcript carries no per-message timestamp (the live watcher stamps `Date.now()`), so the Vibe
 importer reads each session's real span from `meta.json` (`start_time`/`end_time`) at discovery and
@@ -187,6 +218,23 @@ rules needs the extra `control/` mount (Docker, below).
   `tool: browser` come from glove's browser extension and need no special handling. SearXNG's engine
   requests arrive through their own `searxng-egress` gate (`client: searxng`), so a `web_search` shows
   every engine it reached, as the fan-out treatment already expects.
+- **Labels from glove's Claude Code and Vibe harnesses.** These harnesses reach search and fetch as
+  MCP servers in sidecars, so they add two harness → sidecar hops (client `harness`, tcp, scope
+  `local`): **`search-mcp`** (tool `web_search`) and **`webfetch-mcp`** (tool `web_fetch`, Vibe's
+  `fetch_url`). Vibe's fetcher then goes out through its own gate, **`webfetch-egress`**, whose flows
+  carry the new client label **`webfetch`**. pi still uses `search` and `proxy`. Claude Code's own
+  **WebFetch** goes through `proxy` (tool `web_fetch`, client `harness`), as pi's `web_fetch` does, and
+  its destinations include `api.anthropic.com`: WebFetch's domain preflight, expected even when the
+  session's model is not Anthropic's, and not an anomaly. With `provider: anthropic` the `llm`
+  service's flows name `api.anthropic.com` by SNI with scope `cloud`, drawn as the cloud LLM link.
+  - `webfetch-egress` is an egress consumer (`harness: false`), drawn like SearXNG's fan-out: "Web fetch
+    → gate · not the harness", its path starting at the fetcher ("page fetch · triggered by a web
+    fetch"). It is not a fan-out: `classify.ts` and `correlate.ts` keep the fan-out flag for SearXNG.
+    Each egress consumer's display name, wording and triggering tool are one table (`EGRESS_CLIENTS` in
+    `lib/net-topology.ts`), which already names glove's planned `github` and `ssh` relays.
+  - In Trace, the `webfetch-mcp` hop's destination is the sidecar, not the URL's host, so a fetch call
+    claims it by time (role `fetchhop` in `correlate.ts`), as a search claims `search-mcp`; the fetcher's
+    egress flow names the host and joins by it.
 - **Reading is tolerant** (`parse.ts`): unknown fields are ignored, an unknown record `type` is skipped,
   and a line that does not parse or carries `v` other than 1 is counted (`counters.invalid`), never
   thrown. A glove-side addition must never break a deployed Layman.
@@ -646,7 +694,10 @@ Selected path panel that walks one destination's path hop by hop.
     sandbox, since traffic there is invisible, not absent. A service seen in traffic but not declared is
     drawn too. The fan-out service says "SearXNG → gate · not the harness", and a dashed "triggers" link
     joins it to the `search` service, labelled just under `search` (halfway down, the `proxy` box that
-    glove's declared order puts between them would cover the label).
+    glove's declared order puts between them would cover the label). Every egress consumer gets its own
+    link from the service whose tool triggers it (preferring a `-mcp` hop): `search-mcp` → `searxng-egress`
+    and `webfetch-mcp` → `webfetch-egress` for Vibe. A consumer without a known trigger (Playwright's)
+    gets none, rather than the search service's.
   - **Policy**: a wall where refusals end. One label per reason: glove's guard (with its reasons:
     metadata, internal, malformed), each of your rules by its note, and the default. The caption gives
     the default and the rule count.
@@ -707,7 +758,9 @@ links them.
      claim a flow, the nearest start wins; this is how the fixture's two arxiv flows go to the abstract
      and the PDF fetches.
   2. A search call (`web_search`) claims the `search` service's flows and SearXNG's fan-out, grouped
-     as "fan-out · N engines".
+     as "fan-out · N engines". A fetch call likewise claims the hop to a fetcher sidecar
+     (`webfetch-mcp`: a tcp listener for `web_fetch`, unlike the `proxy`), whose destination is the
+     sidecar; the sidecar's own egress joins by host under rule 1.
   3. `llm` service flows are rows of their own between the calls.
   4. Anything else is **Unattributed**. Nothing is guessed.
 
@@ -723,7 +776,8 @@ links them.
   connection's bytes were which call's, so the flow stays with the call that opened it and the turn's
   counts include only flows it opened.
 - **Call times.** A turn's window needs events that carry the
-  call's real start and end. Gloved pi reaches Layman only through the passive watcher, which stamps
+  call's real start and end. Gloved pi (and gloved Claude Code, whose watcher shares the code) reaches
+  Layman only through the passive watcher, which stamps
   every event with the time it *read* the transcript (up to a poll late) and records no start at all.
   The watcher now also keeps the transcript's own times (`data.transcriptAt`,
   `data.transcriptCompletedAt`; see `docs/harnesses/pi.md`), and the join uses them. A call is

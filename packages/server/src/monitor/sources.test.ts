@@ -56,8 +56,20 @@ describe('GloveSource (glove v3)', () => {
     // An unregistered export without session.json: its harness is unknown, so it is not tailed.
     addGloveSession(root, 'mystery-333333', { transcripts: true, registered: false });
     const roots = new GloveSource(() => root).roots();
-    expect(roots.map((r) => [r.label, r.agentType])).toEqual([['solo-222222', 'mistral-vibe'], ['vibe-a-000000', 'mistral-vibe']]);
-    expect(roots.some((r) => r.path.startsWith(cc.transcripts))).toBe(false); // glove exports no claude-code transcripts
+    expect(roots.map((r) => [r.label, r.agentType])).toEqual([['cc-111111', 'claude-code'], ['solo-222222', 'mistral-vibe'], ['vibe-a-000000', 'mistral-vibe']]);
+    expect(roots.find((r) => r.label === 'cc-111111')!.path).toBe(cc.transcripts);
+  });
+
+  it('tails an exported claude-code transcripts/ (the claude-code scenario)', () => {
+    const home = scenario('claude-code');
+    expect(new GloveSource(() => home).roots()).toEqual([
+      { path: join(home, 'observe', 'claude-code-0f1a2b', 'transcripts'), agentType: 'claude-code', label: 'claude-code-0f1a2b' },
+    ]);
+  });
+
+  it('yields no claude-code root without the observe transcripts grant', () => {
+    addGloveSession(root, 'cc-555555', { harness: 'claude-code', transcripts: false });
+    expect(new GloveSource(() => root).roots()).toEqual([]);
   });
 
   it('ignores anything under observe/ that is not a glove session id', () => {

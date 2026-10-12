@@ -161,7 +161,7 @@ function UnknownCard({ data, select }: { data: NetSessionData; select: (h: strin
 
 function SandboxCard({ data }: { data: NetSessionData }) {
   const locals = [...data.destinations.values()].filter((d) => d.scope === 'local' && d.state !== 'guard');
-  const names = [...new Set(locals.map((d) => (d.tools.includes('llm') ? 'LLM' : d.tools.includes('web_search') ? 'SearXNG' : d.host ?? d.endpoint ?? 'local')))];
+  const names = [...new Set(locals.map((d) => (d.tools.includes('llm') ? 'LLM' : d.tools.includes('web_search') ? 'SearXNG' : d.tools.includes('web_fetch') ? 'Web fetch' : d.host ?? d.endpoint ?? 'local')))];
   const unwatched = data.gate.unwatchedServices;
   const chip = (text: string, faint: boolean, icon: NetIconName) => (
     <span key={text} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, height: 22, padding: '0 8px', borderRadius: 11, fontSize: 10.5, color: faint ? 'var(--text-faint)' : 'var(--text-body)', border: '1px solid var(--border-strong)' }}>
