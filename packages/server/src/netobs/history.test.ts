@@ -212,6 +212,12 @@ describe('kept network history', () => {
     const expired = run(h).snap;
     expect(totals(expired.totals)).toEqual(totals(ref.totals));
     expect(dests(expired.destinations)).toEqual(dests(ref.destinations));
+    // …and with every record gone: a kept hop is still a hop (a local link, off the Map).
+    const hops = ref.destinations.filter((d) => d.flags.hop).map((d) => d.key);
+    expect(hops.length).toBeGreaterThan(0);
+    write([]);
+    const gone = run(h).snap.destinations.filter((d) => hops.includes(d.key));
+    expect(gone.map((d) => [d.key, d.flags.hop])).toEqual(hops.map((k) => [k, true]));
   });
 
   it('never counts a refined destination twice', () => {

@@ -693,7 +693,10 @@ export interface TraceCall {
   kind: TraceCallKind;
   /** The URL, the search query, or a short summary of the call. */
   label: string;
-  /** Hosts a fetch names, lower-case, with the port when the URL spelled one out. */
+  /**
+   * Hosts a fetch (or a relay call) names, lower-case, with the port when the URL spelled one
+   * out; a relayed ssh command's host too, which an unrelayed ssh reaches through the proxy.
+   */
   targets: Array<{ host: string; port: number | null }>;
   /**
    * The PII filter redacted part of a URL this call names (a literal IP, say),

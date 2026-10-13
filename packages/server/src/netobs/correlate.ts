@@ -190,13 +190,17 @@ export function callsFrom(events: readonly TimelineEvent[]): TraceCall[] {
     // A download call names no URL when it asks for a job's status, and still rides the download hop.
     const download = callsDownload({ toolName, nested: nested.tools });
     const kind = search ? 'search' : relay ? 'relay' : named.length || download ? 'fetch' : 'other';
+    // A relay call keeps its URLs (and an ssh host) too: with no relay sidecar its traffic goes
+    // out through the proxy like any fetch, and `git push && curl …` makes both kinds.
+    const hosts = kind === 'fetch' || kind === 'relay' ? urls.filter((u) => !REDACTED.test(u)).map((u) => urlTarget(u)!) : [];
+    if (relay?.via === 'ssh' && relay.host) hosts.push({ host: relay.host.toLowerCase(), port: null });
     const label = kind === 'search' ? String(input?.query ?? '')
       : kind === 'fetch' ? named[0] ?? (typeof input?.id === 'string' ? `${toolName} ${input.id}` : toolName)
         : command ? command.slice(0, 120) : toolName;
     calls.push({
       eventId: e.id, sessionId: e.sessionId, toolName, kind, label,
-      targets: kind === 'fetch' ? dedupeTargets(urls.filter((u) => !REDACTED.test(u)).map((u) => urlTarget(u)!)) : [],
-      redacted: kind === 'fetch' && named.some((u) => REDACTED.test(u)),
+      targets: dedupeTargets(hosts),
+      redacted: (kind === 'fetch' || kind === 'relay') && named.some((u) => REDACTED.test(u)),
       ...callTiming(e),
       failed: e.type === 'tool_call_failed' || e.type === 'tool_call_denied' || !!e.data.error,
       relay,
@@ -312,7 +316,9 @@ export function correlate({ calls, flows, earlier = [], services, from }: Correl
     return gate === f.service || !sshGates.has(gate);
   };
   const searches = calls.filter((c) => c.kind === 'search');
-  const fetches = calls.filter((c) => c.kind === 'fetch');
+  // A relay call fetches too when it names a host or (a codemode script) calls a fetch or download tool.
+  const fetching = (c: TraceCall) => c.kind === 'fetch' || (c.kind === 'relay' && (c.targets.length > 0 || callsFetch(c) || callsDownload(c)));
+  const fetches = calls.filter(fetching);
   // A codemode script can relay a command and fetch too: any call with a relay may claim relay flows.
   const relays = calls.filter((c) => c.relay !== null);
   const hops: FlowView[] = [];
@@ -373,8 +379,7 @@ export function correlate({ calls, flows, earlier = [], services, from }: Correl
       .filter((f) => {
         const role = flowRole(f, services);
         if (call.kind === 'search') return role === 'search' || role === 'fanout';
-        if (call.kind === 'relay') return relayMayClaim(call, f, role);
-        return fetchMayClaim(call, f, role);
+        return relayMayClaim(call, f, role) || (fetching(call) && fetchMayClaim(call, f, role));
       })
       .sort((a, b) => a.tOpen - b.tOpen)
       .map((f) => f.id);

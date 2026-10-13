@@ -119,7 +119,7 @@ export function downloadsIn(store: NetStore, token: string, deps: TraceDeps): Se
       const key = `${d.path}\n${d.sha256 ?? ''}`;
       if (seen.has(key)) continue;
       seen.add(key);
-      out.push({ ...d, eventId: c.eventId, sessionId: c.sessionId, toolName: c.toolName, url: c.targets.length ? c.label : null, at: c.start });
+      out.push({ ...d, eventId: c.eventId, sessionId: c.sessionId, toolName: c.toolName, url: c.kind === 'fetch' && c.targets.length ? c.label : null, at: c.start });
     }
   }
   return out;

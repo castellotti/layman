@@ -171,6 +171,16 @@ describe('Trace: downloads and relays', () => {
     expect(claimed['ssh -p 2222 db uptime']).toEqual(['f_lanonly']);
     expect(r.unattributed).toEqual([]);
   });
+
+  // A script that relays a command and downloads too keeps both: the download's hop and egress, and the relay's flow.
+  it('a codemode script that relays and downloads claims both kinds of flow', () => {
+    const code = 'await tools.web_download({ url: "https://arxiv.org/pdf/2401.00001" });\nawait tools.bash({ command: "gh pr list" });';
+    const cs = callsFrom([event('codemode', { code }, 4900, 11_500)]);
+    expect(cs.map((c) => c.kind)).toEqual(['relay']);
+    const j = correlate({ calls: cs, flows, services: ROUNDS_SERVICES, from: ROUNDS_T0 - 1000 });
+    const item = j.items.find((i) => i.kind === 'call');
+    expect(item?.kind === 'call' && item.flowIds).toEqual(['f_dlhop', 'f_dl', 'f_gh']);
+  });
 });
 
 describe('reading tool names, commands and results', () => {
@@ -225,7 +235,7 @@ describe('reading tool names, commands and results', () => {
       + 'await tools["web_download"]({ url: "https://arxiv.org/pdf/1" });\nawait tools.bash({ command: "gh pr list" });';
     expect(nestedOf(code)).toEqual({ tools: ['web_fetch', 'web_download', 'bash'], commands: ['gh pr list'] });
     const [c] = callsFrom([event('codemode', { code }, 0, 100)]);
-    expect([c.kind, c.nested, c.relay, c.targets.map((t) => t.host)]).toEqual(['relay', ['web_fetch', 'web_download', 'bash'], { via: 'github', host: null }, []]);
+    expect([c.kind, c.nested, c.relay, c.targets.map((t) => t.host)]).toEqual(['relay', ['web_fetch', 'web_download', 'bash'], { via: 'github', host: null }, ['arxiv.org']]);
     const [f] = callsFrom([event('codemode', { code: 'return tools.web_fetch({ url: "https://arxiv.org/abs/1" })' }, 0, 100)]);
     expect([f.kind, f.targets]).toEqual(['fetch', [{ host: 'arxiv.org', port: null }]]);
   });

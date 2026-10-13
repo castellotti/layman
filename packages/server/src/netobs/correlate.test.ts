@@ -77,6 +77,26 @@ describe('reading calls', () => {
   });
 });
 
+describe('relayed commands without a relay', () => {
+  // A session with no github or ssh relay sidecar: the command's traffic goes out through the proxy.
+  const proxied = (id: string, host: string, tOpen: number, port = 443) =>
+    flow(id, host, tOpen, { tool: null, dest: { host, port, ip: null, resolution: 'in-tunnel' }, destKey: `${host}:${port}` });
+  it('a git clone claims its URL\'s host', () => {
+    const cs = callsFrom([call('bash', { command: 'git clone https://github.com/o/r' }, T, T + 3000)]);
+    expect(cs.map((c) => [c.kind, c.targets])).toEqual([['relay', [{ host: 'github.com', port: null }]]]);
+    const r = join_(cs, [proxied('g', 'github.com', T + 100)]);
+    expect([claimedBy(r)['git clone https://github.com/o/r'], r.unattributed]).toEqual([['g'], []]);
+  });
+  it('ssh claims a proxied connection to the host it names', () => {
+    const r = join_(callsFrom([call('bash', { command: 'ssh me@Build.example uptime' }, T, T + 1000)]), [proxied('s', 'build.example', T + 50, 22)]);
+    expect([claimedBy(r)['ssh me@Build.example uptime'], r.unattributed]).toEqual([['s'], []]);
+  });
+  it('a command that pushes and fetches claims the fetch', () => {
+    const r = join_(callsFrom([call('bash', { command: 'git push && curl https://example.com/x' }, T, T + 2000)]), [proxied('c', 'example.com', T + 900)]);
+    expect([claimedBy(r)['git push && curl https://example.com/x'], r.unattributed]).toEqual([['c'], []]);
+  });
+});
+
 describe('joining', () => {
   it('matches a flow to the call naming its host, inside the call window', () => {
     const cs = callsFrom([call('web_fetch', { url: 'https://arxiv.org/abs/1' }, T, T + 1000)]);

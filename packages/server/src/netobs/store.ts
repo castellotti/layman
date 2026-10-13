@@ -913,7 +913,7 @@ export class NetStore extends EventEmitter {
       scope: h.scope ?? 'unknown', resolution: h.resolution ?? 'unavailable',
       bytesUp: c.up, bytesDown: c.down, flows: c.flows, openFlows: 0, blocked: c.blocked,
       firstSeen: h.firstSeen, lastSeen: h.lastSeen, state: h.lastState ?? 'finished', rule: null, blockedBy: {},
-      flags: { scope, unresolved: !h.lastIp, noHost: h.host === null, cleartext: h.port === 80, fanout: h.tool === 'search-engine-fanout', hop: false },
+      flags: { scope, unresolved: !h.lastIp, noHost: h.host === null, cleartext: h.port === 80, fanout: h.tool === 'search-engine-fanout', hop: h.hop === true },
       spark: [], policy: policyFor(s.policy, facts, gate), geo: null,
     };
   }
@@ -996,7 +996,7 @@ export class NetStore extends EventEmitter {
       destinations: dests.map((d) => ({
         key: d.key, host: d.host, port: d.port, groupKey: d.groupKey, lastIp: d.ips[0] ?? null, scope: d.scope, resolution: d.resolution,
         tool: d.tools[0] ?? null, firstSeen: d.firstSeen, lastSeen: d.lastSeen, bytesUp: d.bytesUp, bytesDown: d.bytesDown,
-        flows: d.flows, blocked: d.blocked, lastState: d.state,
+        flows: d.flows, blocked: d.blocked, lastState: d.state, hop: d.flags.hop,
       })),
     };
   }

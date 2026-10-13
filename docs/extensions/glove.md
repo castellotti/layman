@@ -344,6 +344,8 @@ Layman matches these by `tool`, `client` and `harness`, not by service names, ex
   - **Counted once.** A hop's bytes are left out of the session totals and rate buckets, and so out
     of what history keeps (`setPre` skips them in `seen` too). The provider leg counts them. The
     hop's own destination keeps its bytes. `history.test.ts` restarts at every record of this case.
+    The flag is kept with the destination (`net_destinations.hop`, migration 5, local only), so a
+    hop whose files are gone is still a hop, not an unresolved cloud destination on the Map.
   - **A local link, whatever its scope says.** The hop carries the provider's `cloud`, but it is
     never geolocated or mapped (`offMap`), it sits in "Local links", and its route reads "local · hop".
   - **Trace** gives one LLM row per request. Each hop is folded into the nearest upstream leg that
@@ -387,7 +389,11 @@ Layman matches these by `tool`, `client` and `harness`, not by service names, ex
   `push`/`pull`/`fetch`/`clone`/`ls-remote` (glove's git shim relays only those), claim `client: github`
   flows. `ssh [opts] <name> …` claims the gate `ssh-<name>` first, and any ssh flow only when no gate
   has that name. `echo "gh pr list"` claims nothing. Such calls are `kind: 'relay'` and carry
-  `relay: {via, host}`.
+  `relay: {via, host}`. A relay call also joins by host like a fetch: its URLs, and an ssh
+  command's host, are its `targets`, and one that names a host or (a codemode script) calls a fetch
+  or download tool may claim fetch flows too. Without a relay sidecar, `git clone https://…` or
+  `ssh <host>` goes out through the proxy, and `git push && curl …` makes both kinds of traffic;
+  as a relay call alone, each left its proxied flows Unattributed.
 - **Client labels are open.** `EGRESS_CLIENTS` (`net-topology.ts`) no longer calls `github`/`ssh`
   "planned", and it names `llm` (llm-auth) for labelling only. An unknown client shows raw.
 

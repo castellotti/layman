@@ -31,6 +31,11 @@ export interface HistoryDest {
   flows: number;
   blocked: number;
   lastState: NetState | null;
+  /**
+   * Its flows go on through another gate (the llm hop to llm-auth): a local link, kept so a
+   * history-only hop stays off the Map. Absent in rows kept before migration 5.
+   */
+  hop?: boolean;
 }
 
 /**
