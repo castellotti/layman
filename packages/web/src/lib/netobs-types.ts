@@ -178,9 +178,12 @@ export interface NetService {
   /** False for a listener the sandbox cannot reach (e.g. SearXNG's fan-out). */
   harness?: boolean;
   /**
-   * The gated services this one's traffic continues through (`llm` → `llm-upstream`),
-   * when glove says so (asked of glove as an additive field). Without it, `nextServices`
-   * matches the one pair it knows by its labels.
+   * The egress forwarders (`harness: false`) the sidecars behind this hop dial out
+   * through: `llm` → `llm-upstream`, `webfetch-mcp` → `webfetch-egress`, `search-mcp` →
+   * `searxng-egress`, …; `[]` when none. Static topology, transitive through sidecars,
+   * with no per-flow link: a hop's flow is joined to the egress flows it causes by time.
+   * glove lists a skipped gate (`observed: false`) too. Absent from gates before glove's
+   * round 13, where `nextServices` matches the one pair it knows by its labels.
    */
   next?: string[];
 }
@@ -189,15 +192,19 @@ export interface NetService {
 export const isLlmUpstream = (s: NetService | undefined): boolean => !!s && s.harness === false && s.tool === 'llm';
 
 /**
- * The gated services a service's traffic goes on through: glove's `next` when
+ * The observed gates a service's traffic goes on through: glove's `next` when
  * session.json has it, else, for the harness's `llm` hop, the llm upstream leg
  * (with an injected key the hop ends at glove's llm-auth sidecar, which dials
  * the provider through `llm-upstream`). Empty for everything else.
+ *
+ * A gate glove lists but does not watch (`observed: false`) is left out: its
+ * traffic is unrecorded, so the hop's own flows are the only record of it and
+ * must not be set aside as a hop's.
  */
 export function nextServices(svc: NetService | undefined, services: readonly NetService[]): NetService[] {
   if (!svc) return [];
-  if (Array.isArray(svc.next)) return services.filter((s) => svc.next!.includes(s.service));
-  if (svc.harness !== false && svc.tool === 'llm') return services.filter(isLlmUpstream);
+  if (Array.isArray(svc.next)) return services.filter((s) => s.observed !== false && svc.next!.includes(s.service));
+  if (svc.harness !== false && svc.tool === 'llm') return services.filter((s) => s.observed !== false && isLlmUpstream(s));
   return [];
 }
 

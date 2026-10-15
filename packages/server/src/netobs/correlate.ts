@@ -131,13 +131,25 @@ export function outputText(out: unknown, depth = 0): string {
 
 const SAVED = /^saved:[ \t]*(\S[^\n]*)$/gm;
 const FIELD = (name: string) => new RegExp(`^${name}:[ \\t]*(\\S[^\\n]*)$`, 'm');
+/** Vibe's MCP result as it records it: `structured: {'result': '…'}`, a Python repr. */
+const PY_RESULT = /structured:\s*\{\s*'result':\s*'((?:\\.|[^'\\])*)'\s*\}/g;
+const PY_ESCAPE: Record<string, string> = { n: '\n', t: '\t', r: '\r', "'": "'", '"': '"', '\\': '\\' };
+
+/** The text inside each Vibe MCP `structured` repr, unescaped, after the rest. */
+function unwrapPyResults(text: string): string {
+  const inner = [...text.matchAll(PY_RESULT)].map((m) => m[1].replace(/\\(.)/g, (_, c: string) => PY_ESCAPE[c] ?? `\\${c}`));
+  return inner.length ? `${text}\n${inner.join('\n')}` : text;
+}
 
 /**
  * The files a `web_download` result reports saved: glove's fetcher writes
  * `saved: /work/downloads/<name>`, then `bytes:`, `sha256:`, `content_type:` and
  * `final_url:` lines (`web_download_status` repeats the block per finished job).
+ * Vibe before 2.26 records an MCP result as `structured: {'result': '…'}`, a Python
+ * repr whose lines are escaped (glove's `downloads` scenario): its text is read too.
  */
-export function downloadsOf(text: string): TraceDownload[] {
+export function downloadsOf(raw: string): TraceDownload[] {
+  const text = unwrapPyResults(raw);
   const out: TraceDownload[] = [];
   const starts = [...text.matchAll(SAVED)];
   starts.forEach((m, i) => {

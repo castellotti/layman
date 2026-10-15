@@ -87,6 +87,20 @@ describe('Topology', () => {
     expect(pathHops(data(), 'api.github.com')!.hops[0]).toMatchObject({ title: 'GitHub relay (not the harness)' });
   });
 
+  it('with glove\'s `next` (round 13), links a sidecar hop to its egress by `next`, not by label', () => {
+    const withNext = data();
+    withNext.session = { ...SESSION, services: SERVICES.map((s) => ({
+      ...s,
+      next: s.service === 'llm' ? ['llm-upstream'] : s.service === 'webdownload-mcp' ? ['webdownload-egress'] : [],
+    })) };
+    const key = `${G}-fetcher:8000`;
+    withNext.destinations = new Map([...withNext.destinations].map(([k, d]) => [k, k === key ? { ...d, flags: { ...d.flags, hop: true } } : d]));
+    const n = layoutTopology(withNext, 1400, 780);
+    expect(n.bands.find((b) => b.id === 'svc:webdownload-mcp>svc:webdownload-egress:hop')).toMatchObject({ kind: 'local', label: { text: 'via fetcher' } });
+    expect(n.bands.some((b) => b.kind === 'trigger')).toBe(false);
+    expect(n.nodes.some((x) => x.id === `dest:${key}`)).toBe(false);
+  });
+
   it('routes an ssh host as a LAN link, never the llm link or the tunnel', () => {
     expect(t.bands.some((b) => b.id === 'route:local>dest:build.lan:22')).toBe(true);
     expect(node(t, 'route:llm').hosts).toEqual(['api.anthropic.com']);

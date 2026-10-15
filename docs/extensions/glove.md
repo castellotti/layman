@@ -337,12 +337,21 @@ Layman matches these by `tool`, `client` and `harness`, not by service names, ex
 - **A model call through llm-auth is two flows.** With an injected API key (or `auth: oauth`), the
   harness's `llm` forwarder ends at glove's `llm-auth` sidecar, which adds the key and dials the
   provider through a second gate, `llm-upstream` (`harness: false`, client `llm`, same `tool: llm` and
-  scope). `nextServices()` (`types.ts`, both mirrors) says which service goes on through which. It
-  uses glove's `next` field when `session.json` has one (asked of glove, additive), and otherwise
-  the one pair it knows: a harness-side `tool: llm` service → the `harness: false` `tool: llm`
-  services. Its flows carry `FlowFlags.hop`:
+  scope). `nextServices()` (`types.ts`, both mirrors) says which service goes on through which.
+  From glove's round 13 every `session.json` service carries `next`: the egress forwarders the
+  sidecars behind it dial out through (`llm` → `llm-upstream`, `webfetch-mcp` → `webfetch-egress`,
+  `webdownload-mcp` → `webdownload-egress`, `search`/`search-mcp` → `searxng-egress`, `browser` →
+  `browser-egress`; `[]` otherwise). It is static and transitive through sidecars, with no per-flow
+  link, so a hop's flows are joined to the egress flows they cause by time. Only an **observed**
+  gate counts: glove lists a skipped one (`observed: false`) too, and its traffic is unrecorded, so
+  the hop's flows stay the only record and are not set aside. For a gate from before round 13 (no
+  `next`), the one pair Layman knows is matched by its labels: a harness-side `tool: llm` service →
+  the `harness: false` `tool: llm` services. So **every sidecar hop is a hop**, not only the llm one,
+  and its flows carry `FlowFlags.hop`:
   - **Counted once.** A hop's bytes are left out of the session totals and rate buckets, and so out
-    of what history keeps (`setPre` skips them in `seen` too). The provider leg counts them. The
+    of what history keeps (`setPre` skips them in `seen` too). The egress leg counts them (for the
+    llm, the provider leg; for a fetch, the fetcher's egress). Search and fetch sessions therefore
+    total less than before round 13, when the hop to the sidecar was added on top. The
     hop's own destination keeps its bytes. `history.test.ts` restarts at every record of this case.
     The flag is kept with the destination (`net_destinations.hop`, migration 5, local only), so a
     hop whose files are gone is still a hop, not an unresolved cloud destination on the Map.
@@ -366,8 +375,10 @@ Layman matches these by `tool`, `client` and `harness`, not by service names, ex
   connections but leave open ones running. The server's `opRules` and the client's `previewRules`
   change together.
 - **`--lan-only`** refuses a `via: lan` name that resolved to a public address, with
-  `rule: "lan-only"`. That is glove refusing, not a user's rule, so `classifyFlow` reads it as
-  `guard` (and `builtin:lan-only`, should glove rename it). The rule is decided at each connection,
+  `rule: "builtin:lan-only"` (glove's round 13; gates before it wrote `"lan-only"`, which is still
+  accepted). That is glove refusing, not a user's rule, so `classifyFlow` reads it as `guard`. The
+  refused flow does not record the public address (`dest.ip: null`, `resolution: disabled`). Since
+  round 13 a `via: lan` gate defaults to `scope: lan` (it had been `local`). The rule is decided at each connection,
   on a resolution Layman never sees, so it is not predicted. A destination it refused carries
   `policy.*.lanOnly`, and the Details card says so instead of promising an allow.
 - **Downloads.** `web_download` reaches the same fetcher as `webdownload-mcp`
@@ -377,7 +388,8 @@ Layman matches these by `tool`, `client` and `harness`, not by service names, ex
   hop. A status call names no URL, so it can claim only the hop. A long download stays with the
   call whose window it opened in. Topology takes an egress consumer's trigger from its own `tool`
   first, so `webdownload-egress` hangs off `webdownload-mcp`, not the fetch hop. The saved files
-  come from the recorded results (`saved:`, `bytes:`, `sha256:`, `content_type:`, `final_url:`):
+  come from the recorded results (`saved:`, `bytes:`, `sha256:`, `content_type:`, `final_url:`; in
+  Vibe before 2.26, inside the `structured: {'result': '…'}` repr its MCP result is recorded as):
   - in a download call's Details;
   - in the Trace tab's Downloads panel (`GET /api/net/sessions/:token/downloads`, one entry per
     file, under the call that first reported it).
@@ -770,7 +782,9 @@ Selected path panel that walks one destination's path hop by hop.
     glove's declared order puts between them would cover the label). Every egress consumer gets its own
     link from the service whose tool triggers it (preferring a `-mcp` hop): `search-mcp` → `searxng-egress`
     and `webfetch-mcp` → `webfetch-egress` for Vibe. A consumer without a known trigger (Playwright's)
-    gets none, rather than the search service's.
+    gets none, rather than the search service's. With glove's `next` (round 13) the link is the hop's
+    own band ("via <sidecar>", by bytes), and the dashed "triggers" label match is used only for a gate
+    from before it.
   - **Policy**: a wall where refusals end. One label per reason: glove's guard (with its reasons:
     metadata, internal, malformed), each of your rules by its note, and the default. The caption gives
     the default and the rule count.

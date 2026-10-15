@@ -2,8 +2,9 @@
  * glove rounds 1–10 (llm-auth's two-hop model call, the github and ssh relays,
  * `--lan-only`, `web_download`) through the store, the rules and Trace.
  *
- * The records are hand-made (`testing/rounds.ts`) until glove's netobs-v3
- * scenarios for them exist; replace them with those when they land.
+ * The records are hand-made (`testing/rounds.ts`). glove's netobs-v3 scenarios for
+ * the same cases (round 13) are run in `round13.test.ts`; these stay for what the
+ * scenarios do not show (Cut all with open flows, codemode, pooling, history).
  */
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { TimelineEvent } from '../events/types.js';
@@ -41,6 +42,22 @@ describe('llm-auth: a model call is two flows', () => {
     // glove's `next`, when it says so, wins over matching by labels.
     const declared = parseSessionFile({ v: 1, services: [{ ...llm, next: [] }, upstream] })!.services;
     expect(nextServices(declared[0], declared)).toEqual([]);
+  });
+
+  it('takes glove’s `next` for every sidecar hop, but only to a gate it watches', () => {
+    const svc = (service: string, extra: Record<string, unknown> = {}) =>
+      ({ service, listen: null, observed: true, harness: true, mode: 'tcp', tool: 'web_fetch', client: 'harness', ...extra });
+    const services = parseSessionFile({ v: 1, services: [
+      svc('webfetch-mcp', { next: ['webfetch-egress'] }),
+      svc('webfetch-egress', { harness: false, client: 'webfetch', next: [] }),
+      svc('search-mcp', { tool: 'web_search', next: ['searxng-egress'] }),
+      // glove lists a gate the operator skipped: its traffic is unrecorded, so the hop is the record.
+      svc('searxng-egress', { harness: false, client: 'searxng', observed: false, next: [] }),
+    ] })!.services;
+    const by = (n: string) => services.find((s) => s.service === n)!;
+    expect(nextServices(by('webfetch-mcp'), services).map((s) => s.service)).toEqual(['webfetch-egress']);
+    expect(nextServices(by('webfetch-egress'), services)).toEqual([]);
+    expect(nextServices(by('search-mcp'), services)).toEqual([]);
   });
 
   it('flags the hop, keeps it off the map, and counts each request once in the session totals', () => {

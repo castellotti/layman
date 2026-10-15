@@ -344,7 +344,7 @@ export function layoutTopology(data: TopoInput, width: number, height: number): 
   const services = topologyServices(data);
   const byName = new Map(services.map((s) => [s.service, s]));
   const allLegs = legsOf(data.destinations.values(), data.flows.values(), byName);
-  // A hop to a sidecar (the `llm` hop to llm-auth) is drawn as the link to the service it goes
+  // A hop to a sidecar (the `llm` hop to llm-auth, `webfetch-mcp` to the fetcher) is drawn as the link to the service it goes
   // on through, not as a route to a destination; refused, it still ends at the wall.
   const legs = allLegs.filter((l) => !(l.d.flags.hop && l.outcome !== 'refused'));
   const rules = data.rules.enforced?.rules ?? data.rules.file?.rules ?? [];
@@ -698,8 +698,9 @@ export function layoutTopology(data: TopoInput, width: number, height: number): 
     };
   });
 
-  // A hop that goes on through another gate (`llm` → llm-auth → `llm-upstream`): one inference
-  // leg, drawn from the hop's box to the next leg's and named by the sidecar between them.
+  // A hop that goes on through another gate (glove's `next`: `llm` → llm-auth → `llm-upstream`,
+  // `webfetch-mcp` → fetcher → `webfetch-egress`): drawn from the hop's box to the next leg's and
+  // named by the sidecar between them.
   for (const n of svcNodes) {
     const s = byName.get(n.title)!;
     const hopLegs = allLegs.filter((l) => l.service === s.service && l.d.flags.hop && l.outcome !== 'refused');
@@ -728,7 +729,10 @@ export function layoutTopology(data: TopoInput, width: number, height: number): 
   // linked from the tool service that triggers it.
   for (const fanNode of svcNodes.filter((n) => isFanoutService(byName.get(n.title)))) {
     const fanBytes = legs.filter((l) => l.service === fanNode.title).reduce((a, l) => a + l.bytes, 0);
-    const trigger = triggerOf(byName.get(fanNode.title)!, services);
+    // glove's `next` already links the hop to this consumer (drawn above): the label match
+    // is only for a gate from before glove listed `next`.
+    const linked = services.some((s) => fromSandbox(s) && nextServices(s, services).some((n) => n.service === fanNode.title));
+    const trigger = linked ? null : triggerOf(byName.get(fanNode.title)!, services);
     const search = trigger ? svcNodes.find((n) => n.title === trigger.service) : undefined;
     if (search) {
       const x = search.x + search.w - 50;

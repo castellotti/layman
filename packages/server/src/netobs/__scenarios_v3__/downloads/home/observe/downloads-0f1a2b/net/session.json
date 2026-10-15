@@ -1,0 +1,116 @@
+{
+  "v": 1,
+  "type": "session",
+  "env": "downloads-0f1a2b",
+  "session": "downloads-0f1a2b",
+  "harness": "vibe",
+  "gate": "0.2.0",
+  "image": "glove/ext-gate-netgate:fixture",
+  "record": "metadata",
+  "resolve": "in-tunnel",
+  "resolver": null,
+  "exit_identity": "none",
+  "upstream_kind": "direct",
+  "rotate": {
+    "max_bytes": 67108864,
+    "keep": 8,
+    "retain_s": null
+  },
+  "record_headers": false,
+  "rendered_at": "2026-10-01T12:00:00.000Z",
+  "services": [
+    {
+      "service": "llm",
+      "listen": "glove-downloads-0f1a2b-llm:8080",
+      "observed": true,
+      "harness": true,
+      "next": [],
+      "mode": "tcp",
+      "tool": "llm",
+      "scope": "local",
+      "upstream": "tcp:host.docker.internal:8080",
+      "route": {
+        "kind": "tcp",
+        "upstream": "tcp:host.docker.internal:8080"
+      },
+      "client": "harness"
+    },
+    {
+      "service": "webfetch-mcp",
+      "listen": "glove-downloads-0f1a2b-webfetch-mcp:8000",
+      "observed": true,
+      "harness": true,
+      "next": [
+        "webfetch-egress"
+      ],
+      "mode": "tcp",
+      "tool": "web_fetch",
+      "scope": "local",
+      "upstream": "tcp:glove-downloads-0f1a2b-fetcher:8000",
+      "route": {
+        "kind": "tcp",
+        "upstream": "tcp:glove-downloads-0f1a2b-fetcher:8000"
+      },
+      "client": "harness"
+    },
+    {
+      "service": "webdownload-mcp",
+      "listen": "glove-downloads-0f1a2b-webdownload-mcp:8000",
+      "observed": true,
+      "harness": true,
+      "next": [
+        "webdownload-egress"
+      ],
+      "mode": "tcp",
+      "tool": "web_download",
+      "scope": "local",
+      "upstream": "tcp:glove-downloads-0f1a2b-fetcher:8000",
+      "route": {
+        "kind": "tcp",
+        "upstream": "tcp:glove-downloads-0f1a2b-fetcher:8000"
+      },
+      "client": "harness"
+    },
+    {
+      "service": "webfetch-egress",
+      "listen": "glove-downloads-0f1a2b-webfetch-egress:8888",
+      "observed": true,
+      "harness": false,
+      "next": [],
+      "mode": "http-proxy",
+      "tool": "web_fetch",
+      "scope": null,
+      "upstream": "chain:http://glove-downloads-0f1a2b-direct-proxy:8888",
+      "route": {
+        "kind": "direct",
+        "upstream": "http://glove-downloads-0f1a2b-direct-proxy:8888"
+      },
+      "client": "webfetch"
+    },
+    {
+      "service": "webdownload-egress",
+      "listen": "glove-downloads-0f1a2b-webdownload-egress:8888",
+      "observed": true,
+      "harness": false,
+      "next": [],
+      "mode": "http-proxy",
+      "tool": "web_download",
+      "scope": null,
+      "upstream": "chain:http://glove-downloads-0f1a2b-direct-proxy:8888",
+      "route": {
+        "kind": "direct",
+        "upstream": "http://glove-downloads-0f1a2b-direct-proxy:8888"
+      },
+      "client": "webfetch"
+    }
+  ],
+  "grants": {
+    "observe": {
+      "net": true,
+      "transcripts": true
+    },
+    "filter": {
+      "granted": false
+    }
+  }
+}
