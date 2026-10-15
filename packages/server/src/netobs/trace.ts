@@ -110,10 +110,10 @@ export function buildTrace(store: NetStore, token: string, deps: TraceDeps, sele
  * finished job, so a file is listed once, under the first call that reported it.
  */
 export function downloadsIn(store: NetStore, token: string, deps: TraceDeps): SessionDownload[] | null {
-  if (!store.has(token)) return null;
+  const calls = callsBetween(store, token, deps, -Infinity, Infinity);
+  if (!calls) return null;
   const seen = new Set<string>();
   const out: SessionDownload[] = [];
-  const calls = deps.sessionsNamed(token).flatMap((sid) => callsFrom(deps.events(sid))).sort((a, b) => a.start - b.start);
   for (const c of calls) {
     for (const d of c.downloads) {
       const key = `${d.path}\n${d.sha256 ?? ''}`;

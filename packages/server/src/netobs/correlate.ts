@@ -228,11 +228,18 @@ function dedupeTargets(ts: Array<{ host: string; port: number | null }>) {
  */
 export type FlowRole = 'llm' | 'llmhop' | 'search' | 'fanout' | 'fetchhop' | 'github' | 'ssh' | 'other';
 
+/** A flow's tool: its own, else the one glove declared for its service. */
+function flowTool(f: Pick<FlowView, 'service' | 'tool'>, svc: NetService | undefined): string | null {
+  return f.tool ?? svc?.tool ?? null;
+}
+
+const serviceOf = (f: Pick<FlowView, 'service'>, services: readonly NetService[]) => services.find((s) => s.service === f.service);
+
 /** What a flow is, from its own fields and the service glove declared for it. */
 export function flowRole(f: Pick<FlowView, 'service' | 'tool' | 'client' | 'flags'> & { proto?: string | null }, services: readonly NetService[]): FlowRole {
   if (f.flags.fanout || f.client === 'searxng') return 'fanout';
-  const svc = services.find((s) => s.service === f.service);
-  const tool = f.tool ?? svc?.tool ?? null;
+  const svc = serviceOf(f, services);
+  const tool = flowTool(f, svc);
   const client = f.client ?? svc?.client ?? null;
   if (tool === 'llm' || f.service === 'llm') return f.flags.hop ? 'llmhop' : 'llm';
   if (tool === 'web_search') return 'search';
@@ -297,12 +304,11 @@ export function correlate({ calls, flows, earlier = [], services, from }: Correl
     }
     return best;
   };
-  const toolOf = (f: FlowView) => f.tool ?? services.find((s) => s.service === f.service)?.tool ?? null;
   // A fetcher sidecar's hop goes to the fetch tool's calls (a download hop to the download
   // tool's); any other flow to the call whose URL names its host. A download's egress
   // (tool `web_download`) is only ever a download call's, and a download call claims nothing else.
   const fetchMayClaim = (call: TraceCall, f: FlowView, role: FlowRole) => {
-    const downloadFlow = toolOf(f) === DOWNLOAD_LABEL;
+    const downloadFlow = flowTool(f, serviceOf(f, services)) === DOWNLOAD_LABEL;
     if (role === 'fetchhop') return downloadFlow ? callsDownload(call) : callsFetch(call);
     return role === 'other' && (downloadFlow ? callsDownload(call) : !callsDownload(call) || callsFetch(call)) && targets(call, f);
   };

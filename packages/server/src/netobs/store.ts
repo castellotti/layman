@@ -22,13 +22,13 @@
  * watermark (the part they already counted), plus everything read.
  */
 import { EventEmitter } from 'events';
-import { BLOCK_STATES, aggregateState, classifyFlow, classifySession, flowFlags, isLanOnlyRule } from './classify.js';
+import { BLOCK_STATES, aggregateState, classifyFlow, classifySession, flowFlags } from './classify.js';
 import { groupKeyFor } from './domain.js';
 import { type NetSessionLocation } from './discovery.js';
 import { blankRulesView } from './control.js';
 import { predict, type FlowFacts, type GateFacts, type RuleSet } from './rules.js';
 import type { CarryFlow, HistoryDest, HistorySession } from './history.js';
-import { nextServices, offMap } from './types.js';
+import { isLanOnlyRule, nextServices, offMap } from './types.js';
 import type {
   DestinationAggregate,
   ExitRecord,
@@ -41,6 +41,7 @@ import type {
   NetDelta,
   NetGateView,
   NetGloveInfo,
+  NetService,
   NetSessionFile,
   NetSessionSummary,
   NetSnapshot,
@@ -499,9 +500,13 @@ export class NetStore extends EventEmitter {
   }
 
   /** The service's traffic goes on through another gate (`nextServices`): its flows are hops. */
+  /** The service glove declared under `name` for a session, if any. */
+  private declared(s: SessionData, name: string | null): NetService | undefined {
+    return name ? s.session?.services?.find((sv) => sv.service === name) : undefined;
+  }
+
   private isHop(s: SessionData, service: string): boolean {
-    const services = s.session?.services ?? [];
-    return nextServices(services.find((sv) => sv.service === service), services).length > 0;
+    return nextServices(this.declared(s, service), s.session?.services ?? []).length > 0;
   }
 
   private classify(s: SessionData, e: FlowEntry, now: number): NetState {
@@ -856,7 +861,7 @@ export class NetStore extends EventEmitter {
    * does: only a proxy destination is ever `unavailable` or `in-tunnel` (`ForwardSpec.display_ip`).
    */
   private viaProxy(s: SessionData, service: string | null, resolution: string | null): GateFacts['proxy'] {
-    const declared = service ? (s.session?.services ?? []).find((sv) => sv.service === service) : undefined;
+    const declared = this.declared(s, service);
     if (declared?.mode) return declared.mode === 'http-proxy';
     return resolution === 'unavailable' || resolution === 'in-tunnel';
   }
@@ -866,7 +871,7 @@ export class NetStore extends EventEmitter {
    * declared route, or, without one, the session's `upstream_kind`.
    */
   private corporate(s: SessionData, service: string | null): boolean {
-    const declared = service ? (s.session?.services ?? []).find((sv) => sv.service === service) : undefined;
+    const declared = this.declared(s, service);
     if (declared?.route) return declared.route.kind === 'corporate';
     return s.session?.upstream_kind === 'corporate';
   }
@@ -906,14 +911,16 @@ export class NetStore extends EventEmitter {
   private historyView(s: SessionData, h: HistoryDest, c: Seen): DestinationAggregate {
     const facts = { host: h.host, ip: h.lastIp, port: h.port, service: null, tool: h.tool, scope: h.scope };
     const gate = { proxy: this.viaProxy(s, null, h.resolution ?? null), resolution: h.resolution ?? null, corporate: this.corporate(s, null) };
-    const scope = (h.scope ?? 'unknown') as FlowFlags['scope'];
     return {
       key: h.key, host: h.host, port: h.port, groupKey: h.groupKey, endpoint: h.host === null ? h.key.replace(/^@/, '') : null,
       ips: h.lastIp ? [h.lastIp] : [], services: [], tools: h.tool ? [h.tool] : [], clients: [],
       scope: h.scope ?? 'unknown', resolution: h.resolution ?? 'unavailable',
       bytesUp: c.up, bytesDown: c.down, flows: c.flows, openFlows: 0, blocked: c.blocked,
       firstSeen: h.firstSeen, lastSeen: h.lastSeen, state: h.lastState ?? 'finished', rule: null, blockedBy: {},
-      flags: { scope, unresolved: !h.lastIp, noHost: h.host === null, cleartext: h.port === 80, fanout: h.tool === 'search-engine-fanout', hop: h.hop === true },
+      flags: flowFlags({
+        dest: { host: h.host, ip: h.lastIp, port: h.port, resolution: h.resolution ?? 'unavailable' },
+        scope: h.scope ?? 'unknown', proto: null, client: null, tool: h.tool,
+      }, h.hop === true),
       spark: [], policy: policyFor(s.policy, facts, gate), geo: null,
     };
   }

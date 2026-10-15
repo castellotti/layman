@@ -11,8 +11,7 @@
  * `;`, `|` and newlines; leading `VAR=value` assignments and a few wrappers
  * (`env`, `time`, `command`, `exec`, `nohup`) are skipped.
  */
-
-export type Relay = { via: 'github' | 'ssh'; host: string | null };
+import type { Relay } from './types.js';
 
 const GIT_REMOTE = new Set(['push', 'pull', 'fetch', 'clone', 'ls-remote']);
 /** git options that take the next word as their value. */

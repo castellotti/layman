@@ -119,11 +119,14 @@ export function isRowExpanded(id: string, toggled: ReadonlySet<string>): boolean
   return !(id.startsWith('fan:') || id.startsWith('llm:')) !== toggled.has(id);
 }
 
+/** The last segment of a saved file's path. */
+export const fileName = (path: string) => path.replace(/^.*\//, '');
+
 /** A download's result line: `saved report.pdf · 2.1 MB`. */
 export function downloadSummary(call: TraceCall): string | null {
   if (!call.downloads.length) return null;
   const d = call.downloads[0];
-  const name = d.path.replace(/^.*\//, '');
+  const name = fileName(d.path);
   const more = call.downloads.length > 1 ? ` +${call.downloads.length - 1}` : '';
   return `saved ${name}${d.bytes !== null ? ` · ${formatBytes(d.bytes)}` : ''}${more}`;
 }
@@ -177,14 +180,15 @@ export function traceRows(view: TraceView, axis: TraceAxis, opts: RowOptions): T
     const id = `call:${call.eventId}`;
     const expanded = isRowExpanded(id, opts.toggled);
     const any = hasTraffic(flowIds, fanoutIds);
+    const saved = downloadSummary(call);
     rows.push({
       id, kind: 'call', depth: 0, icon: call.kind === 'search' ? 'search' : call.kind === 'fetch' ? 'fetch' : 'tool',
       title: call.toolName, detail: call.kind === 'search' ? `“${call.label}”` : call.label,
       outcome: call.kind === 'search' && any ? { text: [flowIds.length ? `${flowIds.length} local` : null, fanoutIds.length ? `${fanoutIds.length} fan-out` : null].filter(Boolean).join(' + '), tone: 'fanout', icon: 'fanout' }
         : !any && call.redacted ? { text: 'host redacted · not joined', tone: 'warn', icon: 'alert' }
           : !any && openIds.length ? alreadyOpen(call, openIds.map((fid) => byId.get(fid)).filter((f): f is FlowView => !!f))
-            : !any && call.kind !== 'other' ? { text: call.failed ? 'failed · no traffic seen' : downloadSummary(call) ?? 'no traffic seen', tone: 'muted', icon: 'fold' }
-              : downloadSummary(call) ? { text: downloadSummary(call)!, tone: 'ok', icon: 'check' } : null,
+            : !any && call.kind !== 'other' ? { text: call.failed ? 'failed · no traffic seen' : saved ?? 'no traffic seen', tone: 'muted', icon: 'fold' }
+              : saved ? { text: saved, tone: 'ok', icon: 'check' } : null,
       bytes: null, bar: null, flowId: null, call, expandable: any, expanded: any && expanded,
     });
     if (!any || !expanded) continue;

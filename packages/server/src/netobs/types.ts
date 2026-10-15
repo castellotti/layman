@@ -661,6 +661,9 @@ export interface NetDelta {
  */
 export type TraceTiming = 'exact' | 'approximate';
 /** `relay`: a shell command glove relays to a sidecar (`gh`, `git push`, `ssh <host>`), which makes the traffic. */
+/** One of glove's relay sidecars and, for ssh, the host the command names. */
+export type Relay = { via: 'github' | 'ssh'; host: string | null };
+
 export type TraceCallKind = 'fetch' | 'search' | 'relay' | 'other';
 
 /** A file `web_download` saved, from the call's own result (`saved:`, `bytes:`, `sha256:`). */
@@ -713,7 +716,7 @@ export interface TraceCall {
    * For a `relay` call, the sidecar that makes its traffic: glove's github relay
    * (client `github`), or its ssh relay and the host the command names (gate `ssh-<host>`).
    */
-  relay: { via: 'github' | 'ssh'; host: string | null } | null;
+  relay: Relay | null;
   /** Files a `web_download` / `web_download_status` call reported saved. */
   downloads: TraceDownload[];
   /**

@@ -116,6 +116,13 @@ const LAN_NAME: Record<string, string> = { llm: 'LLM', ssh: 'SSH' };
 /** A local link, or a hop to a sidecar (the `llm` hop to llm-auth), which is one whatever its scope says. */
 const isLocalLink = (d: DestinationAggregate) => (d.flags.scope === 'local' || d.flags.hop) && d.state !== 'guard';
 
+/** A local link's name by its tool (an ssh relay host keeps its host: `SSH build`), else its host. */
+export function localLinkName(d: Pick<DestinationAggregate, 'tools' | 'host' | 'port' | 'endpoint'>): string {
+  const tool = d.tools.find((t) => t in LOCAL_NAME);
+  if (!tool) return hostLabel(d);
+  return tool === 'ssh' && d.host ? `${LOCAL_NAME.ssh} ${d.host}` : LOCAL_NAME[tool];
+}
+
 export function toolLabel(tool: string): string {
   return TOOL_LABEL[tool] ?? tool;
 }
@@ -141,9 +148,11 @@ export function hostLabel(d: Pick<DestinationAggregate, 'host' | 'port' | 'endpo
   return d.port !== null && d.port !== 443 && d.port !== 80 ? `${d.host}:${d.port}` : d.host;
 }
 
+const LAN_ONLY_REASON = 'LAN name resolved to a public address';
+
 /** Why glove's guard refused a destination, as the design's sublabels put it. */
 export function guardReason(d: Pick<DestinationAggregate, 'host' | 'rule'>): string {
-  if (isLanOnlyRule(d.rule)) return 'LAN name resolved to a public address';
+  if (isLanOnlyRule(d.rule)) return LAN_ONLY_REASON;
   if (d.rule === 'builtin:malformed-request' || d.host === null) return 'no destination';
   const h = d.host.toLowerCase();
   if (h === '169.254.169.254' || h === 'metadata.google.internal') return 'cloud metadata';
@@ -224,7 +233,7 @@ function stateCell(
       break;
     case 'guard':
       cell = c(s.rule === 'builtin:malformed-request' ? 'refused · malformed request'
-        : isLanOnlyRule(s.rule) ? 'refused · LAN name resolved to a public address' : 'refused by glove guard');
+        : isLanOnlyRule(s.rule) ? `refused · ${LAN_ONLY_REASON}` : 'refused by glove guard');
       break;
     case 'user_rule': {
       if (s.rule?.startsWith(CUT_PREFIX)) {
@@ -388,7 +397,7 @@ function summaryState(ctx: Ctx, dests: DestinationAggregate[]): CellText {
 function groupSublabel(ctx: Ctx, g: Group): string | null {
   if (g.key === GROUP_FANOUT) return `via SearXNG · ${g.dests.length} engine${g.dests.length === 1 ? '' : 's'}`;
   if (g.key === GROUP_LOCAL) {
-    const names = [...new Set(g.dests.map((d) => LOCAL_NAME[d.tools[0] ?? ''] ?? hostLabel(d)))];
+    const names = [...new Set(g.dests.map(localLinkName))];
     return names.join(' · ');
   }
   if (g.key === GROUP_GUARD) return `${g.dests.length} refused`;

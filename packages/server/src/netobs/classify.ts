@@ -15,8 +15,6 @@ import type {
 } from './types.js';
 import { FLOW_SCOPES, isLanOnlyRule, neverMapped } from './types.js';
 
-export { isLanOnlyRule };
-
 /** An open flow with no byte change for longer than this is "pooled, idle", not live. */
 export const IDLE_MS = 3_000;
 
@@ -34,7 +32,6 @@ export type ClassifiableFlow = Pick<
 };
 
 export const BLOCK_STATES: ReadonlySet<NetState> = new Set(['guard', 'user_rule', 'default_block']);
-
 
 /**
  * A flow's primary state.

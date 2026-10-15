@@ -703,16 +703,16 @@ export function layoutTopology(data: TopoInput, width: number, height: number): 
   for (const n of svcNodes) {
     const s = byName.get(n.title)!;
     const hopLegs = allLegs.filter((l) => l.service === s.service && l.d.flags.hop && l.outcome !== 'refused');
+    const bytes = hopLegs.reduce((a, l) => a + l.bytes, 0);
+    const via = sidecarName(s.upstream ?? s.route?.upstream, data.token) ?? sidecarName(hopLegs[0]?.host, data.token);
     for (const next of nextServices(s, services)) {
       const to = svcNode.get(next.service);
       if (!to) continue;
-      const bytes = hopLegs.reduce((a, l) => a + l.bytes, 0);
       const down = to.y >= n.y;
       const x = n.x + 50;
       const y1 = down ? n.y + n.h : n.y;
       const y2 = down ? to.y : to.y + to.h;
       const mid = (y1 + y2) / 2;
-      const via = sidecarName(s.upstream ?? s.route?.upstream, data.token) ?? sidecarName(hopLegs[0]?.host, data.token);
       bands.push({
         id: `${n.id}>${to.id}:hop`, kind: 'local', from: n.id, to: to.id,
         d: `M${x.toFixed(1)},${y1.toFixed(1)}C${(x + 16).toFixed(1)},${mid.toFixed(1)} ${(x - 16).toFixed(1)},${mid.toFixed(1)} ${x.toFixed(1)},${y2.toFixed(1)}`,
@@ -795,11 +795,14 @@ export function pathHops(data: TopoInput, host: string): { dest: DestinationAggr
       evidence: g.freshness === 'running' ? 'observed' : 'none',
     });
   }
-  const serviceHop = (s: NetService | undefined, name: string): Omit<Hop, 'id'> => ({
-    title: `${name} service`, detail: s?.listen ?? null,
-    status: [s?.observed === false ? 'declared · not watched' : 'observed', s?.tool ?? d.tools[0] ? toolLabel((s?.tool ?? d.tools[0])!) : null].filter(Boolean).join(' · '),
-    evidence: s?.observed === false ? 'declared' : 'observed',
-  });
+  const serviceHop = (s: NetService | undefined, name: string): Omit<Hop, 'id'> => {
+    const tool = s?.tool ?? d.tools[0];
+    return {
+      title: `${name} service`, detail: s?.listen ?? null,
+      status: [s?.observed === false ? 'declared · not watched' : 'observed', tool ? toolLabel(tool) : null].filter(Boolean).join(' · '),
+      evidence: s?.observed === false ? 'declared' : 'observed',
+    };
+  };
   // The provider leg of a model call through llm-auth: the harness reached the `llm` hop, the
   // sidecar added the key, and `llm-upstream` dialled the provider.
   const via = isLlmUpstream(svc) ? services.find((s) => nextServices(s, services).some((n) => n.service === svc!.service)) : undefined;
@@ -809,10 +812,8 @@ export function pathHops(data: TopoInput, host: string): { dest: DestinationAggr
       id: 'sidecar', title: sidecarName(via.upstream ?? via.route?.upstream, data.token) ?? 'llm-auth', detail: 'adds the API key',
       status: 'glove’s sidecar · not a gate', evidence: 'declared',
     });
-    hops.push({ id: 'upstream', ...serviceHop(svc, d.services[0] ?? 'unknown') });
-  } else {
-    hops.push({ id: 'service', ...serviceHop(svc, d.services[0] ?? 'unknown') });
   }
+  hops.push({ id: via ? 'upstream' : 'service', ...serviceHop(svc, d.services[0] ?? 'unknown') });
 
   const rules = data.rules.enforced?.rules ?? data.rules.file?.rules ?? [];
   if (outcome === 'refused') {

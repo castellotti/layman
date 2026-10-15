@@ -16,7 +16,7 @@ import type { NetSessionData } from '../../lib/net-state.js';
 import { controlDisabledReason, siblingIds, toggleFor } from '../../lib/net-rules.js';
 import { clockTime, destinationRow, guardReason } from '../../lib/net-table.js';
 import { buildPath } from '../../lib/layman-url.js';
-import { callForFlow, defaultSelection, tickLabel, traceAxis, traceRows, type Tone, type TraceIcon, type TraceRow } from '../../lib/net-trace.js';
+import { callForFlow, defaultSelection, fileName, tickLabel, traceAxis, traceRows, type Tone, type TraceIcon, type TraceRow } from '../../lib/net-trace.js';
 import { isLanOnlyRule, type FlowView, type RulesOp, type TraceDownload, type TraceView } from '../../lib/netobs-types.js';
 import { useNow } from '../../hooks/useNow.js';
 import { fetchTrace, pollSettled, useNetDownloads } from '../../hooks/useNetTrace.js';
@@ -464,7 +464,7 @@ export function DownloadsList({ data }: { data: NetSessionData }) {
         {downloads.map((d) => (
           <li key={`${d.eventId}:${d.path}`} style={{ marginBottom: 8 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
-              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11.5, color: 'var(--text)', wordBreak: 'break-all' }}>{d.path.replace(/^.*\//, '')}</span>
+              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11.5, color: 'var(--text)', wordBreak: 'break-all' }}>{fileName(d.path)}</span>
               <span style={{ fontSize: 10.5, color: 'var(--text-faint)', whiteSpace: 'nowrap' }}>{d.bytes !== null ? formatBytes(d.bytes) : ''} · {clockTime(d.at)}</span>
             </div>
             <div style={{ fontSize: 10.5, color: 'var(--text-faint)', wordBreak: 'break-all' }}>{d.url ?? d.finalUrl ?? d.toolName}</div>
