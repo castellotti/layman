@@ -25,6 +25,12 @@ interface CityResponse {
   location?: { latitude?: number; longitude?: number };
 }
 
+/**
+ * Whether an IP glove reported may be geolocated: only one it resolved inside the tunnel, or a
+ * literal destination. Any other resolution (`disabled`, `unavailable`) is never looked up.
+ */
+export const mayGeolocate = (resolution: string): boolean => resolution === 'in-tunnel' || resolution === 'literal';
+
 export class GeoLocator {
   private reader: Reader<Response> | null = null;
   private sig: string | null = null;

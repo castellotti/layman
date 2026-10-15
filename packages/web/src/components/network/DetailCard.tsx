@@ -13,7 +13,7 @@ import { formatBytes, formatAge } from '../../lib/net-format.js';
 import type { NetSessionData } from '../../lib/net-state.js';
 import { clockTime, flowLabel, toolLabel } from '../../lib/net-table.js';
 import { controlDisabledReason, siblingIds } from '../../lib/net-rules.js';
-import { isLanOnlyRule, mayGeolocate, type DestinationAggregate, type FlowView, type GeoStatus, type RulesOp, type TraceView } from '../../lib/netobs-types.js';
+import { isLanOnlyRule, type DestinationAggregate, type FlowView, type GeoStatus, type RulesOp, type TraceView } from '../../lib/netobs-types.js';
 import { buttonStyle } from './ControlPopover.js';
 import { NetIcon } from './netui.js';
 import { useNetTrace } from '../../hooks/useNetTrace.js';
@@ -89,18 +89,10 @@ function routeText(data: NetSessionData, d: DestinationAggregate): { text: strin
   };
 }
 
-/** How the IP shown was resolved. The located IP may come from an earlier flow than the latest. */
-function ipNote(d: DestinationAggregate): string {
-  const latest = RESOLUTION[d.resolution] ?? d.resolution;
-  if (!d.geoIp) return latest;
-  const how = d.geoIp === d.host ? RESOLUTION.literal : RESOLUTION['in-tunnel'];
-  return mayGeolocate(d.resolution) ? how : `${how} on an earlier flow · latest flow: ${latest}`;
-}
-
 function locationText(d: DestinationAggregate, geo: GeoStatus | null): { v: string; sub: string } {
   if (d.geo) {
     const where = [d.geo.city, d.geo.countryCode ?? d.geo.country].filter(Boolean).join(', ');
-    return { v: where || `${d.geo.lat.toFixed(2)}, ${d.geo.lon.toFixed(2)}`, sub: `offline ${geo?.databaseType ?? 'database'} · file lookup` };
+    return { v: where || `${d.geo.lat.toFixed(2)}, ${d.geo.lon.toFixed(2)}`, sub: `${d.geoIp} · offline ${geo?.databaseType ?? 'database'} · file lookup` };
   }
   if (d.scope === 'local') return { v: 'not placed', sub: 'a local link is never on the map' };
   if (d.flags.hop) return { v: 'not placed', sub: 'a hop to glove’s llm-auth sidecar; the provider leg is the one that leaves' };
@@ -263,7 +255,7 @@ export function DetailCard({ data, host, onClose, docked = false }: {
             {d.scope === 'direct' && <Badge colour="var(--error)">DIRECT</Badge>}
           </div>
           <div style={{ fontSize: 10.5, color: 'var(--text-faint)', marginTop: 2 }}>
-            {[d.geoIp ?? d.ips[0], d.geo?.city, d.tools.map(toolLabel).join(', '), `${d.flows} flow${d.flows === 1 ? '' : 's'}`].filter(Boolean).join(' · ')}
+            {[d.ips[0], d.geo?.city, d.tools.map(toolLabel).join(', '), `${d.flows} flow${d.flows === 1 ? '' : 's'}`].filter(Boolean).join(' · ')}
           </div>
         </div>
         <button type="button" aria-label="Choose sections" aria-expanded={menu} onClick={() => setMenu((m) => !m)} style={iconButton}>
@@ -294,7 +286,7 @@ export function DetailCard({ data, host, onClose, docked = false }: {
       {shown('connection') && (
         <>
           <SectionHead>Connection</SectionHead>
-          <Row k="IP" v={d.geoIp ?? d.ips[0] ?? '—'} sub={ipNote(d)} />
+          <Row k="IP" v={d.ips[0] ?? '—'} sub={RESOLUTION[d.resolution] ?? d.resolution} />
           <Row k="Port" v={`${d.port ?? '—'}${f?.proto ? ` · ${f.proto}` : ''}`} />
           <Row k="Service" v={`${d.services.join(', ') || '—'}${f?.route?.upstream ? ` → ${f.route.upstream.replace(/^https?:\/\//, '')}` : ''}`} />
           <Row k="Route" v={route.text} mono={false} colour={route.colour} />

@@ -28,7 +28,8 @@ import { type NetSessionLocation } from './discovery.js';
 import { blankRulesView } from './control.js';
 import { predict, type FlowFacts, type GateFacts, type RuleSet } from './rules.js';
 import type { CarryFlow, HistoryDest, HistorySession } from './history.js';
-import { isLanOnlyRule, mayGeolocate, nextServices, offMap } from './types.js';
+import { isLanOnlyRule, nextServices, offMap } from './types.js';
+import { mayGeolocate } from './geo.js';
 import type {
   DestinationAggregate,
   ExitRecord,
@@ -105,12 +106,7 @@ interface AggEntry {
   /** The flow with the latest `t_open`, and its state. */
   latest: { id: string; tOpen: number; state: NetState } | null;
   spark: Map<number, RateBucket>;
-  /**
-   * The IP the Map places (`DestinationAggregate.geoIp`) and its flow's `t_open`, the earliest
-   * wins so the pin does not depend on read order. Kept apart from `agg.resolution`, which
-   * follows the latest flow: a host reached through the tunnel and later over a direct route
-   * (no IP, `unavailable`) keeps it.
-   */
+  /** Source of `DestinationAggregate.geoIp`, with its flow's `t_open` (earliest wins). */
   geoIp: { ip: string; tOpen: number } | null;
 }
 

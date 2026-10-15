@@ -36,11 +36,6 @@ export const neverMapped = (scope: string): boolean => scope === 'local' || scop
  * a guard refusal, not a user's rule. `builtin:lan-only` is accepted too, in case glove renames it.
  */
 export const isLanOnlyRule = (rule: string | null | undefined): boolean => rule === 'lan-only' || rule === 'builtin:lan-only';
-/**
- * Whether an IP glove reported may be geolocated: only one it resolved inside the tunnel, or a
- * literal destination. Any other resolution (`disabled`, `unavailable`) is never looked up.
- */
-export const mayGeolocate = (resolution: string): boolean => resolution === 'in-tunnel' || resolution === 'literal';
 /** Off the map: `neverMapped`, or a hop to a sidecar (`FlowFlags.hop`), whatever its scope says. */
 export const offMap = (d: { scope: string; flags: { hop: boolean } }): boolean => neverMapped(d.scope) || d.flags.hop;
 export type FlowResolution = 'in-tunnel' | 'literal' | 'unavailable' | 'disabled';
