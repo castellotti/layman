@@ -71,7 +71,7 @@ export function classifyFlow(f: ClassifiableFlow, now: number): NetState {
 }
 
 /**
- * `hop`: the flow's service goes on through another gate (`nextServices`), so it
+ * `hop`: the flow's service goes on through another gate (`isHopService`), so it
  * is a local link to a sidecar whatever its scope says (the `llm` hop to llm-auth
  * carries the provider's `cloud`).
  */

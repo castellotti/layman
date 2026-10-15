@@ -731,7 +731,7 @@ export function layoutTopology(data: TopoInput, width: number, height: number): 
     const fanBytes = legs.filter((l) => l.service === fanNode.title).reduce((a, l) => a + l.bytes, 0);
     // glove's `next` already links the hop to this consumer (drawn above): the label match
     // is only for a gate from before glove listed `next`.
-    const linked = services.some((s) => fromSandbox(s) && nextServices(s, services).some((n) => n.service === fanNode.title));
+    const linked = services.some((s) => svcNode.has(s.service) && nextServices(s, services).some((n) => n.service === fanNode.title));
     const trigger = linked ? null : triggerOf(byName.get(fanNode.title)!, services);
     const search = trigger ? svcNodes.find((n) => n.title === trigger.service) : undefined;
     if (search) {
@@ -786,7 +786,10 @@ export function pathHops(data: TopoInput, host: string): { dest: DestinationAggr
   const svc = services.find((s) => s.service === d.services[0]);
   const hops: Hop[] = [];
   const outcome = outcomeOf(d);
-  const fan = d.flags.fanout || isFanoutService(svc);
+  // The leg a sidecar dials after a hop (glove's `next`): `llm` → llm-auth → `llm-upstream`,
+  // `webfetch-mcp` → fetcher → `webfetch-egress`. The path starts at the harness's hop.
+  const via = svc ? services.find((s) => nextServices(s, services).some((n) => n.service === svc.service)) : undefined;
+  const fan = !via && (d.flags.fanout || isFanoutService(svc));
   const g = data.gate;
 
   if (fan) {
@@ -807,13 +810,18 @@ export function pathHops(data: TopoInput, host: string): { dest: DestinationAggr
       evidence: s?.observed === false ? 'declared' : 'observed',
     };
   };
-  // The provider leg of a model call through llm-auth: the harness reached the `llm` hop, the
-  // sidecar added the key, and `llm-upstream` dialled the provider.
-  const via = isLlmUpstream(svc) ? services.find((s) => nextServices(s, services).some((n) => n.service === svc!.service)) : undefined;
+  // The harness reached the hop, and the sidecar behind it dialled out through this leg
+  // (llm-auth adding the API key, the fetcher fetching the page).
   if (via) {
+    const llm = isLlmUpstream(svc);
     hops.push({ id: 'service', ...serviceHop(via, via.service) });
     hops.push({
-      id: 'sidecar', title: sidecarName(via.upstream ?? via.route?.upstream, data.token) ?? 'llm-auth', detail: 'adds the API key',
+      id: 'sidecar',
+      // Named as Topology names its hop band: by the gate's upstream, else by the hop's own host.
+      title: sidecarName(via.upstream ?? via.route?.upstream, data.token)
+        ?? sidecarName([...data.destinations.values()].find((x) => x.flags.hop && x.services.includes(via.service))?.host, data.token)
+        ?? (llm ? 'llm-auth' : clientName(svc?.client)),
+      detail: llm ? 'adds the API key' : EGRESS_CLIENTS[svc?.client ?? '']?.what ?? null,
       status: 'glove’s sidecar · not a gate', evidence: 'declared',
     });
   }

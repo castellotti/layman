@@ -191,6 +191,9 @@ export interface NetService {
 /** The llm extension's second leg (`llm-upstream`): `harness: false`, tool `llm`, dialled by glove's llm-auth sidecar. */
 export const isLlmUpstream = (s: NetService | undefined): boolean => !!s && s.harness === false && s.tool === 'llm';
 
+/** The gates glove watches: one it lists with `observed: false` records nothing. */
+const watched = (services: readonly NetService[]): NetService[] => services.filter((s) => s.observed !== false);
+
 /**
  * The observed gates a service's traffic goes on through: glove's `next` when
  * session.json has it, else, for the harness's `llm` hop, the llm upstream leg
@@ -203,9 +206,21 @@ export const isLlmUpstream = (s: NetService | undefined): boolean => !!s && s.ha
  */
 export function nextServices(svc: NetService | undefined, services: readonly NetService[]): NetService[] {
   if (!svc) return [];
-  if (Array.isArray(svc.next)) return services.filter((s) => s.observed !== false && svc.next!.includes(s.service));
-  if (svc.harness !== false && svc.tool === 'llm') return services.filter((s) => s.observed !== false && isLlmUpstream(s));
+  const gates = watched(services);
+  if (Array.isArray(svc.next)) return gates.filter((s) => svc.next!.includes(s.service));
+  if (svc.harness !== false && svc.tool === 'llm') return gates.filter(isLlmUpstream);
   return [];
+}
+
+/**
+ * The service's flows are hops, their bytes counted at the next leg instead: it goes on
+ * through a watched gate, and through no gate glove skips. With one of its `next` gates
+ * unwatched, the hop's own flows are the only record of what went that way, so they count.
+ */
+export function isHopService(svc: NetService | undefined, services: readonly NetService[]): boolean {
+  if (!nextServices(svc, services).length) return false;
+  const skipped = new Set(services.filter((s) => s.observed === false).map((s) => s.service));
+  return !(svc!.next ?? []).some((name) => skipped.has(name));
 }
 
 export interface NetSessionFile {

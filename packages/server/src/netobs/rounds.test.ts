@@ -265,4 +265,20 @@ describe('reading tool names, commands and results', () => {
     expect(downloadsOf(`${SAVED}\n\nsaved: /work/downloads/b.zip\nbytes: 12\nsha256: nope`).map((d) => [d.path, d.bytes, d.sha256]))
       .toEqual([['/work/downloads/2401.00001.pdf', 2_400_000, 'a'.repeat(64)], ['/work/downloads/b.zip', 12, null]]);
   });
+
+  it('reads every shape of Vibe\'s Python repr, and reports a file once', () => {
+    const sha = 'c'.repeat(64);
+    // Python double-quotes a string holding a `'` and no `"`.
+    expect(downloadsOf(`structured: {'result': "saved: /work/downloads/bob's.tar.gz\\nbytes: 3\\nsha256: ${sha}"}`))
+      .toMatchObject([{ path: "/work/downloads/bob's.tar.gz", bytes: 3, sha256: sha }]);
+    // Other keys, either side; \\x escapes.
+    expect(downloadsOf(`structured: {'is_error': False, 'result': 'saved: /work/downloads/caf\\xe9.zip\\nbytes: 4', 'n': 1}`))
+      .toMatchObject([{ path: '/work/downloads/caf\u00e9.zip', bytes: 4 }]);
+    // Cut off before the closing quote.
+    expect(downloadsOf(`structured: {'result': 'saved: /work/downloads/a.zip\\nbytes: 5\\nsha2`)).toMatchObject([{ path: '/work/downloads/a.zip', bytes: 5 }]);
+    // Recorded as text and as a repr, listing two jobs: each file once.
+    const text = `saved: /work/downloads/a.zip\nbytes: 1\nsha256: ${sha}\n\nsaved: /work/downloads/b.zip\nbytes: 2`;
+    const repr = `structured: {'result': '${text.replace(/\n/g, '\\n')}'}`;
+    expect(downloadsOf(`${text}\n${repr}`).map((d) => d.path)).toEqual(['/work/downloads/a.zip', '/work/downloads/b.zip']);
+  });
 });

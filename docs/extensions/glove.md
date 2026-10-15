@@ -344,7 +344,9 @@ Layman matches these by `tool`, `client` and `harness`, not by service names, ex
   `browser-egress`; `[]` otherwise). It is static and transitive through sidecars, with no per-flow
   link, so a hop's flows are joined to the egress flows they cause by time. Only an **observed**
   gate counts: glove lists a skipped one (`observed: false`) too, and its traffic is unrecorded, so
-  the hop's flows stay the only record and are not set aside. For a gate from before round 13 (no
+  the hop's flows stay the only record and are not set aside. That holds when *any* of a service's
+  `next` gates is skipped (`isHopService`): its flows then count, even though the watched gate's
+  share is counted twice, because leaving them out would lose the skipped gate's traffic outright. For a gate from before round 13 (no
   `next`), the one pair Layman knows is matched by its labels: a harness-side `tool: llm` service →
   the `harness: false` `tool: llm` services. So **every sidecar hop is a hop**, not only the llm one,
   and its flows carry `FlowFlags.hop`:
@@ -355,6 +357,12 @@ Layman matches these by `tool`, `client` and `harness`, not by service names, ex
     hop's own destination keeps its bytes. `history.test.ts` restarts at every record of this case.
     The flag is kept with the destination (`net_destinations.hop`, migration 5, local only), so a
     hop whose files are gone is still a hop, not an unresolved cloud destination on the Map.
+  - **Re-flagged when session.json changes.** The flag is set as each record is read, from the
+    session.json of the moment, and session.json can be missing or unreadable at first, or be
+    rewritten with another `next` or `observed`. `setSessionFile` therefore re-flags the stored flows
+    (`reflagHops`), moving their bytes out of the totals or back in, so a flow is never counted at
+    both legs or at neither. The 1 s buckets still held move with them; what was already folded
+    into 1 min buckets stays as it was counted.
   - **A local link, whatever its scope says.** The hop carries the provider's `cloud`, but it is
     never geolocated or mapped (`offMap`), it sits in "Local links", and its route reads "local · hop".
   - **Trace** gives one LLM row per request. Each hop is folded into the nearest upstream leg that
@@ -389,7 +397,10 @@ Layman matches these by `tool`, `client` and `harness`, not by service names, ex
   call whose window it opened in. Topology takes an egress consumer's trigger from its own `tool`
   first, so `webdownload-egress` hangs off `webdownload-mcp`, not the fetch hop. The saved files
   come from the recorded results (`saved:`, `bytes:`, `sha256:`, `content_type:`, `final_url:`; in
-  Vibe before 2.26, inside the `structured: {'result': '…'}` repr its MCP result is recorded as):
+  Vibe before 2.26, inside the `structured: {'result': '…'}` repr its MCP result is recorded as,
+  read as Python writes it: double-quoted when the text holds a `'`, other keys around it, cut off
+  before its closing quote; the repr is replaced by its text rather than added to it, and a file
+  reported twice in one result is listed once):
   - in a download call's Details;
   - in the Trace tab's Downloads panel (`GET /api/net/sessions/:token/downloads`, one entry per
     file, under the call that first reported it).
@@ -815,7 +826,11 @@ Selected path panel that walks one destination's path hop by hop.
   tab use, and every band not on the path dims.
 - **Selected path panel.** The destination's hops, each with its status and whether glove **observed**
   it, only **declared** it (a dashed circle), or **verified** it:
-  - the sandbox, with gate freshness and heartbeat age (a fan-out path starts at SearXNG instead);
+  - the sandbox, with gate freshness and heartbeat age (a fan-out path starts at SearXNG instead,
+    unless glove's `next` says which hop leads to it);
+  - for a leg a sidecar dials after a hop (`next`: the llm upstream, a fetch or download egress),
+    the hop's service and the sidecar ("llm-auth · adds the API key", "fetcher · page fetch or file
+    download"), named as Topology names its hop band, before the leg's own service;
   - the service and its listener;
   - the policy verdict;
   - the route (a declared tunnel and its upstream health, a local link, or direct);

@@ -99,6 +99,20 @@ describe('Topology', () => {
     expect(n.bands.find((b) => b.id === 'svc:webdownload-mcp>svc:webdownload-egress:hop')).toMatchObject({ kind: 'local', label: { text: 'via fetcher' } });
     expect(n.bands.some((b) => b.kind === 'trigger')).toBe(false);
     expect(n.nodes.some((x) => x.id === `dest:${key}`)).toBe(false);
+    // The selected path agrees: it starts at the harness's hop and goes through the fetcher.
+    expect(pathHops(withNext, 'arxiv.org')!.hops.slice(0, 4).map((h) => [h.id, h.title])).toEqual([
+      ['sandbox', `${ID} sandbox`], ['service', 'webdownload-mcp service'], ['sidecar', 'fetcher'], ['upstream', 'webdownload-egress service'],
+    ]);
+    expect(pathHops(withNext, 'arxiv.org')!.hops[2].detail).toBe('page fetch or file download');
+  });
+
+  it('links an egress once when its `next` comes from a service the sandbox does not dial', () => {
+    // A fan-out service is drawn, so its hop band is; the label trigger must then stand down.
+    const withNext = data();
+    withNext.session = { ...SESSION, services: SERVICES.map((s) => ({ ...s, next: s.service === 'github-egress' ? ['webdownload-egress'] : [] })) };
+    const n = layoutTopology(withNext, 1400, 780);
+    expect(n.bands.some((b) => b.id === 'svc:github-egress>svc:webdownload-egress:hop')).toBe(true);
+    expect(n.bands.filter((b) => b.to === 'svc:webdownload-egress' && (b.kind === 'trigger' || b.id.endsWith(':hop')))).toHaveLength(1);
   });
 
   it('routes an ssh host as a LAN link, never the llm link or the tunnel', () => {

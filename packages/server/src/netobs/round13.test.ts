@@ -15,7 +15,7 @@ import type { TimelineEvent } from '../events/types.js';
 import { callsFrom, correlate, downloadsOf } from './correlate.js';
 import { NetObs } from './index.js';
 import { applyOp, emptyRules, evaluate, validateRules } from './rules.js';
-import { nextServices, type FlowView, type NetSnapshot, type RulesFile } from './types.js';
+import { isHopService, nextServices, type FlowView, type NetSnapshot, type RulesFile } from './types.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const V3 = join(HERE, '__scenarios_v3__');
@@ -28,6 +28,11 @@ afterEach(() => rmSync(root, { recursive: true, force: true }));
 
 /** One scenario's glove home, read as Layman reads a live one; its snapshot. */
 function snapshot(name: string): NetSnapshot {
+  return load(name).store.snapshot(`${name}-0f1a2b`)!;
+}
+
+/** One scenario's glove home, copied and polled once; `before` may edit it first. */
+function load(name: string, before?: (home: string) => void): NetObs {
   const h = join(root, name);
   cpSync(join(V3, name, 'home'), h, { recursive: true });
   mkdirSync(join(h, 'control'), { recursive: true });
@@ -38,9 +43,10 @@ function snapshot(name: string): NetSnapshot {
     writeFileSync(join(row.dir, '.glove', 'id'), `${row.id}\n`);
   }
   writeFileSync(join(h, 'registry.json'), JSON.stringify(reg));
+  before?.(h);
   const obs = new NetObs({ getGloveHome: () => h });
   obs.poll(NOW);
-  return obs.store.snapshot(`${name}-0f1a2b`)!;
+  return obs;
 }
 
 /** A Pi transcript's tool calls, in order: name and arguments. */
@@ -179,5 +185,38 @@ describe('downloads: the fetch and download hops, each with its egress', () => {
     expect(claimed).toEqual([['webfetch-egress', 'webfetch-mcp'], ['webdownload-egress', 'webdownload-mcp']]);
     expect(unattributed).toEqual([]);
     expect(downloadsOf(dl.output)).toMatchObject([{ path: '/work/downloads/data.tar.gz', bytes: 10485760, sha256: 'ab'.repeat(32) }]);
+  });
+});
+
+describe('a hop is counted once whatever order session.json arrives in', () => {
+  const id = 'downloads-0f1a2b';
+  const sessionFile = (h: string) => join(h, 'observe', id, 'net', 'session.json');
+
+  it('re-flags flows read before session.json, moving their bytes out of the totals', () => {
+    let kept = '';
+    const obs = load('downloads', (h) => { kept = readFileSync(sessionFile(h), 'utf8'); writeFileSync(sessionFile(h), '{'); });
+    const before = obs.store.snapshot(id)!;
+    expect(before.flows.some((f) => f.flags.hop)).toBe(false);
+    expect(before.totals.bytesDown).toBe(sum(before.flows, 'down'));
+
+    writeFileSync(sessionFile(join(root, 'downloads')), kept);
+    obs.poll(NOW + 1000);
+    const after = obs.store.snapshot(id)!;
+    const egress = after.flows.filter((f) => f.service.endsWith('-egress'));
+    expect(after.flows.filter((f) => f.service.endsWith('-mcp')).every((f) => f.flags.hop)).toBe(true);
+    expect(after.totals.bytesDown).toBe(sum(egress, 'down'));
+    expect(after.totals.bytesUp).toBe(sum(egress, 'up'));
+    expect(after.destinations.filter((d) => d.host === 'glove-downloads-0f1a2b-fetcher').every((d) => d.flags.hop)).toBe(true);
+    expect(after.buckets.reduce((a, b) => a + b.down, 0)).toBe(sum(egress, 'down'));
+  });
+
+  it('a hop through a gate glove skips is no hop: its flows are the only record', () => {
+    const snap = snapshot('downloads');
+    const svcs = services(snap).map((s) => (s.service === 'webfetch-mcp' ? { ...s, next: ['webfetch-egress', 'x-egress'] } : s));
+    const skipped = [...svcs, { ...byService(snap, 'webfetch-egress'), service: 'x-egress', observed: false }];
+    const fetch = skipped.find((s) => s.service === 'webfetch-mcp');
+    expect(nextServices(fetch, skipped).map((s) => s.service)).toEqual(['webfetch-egress']);
+    expect(isHopService(fetch, skipped)).toBe(false);
+    expect(isHopService(fetch, svcs)).toBe(true);
   });
 });
