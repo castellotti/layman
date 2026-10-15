@@ -109,9 +109,41 @@ describe('what the store looks up', () => {
     store.ingestFlow('e', rec('f3', 'z.org', '151.101.7.7', 'disabled', 'tunnelled'), T);
     store.ingestFlow('e', rec('f4', 'z.org', null, 'unavailable', 'direct'), T + 1000);
     const d = (host: string) => store.snapshot('e')!.destinations.find((x) => x.host === host)!;
-    expect(d('www.example.gov')).toMatchObject({ scope: 'direct', resolution: 'unavailable' });
+    expect(d('www.example.gov')).toMatchObject({ scope: 'direct', resolution: 'unavailable', geoIp: '151.101.3.42' });
     expect(d('www.example.gov').geo?.city).toBe('San Francisco');
-    expect(d('z.org').geo).toBeNull();
+    expect(d('z.org')).toMatchObject({ ips: ['151.101.7.7'], geoIp: null, geo: null });
+  });
+
+  it('places a host first reached directly once a tunnel flow resolves it', () => {
+    const geo = new GeoLocator(() => db());
+    geo.refresh();
+    const store = new NetStore({ geolocate: (ip) => geo.lookup(ip) });
+    store.ensure({ token: 'e', netDir: dir, controlDir: join(dir, 'c', 'e', 'e'), rulesPath: join(dir, 'c', 'e', 'e', 'rules.json') });
+    store.ingestFlow('e', rec('f1', 'www.example.gov', null, 'unavailable', 'direct'), T);
+    store.ingestFlow('e', rec('f2', 'www.example.gov', null, 'unavailable', 'direct'), T + 1000);
+    store.ingestFlow('e', rec('f3', 'www.example.gov', '185.15.59.224', 'in-tunnel', 'tunnelled'), T + 2000);
+    const d = store.snapshot('e')!.destinations.find((x) => x.host === 'www.example.gov')!;
+    expect(d).toMatchObject({ geoIp: '185.15.59.224', geo: { city: 'Amsterdam' } });
+  });
+
+  it('places by the earliest tunnel flow, whatever order the files are read in', () => {
+    // A CDN host resolves to different IPs over time: the pin must not move after a restart reads in another order.
+    const at = (id: string, ip: string, t: number): FlowRecord => {
+      const r = rec(id, 'cdn.example', ip, 'in-tunnel', 'tunnelled');
+      return { ...r, t: new Date(t).toISOString(), t_open: new Date(t).toISOString(), t_close: new Date(t).toISOString() };
+    };
+    const placed = (order: FlowRecord[]) => {
+      const geo = new GeoLocator(() => db());
+      geo.refresh();
+      const store = new NetStore({ geolocate: (ip) => geo.lookup(ip) });
+      store.ensure({ token: 'e', netDir: dir, controlDir: join(dir, 'c', 'e', 'e'), rulesPath: join(dir, 'c', 'e', 'e', 'rules.json') });
+      for (const r of order) store.ingestFlow('e', r, T + 5000);
+      return store.snapshot('e')!.destinations.find((x) => x.host === 'cdn.example')!;
+    };
+    const early = at('f1', '151.101.3.42', T);
+    const late = at('f2', '185.15.59.224', T + 3000);
+    expect(placed([early, late])).toMatchObject({ geoIp: '151.101.3.42', geo: { city: 'San Francisco' } });
+    expect(placed([late, early])).toMatchObject({ geoIp: '151.101.3.42', geo: { city: 'San Francisco' } });
   });
 
   it('re-sends every destination when the database changes', () => {

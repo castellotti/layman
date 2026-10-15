@@ -32,6 +32,11 @@ export const neverMapped = (scope: string): boolean => scope === 'local' || scop
  * a guard refusal, not a user's rule. `builtin:lan-only` is accepted too, in case glove renames it.
  */
 export const isLanOnlyRule = (rule: string | null | undefined): boolean => rule === 'lan-only' || rule === 'builtin:lan-only';
+/**
+ * Whether an IP glove reported may be geolocated: only one it resolved inside the tunnel, or a
+ * literal destination. Any other resolution (`disabled`, `unavailable`) is never looked up.
+ */
+export const mayGeolocate = (resolution: string): boolean => resolution === 'in-tunnel' || resolution === 'literal';
 /** Off the map: `neverMapped`, or a hop to a sidecar (`FlowFlags.hop`), whatever its scope says. */
 export const offMap = (d: { scope: string; flags: { hop: boolean } }): boolean => neverMapped(d.scope) || d.flags.hop;
 export type FlowResolution = 'in-tunnel' | 'literal' | 'unavailable' | 'disabled';
@@ -386,9 +391,14 @@ export interface DestinationAggregate {
    */
   policy: { enforced: PolicyVerdict | null; written: PolicyVerdict | null };
   /**
-   * Where the destination is, from the user's own offline database, for its
-   * first IP — only when glove resolved it inside the tunnel (or it was a
-   * literal) and it is not a local link. Null: "Unknown location".
+   * The IP the location is for: from the earliest flow (by `t_open`) whose IP glove resolved
+   * inside the tunnel or that was a literal. It outlives later flows that have no IP, such as a
+   * direct route's (`unavailable`), so it may differ from `ips[0]` and `resolution`. Null: none.
+   */
+  geoIp: string | null;
+  /**
+   * Where `geoIp` is, from the user's own offline database, unless the destination is
+   * off the map (a local link or a hop). Null: "Unknown location".
    */
   geo: GeoPoint | null;
 }
