@@ -105,6 +105,12 @@ interface AggEntry {
   /** The flow with the latest `t_open`, and its state. */
   latest: { id: string; tOpen: number; state: NetState } | null;
   spark: Map<number, RateBucket>;
+  /**
+   * The first IP glove resolved inside the tunnel (or a literal), the only kind the Map may
+   * place. Kept apart from `agg.resolution`, which follows the latest flow: a destination
+   * reached through the tunnel and later over a direct route (no IP, `unavailable`) keeps it.
+   */
+  geoIp: string | null;
 }
 
 /** A gate process, keyed by its `run` id (glove's record contract). */
@@ -636,6 +642,7 @@ export class NetStore extends EventEmitter {
         open: new Map(),
         latest: null,
         spark: new Map(),
+        geoIp: null,
       };
       s.aggs.set(key, e);
       s.removedAggs.delete(key);
@@ -653,6 +660,7 @@ export class NetStore extends EventEmitter {
     if (r.phase !== 'close') e.open.set(id, next.state);
     a.openFlows = e.open.size;
     pushUnique(a.ips, r.dest.ip, MAX_IPS);
+    if (e.geoIp === null && r.dest.ip && (r.dest.resolution === 'in-tunnel' || r.dest.resolution === 'literal')) e.geoIp = r.dest.ip;
     pushUnique(a.services, r.service);
     pushUnique(a.tools, r.tool);
     pushUnique(a.clients, r.client);
@@ -840,9 +848,7 @@ export class NetStore extends EventEmitter {
       ...a,
       policy: policyFor(s.policy, facts, gate, Object.keys(a.blockedBy).some(isLanOnlyRule) || isLanOnlyRule(a.rule)),
       // Only an IP glove resolved inside the tunnel (or a literal), never a local link or a hop.
-      geo: this.geolocate && a.ips[0] && !offMap(a) && (a.resolution === 'in-tunnel' || a.resolution === 'literal')
-        ? this.geolocate(a.ips[0])
-        : null,
+      geo: this.geolocate && e.geoIp && !offMap(a) ? this.geolocate(e.geoIp) : null,
       // A flow whose gate went away is unclosed but not open in any sense the UI means.
       openFlows: [...e.open.values()].filter((st) => st !== 'gate_lost').length,
       ips: [...a.ips],

@@ -97,6 +97,23 @@ describe('what the store looks up', () => {
     expect(new Set(looked)).toEqual(new Set(['151.101.3.42', '203.0.113.9']));
   });
 
+  it('keeps a tunnel-resolved IP when the route later turns direct', () => {
+    // A session moved from a VPN to a direct route: the direct proxy reports no IP
+    // (`unavailable`), which must not erase where the tunnel found the host.
+    const geo = new GeoLocator(() => db());
+    geo.refresh();
+    const store = new NetStore({ geolocate: (ip) => geo.lookup(ip) });
+    store.ensure({ token: 'e', netDir: dir, controlDir: join(dir, 'c', 'e', 'e'), rulesPath: join(dir, 'c', 'e', 'e', 'rules.json') });
+    store.ingestFlow('e', rec('f1', 'www.example.gov', '151.101.3.42', 'in-tunnel', 'tunnelled'), T);
+    store.ingestFlow('e', rec('f2', 'www.example.gov', null, 'unavailable', 'direct'), T + 1000);
+    store.ingestFlow('e', rec('f3', 'z.org', '151.101.7.7', 'disabled', 'tunnelled'), T);
+    store.ingestFlow('e', rec('f4', 'z.org', null, 'unavailable', 'direct'), T + 1000);
+    const d = (host: string) => store.snapshot('e')!.destinations.find((x) => x.host === host)!;
+    expect(d('www.example.gov')).toMatchObject({ scope: 'direct', resolution: 'unavailable' });
+    expect(d('www.example.gov').geo?.city).toBe('San Francisco');
+    expect(d('z.org').geo).toBeNull();
+  });
+
   it('re-sends every destination when the database changes', () => {
     const store = new NetStore({ geolocate: () => null });
     store.ensure({ token: 'e', netDir: dir, controlDir: join(dir, 'c', 'e', 'e'), rulesPath: join(dir, 'c', 'e', 'e', 'rules.json') });
