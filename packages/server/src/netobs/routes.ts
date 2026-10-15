@@ -6,7 +6,7 @@
 import { randomUUID } from 'crypto';
 import type { FastifyInstance } from 'fastify';
 import type { NetObs, RulesOp } from './index.js';
-import { buildTrace, callsBetween, type TraceDeps } from './trace.js';
+import { buildTrace, callsBetween, downloadsIn, type TraceDeps } from './trace.js';
 
 const OP_KINDS = new Set([
   'blockHost', 'blockDomain', 'blockIp', 'blockGroup', 'allowHost', 'allowDomain', 'removeRule', 'setDefault',
@@ -82,6 +82,14 @@ export function registerNetRoutes(fastify: FastifyInstance, deps: { netObs: NetO
     }
     const calls = callsBetween(store, token, deps.trace, from, to);
     return calls ? { calls } : reply.status(404).send(notFound(token));
+  });
+
+  // Files `web_download` saved in the session, from the recorded call results (glove's `saved:` lines).
+  fastify.get<{ Params: { token: string } }>('/api/net/sessions/:token/downloads', async (request, reply) => {
+    const { token } = request.params;
+    if (!deps.trace) return reply.status(501).send({ error: 'Trace is not available on this server' });
+    const downloads = downloadsIn(store, token, deps.trace);
+    return downloads ? { downloads } : reply.status(404).send(notFound(token));
   });
 
   fastify.get<{ Params: { token: string } }>('/api/net/sessions/:token/rules', async (request, reply) => {

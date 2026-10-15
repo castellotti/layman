@@ -10,7 +10,7 @@
  * map never implies where the operator is.
  */
 import { geoInterpolate, geoMercator, type GeoProjection } from 'd3-geo';
-import { isLlmScope, neverMapped, type DestinationAggregate, type ExitRecord, type FlowView, type NetGateView } from './netobs-types.js';
+import { isOffTunnelScope, offMap, type DestinationAggregate, type ExitRecord, type FlowView, type NetGateView } from './netobs-types.js';
 import { BLOCK_STATES } from './net-format.js';
 
 /** Mercator is useless near the poles: clip to about 84°N–58°S. */
@@ -100,7 +100,7 @@ export function strokeWidth(bytes: number, maxBytes: number): number {
 
 /** On the map: has a location, is not a local link, and was not refused before it left. */
 export function isMappable(d: DestinationAggregate): boolean {
-  return d.geo !== null && !neverMapped(d.scope) && !BLOCK_STATES.has(d.state);
+  return d.geo !== null && !offMap(d) && !BLOCK_STATES.has(d.state);
 }
 
 /**
@@ -108,7 +108,7 @@ export function isMappable(d: DestinationAggregate): boolean {
  * no IP from glove, or no database, or not in it. Never looked up elsewhere.
  */
 export function unknownLocation(dests: Iterable<DestinationAggregate>): DestinationAggregate[] {
-  return [...dests].filter((d) => !neverMapped(d.scope) && !BLOCK_STATES.has(d.state) && d.host !== null && d.geo === null)
+  return [...dests].filter((d) => !offMap(d) && !BLOCK_STATES.has(d.state) && d.host !== null && d.geo === null)
     .sort((a, b) => b.lastSeen - a.lastSeen);
 }
 
@@ -138,7 +138,7 @@ export function clusterDestinations(dests: Iterable<DestinationAggregate>): Clus
     c.bytes += d.bytesUp + d.bytesDown;
     c.live ||= d.state === 'active';
     c.direct ||= d.scope === 'direct';
-    c.tunnelled ||= d.scope !== 'direct' && !isLlmScope(d.scope);
+    c.tunnelled ||= d.scope !== 'direct' && !isOffTunnelScope(d.scope);
     m.set(key, c);
   }
   return [...m.values()].sort((a, b) => b.bytes - a.bytes);

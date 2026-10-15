@@ -16,10 +16,10 @@ import type { NetSessionData } from '../../lib/net-state.js';
 import { controlDisabledReason, siblingIds, toggleFor } from '../../lib/net-rules.js';
 import { clockTime, destinationRow, guardReason } from '../../lib/net-table.js';
 import { buildPath } from '../../lib/layman-url.js';
-import { callForFlow, defaultSelection, tickLabel, traceAxis, traceRows, type Tone, type TraceIcon, type TraceRow } from '../../lib/net-trace.js';
-import type { FlowView, RulesOp, TraceView } from '../../lib/netobs-types.js';
+import { callForFlow, defaultSelection, fileName, tickLabel, traceAxis, traceRows, type Tone, type TraceIcon, type TraceRow } from '../../lib/net-trace.js';
+import { isLanOnlyRule, type FlowView, type RulesOp, type TraceDownload, type TraceView } from '../../lib/netobs-types.js';
 import { useNow } from '../../hooks/useNow.js';
-import { fetchTrace, pollSettled } from '../../hooks/useNetTrace.js';
+import { fetchTrace, pollSettled, useNetDownloads } from '../../hooks/useNetTrace.js';
 import { buttonStyle, ControlPopover } from './ControlPopover.js';
 import { NetToggle } from './cells.js';
 import { Row, SectionHead } from './DetailCard.js';
@@ -283,6 +283,9 @@ function whatHappened(f: FlowView, rules: NetSessionData['rules']): string {
   const note = (rules.enforced?.rules ?? rules.file?.rules ?? []).find((r) => r.id === f.rule)?.note;
   switch (f.state) {
     case 'guard':
+      if (isLanOnlyRule(f.rule)) {
+        return `glove refused the connection: ${host} goes through a relay that may only reach your local network (glove’s --lan-only), and its name resolved to a public address. glove decides this at each connection, so Layman cannot predict it.`;
+      }
       return f.dest.host === null
         ? 'The gate refused a request with no destination it could read, before anything went upstream.'
         : `The gate refused the connection before anything went upstream. ${host} is ${guardReason({ host: f.dest.host, rule: f.rule }) === 'cloud metadata' ? 'a cloud metadata address' : `an ${guardReason({ host: f.dest.host, rule: f.rule })}`}, which glove never lets a sandbox reach.`;
@@ -379,7 +382,17 @@ export function TraceDetails({ data }: { data: NetSessionData }) {
         <Row k="Flows" v={`${item.flowIds.length + item.fanoutIds.length}`} sub={item.fanoutIds.length ? `${item.fanoutIds.length} by SearXNG’s fan-out` : undefined} />
         <Row k="Joined" v={c.redacted ? 'not joined' : c.timing === 'exact' ? 'host and time' : 'host only'} mono={false}
           sub={c.redacted ? 'the PII filter redacted the host when the call was recorded; Settings → glove → Show IP addresses keeps IPs in glove sessions' : c.timing === 'exact' ? 'opened between start − 1 s and end + 2 s' : 'opened after the turn began, before Layman read the call'} />
+        {c.relay && (
+          <Row k="Relay" v={c.relay.via === 'github' ? 'glove’s GitHub relay' : `glove’s ssh relay${c.relay.host ? ` · ${c.relay.host}` : ''}`} mono={false}
+            sub={c.relay.via === 'github' ? 'the sidecar holds the token and makes the traffic (client github)' : `the sidecar dials the host (gate ssh-${c.relay.host ?? '…'})`} />
+        )}
         {c.failed && <Row k="Result" v="failed" colour="#FF8A80" />}
+        {c.downloads.length > 0 && (
+          <>
+            <SectionHead>Saved</SectionHead>
+            {c.downloads.map((d) => <SavedFile key={`${d.path}:${d.sha256}`} d={d} />)}
+          </>
+        )}
         <TurnButtons view={view} label={c.label} />
       </div>
     );
@@ -427,3 +440,41 @@ export function TraceDetails({ data }: { data: NetSessionData }) {
 }
 
 const BLOCK_NEVER_LEFT = new Set(['guard', 'user_rule', 'default_block']);
+
+// ─── Downloads ────────────────────────────────────────────────────────────────
+
+/** One file glove's fetcher reported saved: where the harness sees it, its size and hash. */
+function SavedFile({ d }: { d: TraceDownload }) {
+  return (
+    <Row k="File" v={d.path} sub={[d.bytes !== null ? formatBytes(d.bytes) : null, d.contentType, d.sha256 ? `sha256 ${d.sha256}` : null, d.finalUrl].filter(Boolean).join(' · ')} />
+  );
+}
+
+/**
+ * Every file `web_download` saved in this glove session, from the results Layman recorded
+ * (never read from the sandbox). Layman says nothing about whether a file is safe to open.
+ */
+export function DownloadsList({ data }: { data: NetSessionData }) {
+  const { downloads, error } = useNetDownloads(data.token);
+  if (!downloads) return <div style={{ padding: 12, fontSize: 11.5, color: 'var(--text-muted)' }}>{error ? `Downloads unavailable: ${error}` : 'Loading…'}</div>;
+  if (!downloads.length) return <div style={{ padding: 12, fontSize: 11.5, color: 'var(--text-muted)' }}>No web_download has saved a file in this session.</div>;
+  return (
+    <div style={{ padding: 12 }}>
+      <ol aria-label="Downloads" style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+        {downloads.map((d) => (
+          <li key={`${d.eventId}:${d.path}`} style={{ marginBottom: 8 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11.5, color: 'var(--text)', wordBreak: 'break-all' }}>{fileName(d.path)}</span>
+              <span style={{ fontSize: 10.5, color: 'var(--text-faint)', whiteSpace: 'nowrap' }}>{d.bytes !== null ? formatBytes(d.bytes) : ''} · {clockTime(d.at)}</span>
+            </div>
+            <div style={{ fontSize: 10.5, color: 'var(--text-faint)', wordBreak: 'break-all' }}>{d.url ?? d.finalUrl ?? d.toolName}</div>
+            {d.sha256 && <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-faint)', wordBreak: 'break-all' }}>sha256 {d.sha256}</div>}
+          </li>
+        ))}
+      </ol>
+      <div style={{ fontSize: 10.5, color: 'var(--text-faint)', lineHeight: 1.5 }}>
+        As glove’s fetcher reported them, in /work/downloads. Downloaded files are untrusted.
+      </div>
+    </div>
+  );
+}

@@ -15,7 +15,7 @@
  * anything up; every label comes from glove's files or the user's rules.
  */
 import type { NetSessionData } from './net-state.js';
-import { isLlmScope, type DestinationAggregate, type FlowView, type NetService, type Rule } from './netobs-types.js';
+import { isInferenceScope, isLlmUpstream, nextServices, type DestinationAggregate, type FlowView, type NetService, type Rule } from './netobs-types.js';
 import { BLOCK_STATES, formatBytes } from './net-format.js';
 import { guardReason, hostLabel, toolLabel } from './net-table.js';
 
@@ -166,15 +166,33 @@ export function exitSourceHost(source: string | null): string | null {
   return upstreamHost(rest) ?? rest;
 }
 
+/**
+ * An egress consumer: a sidecar that goes out on the harness's behalf. Not the llm
+ * extension's `llm-upstream`, which is the second leg of the harness's own model call
+ * (drawn from the `llm` service, through llm-auth).
+ */
 const isFanoutService = (s: NetService | undefined) =>
-  !!s && (s.harness === false || s.client === 'searxng' || s.tool === 'search-engine-fanout');
+  !!s && !isLlmUpstream(s) && (s.harness === false || s.client === 'searxng' || s.tool === 'search-engine-fanout');
 
-/** `llm`: glove's llm link (`lan`/`cloud` scope), which never rides the tunnel and is expected. */
+/** A service the sandbox connects to itself: not a consumer, not the upstream leg behind a sidecar. */
+const fromSandbox = (s: NetService | undefined) => !!s && !isFanoutService(s) && s.harness !== false;
+
+/** `glove-<token>-llm-auth:8080` → `llm-auth`: the sidecar a hop ends at. */
+function sidecarName(upstream: string | null | undefined, token: string): string | null {
+  const host = upstreamHost(upstream);
+  return host ? host.replace(`glove-${token}-`, '') : null;
+}
+
+/**
+ * `llm`: glove's llm link (`cloud`, or `lan` for the llm tool), which never rides the
+ * tunnel and is expected. A `lan` host of a relay (ssh) is a LAN link: drawn local.
+ */
 type RouteId = 'local' | 'llm' | 'tunnel' | 'direct';
 
 function routeOf(d: DestinationAggregate, svc: NetService | undefined): RouteId {
-  if (d.scope === 'local') return 'local';
-  if (isLlmScope(d.scope)) return 'llm';
+  if (d.scope === 'local' || d.flags.hop) return 'local';
+  if (isInferenceScope(d.scope, d.tools[0] ?? svc?.tool)) return 'llm';
+  if (d.scope === 'lan') return 'local';
   if (d.scope === 'direct') return 'direct';
   if (d.scope === 'tunnelled') return 'tunnel';
   const kind = svc?.route?.kind ?? (svc?.mode === 'tcp' ? 'tcp' : null);
@@ -184,7 +202,7 @@ function routeOf(d: DestinationAggregate, svc: NetService | undefined): RouteId 
 /** A service's own route, for the sandbox → service band. */
 function serviceRoute(s: NetService): RouteId {
   const kind = s.route?.kind ?? (s.mode === 'tcp' ? 'tcp' : null);
-  if (kind === 'tcp' || s.scope === 'local') return 'local';
+  if (kind === 'tcp' || s.scope === 'local' || s.scope === 'lan') return 'local';
   if (kind === 'direct') return 'direct';
   return 'tunnel';
 }
@@ -192,16 +210,21 @@ function serviceRoute(s: NetService): RouteId {
 /**
  * glove's netgate client labels for egress consumers (a sidecar that goes out on
  * the harness's behalf, `harness: false`): display name, what it carries, and
- * the tool service whose calls make it go out (`trigger`, matched on the
- * service's `tool`; a service named `<trigger>-mcp` is preferred, as that is the
- * MCP harnesses' hop). `github`/`ssh` are labels glove has planned, not yet built.
+ * the tool service whose calls make it go out when the consumer's own `tool`
+ * names none (`trigger`, matched on the service's `tool`; a service named
+ * `<trigger>-mcp` is preferred, as that is the MCP harnesses' hop). The set is
+ * open (glove's client label is any extension's name): an unknown one shows raw.
+ * The relays (`github`, `ssh`) have no trigger service: their shims hand a shell
+ * command to the sidecar through files, not the network. `llm` is here for its
+ * name only: `llm-upstream` is drawn as the model call's second leg, not a consumer.
  */
 const EGRESS_CLIENTS: Record<string, { name: string; what: string; why: string; trigger: string | null }> = {
   searxng: { name: 'SearXNG', what: 'search engine fan-out', why: 'triggered by a web search', trigger: 'web_search' },
-  webfetch: { name: 'Web fetch', what: 'page fetch', why: 'triggered by a web fetch', trigger: 'web_fetch' },
+  webfetch: { name: 'Web fetcher', what: 'page fetch or file download', why: 'triggered by a web fetch or download', trigger: 'web_fetch' },
   playwright: { name: 'Playwright', what: 'browser traffic', why: 'driven by a browser tool', trigger: null },
-  github: { name: 'GitHub relay', what: 'GitHub traffic', why: 'driven by gh', trigger: null },
-  ssh: { name: 'SSH relay', what: 'SSH traffic', why: 'driven by ssh', trigger: null },
+  github: { name: 'GitHub relay', what: 'GitHub traffic (gh, git push/fetch/clone)', why: 'driven by a gh or git shell command', trigger: 'gh' },
+  ssh: { name: 'SSH relay', what: 'SSH to a host on your network', why: 'driven by an ssh shell command', trigger: 'ssh' },
+  llm: { name: 'llm-auth', what: 'the model call, with the API key added', why: 'the harness’s own model request', trigger: null },
 };
 
 function clientName(client: string | null | undefined): string {
@@ -209,13 +232,20 @@ function clientName(client: string | null | undefined): string {
   return EGRESS_CLIENTS[client]?.name ?? client;
 }
 
-/** The harness service whose calls make an egress consumer go out, if glove declared one. */
+/**
+ * The harness service whose calls make an egress consumer go out, if glove declared one:
+ * by the consumer's own tool first (`webdownload-egress` → `webdownload-mcp`, never the
+ * fetch hop), then by its client's usual trigger (SearXNG's fan-out → the search service).
+ */
 function triggerOf(consumer: NetService, services: readonly NetService[]): NetService | null {
   const client = consumer.client ?? (consumer.tool === 'search-engine-fanout' ? 'searxng' : null);
-  const tool = client ? EGRESS_CLIENTS[client]?.trigger ?? null : null;
-  if (!tool) return null;
-  const harness = services.filter((s) => s.tool === tool && !isFanoutService(s));
-  return harness.find((s) => s.service.endsWith('-mcp')) ?? harness.find((s) => s.mode === 'tcp') ?? harness[0] ?? null;
+  for (const tool of [consumer.tool ?? null, client ? EGRESS_CLIENTS[client]?.trigger ?? null : null]) {
+    if (!tool) continue;
+    const harness = services.filter((s) => s.tool === tool && fromSandbox(s));
+    const hit = harness.find((s) => s.service.endsWith('-mcp')) ?? harness.find((s) => s.mode === 'tcp') ?? harness[0];
+    if (hit) return hit;
+  }
+  return null;
 }
 
 /** Everything the gate declared, plus any service seen in traffic that it did not. */
@@ -313,7 +343,10 @@ export function layoutTopology(data: TopoInput, width: number, height: number): 
 
   const services = topologyServices(data);
   const byName = new Map(services.map((s) => [s.service, s]));
-  const legs = legsOf(data.destinations.values(), data.flows.values(), byName);
+  const allLegs = legsOf(data.destinations.values(), data.flows.values(), byName);
+  // A hop to a sidecar (the `llm` hop to llm-auth) is drawn as the link to the service it goes
+  // on through, not as a route to a destination; refused, it still ends at the wall.
+  const legs = allLegs.filter((l) => !(l.d.flags.hop && l.outcome !== 'refused'));
   const rules = data.rules.enforced?.rules ?? data.rules.file?.rules ?? [];
 
   const nodes: TopoNode[] = [];
@@ -327,7 +360,7 @@ export function layoutTopology(data: TopoInput, width: number, height: number): 
   // Services.
   const svcNodes: TopoNode[] = [];
   const svcItems = services.map((s) => {
-    const mine = legs.filter((l) => l.service === s.service);
+    const mine = allLegs.filter((l) => l.service === s.service);
     const flows = new Set<string>();
     let nFlows = 0;
     let refused = 0;
@@ -343,6 +376,9 @@ export function layoutTopology(data: TopoInput, width: number, height: number): 
     } else if (isFanoutService(s)) {
       lines.push({ text: `${clientName(s.client)} → gate`, tone: 'faint' });
       lines.push({ text: 'not the harness', tone: 'faint' });
+    } else if (isLlmUpstream(s)) {
+      lines.push({ text: `${clientName(s.client ?? 'llm')} → provider`, tone: 'faint' });
+      if (nFlows) lines.push({ text: `${countLabel(nFlows)} flow${nFlows === 1 ? '' : 's'}${refused ? ` · ${countLabel(refused)} refused` : ''}`, tone: 'faint' });
     } else {
       const what = s.tool && s.tool !== s.service ? toolLabel(s.tool) : s.scope ?? null;
       lines.push({ text: [s.mode, what].filter(Boolean).join(' · ') || 'observed', tone: 'faint' });
@@ -366,7 +402,7 @@ export function layoutTopology(data: TopoInput, width: number, height: number): 
   const centre = (n: TopoNode) => n.y + n.h / 2;
 
   // Sandbox: level with the harness's own services.
-  const harnessSvc = svcNodes.filter((n) => !isFanoutService(byName.get(n.title)));
+  const harnessSvc = svcNodes.filter((n) => fromSandbox(byName.get(n.title)));
   const span = harnessSvc.length ? [harnessSvc[0].y, harnessSvc[harnessSvc.length - 1].y + harnessSvc[harnessSvc.length - 1].h] : [TOP, bottom];
   const sbH = Math.max(120, Math.min(260, (span[1] - span[0]) * 0.6));
   const sbY = Math.max(TOP + 10, Math.min(bottom - sbH, (span[0] + span[1]) / 2 - sbH / 2));
@@ -584,8 +620,8 @@ export function layoutTopology(data: TopoInput, width: number, height: number): 
   };
   for (const n of svcNodes) {
     const s = byName.get(n.title)!;
-    if (isFanoutService(s)) continue;
-    const mine = legs.filter((l) => l.service === s.service);
+    if (!fromSandbox(s)) continue;
+    const mine = allLegs.filter((l) => l.service === s.service);
     if (!s.observed) {
       drafts.push({ id: `sandbox>${n.id}`, kind: 'unwatched', from: sandbox, to: n, legs: [], dashed: true });
       continue;
@@ -662,6 +698,31 @@ export function layoutTopology(data: TopoInput, width: number, height: number): 
     };
   });
 
+  // A hop that goes on through another gate (`llm` → llm-auth → `llm-upstream`): one inference
+  // leg, drawn from the hop's box to the next leg's and named by the sidecar between them.
+  for (const n of svcNodes) {
+    const s = byName.get(n.title)!;
+    const hopLegs = allLegs.filter((l) => l.service === s.service && l.d.flags.hop && l.outcome !== 'refused');
+    const bytes = hopLegs.reduce((a, l) => a + l.bytes, 0);
+    const via = sidecarName(s.upstream ?? s.route?.upstream, data.token) ?? sidecarName(hopLegs[0]?.host, data.token);
+    for (const next of nextServices(s, services)) {
+      const to = svcNode.get(next.service);
+      if (!to) continue;
+      const down = to.y >= n.y;
+      const x = n.x + 50;
+      const y1 = down ? n.y + n.h : n.y;
+      const y2 = down ? to.y : to.y + to.h;
+      const mid = (y1 + y2) / 2;
+      bands.push({
+        id: `${n.id}>${to.id}:hop`, kind: 'local', from: n.id, to: to.id,
+        d: `M${x.toFixed(1)},${y1.toFixed(1)}C${(x + 16).toFixed(1)},${mid.toFixed(1)} ${(x - 16).toFixed(1)},${mid.toFixed(1)} ${x.toFixed(1)},${y2.toFixed(1)}`,
+        start: [x, y1], width: bandWidth(bytes, maxBytes), bytes, hosts: uniq(hopLegs.map((l) => l.host)),
+        live: hopLegs.some((l) => l.live), dashed: false,
+        label: Math.abs(y2 - y1) > 24 ? { text: via ? `via ${via}` : 'via a sidecar', x: x + 10, y: mid + 4, anchor: 'start' } : null,
+      });
+    }
+  }
+
   const captions: Caption[] = [];
   // Each egress consumer (SearXNG's fan-out, the web fetcher): labelled by what it carried, and
   // linked from the tool service that triggers it.
@@ -698,7 +759,8 @@ export function layoutTopology(data: TopoInput, width: number, height: number): 
 export type HopEvidence = 'observed' | 'declared' | 'verified' | 'refused' | 'broken' | 'none';
 
 export interface Hop {
-  id: 'sandbox' | 'service' | 'policy' | 'route' | 'exit' | 'dest' | 'broken';
+  /** `sidecar` and `upstream`: a model call through glove's llm-auth (`llm` → llm-auth → `llm-upstream`). */
+  id: 'sandbox' | 'service' | 'sidecar' | 'upstream' | 'policy' | 'route' | 'exit' | 'dest' | 'broken';
   title: string;
   detail: string | null;
   /** Declared or verified, and by what: `declared vpn · upstream healthy`. */
@@ -733,11 +795,25 @@ export function pathHops(data: TopoInput, host: string): { dest: DestinationAggr
       evidence: g.freshness === 'running' ? 'observed' : 'none',
     });
   }
-  hops.push({
-    id: 'service', title: `${d.services[0] ?? 'unknown'} service`, detail: svc?.listen ?? null,
-    status: [svc?.observed === false ? 'declared · not watched' : 'observed', d.tools[0] ? toolLabel(d.tools[0]) : null].filter(Boolean).join(' · '),
-    evidence: svc?.observed === false ? 'declared' : 'observed',
-  });
+  const serviceHop = (s: NetService | undefined, name: string): Omit<Hop, 'id'> => {
+    const tool = s?.tool ?? d.tools[0];
+    return {
+      title: `${name} service`, detail: s?.listen ?? null,
+      status: [s?.observed === false ? 'declared · not watched' : 'observed', tool ? toolLabel(tool) : null].filter(Boolean).join(' · '),
+      evidence: s?.observed === false ? 'declared' : 'observed',
+    };
+  };
+  // The provider leg of a model call through llm-auth: the harness reached the `llm` hop, the
+  // sidecar added the key, and `llm-upstream` dialled the provider.
+  const via = isLlmUpstream(svc) ? services.find((s) => nextServices(s, services).some((n) => n.service === svc!.service)) : undefined;
+  if (via) {
+    hops.push({ id: 'service', ...serviceHop(via, via.service) });
+    hops.push({
+      id: 'sidecar', title: sidecarName(via.upstream ?? via.route?.upstream, data.token) ?? 'llm-auth', detail: 'adds the API key',
+      status: 'glove’s sidecar · not a gate', evidence: 'declared',
+    });
+  }
+  hops.push({ id: via ? 'upstream' : 'service', ...serviceHop(svc, d.services[0] ?? 'unknown') });
 
   const rules = data.rules.enforced?.rules ?? data.rules.file?.rules ?? [];
   if (outcome === 'refused') {
@@ -758,7 +834,9 @@ export function pathHops(data: TopoInput, host: string): { dest: DestinationAggr
   });
 
   const route = routeOf(d, svc);
-  if (route === 'local') {
+  if (route === 'local' && d.scope === 'lan') {
+    hops.push({ id: 'route', title: 'LAN link', detail: upstreamHost(svc?.upstream ?? svc?.route?.upstream, true), status: 'your local network · never tunnelled · never mapped', evidence: 'declared' });
+  } else if (route === 'local') {
     hops.push({ id: 'route', title: 'Local link', detail: upstreamHost(svc?.upstream ?? svc?.route?.upstream, true), status: 'never leaves the machine · never mapped', evidence: 'declared' });
   } else if (route === 'llm') {
     const lan = d.scope === 'lan';

@@ -219,3 +219,25 @@ this is the *only* path back for a resumed session.
 
 The tree-walk import behaviour is covered under "Historical session import" above; glove-sandboxed pi
 sessions are importable the same way (see `docs/extensions/glove.md`).
+
+### Codemode (glove: `defaultTools: ["+codemode"]`)
+
+Pi's `codemode` tool runs model-written JavaScript in a QuickJS VM whose only capability is calling
+the session's other tools (`await tools.web_fetch({...})`). Off by default, both in Pi and in glove.
+How it reaches the transcript was **read from `@earendil-works/pi-codemode` 1.1.0's README, not
+observed in a gloved Pi run**. Nested tool calls never enter the model's context: the assistant
+message holds one `codemode` tool call whose argument is `{code}`, and its result is only the
+script's output. The package's own record of nested calls (`result.calls`) keeps names, status and
+duration, never arguments. So the transcript has one call, and its `code` is all there is to read.
+glove's enforcer still sees every nested call (Pi's `tool_call` event fires for each), but that is
+inside the sandbox.
+
+Trace therefore reads the code (`netobs/correlate.ts`, `nestedOf`):
+- URLs in `code` count as the call's URLs (`urlsOf`), so a nested `tools.web_fetch({url})` joins by host.
+- `tools.<name>(…)` and `tools["<name>"](…)` names become `TraceCall.nested`. A script that calls
+  `web_fetch` (or `web_download`) may claim the fetcher's hop like a direct call.
+- `command: "…"` strings are read for glove's relays, so a nested `tools.bash({command: "gh pr list"})`
+  claims the GitHub relay's flows.
+
+If a gloved run shows nested calls recorded as entries of their own, they join as ordinary calls and
+this reading only adds the parent's claim. Check it against a real transcript before relying on it.

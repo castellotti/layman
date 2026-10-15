@@ -155,6 +155,11 @@ export function applyMigrations(db: Database): void {
   addColumn(db, 'net_sessions', 'filter_since', 'filter_since TEXT');
   addColumn(db, 'net_sessions', 'filter_saw_dir', 'filter_saw_dir INTEGER NOT NULL DEFAULT 0');
   recordMigration(db, 4);
+
+  // Migration 5 — whether a kept destination is a hop (the llm hop to llm-auth), so a
+  // history-only one stays a local link instead of an unresolved cloud destination on the Map.
+  addColumn(db, 'net_destinations', 'hop', 'hop INTEGER NOT NULL DEFAULT 0');
+  recordMigration(db, 5);
 }
 
 /**

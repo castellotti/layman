@@ -181,7 +181,7 @@ describe('writing rules.json', () => {
     apply(block('a.com'));
     apply({ kind: 'cutAll', keepLlm: true });
     expect(onDisk().default).toBe('block');
-    expect(onDisk().rules).toHaveLength(5);
+    expect(onDisk().rules).toHaveLength(6);
     apply({ kind: 'restoreAll' });
     expect(onDisk()).toMatchObject({ default: 'allow', rules: [{ match: { host: 'a.com' } }] });
   });

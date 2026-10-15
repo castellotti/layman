@@ -20,7 +20,7 @@ function call(toolName: string, toolInput: Record<string, unknown>, start: numbe
   };
 }
 
-const FLAGS = { scope: 'tunnelled' as const, unresolved: false, noHost: false, cleartext: false, fanout: false };
+const FLAGS = { scope: 'tunnelled' as const, unresolved: false, noHost: false, cleartext: false, fanout: false, hop: false };
 function flow(id: string, host: string | null, tOpen: number, over: Partial<FlowView> = {}): FlowView {
   return {
     id, phase: 'close', tOpen, tClose: tOpen + 500, lastT: tOpen + 500, lastActivityAt: tOpen + 500, service: 'proxy', tool: 'web_fetch', client: 'harness',
@@ -74,6 +74,26 @@ describe('reading calls', () => {
     expect(callTiming({ type: 'tool_call_pending', timestamp: 1000, data: {} })).toEqual({ start: 1000, end: null, timing: 'exact' });
     // A passive watcher before transcript times were kept: both stamps are the read time.
     expect(callTiming({ type: 'tool_call_completed', timestamp: 9000, data: { completedAt: 8999 } })).toEqual({ start: 9000, end: 9000, timing: 'approximate' });
+  });
+});
+
+describe('relayed commands without a relay', () => {
+  // A session with no github or ssh relay sidecar: the command's traffic goes out through the proxy.
+  const proxied = (id: string, host: string, tOpen: number, port = 443) =>
+    flow(id, host, tOpen, { tool: null, dest: { host, port, ip: null, resolution: 'in-tunnel' }, destKey: `${host}:${port}` });
+  it('a git clone claims its URL\'s host', () => {
+    const cs = callsFrom([call('bash', { command: 'git clone https://github.com/o/r' }, T, T + 3000)]);
+    expect(cs.map((c) => [c.kind, c.targets])).toEqual([['relay', [{ host: 'github.com', port: null }]]]);
+    const r = join_(cs, [proxied('g', 'github.com', T + 100)]);
+    expect([claimedBy(r)['git clone https://github.com/o/r'], r.unattributed]).toEqual([['g'], []]);
+  });
+  it('ssh claims a proxied connection to the host it names', () => {
+    const r = join_(callsFrom([call('bash', { command: 'ssh me@Build.example uptime' }, T, T + 1000)]), [proxied('s', 'build.example', T + 50, 22)]);
+    expect([claimedBy(r)['ssh me@Build.example uptime'], r.unattributed]).toEqual([['s'], []]);
+  });
+  it('a command that pushes and fetches claims the fetch', () => {
+    const r = join_(callsFrom([call('bash', { command: 'git push && curl https://example.com/x' }, T, T + 2000)]), [proxied('c', 'example.com', T + 900)]);
+    expect([claimedBy(r)['git push && curl https://example.com/x'], r.unattributed]).toEqual([['c'], []]);
   });
 });
 

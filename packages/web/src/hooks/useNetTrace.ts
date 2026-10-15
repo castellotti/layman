@@ -5,15 +5,20 @@
  * Layman is ever asked.
  */
 import { useEffect, useState } from 'react';
-import type { TraceCall, TraceView } from '../lib/netobs-types.js';
+import type { SessionDownload, TraceCall, TraceView } from '../lib/netobs-types.js';
 
 export type TraceQuery = { turn: string } | { at: number } | null;
 
-export async function fetchTrace(token: string, query: TraceQuery): Promise<TraceView> {
-  const q = !query ? '' : 'turn' in query ? `?turn=${encodeURIComponent(query.turn)}` : `?at=${Math.round(query.at)}`;
-  const r = await fetch(`/api/net/sessions/${encodeURIComponent(token)}/trace${q}`);
+/** GET a Layman API path, throwing its `error` (else the status) when it fails. */
+async function getJson<T>(url: string): Promise<T> {
+  const r = await fetch(url);
   if (!r.ok) throw new Error((await r.json().catch(() => null))?.error ?? `HTTP ${r.status}`);
-  return r.json() as Promise<TraceView>;
+  return r.json() as Promise<T>;
+}
+
+export function fetchTrace(token: string, query: TraceQuery): Promise<TraceView> {
+  const q = !query ? '' : 'turn' in query ? `?turn=${encodeURIComponent(query.turn)}` : `?at=${Math.round(query.at)}`;
+  return getJson<TraceView>(`/api/net/sessions/${encodeURIComponent(token)}/trace${q}`);
 }
 
 /**
@@ -57,4 +62,16 @@ export function useNetCalls(token: string, from: number, to: number): TraceCall[
     return () => { live = false; };
   }, [token, from, to]);
   return calls;
+}
+
+/** Files `web_download` saved in the glove session, re-read every `refreshMs` (the Trace tab's Downloads panel). */
+export function useNetDownloads(token: string, refreshMs = 10_000): { downloads: SessionDownload[] | null; error: string | null } {
+  const [state, setState] = useState<{ token: string; downloads: SessionDownload[] | null; error: string | null }>({ token, downloads: null, error: null });
+  useEffect(() => pollSettled((live) => getJson<{ downloads: SessionDownload[] }>(`/api/net/sessions/${encodeURIComponent(token)}/downloads`)
+    .then((j) => {
+      // Keep the previous list when nothing changed, so a quiet poll does not re-render the panel.
+      if (live()) setState((s) => (s.token === token && !s.error && JSON.stringify(s.downloads) === JSON.stringify(j.downloads) ? s : { token, downloads: j.downloads, error: null }));
+    })
+    .catch((e: Error) => { if (live()) setState((s) => ({ ...s, token, error: e.message })); }), refreshMs), [token, refreshMs]);
+  return state.token === token ? { downloads: state.downloads, error: state.error } : { downloads: null, error: null };
 }

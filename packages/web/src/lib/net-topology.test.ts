@@ -21,8 +21,8 @@ const SESSION: NetSessionFile = {
 };
 
 const proxy = { services: ['proxy'], tools: ['web_fetch'], clients: ['harness'] };
-const fan = { services: ['fanout'], tools: ['search-engine-fanout'], clients: ['searxng'], flags: { scope: 'tunnelled' as const, unresolved: false, noHost: false, cleartext: false, fanout: true } };
-const local = { scope: 'local', flags: { scope: 'local' as const, unresolved: false, noHost: false, cleartext: false, fanout: false } };
+const fan = { services: ['fanout'], tools: ['search-engine-fanout'], clients: ['searxng'], flags: { scope: 'tunnelled' as const, unresolved: false, noHost: false, cleartext: false, fanout: true, hop: false } };
+const local = { scope: 'local', flags: { scope: 'local' as const, unresolved: false, noHost: false, cleartext: false, fanout: false, hop: false } };
 const SF = { lat: 37.77, lon: -122.42, city: 'San Francisco', country: 'United States', countryCode: 'US' };
 
 /** The fixture's destinations, as the server aggregates them. */
@@ -228,7 +228,7 @@ describe('other sessions', () => {
   });
 
   it('draws direct traffic red from the Direct route, with no exit on its way', () => {
-    const d = dest('api.github.com:443', { ...proxy, scope: 'direct', flags: { scope: 'direct', unresolved: false, noHost: false, cleartext: false, fanout: false } });
+    const d = dest('api.github.com:443', { ...proxy, scope: 'direct', flags: { scope: 'direct', unresolved: false, noHost: false, cleartext: false, fanout: false, hop: false } });
     const t = layoutTopology(fixture({}, [...fixtureDests(), d]), 1080, 780);
     expect(byId(t, 'route:direct').lines[0].text).toBe('1 flow · real IP');
     expect(t.bands.find((b) => b.id === 'route:direct>dest:api.github.com:443')?.kind).toBe('direct');
@@ -236,7 +236,7 @@ describe('other sessions', () => {
   });
 
   it('draws glove\'s llm link (lan and cloud) through its own route, never the tunnel', () => {
-    const flags = (scope: 'lan' | 'cloud') => ({ scope, flags: { scope, unresolved: false, noHost: false, cleartext: false, fanout: false } });
+    const flags = (scope: 'lan' | 'cloud') => ({ scope, flags: { scope, unresolved: false, noHost: false, cleartext: false, fanout: false, hop: false } });
     const svc = { services: ['llm'], tools: ['llm'], clients: ['harness'] };
     const gpu = dest('gpu.lan:8080', { ...svc, ...flags('lan'), port: 8080, bytesDown: 5000 });
     const api = dest('api.anthropic.com:443', { ...svc, ...flags('cloud'), bytesDown: 4000 });
@@ -272,9 +272,9 @@ describe('other sessions', () => {
     const t = layoutTopology(data, 1400, 780);
     const triggers = t.bands.filter((b) => b.kind === 'trigger').map((b) => [b.from, b.to]).sort();
     expect(triggers).toEqual([['svc:search-mcp', 'svc:searxng-egress'], ['svc:webfetch-mcp', 'svc:webfetch-egress']]);
-    expect(byId(t, 'svc:webfetch-egress').lines.map((l) => l.text)).toEqual(['Web fetch → gate', 'not the harness']);
-    expect(t.captions.map((c) => c.text).sort()).toEqual(['40.5 KB via Web fetch', '9 KB via SearXNG']);
-    expect(pathHops(data, 'example.com')!.hops[0]).toMatchObject({ title: 'Web fetch (not the harness)', detail: 'page fetch', status: 'triggered by a web fetch' });
+    expect(byId(t, 'svc:webfetch-egress').lines.map((l) => l.text)).toEqual(['Web fetcher → gate', 'not the harness']);
+    expect(t.captions.map((c) => c.text).sort()).toEqual(['40.5 KB via Web fetcher', '9 KB via SearXNG']);
+    expect(pathHops(data, 'example.com')!.hops[0]).toMatchObject({ title: 'Web fetcher (not the harness)', detail: 'page fetch or file download', status: 'triggered by a web fetch or download' });
     expect(pathHops(data, 'www.mojeek.com')!.hops[0]).toMatchObject({ title: 'SearXNG (not the harness)', detail: 'search engine fan-out' });
   });
 

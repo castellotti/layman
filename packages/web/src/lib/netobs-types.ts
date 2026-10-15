@@ -12,16 +12,28 @@
 
 export type FlowPhase = 'open' | 'update' | 'close';
 /**
- * glove's scopes. `lan` and `cloud` are glove v3's llm link (an inference server
- * on the LAN, or a provider on the internet): expected, never an alert, and not
- * matchable by a rule (glove's `RULE_SCOPES`).
+ * glove's scopes. `cloud` is glove v3's llm link to a provider on the internet.
+ * `lan` is a routable host on the operator's network, never tunnelled: the llm
+ * forwarder to a LAN inference server, or a `via: lan` relay such as glove's ssh
+ * relay (`tool: ssh`). Neither is an alert, and no rule may name either
+ * (glove's `RULE_SCOPES`): a rule matches their `tool` or `service` instead.
  */
 export const FLOW_SCOPES = ['tunnelled', 'local', 'direct', 'lan', 'cloud'] as const;
 export type FlowScope = (typeof FLOW_SCOPES)[number];
-/** glove's llm link (`lan`/`cloud`): never the tunnel, never an alert. */
-export const isLlmScope = (scope: string): boolean => scope === 'lan' || scope === 'cloud';
-/** Never placed on the map nor geolocated: a local link, or the llm link on the LAN. */
+/** Off the tunnel by design (`lan`, `cloud`): never "untunnelled", never an alert. */
+export const isOffTunnelScope = (scope: string): boolean => scope === 'lan' || scope === 'cloud';
+/** glove's llm link: `cloud`, or `lan` when the tool is `llm` (a `lan` ssh host is not inference). */
+export const isInferenceScope = (scope: string, tool: string | null | undefined): boolean =>
+  scope === 'cloud' || (scope === 'lan' && tool === 'llm');
+/** Never placed on the map nor geolocated: a local link, or a host on the LAN. */
 export const neverMapped = (scope: string): boolean => scope === 'local' || scope === 'lan';
+/**
+ * glove's own refusal of a `via: lan` name that resolved to a public address (`--lan-only`):
+ * a guard refusal, not a user's rule. `builtin:lan-only` is accepted too, in case glove renames it.
+ */
+export const isLanOnlyRule = (rule: string | null | undefined): boolean => rule === 'lan-only' || rule === 'builtin:lan-only';
+/** Off the map: `neverMapped`, or a hop to a sidecar (`FlowFlags.hop`), whatever its scope says. */
+export const offMap = (d: { scope: string; flags: { hop: boolean } }): boolean => neverMapped(d.scope) || d.flags.hop;
 export type FlowResolution = 'in-tunnel' | 'literal' | 'unavailable' | 'disabled';
 
 export interface FlowDest {
@@ -165,6 +177,28 @@ export interface NetService {
   route?: FlowRoute | null;
   /** False for a listener the sandbox cannot reach (e.g. SearXNG's fan-out). */
   harness?: boolean;
+  /**
+   * The gated services this one's traffic continues through (`llm` → `llm-upstream`),
+   * when glove says so (asked of glove as an additive field). Without it, `nextServices`
+   * matches the one pair it knows by its labels.
+   */
+  next?: string[];
+}
+
+/** The llm extension's second leg (`llm-upstream`): `harness: false`, tool `llm`, dialled by glove's llm-auth sidecar. */
+export const isLlmUpstream = (s: NetService | undefined): boolean => !!s && s.harness === false && s.tool === 'llm';
+
+/**
+ * The gated services a service's traffic goes on through: glove's `next` when
+ * session.json has it, else, for the harness's `llm` hop, the llm upstream leg
+ * (with an injected key the hop ends at glove's llm-auth sidecar, which dials
+ * the provider through `llm-upstream`). Empty for everything else.
+ */
+export function nextServices(svc: NetService | undefined, services: readonly NetService[]): NetService[] {
+  if (!svc) return [];
+  if (Array.isArray(svc.next)) return services.filter((s) => svc.next!.includes(s.service));
+  if (svc.harness !== false && svc.tool === 'llm') return services.filter(isLlmUpstream);
+  return [];
 }
 
 export interface NetSessionFile {
@@ -259,6 +293,12 @@ export interface FlowFlags {
   cleartext: boolean;
   /** SearXNG engine fan-out, not the agent's own traffic. */
   fanout: boolean;
+  /**
+   * A hop to a sidecar whose traffic goes on through another gate (`nextServices`): the
+   * `llm` hop to llm-auth. A local link whatever its scope says, never mapped, and its
+   * bytes are counted once, at the leg that reaches the destination.
+   */
+  hop: boolean;
 }
 
 /** One flow's latest state, as sent to the browser. */
@@ -386,6 +426,12 @@ export interface PolicyVerdict {
    * proxy, whose own allowlist (from the session file) then decides. Rules cannot widen it.
    */
   allowlist?: boolean;
+  /**
+   * glove's `--lan-only` refused this name at least once (it resolved to a public
+   * address). That is decided at each connection, by a resolution Layman does not see,
+   * so the verdict above is not a prediction that the next one goes through.
+   */
+  lanOnly?: boolean;
 }
 
 export type GateFreshness = 'running' | 'stale' | 'stopped' | 'unknown';
@@ -610,7 +656,33 @@ export interface NetDelta {
  * so only "it had finished by `start`" is known; such calls join by host alone.
  */
 export type TraceTiming = 'exact' | 'approximate';
-export type TraceCallKind = 'fetch' | 'search' | 'other';
+/** `relay`: a shell command glove relays to a sidecar (`gh`, `git push`, `ssh <host>`), which makes the traffic. */
+/** One of glove's relay sidecars and, for ssh, the host the command names. */
+export type Relay = { via: 'github' | 'ssh'; host: string | null };
+
+export type TraceCallKind = 'fetch' | 'search' | 'relay' | 'other';
+
+/** A file `web_download` saved, from the call's own result (`saved:`, `bytes:`, `sha256:`). */
+export interface TraceDownload {
+  /** Where the harness sees it: `/work/downloads/<name>`. */
+  path: string;
+  bytes: number | null;
+  sha256: string | null;
+  contentType: string | null;
+  /** After redirects; the call's `url` is where it started. */
+  finalUrl: string | null;
+}
+
+/** A saved download and the call that reported it (`GET /api/net/sessions/:token/downloads`). */
+export interface SessionDownload extends TraceDownload {
+  eventId: string;
+  sessionId: string;
+  toolName: string;
+  /** The URL the call asked for; null for a status call, which names only a job. */
+  url: string | null;
+  /** When the call that reported it started. */
+  at: number;
+}
 
 export interface TraceCall {
   /** The Layman event id of the tool call. */
@@ -620,7 +692,10 @@ export interface TraceCall {
   kind: TraceCallKind;
   /** The URL, the search query, or a short summary of the call. */
   label: string;
-  /** Hosts a fetch names, lower-case, with the port when the URL spelled one out. */
+  /**
+   * Hosts a fetch (or a relay call) names, lower-case, with the port when the URL spelled one
+   * out; a relayed ssh command's host too, which an unrelayed ssh reaches through the proxy.
+   */
   targets: Array<{ host: string; port: number | null }>;
   /**
    * The PII filter redacted part of a URL this call names (a literal IP, say),
@@ -633,6 +708,18 @@ export interface TraceCall {
   end: number | null;
   timing: TraceTiming;
   failed: boolean;
+  /**
+   * For a `relay` call, the sidecar that makes its traffic: glove's github relay
+   * (client `github`), or its ssh relay and the host the command names (gate `ssh-<host>`).
+   */
+  relay: Relay | null;
+  /** Files a `web_download` / `web_download_status` call reported saved. */
+  downloads: TraceDownload[];
+  /**
+   * Tools a Pi codemode script calls (`tools.web_fetch`, …), read from its `code`: the
+   * nested calls never reach the transcript as calls of their own. Empty for any other call.
+   */
+  nested: string[];
 }
 
 export type TraceItem =
@@ -645,7 +732,13 @@ export type TraceItem =
      */
     openIds: string[];
   }
-  | { kind: 'llm'; flowId: string };
+  | {
+    kind: 'llm';
+    /** The flow that reached the model: the upstream leg when there is one. */
+    flowId: string;
+    /** The harness's hops to llm-auth folded into this request (`FlowFlags.hop`). */
+    hopIds: string[];
+  };
 
 export interface TraceTurn {
   sessionId: string;

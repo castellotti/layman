@@ -28,7 +28,7 @@ import { type NetSessionLocation } from './discovery.js';
 import { blankRulesView } from './control.js';
 import { predict, type FlowFacts, type GateFacts, type RuleSet } from './rules.js';
 import type { CarryFlow, HistoryDest, HistorySession } from './history.js';
-import { neverMapped } from './types.js';
+import { isLanOnlyRule, nextServices, offMap } from './types.js';
 import type {
   DestinationAggregate,
   ExitRecord,
@@ -41,6 +41,7 @@ import type {
   NetDelta,
   NetGateView,
   NetGloveInfo,
+  NetService,
   NetSessionFile,
   NetSessionSummary,
   NetSnapshot,
@@ -212,13 +213,18 @@ function pushUnique(list: string[], v: string | null | undefined, max = Infinity
 
 /** A destination's predicted verdict under the enforced rule set and the one on disk. */
 function policyFor(
-  policy: SessionData['policy'], facts: FlowFacts, gate: GateFacts,
+  policy: SessionData['policy'], facts: FlowFacts, gate: GateFacts, lanOnly = false,
 ): { enforced: PolicyVerdict | null; written: PolicyVerdict | null } {
   const one = (set: RuleSet | null): PolicyVerdict | null => {
     if (!set) return null;
     const v = predict(set, facts, gate);
     // On a corporate route an allow only reaches the corporate proxy, whose allowlist decides.
-    return { action: v.action, rule: v.rule, ...(gate.corporate && v.action === 'allow' ? { allowlist: true } : {}) };
+    return {
+      action: v.action, rule: v.rule,
+      ...(gate.corporate && v.action === 'allow' ? { allowlist: true } : {}),
+      // `--lan-only` decides at connect time, on a resolution Layman never sees: not predicted.
+      ...(lanOnly ? { lanOnly: true } : {}),
+    };
   };
   return { enforced: one(policy.enforced), written: one(policy.written) };
 }
@@ -393,7 +399,7 @@ export class NetStore extends EventEmitter {
       lastT: prev ? Math.max(prev.lastT, t) : t,
       lastActivityAt: dUp || dDown || !prev ? Math.max(prev?.lastActivityAt ?? 0, t) : prev.lastActivityAt,
       state: 'active',
-      flags: flowFlags(latest),
+      flags: flowFlags(latest, this.isHop(s, latest.service)),
       destKey: null,
       groupKey: groupKeyFor(latest.dest.host, latest.service),
       spark: prev?.spark ?? new Map(),
@@ -412,15 +418,19 @@ export class NetStore extends EventEmitter {
 
     if (dUp || dDown) {
       const sec = Math.floor(t / SECOND) * SECOND;
-      addBucket(s.seconds, sec, dUp, dDown);
       addBucket(entry.spark, sec, dUp, dDown);
-      s.dirtyBuckets.add(sec);
       if (entry.destKey) {
         const agg = s.aggs.get(entry.destKey);
         if (agg) addBucket(agg.spark, sec, dUp, dDown);
       }
-      s.bytesUp += dUp;
-      s.bytesDown += dDown;
+      // A hop's bytes are the next leg's too (the llm hop and llm-upstream carry one
+      // request): the session counts them once, at the leg that reaches the destination.
+      if (!entry.flags.hop) {
+        addBucket(s.seconds, sec, dUp, dDown);
+        s.dirtyBuckets.add(sec);
+        s.bytesUp += dUp;
+        s.bytesDown += dDown;
+      }
     }
     if (s.firstSeen === null || entry.tOpen < s.firstSeen) s.firstSeen = entry.tOpen;
     if (s.lastT === null || t > s.lastT) s.lastT = t;
@@ -463,8 +473,11 @@ export class NetStore extends EventEmitter {
 
   private setPre(s: SessionData, entry: FlowEntry, pre: PreWatermark): void {
     const was = entry.pre;
-    s.seen.up += pre.up - was.up;
-    s.seen.down += pre.down - was.down;
+    // The session totals leave a hop's bytes out (`ingestFlow`), so what they kept does too.
+    if (!entry.flags.hop) {
+      s.seen.up += pre.up - was.up;
+      s.seen.down += pre.down - was.down;
+    }
     if (!was.counted) s.seen.flows++;
     if (!was.direct && pre.direct) s.seen.direct++;
     const cat = (b: NetState | null) => (b === 'guard' ? 'guard' : b === 'user_rule' ? 'userRule' : b ? 'def' : null);
@@ -484,6 +497,16 @@ export class NetStore extends EventEmitter {
     move(was, -1);
     move(pre, 1);
     entry.pre = pre;
+  }
+
+  /** The service's traffic goes on through another gate (`nextServices`): its flows are hops. */
+  /** The service glove declared under `name` for a session, if any. */
+  private declared(s: SessionData, name: string | null): NetService | undefined {
+    return name ? s.session?.services?.find((sv) => sv.service === name) : undefined;
+  }
+
+  private isHop(s: SessionData, service: string): boolean {
+    return nextServices(this.declared(s, service), s.session?.services ?? []).length > 0;
   }
 
   private classify(s: SessionData, e: FlowEntry, now: number): NetState {
@@ -815,9 +838,9 @@ export class NetStore extends EventEmitter {
     const gate = { proxy: this.viaProxy(s, a.services[0] ?? null, a.resolution), resolution: a.resolution, corporate: this.corporate(s, a.services[0] ?? null) };
     return {
       ...a,
-      policy: policyFor(s.policy, facts, gate),
-      // Only an IP glove resolved inside the tunnel (or a literal), never a local link.
-      geo: this.geolocate && a.ips[0] && !neverMapped(a.scope) && (a.resolution === 'in-tunnel' || a.resolution === 'literal')
+      policy: policyFor(s.policy, facts, gate, Object.keys(a.blockedBy).some(isLanOnlyRule) || isLanOnlyRule(a.rule)),
+      // Only an IP glove resolved inside the tunnel (or a literal), never a local link or a hop.
+      geo: this.geolocate && a.ips[0] && !offMap(a) && (a.resolution === 'in-tunnel' || a.resolution === 'literal')
         ? this.geolocate(a.ips[0])
         : null,
       // A flow whose gate went away is unclosed but not open in any sense the UI means.
@@ -838,7 +861,7 @@ export class NetStore extends EventEmitter {
    * does: only a proxy destination is ever `unavailable` or `in-tunnel` (`ForwardSpec.display_ip`).
    */
   private viaProxy(s: SessionData, service: string | null, resolution: string | null): GateFacts['proxy'] {
-    const declared = service ? (s.session?.services ?? []).find((sv) => sv.service === service) : undefined;
+    const declared = this.declared(s, service);
     if (declared?.mode) return declared.mode === 'http-proxy';
     return resolution === 'unavailable' || resolution === 'in-tunnel';
   }
@@ -848,7 +871,7 @@ export class NetStore extends EventEmitter {
    * declared route, or, without one, the session's `upstream_kind`.
    */
   private corporate(s: SessionData, service: string | null): boolean {
-    const declared = service ? (s.session?.services ?? []).find((sv) => sv.service === service) : undefined;
+    const declared = this.declared(s, service);
     if (declared?.route) return declared.route.kind === 'corporate';
     return s.session?.upstream_kind === 'corporate';
   }
@@ -888,14 +911,16 @@ export class NetStore extends EventEmitter {
   private historyView(s: SessionData, h: HistoryDest, c: Seen): DestinationAggregate {
     const facts = { host: h.host, ip: h.lastIp, port: h.port, service: null, tool: h.tool, scope: h.scope };
     const gate = { proxy: this.viaProxy(s, null, h.resolution ?? null), resolution: h.resolution ?? null, corporate: this.corporate(s, null) };
-    const scope = (h.scope ?? 'unknown') as FlowFlags['scope'];
     return {
       key: h.key, host: h.host, port: h.port, groupKey: h.groupKey, endpoint: h.host === null ? h.key.replace(/^@/, '') : null,
       ips: h.lastIp ? [h.lastIp] : [], services: [], tools: h.tool ? [h.tool] : [], clients: [],
       scope: h.scope ?? 'unknown', resolution: h.resolution ?? 'unavailable',
       bytesUp: c.up, bytesDown: c.down, flows: c.flows, openFlows: 0, blocked: c.blocked,
       firstSeen: h.firstSeen, lastSeen: h.lastSeen, state: h.lastState ?? 'finished', rule: null, blockedBy: {},
-      flags: { scope, unresolved: !h.lastIp, noHost: h.host === null, cleartext: h.port === 80, fanout: h.tool === 'search-engine-fanout' },
+      flags: flowFlags({
+        dest: { host: h.host, ip: h.lastIp, port: h.port, resolution: h.resolution ?? 'unavailable' },
+        scope: h.scope ?? 'unknown', proto: null, client: null, tool: h.tool,
+      }, h.hop === true),
       spark: [], policy: policyFor(s.policy, facts, gate), geo: null,
     };
   }
@@ -978,7 +1003,7 @@ export class NetStore extends EventEmitter {
       destinations: dests.map((d) => ({
         key: d.key, host: d.host, port: d.port, groupKey: d.groupKey, lastIp: d.ips[0] ?? null, scope: d.scope, resolution: d.resolution,
         tool: d.tools[0] ?? null, firstSeen: d.firstSeen, lastSeen: d.lastSeen, bytesUp: d.bytesUp, bytesDown: d.bytesDown,
-        flows: d.flows, blocked: d.blocked, lastState: d.state,
+        flows: d.flows, blocked: d.blocked, lastState: d.state, hop: d.flags.hop,
       })),
     };
   }

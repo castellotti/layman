@@ -499,12 +499,16 @@ export function opRules(op: RulesOp): Array<Omit<Rule, 'id'>> {
       ];
     case 'cutAll': {
       const cut = (scope: string) => ({ action: 'block' as const, match: { scope }, terminate: true });
-      // glove v3's llm link can be scope `lan` or `cloud`, which no rule may name
-      // (`RULE_SCOPES`): kept or cut by its service, never by scope alone.
+      // glove's `lan` and `cloud` scopes cannot be named in a rule (`RULE_SCOPES`), so what
+      // rides them is kept or cut by its tool. The llm link is two services with an injected
+      // key (`llm`, then `llm-upstream` from llm-auth), both `tool: llm`; ssh relay hosts are
+      // `scope: lan`, `tool: ssh`. Without its rule the new default would refuse new ssh
+      // connections but leave every open one running.
       const llm = op.keepLlm
-        ? { action: 'allow' as const, match: { service: 'llm' } }
-        : { action: 'block' as const, match: { service: 'llm' }, terminate: true };
-      return [llm, cut('tunnelled'), cut('direct'), cut('local')];
+        ? { action: 'allow' as const, match: { tool: 'llm' } }
+        : { action: 'block' as const, match: { tool: 'llm' }, terminate: true };
+      const ssh = { action: 'block' as const, match: { tool: 'ssh' }, terminate: true };
+      return [llm, ssh, cut('tunnelled'), cut('direct'), cut('local')];
     }
     default:
       return [];
