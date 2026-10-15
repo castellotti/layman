@@ -29,6 +29,7 @@ import { blankRulesView } from './control.js';
 import { predict, type FlowFacts, type GateFacts, type RuleSet } from './rules.js';
 import type { CarryFlow, HistoryDest, HistorySession } from './history.js';
 import { isLanOnlyRule, nextServices, offMap } from './types.js';
+import { mayGeolocate } from './geo.js';
 import type {
   DestinationAggregate,
   ExitRecord,
@@ -99,12 +100,14 @@ interface FlowEntry {
 }
 
 interface AggEntry {
-  agg: Omit<DestinationAggregate, 'state' | 'spark' | 'policy' | 'geo'>;
+  agg: Omit<DestinationAggregate, 'state' | 'spark' | 'policy' | 'geoIp' | 'geo'>;
   /** Open flows and their current states: open flows are never evicted. */
   open: Map<string, NetState>;
   /** The flow with the latest `t_open`, and its state. */
   latest: { id: string; tOpen: number; state: NetState } | null;
   spark: Map<number, RateBucket>;
+  /** Source of `DestinationAggregate.geoIp`, with its flow's `t_open` (earliest wins). */
+  geoIp: { ip: string; tOpen: number } | null;
 }
 
 /** A gate process, keyed by its `run` id (glove's record contract). */
@@ -636,6 +639,7 @@ export class NetStore extends EventEmitter {
         open: new Map(),
         latest: null,
         spark: new Map(),
+        geoIp: null,
       };
       s.aggs.set(key, e);
       s.removedAggs.delete(key);
@@ -653,6 +657,9 @@ export class NetStore extends EventEmitter {
     if (r.phase !== 'close') e.open.set(id, next.state);
     a.openFlows = e.open.size;
     pushUnique(a.ips, r.dest.ip, MAX_IPS);
+    if (r.dest.ip && mayGeolocate(r.dest.resolution) && (e.geoIp === null || next.tOpen < e.geoIp.tOpen)) {
+      e.geoIp = { ip: r.dest.ip, tOpen: next.tOpen };
+    }
     pushUnique(a.services, r.service);
     pushUnique(a.tools, r.tool);
     pushUnique(a.clients, r.client);
@@ -840,9 +847,8 @@ export class NetStore extends EventEmitter {
       ...a,
       policy: policyFor(s.policy, facts, gate, Object.keys(a.blockedBy).some(isLanOnlyRule) || isLanOnlyRule(a.rule)),
       // Only an IP glove resolved inside the tunnel (or a literal), never a local link or a hop.
-      geo: this.geolocate && a.ips[0] && !offMap(a) && (a.resolution === 'in-tunnel' || a.resolution === 'literal')
-        ? this.geolocate(a.ips[0])
-        : null,
+      geoIp: e.geoIp?.ip ?? null,
+      geo: this.geolocate && e.geoIp && !offMap(a) ? this.geolocate(e.geoIp.ip) : null,
       // A flow whose gate went away is unclosed but not open in any sense the UI means.
       openFlows: [...e.open.values()].filter((st) => st !== 'gate_lost').length,
       ips: [...a.ips],
@@ -921,7 +927,7 @@ export class NetStore extends EventEmitter {
         dest: { host: h.host, ip: h.lastIp, port: h.port, resolution: h.resolution ?? 'unavailable' },
         scope: h.scope ?? 'unknown', proto: null, client: null, tool: h.tool,
       }, h.hop === true),
-      spark: [], policy: policyFor(s.policy, facts, gate), geo: null,
+      spark: [], policy: policyFor(s.policy, facts, gate), geoIp: null, geo: null,
     };
   }
 

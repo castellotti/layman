@@ -92,12 +92,13 @@ function routeText(data: NetSessionData, d: DestinationAggregate): { text: strin
 function locationText(d: DestinationAggregate, geo: GeoStatus | null): { v: string; sub: string } {
   if (d.geo) {
     const where = [d.geo.city, d.geo.countryCode ?? d.geo.country].filter(Boolean).join(', ');
-    return { v: where || `${d.geo.lat.toFixed(2)}, ${d.geo.lon.toFixed(2)}`, sub: `offline ${geo?.databaseType ?? 'database'} · file lookup` };
+    return { v: where || `${d.geo.lat.toFixed(2)}, ${d.geo.lon.toFixed(2)}`, sub: `${d.geoIp} · offline ${geo?.databaseType ?? 'database'} · file lookup` };
   }
   if (d.scope === 'local') return { v: 'not placed', sub: 'a local link is never on the map' };
   if (d.flags.hop) return { v: 'not placed', sub: 'a hop to glove’s llm-auth sidecar; the provider leg is the one that leaves' };
   if (d.scope === 'lan') return { v: 'not placed', sub: 'a host on your local network is never on the map' };
   if (!d.ips.length) return { v: 'unknown', sub: 'glove has no IP for it; Layman never looks one up' };
+  if (!d.geoIp) return { v: 'unknown', sub: 'glove did not resolve it inside the tunnel; Layman looks up only those' };
   if (!geo?.loaded) return { v: 'unknown', sub: 'no geolocation database (Settings → Glove)' };
   return { v: 'unknown', sub: 'not in the geolocation database' };
 }
