@@ -1,0 +1,96 @@
+{
+  "v": 1,
+  "type": "session",
+  "env": "ssh-0f1a2b",
+  "session": "ssh-0f1a2b",
+  "harness": "pi",
+  "gate": "0.2.0",
+  "image": "glove/ext-gate-netgate:fixture",
+  "record": "metadata",
+  "resolve": "in-tunnel",
+  "resolver": null,
+  "exit_identity": "none",
+  "upstream_kind": "direct",
+  "rotate": {
+    "max_bytes": 67108864,
+    "keep": 8,
+    "retain_s": null
+  },
+  "record_headers": false,
+  "rendered_at": "2026-10-01T12:00:00.000Z",
+  "services": [
+    {
+      "service": "llm",
+      "listen": "glove-ssh-0f1a2b-llm:8080",
+      "observed": true,
+      "harness": true,
+      "next": [],
+      "mode": "tcp",
+      "tool": "llm",
+      "scope": "local",
+      "upstream": "tcp:host.docker.internal:8080",
+      "route": {
+        "kind": "tcp",
+        "upstream": "tcp:host.docker.internal:8080"
+      },
+      "client": "harness"
+    },
+    {
+      "service": "ssh-build",
+      "listen": "glove-ssh-0f1a2b-ssh-build:22",
+      "observed": true,
+      "harness": false,
+      "next": [],
+      "mode": "tcp",
+      "tool": "ssh",
+      "scope": "lan",
+      "upstream": "tcp:192.168.1.20:22",
+      "route": {
+        "kind": "tcp",
+        "upstream": "tcp:192.168.1.20:22"
+      },
+      "client": "ssh"
+    },
+    {
+      "service": "ssh-db",
+      "listen": "glove-ssh-0f1a2b-ssh-db:22",
+      "observed": true,
+      "harness": false,
+      "next": [],
+      "mode": "tcp",
+      "tool": "ssh",
+      "scope": "lan",
+      "upstream": "tcp:db.lan:22",
+      "route": {
+        "kind": "tcp",
+        "upstream": "tcp:db.lan:22"
+      },
+      "client": "ssh"
+    },
+    {
+      "service": "proxy",
+      "listen": "glove-ssh-0f1a2b-proxy:8888",
+      "observed": true,
+      "harness": true,
+      "next": [],
+      "mode": "http-proxy",
+      "tool": "web_fetch",
+      "scope": null,
+      "upstream": "chain:http://glove-ssh-0f1a2b-direct-proxy:8888",
+      "route": {
+        "kind": "direct",
+        "upstream": "http://glove-ssh-0f1a2b-direct-proxy:8888"
+      },
+      "client": "harness"
+    }
+  ],
+  "grants": {
+    "observe": {
+      "net": true,
+      "transcripts": true
+    },
+    "filter": {
+      "granted": false
+    }
+  }
+}

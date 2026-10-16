@@ -131,27 +131,51 @@ export function outputText(out: unknown, depth = 0): string {
 
 const SAVED = /^saved:[ \t]*(\S[^\n]*)$/gm;
 const FIELD = (name: string) => new RegExp(`^${name}:[ \\t]*(\\S[^\\n]*)$`, 'm');
+/**
+ * Vibe's MCP result as it records it: `structured: {'result': '…'}`, a Python repr. The
+ * string is single-quoted unless it holds a `'` and no `"`, other keys may come first or
+ * after, and a long result may be cut off before its closing quote.
+ */
+const PY_RESULT = /structured:\s*\{[^\n]*?(['"])result\1\s*:\s*(['"])((?:\\.|(?!\2)[^\\\n])*)(?:\2[^}\n]*\}?)?/g;
+const PY_ESCAPE: Record<string, string> = { n: '\n', t: '\t', r: '\r', "'": "'", '"': '"', '\\': '\\' };
+const pyUnescape = (s: string) => s.replace(/\\(x[0-9a-fA-F]{2}|u[0-9a-fA-F]{4}|U[0-9a-fA-F]{8}|.)/g, (_, c: string) =>
+  c.length > 1 ? String.fromCodePoint(parseInt(c.slice(1), 16)) : PY_ESCAPE[c] ?? `\\${c}`);
+
+/** The text with each Vibe MCP `structured` repr replaced by the string it holds, unescaped. */
+function unwrapPyResults(text: string): string {
+  return text.replace(PY_RESULT, (_m, _k, _q, inner: string) => pyUnescape(inner));
+}
 
 /**
  * The files a `web_download` result reports saved: glove's fetcher writes
  * `saved: /work/downloads/<name>`, then `bytes:`, `sha256:`, `content_type:` and
  * `final_url:` lines (`web_download_status` repeats the block per finished job).
+ * Vibe before 2.26 records an MCP result as `structured: {'result': '…'}`, a Python
+ * repr whose lines are escaped (glove's `downloads` scenario): it is read unescaped.
+ * One file is reported once, however many copies of the result were recorded.
  */
-export function downloadsOf(text: string): TraceDownload[] {
+export function downloadsOf(raw: string): TraceDownload[] {
+  const text = unwrapPyResults(raw);
   const out: TraceDownload[] = [];
+  const seen = new Set<string>();
   const starts = [...text.matchAll(SAVED)];
   starts.forEach((m, i) => {
     const block = text.slice(m.index!, starts[i + 1]?.index ?? text.length);
     const get = (name: string) => FIELD(name).exec(block)?.[1].trim() ?? null;
     const bytes = get('bytes');
     const sha = get('sha256');
-    out.push({
+    const d: TraceDownload = {
       path: m[1].trim(),
       bytes: bytes && /^\d+$/.test(bytes) ? Number(bytes) : null,
       sha256: sha && /^[0-9a-f]{64}$/i.test(sha) ? sha.toLowerCase() : null,
       contentType: get('content_type'),
       finalUrl: get('final_url'),
-    });
+    };
+    // A result recorded both as text and as a repr reports each file twice.
+    const key = `${d.path}:${d.sha256}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push(d);
   });
   return out;
 }

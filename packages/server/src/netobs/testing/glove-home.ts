@@ -3,8 +3,32 @@
  * `observe/<id>/net/`, `control/<id>/` only with the filter grant, and the
  * session directory with its `.glove/id`, so the session is not an orphan).
  */
-import { mkdirSync, readFileSync, writeFileSync } from 'fs';
-import { join } from 'path';
+import { cpSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
+import { dirname, join } from 'path';
+import { fileURLToPath } from 'url';
+
+/** glove's netobs-v3 scenarios, copied (`__scenarios_v3__/COPIED.md`). */
+export const V3_SCENARIOS = join(dirname(fileURLToPath(import.meta.url)), '..', '__scenarios_v3__');
+
+/**
+ * A writable copy of one v3 scenario's glove home under `root`, with the `control/` glove
+ * always creates. The registry's session directories are host paths from glove's generator;
+ * the copy gives each a real directory holding its id, as glove's would (`orphaned` excepted).
+ */
+export function copyV3Scenario(root: string, name: string): string {
+  const h = join(root, name);
+  cpSync(join(V3_SCENARIOS, name, 'home'), h, { recursive: true });
+  mkdirSync(join(h, 'control'), { recursive: true });
+  const reg = JSON.parse(readFileSync(join(h, 'registry.json'), 'utf8')) as { v: 2; sessions: Array<{ id: string; dir: string }> };
+  for (const row of reg.sessions) {
+    row.dir = join(h, 'sessions', row.id);
+    if (name === 'orphaned') continue;
+    mkdirSync(join(row.dir, '.glove'), { recursive: true });
+    writeFileSync(join(row.dir, '.glove', 'id'), `${row.id}\n`);
+  }
+  writeFileSync(join(h, 'registry.json'), JSON.stringify(reg));
+  return h;
+}
 
 /** A glove v3 session id, as the fixtures use. */
 export const TEST_ID = 'pi-search-0f1a2b';

@@ -113,7 +113,7 @@ const LOCAL_NAME: Record<string, string> = {
 /** What a `lan` host is, by its tool: the scope is shared by the llm link and glove's relays. */
 const LAN_NAME: Record<string, string> = { llm: 'LLM', ssh: 'SSH' };
 
-/** A local link, or a hop to a sidecar (the `llm` hop to llm-auth), which is one whatever its scope says. */
+/** A local link, or a hop to a sidecar (the `llm` hop to llm-auth, `webfetch-mcp` to the fetcher), which is one whatever its scope says. */
 const isLocalLink = (d: DestinationAggregate) => (d.flags.scope === 'local' || d.flags.hop) && d.state !== 'guard';
 
 /** A local link's name by its tool (an ssh relay host keeps its host: `SSH build`), else its host. */
@@ -273,7 +273,7 @@ function routeCell(ctx: Ctx, d: { state: NetState; scope: string; flags: { hop: 
     return { text: 'never left', colourVar: 'var(--text-faint)', icon: 'shield' };
   }
   if (d.scope === 'local') return { text: 'local', colourVar: 'var(--text-muted)', icon: 'home' };
-  // The llm hop ends at glove's llm-auth sidecar; the provider leg (llm-upstream) is the one that leaves.
+  // A hop ends at a glove sidecar (llm-auth, the fetcher, …); the egress leg it causes is the one that leaves.
   if (d.flags.hop) return { text: 'local · hop', colourVar: 'var(--text-muted)', icon: LEGEND_BY_KEY.hop.icon };
   // glove's llm link and its LAN relays: neither the tunnel nor an untunnelled leak (LEGEND lan / cloud).
   if (d.scope === 'lan') {

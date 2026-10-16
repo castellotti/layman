@@ -94,8 +94,9 @@ function locationText(d: DestinationAggregate, geo: GeoStatus | null): { v: stri
     const where = [d.geo.city, d.geo.countryCode ?? d.geo.country].filter(Boolean).join(', ');
     return { v: where || `${d.geo.lat.toFixed(2)}, ${d.geo.lon.toFixed(2)}`, sub: `${d.geoIp} · offline ${geo?.databaseType ?? 'database'} · file lookup` };
   }
+  // Before `local`: a fetch or download hop is `scope: local` too, and is named for what it is.
+  if (d.flags.hop) return { v: 'not placed', sub: 'a hop to a glove sidecar; the egress leg it causes is the one that leaves' };
   if (d.scope === 'local') return { v: 'not placed', sub: 'a local link is never on the map' };
-  if (d.flags.hop) return { v: 'not placed', sub: 'a hop to glove’s llm-auth sidecar; the provider leg is the one that leaves' };
   if (d.scope === 'lan') return { v: 'not placed', sub: 'a host on your local network is never on the map' };
   if (!d.ips.length) return { v: 'unknown', sub: 'glove has no IP for it; Layman never looks one up' };
   if (!d.geoIp) return { v: 'unknown', sub: 'glove did not resolve it inside the tunnel; Layman looks up only those' };

@@ -2,8 +2,9 @@
  * glove rounds 1–10 (llm-auth's two-hop model call, the github and ssh relays,
  * `--lan-only`, `web_download`) through the store, the rules and Trace.
  *
- * The records are hand-made (`testing/rounds.ts`) until glove's netobs-v3
- * scenarios for them exist; replace them with those when they land.
+ * The records are hand-made (`testing/rounds.ts`). glove's netobs-v3 scenarios for
+ * the same cases (round 13) are run in `round13.test.ts`; these stay for what the
+ * scenarios do not show (Cut all with open flows, codemode, pooling, history).
  */
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { TimelineEvent } from '../events/types.js';
@@ -41,6 +42,22 @@ describe('llm-auth: a model call is two flows', () => {
     // glove's `next`, when it says so, wins over matching by labels.
     const declared = parseSessionFile({ v: 1, services: [{ ...llm, next: [] }, upstream] })!.services;
     expect(nextServices(declared[0], declared)).toEqual([]);
+  });
+
+  it('takes glove’s `next` for every sidecar hop, but only to a gate it watches', () => {
+    const svc = (service: string, extra: Record<string, unknown> = {}) =>
+      ({ service, listen: null, observed: true, harness: true, mode: 'tcp', tool: 'web_fetch', client: 'harness', ...extra });
+    const services = parseSessionFile({ v: 1, services: [
+      svc('webfetch-mcp', { next: ['webfetch-egress'] }),
+      svc('webfetch-egress', { harness: false, client: 'webfetch', next: [] }),
+      svc('search-mcp', { tool: 'web_search', next: ['searxng-egress'] }),
+      // glove lists a gate the operator skipped: its traffic is unrecorded, so the hop is the record.
+      svc('searxng-egress', { harness: false, client: 'searxng', observed: false, next: [] }),
+    ] })!.services;
+    const by = (n: string) => services.find((s) => s.service === n)!;
+    expect(nextServices(by('webfetch-mcp'), services).map((s) => s.service)).toEqual(['webfetch-egress']);
+    expect(nextServices(by('webfetch-egress'), services)).toEqual([]);
+    expect(nextServices(by('search-mcp'), services)).toEqual([]);
   });
 
   it('flags the hop, keeps it off the map, and counts each request once in the session totals', () => {
@@ -247,5 +264,21 @@ describe('reading tool names, commands and results', () => {
     // web_download_status lists several jobs.
     expect(downloadsOf(`${SAVED}\n\nsaved: /work/downloads/b.zip\nbytes: 12\nsha256: nope`).map((d) => [d.path, d.bytes, d.sha256]))
       .toEqual([['/work/downloads/2401.00001.pdf', 2_400_000, 'a'.repeat(64)], ['/work/downloads/b.zip', 12, null]]);
+  });
+
+  it('reads every shape of Vibe\'s Python repr, and reports a file once', () => {
+    const sha = 'c'.repeat(64);
+    // Python double-quotes a string holding a `'` and no `"`.
+    expect(downloadsOf(`structured: {'result': "saved: /work/downloads/bob's.tar.gz\\nbytes: 3\\nsha256: ${sha}"}`))
+      .toMatchObject([{ path: "/work/downloads/bob's.tar.gz", bytes: 3, sha256: sha }]);
+    // Other keys, either side; \\x escapes.
+    expect(downloadsOf(`structured: {'is_error': False, 'result': 'saved: /work/downloads/caf\\xe9.zip\\nbytes: 4', 'n': 1}`))
+      .toMatchObject([{ path: '/work/downloads/caf\u00e9.zip', bytes: 4 }]);
+    // Cut off before the closing quote.
+    expect(downloadsOf(`structured: {'result': 'saved: /work/downloads/a.zip\\nbytes: 5\\nsha2`)).toMatchObject([{ path: '/work/downloads/a.zip', bytes: 5 }]);
+    // Recorded as text and as a repr, listing two jobs: each file once.
+    const text = `saved: /work/downloads/a.zip\nbytes: 1\nsha256: ${sha}\n\nsaved: /work/downloads/b.zip\nbytes: 2`;
+    const repr = `structured: {'result': '${text.replace(/\n/g, '\\n')}'}`;
+    expect(downloadsOf(`${text}\n${repr}`).map((d) => d.path)).toEqual(['/work/downloads/a.zip', '/work/downloads/b.zip']);
   });
 });
