@@ -6,13 +6,14 @@
  * directory, revocation remembered, orphans and not-observable sessions read-only.
  */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { dirname, join, relative } from 'path';
 import { fileURLToPath } from 'url';
 import { NetObs } from './index.js';
 import type { HistorySession, NetHistory } from './history.js';
 import type { NetSessionSummary, RulesOp } from './types.js';
+import { copyV3Scenario } from './testing/glove-home.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const V3 = join(HERE, '__scenarios_v3__');
@@ -25,23 +26,8 @@ beforeEach(() => {
 });
 afterEach(() => rmSync(root, { recursive: true, force: true }));
 
-/** A writable copy of one scenario's glove home, with the `control/` glove always creates. */
-function home(name: string): string {
-  const h = join(root, name);
-  cpSync(join(V3, name, 'home'), h, { recursive: true });
-  mkdirSync(join(h, 'control'), { recursive: true });
-  // The registry's session directories are host paths from glove's generator; give the
-  // non-orphaned ones a real directory holding their id, as glove's would.
-  const reg = JSON.parse(readFileSync(join(h, 'registry.json'), 'utf8')) as { v: 2; sessions: Array<{ id: string; dir: string }> };
-  for (const row of reg.sessions) {
-    row.dir = join(h, 'sessions', row.id);
-    if (name === 'orphaned') continue;
-    mkdirSync(join(row.dir, '.glove'), { recursive: true });
-    writeFileSync(join(row.dir, '.glove', 'id'), `${row.id}\n`);
-  }
-  writeFileSync(join(h, 'registry.json'), JSON.stringify(reg));
-  return h;
-}
+/** A writable copy of one scenario's glove home. */
+const home = (name: string): string => copyV3Scenario(root, name);
 
 class MemHistory implements NetHistory {
   rows = new Map<string, HistorySession>();

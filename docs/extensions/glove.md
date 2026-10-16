@@ -829,7 +829,7 @@ Selected path panel that walks one destination's path hop by hop.
   - the sandbox, with gate freshness and heartbeat age (a fan-out path starts at SearXNG instead,
     unless glove's `next` says which hop leads to it);
   - for a leg a sidecar dials after a hop (`next`: the llm upstream, a fetch or download egress),
-    the hop's service and the sidecar ("llm-auth · adds the API key", "fetcher · page fetch or file
+    the hop's service and the sidecar ("llm-auth · the model call, with the API key added", "fetcher · page fetch or file
     download"), named as Topology names its hop band, before the leg's own service;
   - the service and its listener;
   - the policy verdict;

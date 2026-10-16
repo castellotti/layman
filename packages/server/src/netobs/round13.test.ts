@@ -7,18 +7,17 @@
  * time its flows imply; its tool name, input and result are the transcript's own.
  */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { cpSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'fs';
+import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
-import { dirname, join } from 'path';
-import { fileURLToPath } from 'url';
+import { join } from 'path';
 import type { TimelineEvent } from '../events/types.js';
+import { parseVibeTranscript } from '../hooks/transcript-vibe.js';
 import { callsFrom, correlate, downloadsOf } from './correlate.js';
 import { NetObs } from './index.js';
 import { applyOp, emptyRules, evaluate, validateRules } from './rules.js';
-import { isHopService, nextServices, type FlowView, type NetSnapshot, type RulesFile } from './types.js';
+import { isHopService, nextServices, type FlowView, type NetSnapshot, type RulesFile, type TraceItem } from './types.js';
+import { copyV3Scenario, V3_SCENARIOS as V3 } from './testing/glove-home.js';
 
-const HERE = dirname(fileURLToPath(import.meta.url));
-const V3 = join(HERE, '__scenarios_v3__');
 const T0 = Date.parse('2026-10-01T12:00:00.000Z');
 const NOW = T0 + 60_000;
 
@@ -33,16 +32,7 @@ function snapshot(name: string): NetSnapshot {
 
 /** One scenario's glove home, copied and polled once; `before` may edit it first. */
 function load(name: string, before?: (home: string) => void): NetObs {
-  const h = join(root, name);
-  cpSync(join(V3, name, 'home'), h, { recursive: true });
-  mkdirSync(join(h, 'control'), { recursive: true });
-  const reg = JSON.parse(readFileSync(join(h, 'registry.json'), 'utf8')) as { sessions: Array<{ id: string; dir: string }> };
-  for (const row of reg.sessions) {
-    row.dir = join(h, 'sessions', row.id);
-    mkdirSync(join(row.dir, '.glove'), { recursive: true });
-    writeFileSync(join(row.dir, '.glove', 'id'), `${row.id}\n`);
-  }
-  writeFileSync(join(h, 'registry.json'), JSON.stringify(reg));
+  const h = copyV3Scenario(root, name);
   before?.(h);
   const obs = new NetObs({ getGloveHome: () => h });
   obs.poll(NOW);
@@ -66,7 +56,9 @@ function event(toolName: string, toolInput: Record<string, unknown>, start: numb
   };
 }
 
-const flowsOf = (snap: NetSnapshot): FlowView[] => snap.flows;
+/** Each call's claimed flows, in call order, as `pick` names them. */
+const claimedBy = (snap: NetSnapshot, items: TraceItem[], pick: (f: FlowView) => string | null) =>
+  items.flatMap((i) => (i.kind === 'call' ? [i.flowIds.map((id) => pick(snap.flows.find((f) => f.id === id)!))] : []));
 const services = (snap: NetSnapshot) => snap.session!.services;
 const byService = (snap: NetSnapshot, name: string) => services(snap).find((s) => s.service === name)!;
 const sum = (fs: FlowView[], k: 'up' | 'down') => fs.reduce((a, f) => a + f.bytes[k], 0);
@@ -76,8 +68,8 @@ describe('llm-auth: each model call is a hop and a provider leg', () => {
     it(`${name}: hops flagged and off the map, totals count the provider leg once, one Trace row per call`, () => {
       const snap = snapshot(name);
       expect(nextServices(byService(snap, 'llm'), services(snap)).map((s) => s.service)).toEqual(['llm-upstream']);
-      const hops = flowsOf(snap).filter((f) => f.service === 'llm');
-      const legs = flowsOf(snap).filter((f) => f.service === 'llm-upstream');
+      const hops = snap.flows.filter((f) => f.service === 'llm');
+      const legs = snap.flows.filter((f) => f.service === 'llm-upstream');
       expect(hops.map((f) => f.flags.hop)).toEqual([true, true]);
       expect(legs.map((f) => f.flags.hop)).toEqual([false, false]);
       // Each hop opens before and closes after the leg it caused: the fold's window holds it.
@@ -99,7 +91,7 @@ describe('llm-auth: each model call is a hop and a provider leg', () => {
       expect(hopDest.port).toBe(8080);
       expect(hopDest.key).not.toBe(provider.key);
 
-      const { items, unattributed } = correlate({ calls: [], flows: flowsOf(snap), services: services(snap), from: T0 });
+      const { items, unattributed } = correlate({ calls: [], flows: snap.flows, services: services(snap), from: T0 });
       const llm = items.filter((i) => i.kind === 'llm');
       expect(llm).toHaveLength(2);
       expect(unattributed).toEqual([]);
@@ -114,10 +106,8 @@ describe('github: the relay’s egress is claimed by the gh and git calls', () =
     const [gh, clone] = piCalls('github');
     expect([gh.input.command, clone.input.command]).toEqual(['gh pr list --repo octo-org/widgets', 'git clone https://github.com/octo-org/widgets']);
     const calls = callsFrom([event(gh.name, gh.input, 800, 2200), event(clone.name, clone.input, 2800, 5200)]);
-    const { items, unattributed } = correlate({ calls, flows: flowsOf(snap), services: services(snap), from: T0 });
-    const host = (id: string) => flowsOf(snap).find((f) => f.id === id)!.dest.host;
-    const claimed = items.filter((i) => i.kind === 'call').map((i) => (i.kind === 'call' ? i.flowIds.map(host) : []));
-    expect(claimed).toEqual([['api.github.com'], ['github.com']]);
+    const { items, unattributed } = correlate({ calls, flows: snap.flows, services: services(snap), from: T0 });
+    expect(claimedBy(snap, items, (f) => f.dest.host)).toEqual([['api.github.com'], ['github.com']]);
     expect(unattributed).toEqual([]);
   });
 });
@@ -133,9 +123,8 @@ describe('ssh: a LAN relay, and glove refusing a name that resolved public', () 
 
     const [up, refused] = piCalls('ssh');
     const calls = callsFrom([event(up.name, up.input, 800, 4200), event(refused.name, refused.input, 4800, 5200)]);
-    const { items, unattributed } = correlate({ calls, flows: flowsOf(snap), services: services(snap), from: T0 });
-    const svc = (id: string) => flowsOf(snap).find((f) => f.id === id)!.service;
-    expect(items.filter((i) => i.kind === 'call').map((i) => (i.kind === 'call' ? i.flowIds.map(svc) : []))).toEqual([['ssh-build'], ['ssh-db']]);
+    const { items, unattributed } = correlate({ calls, flows: snap.flows, services: services(snap), from: T0 });
+    expect(claimedBy(snap, items, (f) => f.service)).toEqual([['ssh-build'], ['ssh-db']]);
     expect(unattributed).toEqual([]);
   });
 
@@ -146,7 +135,7 @@ describe('ssh: a LAN relay, and glove refusing a name that resolved public', () 
     const cut = validateRules(applyOp(emptyRules(id, id), { kind: 'cutAll', keepLlm: true }, {
       env: id, token: id, now: NOW, newId: () => `r_${String(++i).padStart(26, '0')}`, currentSha256: null,
     }) as unknown as RulesFile);
-    for (const f of flowsOf(snap)) {
+    for (const f of snap.flows) {
       expect(evaluate(cut, { host: f.dest.host, ip: f.dest.ip, port: f.dest.port, service: f.service, tool: f.tool, scope: f.flags.scope }).action).toBe('block');
     }
   });
@@ -157,8 +146,8 @@ describe('downloads: the fetch and download hops, each with its egress', () => {
     const snap = snapshot('downloads');
     const next = (s: string) => nextServices(byService(snap, s), services(snap)).map((x) => x.service);
     expect([next('webfetch-mcp'), next('webdownload-mcp'), next('webfetch-egress')]).toEqual([['webfetch-egress'], ['webdownload-egress'], []]);
-    const hops = flowsOf(snap).filter((f) => f.service.endsWith('-mcp'));
-    const egress = flowsOf(snap).filter((f) => f.service.endsWith('-egress'));
+    const hops = snap.flows.filter((f) => f.service.endsWith('-mcp'));
+    const egress = snap.flows.filter((f) => f.service.endsWith('-egress'));
     expect(hops.every((f) => f.flags.hop)).toBe(true);
     expect(egress.some((f) => f.flags.hop)).toBe(false);
     expect(snap.totals.bytesDown).toBe(sum(egress, 'down'));
@@ -170,19 +159,15 @@ describe('downloads: the fetch and download hops, each with its egress', () => {
   it('Vibe’s fetch claims the fetch hop and egress, its download the download hop and egress, and its result lists the file', () => {
     const snap = snapshot('downloads');
     const dir = join(V3, 'downloads', 'home', 'observe', 'downloads-0f1a2b', 'transcripts');
-    const lines = readFileSync(join(dir, readdirSync(dir)[0], 'messages.jsonl'), 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l));
-    const calls = lines.flatMap((l) => l.tool_calls ?? []).map((c: { id: string; function: { name: string; arguments: string } }) => ({
-      id: c.id, name: c.function.name, input: JSON.parse(c.function.arguments) as Record<string, unknown>,
-      // What the Vibe watcher records as the output: the tool message's `content` (`vibe/watcher.ts`).
-      output: lines.find((l) => l.role === 'tool' && l.tool_call_id === c.id)?.content as string,
+    const lines = readFileSync(join(dir, readdirSync(dir)[0], 'messages.jsonl'), 'utf8').split('\n').filter(Boolean);
+    const calls = parseVibeTranscript(lines, 'vibe-downloads').events.filter((e) => e.type === 'tool_call_completed').map((e) => ({
+      name: e.data.toolName!, input: e.data.toolInput as Record<string, unknown>, output: e.data.toolOutput as string,
     }));
     expect(calls.map((c) => c.name)).toEqual(['webfetch_fetch_url', 'webdownload_web_download']);
     const [fetch, dl] = calls;
     const evs = callsFrom([event(fetch.name, fetch.input, 900, 2200, fetch.output), event(dl.name, dl.input, 2900, 9200, dl.output)]);
-    const { items, unattributed } = correlate({ calls: evs, flows: flowsOf(snap), services: services(snap), from: T0 });
-    const svc = (id: string) => flowsOf(snap).find((f) => f.id === id)!.service;
-    const claimed = items.filter((i) => i.kind === 'call').map((i) => (i.kind === 'call' ? i.flowIds.map(svc).sort() : []));
-    expect(claimed).toEqual([['webfetch-egress', 'webfetch-mcp'], ['webdownload-egress', 'webdownload-mcp']]);
+    const { items, unattributed } = correlate({ calls: evs, flows: snap.flows, services: services(snap), from: T0 });
+    expect(claimedBy(snap, items, (f) => f.service).map((c) => c.sort())).toEqual([['webfetch-egress', 'webfetch-mcp'], ['webdownload-egress', 'webdownload-mcp']]);
     expect(unattributed).toEqual([]);
     expect(downloadsOf(dl.output)).toMatchObject([{ path: '/work/downloads/data.tar.gz', bytes: 10485760, sha256: 'ab'.repeat(32) }]);
   });

@@ -183,6 +183,16 @@ function sidecarName(upstream: string | null | undefined, token: string): string
   return host ? host.replace(`glove-${token}-`, '') : null;
 }
 
+/** The sidecar behind a hop, by the hop gate's upstream, else by the hop's own host. */
+function hopSidecarName(hop: NetService, hopHost: string | null | undefined, token: string): string | null {
+  return sidecarName(hop.upstream ?? hop.route?.upstream, token) ?? sidecarName(hopHost, token);
+}
+
+/** The hops into a gate: the services whose `next` (`nextServices`) names it. */
+function hopsInto(name: string, services: readonly NetService[]): NetService[] {
+  return services.filter((s) => nextServices(s, services).some((n) => n.service === name));
+}
+
 /**
  * `llm`: glove's llm link (`cloud`, or `lan` for the llm tool), which never rides the
  * tunnel and is expected. A `lan` host of a relay (ssh) is a LAN link: drawn local.
@@ -705,7 +715,7 @@ export function layoutTopology(data: TopoInput, width: number, height: number): 
     const s = byName.get(n.title)!;
     const hopLegs = allLegs.filter((l) => l.service === s.service && l.d.flags.hop && l.outcome !== 'refused');
     const bytes = hopLegs.reduce((a, l) => a + l.bytes, 0);
-    const via = sidecarName(s.upstream ?? s.route?.upstream, data.token) ?? sidecarName(hopLegs[0]?.host, data.token);
+    const via = hopSidecarName(s, hopLegs[0]?.host, data.token);
     for (const next of nextServices(s, services)) {
       const to = svcNode.get(next.service);
       if (!to) continue;
@@ -731,7 +741,7 @@ export function layoutTopology(data: TopoInput, width: number, height: number): 
     const fanBytes = legs.filter((l) => l.service === fanNode.title).reduce((a, l) => a + l.bytes, 0);
     // glove's `next` already links the hop to this consumer (drawn above): the label match
     // is only for a gate from before glove listed `next`.
-    const linked = services.some((s) => svcNode.has(s.service) && nextServices(s, services).some((n) => n.service === fanNode.title));
+    const linked = hopsInto(fanNode.title, services).some((s) => svcNode.has(s.service));
     const trigger = linked ? null : triggerOf(byName.get(fanNode.title)!, services);
     const search = trigger ? svcNodes.find((n) => n.title === trigger.service) : undefined;
     if (search) {
@@ -788,7 +798,7 @@ export function pathHops(data: TopoInput, host: string): { dest: DestinationAggr
   const outcome = outcomeOf(d);
   // The leg a sidecar dials after a hop (glove's `next`): `llm` → llm-auth → `llm-upstream`,
   // `webfetch-mcp` → fetcher → `webfetch-egress`. The path starts at the harness's hop.
-  const via = svc ? services.find((s) => nextServices(s, services).some((n) => n.service === svc.service)) : undefined;
+  const via = svc ? hopsInto(svc.service, services)[0] : undefined;
   const fan = !via && (d.flags.fanout || isFanoutService(svc));
   const g = data.gate;
 
@@ -813,15 +823,14 @@ export function pathHops(data: TopoInput, host: string): { dest: DestinationAggr
   // The harness reached the hop, and the sidecar behind it dialled out through this leg
   // (llm-auth adding the API key, the fetcher fetching the page).
   if (via) {
-    const llm = isLlmUpstream(svc);
+    let hopHost: string | null = null;
+    for (const x of data.destinations.values()) if (x.flags.hop && x.services.includes(via.service)) { hopHost = x.host; break; }
     hops.push({ id: 'service', ...serviceHop(via, via.service) });
     hops.push({
       id: 'sidecar',
-      // Named as Topology names its hop band: by the gate's upstream, else by the hop's own host.
-      title: sidecarName(via.upstream ?? via.route?.upstream, data.token)
-        ?? sidecarName([...data.destinations.values()].find((x) => x.flags.hop && x.services.includes(via.service))?.host, data.token)
-        ?? (llm ? 'llm-auth' : clientName(svc?.client)),
-      detail: llm ? 'adds the API key' : EGRESS_CLIENTS[svc?.client ?? '']?.what ?? null,
+      // Named as Topology names its hop band.
+      title: hopSidecarName(via, hopHost, data.token) ?? clientName(svc?.client),
+      detail: EGRESS_CLIENTS[svc?.client ?? '']?.what ?? null,
       status: 'glove’s sidecar · not a gate', evidence: 'declared',
     });
   }

@@ -144,6 +144,8 @@ interface SessionData {
   status: StatusRecord | null;
   statusMtimeMs: number | null;
   session: NetSessionFile | null;
+  /** The services `session` makes hops (`isHopService`), kept with it: asked once per flow record. */
+  hopServices: ReadonlySet<string>;
   exits: ExitRecord[];
   rules: RulesView;
   counters: NetCounters;
@@ -232,6 +234,9 @@ function policyFor(
   return { enforced: one(policy.enforced), written: one(policy.written) };
 }
 
+/** A destination's flags from its latest flow's: unresolved only while no flow brought an IP. */
+const destFlags = (f: FlowFlags, ips: readonly string[]): FlowFlags => ({ ...f, unresolved: f.unresolved && ips.length === 0 });
+
 export class NetStore extends EventEmitter {
   private sessions = new Map<string, SessionData>();
   private readonly stringFilter?: (text: string) => string;
@@ -280,6 +285,7 @@ export class NetStore extends EventEmitter {
       status: null,
       statusMtimeMs: null,
       session: null,
+      hopServices: new Set(),
       exits: [],
       rules: blankRulesView(loc),
       policy: { enforced: null, written: null },
@@ -317,7 +323,7 @@ export class NetStore extends EventEmitter {
       s.historyOnly = true;
       // Nothing to write to: every toggle and the Rules panel say why.
       s.rules = { ...s.rules, control: { state: 'disabled', detail: 'History only: glove’s files for this session are gone, so there are no rules to change.' } };
-      s.session = h.sessionFile;
+      this.useSessionFile(s, h.sessionFile);
       if (h.lastExit) s.exits.push(h.lastExit);
       s.status = h.lastStatus;
       this.refreshGate(s, now, false);
@@ -507,9 +513,19 @@ export class NetStore extends EventEmitter {
     return name ? s.session?.services?.find((sv) => sv.service === name) : undefined;
   }
 
+  /** Sets the session file and the hop services it implies; true when those changed. */
+  private useSessionFile(s: SessionData, file: NetSessionFile | null): boolean {
+    s.session = file;
+    const services = file?.services ?? [];
+    const hops = new Set(services.filter((sv) => isHopService(sv, services)).map((sv) => sv.service));
+    const changed = hops.size !== s.hopServices.size || [...hops].some((h) => !s.hopServices.has(h));
+    s.hopServices = hops;
+    return changed;
+  }
+
   /** The service's traffic goes on through another gate (`isHopService`): its flows are hops. */
   private isHop(s: SessionData, service: string): boolean {
-    return isHopService(this.declared(s, service), s.session?.services ?? []);
+    return s.hopServices.has(service);
   }
 
   /**
@@ -538,9 +554,10 @@ export class NetStore extends EventEmitter {
       }
       e.flags = flowFlags(e.rec, hop);
       s.dirtyFlows.add(id);
+      // A destination's flags are its latest flow's (`apply`), and that flow's service flips with this one's.
       const agg = e.destKey ? s.aggs.get(e.destKey) : undefined;
-      if (agg && agg.agg.flags.hop !== hop) {
-        agg.agg.flags = { ...agg.agg.flags, hop };
+      if (agg?.latest?.id === id) {
+        agg.agg.flags = destFlags(e.flags, agg.agg.ips);
         s.dirtyAggs.add(e.destKey!);
       }
       changed = true;
@@ -705,7 +722,7 @@ export class NetStore extends EventEmitter {
       e.latest = { id, tOpen: next.tOpen, state: next.state };
       a.scope = r.scope;
       a.resolution = r.dest.resolution;
-      a.flags = { ...next.flags, unresolved: next.flags.unresolved && a.ips.length === 0 };
+      a.flags = destFlags(next.flags, a.ips);
     }
     s.dirtyAggs.add(key);
   }
@@ -738,8 +755,7 @@ export class NetStore extends EventEmitter {
   setSessionFile(token: string, file: NetSessionFile | null, now = Date.now()): void {
     const s = this.sessions.get(token);
     if (!s) return;
-    s.session = file;
-    if (this.reflagHops(s)) {
+    if (this.useSessionFile(s, file) && this.reflagHops(s)) {
       s.dirtyTotals = true;
       this.emit('changed', token);
     }

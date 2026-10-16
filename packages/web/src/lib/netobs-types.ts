@@ -219,8 +219,7 @@ export function nextServices(svc: NetService | undefined, services: readonly Net
  */
 export function isHopService(svc: NetService | undefined, services: readonly NetService[]): boolean {
   if (!nextServices(svc, services).length) return false;
-  const skipped = new Set(services.filter((s) => s.observed === false).map((s) => s.service));
-  return !(svc!.next ?? []).some((name) => skipped.has(name));
+  return !(svc!.next ?? []).some((name) => services.some((s) => s.service === name && s.observed === false));
 }
 
 export interface NetSessionFile {
