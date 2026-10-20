@@ -143,13 +143,16 @@ const PRINT_TAIL_EVENTS = 20;
 
 function pinToNewest(el: HTMLElement) { el.scrollTop = el.scrollHeight; }
 
-function RecentTail({ events, onOpenInLogs, sessionId, scrollRef, autoscroll }: {
+function RecentTail({ events, onOpenInLogs, sessionId, autoscroll }: {
   events: TimelineEvent[];
   onOpenInLogs: (sessionId: string, eventId: string) => void;
   sessionId: string;
-  scrollRef: React.RefObject<HTMLDivElement | null>;
   autoscroll: boolean;
 }) {
+  // The scroll box is rendered here, not by PreviewPane, because React runs a component's layout
+  // effects before it attaches its *ancestors'* refs: a ref owned by the parent is still null on
+  // mount, so the pin below never ran and every pane opened at its oldest row.
+  const scrollRef = useRef<HTMLDivElement>(null);
   const tail = useMemo(() => {
     const meaningful = events.filter(e => e.type !== 'session_metrics' && e.type !== 'notification');
     // Reasoning is lifted into its own row here too, so the dashboard tail and
@@ -182,26 +185,44 @@ function RecentTail({ events, onOpenInLogs, sessionId, scrollRef, autoscroll }: 
     if (el.firstElementChild) ro.observe(el.firstElementChild);
     el.addEventListener('scroll', pin);
     return () => { ro.disconnect(); el.removeEventListener('scroll', pin); };
-  }, [autoscroll, scrollRef]);
+  }, [autoscroll]);
   // Keyed on the newest row, not the count: past MAX_TAIL_EVENTS a new row drops the oldest, so
   // neither the count nor the content height changes and nothing else would re-pin.
   const newestId = shown[shown.length - 1]?.id;
   useLayoutEffect(() => {
     const el = scrollRef.current;
     if (autoscroll && el) pinToNewest(el);
-  }, [autoscroll, newestId, scrollRef]);
-
-  if (tail.length === 0) {
-    return (
-      <div style={{ padding: '8px 12px', color: 'var(--text-faint)', fontSize: 10, fontFamily: 'var(--font-mono)' }}>
-        No events yet
-      </div>
-    );
-  }
+  }, [autoscroll, newestId]);
 
   return (
-    <div style={{ padding: '0 4px' }}>
-      {shown.map((event, i) => {
+    // Hidden rather than auto while autoscrolling: a box the user cannot scroll does not capture
+    // the wheel, so it goes to the Dashboard. scrollTop can still pin it. Scroll anchoring is off
+    // so dropping the oldest row cannot pull the view up off the newest.
+    <div ref={scrollRef} data-print-tail style={{ flex: 1, overflowY: autoscroll ? 'hidden' : 'auto', overflowAnchor: 'none', paddingBottom: 4 }}>
+      {/* One wrapper for both states: the observer above watches this node from the moment the
+          pane opens, so swapping "No events yet" for rows must not replace it. */}
+      <div style={{ padding: '0 4px' }}>
+        {tail.length === 0 ? (
+          <div style={{ padding: '8px', color: 'var(--text-faint)', fontSize: 10, fontFamily: 'var(--font-mono)' }}>
+            No events yet
+          </div>
+        ) : (
+          <TailRows rows={shown} eventIndexById={eventIndexById} onOpenInLogs={onOpenInLogs} sessionId={sessionId} />
+        )}
+      </div>
+    </div>
+  );
+}
+
+function TailRows({ rows, eventIndexById, onOpenInLogs, sessionId }: {
+  rows: TimelineEvent[];
+  eventIndexById: Map<string, number>;
+  onOpenInLogs: (sessionId: string, eventId: string) => void;
+  sessionId: string;
+}) {
+  return (
+    <>
+      {rows.map((event) => {
         const color = EVENT_KIND_COLOR[event.type] ?? 'var(--text-muted)';
         const detail = eventDetail(event);
         const realId = baseEventId(event.id);
@@ -237,7 +258,7 @@ function RecentTail({ events, onOpenInLogs, sessionId, scrollRef, autoscroll }: 
           </div>
         );
       })}
-    </div>
+    </>
   );
 }
 
@@ -435,7 +456,6 @@ export const PreviewPane = React.memo(function PreviewPane({
   const ctxPct = metrics?.contextUsedPct;
   const model = metrics?.modelDisplayName;
   const cwd = session.cwd;
-  const tailScrollRef = useRef<HTMLDivElement>(null);
   // On by default: the tail is pinned to its newest row and is not a scroll container, so the
   // mouse wheel over it scrolls the Dashboard rather than being captured by the pane. Off, the
   // tail scrolls on its own to read back through history.
@@ -532,18 +552,12 @@ export const PreviewPane = React.memo(function PreviewPane({
       </div>
 
       {/* Recent tail */}
-      {/* Hidden rather than auto while autoscrolling: a box the user cannot scroll does not
-          capture the wheel, so it goes to the Dashboard. scrollTop can still pin it. Scroll
-          anchoring is off so dropping the oldest row cannot pull the view up off the newest. */}
-      <div ref={tailScrollRef} data-print-tail style={{ flex: 1, overflowY: autoscroll ? 'hidden' : 'auto', overflowAnchor: 'none', paddingBottom: 4 }}>
-        <RecentTail
-          events={mergedEvents}
-          onOpenInLogs={onOpenEventInLogs}
-          sessionId={session.sessionId}
-          scrollRef={tailScrollRef}
-          autoscroll={autoscroll}
-        />
-      </div>
+      <RecentTail
+        events={mergedEvents}
+        onOpenInLogs={onOpenEventInLogs}
+        sessionId={session.sessionId}
+        autoscroll={autoscroll}
+      />
     </div>
   );
 });
