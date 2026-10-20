@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { StatusDot, Meter, StateChip } from '../primitives/index.js';
 import { useNow } from '../../hooks/useNow.js';
 import { usePrinting } from '../../hooks/usePrinting.js';
@@ -141,11 +141,12 @@ const MAX_TAIL_EVENTS = 500;
 // page). Unclipped, a pane's 500 would be pages per session.
 const PRINT_TAIL_EVENTS = 20;
 
-function RecentTail({ events, onOpenInLogs, sessionId, scrollRef }: {
+function RecentTail({ events, onOpenInLogs, sessionId, scrollRef, autoscroll }: {
   events: TimelineEvent[];
   onOpenInLogs: (sessionId: string, eventId: string) => void;
   sessionId: string;
   scrollRef: React.RefObject<HTMLDivElement | null>;
+  autoscroll: boolean;
 }) {
   const tail = useMemo(() => {
     const meaningful = events.filter(e => e.type !== 'session_metrics' && e.type !== 'notification');
@@ -165,26 +166,19 @@ function RecentTail({ events, onOpenInLogs, sessionId, scrollRef }: {
     return map;
   }, [events]);
 
-  // Stick to the bottom as new events arrive, unless the user has scrolled up to read history.
-  const followRef = useRef(true);
-  const prevCountRef = useRef(0);
-  useEffect(() => {
+  // Autoscroll pins the tail to its newest row: on every new row, and whenever the pane or its
+  // content changes size (a resized window, a pane squeezed by another opening). Turned off, the
+  // tail stays wherever the user scrolled it.
+  useLayoutEffect(() => {
     const el = scrollRef.current;
-    if (!el) return;
-    const handleScroll = () => {
-      followRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 32;
-    };
-    el.addEventListener('scroll', handleScroll);
-    return () => el.removeEventListener('scroll', handleScroll);
-  }, [scrollRef]);
-  useEffect(() => {
-    const grew = tail.length > prevCountRef.current;
-    prevCountRef.current = tail.length;
-    const el = scrollRef.current;
-    if (grew && followRef.current && el) {
-      el.scrollTop = el.scrollHeight;
-    }
-  }, [tail.length, scrollRef]);
+    if (!autoscroll || !el) return;
+    const pin = () => { el.scrollTop = el.scrollHeight; };
+    pin();
+    const ro = new ResizeObserver(pin);
+    ro.observe(el);
+    if (el.firstElementChild) ro.observe(el.firstElementChild);
+    return () => ro.disconnect();
+  }, [autoscroll, shown.length, scrollRef]);
 
   if (tail.length === 0) {
     return (
@@ -375,6 +369,32 @@ function useHistoryMergedEvents(
   return useMemo(() => mergeRecordedWithLive(recorded, live), [recorded, live]);
 }
 
+// ─── AutoscrollToggle ────────────────────────────────────────────────────────
+
+function AutoscrollToggle({ on, onToggle }: { on: boolean; onToggle: () => void }) {
+  return (
+    <button
+      type="button"
+      aria-pressed={on}
+      onClick={onToggle}
+      onDoubleClick={e => e.stopPropagation()}
+      title={on
+        ? 'Autoscroll on: showing the latest lines, and the mouse wheel scrolls the Dashboard. Click to scroll this session yourself.'
+        : 'Autoscroll off: the mouse wheel scrolls this session. Click to follow the latest lines again.'}
+      style={{
+        display: 'flex', alignItems: 'center', gap: 3, flexShrink: 0, cursor: 'pointer',
+        height: 18, padding: '0 6px', borderRadius: 3,
+        fontFamily: 'var(--font-mono)', fontSize: 10,
+        border: `1px solid ${on ? 'var(--accent)' : 'var(--border)'}`,
+        background: on ? 'color-mix(in srgb, var(--accent) 12%, transparent)' : 'none',
+        color: on ? 'var(--accent)' : 'var(--text-faint)',
+      }}
+    >
+      <span aria-hidden style={{ fontSize: 11, lineHeight: 1 }}>⤓</span>autoscroll
+    </button>
+  );
+}
+
 // ─── PreviewPane ─────────────────────────────────────────────────────────────
 
 interface PreviewPaneProps {
@@ -405,6 +425,10 @@ export const PreviewPane = React.memo(function PreviewPane({
   const model = metrics?.modelDisplayName;
   const cwd = session.cwd;
   const tailScrollRef = useRef<HTMLDivElement>(null);
+  // On by default: the tail is pinned to its newest row and is not a scroll container, so the
+  // mouse wheel over it scrolls the Dashboard rather than being captured by the pane. Off, the
+  // tail scrolls on its own to read back through history.
+  const [autoscroll, setAutoscroll] = useState(true);
   // Remote sessions have no local approvals, and analysing a remote event would
   // run on central's model against central's copy — out of scope for v1. Hide the
   // Investigate/analyze affordance for them (§8.2).
@@ -465,6 +489,7 @@ export const PreviewPane = React.memo(function PreviewPane({
           </div>
         )}
         <StateChip variant={chipVariant} />
+        <AutoscrollToggle on={autoscroll} onToggle={() => setAutoscroll(v => !v)} />
         <button
           onClick={() => onClose(session.sessionId)}
           style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-faint)', fontSize: 14, lineHeight: 1, padding: '0 2px', flexShrink: 0 }}
@@ -496,12 +521,15 @@ export const PreviewPane = React.memo(function PreviewPane({
       </div>
 
       {/* Recent tail */}
-      <div ref={tailScrollRef} data-print-tail style={{ flex: 1, overflowY: 'auto', paddingBottom: 4 }}>
+      {/* Hidden rather than auto while autoscrolling: a box the user cannot scroll does not
+          capture the wheel, so it goes to the Dashboard. scrollTop can still pin it. */}
+      <div ref={tailScrollRef} data-print-tail style={{ flex: 1, overflowY: autoscroll ? 'hidden' : 'auto', paddingBottom: 4 }}>
         <RecentTail
           events={mergedEvents}
           onOpenInLogs={onOpenEventInLogs}
           sessionId={session.sessionId}
           scrollRef={tailScrollRef}
+          autoscroll={autoscroll}
         />
       </div>
     </div>
