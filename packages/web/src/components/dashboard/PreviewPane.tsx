@@ -168,7 +168,8 @@ function RecentTail({ events, onOpenInLogs, sessionId, scrollRef, autoscroll }: 
 
   // Autoscroll pins the tail to its newest row: on every new row, and whenever the pane or its
   // content changes size (a resized window, a pane squeezed by another opening). Turned off, the
-  // tail stays wherever the user scrolled it.
+  // tail stays wherever the user scrolled it. A hidden box can still be scrolled by a text
+  // selection drag or find-in-page, which the wheel could not undo, so a scroll re-pins it too.
   useLayoutEffect(() => {
     const el = scrollRef.current;
     if (!autoscroll || !el) return;
@@ -177,8 +178,16 @@ function RecentTail({ events, onOpenInLogs, sessionId, scrollRef, autoscroll }: 
     const ro = new ResizeObserver(pin);
     ro.observe(el);
     if (el.firstElementChild) ro.observe(el.firstElementChild);
-    return () => ro.disconnect();
-  }, [autoscroll, shown.length, scrollRef]);
+    el.addEventListener('scroll', pin);
+    return () => { ro.disconnect(); el.removeEventListener('scroll', pin); };
+  }, [autoscroll, scrollRef]);
+  // Keyed on the newest row, not the count: past MAX_TAIL_EVENTS a new row drops the oldest, so
+  // neither the count nor the content height changes and nothing else would re-pin.
+  const newestId = shown[shown.length - 1]?.id;
+  useLayoutEffect(() => {
+    const el = scrollRef.current;
+    if (autoscroll && el) el.scrollTop = el.scrollHeight;
+  }, [autoscroll, newestId, scrollRef]);
 
   if (tail.length === 0) {
     return (
@@ -522,8 +531,9 @@ export const PreviewPane = React.memo(function PreviewPane({
 
       {/* Recent tail */}
       {/* Hidden rather than auto while autoscrolling: a box the user cannot scroll does not
-          capture the wheel, so it goes to the Dashboard. scrollTop can still pin it. */}
-      <div ref={tailScrollRef} data-print-tail style={{ flex: 1, overflowY: autoscroll ? 'hidden' : 'auto', paddingBottom: 4 }}>
+          capture the wheel, so it goes to the Dashboard. scrollTop can still pin it. Scroll
+          anchoring is off so dropping the oldest row cannot pull the view up off the newest. */}
+      <div ref={tailScrollRef} data-print-tail style={{ flex: 1, overflowY: autoscroll ? 'hidden' : 'auto', overflowAnchor: 'none', paddingBottom: 4 }}>
         <RecentTail
           events={mergedEvents}
           onOpenInLogs={onOpenEventInLogs}

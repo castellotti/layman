@@ -3,7 +3,7 @@
 ## Unreleased
 
 - **Dashboard panes autoscroll, and the mouse wheel scrolls the Dashboard.** With more session panes open than fit in the window, each pane's tail was its own scroll box. A wheel over one scrolled that session's history instead of the page, and on macOS the page's overlay scrollbar faded, leaving no way back up. Each pane header now has an **autoscroll** toggle, on by default.
-  - **On:** the tail is pinned to its newest row and is not a scroll container (`overflow: hidden`), so the wheel passes through to the Dashboard. It re-pins when the pane resizes as well as when a row arrives.
+  - **On:** the tail is pinned to its newest row and is not a scroll container (`overflow: hidden`), so the wheel passes through to the Dashboard. It re-pins when the pane resizes, when the newest row changes (counted by id, not by number of rows, because past 500 rows a new one drops the oldest and the count stays the same), and when anything else scrolls it (a text selection drag, find-in-page), since the wheel could not undo that. Scroll anchoring is off on the tail so dropping the oldest row cannot pull the view up.
   - **Off:** the tail scrolls on its own, as before, and stays where you leave it until you turn autoscroll back on.
   - The toggle is per pane and not saved; a reopened pane starts with autoscroll on. It replaces the old rule of following new rows only while the tail was within 32 px of the bottom, which an accidental wheel over a pane could break.
 
