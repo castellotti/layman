@@ -141,6 +141,8 @@ const MAX_TAIL_EVENTS = 500;
 // page). Unclipped, a pane's 500 would be pages per session.
 const PRINT_TAIL_EVENTS = 20;
 
+function pinToNewest(el: HTMLElement) { el.scrollTop = el.scrollHeight; }
+
 function RecentTail({ events, onOpenInLogs, sessionId, scrollRef, autoscroll }: {
   events: TimelineEvent[];
   onOpenInLogs: (sessionId: string, eventId: string) => void;
@@ -173,7 +175,7 @@ function RecentTail({ events, onOpenInLogs, sessionId, scrollRef, autoscroll }: 
   useLayoutEffect(() => {
     const el = scrollRef.current;
     if (!autoscroll || !el) return;
-    const pin = () => { el.scrollTop = el.scrollHeight; };
+    const pin = () => pinToNewest(el);
     pin();
     const ro = new ResizeObserver(pin);
     ro.observe(el);
@@ -186,7 +188,7 @@ function RecentTail({ events, onOpenInLogs, sessionId, scrollRef, autoscroll }: 
   const newestId = shown[shown.length - 1]?.id;
   useLayoutEffect(() => {
     const el = scrollRef.current;
-    if (autoscroll && el) el.scrollTop = el.scrollHeight;
+    if (autoscroll && el) pinToNewest(el);
   }, [autoscroll, newestId, scrollRef]);
 
   if (tail.length === 0) {
