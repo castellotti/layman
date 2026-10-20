@@ -199,51 +199,66 @@ function RecentTail({ events, onOpenInLogs, sessionId, autoscroll }: {
     // the wheel, so it goes to the Dashboard. scrollTop can still pin it. Scroll anchoring is off
     // so dropping the oldest row cannot pull the view up off the newest.
     <div ref={scrollRef} data-print-tail style={{ flex: 1, overflowY: autoscroll ? 'hidden' : 'auto', overflowAnchor: 'none', paddingBottom: 4 }}>
-      {tail.length === 0 ? (
-        <div style={{ padding: '8px 12px', color: 'var(--text-faint)', fontSize: 10, fontFamily: 'var(--font-mono)' }}>
-          No events yet
-        </div>
-      ) : (
-        <div style={{ padding: '0 4px' }}>
-          {shown.map((event, i) => {
-            const color = EVENT_KIND_COLOR[event.type] ?? 'var(--text-muted)';
-            const detail = eventDetail(event);
-            const realId = baseEventId(event.id);
-            const globalIdx = eventIndexById.get(realId) ?? -1;
-            return (
-              <div
-                key={event.id}
-                onClick={() => onOpenInLogs(sessionId, realId)}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 6,
-                  padding: '3px 8px',
-                  borderRadius: 4,
-                  cursor: 'pointer',
-                  transition: 'background 0.1s',
-                }}
-                onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.background = 'var(--bg-selected)')}
-                onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.background = 'transparent')}
-              >
-                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9.5, fontVariantNumeric: 'tabular-nums', color: 'var(--text-faint)', width: 26, textAlign: 'right', flexShrink: 0 }}>
-                  #{globalIdx + 1}
-                </span>
-                <span style={{ fontFamily: 'var(--font-ui)', fontSize: 10, fontWeight: 500, color, flexShrink: 0, minWidth: 64 }}>
-                  {kindLabel(event.type)}
-                </span>
-                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-body)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {detail}
-                </span>
-                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9.5, fontVariantNumeric: 'tabular-nums', color: 'var(--text-faint)', flexShrink: 0 }}>
-                  {formatTime(event.timestamp)}
-                </span>
-              </div>
-            );
-          })}
-        </div>
-      )}
+      {/* One wrapper for both states: the observer above watches this node from the moment the
+          pane opens, so swapping "No events yet" for rows must not replace it. */}
+      <div style={{ padding: '0 4px' }}>
+        {tail.length === 0 ? (
+          <div style={{ padding: '8px', color: 'var(--text-faint)', fontSize: 10, fontFamily: 'var(--font-mono)' }}>
+            No events yet
+          </div>
+        ) : (
+          <TailRows rows={shown} eventIndexById={eventIndexById} onOpenInLogs={onOpenInLogs} sessionId={sessionId} />
+        )}
+      </div>
     </div>
+  );
+}
+
+function TailRows({ rows, eventIndexById, onOpenInLogs, sessionId }: {
+  rows: TimelineEvent[];
+  eventIndexById: Map<string, number>;
+  onOpenInLogs: (sessionId: string, eventId: string) => void;
+  sessionId: string;
+}) {
+  return (
+    <>
+      {rows.map((event) => {
+        const color = EVENT_KIND_COLOR[event.type] ?? 'var(--text-muted)';
+        const detail = eventDetail(event);
+        const realId = baseEventId(event.id);
+        const globalIdx = eventIndexById.get(realId) ?? -1;
+        return (
+          <div
+            key={event.id}
+            onClick={() => onOpenInLogs(sessionId, realId)}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              padding: '3px 8px',
+              borderRadius: 4,
+              cursor: 'pointer',
+              transition: 'background 0.1s',
+            }}
+            onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.background = 'var(--bg-selected)')}
+            onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.background = 'transparent')}
+          >
+            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9.5, fontVariantNumeric: 'tabular-nums', color: 'var(--text-faint)', width: 26, textAlign: 'right', flexShrink: 0 }}>
+              #{globalIdx + 1}
+            </span>
+            <span style={{ fontFamily: 'var(--font-ui)', fontSize: 10, fontWeight: 500, color, flexShrink: 0, minWidth: 64 }}>
+              {kindLabel(event.type)}
+            </span>
+            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-body)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {detail}
+            </span>
+            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9.5, fontVariantNumeric: 'tabular-nums', color: 'var(--text-faint)', flexShrink: 0 }}>
+              {formatTime(event.timestamp)}
+            </span>
+          </div>
+        );
+      })}
+    </>
   );
 }
 
