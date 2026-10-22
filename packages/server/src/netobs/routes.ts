@@ -100,8 +100,9 @@ export function registerNetRoutes(fastify: FastifyInstance, deps: { netObs: NetO
     if (!store.has(token)) return reply.status(404).send(notFound(token));
     const gapHours = request.query.gap === undefined ? DEFAULT_BURST_GAP_MS / 3_600_000 : Number(request.query.gap);
     if (!Number.isFinite(gapHours) || gapHours < 1 || gapHours > 24) return reply.status(400).send({ error: 'gap must be 1 to 24 hours' });
-    const agentSessions = (deps.trace?.sessionsNamed(token) ?? []).flatMap((sid) => {
-      const { turns, events } = deps.trace!.session(sid);
+    const trace = deps.trace;
+    const agentSessions = !trace ? [] : trace.sessionsNamed(token).flatMap((sid) => {
+      const { turns, events } = trace.session(sid);
       const seg = agentSegment(sid, events, turns.length);
       return seg ? [seg] : [];
     });

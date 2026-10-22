@@ -59,11 +59,13 @@ const UNKNOWN_GLOVE: NetGloveInfo = { template: null, filter: null, transcripts:
 
 const SECOND = 1000;
 const MINUTE = 60 * SECOND;
-export const HOUR = 60 * MINUTE;
+const HOUR = 60 * MINUTE;
 /** A `HistoryHour`'s identity: what `net_hours` is keyed by (null run and tool as ''). */
 export const hourKey = (hour: number, run: string | null, key: string, tool: string | null) => `${hour}|${run ?? ''}|${key}|${tool ?? ''}`;
 const byHour = (a: HistoryHour, b: HistoryHour) =>
   a.hour - b.hour || (a.run ?? '').localeCompare(b.run ?? '') || a.key.localeCompare(b.key) || (a.tool ?? '').localeCompare(b.tool ?? '');
+/** Copies of `hours`, in `net_hours` order. */
+const sortedHours = (hours: Iterable<HistoryHour>) => [...hours].sort(byHour).map((h) => ({ ...h }));
 /** How long after its collector's stop a record still belongs to that run. */
 const RUN_STOP_GRACE_MS = 5 * SECOND;
 /** 1 s buckets are kept for this long, then folded into 1 min buckets for the session. */
@@ -516,13 +518,17 @@ export class NetStore extends EventEmitter {
    * stop by moments, hence the grace.
    */
   private runAt(s: SessionData, t: number): HistoryRun | null {
-    s.runOrder ??= [...s.gateRuns.values()].sort((a, b) => a.started - b.started);
     let found: HistoryRun | null = null;
-    for (const r of s.runOrder) {
+    for (const r of this.runsByStart(s)) {
       if (r.started > t) break;
       found = r;
     }
     return found && (found.ended === null || t <= found.ended + RUN_STOP_GRACE_MS) ? found : null;
+  }
+
+  /** The collector's runs by start (`runOrder`, rebuilt when a run is added or starts earlier). */
+  private runsByStart(s: SessionData): HistoryRun[] {
+    return (s.runOrder ??= [...s.gateRuns.values()].sort((a, b) => a.started - b.started));
   }
 
   /** A record from before the kept watermark: the kept rows hold it, under the flow's key then. */
@@ -1169,9 +1175,8 @@ export class NetStore extends EventEmitter {
         tool: d.tools[0] ?? null, firstSeen: d.firstSeen, lastSeen: d.lastSeen, bytesUp: d.bytesUp, bytesDown: d.bytesDown,
         flows: d.flows, blocked: d.blocked, lastState: d.state, hop: d.flags.hop,
       })),
-      hours: (changedHours ? [...s.dirtyHours].map((k) => s.hours.get(k)!) : [...s.hours.values()])
-        .sort(byHour).map((h) => ({ ...h })),
-      runs: [...s.gateRuns.values()].map((r) => ({ ...r })),
+      hours: sortedHours(changedHours ? [...s.dirtyHours].map((k) => s.hours.get(k)!) : s.hours.values()),
+      runs: this.runsByStart(s).map((r) => ({ ...r })),
     };
   }
 
@@ -1183,13 +1188,13 @@ export class NetStore extends EventEmitter {
   /** Traffic per hour per destination, oldest first (`HistoryHour`). */
   hourly(token: string): HistoryHour[] {
     const s = this.sessions.get(token);
-    return s ? [...s.hours.values()].sort(byHour).map((h) => ({ ...h })) : [];
+    return s ? sortedHours(s.hours.values()) : [];
   }
 
   /** The collector's runs, oldest first (`HistoryRun`). */
   gateRuns(token: string): HistoryRun[] {
     const s = this.sessions.get(token);
-    return s ? [...s.gateRuns.values()].sort((a, b) => a.started - b.started).map((r) => ({ ...r })) : [];
+    return s ? this.runsByStart(s).map((r) => ({ ...r })) : [];
   }
 
   /** Forwarder runs that are over (for the cross-check against glove's `ended_runs`). */

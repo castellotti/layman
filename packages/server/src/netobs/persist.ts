@@ -27,6 +27,12 @@ interface RunRow {
   token: string; run: string; started: number; ended: number | null; inferred: number;
 }
 
+interface DestRow {
+  token: string; host: string; port: number; group_key: string; last_ip: string | null; scope: string | null; resolution: string | null;
+  tool: string | null; first_seen: number; last_seen: number; bytes_up: number; bytes_down: number; flows: number; blocked: number;
+  last_state: string | null; hop: number;
+}
+
 /** Rows by token. */
 function byTokenOf<R extends { token: string }, T>(rows: R[], map: (r: R) => T): Map<string, T[]> {
   const out = new Map<string, T[]>();
@@ -36,11 +42,6 @@ function byTokenOf<R extends { token: string }, T>(rows: R[], map: (r: R) => T):
     else out.set(r.token, [map(r)]);
   }
   return out;
-}
-interface DestRow {
-  token: string; host: string; port: number; group_key: string; last_ip: string | null; scope: string | null; resolution: string | null;
-  tool: string | null; first_seen: number; last_seen: number; bytes_up: number; bytes_down: number; flows: number; blocked: number;
-  last_state: string | null; hop: number;
 }
 
 const json = <T>(s: string | null): T | null => {
@@ -61,20 +62,16 @@ export class SqliteNetHistory implements NetHistory {
 
   load(): HistorySession[] {
     const sessions = this.db.prepare('SELECT * FROM net_sessions').all() as SessionRow[];
-    const dests = this.db.prepare('SELECT * FROM net_destinations').all() as DestRow[];
-    const byToken = new Map<string, HistoryDest[]>();
-    for (const d of dests) {
-      const list = byToken.get(d.token) ?? [];
+    const byToken = byTokenOf(this.db.prepare('SELECT * FROM net_destinations').all() as DestRow[], (d): HistoryDest => {
       // `@service` keys (no host) are stored with the key as the host and port 0.
       const host = d.host.startsWith('@') ? null : d.host;
-      list.push({
+      return {
         key: destKey(host, d.port, d.host.slice(1)), host, port: host === null ? null : d.port,
         groupKey: d.group_key, lastIp: d.last_ip, scope: d.scope, resolution: d.resolution, tool: d.tool,
         firstSeen: d.first_seen, lastSeen: d.last_seen, bytesUp: d.bytes_up, bytesDown: d.bytes_down, flows: d.flows, blocked: d.blocked,
         lastState: d.last_state as NetState | null, hop: d.hop === 1,
-      });
-      byToken.set(d.token, list);
-    }
+      };
+    });
     const hours = byTokenOf(this.db.prepare('SELECT * FROM net_hours ORDER BY hour, run, dest_key, tool').all() as HourRow[], (h) => ({
       hour: h.hour, run: h.run === '' ? null : h.run, key: h.dest_key, tool: h.tool === '' ? null : h.tool, hop: h.hop === 1,
       bytesUp: h.bytes_up, bytesDown: h.bytes_down, flows: h.flows, blocked: h.blocked, first: h.first_t, last: h.last_t,

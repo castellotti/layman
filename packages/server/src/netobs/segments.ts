@@ -81,21 +81,25 @@ export interface NetSegments {
 }
 
 /** One run's traffic in one hour, its destinations together. */
-interface RunHour {
+interface RunHour extends Tally {
   hour: number;
   run: string | null;
+  /** First and last model call in the hour, or null for none. */
+  llm: { first: number; last: number } | null;
+}
+
+/** What a set of hour rows add up to. */
+interface Tally {
   bytesUp: number;
   bytesDown: number;
   flows: number;
   blocked: number;
   first: number;
   last: number;
-  /** First and last model call in the hour, or null for none. */
-  llm: { first: number; last: number } | null;
 }
 
 /** Add an hour row. A hop's bytes and flows are the next leg's too, so they count there, not here. */
-function add(into: { bytesUp: number; bytesDown: number; flows: number; blocked: number; first: number; last: number }, h: HistoryHour): void {
+function add(into: Tally, h: HistoryHour): void {
   if (!h.hop) {
     into.bytesUp += h.bytesUp;
     into.bytesDown += h.bytesDown;
@@ -138,10 +142,10 @@ export function sessionHours(hours: readonly HistoryHour[]): HourActivity[] {
  * with no stop written ended at its last activity, as far as anyone can tell.
  */
 export function runSegments(runs: readonly HistoryRun[], hours: readonly HistoryHour[], live: boolean): RunSegment[] {
-  const totals = new Map<string, { bytesUp: number; bytesDown: number; flows: number; blocked: number; first: number; last: number }>();
+  const totals = new Map<string, Tally>();
   for (const h of hours) {
     if (h.run === null) continue;
-    const t = totals.get(h.run) ?? { bytesUp: 0, bytesDown: 0, flows: 0, blocked: 0, first: h.first, last: h.last };
+    const t = totals.get(h.run) ?? blank(h);
     add(t, h);
     totals.set(h.run, t);
   }
@@ -159,7 +163,11 @@ export function burstSegments(hours: readonly HistoryHour[], gapMs = DEFAULT_BUR
   const rh = runHours(hours);
   const basis = rh.some((h) => h.llm) ? 'inference' : 'traffic';
   const byRun = new Map<string | null, RunHour[]>();
-  for (const h of rh) byRun.set(h.run, [...(byRun.get(h.run) ?? []), h]);
+  for (const h of rh) {
+    const list = byRun.get(h.run);
+    if (list) list.push(h);
+    else byRun.set(h.run, [h]);
+  }
   const bursts: BurstSegment[] = [];
   for (const [run, list] of byRun) {
     // Each burst's span in active times, and the hours it covers (for its totals).
