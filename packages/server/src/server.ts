@@ -42,6 +42,7 @@ import { HighlightStore } from './db/highlights.js';
 import { TurnStore } from './turns/store.js';
 import { registerTurnRoutes } from './routes/turns.js';
 import { NetObs } from './netobs/index.js';
+import { parseRange } from './netobs/range.js';
 import { registerNetRoutes } from './netobs/routes.js';
 import { SqliteNetHistory } from './netobs/persist.js';
 import { registerTtsRoutes } from './routes/tts.js';
@@ -1779,7 +1780,7 @@ export function createServer(config: LaymanConfig): LaymanServer {
             const message = JSON.parse(String(data)) as ClientMessage;
             // Per-socket, so it cannot go through the socket-less handler below.
             if (message.type === 'net:subscribe') {
-              netObs.subscribe(ws, typeof message.token === 'string' ? message.token : null);
+              netObs.subscribe(ws, typeof message.token === 'string' ? message.token : null, parseRange(message.range));
               return;
             }
             if (message.type === 'net:rules:apply') {

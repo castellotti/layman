@@ -63,6 +63,20 @@ function compareKeys(a: [string, number], b: [string, number]): number {
   return a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : a[1] - b[1];
 }
 
+/** `<base>`'s rotated files in `dir`, oldest first (the live file is not among them). */
+export function rotatedFiles(dir: string, base: string): Array<{ file: string; key: [string, number] }> {
+  let names: string[];
+  try {
+    names = readdirSync(dir);
+  } catch {
+    return [];
+  }
+  return names
+    .map((file) => ({ file, key: rotationKey(base, file) }))
+    .filter((r): r is { file: string; key: [string, number] } => r.key !== null)
+    .sort((a, b) => compareKeys(a.key, b.key));
+}
+
 function sizeOf(path: string): number | null {
   try {
     const st = statSync(path);
@@ -81,7 +95,7 @@ function startsWith(fd: number, head: Buffer): boolean {
 }
 
 /** Split `partial + chunk` into complete lines, returning the new partial. */
-function splitLines(partial: Buffer, chunk: Buffer, out: string[]): Buffer {
+export function splitLines(partial: Buffer, chunk: Buffer, out: string[]): Buffer {
   const buf = partial.length ? Buffer.concat([partial, chunk]) : chunk;
   let start = 0;
   for (let i = buf.indexOf(NEWLINE); i !== -1; i = buf.indexOf(NEWLINE, start)) {
@@ -144,16 +158,7 @@ export class NdjsonTailer {
   }
 
   private rotated(): Array<{ file: string; key: [string, number] }> {
-    let names: string[];
-    try {
-      names = readdirSync(this.dir);
-    } catch {
-      return [];
-    }
-    return names
-      .map((file) => ({ file, key: rotationKey(this.base, file) }))
-      .filter((r): r is { file: string; key: [string, number] } => r.key !== null)
-      .sort((a, b) => compareKeys(a.key, b.key));
+    return rotatedFiles(this.dir, this.base);
   }
 
   /**

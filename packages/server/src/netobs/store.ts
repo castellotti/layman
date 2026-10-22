@@ -1119,6 +1119,7 @@ export class NetStore extends EventEmitter {
       emptyFolded: s.stateCounts.get('empty') ?? 0,
       historyTruncated: s.historyTruncated,
       historyOnly: s.historyOnly,
+      range: null,
     };
   }
 

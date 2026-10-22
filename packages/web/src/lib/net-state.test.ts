@@ -13,7 +13,7 @@ const snapshot = (token: string, over: Partial<NetSnapshot> = {}): NetSnapshot =
   rules: rulesView({ exists: false, file: null }),
   destinations: [dest('arxiv.org:443'), dest('gone.example:443')], flows: [flow('f1')], buckets: [{ t: 1000, up: 1, down: 2 }],
   totals: totals({ flows: 1 }), counters: { records: 1, invalid: 0, skipped: 0, gaps: 0 }, emptyFolded: 0,
-  historyTruncated: false, historyOnly: false, ...over,
+  historyTruncated: false, historyOnly: false, range: null, ...over,
 });
 const delta = (over: Partial<NetDelta> = {}): NetDelta => ({
   flows: [], destinations: [], removedDestinations: [], buckets: [], totals: totals(),
@@ -40,7 +40,7 @@ describe('applyNetMessage', () => {
   });
 
   it('drops a delta that arrives before the snapshot', () => {
-    const s = applyNetMessage(subscribed('a'), { type: 'net:delta', token: 'a', delta: delta({ flows: [flow('f9')] }) });
+    const s = applyNetMessage(subscribed('a'), { type: 'net:delta', token: 'a', range: null, delta: delta({ flows: [flow('f9')] }) });
     expect(s.data).toBeNull();
   });
 
@@ -53,8 +53,8 @@ describe('applyNetMessage', () => {
       buckets: [{ t: 1000, up: 5, down: 6 }, { t: 2000, up: 1, down: 1 }],
       totals: totals({ flows: 2 }),
     });
-    s = applyNetMessage(s, { type: 'net:delta', token: 'a', delta: d });
-    s = applyNetMessage(s, { type: 'net:delta', token: 'a', delta: d });
+    s = applyNetMessage(s, { type: 'net:delta', token: 'a', range: null, delta: d });
+    s = applyNetMessage(s, { type: 'net:delta', token: 'a', range: null, delta: d });
     expect([...s.data!.flows.keys()].sort()).toEqual(['f1', 'f2']);
     expect(s.data!.flows.get('f1')!.bytes).toEqual({ up: 9, down: 90 });
     expect([...s.data!.destinations.keys()]).toEqual(['arxiv.org:443']);
@@ -66,7 +66,7 @@ describe('applyNetMessage', () => {
   it('bounds closed flows but never evicts an open one', () => {
     let s = applyNetMessage(subscribed('a'), { type: 'net:snapshot', token: 'a', snapshot: snapshot('a') });
     const closed = Array.from({ length: MAX_CLOSED_FLOWS + 10 }, (_, i) => flow(`c${i}`, { phase: 'close', lastT: i }));
-    s = applyNetMessage(s, { type: 'net:delta', token: 'a', delta: delta({ flows: closed }) });
+    s = applyNetMessage(s, { type: 'net:delta', token: 'a', range: null, delta: delta({ flows: closed }) });
     expect(s.data!.flows.size).toBe(MAX_CLOSED_FLOWS + 1);
     expect(s.data!.flows.has('f1')).toBe(true);
     expect(s.data!.flows.has('c0')).toBe(false);
@@ -79,7 +79,7 @@ describe('applyNetMessage', () => {
     s = applyNetMessage(s, { type: 'net:rules', token: 'a', rules: rulesView({ file: null, readError: 'bad' }) });
     expect(s.data!.rules.readError).toBe('bad');
     const exit = { v: 1 as const, type: 'exit' as const, t: 't', env: 'a', session: 'a', kind: 'vpn', ip: '1.2.3.4', country: 'Sweden', city: null, lat: null, lon: null, source: 'x', healthy: true };
-    s = applyNetMessage(s, { type: 'net:exit', token: 'a', exit });
+    s = applyNetMessage(s, { type: 'net:exit', token: 'a', range: null, exit });
     expect(s.data!.exit?.country).toBe('Sweden');
     expect(s.data!.exits).toHaveLength(1);
   });

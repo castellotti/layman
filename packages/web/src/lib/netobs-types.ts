@@ -637,6 +637,27 @@ export interface NetSessionSummary {
   historyOnly: boolean;
 }
 
+/** A time window over a glove session's records (epoch ms). `to: null` runs until now and stays live. */
+export interface NetRange {
+  from: number;
+  to: number | null;
+}
+
+/** What a ranged snapshot covers, and what it could not. */
+export interface NetRangeInfo extends NetRange {
+  /** The range's key (`rangeKey`): every frame for this range carries it. */
+  key: string;
+  /**
+   * The earliest record time in the files read, or null when none were. Later than `from`
+   * means the range starts before what glove still keeps (or `truncated` skipped it).
+   */
+  filesFrom: number | null;
+  /** The scan reached its byte budget, so the range's oldest files were not read. */
+  truncated: boolean;
+  /** Bytes of glove's files read to build it. */
+  scannedBytes: number;
+}
+
 export interface NetSnapshot {
   token: string;
   session: NetSessionFile | null;
@@ -658,6 +679,11 @@ export interface NetSnapshot {
   historyTruncated: boolean;
   /** glove's files for it are gone: totals and destinations only, from what Layman kept. */
   historyOnly: boolean;
+  /**
+   * The time range it covers, or null for All records. A ranged snapshot is built from
+   * glove's files for that window (`netobs/range.ts`), never filtered from this one.
+   */
+  range: NetRangeInfo | null;
 }
 
 /** Changes since the previous delta. Every entry is the latest full value (replace, never add). */
@@ -821,8 +847,11 @@ export interface TraceView {
 export type NetServerMessage =
   | { type: 'net:sessions'; sessions: NetSessionSummary[]; notObservable: NetNotObservable[]; registry: GloveRegistryView }
   | { type: 'net:snapshot'; token: string; snapshot: NetSnapshot }
-  | { type: 'net:delta'; token: string; delta: NetDelta }
+  /** `range`: the key of the range it is for (`NetRangeInfo.key`), or null for All records. */
+  | { type: 'net:delta'; token: string; range: string | null; delta: NetDelta }
   | { type: 'net:status'; token: string; status: NetGateView }
-  | { type: 'net:exit'; token: string; exit: ExitRecord | null }
+  | { type: 'net:exit'; token: string; range: string | null; exit: ExitRecord | null }
   | { type: 'net:rules'; token: string; rules: RulesView }
-  | { type: 'net:rules:result'; token: string; opId: string; ok: boolean; error: string | null };
+  | { type: 'net:rules:result'; token: string; opId: string; ok: boolean; error: string | null }
+  /** A ranged snapshot being built: how much of glove's files it has read. */
+  | { type: 'net:range:progress'; token: string; range: string; scannedBytes: number; totalBytes: number };

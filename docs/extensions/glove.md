@@ -457,6 +457,49 @@ accumulates nothing. The list is re-broadcast only when something the picker sho
 it: `GET /api/net/sessions`, `/api/net/sessions/:token` (the snapshot), `…/flows?since=&limit=`, and
 `…/buckets?window=60s|5m|1h|session`.
 
+### Time ranges (`netobs/range.ts`)
+
+`net:subscribe { token, range: { from, to } }` (epoch ms; `to: null` means until now) shows one window of
+a session instead of All records. Without a `range`, nothing changes: the snapshot is the live store's,
+with `range: null`.
+
+**A range is built from glove's files, never filtered from the live view.** Layman holds only the newest
+records in memory (the 64 MB backfill budget), and the kept totals have no time axis, so a past window is
+not there to filter. On a real session with 260 MB of flow files, the live store held about a quarter of
+them. The window's records go into a fresh `NetStore`, so a range is counted by the same code as All
+records, with one addition, the clip:
+
+- A flow is in the range when it has a record in it. Its bytes in the range are what moved during it: its
+  cumulative bytes at its last record in the range, less those at its last record *before* the range. A
+  pooled connection opened yesterday and reused for one exchange counts only what that exchange moved.
+- To find each open flow's bytes at `from`, the scan starts an hour early (`LEAD_IN_MS`). glove writes an
+  `update` for an open flow every few seconds (measured: 3 s typically, 30 s at the 99th percentile, 29 min
+  at most), so a flow open at `from` has a record in the lead-in. A flow idle for longer than the lead-in
+  would count from zero.
+- A refusal counts when its record is in the range. Exits are read whole: the one shown is the last at or
+  before `to`.
+- The gate, rules and session file are the current ones. glove keeps no history of them, and the controls
+  act on the gate now. Destinations' predicted verdicts follow rule changes in every range.
+
+Which files are read is decided from each file's first and last record times, so files outside the window
+(less the lead-in) are skipped. A file's read stops at the first record more than a minute past `to`.
+Measured on a copy of that session: everything (264 MB) in 2.1 s, one multi-day run in 1.2 s, one hour in
+under 0.3 s. The scan reads at most 512 MB (`rangeBudgetBytes`), newest files first, and says so
+(`range.truncated`, which also sets `historyTruncated`). `range.filesFrom` is the earliest record the
+range could read: later than `from` means the window starts before what glove still keeps. The scan reads
+1 MB chunks asynchronously, so it never blocks hooks, and `net:range:progress` frames (at most 4 a
+second) report how far it has got.
+
+One built range is shared by every socket that asks for it. The four most recently used, once nobody is
+looking at them, are kept for the next subscriber (switching tabs, Back). A range still being read when
+its last subscriber leaves is dropped, which stops its scan, and a socket that moved on never receives
+the range it left. A range that reaches into the present (or ends later) follows the live reader: each
+newly read record is handed to it. A record that arrives while the scan runs is queued and applied after,
+which is harmless because a store dedupes flow records by id and the range dedupes exits. A range that
+ended gets no deltas. `net:delta` and `net:exit` carry the range's key (`range`, null for All records),
+so a client can drop frames for a range it has left. `net:status` and `net:rules` go to every subscriber
+of the session.
+
 ### The client shell
 
 The header gains `Network  Map  Topology  Trace` between their own dividers — **only** when

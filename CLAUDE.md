@@ -150,6 +150,11 @@ linked above.
    store subtracts what the re-read files already account for, so nothing is counted twice and
    traffic from deleted files is kept. A glove session whose files are gone is listed, history only.
    Change the counting only with `history.test.ts`, which restarts at every record.
+   A **time range** (`net:subscribe { token, range }`, `netobs/range.ts`) is built on the server from
+   glove's files into a fresh `NetStore`, never filtered from the live view or on the client: memory
+   holds only the newest records, and the rollups have no time axis. Keep it that way so a range and
+   All records are counted by the same code. The only addition is the clip (a flow's bytes in a range
+   are what moved during it), and `range.test.ts` holds a range around everything equal to All records.
    Design and rules: `docs/extensions/glove.md` → Network.
 
 5. **OpenCode plugin** (`docs/harnesses/opencode.md`): a bidirectional plugin (`packages/opencode-plugin`)

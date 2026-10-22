@@ -9,9 +9,10 @@
 import { NetSessionSource, type GloveSessionInfo, type NetSessionLocation } from './discovery.js';
 import { RulesControl, type ApplyResult } from './control.js';
 import { GeoLocator } from './geo.js';
-import { parseLine, parseSessionFile, parseStatus } from './parse.js';
+import { parseLine, parseSessionFile, parseStatus, type ParsedLine } from './parse.js';
 import type { NetHistory } from './history.js';
 import { NetStore } from './store.js';
+import { DEFAULT_RANGE_SCAN_BYTES, RangeView, buildRange, rangeKey } from './range.js';
 import { DEFAULT_BACKFILL_BYTES, JsonFileWatcher, NdjsonTailer } from './tail.js';
 import type {
   ExitRecord,
@@ -21,6 +22,8 @@ import type {
   NetGateView,
   NetSessionFile,
   NetNotObservable,
+  NetRange,
+  NetRangeInfo,
   NetSessionSummary,
   NetSnapshot,
   RulesOp,
@@ -37,12 +40,15 @@ export type * from './types.js';
 export type NetServerMessage =
   | { type: 'net:sessions'; sessions: NetSessionSummary[]; notObservable: NetNotObservable[]; registry: GloveRegistryView }
   | { type: 'net:snapshot'; token: string; snapshot: NetSnapshot }
-  | { type: 'net:delta'; token: string; delta: NetDelta }
+  /** `range`: the key of the range it is for (`NetRangeInfo.key`), or null for All records. */
+  | { type: 'net:delta'; token: string; range: string | null; delta: NetDelta }
   | { type: 'net:status'; token: string; status: NetGateView }
-  | { type: 'net:exit'; token: string; exit: ExitRecord | null }
+  | { type: 'net:exit'; token: string; range: string | null; exit: ExitRecord | null }
   | { type: 'net:rules'; token: string; rules: RulesView }
   /** The outcome of one `net:rules:apply`, to the socket that sent it. Confirmation follows in `net:rules`. */
-  | { type: 'net:rules:result'; token: string; opId: string; ok: boolean; error: string | null };
+  | { type: 'net:rules:result'; token: string; opId: string; ok: boolean; error: string | null }
+  /** A ranged snapshot being built: how much of glove's files it has read. */
+  | { type: 'net:range:progress'; token: string; range: string; scannedBytes: number; totalBytes: number };
 
 /** What server.ts's WebSocket handler holds. */
 export interface NetSocket {
@@ -70,9 +76,34 @@ export interface NetObsOptions {
   history?: NetHistory;
   /** How often rollups are written (30 s). */
   persistMs?: number;
+  /** Most of glove's files one time range reads (`range.ts`). */
+  rangeBudgetBytes?: number;
 }
 
 const PERSIST_MS = 30_000;
+/** Built ranges kept for a later subscriber once nobody is looking at them. */
+export const MAX_IDLE_RANGES = 4;
+/** At most one `net:range:progress` per range per this interval. */
+const PROGRESS_MS = 250;
+
+/** One socket's subscription: a glove session, and the key of its time range (null: All records). */
+interface Sub {
+  token: string | null;
+  range: string | null;
+}
+
+/** A time range of one session (`range.ts`), shared by every socket that asks for it. */
+interface RangeEntry {
+  view: RangeView;
+  /** Null until the scan has finished. */
+  info: NetRangeInfo | null;
+  /** Records read live while the scan ran, applied once it is done. Null after. */
+  pending: ParsedLine[] | null;
+  lastUsed: number;
+  lastProgress: number;
+}
+
+const entryId = (token: string, key: string) => `${token}|${key}`;
 
 class SessionReader {
   readonly flows: NdjsonTailer;
@@ -88,8 +119,11 @@ class SessionReader {
     this.session = new JsonFileWatcher(join(loc.netDir, 'session.json'), (t) => parseSessionFile(JSON.parse(t)));
   }
 
-  /** Read everything new into the store. session.json first, so aggregates can name service endpoints. */
-  poll(store: NetStore, now: number): void {
+  /**
+   * Read everything new into the store. session.json first, so aggregates can name service endpoints.
+   * `onRecord` sees each record too: the ranged views that reach into the present follow it.
+   */
+  poll(store: NetStore, now: number, onRecord?: (p: ParsedLine) => void): void {
     const token = this.loc.token;
     if (this.session.poll()) store.setSessionFile(token, this.session.value, now);
 
@@ -100,6 +134,7 @@ class SessionReader {
       if (p.kind === 'exit') store.ingestExit(token, p.record);
       else if (p.kind === 'invalid') invalid++;
       else skipped++;
+      onRecord?.(p);
     }
     for (const line of this.flows.poll()) {
       const p = parseLine(line);
@@ -107,6 +142,7 @@ class SessionReader {
       else if (p.kind === 'gate') store.ingestGate(token, p.record, now);
       else if (p.kind === 'invalid') invalid++;
       else skipped++;
+      onRecord?.(p);
     }
     const gaps = this.flows.gaps + this.exits.gaps - this.gapsSeen;
     this.gapsSeen += gaps;
@@ -125,7 +161,11 @@ export class NetObs {
   readonly store: NetStore;
   private readonly source: NetSessionSource;
   private readonly readers = new Map<string, SessionReader>();
-  private readonly subs = new Map<NetSocket, string | null>();
+  private readonly subs = new Map<NetSocket, Sub>();
+  /** Time ranges by `entryId`. */
+  private readonly ranges = new Map<string, RangeEntry>();
+  private readonly rangeBudgetBytes: number;
+  private readonly storeOpts: ConstructorParameters<typeof NetStore>[0];
   private readonly timers = new Map<string, ReturnType<typeof setTimeout>>();
   private pollTimer: ReturnType<typeof setInterval> | null = null;
   private persistTimer: ReturnType<typeof setInterval> | null = null;
@@ -148,19 +188,22 @@ export class NetObs {
     this.source = new NetSessionSource(opts.getGloveHome);
     this.geo = new GeoLocator(opts.getGeoPath ?? (() => ''));
     this.geo.refresh();
-    this.store = new NetStore({ stringFilter: opts.stringFilter, geolocate: (ip) => this.geo.lookup(ip) });
+    this.storeOpts = { stringFilter: opts.stringFilter, geolocate: (ip) => this.geo.lookup(ip) };
+    this.store = new NetStore(this.storeOpts);
+    this.rangeBudgetBytes = opts.rangeBudgetBytes ?? DEFAULT_RANGE_SCAN_BYTES;
     this.pollMs = opts.pollMs ?? POLL_MS;
     this.coalesceMs = opts.coalesceMs ?? COALESCE_MS;
     this.budgetBytes = opts.budgetBytes ?? DEFAULT_BACKFILL_BYTES;
     this.history = opts.history ?? null;
     this.persistMs = opts.persistMs ?? PERSIST_MS;
 
-    this.store.on('changed', (token: string) => this.onChanged(token));
+    this.store.on('changed', (token: string) => this.onChanged(this.store, token, null));
+    // The gate and the rules are the same whatever the range: every subscriber of the session gets them.
     this.store.on('status', (token: string) => {
       const status = this.store.gate(token);
       if (status) this.sendTo(token, { type: 'net:status', token, status });
     });
-    this.store.on('exit', (token: string) => this.sendTo(token, { type: 'net:exit', token, exit: this.store.exit(token) }));
+    this.store.on('exit', (token: string) => this.sendTo(token, { type: 'net:exit', token, range: null, exit: this.store.exit(token) }, null));
     this.store.on('rules', (token: string) => {
       const rules = this.store.rules(token);
       if (rules) this.sendTo(token, { type: 'net:rules', token, rules });
@@ -199,6 +242,7 @@ export class NetObs {
       // still held the old signature would see nothing new and never send it again.
       for (const token of this.readers.keys()) this.control.forget(token);
       this.readers.clear();
+      this.ranges.clear();
       for (const token of this.store.tokens()) this.store.remove(token);
       this.registry = { state: 'absent', detail: '' };
       this.notObservable = [];
@@ -228,7 +272,7 @@ export class NetObs {
         this.readers.set(loc.token, new SessionReader(loc, this.budgetBytes));
       }
       try {
-        this.readers.get(loc.token)!.poll(this.store, now);
+        this.readers.get(loc.token)!.poll(this.store, now, this.forwarder(loc.token, now));
         this.noteGlove(loc, info);
         this.pollRules(loc, now);
       } catch (err) {
@@ -245,7 +289,24 @@ export class NetObs {
       if (!seen.has(token)) this.control.forget(token);
     }
     this.store.tick(now);
+    for (const e of this.ranges.values()) if (e.info) e.view.store.tick(e.view.clock(now));
     this.maybeBroadcastSessions();
+  }
+
+  /**
+   * Where a session's newly read records go besides the live store: every range of it.
+   * A range that ended in the past drops them itself (`RangeView`), so one that reaches
+   * into the present, or ends later today, follows the gate as All records does.
+   */
+  private forwarder(token: string, now: number): ((p: ParsedLine) => void) | undefined {
+    const entries = [...this.ranges.values()].filter((e) => e.view.token === token);
+    if (!entries.length) return undefined;
+    return (p) => {
+      for (const e of entries) {
+        if (e.pending) e.pending.push(p);
+        else e.view.record(p, now);
+      }
+    };
   }
 
   /**
@@ -296,7 +357,14 @@ export class NetObs {
   private pollRules(loc: NetSessionLocation, now: number): void {
     if (!this.control.poll(loc, this.store.statusRecord(loc.token), now)) return;
     this.store.setRules(loc.token, this.control.view(loc.token)!);
-    this.store.setPolicy(loc.token, this.control.sets(loc.token));
+    this.setPolicy(loc.token);
+  }
+
+  /** New rule sets: re-predict every destination's verdict, in All records and in every range. */
+  private setPolicy(token: string): void {
+    const sets = this.control.sets(token);
+    this.store.setPolicy(token, sets);
+    for (const e of this.ranges.values()) if (e.info && e.view.token === token) e.view.store.setPolicy(token, sets);
   }
 
   /**
@@ -309,7 +377,7 @@ export class NetObs {
     if (!loc) return { ok: false, error: `No glove network session '${token}'` };
     const result = this.control.apply(loc, this.store.statusRecord(token), op, opId, now);
     this.store.setRules(token, this.control.view(token)!);
-    this.store.setPolicy(token, this.control.sets(token));
+    this.setPolicy(token);
     return result;
   }
 
@@ -339,25 +407,110 @@ export class NetObs {
 
   /** A new WebSocket: it gets the (small) session list, and nothing else until it subscribes. */
   attach(socket: NetSocket): void {
-    this.subs.set(socket, null);
+    this.subs.set(socket, { token: null, range: null });
     this.send(socket, { type: 'net:sessions', sessions: this.sessions(), notObservable: this.notObservableSessions(), registry: this.registry });
   }
 
   detach(socket: NetSocket): void {
     this.subs.delete(socket);
+    this.pruneRanges();
   }
 
-  /** One session at a time per socket; null unsubscribes. */
-  subscribe(socket: NetSocket, token: string | null): void {
-    this.subs.set(socket, token);
+  /**
+   * One session at a time per socket; null unsubscribes. With a `range`, the
+   * snapshot is that window's (`range.ts`), sent once its files are read; a
+   * range already built for another socket (or recently) is sent at once.
+   */
+  subscribe(socket: NetSocket, token: string | null, range: NetRange | null = null): void {
+    const key = token !== null && range ? rangeKey(range) : null;
+    this.subs.set(socket, { token, range: key });
+    this.pruneRanges();
     if (token === null) return;
-    const snapshot = this.store.snapshot(token);
-    if (snapshot) this.send(socket, { type: 'net:snapshot', token, snapshot });
+    if (!range) {
+      const snapshot = this.store.snapshot(token);
+      if (snapshot) this.send(socket, { type: 'net:snapshot', token, snapshot });
+      return;
+    }
+    const entry = this.rangeEntry(token, range);
+    if (!entry) return;
+    entry.lastUsed = Date.now();
+    if (entry.info) this.send(socket, { type: 'net:snapshot', token, snapshot: this.rangeSnapshot(entry) });
   }
 
-  private subscribers(token: string): NetSocket[] {
+  /** A time range's entry, starting its scan if it is new. Null for a session Layman has no files for. */
+  private rangeEntry(token: string, range: NetRange): RangeEntry | null {
+    const id = entryId(token, rangeKey(range));
+    const known = this.ranges.get(id);
+    if (known) return known;
+    const loc = this.store.location(token);
+    if (!loc) return null;
+    const entry: RangeEntry = {
+      view: new RangeView(token, range, this.store.sessionFile(token), this.storeOpts),
+      info: null, pending: [], lastUsed: Date.now(), lastProgress: 0,
+    };
+    this.ranges.set(id, entry);
+    const wanted = () => this.ranges.get(id) === entry;
+    void buildRange(entry.view, loc.netDir, {
+      budgetBytes: this.rangeBudgetBytes,
+      cancelled: () => !wanted(),
+      onProgress: (scannedBytes, totalBytes) => {
+        const now = Date.now();
+        if (now - entry.lastProgress < PROGRESS_MS) return;
+        entry.lastProgress = now;
+        this.sendTo(token, { type: 'net:range:progress', token, range: entry.view.key, scannedBytes, totalBytes }, entry.view.key);
+      },
+    }).then((info) => {
+      if (!wanted()) return;
+      for (const p of entry.pending ?? []) entry.view.record(p);
+      entry.pending = null;
+      entry.info = info;
+      // From here `setPolicy` keeps it current, as it does All records.
+      entry.view.store.setPolicy(token, this.control.sets(token));
+      // The snapshot holds everything read so far; deltas start from here.
+      entry.view.store.discardDelta(token);
+      entry.view.store.on('changed', () => this.onChanged(entry.view.store, token, entry.view.key));
+      entry.view.store.on('exit', () => this.sendTo(token, { type: 'net:exit', token, range: entry.view.key, exit: entry.view.store.exit(token) }, entry.view.key));
+      const targets = this.subscribers(token, entry.view.key);
+      if (targets.length) {
+        const json = JSON.stringify({ type: 'net:snapshot', token, snapshot: this.rangeSnapshot(entry) } satisfies NetServerMessage);
+        for (const s of targets) if (s.readyState === 1) s.send(json);
+      }
+    }).catch((err: Error) => {
+      console.warn(`[netobs] ${token}: could not read the range ${entry.view.key}: ${err.message}`);
+      if (wanted()) this.ranges.delete(id);
+    });
+    return entry;
+  }
+
+  private rangeSnapshot(entry: RangeEntry): NetSnapshot {
+    const token = entry.view.token;
+    return entry.view.snapshot({
+      session: this.store.sessionFile(token),
+      gate: this.store.gate(token),
+      rules: this.store.rules(token),
+    }, entry.info!);
+  }
+
+  /**
+   * Drop ranges nobody is subscribed to, keeping the `MAX_IDLE_RANGES` most recently
+   * used finished ones for the next subscriber (switching tabs, or Back). A range
+   * still being read with nobody waiting is dropped, which stops its scan.
+   */
+  private pruneRanges(): void {
+    const used = new Set<string>();
+    for (const sub of this.subs.values()) if (sub.token !== null && sub.range !== null) used.add(entryId(sub.token, sub.range));
+    const idle = [...this.ranges].filter(([id]) => !used.has(id));
+    for (const [id, e] of idle) if (!e.info) this.ranges.delete(id);
+    const kept = idle.filter(([, e]) => e.info).sort((a, b) => b[1].lastUsed - a[1].lastUsed);
+    for (const [id] of kept.slice(MAX_IDLE_RANGES)) this.ranges.delete(id);
+  }
+
+  /** A session's subscribers: all of them, or only those of one range (null: All records). */
+  private subscribers(token: string, range?: string | null): NetSocket[] {
     const out: NetSocket[] = [];
-    for (const [socket, t] of this.subs) if (t === token) out.push(socket);
+    for (const [socket, sub] of this.subs) {
+      if (sub.token === token && (range === undefined || sub.range === range)) out.push(socket);
+    }
     return out;
   }
 
@@ -365,32 +518,33 @@ export class NetObs {
     if (socket.readyState === 1) socket.send(JSON.stringify(msg));
   }
 
-  private sendTo(token: string, msg: NetServerMessage): void {
-    const targets = this.subscribers(token);
+  private sendTo(token: string, msg: NetServerMessage, range?: string | null): void {
+    const targets = this.subscribers(token, range);
     if (!targets.length) return;
     const json = JSON.stringify(msg);
     for (const s of targets) if (s.readyState === 1) s.send(json);
   }
 
   /**
-   * Coalesce to one delta per session per `coalesceMs`: glove already writes at
-   * about 1 Hz per flow, and a burst of opens must not become a burst of frames
-   * to every dashboard. The trailing timer guarantees the last state of a burst
-   * is sent. A session nobody is watching accumulates nothing — a subscriber
-   * starts from a snapshot.
+   * Coalesce to one delta per session (and range) per `coalesceMs`: glove already
+   * writes at about 1 Hz per flow, and a burst of opens must not become a burst of
+   * frames to every dashboard. The trailing timer guarantees the last state of a
+   * burst is sent. A session nobody is watching accumulates nothing — a
+   * subscriber starts from a snapshot.
    */
-  private onChanged(token: string): void {
-    if (!this.subscribers(token).length) {
-      this.store.discardDelta(token);
+  private onChanged(store: NetStore, token: string, range: string | null): void {
+    if (!this.subscribers(token, range).length) {
+      store.discardDelta(token);
       return;
     }
-    if (this.timers.has(token)) return;
+    const timer = range === null ? token : entryId(token, range);
+    if (this.timers.has(timer)) return;
     this.timers.set(
-      token,
+      timer,
       setTimeout(() => {
-        this.timers.delete(token);
-        const delta = this.store.takeDelta(token);
-        if (delta) this.sendTo(token, { type: 'net:delta', token, delta });
+        this.timers.delete(timer);
+        const delta = store.takeDelta(token);
+        if (delta) this.sendTo(token, { type: 'net:delta', token, range, delta }, range);
       }, this.coalesceMs),
     );
   }
