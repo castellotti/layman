@@ -271,6 +271,7 @@ export class NetObs {
     }
 
     const seen = new Set<string>();
+    const watched = this.watchedRanges();
     for (const { loc, info } of found.sessions) {
       seen.add(loc.token);
       if (!this.readers.has(loc.token)) {
@@ -279,10 +280,10 @@ export class NetObs {
         this.readers.set(loc.token, new SessionReader(loc, this.budgetBytes));
       }
       try {
-        const watched = this.watchedRanges(loc.token);
+        const mine = watched.filter((e) => e.view.token === loc.token);
         // session.json first, as for the live store: which services are hops decides how bytes count.
-        this.readers.get(loc.token)!.poll(this.store, now, watched.length ? (p) => this.forward(watched, p, now) : undefined);
-        for (const e of watched) e.view.setSessionFile(this.store.sessionFile(loc.token), now);
+        this.readers.get(loc.token)!.poll(this.store, now, mine.length ? (p) => this.forward(mine, p, now) : undefined);
+        for (const e of mine) e.view.setSessionFile(this.store.sessionFile(loc.token), now);
         this.noteGlove(loc, info);
         this.pollRules(loc, now);
       } catch (err) {
@@ -299,7 +300,7 @@ export class NetObs {
       if (!seen.has(token)) this.control.forget(token);
     }
     this.store.tick(now);
-    for (const e of this.watchedRanges()) {
+    for (const e of watched) {
       if (!e.info) continue;
       e.view.store.tick(e.view.clock(now));
       // This poll read everything up to where the scan stopped: nothing more can overlap.
@@ -308,10 +309,10 @@ export class NetObs {
     this.maybeBroadcastSessions();
   }
 
-  /** Ranges somebody is subscribed to (of one session, or all). Only those follow the live reader. */
-  private watchedRanges(token?: string): RangeEntry[] {
+  /** Ranges somebody is subscribed to. Only those follow the live reader. */
+  private watchedRanges(): RangeEntry[] {
     const used = this.rangesInUse();
-    return [...this.ranges].filter(([id, e]) => used.has(id) && (token === undefined || e.view.token === token)).map(([, e]) => e);
+    return [...this.ranges].filter(([id]) => used.has(id)).map(([, e]) => e);
   }
 
   private rangesInUse(): Set<string> {

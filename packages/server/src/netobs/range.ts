@@ -79,14 +79,12 @@ export class RangeView {
    */
   private overlap: Set<string> | null = new Set();
   private readonly overlapFrom: number;
-  private sessionFile: NetSessionFile | null;
 
   constructor(readonly token: string, readonly range: NetRange, session: NetSessionFile | null, opts: NetStoreOptions = {}, now = Date.now()) {
     this.key = rangeKey(range);
     this.store = new NetStore(opts);
     this.store.ensure({ token, netDir: '', controlDir: '', rulesPath: '' });
     // Before any flow: which services are hops decides how their bytes count.
-    this.sessionFile = session;
     this.store.setSessionFile(token, session);
     // Records reach the live reader within a poll of being written; a minute covers glove's own ordering too.
     this.overlapFrom = now - TAIL_SLACK_MS;
@@ -94,8 +92,7 @@ export class RangeView {
 
   /** glove rewrote session.json: re-flag hops here as the live store does. */
   setSessionFile(file: NetSessionFile | null, now = Date.now()): void {
-    if (file === this.sessionFile) return;
-    this.sessionFile = file;
+    if (file === this.store.sessionFile(this.token)) return;
     this.store.setSessionFile(this.token, file, now);
   }
 
@@ -146,10 +143,9 @@ export class RangeView {
     }
     if (p.kind !== 'flow' && p.kind !== 'gate') return;
     if (this.overlap && Date.parse(p.record.t) >= this.overlapFrom) {
-      const r = p.record;
       const k = p.kind === 'flow'
-        ? `f|${p.record.id}|${r.t}|${p.record.phase}|${p.record.bytes.up}|${p.record.bytes.down}`
-        : `g|${p.record.run}|${p.record.event}|${r.t}`;
+        ? `f|${p.record.id}|${p.record.t}|${p.record.phase}|${p.record.bytes.up}|${p.record.bytes.down}`
+        : `g|${p.record.run}|${p.record.event}|${p.record.t}`;
       if (source === 'live' && this.overlap.has(k)) return;
       if (source === 'scan') this.overlap.add(k);
     }
