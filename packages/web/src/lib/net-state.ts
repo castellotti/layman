@@ -174,6 +174,7 @@ export function applyNetMessage(state: NetClientState, msg: NetServerMessage): N
     case 'net:rules':
       return { ...state, data: { ...data, rules: msg.rules } };
     case 'net:range:progress':
+    case 'net:range:error':
       return state;
   }
 }

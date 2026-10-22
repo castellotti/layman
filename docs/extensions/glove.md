@@ -490,15 +490,32 @@ range could read: later than `from` means the window starts before what glove st
 1 MB chunks asynchronously, so it never blocks hooks, and `net:range:progress` frames (at most 4 a
 second) report how far it has got.
 
-One built range is shared by every socket that asks for it. The four most recently used, once nobody is
-looking at them, are kept for the next subscriber (switching tabs, Back). A range still being read when
-its last subscriber leaves is dropped, which stops its scan, and a socket that moved on never receives
-the range it left. A range that reaches into the present (or ends later) follows the live reader: each
-newly read record is handed to it. A record that arrives while the scan runs is queued and applied after,
-which is harmless because a store dedupes flow records by id and the range dedupes exits. A range that
-ended gets no deltas. `net:delta` and `net:exit` carry the range's key (`range`, null for All records),
-so a client can drop frames for a range it has left. `net:status` and `net:rules` go to every subscriber
-of the session.
+glove can rotate while a range is being read. The live path then opens the new, near-empty file, and
+the one the scan meant sits under a rotated name it never planned. After its planned files the scan
+therefore lists them again and reads any rotated file whose first line it has not read: files are known
+by content, as the tailer knows them.
+
+One built range is shared by every socket that asks for it. A range somebody is watching follows the
+live reader: each newly read record is handed to it, along with session.json changes (which services
+are hops) and a new geolocation database. A range that ended drops those records itself, so it never
+changes. A record that arrives while the scan runs is queued and applied after.
+
+The scan and the live reader can both hand over the same record: one written while the scan ran, or
+read by the scan just before the next poll. A store counts a repeated flow record's bytes once, but not
+its record count, and a repeated gate record of an old run would revive that run. So the range remembers
+what the scan read from a minute before it started, skips those records when the live reader repeats
+them, and forgets them after the first poll once it is built. Exits are deduplicated by content.
+
+Once nobody is looking at a range, it is kept for the next subscriber (switching tabs, Back) only if
+it has ended: an idle range no longer follows the live reader, so one reaching into the present would
+go stale. The four most recently used are kept, where "used" is when the last socket left it. A range
+still being read when its last subscriber leaves is dropped, which stops its scan, and so does `stop()`.
+A socket that moved on never receives the range it left.
+
+`net:delta` and `net:exit` carry the range's key (`range`, null for All records), so a client can drop
+frames for a range it has left. `net:status` and `net:rules` go to every subscriber of the session. A
+range that cannot be built gets `net:range:error` instead of a snapshot: an unknown session, a read error,
+or a history-only session, whose files are gone so there is nothing to read a window from.
 
 ### The client shell
 

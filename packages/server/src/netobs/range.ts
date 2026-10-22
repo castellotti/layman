@@ -72,13 +72,31 @@ export class RangeView {
   private readonly baseline = new Map<string, { up: number; down: number }>();
   /** Exit records ingested, so one forwarded live after the scan also read it counts once. */
   private readonly exitSeen = new Set<string>();
+  /**
+   * Flow and gate records the scan read that the live reader may hand over too (`live`):
+   * those written while the scan ran, or just before. Kept from `overlapFrom` on only,
+   * and dropped once the live reader has caught up (`endOverlap`).
+   */
+  private overlap: Set<string> | null = new Set();
+  private readonly overlapFrom: number;
+  private sessionFile: NetSessionFile | null;
 
-  constructor(readonly token: string, readonly range: NetRange, session: NetSessionFile | null, opts: NetStoreOptions = {}) {
+  constructor(readonly token: string, readonly range: NetRange, session: NetSessionFile | null, opts: NetStoreOptions = {}, now = Date.now()) {
     this.key = rangeKey(range);
     this.store = new NetStore(opts);
     this.store.ensure({ token, netDir: '', controlDir: '', rulesPath: '' });
     // Before any flow: which services are hops decides how their bytes count.
+    this.sessionFile = session;
     this.store.setSessionFile(token, session);
+    // Records reach the live reader within a poll of being written; a minute covers glove's own ordering too.
+    this.overlapFrom = now - TAIL_SLACK_MS;
+  }
+
+  /** glove rewrote session.json: re-flag hops here as the live store does. */
+  setSessionFile(file: NetSessionFile | null, now = Date.now()): void {
+    if (file === this.sessionFile) return;
+    this.sessionFile = file;
+    this.store.setSessionFile(this.token, file, now);
   }
 
   /** The clock flows are classified against: the end of a closed range, as things stood then. */
@@ -116,10 +134,32 @@ export class RangeView {
     this.store.ingestExit(this.token, rec);
   }
 
-  record(p: ParsedLine, now = Date.now()): void {
+  /**
+   * One record. `live` ones come from the live reader: a store counts a repeated flow
+   * record's bytes once, but not its record count, and a repeated gate record of an old
+   * run would revive it, so one the scan already read is skipped.
+   */
+  record(p: ParsedLine, now = Date.now(), source: 'scan' | 'live' = 'scan'): void {
+    if (p.kind === 'exit') {
+      this.exit(p.record);
+      return;
+    }
+    if (p.kind !== 'flow' && p.kind !== 'gate') return;
+    if (this.overlap && Date.parse(p.record.t) >= this.overlapFrom) {
+      const r = p.record;
+      const k = p.kind === 'flow'
+        ? `f|${p.record.id}|${r.t}|${p.record.phase}|${p.record.bytes.up}|${p.record.bytes.down}`
+        : `g|${p.record.run}|${p.record.event}|${r.t}`;
+      if (source === 'live' && this.overlap.has(k)) return;
+      if (source === 'scan') this.overlap.add(k);
+    }
     if (p.kind === 'flow') this.flow(p.record, now);
-    else if (p.kind === 'gate') this.gate(p.record, now);
-    else if (p.kind === 'exit') this.exit(p.record);
+    else this.gate(p.record, now);
+  }
+
+  /** The live reader has caught up with what the scan read: no more overlap to skip. */
+  endOverlap(): void {
+    this.overlap = null;
   }
 
   /**
@@ -144,6 +184,8 @@ interface ScanFile {
   size: number;
   first: number | null;
   last: number | null;
+  /** Its first line: which file it is, whatever it is called now (glove renames on rotation). */
+  head: string | null;
 }
 
 function recordTime(line: string): number | null {
@@ -156,19 +198,20 @@ function recordTime(line: string): number | null {
   }
 }
 
-/** A file's first and last record times, from its first and last complete lines. */
-function edges(path: string, size: number): { first: number | null; last: number | null } {
+/** A file's first line, and its first and last record times from its first and last complete lines. */
+function edges(path: string, size: number): { first: number | null; last: number | null; head: string | null } {
   let fd: number;
   try {
     fd = openSync(path, 'r');
   } catch {
-    return { first: null, last: null };
+    return { first: null, last: null, head: null };
   }
   try {
-    const head = Buffer.alloc(Math.min(EDGE_BYTES, size));
-    readSync(fd, head, 0, head.length, 0);
-    const nl = head.indexOf(0x0a);
-    const first = nl === -1 ? null : recordTime(head.subarray(0, nl).toString('utf8'));
+    const buf = Buffer.alloc(Math.min(EDGE_BYTES, size));
+    readSync(fd, buf, 0, buf.length, 0);
+    const nl = buf.indexOf(0x0a);
+    const head = nl === -1 ? null : buf.subarray(0, nl).toString('utf8');
+    const first = head === null ? null : recordTime(head);
     const start = Math.max(0, size - EDGE_BYTES);
     const tail = Buffer.alloc(size - start);
     readSync(fd, tail, 0, tail.length, start);
@@ -176,7 +219,7 @@ function edges(path: string, size: number): { first: number | null; last: number
     const lines = tail.toString('utf8').split('\n').slice(start > 0 ? 1 : 0).filter((l) => l.trim());
     let last: number | null = null;
     for (let i = lines.length - 1; i >= 0 && last === null; i--) last = recordTime(lines[i]);
-    return { first, last };
+    return { first, last, head };
   } finally {
     closeSync(fd);
   }
@@ -199,6 +242,10 @@ function filesOf(netDir: string, base: string): ScanFile[] {
   return out;
 }
 
+/** Whether a file can hold records for `range`, counting the lead-in. */
+const overlaps = (f: ScanFile, range: NetRange) =>
+  (f.last === null || f.last >= range.from - LEAD_IN_MS) && (range.to === null || f.first === null || f.first <= range.to);
+
 /**
  * The flows files that can hold records for `range`, oldest first, within `budget`.
  * Over budget the newest win, as in the backfill, and the range says it was truncated.
@@ -206,8 +253,7 @@ function filesOf(netDir: string, base: string): ScanFile[] {
  */
 export function planScan(netDir: string, range: NetRange, budget: number): { files: ScanFile[]; truncated: boolean; filesFrom: number | null } {
   const all = filesOf(netDir, 'flows');
-  const wanted = all.filter((f) =>
-    (f.last === null || f.last >= range.from - LEAD_IN_MS) && (range.to === null || f.first === null || f.first <= range.to));
+  const wanted = all.filter((f) => overlaps(f, range));
   let left = budget;
   let truncated = false;
   const files: ScanFile[] = [];
@@ -223,29 +269,37 @@ export function planScan(netDir: string, range: NetRange, budget: number): { fil
   return { files, truncated, filesFrom: from };
 }
 
-/** Every complete line of a file, read in chunks so a long scan yields to the event loop. Stops when `onLine` returns false. */
-async function eachLine(path: string, onLine: (line: string) => boolean, onBytes: (n: number) => void): Promise<void> {
+/**
+ * Every complete line of a file, read in chunks so a long scan yields to the event loop.
+ * Stops when `onLine` returns false. Resolves to the first line read: which file it was.
+ */
+async function eachLine(path: string, onLine: (line: string) => boolean, onBytes: (n: number) => void): Promise<string | null> {
   let fh;
   try {
     fh = await open(path, 'r');
   } catch {
-    return;
+    return null;
   }
+  let head: string | null = null;
   try {
     const buf = Buffer.alloc(CHUNK);
     let partial: Buffer = Buffer.alloc(0);
     for (;;) {
       const { bytesRead } = await fh.read(buf, 0, CHUNK, null);
-      if (bytesRead === 0) return;
+      if (bytesRead === 0) return head;
       onBytes(bytesRead);
       const lines: string[] = [];
       partial = splitLines(partial, buf.subarray(0, bytesRead), lines);
-      for (const line of lines) if (!onLine(line)) return;
+      head ??= lines[0] ?? null;
+      for (const line of lines) if (!onLine(line)) return head;
     }
   } finally {
     await fh.close();
   }
 }
+
+/** How many times a scan looks again for files glove rotated while it read. */
+const ROTATION_PASSES = 3;
 
 export interface BuildOptions {
   budgetBytes?: number;
@@ -275,14 +329,29 @@ export async function buildRange(view: RangeView, netDir: string, opts: BuildOpt
     }, onBytes);
   }
   const stopAt = range.to === null ? Infinity : range.to + TAIL_SLACK_MS;
-  for (const f of plan.files) {
-    if (!live()) break;
-    await eachLine(f.path, (line) => {
+  const read = new Set<string>();
+  const scan = async (path: string) => {
+    const head = await eachLine(path, (line) => {
       const p = parseLine(line);
       if ((p.kind === 'flow' || p.kind === 'gate') && Date.parse(p.record.t) > stopAt) return false;
       view.record(p);
       return live();
     }, onBytes);
+    if (head !== null) read.add(head);
+  };
+  for (const f of plan.files) {
+    if (!live()) break;
+    await scan(f.path);
+  }
+  // glove may have rotated while the scan read: the live path then opened its new, near-empty
+  // file, and the one the scan meant is under a rotated name it never planned. Files are known
+  // by their first line, as the tailer knows them by content. What the live file gained after
+  // the scan read it reaches the range through the live reader.
+  for (let pass = 0; pass < ROTATION_PASSES && live(); pass++) {
+    const missed = filesOf(netDir, 'flows').filter((f) =>
+      f.path !== join(netDir, 'flows.ndjson') && f.head !== null && !read.has(f.head) && overlaps(f, range) && (f.last ?? Infinity) >= (plan.files[0]?.first ?? -Infinity));
+    if (!missed.length) break;
+    for (const f of missed) await scan(f.path);
   }
   return { key: view.key, from: range.from, to: range.to, filesFrom: plan.filesFrom, truncated: plan.truncated, scannedBytes: scanned };
 }

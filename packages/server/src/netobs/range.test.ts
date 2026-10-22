@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { appendFileSync, mkdtempSync, rmSync, writeFileSync } from 'fs';
+import { appendFileSync, mkdtempSync, renameSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { NetObs, type NetServerMessage, type NetSocket } from './index.js';
@@ -198,6 +198,35 @@ describe('buildRange: reading glove’s files', () => {
     expect(strip(b.destinations)).toEqual(strip(a.destinations));
   });
 
+  it('reads the file glove rotated away while the scan was reading an older one', async () => {
+    twoDays();
+    const v = new RangeView('e', { from: 0, to: null }, null);
+    let rotated = false;
+    await buildRange(v, dir, {
+      // Mid-scan, while the rotated file is being read: day two rotates, and a new live file starts.
+      onProgress: () => {
+        if (rotated) return;
+        rotated = true;
+        renameSync(join(dir, 'flows.ndjson'), join(dir, 'flows-20261023T000000000Z.ndjson'));
+        writeFileSync(join(dir, 'flows.ndjson'), ndjson([rec('day3', 'close', T0 + 49 * 60 * MIN, 1, 1)]));
+      },
+    });
+    expect(rotated).toBe(true);
+    expect(totalsOf(v).flows).toBe(49);
+  });
+
+  it('does not count a record twice when the scan and the live reader both hand it over', () => {
+    const v = new RangeView('e', { from: 0, to: null }, null, {}, T0);
+    const line = { kind: 'flow' as const, record: rec('f1', 'close', T0 + 1000, 5, 50) };
+    v.record(line, T0, 'scan');
+    v.record(line, T0, 'live');
+    expect(v.store.snapshot('e')!.counters.records).toBe(1);
+    // Once the live reader has caught up, a record it hands over is new, whatever its content.
+    v.endOverlap();
+    v.record(line, T0, 'live');
+    expect(v.store.snapshot('e')!.counters.records).toBe(2);
+  });
+
   it('stops when nobody wants the range any more', async () => {
     twoDays();
     const v = new RangeView('e', { from: 0, to: null }, null);
@@ -308,6 +337,75 @@ describe('NetObs: ranged subscriptions', () => {
     appendFileSync(join(net, 'flows.ndjson'), ndjson([rec('new', 'close', now + 1000, 3, 30)]));
     obs.poll(now + 2000);
     await vi.waitFor(() => expect(s.of('net:snapshot')).toHaveLength(1));
-    expect(s.of('net:snapshot')[0].snapshot.totals).toMatchObject({ flows: 2, bytesUp: 10 });
+    const snap = s.of('net:snapshot')[0].snapshot;
+    expect(snap.totals).toMatchObject({ flows: 2, bytesUp: 10 });
+    // The two in the range, each once ('old' is before it: a baseline, not a record of the range).
+    expect(snap.counters.records).toBe(2);
+  });
+
+  it('answers a range it cannot build, rather than leaving the socket waiting', () => {
+    const s = new FakeSocket();
+    obs.attach(s);
+    obs.subscribe(s, 'nobody-000000', { from: 0, to: null });
+    expect(s.of('net:range:error')[0]).toMatchObject({ token: 'nobody-000000', range: '0-now' });
+
+    obs.store.setHistory({
+      token: 'gone-000000', filterSince: null, filterSawDir: false, firstSeen: 0, lastSeen: 0, watermark: 0, carry: {},
+      bytesUp: 0, bytesDown: 0, flows: 0, blockedGuard: 0, blockedRule: 0, blockedDefault: 0, directFlows: 0,
+      lastExit: null, lastStatus: null, sessionFile: null, destinations: [],
+    });
+    obs.subscribe(s, 'gone-000000', { from: 0, to: null });
+    expect(s.of('net:range:error')[1].error).toMatch(/files for this session are gone/);
+    expect(s.of('net:snapshot')).toHaveLength(0);
+  });
+
+  it('stop() ends a scan still running, and sends nothing after', async () => {
+    const s = new FakeSocket();
+    obs.attach(s);
+    obs.subscribe(s, E, { from: 0, to: null });
+    obs.stop();
+    await new Promise((r) => setTimeout(r, 30));
+    expect(s.of('net:snapshot')).toHaveLength(0);
+  });
+
+  it('a watched range follows a rewritten session.json, as All records does', async () => {
+    const s = new FakeSocket();
+    obs.attach(s);
+    obs.subscribe(s, E, { from: hourAgo, to: null });
+    await vi.waitFor(() => expect(s.of('net:snapshot')).toHaveLength(1));
+    writeFileSync(join(net, 'session.json'), JSON.stringify({ v: 1, type: 'session', env: E, session: E, harness: 'pi', services: [] }));
+    obs.poll(now + 1000);
+    const entry = [...(obs as unknown as { ranges: Map<string, { view: RangeView }> }).ranges.values()][0];
+    expect(obs.store.sessionFile(E)).not.toBeNull();
+    expect(entry.view.store.sessionFile(E)).toEqual(obs.store.sessionFile(E));
+  });
+
+  it('keeps the ranges last looked at, and drops an idle one that still reaches into the present', async () => {
+    const ranges = () => [...(obs as unknown as { ranges: Map<string, unknown> }).ranges.keys()].map((id) => id.split('|')[1]);
+    const sleep = () => new Promise((r) => setTimeout(r, 3));
+    const r = (k: number) => ({ from: hourAgo - k * MIN, to: hourAgo });
+    const watcher = new FakeSocket();
+    const browser = new FakeSocket();
+    obs.attach(watcher);
+    obs.attach(browser);
+    const open = async (s: FakeSocket, range: NetRange) => {
+      obs.subscribe(s, E, range);
+      await vi.waitFor(() => expect(s.of('net:snapshot').at(-1)?.snapshot.range?.key).toBe(rangeKey(range)));
+      await sleep();
+    };
+    await open(watcher, r(0)); // A, watched for a long time
+    await open(browser, r(1)); // B, glanced at meanwhile
+    obs.subscribe(browser, null);
+    await sleep();
+    obs.subscribe(watcher, null); // A last used now, after B
+    await sleep();
+    for (const k of [2, 3, 4]) await open(browser, r(k)); // C, D, then E (still watched)
+    obs.subscribe(browser, null);
+    // Five idle, four kept: B goes, not A.
+    expect(ranges().sort()).toEqual([r(0), r(2), r(3), r(4)].map(rangeKey).sort());
+
+    await open(browser, { from: hourAgo, to: null });
+    obs.subscribe(browser, null);
+    expect(ranges()).not.toContain(rangeKey({ from: hourAgo, to: null }));
   });
 });

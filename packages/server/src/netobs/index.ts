@@ -48,7 +48,9 @@ export type NetServerMessage =
   /** The outcome of one `net:rules:apply`, to the socket that sent it. Confirmation follows in `net:rules`. */
   | { type: 'net:rules:result'; token: string; opId: string; ok: boolean; error: string | null }
   /** A ranged snapshot being built: how much of glove's files it has read. */
-  | { type: 'net:range:progress'; token: string; range: string; scannedBytes: number; totalBytes: number };
+  | { type: 'net:range:progress'; token: string; range: string; scannedBytes: number; totalBytes: number }
+  /** A range that cannot be shown, and why: no snapshot will follow for it. */
+  | { type: 'net:range:error'; token: string; range: string; error: string };
 
 /** What server.ts's WebSocket handler holds. */
 export interface NetSocket {
@@ -229,6 +231,8 @@ export class NetObs {
     this.persist();
     for (const t of this.timers.values()) clearTimeout(t);
     this.timers.clear();
+    // Stops every scan still running (`cancelled`), and nothing is sent once one would have finished.
+    this.ranges.clear();
   }
 
   /** One discovery + read pass. Public so tests can drive it without timers. */
@@ -261,7 +265,10 @@ export class NetObs {
     const found = this.source.discover();
     this.registry = found.registry;
     this.notObservable = found.notObservable;
-    if (this.geo.refresh()) this.store.refreshGeo();
+    if (this.geo.refresh()) {
+      this.store.refreshGeo();
+      for (const e of this.ranges.values()) e.view.store.refreshGeo();
+    }
 
     const seen = new Set<string>();
     for (const { loc, info } of found.sessions) {
@@ -272,7 +279,10 @@ export class NetObs {
         this.readers.set(loc.token, new SessionReader(loc, this.budgetBytes));
       }
       try {
-        this.readers.get(loc.token)!.poll(this.store, now, this.forwarder(loc.token, now));
+        const watched = this.watchedRanges(loc.token);
+        // session.json first, as for the live store: which services are hops decides how bytes count.
+        this.readers.get(loc.token)!.poll(this.store, now, watched.length ? (p) => this.forward(watched, p, now) : undefined);
+        for (const e of watched) e.view.setSessionFile(this.store.sessionFile(loc.token), now);
         this.noteGlove(loc, info);
         this.pollRules(loc, now);
       } catch (err) {
@@ -289,24 +299,37 @@ export class NetObs {
       if (!seen.has(token)) this.control.forget(token);
     }
     this.store.tick(now);
-    for (const e of this.ranges.values()) if (e.info) e.view.store.tick(e.view.clock(now));
+    for (const e of this.watchedRanges()) {
+      if (!e.info) continue;
+      e.view.store.tick(e.view.clock(now));
+      // This poll read everything up to where the scan stopped: nothing more can overlap.
+      e.view.endOverlap();
+    }
     this.maybeBroadcastSessions();
   }
 
+  /** Ranges somebody is subscribed to (of one session, or all). Only those follow the live reader. */
+  private watchedRanges(token?: string): RangeEntry[] {
+    const used = this.rangesInUse();
+    return [...this.ranges].filter(([id, e]) => used.has(id) && (token === undefined || e.view.token === token)).map(([, e]) => e);
+  }
+
+  private rangesInUse(): Set<string> {
+    const used = new Set<string>();
+    for (const sub of this.subs.values()) if (sub.token !== null && sub.range !== null) used.add(entryId(sub.token, sub.range));
+    return used;
+  }
+
   /**
-   * Where a session's newly read records go besides the live store: every range of it.
-   * A range that ended in the past drops them itself (`RangeView`), so one that reaches
-   * into the present, or ends later today, follows the gate as All records does.
+   * A newly read record, to a session's watched ranges besides the live store. A range
+   * that ended drops it itself (`RangeView`), so one reaching into the present, or ending
+   * later today, follows the gate as All records does. One still being read queues it.
    */
-  private forwarder(token: string, now: number): ((p: ParsedLine) => void) | undefined {
-    const entries = [...this.ranges.values()].filter((e) => e.view.token === token);
-    if (!entries.length) return undefined;
-    return (p) => {
-      for (const e of entries) {
-        if (e.pending) e.pending.push(p);
-        else e.view.record(p, now);
-      }
-    };
+  private forward(entries: RangeEntry[], p: ParsedLine, now: number): void {
+    for (const e of entries) {
+      if (e.pending) e.pending.push(p);
+      else e.view.record(p, now, 'live');
+    }
   }
 
   /**
@@ -412,17 +435,27 @@ export class NetObs {
   }
 
   detach(socket: NetSocket): void {
+    this.leave(socket);
     this.subs.delete(socket);
     this.pruneRanges();
+  }
+
+  /** The socket is leaving its range: that is when the range was last used, for the idle cache. */
+  private leave(socket: NetSocket): void {
+    const sub = this.subs.get(socket);
+    const e = sub?.token && sub.range ? this.ranges.get(entryId(sub.token, sub.range)) : undefined;
+    if (e) e.lastUsed = Date.now();
   }
 
   /**
    * One session at a time per socket; null unsubscribes. With a `range`, the
    * snapshot is that window's (`range.ts`), sent once its files are read; a
-   * range already built for another socket (or recently) is sent at once.
+   * range already built for another socket (or recently) is sent at once. A
+   * range that cannot be built is answered with `net:range:error`.
    */
   subscribe(socket: NetSocket, token: string | null, range: NetRange | null = null): void {
     const key = token !== null && range ? rangeKey(range) : null;
+    this.leave(socket);
     this.subs.set(socket, { token, range: key });
     this.pruneRanges();
     if (token === null) return;
@@ -432,18 +465,23 @@ export class NetObs {
       return;
     }
     const entry = this.rangeEntry(token, range);
-    if (!entry) return;
+    if (typeof entry === 'string') {
+      this.send(socket, { type: 'net:range:error', token, range: key!, error: entry });
+      return;
+    }
     entry.lastUsed = Date.now();
     if (entry.info) this.send(socket, { type: 'net:snapshot', token, snapshot: this.rangeSnapshot(entry) });
   }
 
-  /** A time range's entry, starting its scan if it is new. Null for a session Layman has no files for. */
-  private rangeEntry(token: string, range: NetRange): RangeEntry | null {
+  /** A time range's entry, starting its scan if it is new; or why there cannot be one. */
+  private rangeEntry(token: string, range: NetRange): RangeEntry | string {
     const id = entryId(token, rangeKey(range));
     const known = this.ranges.get(id);
     if (known) return known;
     const loc = this.store.location(token);
-    if (!loc) return null;
+    if (!loc) return `No glove network session '${token}'`;
+    // Its files are gone, so there is nothing to read a window from (and `netDir` is empty).
+    if (this.store.isHistoryOnly(token)) return 'glove’s files for this session are gone: a time range is read from them, so only All records is kept.';
     const entry: RangeEntry = {
       view: new RangeView(token, range, this.store.sessionFile(token), this.storeOpts),
       info: null, pending: [], lastUsed: Date.now(), lastProgress: 0,
@@ -461,7 +499,7 @@ export class NetObs {
       },
     }).then((info) => {
       if (!wanted()) return;
-      for (const p of entry.pending ?? []) entry.view.record(p);
+      for (const p of entry.pending ?? []) entry.view.record(p, Date.now(), 'live');
       entry.pending = null;
       entry.info = info;
       // From here `setPolicy` keeps it current, as it does All records.
@@ -470,14 +508,12 @@ export class NetObs {
       entry.view.store.discardDelta(token);
       entry.view.store.on('changed', () => this.onChanged(entry.view.store, token, entry.view.key));
       entry.view.store.on('exit', () => this.sendTo(token, { type: 'net:exit', token, range: entry.view.key, exit: entry.view.store.exit(token) }, entry.view.key));
-      const targets = this.subscribers(token, entry.view.key);
-      if (targets.length) {
-        const json = JSON.stringify({ type: 'net:snapshot', token, snapshot: this.rangeSnapshot(entry) } satisfies NetServerMessage);
-        for (const s of targets) if (s.readyState === 1) s.send(json);
-      }
+      this.sendTo(token, { type: 'net:snapshot', token, snapshot: this.rangeSnapshot(entry) }, entry.view.key);
     }).catch((err: Error) => {
       console.warn(`[netobs] ${token}: could not read the range ${entry.view.key}: ${err.message}`);
-      if (wanted()) this.ranges.delete(id);
+      if (!wanted()) return;
+      this.ranges.delete(id);
+      this.sendTo(token, { type: 'net:range:error', token, range: entry.view.key, error: `Could not read glove’s files: ${err.message}` }, entry.view.key);
     });
     return entry;
   }
@@ -493,15 +529,17 @@ export class NetObs {
 
   /**
    * Drop ranges nobody is subscribed to, keeping the `MAX_IDLE_RANGES` most recently
-   * used finished ones for the next subscriber (switching tabs, or Back). A range
-   * still being read with nobody waiting is dropped, which stops its scan.
+   * used ones for the next subscriber (switching tabs, or Back). Only a built range
+   * that has ended is kept: an idle range does not follow the live reader, so one
+   * still reaching into the present would go stale. A range still being read with
+   * nobody waiting is dropped, which stops its scan.
    */
-  private pruneRanges(): void {
-    const used = new Set<string>();
-    for (const sub of this.subs.values()) if (sub.token !== null && sub.range !== null) used.add(entryId(sub.token, sub.range));
+  private pruneRanges(now = Date.now()): void {
+    const used = this.rangesInUse();
     const idle = [...this.ranges].filter(([id]) => !used.has(id));
-    for (const [id, e] of idle) if (!e.info) this.ranges.delete(id);
-    const kept = idle.filter(([, e]) => e.info).sort((a, b) => b[1].lastUsed - a[1].lastUsed);
+    const ended = (e: RangeEntry) => e.info !== null && e.view.range.to !== null && e.view.range.to <= now;
+    for (const [id, e] of idle) if (!ended(e)) this.ranges.delete(id);
+    const kept = idle.filter(([, e]) => ended(e)).sort((a, b) => b[1].lastUsed - a[1].lastUsed);
     for (const [id] of kept.slice(MAX_IDLE_RANGES)) this.ranges.delete(id);
   }
 

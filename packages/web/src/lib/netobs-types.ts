@@ -854,4 +854,6 @@ export type NetServerMessage =
   | { type: 'net:rules'; token: string; rules: RulesView }
   | { type: 'net:rules:result'; token: string; opId: string; ok: boolean; error: string | null }
   /** A ranged snapshot being built: how much of glove's files it has read. */
-  | { type: 'net:range:progress'; token: string; range: string; scannedBytes: number; totalBytes: number };
+  | { type: 'net:range:progress'; token: string; range: string; scannedBytes: number; totalBytes: number }
+  /** A range that cannot be shown, and why: no snapshot will follow for it. */
+  | { type: 'net:range:error'; token: string; range: string; error: string };
