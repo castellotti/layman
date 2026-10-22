@@ -57,9 +57,30 @@ describe('SqliteNetHistory', () => {
     expect(h.enabled()).toBe(true);
   });
 
-  it('is migrations 3 to 5, and never synced: no journal triggers on its tables', () => {
+  it('keeps hours and runs as upserts, and tells a row kept before them apart from one with no traffic', () => {
     const d = db();
-    expect(d.prepare('SELECT version FROM schema_migrations ORDER BY version').all()).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }, { version: 4 }, { version: 5 }]);
+    const h = new SqliteNetHistory(d, () => true);
+    const hour = { hour: 3_600_000, run: 'g_1' as string | null, key: 'arxiv.org:443', tool: 'web_fetch' as string | null, hop: false, bytesUp: 5, bytesDown: 50, flows: 1, blocked: 0, first: 3_600_100, last: 3_600_900 };
+    const run = { run: 'g_1', started: 1000, ended: null, inferred: false, bytesUp: 5, bytesDown: 50, flows: 1 };
+    h.save([session({ hours: [hour], runs: [run] })]);
+    // A later save with only the hour that changed leaves the others, and updates the run.
+    const next = { ...hour, hour: 7_200_000, first: 7_200_100, last: 7_200_100 };
+    // Before any collector run (an older gate): kept as run '' in its key, read back as null.
+    const older = { ...hour, run: null, hour: 0, first: 100, last: 100 };
+    h.save([session({ hours: [next, older], runs: [{ ...run, ended: 9000, inferred: true }] })]);
+    const [back] = h.load();
+    expect(back.hours).toEqual([older, hour, next]);
+    expect(back.runs).toEqual([{ ...run, ended: 9000, inferred: true }]);
+
+    // A row from before migration 6 (written without hours) loads with none, so the store counts them afresh.
+    const old = new SqliteNetHistory(db(), () => true);
+    old.save([session()]);
+    expect(old.load()[0].hours).toBeUndefined();
+  });
+
+  it('is migrations 3 to 6, and never synced: no journal triggers on its tables', () => {
+    const d = db();
+    expect(d.prepare('SELECT version FROM schema_migrations ORDER BY version').all()).toEqual([1, 2, 3, 4, 5, 6].map((version) => ({ version })));
     const triggers = d.prepare("SELECT name FROM sqlite_master WHERE type = 'trigger' AND tbl_name LIKE 'net_%'").all();
     expect(triggers).toEqual([]);
   });

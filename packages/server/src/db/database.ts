@@ -160,6 +160,52 @@ export function applyMigrations(db: Database): void {
   // history-only one stays a local link instead of an unresolved cloud destination on the Map.
   addColumn(db, 'net_destinations', 'hop', 'hop INTEGER NOT NULL DEFAULT 0');
   recordMigration(db, 5);
+
+  // Migration 6 — a time axis for the glove network rollups: per-hour traffic per destination and
+  // the gate's collector runs (a `glove up` to its `glove down`), so the views can offer runs and
+  // an activity calendar after glove has deleted the files. `hours_kept` tells rows kept before
+  // this apart from a session that had no traffic. Local only, like the rest of the network rollups.
+  applyNetTimeMigration(db);
+  addColumn(db, 'net_sessions', 'hours_kept', 'hours_kept INTEGER NOT NULL DEFAULT 0');
+  recordMigration(db, 6);
+}
+
+/**
+ * Migration 6 — the network rollups' time axis (`netobs/persist.ts`). One row per destination
+ * per hour it was active and one per collector run. **Deliberately not synced**, for the same
+ * reason as migration 3: no triggers and no SYNC_ENTITIES entry.
+ */
+export function applyNetTimeMigration(db: Database): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS net_hours (
+      token       TEXT NOT NULL,
+      hour        INTEGER NOT NULL,
+      run         TEXT NOT NULL DEFAULT '',
+      dest_key    TEXT NOT NULL,
+      tool        TEXT,
+      hop         INTEGER NOT NULL DEFAULT 0,
+      bytes_up    INTEGER NOT NULL DEFAULT 0,
+      bytes_down  INTEGER NOT NULL DEFAULT 0,
+      flows       INTEGER NOT NULL DEFAULT 0,
+      blocked     INTEGER NOT NULL DEFAULT 0,
+      first_t     INTEGER NOT NULL,
+      last_t      INTEGER NOT NULL,
+      -- run '' is "before any collector run" (an older gate): a key column, so not NULL.
+      PRIMARY KEY (token, hour, run, dest_key)
+    );
+
+    CREATE TABLE IF NOT EXISTS net_runs (
+      token       TEXT NOT NULL,
+      run         TEXT NOT NULL,
+      started     INTEGER NOT NULL,
+      ended       INTEGER,
+      inferred    INTEGER NOT NULL DEFAULT 0,
+      bytes_up    INTEGER NOT NULL DEFAULT 0,
+      bytes_down  INTEGER NOT NULL DEFAULT 0,
+      flows       INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY (token, run)
+    );
+  `);
 }
 
 /**

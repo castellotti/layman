@@ -341,10 +341,12 @@ export class NetObs {
     if (!this.history?.enabled()) return;
     const rows = this.store.tokens()
       .filter((t) => !this.store.isHistoryOnly(t)) // unchanged since it was loaded
-      .map((t) => this.store.rollup(t))
+      .map((t) => this.store.rollup(t, true))
       .filter((r): r is NonNullable<typeof r> => r !== null);
     try {
       this.history.save(rows);
+      // Only once they are kept: a failed write sends them again next time.
+      for (const r of rows) this.store.hoursSaved(r.token);
     } catch (err) {
       console.warn(`[netobs] could not keep network history: ${(err as Error).message}`);
     }

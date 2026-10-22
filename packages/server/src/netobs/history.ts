@@ -81,9 +81,62 @@ export interface HistorySession {
   lastStatus: StatusRecord | null;
   sessionFile: NetSessionFile | null;
   destinations: HistoryDest[];
+  /**
+   * The time axis (`HistoryHour`, `HistoryRun`). Unlike the rows above these are upserts: a
+   * rollup may carry only those that changed since the last one (`NetStore.rollup(…, true)`),
+   * and a store merges them by key. Absent in rows kept before migration 6, which the store
+   * tells apart from "no traffic": without them it counts the hours of everything it reads.
+   */
+  hours?: HistoryHour[];
+  runs?: HistoryRun[];
 }
 
-/** Where history is kept. `persist.ts` is the SQLite one; tests use a map. */
+/**
+ * One destination's traffic in one hour of one collector run: what moved in it (by record time,
+ * as a time range's clip counts it, `range.ts`), the flows first seen and the refusals recorded
+ * in it, and the first and last record in it that moved bytes or opened a flow (a heartbeat is
+ * not activity). Keyed by run too, so an hour in which one `glove up` ends and the next starts
+ * is two rows, and each run's bursts (`segments.ts`) have exact edges.
+ */
+export interface HistoryHour {
+  /** The hour's start, epoch ms. */
+  hour: number;
+  /** The collector run it was recorded in (`HistoryRun.run`), or null before any (an older gate). */
+  run: string | null;
+  /** The destination key (`destKey`). */
+  key: string;
+  /** Its flows' tool (`llm` marks model calls: when the agent was working). */
+  tool: string | null;
+  /** A hop's bytes are the next leg's too: the session's hours leave them out. */
+  hop: boolean;
+  bytesUp: number;
+  bytesDown: number;
+  flows: number;
+  blocked: number;
+  first: number;
+  last: number;
+}
+
+/**
+ * One run of the gate's collector (`type: gate`, `role: collect`): one `glove up` to its
+ * `glove down`, or the collector's own inferred stop when it died. Its bytes and flows are
+ * those recorded while it ran, counted as the hours are (hops left out).
+ */
+export interface HistoryRun {
+  run: string;
+  started: number;
+  /** Null while it runs, or when no stop was ever recorded. */
+  ended: number | null;
+  inferred: boolean;
+  bytesUp: number;
+  bytesDown: number;
+  flows: number;
+}
+
+/**
+ * Where history is kept. `persist.ts` is the SQLite one; tests use a map. `save` replaces a
+ * session's row and destinations, and upserts its hours and runs (never deleting one).
+ */
 export interface NetHistory {
   /** Recording is on: Layman records nothing when it is off, network rollups included. */
   enabled(): boolean;

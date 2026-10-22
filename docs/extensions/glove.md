@@ -1001,7 +1001,8 @@ links them.
 ### Persistence (`netobs/persist.ts`, `netobs/history.ts`)
 
 Per-flow rows would dwarf the event tables, so Layman keeps **rollups**: one row per glove session
-(`net_sessions`) and one per destination (`net_destinations`), migration 3 in `db/database.ts`.
+(`net_sessions`) and one per destination (`net_destinations`), migration 3 in `db/database.ts`, plus
+their time axis (below).
 - **When.** Written every 30 s, on shutdown, and before glove is switched off, only while session
   recording is on. Writes replace a session's rows in one transaction, so writing the same rollup
   twice changes nothing.
@@ -1047,6 +1048,49 @@ with its totals and destinations. The gate strip shows only a "History only" chi
 route and rules it last saw are not current. Toggles are disabled with that reason. The Map, Topology,
 Trace, Activity, Rules and Details panels say "History only". If its files come back, it is read
 again, from its watermark.
+
+### Runs, bursts and the hourly history (`netobs/segments.ts`, migration 6)
+
+The rollups above have no time axis, and a time range is read from glove's files, which rotation
+deletes. Migration 6 adds the axis, kept for as long as Layman has recorded:
+- **`net_runs`**: the collector's runs. A run is one `glove up` to its `glove down`, from glove's
+  `type: gate`, `role: collect` start and stop records, with the bytes and flows recorded while it ran.
+- **`net_hours`**: one row per destination, per collector run, per hour it was active. Each row holds
+  the bytes moved in that hour, by record time, which is the same clip a time range uses. It also
+  holds the flows first seen and refusals recorded in the hour, the destination's tool, whether it is
+  a hop, and the first and last record in the hour that moved bytes or opened a flow. A heartbeat is
+  not activity. Rows are keyed by run as well as hour, so an hour in which one `glove up` ends and the
+  next starts is two rows, each with exact edges.
+
+Both tables are local only and never synced, as migration 3. They are counted by the restart rule
+above: records before the watermark are already held, and a carried flow counts only what it moved
+beyond the carried part. `history.test.ts` holds the hours and runs to one uninterrupted read at
+every restart point, alongside the totals; disabling either part of the rule fails it. Hours are
+**upserted**, not rewritten. A save every 30 s writes only the hours that changed, which keeps the
+cost flat as history grows. Rows kept before migration 6 (`net_sessions.hours_kept = 0`) hold no
+hours, so the store counts the hours of everything it re-reads instead of skipping what came before
+the watermark.
+
+`GET /api/net/sessions/:token/segments?gap=<hours>` (1–24, default 6) builds the ready-made ranges
+from them:
+- **Runs.** How each run ended: `stopped`, `died` (the collector's inferred stop, or none written for
+  the last run of a gate no longer running, which then ends at its last activity), or `replaced`
+  (no stop, and the next run started).
+- **Bursts: the agent at work.** Model calls (`tool: llm`) with no pause of `gap` or more, inside one
+  run. On a real session, one `glove up` ran three days and held four daily reports, so a run alone is
+  too coarse. **Model calls, not any traffic**, because a sandbox is never quiet: between reports the
+  headless browser's sidecar kept up about 550 connections and 770 KB an hour, plus its telemetry, so
+  the busiest 6 h pause in all traffic was none at all. Measured on a copy of that session, the 3-day
+  run split into its four reports (Oct 17 06:31–10:45, 21:33–22:38, Oct 18 20:07–21:15 and Oct 20
+  04:14). A session with no model calls observed (a model the gate does not carry) falls back to all
+  traffic, and `burstBasis` says which was used. A burst's edges are its first and last active record.
+  Its totals are all the traffic in the hours it spans.
+- **Agent sessions.** The Layman sessions Trace joins (`sessionName` is the token), from their first
+  to last event, by transcript time where the pi watcher kept it.
+- **`hours`.** The session's activity per hour, hops' bytes left out, with `inference` marking hours
+  with model calls, for an activity calendar.
+
+On that session, runs, hours and the store agree to the byte (984.6 MB sent).
 
 ### Configuration
 

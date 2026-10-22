@@ -374,7 +374,7 @@ Four rules that must not be relaxed casually:
   `config.ts` so a partial Settings update can never blank it and orphan every row.
 
 - **The glove network rollups are deliberately not synced** (`net_sessions`, `net_destinations`,
-  migration 3; `netobs/persist.ts`). No triggers, no `SYNC_ENTITIES` entry. They record where one
+  migration 3; their time axis `net_hours` and `net_runs`, migration 6; `netobs/persist.ts`). No triggers, no `SYNC_ENTITIES` entry. They record where one
   host's sandboxes browsed, and syncing them would ship that to a central instance. Do not "fix" this
   by adding them to the journal.
 
