@@ -9,8 +9,7 @@ const H = 60 * 60_000;
 const T0 = Date.parse('2026-10-17T06:00:00.000Z');
 const iso = (t: number) => new Date(t).toISOString();
 
-const run = (id: string, started: number, ended: number | null, inferred = false): HistoryRun =>
-  ({ run: id, started, ended, inferred, bytesUp: 0, bytesDown: 0, flows: 0 });
+const run = (id: string, started: number, ended: number | null, inferred = false): HistoryRun => ({ run: id, started, ended, inferred });
 const hour = (t: number, over: Partial<HistoryHour> = {}): HistoryHour => ({
   hour: Math.floor(t / H) * H, run: 'r1', key: 'api.anthropic.com:443', tool: 'llm', hop: false, bytesUp: 10, bytesDown: 100, flows: 1, blocked: 0,
   first: t, last: t + 60_000, ...over,
@@ -49,7 +48,8 @@ describe('bursts', () => {
     const s = buildSegments('e', { hours: daily, runs, live: false, agentSessions: [] });
     expect(s.burstBasis).toBe('inference');
     expect(s.bursts.map((b) => [b.from - T0, b.run, b.flows])).toEqual([
-      [5 * 60_000, 'r1', 2 + 2 * 550], [24 * H + 5 * 60_000, 'r1', 2 + 2 * 550], [48 * H + 5 * 60_000, 'r1', 1 + 550],
+      // The sidecar's flows are hops: counted at the next leg, not here.
+      [5 * 60_000, 'r1', 2], [24 * H + 5 * 60_000, 'r1', 2], [48 * H + 5 * 60_000, 'r1', 1],
     ]);
     // A burst's edges are its first and last model call, not the hours around them.
     expect(s.bursts[0].to).toBe(T0 + H + 5 * 60_000 + 60_000);
@@ -77,7 +77,7 @@ describe('bursts', () => {
 
   it('leaves a hop’s bytes out of the session’s hours, but not its times', () => {
     const [h] = sessionHours([hour(T0), hour(T0 + 1000, { key: 'llm-auth:8080', hop: true, bytesUp: 999, first: T0 - 1, last: T0 + 2 * 60_000 })]);
-    expect([h.bytesUp, h.first, h.last, h.flows, h.inference]).toEqual([10, T0 - 1, T0 + 2 * 60_000, 2, true]);
+    expect([h.bytesUp, h.first, h.last, h.flows, h.inference]).toEqual([10, T0 - 1, T0 + 2 * 60_000, 1, true]);
   });
 });
 
@@ -102,22 +102,63 @@ describe('the store’s time axis', () => {
     s.ingestFlow('e', flow('p1', 'open', T0 + 5 * H + 1000, 3), T0);
     s.ingestFlow('e', flow('p1', 'update', T0 + 7 * H, 3), T0); // a heartbeat two hours later: nothing moved
     s.ingestGate('e', collect('stop', 'g_2', T0 + 8 * H, true));
-    expect(s.gateRuns('e').map((r) => [r.run, r.started - T0, r.ended! - T0, r.inferred, r.bytesUp, r.flows]))
-      .toEqual([['g_1', 0, 3000, false, 8, 1], ['g_2', 5 * H, 8 * H, true, 3, 1]]);
+    expect(s.gateRuns('e').map((r) => [r.run, r.started - T0, r.ended! - T0, r.inferred])).toEqual([['g_1', 0, 3000, false], ['g_2', 5 * H, 8 * H, true]]);
     expect(s.hourly('e').map((h) => [h.hour - T0, h.run, h.tool, h.bytesUp, h.flows])).toEqual([[0, 'g_1', 'web_fetch', 8, 1], [5 * H, 'g_2', 'web_fetch', 3, 1]]);
+    // A run's totals are its hours'.
+    const seg = buildSegments('e', { hours: s.hourly('e'), runs: s.gateRuns('e'), live: false, agentSessions: [] });
+    expect(seg.runs.map((r) => [r.run, r.bytesUp, r.flows])).toEqual([['g_1', 8, 1], ['g_2', 3, 1]]);
     // Reading the same collector record again changes nothing.
     s.ingestGate('e', collect('start', 'g_1', T0));
     expect(s.gateRuns('e')).toHaveLength(2);
+  });
+
+  const store = () => {
+    const s = new NetStore();
+    s.ensure({ token: 'e', netDir: '', controlDir: '', rulesPath: '' });
+    return s;
+  };
+
+  it('keeps traffic between runs out of either', () => {
+    const s = store();
+    s.ingestGate('e', collect('start', 'a', T0));
+    s.ingestGate('e', collect('stop', 'a', T0 + 60_000));
+    s.ingestFlow('e', flow('late', 'close', T0 + 62_000, 1), T0); // the forwarders' last word, just after the stop
+    s.ingestFlow('e', flow('gap', 'close', T0 + 30 * 60_000, 1), T0); // nothing running
+    s.ingestGate('e', collect('start', 'b', T0 + 40 * 60_000));
+    expect(s.hourly('e').map((h) => h.run)).toEqual([null, 'a']);
+  });
+
+  it('keeps a model call in its hour when another tool uses the same host later in it', () => {
+    const s = store();
+    s.ingestFlow('e', flow('m', 'close', T0 + 5 * 60_000, 1, { tool: 'llm' }), T0);
+    s.ingestFlow('e', flow('w', 'close', T0 + 40 * 60_000, 1), T0);
+    expect(s.hourly('e').map((h) => h.tool).sort()).toEqual(['llm', 'web_fetch']);
+    expect(sessionHours(s.hourly('e'))[0].inference).toBe(true);
+  });
+
+  it('re-flags the hours when session.json makes a service a hop after its flows were read', () => {
+    const s = store();
+    s.ingestFlow('e', flow('h', 'close', T0 + 1000, 7, { service: 'llm', tool: 'llm', dest: { host: 'glove-x-llm-auth', port: 8080, ip: null, resolution: 'disabled' } }), T0);
+    s.ingestFlow('e', flow('u', 'close', T0 + 2000, 7, { service: 'llm-upstream', tool: 'llm', dest: { host: 'api.anthropic.com', port: 443, ip: null, resolution: 'in-tunnel' } }), T0);
+    expect(sessionHours(s.hourly('e'))[0].bytesUp).toBe(14); // not known to be one call yet
+    s.setSessionFile('e', { v: 1, services: [
+      { service: 'llm', listen: null, observed: true, harness: true, next: ['llm-upstream'] },
+      { service: 'llm-upstream', listen: null, observed: true, harness: false },
+    ] } as never, T0);
+    expect(s.snapshot('e')!.totals.bytesUp).toBe(7);
+    expect(sessionHours(s.hourly('e'))[0].bytesUp).toBe(7); // once, at the provider leg, as the totals
   });
 });
 
 describe('agent sessions', () => {
   const ev = (timestamp: number, data: Record<string, unknown> = {}) => ({ id: String(timestamp), timestamp, data } as unknown as TimelineEvent);
 
-  it('spans its events by transcript time where kept', () => {
+  it('spans its events by transcript time where kept, and is exact only when both edges are', () => {
     expect(agentSegment('s1', [ev(T0 + 9000, { transcriptAt: T0 }), ev(T0 + 9500, { transcriptAt: T0 + 100, transcriptCompletedAt: T0 + 400 })], 1))
       .toEqual({ sessionId: 's1', from: T0, to: T0 + 400, turns: 1, exact: true });
     expect(agentSegment('s2', [ev(T0), ev(T0 + 50)], 1)).toMatchObject({ from: T0, to: T0 + 50, exact: false });
+    // The end came from a read time: not exact, though the start was.
+    expect(agentSegment('s4', [ev(T0 + 9000, { transcriptAt: T0 }), ev(T0 + 99_000)], 2)).toMatchObject({ to: T0 + 99_000, exact: false });
     expect(agentSegment('s3', [], 0)).toBeNull();
   });
 });

@@ -464,8 +464,9 @@ a session instead of All records. Without a `range`, nothing changes: the snapsh
 with `range: null`.
 
 **A range is built from glove's files, never filtered from the live view.** Layman holds only the newest
-records in memory (the 64 MB backfill budget), and the kept totals have no time axis, so a past window is
-not there to filter. On a real session with 260 MB of flow files, the live store held about a quarter of
+records in memory (the 64 MB backfill budget), and what it keeps of the rest is per hour and per
+destination (`net_hours`, below): no flows, and too coarse for a window that starts and ends mid-hour.
+So a past window is not there to filter. On a real session with 260 MB of flow files, the live store held about a quarter of
 them. The window's records go into a fresh `NetStore`, so a range is counted by the same code as All
 records, with one addition, the clip:
 
@@ -1051,16 +1052,24 @@ again, from its watermark.
 
 ### Runs, bursts and the hourly history (`netobs/segments.ts`, migration 6)
 
-The rollups above have no time axis, and a time range is read from glove's files, which rotation
-deletes. Migration 6 adds the axis, kept for as long as Layman has recorded:
+The session and destination rows above have no time axis, and a time range is read from glove's files,
+which rotation deletes. Migration 6 adds the axis, kept for as long as Layman has recorded:
 - **`net_runs`**: the collector's runs. A run is one `glove up` to its `glove down`, from glove's
-  `type: gate`, `role: collect` start and stop records, with the bytes and flows recorded while it ran.
-- **`net_hours`**: one row per destination, per collector run, per hour it was active. Each row holds
+  `type: gate`, `role: collect` start and stop records. What moved during a run is not stored with it:
+  it is summed from the run's hours, so the two can never disagree.
+- **`net_hours`**: one row per destination, tool, collector run and hour it was active. Each row holds
   the bytes moved in that hour, by record time, which is the same clip a time range uses. It also
-  holds the flows first seen and refusals recorded in the hour, the destination's tool, whether it is
-  a hop, and the first and last record in the hour that moved bytes or opened a flow. A heartbeat is
-  not activity. Rows are keyed by run as well as hour, so an hour in which one `glove up` ends and the
-  next starts is two rows, each with exact edges.
+  holds the flows first seen and refusals recorded in the hour, whether it is a hop, and the first and
+  last record in the hour that moved bytes, opened a flow or was refused. A heartbeat is not activity;
+  a refused connection is (the agent was trying something).
+  - **By run**, so an hour in which one `glove up` ends and the next starts is two rows, each with
+    exact edges. A record belongs to the latest run started at or before it, unless that run had
+    stopped more than 5 s earlier (forwarders' last records trail the collector's stop): traffic while
+    no run was up belongs to none.
+  - **By tool**, so a model call is never hidden by another tool using the same host in that hour.
+  - **Hops follow session.json.** When it changes which services are hops (it was unreadable when the
+    flows were read, or glove rewrote `next`), the store re-flags the destination's hours along with
+    its flows. Without that, the hop leg of a model call stayed in the hours and counted twice.
 
 Both tables are local only and never synced, as migration 3. They are counted by the restart rule
 above: records before the watermark are already held, and a carried flow counts only what it moved
@@ -1091,6 +1100,11 @@ from them:
   with model calls, for an activity calendar.
 
 On that session, runs, hours and the store agree to the byte (984.6 MB sent).
+
+**Known imprecision.** A run whose start record glove deleted before Layman ever read it (Layman first
+installed partway through a long run) starts at the earliest collector record Layman saw, its stop. Its
+traffic before that stop belongs to no run, so it shows as bursts of no run, and the run itself as
+having moved nothing. Once Layman has seen a run start, its row keeps it.
 
 ### Configuration
 

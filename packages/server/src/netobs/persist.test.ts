@@ -61,15 +61,17 @@ describe('SqliteNetHistory', () => {
     const d = db();
     const h = new SqliteNetHistory(d, () => true);
     const hour = { hour: 3_600_000, run: 'g_1' as string | null, key: 'arxiv.org:443', tool: 'web_fetch' as string | null, hop: false, bytesUp: 5, bytesDown: 50, flows: 1, blocked: 0, first: 3_600_100, last: 3_600_900 };
-    const run = { run: 'g_1', started: 1000, ended: null, inferred: false, bytesUp: 5, bytesDown: 50, flows: 1 };
+    const run = { run: 'g_1', started: 1000, ended: null as number | null, inferred: false };
     h.save([session({ hours: [hour], runs: [run] })]);
     // A later save with only the hour that changed leaves the others, and updates the run.
     const next = { ...hour, hour: 7_200_000, first: 7_200_100, last: 7_200_100 };
     // Before any collector run (an older gate): kept as run '' in its key, read back as null.
-    const older = { ...hour, run: null, hour: 0, first: 100, last: 100 };
-    h.save([session({ hours: [next, older], runs: [{ ...run, ended: 9000, inferred: true }] })]);
+    const older = { ...hour, run: null, tool: null, hour: 0, first: 100, last: 100 };
+    // The same host in the same hour of the same run, another tool: its own row.
+    const otherTool = { ...hour, tool: 'llm' };
+    h.save([session({ hours: [next, older, otherTool], runs: [{ ...run, ended: 9000, inferred: true }] })]);
     const [back] = h.load();
-    expect(back.hours).toEqual([older, hour, next]);
+    expect(back.hours).toEqual([older, otherTool, hour, next]);
     expect(back.runs).toEqual([{ ...run, ended: 9000, inferred: true }]);
 
     // A row from before migration 6 (written without hours) loads with none, so the store counts them afresh.

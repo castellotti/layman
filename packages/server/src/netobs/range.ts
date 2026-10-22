@@ -3,9 +3,10 @@
  * while a time range is set.
  *
  * Built on the server from glove's files, never filtered from the live view.
- * Layman holds only the newest records in memory (the backfill budget, `tail.ts`)
- * and its kept totals have no time axis (`history.ts`), so a past window is not
- * there to filter. The window's records go into a fresh `NetStore`, so a range is
+ * Layman holds only the newest records in memory (the backfill budget, `tail.ts`),
+ * and what it keeps of the rest is per hour and per destination (`net_hours`,
+ * `history.ts`): no flows, and too coarse for a window that starts and ends
+ * mid-hour. So a past window is not there to filter. The window's records go into a fresh `NetStore`, so a range is
  * counted by the same code as All records. The clip below is the one addition.
  *
  * **The clip.** A flow is in the range when it has a record in it. Its bytes in

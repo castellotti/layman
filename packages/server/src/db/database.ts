@@ -161,7 +161,7 @@ export function applyMigrations(db: Database): void {
   addColumn(db, 'net_destinations', 'hop', 'hop INTEGER NOT NULL DEFAULT 0');
   recordMigration(db, 5);
 
-  // Migration 6 — a time axis for the glove network rollups: per-hour traffic per destination and
+  // Migration 6 — a time axis for the glove network rollups: per-hour traffic per destination, run and tool, and
   // the gate's collector runs (a `glove up` to its `glove down`), so the views can offer runs and
   // an activity calendar after glove has deleted the files. `hours_kept` tells rows kept before
   // this apart from a session that had no traffic. Local only, like the rest of the network rollups.
@@ -182,7 +182,7 @@ export function applyNetTimeMigration(db: Database): void {
       hour        INTEGER NOT NULL,
       run         TEXT NOT NULL DEFAULT '',
       dest_key    TEXT NOT NULL,
-      tool        TEXT,
+      tool        TEXT NOT NULL DEFAULT '',
       hop         INTEGER NOT NULL DEFAULT 0,
       bytes_up    INTEGER NOT NULL DEFAULT 0,
       bytes_down  INTEGER NOT NULL DEFAULT 0,
@@ -190,8 +190,8 @@ export function applyNetTimeMigration(db: Database): void {
       blocked     INTEGER NOT NULL DEFAULT 0,
       first_t     INTEGER NOT NULL,
       last_t      INTEGER NOT NULL,
-      -- run '' is "before any collector run" (an older gate): a key column, so not NULL.
-      PRIMARY KEY (token, hour, run, dest_key)
+      -- run '' is "outside any collector run" and tool '' "none": key columns, so not NULL.
+      PRIMARY KEY (token, hour, run, dest_key, tool)
     );
 
     CREATE TABLE IF NOT EXISTS net_runs (
@@ -200,9 +200,7 @@ export function applyNetTimeMigration(db: Database): void {
       started     INTEGER NOT NULL,
       ended       INTEGER,
       inferred    INTEGER NOT NULL DEFAULT 0,
-      bytes_up    INTEGER NOT NULL DEFAULT 0,
-      bytes_down  INTEGER NOT NULL DEFAULT 0,
-      flows       INTEGER NOT NULL DEFAULT 0,
+      -- What moved during a run is summed from its hours, so it is not kept twice.
       PRIMARY KEY (token, run)
     );
   `);

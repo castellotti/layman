@@ -10,6 +10,7 @@ import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import type { HistorySession, NetHistory } from './history.js';
 import { NetObs } from './index.js';
+import { hourKey } from './store.js';
 import { TEST_ID, addGloveSession } from './testing/glove-home.js';
 import { roundsRecords, roundsSessionFile } from './testing/rounds.js';
 import type { DestinationAggregate, NetSnapshot, NetTotals } from './types.js';
@@ -35,7 +36,9 @@ class MemHistory implements NetHistory {
         [...new Map([...(old ?? []), ...(next ?? [])].map((x) => [key(x), x])).values()];
       this.rows.set(r.token, structuredClone({
         ...r,
-        hours: merge(was?.hours, r.hours, (h) => `${h.hour}|${h.key}`).sort((a, b) => a.hour - b.hour || a.key.localeCompare(b.key)),
+        // Keyed as net_hours is (`hourKey`), and in the store's order.
+        hours: merge(was?.hours, r.hours, (h) => hourKey(h.hour, h.run, h.key, h.tool)).sort((a, b) =>
+          a.hour - b.hour || (a.run ?? '').localeCompare(b.run ?? '') || a.key.localeCompare(b.key) || (a.tool ?? '').localeCompare(b.tool ?? '')),
         runs: merge(was?.runs, r.runs, (x) => x.run),
       }));
     }

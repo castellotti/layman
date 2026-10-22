@@ -6,7 +6,9 @@
  *
  * - A **run** is one `glove up` to its `glove down`: the collector's start and stop
  *   records. One with no stop ends where the next starts (the collector died and its
- *   stop was never written), or runs on if it is the last and the gate is running.
+ *   stop was never written), or runs on if it is the last and the gate is running. Its
+ *   totals are its hours', so they cannot disagree with the hours or the bursts. Traffic
+ *   recorded while no run was up (between runs) belongs to none.
  * - A **burst** is the agent at work: model calls (`tool: llm`) with no pause of `gapMs`
  *   or more (default 6 h), inside one run. A gate left up for days holds several daily
  *   jobs, which a run alone lumps together. It is model calls, not any traffic, because
@@ -92,12 +94,13 @@ interface RunHour {
   llm: { first: number; last: number } | null;
 }
 
-function add(into: RunHour | HourActivity, h: HistoryHour): void {
+/** Add an hour row. A hop's bytes and flows are the next leg's too, so they count there, not here. */
+function add(into: { bytesUp: number; bytesDown: number; flows: number; blocked: number; first: number; last: number }, h: HistoryHour): void {
   if (!h.hop) {
     into.bytesUp += h.bytesUp;
     into.bytesDown += h.bytesDown;
+    into.flows += h.flows;
   }
-  into.flows += h.flows;
   into.blocked += h.blocked;
   into.first = Math.min(into.first, h.first);
   into.last = Math.max(into.last, h.last);
@@ -129,15 +132,26 @@ export function sessionHours(hours: readonly HistoryHour[]): HourActivity[] {
   return [...by.values()].sort((a, b) => a.hour - b.hour);
 }
 
-/** The runs as segments, oldest first. `live`: the gate is running now, so the last open run is still going. */
-export function runSegments(runs: readonly HistoryRun[], live: boolean): RunSegment[] {
+/**
+ * The runs as segments, oldest first, with what moved during each summed from its hours.
+ * `live`: the gate is running now, so the last open run is still going. A last run that died
+ * with no stop written ended at its last activity, as far as anyone can tell.
+ */
+export function runSegments(runs: readonly HistoryRun[], hours: readonly HistoryHour[], live: boolean): RunSegment[] {
+  const totals = new Map<string, { bytesUp: number; bytesDown: number; flows: number; blocked: number; first: number; last: number }>();
+  for (const h of hours) {
+    if (h.run === null) continue;
+    const t = totals.get(h.run) ?? { bytesUp: 0, bytesDown: 0, flows: 0, blocked: 0, first: h.first, last: h.last };
+    add(t, h);
+    totals.set(h.run, t);
+  }
   const sorted = [...runs].sort((a, b) => a.started - b.started);
   return sorted.map((r, i) => {
     const next = sorted[i + 1];
+    const t = totals.get(r.run);
     const end: RunSegment['end'] = r.ended !== null ? (r.inferred ? 'died' : 'stopped') : next ? 'replaced' : live ? null : 'died';
-    // A last run that died with no stop is given its last activity in `buildSegments`.
-    const to = r.ended ?? next?.started ?? (live ? null : r.started);
-    return { run: r.run, from: r.started, to, end, bytesUp: r.bytesUp, bytesDown: r.bytesDown, flows: r.flows };
+    const to = r.ended ?? next?.started ?? (live ? null : Math.max(r.started, t?.last ?? r.started));
+    return { run: r.run, from: r.started, to, end, bytesUp: t?.bytesUp ?? 0, bytesDown: t?.bytesDown ?? 0, flows: t?.flows ?? 0 };
   });
 }
 
@@ -175,17 +189,18 @@ export function burstSegments(hours: readonly HistoryHour[], gapMs = DEFAULT_BUR
 
 /** An agent session's span: its first to its last event, by transcript time where kept (`data.transcriptAt`). */
 export function agentSegment(sessionId: string, events: readonly TimelineEvent[], turns: number): AgentSegment | null {
-  let from = Infinity;
-  let to = -Infinity;
-  let exact = false;
+  // Each edge, and whether it came from the transcript: `exact` only when both did.
+  let from = { t: Infinity, exact: false };
+  let to = { t: -Infinity, exact: false };
   for (const e of events) {
     const at = typeof e.data.transcriptAt === 'number' ? e.data.transcriptAt : null;
     const done = typeof e.data.transcriptCompletedAt === 'number' ? e.data.transcriptCompletedAt : null;
-    if (at !== null) exact = true;
-    from = Math.min(from, at ?? e.timestamp);
-    to = Math.max(to, done ?? at ?? e.timestamp);
+    const start = at ?? e.timestamp;
+    const end = done ?? at ?? e.timestamp;
+    if (start < from.t) from = { t: start, exact: at !== null };
+    if (end > to.t) to = { t: end, exact: done !== null || at !== null };
   }
-  return Number.isFinite(from) ? { sessionId, from, to, turns, exact } : null;
+  return Number.isFinite(from.t) ? { sessionId, from: from.t, to: to.t, turns, exact: from.exact && to.exact } : null;
 }
 
 export function buildSegments(
@@ -193,13 +208,8 @@ export function buildSegments(
   input: { hours: readonly HistoryHour[]; runs: readonly HistoryRun[]; live: boolean; agentSessions: AgentSegment[] },
   gapMs = DEFAULT_BURST_GAP_MS,
 ): NetSegments {
-  const runs = runSegments(input.runs, input.live);
+  const runs = runSegments(input.runs, input.hours, input.live);
   const { bursts, basis } = burstSegments(input.hours, gapMs);
-  // A last run that died with no stop written ended at its last activity, as far as anyone can tell.
-  for (const r of runs) {
-    if (r.end !== 'died' || input.runs.find((x) => x.run === r.run)?.ended !== null) continue;
-    r.to = Math.max(r.from, ...input.hours.filter((h) => h.run === r.run).map((h) => h.last));
-  }
   return {
     token, gapMs, burstBasis: basis, runs, bursts, hours: sessionHours(input.hours),
     agentSessions: [...input.agentSessions].sort((a, b) => a.from - b.from),

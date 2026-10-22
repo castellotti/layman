@@ -60,9 +60,12 @@ const UNKNOWN_GLOVE: NetGloveInfo = { template: null, filter: null, transcripts:
 const SECOND = 1000;
 const MINUTE = 60 * SECOND;
 export const HOUR = 60 * MINUTE;
-const hourKey = (hour: number, run: string | null, key: string) => `${hour}|${run ?? ''}|${key}`;
+/** A `HistoryHour`'s identity: what `net_hours` is keyed by (null run and tool as ''). */
+export const hourKey = (hour: number, run: string | null, key: string, tool: string | null) => `${hour}|${run ?? ''}|${key}|${tool ?? ''}`;
 const byHour = (a: HistoryHour, b: HistoryHour) =>
-  a.hour - b.hour || (a.run ?? '').localeCompare(b.run ?? '') || a.key.localeCompare(b.key);
+  a.hour - b.hour || (a.run ?? '').localeCompare(b.run ?? '') || a.key.localeCompare(b.key) || (a.tool ?? '').localeCompare(b.tool ?? '');
+/** How long after its collector's stop a record still belongs to that run. */
+const RUN_STOP_GRACE_MS = 5 * SECOND;
 /** 1 s buckets are kept for this long, then folded into 1 min buckets for the session. */
 const SECOND_BUCKET_SPAN = 60 * MINUTE;
 const SPARK_SPAN = 60 * SECOND;
@@ -349,7 +352,7 @@ export class NetStore extends EventEmitter {
     }
     if (s.counters.records > 0) return; // too late to tell re-read records from new ones
     s.history = { s: h, dests: new Map(h.destinations.map((d) => [d.key, d])) };
-    for (const hr of h.hours ?? []) s.hours.set(hourKey(hr.hour, hr.run, hr.key), { ...hr });
+    for (const hr of h.hours ?? []) s.hours.set(hourKey(hr.hour, hr.run, hr.key, hr.tool), { ...hr });
     for (const r of h.runs ?? []) s.gateRuns.set(r.run, { ...r });
     s.runOrder = null;
   }
@@ -471,7 +474,7 @@ export class NetStore extends EventEmitter {
   }
 
   /**
-   * Count a flow record into its hour and its collector run. The kept hours already hold every
+   * Count a flow record into its hour (of its collector run). The kept hours already hold every
    * record before the watermark, so those are skipped; a carried flow (`CarryFlow`) counts only
    * what it moved beyond what the kept rows held for it; and a record in the watermark's own
    * millisecond that is not carried was not read then, so it is new. Kept history from before
@@ -491,31 +494,27 @@ export class NetStore extends EventEmitter {
     const key = entry.destKey;
     if (!key || (!up && !down && !opened && !refused)) return;
 
-    const run = this.runAt(s, t);
+    const run = this.runAt(s, t)?.run ?? null;
     const hour = Math.floor(t / HOUR) * HOUR;
-    const k = hourKey(hour, run?.run ?? null, key);
-    const h = s.hours.get(k) ?? {
-      hour, run: run?.run ?? null, key, tool: entry.rec.tool, hop: entry.flags.hop, bytesUp: 0, bytesDown: 0, flows: 0, blocked: 0, first: t, last: t,
-    };
+    const tool = entry.rec.tool;
+    const k = hourKey(hour, run, key, tool);
+    const h = s.hours.get(k) ?? { hour, run, key, tool, hop: entry.flags.hop, bytesUp: 0, bytesDown: 0, flows: 0, blocked: 0, first: t, last: t };
     h.bytesUp += up;
     h.bytesDown += down;
     h.flows += opened ? 1 : 0;
     h.blocked += refused ? 1 : 0;
-    h.tool = entry.rec.tool;
     h.hop = entry.flags.hop;
     h.first = Math.min(h.first, t);
     h.last = Math.max(h.last, t);
     s.hours.set(k, h);
     s.dirtyHours.add(k);
-
-    if (run && !entry.flags.hop) {
-      run.bytesUp += up;
-      run.bytesDown += down;
-    }
-    if (run && opened) run.flows++;
   }
 
-  /** The collector run a record at `t` belongs to: the latest started at or before it. */
+  /**
+   * The collector run a record at `t` belongs to: the latest started at or before it, unless that
+   * one had stopped by then (a gap between runs). Forwarders' last records trail the collector's
+   * stop by moments, hence the grace.
+   */
   private runAt(s: SessionData, t: number): HistoryRun | null {
     s.runOrder ??= [...s.gateRuns.values()].sort((a, b) => a.started - b.started);
     let found: HistoryRun | null = null;
@@ -523,7 +522,7 @@ export class NetStore extends EventEmitter {
       if (r.started > t) break;
       found = r;
     }
-    return found;
+    return found && (found.ended === null || t <= found.ended + RUN_STOP_GRACE_MS) ? found : null;
   }
 
   /** A record from before the kept watermark: the kept rows hold it, under the flow's key then. */
@@ -611,6 +610,7 @@ export class NetStore extends EventEmitter {
    */
   private reflagHops(s: SessionData): boolean {
     let changed = false;
+    const flipped = new Map<string, boolean>();
     const cutoff = (s.lastT ?? 0) - SECOND_BUCKET_SPAN;
     for (const [id, e] of s.flows) {
       const hop = this.isHop(s, e.rec.service);
@@ -634,7 +634,15 @@ export class NetStore extends EventEmitter {
         agg.agg.flags = destFlags(e.flags, agg.agg.ips);
         s.dirtyAggs.add(e.destKey!);
       }
+      if (e.destKey) flipped.set(e.destKey, hop);
       changed = true;
+    }
+    // The hours follow: a hop is a property of the service, so every hour of the destination flips with it.
+    for (const [k, h] of s.hours) {
+      const hop = flipped.get(h.key);
+      if (hop === undefined || h.hop === hop) continue;
+      h.hop = hop;
+      s.dirtyHours.add(k);
     }
     return changed;
   }
@@ -676,7 +684,7 @@ export class NetStore extends EventEmitter {
   private noteGateRun(s: SessionData, rec: GateRecord): void {
     const t = Date.parse(rec.t);
     const known = s.gateRuns.get(rec.run);
-    const r = known ?? { run: rec.run, started: t, ended: null, inferred: false, bytesUp: 0, bytesDown: 0, flows: 0 };
+    const r = known ?? { run: rec.run, started: t, ended: null, inferred: false };
     r.started = Math.min(r.started, t);
     if (rec.event === 'stop') {
       if (r.ended === null || t >= r.ended) r.inferred = rec.inferred;

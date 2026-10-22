@@ -20,17 +20,21 @@ interface SessionRow {
   carry_json: string | null; filter_since: string | null; filter_saw_dir: number; hours_kept: number;
 }
 interface HourRow {
-  token: string; hour: number; run: string; dest_key: string; tool: string | null; hop: number; bytes_up: number; bytes_down: number;
+  token: string; hour: number; run: string; dest_key: string; tool: string; hop: number; bytes_up: number; bytes_down: number;
   flows: number; blocked: number; first_t: number; last_t: number;
 }
 interface RunRow {
-  token: string; run: string; started: number; ended: number | null; inferred: number; bytes_up: number; bytes_down: number; flows: number;
+  token: string; run: string; started: number; ended: number | null; inferred: number;
 }
 
 /** Rows by token. */
 function byTokenOf<R extends { token: string }, T>(rows: R[], map: (r: R) => T): Map<string, T[]> {
   const out = new Map<string, T[]>();
-  for (const r of rows) out.set(r.token, [...(out.get(r.token) ?? []), map(r)]);
+  for (const r of rows) {
+    const list = out.get(r.token);
+    if (list) list.push(map(r));
+    else out.set(r.token, [map(r)]);
+  }
   return out;
 }
 interface DestRow {
@@ -71,12 +75,12 @@ export class SqliteNetHistory implements NetHistory {
       });
       byToken.set(d.token, list);
     }
-    const hours = byTokenOf(this.db.prepare('SELECT * FROM net_hours ORDER BY hour').all() as HourRow[], (h) => ({
-      hour: h.hour, run: h.run === '' ? null : h.run, key: h.dest_key, tool: h.tool, hop: h.hop === 1,
+    const hours = byTokenOf(this.db.prepare('SELECT * FROM net_hours ORDER BY hour, run, dest_key, tool').all() as HourRow[], (h) => ({
+      hour: h.hour, run: h.run === '' ? null : h.run, key: h.dest_key, tool: h.tool === '' ? null : h.tool, hop: h.hop === 1,
       bytesUp: h.bytes_up, bytesDown: h.bytes_down, flows: h.flows, blocked: h.blocked, first: h.first_t, last: h.last_t,
     }));
     const runs = byTokenOf(this.db.prepare('SELECT * FROM net_runs ORDER BY started').all() as RunRow[], (r) => ({
-      run: r.run, started: r.started, ended: r.ended, inferred: r.inferred === 1, bytesUp: r.bytes_up, bytesDown: r.bytes_down, flows: r.flows,
+      run: r.run, started: r.started, ended: r.ended, inferred: r.inferred === 1,
     }));
     return sessions.map((s) => ({
       token: s.token, filterSince: s.filter_since, filterSawDir: s.filter_saw_dir === 1, firstSeen: s.first_seen, lastSeen: s.last_seen, watermark: s.watermark,
@@ -114,13 +118,12 @@ export class SqliteNetHistory implements NetHistory {
     const hour = this.db.prepare(`
       INSERT INTO net_hours (token, hour, run, dest_key, tool, hop, bytes_up, bytes_down, flows, blocked, first_t, last_t)
       VALUES (@token, @hour, @run, @key, @tool, @hop, @bytesUp, @bytesDown, @flows, @blocked, @first, @last)
-      ON CONFLICT(token, hour, run, dest_key) DO UPDATE SET tool = excluded.tool, hop = excluded.hop, bytes_up = excluded.bytes_up,
+      ON CONFLICT(token, hour, run, dest_key, tool) DO UPDATE SET hop = excluded.hop, bytes_up = excluded.bytes_up,
         bytes_down = excluded.bytes_down, flows = excluded.flows, blocked = excluded.blocked, first_t = excluded.first_t, last_t = excluded.last_t`);
     const run = this.db.prepare(`
-      INSERT INTO net_runs (token, run, started, ended, inferred, bytes_up, bytes_down, flows)
-      VALUES (@token, @run, @started, @ended, @inferred, @bytesUp, @bytesDown, @flows)
-      ON CONFLICT(token, run) DO UPDATE SET started = excluded.started, ended = excluded.ended, inferred = excluded.inferred,
-        bytes_up = excluded.bytes_up, bytes_down = excluded.bytes_down, flows = excluded.flows`);
+      INSERT INTO net_runs (token, run, started, ended, inferred)
+      VALUES (@token, @run, @started, @ended, @inferred)
+      ON CONFLICT(token, run) DO UPDATE SET started = excluded.started, ended = excluded.ended, inferred = excluded.inferred`);
     const clear = this.db.prepare('DELETE FROM net_destinations WHERE token = ?');
     const insert = this.db.prepare(`
       INSERT INTO net_destinations (token, host, port, group_key, last_ip, scope, resolution, tool, first_seen, last_seen,
@@ -142,14 +145,14 @@ export class SqliteNetHistory implements NetHistory {
         });
         for (const h of s.hours ?? []) {
           hour.run({
-            token: s.token, hour: h.hour, run: h.run ?? '', key: h.key, tool: h.tool, hop: h.hop ? 1 : 0, bytesUp: h.bytesUp, bytesDown: h.bytesDown, flows: h.flows,
+            token: s.token, hour: h.hour, run: h.run ?? '', key: h.key, tool: h.tool ?? '', hop: h.hop ? 1 : 0, bytesUp: h.bytesUp, bytesDown: h.bytesDown, flows: h.flows,
             blocked: h.blocked, first: Math.round(h.first), last: Math.round(h.last),
           });
         }
         for (const r of s.runs ?? []) {
           run.run({
             token: s.token, run: r.run, started: Math.round(r.started), ended: r.ended === null ? null : Math.round(r.ended),
-            inferred: r.inferred ? 1 : 0, bytesUp: r.bytesUp, bytesDown: r.bytesDown, flows: r.flows,
+            inferred: r.inferred ? 1 : 0,
           });
         }
         clear.run(s.token);

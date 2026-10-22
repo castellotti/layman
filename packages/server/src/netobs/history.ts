@@ -92,22 +92,27 @@ export interface HistorySession {
 }
 
 /**
- * One destination's traffic in one hour of one collector run: what moved in it (by record time,
- * as a time range's clip counts it, `range.ts`), the flows first seen and the refusals recorded
- * in it, and the first and last record in it that moved bytes or opened a flow (a heartbeat is
- * not activity). Keyed by run too, so an hour in which one `glove up` ends and the next starts
- * is two rows, and each run's bursts (`segments.ts`) have exact edges.
+ * One destination's traffic, for one tool, in one hour of one collector run: what moved in it
+ * (by record time, as a time range's clip counts it, `range.ts`), the flows first seen and the
+ * refusals recorded in it, and the first and last record in it that moved bytes, opened a flow
+ * or was refused (a refused connection is the agent trying something; a heartbeat is not activity).
+ * Keyed by run, so an hour in which one `glove up` ends and the next starts is two rows and each
+ * run's bursts (`segments.ts`) have exact edges; and by tool, so a model call is never hidden by
+ * another tool using the same host in the same hour.
  */
 export interface HistoryHour {
   /** The hour's start, epoch ms. */
   hour: number;
-  /** The collector run it was recorded in (`HistoryRun.run`), or null before any (an older gate). */
+  /** The collector run it was recorded in (`HistoryRun.run`), or null outside any (an older gate, or between runs). */
   run: string | null;
   /** The destination key (`destKey`). */
   key: string;
-  /** Its flows' tool (`llm` marks model calls: when the agent was working). */
+  /** The flows' tool (`llm` marks model calls: when the agent was working). */
   tool: string | null;
-  /** A hop's bytes are the next leg's too: the session's hours leave them out. */
+  /**
+   * A hop's bytes are the next leg's too: the session's hours leave them out. Which services are
+   * hops follows session.json, so the store re-flags a destination's rows when that changes.
+   */
   hop: boolean;
   bytesUp: number;
   bytesDown: number;
@@ -119,8 +124,8 @@ export interface HistoryHour {
 
 /**
  * One run of the gate's collector (`type: gate`, `role: collect`): one `glove up` to its
- * `glove down`, or the collector's own inferred stop when it died. Its bytes and flows are
- * those recorded while it ran, counted as the hours are (hops left out).
+ * `glove down`, or the collector's own inferred stop when it died. What moved during it is
+ * not kept here but summed from its hours (`segments.ts`), so the two can never disagree.
  */
 export interface HistoryRun {
   run: string;
@@ -128,9 +133,6 @@ export interface HistoryRun {
   /** Null while it runs, or when no stop was ever recorded. */
   ended: number | null;
   inferred: boolean;
-  bytesUp: number;
-  bytesDown: number;
-  flows: number;
 }
 
 /**
