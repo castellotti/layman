@@ -176,6 +176,8 @@ interface SessionData {
   gate: NetGateView;
   /** The exit IP the last `gateSince` saw, to tell a new exit from the same one. */
   sinceExitIp: string | null;
+  /** The collector run the last `gateSince` saw: a new one is a new `glove up`. */
+  sinceRunId: string | null;
   /** The enforced rule set and the one on disk, for each destination's predicted policy. */
   policy: { enforced: RuleSet | null; written: RuleSet | null };
   dirtyFlows: Set<string>;
@@ -321,6 +323,7 @@ export class NetStore extends EventEmitter {
       lastT: null,
       gate: classifySession({ status: null, statusMtimeMs: null, exit: null, session: null }, Date.now()),
       sinceExitIp: null,
+      sinceRunId: null,
       dirtyFlows: new Set(),
       dirtyAggs: new Set(),
       removedAggs: new Set(),
@@ -348,6 +351,9 @@ export class NetStore extends EventEmitter {
       this.useSessionFile(s, h.sessionFile);
       if (h.lastExit) s.exits.push(h.lastExit);
       s.status = h.lastStatus;
+      // Its runs first: the gate's "since" is dated from them (a stopped gate since its run's stop).
+      for (const r of h.runs ?? []) s.gateRuns.set(r.run, { ...r });
+      s.runOrder = null;
       this.refreshGate(s, now, false);
     }
     const s = this.sessions.get(h.token)!;
@@ -369,6 +375,11 @@ export class NetStore extends EventEmitter {
     s.loc = loc;
     s.historyOnly = false;
     s.rules = blankRulesView(loc);
+    // The gate view it kept describes the past: start again, so its "since" is read from the
+    // records about to be re-read rather than dated as changes seen now.
+    s.gate = classifySession({ status: null, statusMtimeMs: null, exit: null, session: null }, Date.now());
+    s.sinceExitIp = null;
+    s.sinceRunId = null;
   }
 
   /** What glove says about a session now (discovery, every poll). */
@@ -848,13 +859,13 @@ export class NetStore extends EventEmitter {
     }
   }
 
-  ingestExit(token: string, rec: ExitRecord): void {
+  ingestExit(token: string, rec: ExitRecord, now = Date.now()): void {
     const s = this.sessions.get(token);
     if (!s) return;
     s.counters.records++;
     s.exits.push(rec);
     if (s.exits.length > MAX_EXITS) s.exits.shift();
-    this.refreshGate(s, Date.now(), true);
+    this.refreshGate(s, now, true);
     this.emit('exit', token);
   }
 
@@ -963,9 +974,10 @@ export class NetStore extends EventEmitter {
     const run = runs.at(-1) ?? null;
     const beat = s.status?.t ? Date.parse(s.status.t) : s.statusMtimeMs;
     next.since = gateSince(prev, next, {
-      exits: s.exits, run: run && { started: run.started, ended: run.ended }, prevExitIp: s.sinceExitIp,
+      exits: s.exits, run: run && { id: run.run, started: run.started, ended: run.ended }, prevExitIp: s.sinceExitIp, prevRunId: s.sinceRunId,
     }, beat ?? null, now);
     s.sinceExitIp = s.exits.at(-1)?.ip ?? null;
+    s.sinceRunId = run?.run ?? null;
     s.gate = next;
     if (force || prev.freshness !== next.freshness) this.emit('status', s.loc.token);
   }

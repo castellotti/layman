@@ -62,7 +62,7 @@ const ROUTE_LABEL: Record<string, string> = { vpn: 'VPN', tor: 'Tor' };
 /** "Since Oct 21 00:27:03 (5 h ago)", or "at least since" when Layman did not see it change; nothing when nothing says. */
 function sinceFact(what: string, since: SinceAt | null, now: number): string[] {
   if (!since) return [];
-  return [`${what} ${since.exact ? 'since' : 'at least since'} ${formatStamp(since.t)} (${formatAge(now - since.t)} ago)`];
+  return [`${what} ${since.exact ? 'since' : 'at least since'} ${formatStamp(since.t)} (${formatAge(Math.max(0, now - since.t))} ago)`];
 }
 
 export function gateChips(data: NetSessionData, now = Date.now()): GateChip[] {

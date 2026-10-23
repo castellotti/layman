@@ -324,13 +324,21 @@ old, falling back to `status.json`'s mtime for a gate that writes no `t`), route
 not an error), resolver, rules load result, telemetry, and unobserved services.
 
 **Since when** (`gateSince()`, `NetGateView.since`). The strip's tooltips say when the gate, the route,
-the exit IP and the resolver became what they are. A change Layman sees between two reads, a second
-apart, is dated when it saw it. A part it did not see change (the first read after Layman starts) is
-dated from glove's records, never "since Layman started", which would say nothing:
-- a running gate since its collector run's start record;
-- a stale one since its last heartbeat, and a stopped one since its run's stop;
+the exit IP and the resolver became what they are. Each is dated by the glove record that says so,
+whether Layman saw the change live or reads it back after a restart, so the two give the same date and
+neither says "since Layman started":
+- a running gate since its collector run's start record. A new `glove up` is a new run id, so it is
+  running since its own start, not the previous run's;
+- a stale gate since its last heartbeat (the clock, not a record, turns it stale), and a stopped one
+  since its run's stop;
 - a verified exit since the first record of its unbroken healthy streak, and the exit IP since its
-  first record in a row.
+  first record in a row. The upstream's own health is not part of "verified since": glove reports it
+  with no time, and a blip would re-date it.
+
+A streak that runs back to the oldest exit record Layman holds is shown as "at least since", because
+older records may have expired. A change no record dates (the resolver's health) is dated when Layman
+saw it, and is left out after a restart. A time range shows its own last exit, so the live "this exit
+since" is left out of a range whose exit is not the live one.
 
 Where nothing says (the resolver's health has no record), there is no "since": a tip leaves it out
 rather than guess. `exact: false` reads "at least since" and is reserved for a date that is only a lower

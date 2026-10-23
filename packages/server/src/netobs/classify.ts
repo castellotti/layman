@@ -151,54 +151,71 @@ export function classifySession(inp: SessionInputs, now: number): NetGateView {
 
 /** What the records say, for a part Layman did not see change. */
 export interface SinceRecords {
-  /** Exit records, oldest first. */
+  /** Exit records, oldest first: as many as Layman holds, which may not reach back to the first. */
   exits: readonly ExitRecord[];
-  /** The latest collector run's start and stop (`HistoryRun`), if any. */
-  run: { started: number; ended: number | null } | null;
-}
-
-/** The earliest record of the unbroken streak at the end of `exits` that `same` holds for, or null. */
-function streakStart(exits: readonly ExitRecord[], same: (e: ExitRecord) => boolean): number | null {
-  let t: number | null = null;
-  for (let i = exits.length - 1; i >= 0 && same(exits[i]); i--) t = Date.parse(exits[i].t);
-  return t !== null && Number.isFinite(t) ? t : null;
+  /** The latest collector run (`HistoryRun`), if any: its id, start and stop. */
+  run: { id: string; started: number; ended: number | null } | null;
 }
 
 /**
- * When each part of the gate view became what it is (`GateSince`). A part Layman saw change
- * (between two reads, a second apart) changed `now`. One it did not see change (the first read
- * after a start, or a restart) is taken from the records: a running gate since its run's start, a
- * stopped one since its stop, a stale one since its last heartbeat (`beat`), a verified exit since
- * the first record of its unbroken healthy streak, an exit IP since its first record in a row.
- * Where nothing says, null: a tooltip then leaves "since" out rather than guess.
+ * When the unbroken streak at the end of `exits` that `same` holds for began, or null. Exact when
+ * the record before it is held and breaks it; a lower bound when the streak runs back to the
+ * oldest record held (older ones expired, or only the last was kept), since it may be longer.
+ */
+function streakStart(exits: readonly ExitRecord[], same: (e: ExitRecord) => boolean): SinceAt | null {
+  let i = exits.length - 1;
+  if (i < 0 || !same(exits[i])) return null;
+  while (i > 0 && same(exits[i - 1])) i--;
+  const t = Date.parse(exits[i].t);
+  return Number.isFinite(t) ? { t, exact: i > 0 } : null;
+}
+
+const recordTime = (e: ExitRecord | undefined) => {
+  const t = e ? Date.parse(e.t) : NaN;
+  return Number.isFinite(t) ? t : null;
+};
+
+/**
+ * When each part of the gate view became what it is (`GateSince`). Each part is dated by the
+ * record that says so when there is one, seen live or read back after a restart, so the two agree:
+ * a running gate since its run's start, a stale one since its last heartbeat (`beat`), a stopped
+ * one since its run's stop, a verified exit since its healthy streak began, an exit IP since its
+ * first record in a row. A change no record dates (the resolver's health) is dated when Layman saw
+ * it, between two reads a second apart, and is null after a restart. Where nothing says, null: a
+ * tooltip then leaves "since" out rather than guess.
  */
 export function gateSince(
-  prev: NetGateView, next: NetGateView, rec: SinceRecords & { prevExitIp: string | null }, beat: number | null, now: number,
+  prev: NetGateView, next: NetGateView, rec: SinceRecords & { prevExitIp: string | null; prevRunId: string | null }, beat: number | null, now: number,
 ): GateSince {
   // A status had been read before: a difference now is a change seen happening.
   const seen = prev.state !== null;
-  const keep = (part: keyof GateSince, before: string, after: string, backfill: () => SinceAt | null): SinceAt | null => {
-    if (seen && before === after) return prev.since[part];
-    if (seen) return { t: now, exact: true };
-    return backfill();
+  const at = (t: number | null | undefined): SinceAt | null => (t === null || t === undefined || !Number.isFinite(t) ? null : { t, exact: true });
+  /** The part as it was if unchanged; if changed (or first seen), what the records say, else `now` if seen. */
+  const part = (name: keyof GateSince, before: string, after: string, dated: () => SinceAt | null): SinceAt | null => {
+    if (seen && before === after) return prev.since[name];
+    return dated() ?? (seen ? { t: now, exact: true } : null);
   };
-  const at = (t: number | null | undefined, exact = true): SinceAt | null => (t === null || t === undefined || !Number.isFinite(t) ? null : { t, exact });
 
-  const routeKey = (v: NetGateView) => `${v.route.kind}|${v.route.verified}|${v.route.exitIdentityOff}|${v.route.upstreamHealthy}`;
+  // The gate is the same while its state and its run are: a new `glove up` is a new run, running again.
+  const runId = rec.run?.id ?? '';
   const exitIp = rec.exits.at(-1)?.ip ?? null;
   return {
-    gate: keep('gate', prev.freshness, next.freshness, () => {
+    gate: part('gate', `${prev.freshness}|${rec.prevRunId ?? ''}`, `${next.freshness}|${runId}`, () => {
       switch (next.freshness) {
         case 'running': return at(rec.run && rec.run.ended === null ? rec.run.started : null);
+        // The clock, not a record, turns a gate stale: it went quiet at its last heartbeat.
         case 'stale': return at(beat);
         case 'stopped': return at(rec.run?.ended ?? beat);
         default: return null;
       }
     }),
-    route: keep('route', routeKey(prev), routeKey(next), () =>
-      next.route.verified ? at(streakStart(rec.exits, (e) => e.healthy)) : null),
-    exit: keep('exit', String(rec.prevExitIp), String(exitIp), () =>
-      exitIp === null ? null : at(streakStart(rec.exits, (e) => e.ip === exitIp))),
-    resolver: keep('resolver', `${prev.resolver.mode}|${prev.resolver.healthy}`, `${next.resolver.mode}|${next.resolver.healthy}`, () => null),
+    // "Verified since": the route's kind and whether its exit is verified, not its upstream's
+    // health, which glove reports with no time and which a blip would otherwise re-date.
+    route: part('route', `${prev.route.kind}|${prev.route.verified}|${prev.route.exitIdentityOff}`,
+      `${next.route.kind}|${next.route.verified}|${next.route.exitIdentityOff}`,
+      () => (next.route.verified ? streakStart(rec.exits, (e) => e.healthy) : null)),
+    exit: part('exit', String(rec.prevExitIp), String(exitIp), () =>
+      exitIp === null ? null : seen && rec.prevExitIp !== exitIp ? at(recordTime(rec.exits.at(-1))) : streakStart(rec.exits, (e) => e.ip === exitIp)),
+    resolver: part('resolver', `${prev.resolver.mode}|${prev.resolver.healthy}`, `${next.resolver.mode}|${next.resolver.healthy}`, () => null),
   };
 }
