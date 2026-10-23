@@ -4,11 +4,10 @@ Building, testing, and contributing to Layman.
 
 ## Prerequisites
 
-- Node.js 22 (`.nvmrc`). The server's SQLite binding (`better-sqlite3` 9.x) ships prebuilds for
-  Node ≤ 22 and does not compile against newer Node, so on Node 24+ every test that opens a
-  database (`db/`, `sync/`, `netobs/persist.test.ts`) fails with "Could not locate the bindings
-  file" and the server cannot start natively. `pnpm rebuild better-sqlite3` does not fix that.
-  Use Node 22 (`nvm use`, `fnm use`, or Homebrew's `node@22`), or run the suite in Docker (below).
+- Node.js 22 or newer (`.nvmrc` pins 22, the image's version). The server's SQLite binding
+  (`better-sqlite3` 13.x) is built on N-API and ships its prebuilt binaries inside the package
+  (macOS, glibc and musl Linux, Windows; x64 and arm64), so one binary works on every Node ≥ 22.
+  No compiler is needed on those platforms.
 - pnpm 10 (`corepack enable && corepack prepare pnpm@10.29.3 --activate`)
 - Docker **or** Podman (for container builds — see [Container engine](#container-engine) below)
 
@@ -73,8 +72,7 @@ milliseconds of each other and the response sorts between the two prompt copies.
 *first* copy's id as its address; the duplicate stays in `eventIds`, and `extractTurn()` /
 `TurnStore.getTurn()` resolve it to the surviving turn so older links still work.
 
-To inspect the duplicates yourself (a `sqlite3` CLI is the practical tool here, since
-`better-sqlite3` has no prebuild for this machine's Node ABI):
+To inspect the duplicates yourself with the `sqlite3` CLI:
 
 ```bash
 sqlite3 ~/.local/share/layman/layman.db "
@@ -299,7 +297,7 @@ make docker-stop
 
 `make docker-run` points Layman at the current working directory's `.claude` folder; override with `LAYMAN_PROJECT_DIR=/path/to/project`.
 
-The image builds on `node:22-slim`; `better-sqlite3` is a native module compiled during the image build (python3/make/g++ are installed in the build stage).
+The image builds on `node:22-slim`; `better-sqlite3` loads its bundled `linux-x64`/`linux-arm64` prebuild. The build stage still installs python3/make/g++ because the package's install step runs `node-gyp`, which falls back to compiling from source on a platform without a prebuild.
 
 ### Container engine
 
