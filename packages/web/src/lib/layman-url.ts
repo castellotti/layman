@@ -12,6 +12,9 @@
  * Query parameters (orthogonal): ?view=… ?play=1 ?t=<ms>
  *   ?glove=<token> ?dest=<host>   the glove session and selected destination on
  *                                 the network views (network, map, topology, trace)
+ *   ?from=<iso>&to=<iso|now>      their time range (absent: All records). ISO, not
+ *                                 ms, so a shared link says what it shows; `to=now`
+ *                                 (or no `to`) runs until now
  *
  * Mirrored in packages/server/src/export/urls.ts — the round-trip test in each
  * package is what keeps the two copies honest.  See CLAUDE.md "Type duplication".
@@ -45,6 +48,8 @@ export interface RouteOptions {
   glove?: string;
   /** Network views: the selected destination host. */
   dest?: string;
+  /** Network views: the time range (epoch ms), or none for All records. `to: null` runs until now. */
+  range?: { from: number; to: number | null };
 }
 
 export interface ParsedRoute {
@@ -72,6 +77,11 @@ function buildQuery(opts: RouteOptions | undefined): string {
   if (opts.t !== undefined && Number.isFinite(opts.t)) params.push(`t=${opts.t}`);
   if (opts.glove) params.push(`glove=${encodeURIComponent(opts.glove)}`);
   if (opts.dest) params.push(`dest=${encodeURIComponent(opts.dest)}`);
+  if (opts.range) {
+    // ISO's characters are all safe in a query, so it is left readable rather than encoded.
+    params.push(`from=${new Date(opts.range.from).toISOString()}`);
+    params.push(`to=${opts.range.to === null ? 'now' : new Date(opts.range.to).toISOString()}`);
+  }
   return params.length > 0 ? `?${params.join('&')}` : '';
 }
 
@@ -106,6 +116,8 @@ function parseQuery(search: string): RouteOptions {
   const opts: RouteOptions = {};
   const query = search.startsWith('?') ? search.slice(1) : search;
   if (!query) return opts;
+  let from: number | null = null;
+  let to: number | null = null;
 
   for (const pair of query.split('&')) {
     if (!pair) continue;
@@ -124,8 +136,16 @@ function parseQuery(search: string): RouteOptions {
       opts.glove = value;
     } else if (key === 'dest' && value) {
       opts.dest = value;
+    } else if (key === 'from') {
+      const ms = Date.parse(value);
+      if (Number.isFinite(ms)) from = ms;
+    } else if (key === 'to' && value !== 'now') {
+      const ms = Date.parse(value);
+      if (Number.isFinite(ms)) to = ms;
     }
   }
+  // A range needs its start; one ending before it is not a range.
+  if (from !== null && (to === null || to >= from)) opts.range = { from, to };
   return opts;
 }
 

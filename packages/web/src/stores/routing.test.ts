@@ -78,6 +78,7 @@ beforeEach(() => {
     config: null,
     netToken: null,
     netDest: null,
+    netRange: null,
   });
 });
 
@@ -386,6 +387,8 @@ describe('network views (glove)', () => {
     '/?view=map&glove=pi-search&dest=arxiv.org',
     '/?view=topology&glove=pi-search-review',
     '/?view=trace&glove=pi-search',
+    '/?view=topology&glove=pi-search&from=2026-10-21T00:27:03.338Z&to=2026-10-22T06:09:02.474Z',
+    '/?view=map&glove=pi-search&dest=arxiv.org&from=2026-10-21T08:00:00.000Z&to=now',
   ])('a hydrated %s deep link rebuilds the same path', async (path) => {
     const parsed = parsePath(path);
     await useSessionStore.getState().hydrateFromRoute(parsed!.route, parsed!.opts);
@@ -407,10 +410,21 @@ describe('network views (glove)', () => {
     expect(readBack()).toBe('/?view=topology&glove=pi-search&dest=arxiv.org');
   });
 
-  it('choosing another glove session clears the destination selection', () => {
-    useSessionStore.setState({ viewMode: 'map', netToken: 'a', netDest: 'arxiv.org' });
+  it('choosing another glove session clears the destination selection and the time range', () => {
+    useSessionStore.setState({ viewMode: 'map', netToken: 'a', netDest: 'arxiv.org', netRange: { from: 0, to: null } });
     useSessionStore.getState().setNetToken('b');
     expect(readBack()).toBe('/?view=map&glove=b');
+  });
+
+  it('switching tab keeps the time range; clearing it is All records again', async () => {
+    const range = { from: Date.parse('2026-10-21T08:00:00.000Z'), to: Date.parse('2026-10-21T09:00:00.000Z') };
+    await useSessionStore.getState().hydrateFromRoute({ kind: 'dashboard' }, { view: 'topology', glove: 'g', range });
+    for (const mode of ['network', 'map', 'trace', 'topology'] as const) {
+      useSessionStore.getState().setViewMode(mode);
+      expect(useSessionStore.getState().netRange).toEqual(range);
+    }
+    useSessionStore.getState().setNetRange(null);
+    expect(readBack()).toBe('/?view=topology&glove=g');
   });
 
   it('a stale folder id never outranks a network view', async () => {
@@ -443,6 +457,15 @@ describe('historyModeFor', () => {
   });
   it('pushes when the glove session changes', () => {
     expect(mode('/?view=map&glove=a', '/?view=map&glove=b')).toBe('push');
+  });
+  it('pushes when the time range is set, changed or cleared, so Back returns to the previous one', () => {
+    const r1 = '&from=2026-10-21T08:00:00.000Z&to=now';
+    const r2 = '&from=2026-10-21T09:00:00.000Z&to=2026-10-21T10:00:00.000Z';
+    expect(mode('/?view=map&glove=a', `/?view=map&glove=a${r1}`)).toBe('push');
+    expect(mode(`/?view=map&glove=a${r1}`, `/?view=map&glove=a${r2}`)).toBe('push');
+    expect(mode(`/?view=map&glove=a${r1}`, '/?view=map&glove=a')).toBe('push');
+    // Switching tab within one range is still view state.
+    expect(mode(`/?view=map&glove=a${r1}`, `/?view=topology&glove=a${r1}`)).toBe('replace');
   });
   it('replaces when the default glove session is filled in (no Back trap)', () => {
     expect(mode('/?view=network', '/?view=network&glove=a')).toBe('replace');

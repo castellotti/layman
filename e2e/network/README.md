@@ -23,6 +23,7 @@ Layman on :8880, its data, or `~/.glove`. Screenshots land in `$LAYMAN_E2E_DIR/s
 | `control` | block/unblock through the fake gate, pending → enforced by hash, kill switch and restore, external edits, rejected rules |
 | `map` | offline map, clusters, detail card, activity, ribbon; no off-site request |
 | `topology` | diagram, bands, selected path, sizes |
+| `range` | a time range from the URL: ranged snapshot, banner and its gaps, kept across tabs, All records and Back, cleared by another glove session |
 | `trace` | turns, waterfall, joins, details, open-in-trace |
 | `persistence` | rollups across three container restarts, no double count, history-only sessions (needs `sqlite3`) |
 | `ip-setting` | `glove.showIpAddresses` in Settings, and the metadata fetch joined to its guard refusal |

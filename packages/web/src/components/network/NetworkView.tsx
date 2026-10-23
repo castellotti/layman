@@ -10,10 +10,11 @@ import React, { useEffect, useMemo } from 'react';
 import { useSessionStore } from '../../stores/sessionStore.js';
 import { useNetStore } from '../../stores/netStore.js';
 import { useNetPanels } from '../../hooks/useNetPanels.js';
-import { defaultNetToken, type NetSessionData } from '../../lib/net-state.js';
+import { defaultNetToken, rangeKey, type NetSessionData } from '../../lib/net-state.js';
+import { formatRange } from '../../lib/net-range.js';
 import { columnPanels, type PanelDef } from '../../lib/net-panels.js';
 import type { ClientMessage } from '../../lib/ws-protocol.js';
-import { GateStrip, RulesRejectedBanner } from './GateStrip.js';
+import { GateStrip, RangeBanner, RulesRejectedBanner } from './GateStrip.js';
 import { DestinationTable } from './DestinationTable.js';
 import { KpiRow, MiniMap, MiniMapExpand, RulesFileLink } from './NetworkPanels.js';
 import { RulesPanel } from './RulesPanel.js';
@@ -128,6 +129,10 @@ export default function NetworkView({ tab, onSend }: { tab: NetTab; onSend: (msg
   const wsStatus = useSessionStore((s) => s.wsStatus);
   const netToken = useSessionStore((s) => s.netToken);
   const setNetToken = useSessionStore((s) => s.setNetToken);
+  const netRange = useSessionStore((s) => s.netRange);
+  const setNetRange = useSessionStore((s) => s.setNetRange);
+  const rangeProgress = useNetStore((s) => s.rangeProgress);
+  const rangeError = useNetStore((s) => s.rangeError);
   const setSettingsOpen = useSessionStore((s) => s.setSettingsOpen);
   const activeSessionName = useSessionStore((s) =>
     s.sessions.find((x) => x.sessionId === s.activeSessionId)?.sessionName ?? null);
@@ -149,12 +154,15 @@ export default function NetworkView({ tab, onSend }: { tab: NetTab; onSend: (msg
   // One subscription per socket. Re-sent after a reconnect (the server forgets
   // subscriptions with the socket), and dropped when the tabs close so a
   // dashboard that is not looking stops receiving deltas.
+  // A time range is part of the subscription: the server builds it from glove's files
+  // (never a filter of All records), so changing it subscribes again.
   const subscribeTo = listed ? token : null;
+  const rangeKeyed = subscribeTo !== null && netRange ? rangeKey(netRange) : null;
   useEffect(() => {
     if (wsStatus !== 'connected') return;
-    setSubscribed(subscribeTo);
-    onSend({ type: 'net:subscribe', token: subscribeTo });
-  }, [wsStatus, subscribeTo, onSend, setSubscribed]);
+    setSubscribed(subscribeTo, rangeKeyed);
+    onSend({ type: 'net:subscribe', token: subscribeTo, range: rangeKeyed ? useSessionStore.getState().netRange : null });
+  }, [wsStatus, subscribeTo, rangeKeyed, onSend, setSubscribed]);
   useEffect(() => {
     useNetStore.getState().setSender(onSend);
     return () => {
@@ -211,7 +219,25 @@ export default function NetworkView({ tab, onSend }: { tab: NetTab; onSend: (msg
         </EmptyState>
       );
     }
-    if (!data || data.token !== token) return <EmptyState title={`Loading ${token}…`} />;
+    if (rangeKeyed && rangeError) {
+      return (
+        <EmptyState
+          title="This time range cannot be shown"
+          action={<button type="button" onClick={() => setNetRange(null)} style={{ fontSize: 11.5, padding: '5px 12px', borderRadius: 6, background: 'var(--bg-pill)', border: '1px solid var(--border-strong)', color: 'var(--text)', cursor: 'pointer' }}>Show All records</button>}
+        >
+          {rangeError}
+        </EmptyState>
+      );
+    }
+    if (!data || data.token !== token || (data.range?.key ?? null) !== rangeKeyed) {
+      if (!rangeKeyed) return <EmptyState title={`Loading ${token}…`} />;
+      const pct = rangeProgress && rangeProgress.totalBytes > 0 ? Math.min(100, Math.round((100 * rangeProgress.scannedBytes) / rangeProgress.totalBytes)) : null;
+      return (
+        <EmptyState title="Reading glove’s files for this range…">
+          {netRange && formatRange(netRange)}{pct !== null ? ` · ${pct}%` : ''}
+        </EmptyState>
+      );
+    }
     return (
       <>
         {tab === 'network' && <KpiRow data={data} />}
@@ -220,9 +246,10 @@ export default function NetworkView({ tab, onSend }: { tab: NetTab; onSend: (msg
           : tab === 'map' ? <MapView data={data} panels={panels} /> : <Board tab={tab} panels={panels} data={data} />}
       </>
     );
-  }, [enabled, sessionsKnown, registry, sessions.length, listed, dark, token, data, tab, panels, config?.glove.home, setSettingsOpen]);
+  }, [enabled, sessionsKnown, registry, sessions.length, listed, dark, token, data, tab, panels, config?.glove.home, setSettingsOpen,
+    rangeKeyed, rangeError, rangeProgress, netRange, setNetRange]);
 
-  const shown = data && data.token === token ? data : null;
+  const shown = data && data.token === token && (data.range?.key ?? null) === rangeKeyed ? data : null;
   return (
     <div className="net-view" style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, overflow: 'hidden', background: 'var(--bg)' }}>
       <GateStrip
@@ -236,6 +263,7 @@ export default function NetworkView({ tab, onSend }: { tab: NetTab; onSend: (msg
         onToggle={panels.toggle}
       />
       {shown && <RulesRejectedBanner data={shown} />}
+      {shown?.range && <RangeBanner range={shown.range} onClear={() => setNetRange(null)} />}
       <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>{body}</div>
       <NetNotices data={shown} />
     </div>

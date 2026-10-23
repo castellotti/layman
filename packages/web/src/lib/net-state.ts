@@ -17,6 +17,8 @@ import type {
   NetServerMessage,
   NetSessionFile,
   NetNotObservable,
+  NetRange,
+  NetRangeInfo,
   NetSessionSummary,
   NetTotals,
   RateBucket,
@@ -45,6 +47,8 @@ export interface NetSessionData {
   historyTruncated: boolean;
   /** glove's files are gone: shown from what Layman kept. */
   historyOnly: boolean;
+  /** The time range it shows, or null for All records. */
+  range: NetRangeInfo | null;
 }
 
 /** What became of one `net:rules:apply` this client sent: did the write reach disk? */
@@ -67,8 +71,14 @@ export interface NetClientState {
   registry: GloveRegistryView;
   /** The token this client asked the server for (at most one). */
   subscribed: string | null;
-  /** Data for `subscribed`; null until its snapshot arrives. */
+  /** The key of the time range it asked for (`rangeKey`), or null for All records. */
+  subscribedRange: string | null;
+  /** Data for `subscribed` (and its range); null until its snapshot arrives. */
   data: NetSessionData | null;
+  /** How far the server has read glove's files for the range, while it builds it. */
+  rangeProgress: { scannedBytes: number; totalBytes: number } | null;
+  /** Why the server cannot show the range (`net:range:error`); no snapshot follows. */
+  rangeError: string | null;
   /** This client's rules operations by opId; the gate's verdict is in `data.rules.write`. */
   ops: Record<string, NetOpResult>;
 }
@@ -79,9 +89,23 @@ export const initialNetState: NetClientState = {
   sessionsKnown: false,
   registry: { state: 'absent', detail: '' },
   subscribed: null,
+  subscribedRange: null,
   data: null,
+  rangeProgress: null,
+  rangeError: null,
   ops: {},
 };
+
+/** A range's key, as the server's `rangeKey` (`netobs/range.ts`) makes it: frames for a range carry it. */
+export function rangeKey(r: NetRange): string {
+  return `${r.from}-${r.to ?? 'now'}`;
+}
+
+/** Subscribe to another session or range: what was shown is for the old one, so it goes. */
+export function subscribeTo(state: NetClientState, token: string | null, range: string | null): NetClientState {
+  if (state.subscribed === token && state.subscribedRange === range) return state;
+  return { ...state, subscribed: token, subscribedRange: range, data: null, rangeProgress: null, rangeError: null };
+}
 
 /** Operations kept for their result notices; older ones are dropped. */
 const MAX_OPS = 20;
@@ -115,11 +139,24 @@ export function applyNetMessage(state: NetClientState, msg: NetServerMessage): N
     return { ...state, ops: { ...state.ops, [msg.opId]: { ...op, ok: msg.ok, error: msg.error } } };
   }
   if (msg.token !== state.subscribed) return state;
+  // A frame for a range this client has left (or for All records while it shows a range) is
+  // another view's data. The gate and the rules are the same in every range, so those apply.
+  const forRange = (key: string | null) => key === state.subscribedRange;
+
+  if (msg.type === 'net:range:progress') {
+    return forRange(msg.range) ? { ...state, rangeProgress: { scannedBytes: msg.scannedBytes, totalBytes: msg.totalBytes } } : state;
+  }
+  if (msg.type === 'net:range:error') {
+    return forRange(msg.range) ? { ...state, rangeError: msg.error, rangeProgress: null } : state;
+  }
 
   if (msg.type === 'net:snapshot') {
     const s = msg.snapshot;
+    if (!forRange(s.range?.key ?? null)) return state;
     return {
       ...state,
+      rangeProgress: null,
+      rangeError: null,
       data: {
         token: s.token,
         session: s.session,
@@ -135,6 +172,7 @@ export function applyNetMessage(state: NetClientState, msg: NetServerMessage): N
         emptyFolded: s.emptyFolded,
         historyTruncated: s.historyTruncated,
         historyOnly: s.historyOnly,
+        range: s.range,
       },
     };
   }
@@ -144,6 +182,7 @@ export function applyNetMessage(state: NetClientState, msg: NetServerMessage): N
 
   switch (msg.type) {
     case 'net:delta': {
+      if (!forRange(msg.range)) return state;
       const d = msg.delta;
       const destinations = new Map(data.destinations);
       for (const k of d.removedDestinations) destinations.delete(k);
@@ -168,14 +207,12 @@ export function applyNetMessage(state: NetClientState, msg: NetServerMessage): N
     case 'net:status':
       return { ...state, data: { ...data, gate: msg.status } };
     case 'net:exit': {
+      if (!forRange(msg.range)) return state;
       const exits = msg.exit ? [...data.exits, msg.exit].slice(-50) : data.exits;
       return { ...state, data: { ...data, exit: msg.exit, exits } };
     }
     case 'net:rules':
       return { ...state, data: { ...data, rules: msg.rules } };
-    case 'net:range:progress':
-    case 'net:range:error':
-      return state;
   }
 }
 

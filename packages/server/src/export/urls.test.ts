@@ -28,7 +28,23 @@ const OPTION_SETS: RouteOptions[] = [
   { view: 'map', glove: 'pi-search-review', dest: 'en.wikipedia.org' },
   { view: 'topology', glove: 'pi-search', dest: '169.254.169.254' },
   { view: 'trace', glove: 'env/with space' },
+  { view: 'topology', glove: 'pi-search', range: { from: Date.parse('2026-10-21T00:27:03.338Z'), to: Date.parse('2026-10-22T06:09:02.474Z') } },
+  { view: 'network', glove: 'pi-search', dest: 'arxiv.org', range: { from: Date.parse('2026-10-21T08:00:00.000Z'), to: null } },
 ];
+
+describe('time ranges in the URL', () => {
+  it('writes a range as readable ISO times, and until-now as `now`', () => {
+    expect(buildPath({ kind: 'dashboard' }, { view: 'topology', glove: 'g', range: { from: Date.parse('2026-10-21T08:00:00.000Z'), to: null } }))
+      .toBe('/?view=topology&glove=g&from=2026-10-21T08:00:00.000Z&to=now');
+  });
+
+  it('reads a missing `to` as until now, and drops a range with no start or ending before it', () => {
+    expect(parsePath('/', '?from=2026-10-21T08:00:00Z')!.opts.range).toEqual({ from: Date.parse('2026-10-21T08:00:00Z'), to: null });
+    expect(parsePath('/', '?to=2026-10-21T08:00:00Z')!.opts.range).toBeUndefined();
+    expect(parsePath('/', '?from=nonsense&to=now')!.opts.range).toBeUndefined();
+    expect(parsePath('/', '?from=2026-10-21T09:00:00Z&to=2026-10-21T08:00:00Z')!.opts.range).toBeUndefined();
+  });
+});
 
 describe('URL round-trip', () => {
   // The cheapest guard against the server and web copies of this grammar drifting.

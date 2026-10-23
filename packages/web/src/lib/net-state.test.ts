@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  MAX_CLOSED_FLOWS, applyNetMessage, defaultNetToken, initialNetState, networkTabSignal,
+  MAX_CLOSED_FLOWS, applyNetMessage, defaultNetToken, initialNetState, networkTabSignal, rangeKey, subscribeTo,
   type NetClientState,
 } from './net-state.js';
 import type {
@@ -82,6 +82,50 @@ describe('applyNetMessage', () => {
     s = applyNetMessage(s, { type: 'net:exit', token: 'a', range: null, exit });
     expect(s.data!.exit?.country).toBe('Sweden');
     expect(s.data!.exits).toHaveLength(1);
+  });
+});
+
+describe('time ranges', () => {
+  const R = rangeKey({ from: 1000, to: null });
+  const info = { key: R, from: 1000, to: null, filesFrom: 500, truncated: false, scannedBytes: 10 };
+  const inRange = () => subscribeTo(subscribed('a'), 'a', R);
+
+  it('keys a range as the server does', () => {
+    expect([rangeKey({ from: 5, to: null }), rangeKey({ from: 5, to: 9 })]).toEqual(['5-now', '5-9']);
+  });
+
+  it('shows only the subscribed range: another range’s snapshot, deltas and exits are dropped', () => {
+    // All records' snapshot, arriving after the client asked for a range: not this view's.
+    let s = applyNetMessage(inRange(), { type: 'net:snapshot', token: 'a', snapshot: snapshot('a') });
+    expect(s.data).toBeNull();
+    s = applyNetMessage(s, { type: 'net:snapshot', token: 'a', snapshot: snapshot('a', { range: info }) });
+    expect(s.data?.range?.key).toBe(R);
+    const before = s.data;
+    s = applyNetMessage(s, { type: 'net:delta', token: 'a', range: null, delta: delta({ flows: [flow('live')] }) });
+    s = applyNetMessage(s, { type: 'net:delta', token: 'a', range: '1-2', delta: delta({ flows: [flow('other')] }) });
+    expect(s.data).toBe(before);
+    s = applyNetMessage(s, { type: 'net:delta', token: 'a', range: R, delta: delta({ flows: [flow('mine')] }) });
+    expect(s.data!.flows.has('mine')).toBe(true);
+    // The gate is the same in every range.
+    s = applyNetMessage(s, { type: 'net:status', token: 'a', status: gate({ freshness: 'stale' }) });
+    expect(s.data!.gate.freshness).toBe('stale');
+  });
+
+  it('tracks progress and errors for its own range only, and clears both with the snapshot', () => {
+    let s = applyNetMessage(inRange(), { type: 'net:range:progress', token: 'a', range: '1-2', scannedBytes: 1, totalBytes: 9 });
+    expect(s.rangeProgress).toBeNull();
+    s = applyNetMessage(s, { type: 'net:range:progress', token: 'a', range: R, scannedBytes: 3, totalBytes: 9 });
+    expect(s.rangeProgress).toEqual({ scannedBytes: 3, totalBytes: 9 });
+    s = applyNetMessage(s, { type: 'net:snapshot', token: 'a', snapshot: snapshot('a', { range: info }) });
+    expect(s.rangeProgress).toBeNull();
+    s = applyNetMessage(inRange(), { type: 'net:range:error', token: 'a', range: R, error: 'files gone' });
+    expect([s.rangeError, s.data]).toEqual(['files gone', null]);
+  });
+
+  it('changing range drops what was shown, so the old range never reads as the new one', () => {
+    const s = applyNetMessage(subscribed('a'), { type: 'net:snapshot', token: 'a', snapshot: snapshot('a') });
+    expect(subscribeTo(s, 'a', R).data).toBeNull();
+    expect(subscribeTo(s, 'a', null)).toBe(s);
   });
 });
 

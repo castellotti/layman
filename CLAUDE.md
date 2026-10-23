@@ -210,6 +210,7 @@ store for unrecorded sessions, and memoizes per session until a new event arrive
 /h/{id}  /b/{id}  /f/{id}            highlight / bookmark / bookmark folder
 ?view=dashboard|logs|prompts|flow|sessions   ?play=1   ?t=<ms>
 ?view=network|map|topology|trace&glove=<token>&dest=<host>   glove network views
+  &from=<iso>&to=<iso|now>           …and their time range (pushes: Back returns to the previous one)
 ```
 
 Ids may be given as an unambiguous prefix of ≥8 characters; ambiguous prefixes return 409 with

@@ -542,6 +542,18 @@ nothing for finished sessions (their history is not an alarm).
   `/?view=network` shows the default session — the one matching the active Layman session's
   `sessionName`, else the most recently active — and writes it into the URL by **replacing**, because
   pushing would make Back land on the bare URL, re-default and push again (`historyModeFor`, tested).
+- **Time range.** `netRange` in `sessionStore`, hydrated from `&from=<iso>&to=<iso|now>` (ISO, not ms, so
+  a shared link says what it shows; a missing `to` is "now"; a range with no start, or ending before it,
+  is dropped). Shared by the four tabs, so an investigation survives switching between them; cleared
+  when another glove session is picked, because its runs and records belong to the old one. Setting,
+  changing or clearing it **pushes**, so Back returns to the previous range. The view subscribes with
+  the range, and the reducer keeps the range's key (`rangeKey`, the server's): it drops any snapshot,
+  delta or exit for another range (a frame in flight from the range just left), while the gate and
+  rules apply to every range. Until the ranged snapshot arrives the view says it is reading glove's
+  files, with the scan's progress; a `net:range:error` is shown with a way back to All records. While
+  a range is shown, a banner under the strip gives its span in local time (UTC on hover), says the
+  figures are only the traffic in it, and names what it leaves out (`rangeGaps`: glove's files not
+  reaching back to its start, or the scan's budget), so a window is never read as All records.
 - **Subscription.** The view subscribes the socket to the shown session, re-subscribes after a
   reconnect (the server forgets subscriptions with the socket) and unsubscribes when the tabs close, so a
   dashboard that is not looking stops receiving deltas.

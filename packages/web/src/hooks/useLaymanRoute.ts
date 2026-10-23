@@ -37,9 +37,14 @@ let routeGeneration = 0;
  */
 function entityKey(route: LaymanRoute, opts: RouteOptions = {}): string {
   switch (route.kind) {
-    // A glove session is an addressed entity (switching it pushes); the network
-    // tab and the selected destination are view state (they replace).
-    case 'dashboard': return opts.glove ? `dashboard:glove:${opts.glove}` : 'dashboard';
+    // A glove session and its time range are addressed entities (switching either
+    // pushes, so Back returns to the previous range); the network tab and the
+    // selected destination are view state (they replace).
+    case 'dashboard': {
+      if (!opts.glove) return 'dashboard';
+      const range = opts.range ? `:range:${opts.range.from}-${opts.range.to ?? 'now'}` : '';
+      return `dashboard:glove:${opts.glove}${range}`;
+    }
     case 'session':   return `s:${route.sessionId}`;
     case 'turn':      return `s:${route.sessionId}:t:${route.promptEventId}`;
     case 'event':     return `s:${route.sessionId}:e:${route.eventId}`;
@@ -63,6 +68,7 @@ export function routeForState(state: SessionState): { route: LaymanRoute; opts: 
     const opts: RouteOptions = { view: viewNameForMode(state.viewMode) };
     if (state.netToken) opts.glove = state.netToken;
     if (state.netDest) opts.dest = state.netDest;
+    if (state.netRange) opts.range = { ...state.netRange };
     return { route: { kind: 'dashboard' }, opts };
   }
 

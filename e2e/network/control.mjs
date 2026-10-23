@@ -75,7 +75,7 @@ await page.screenshot({ path: `${SHOTS}/p4-killswitch.png` });
 await page.click('[role=alertdialog] button:has-text("Cut all traffic")');
 check('strip shows ALL TRAFFIC CUT', await waitFor(has('span:text-is("ALL TRAFFIC CUT")'), 8000));
 const cutFile = JSON.parse(readFileSync(RULES, 'utf8'));
-check('cut file: default block, LLM kept', cutFile.default === 'block' && cutFile.rules[0].match.service === 'llm', JSON.stringify(cutFile.rules.slice(0, 2)));
+check('cut file: default block, LLM kept', cutFile.default === 'block' && cutFile.rules[0].match.tool === 'llm', JSON.stringify(cutFile.rules.slice(0, 2)));
 await page.waitForTimeout(6000);
 await page.screenshot({ path: `${SHOTS}/p4-cut.png` });
 const restoreBtn = await page.$('button:text-is("Restore")');

@@ -4,7 +4,9 @@
  * right the tab's Panels chips.
  */
 import React from 'react';
-import type { NetNotObservable, NetSessionSummary } from '../../lib/netobs-types.js';
+import type { NetNotObservable, NetRangeInfo, NetSessionSummary } from '../../lib/netobs-types.js';
+import { formatRange, rangeGaps, rangeTitle } from '../../lib/net-range.js';
+import { useNow } from '../../hooks/useNow.js';
 import type { NetSessionData } from '../../lib/net-state.js';
 import type { PanelDef } from '../../lib/net-panels.js';
 import { gateChips } from '../../lib/net-format.js';
@@ -117,6 +119,33 @@ export function GateStrip({ sessions, notObservable, token, onPick, data, panels
           );
         })}
       </div>
+    </div>
+  );
+}
+
+/**
+ * A time range is shown: pinned under the strip on every network tab, so figures
+ * for one window are never read as All records. Says what the range could not
+ * cover (`rangeGaps`), and goes back to All records.
+ */
+export function RangeBanner({ range, onClear }: { range: NetRangeInfo; onClear: () => void }) {
+  const now = useNow(range.to === null ? 1000 : 60_000);
+  const gaps = rangeGaps(range);
+  return (
+    <div role="status" style={{
+      display: 'flex', alignItems: 'center', gap: 10, padding: '6px 12px', flexShrink: 0, fontFamily: 'var(--font-ui)',
+      fontSize: 11.5, borderBottom: '1px solid var(--border)',
+      background: 'color-mix(in srgb, var(--info) 8%, transparent)', color: 'var(--text-body)',
+    }}>
+      <NetIcon name="clock" color="var(--info)" />
+      <span title={rangeTitle(range)} style={{ fontFamily: 'var(--font-mono)', color: 'var(--text)' }}>{formatRange(range, now)}</span>
+      <span style={{ color: 'var(--text-faint)' }}>Only the traffic in this range: bytes are what moved during it.</span>
+      {gaps.length > 0 && (
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: 'var(--warn)' }}>
+          <NetIcon name="alert" color="var(--warn)" />{gaps.join(' ')}
+        </span>
+      )}
+      <button type="button" onClick={onClear} style={{ ...bannerButton, height: 22, marginLeft: 'auto' }}>All records</button>
     </div>
   );
 }
