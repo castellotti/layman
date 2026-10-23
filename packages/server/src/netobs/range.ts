@@ -34,8 +34,8 @@
 import { open } from 'fs/promises';
 import { closeSync, openSync, readSync, statSync } from 'fs';
 import { join } from 'path';
-import { NetStore, destKey, type NetStoreOptions } from './store.js';
-import { isLanOnlyRule } from './types.js';
+import { HOUR, NetStore, destKey, type NetStoreOptions } from './store.js';
+import { BLOCK_STATES, classifyFlow } from './classify.js';
 import { parseLine, type ParsedLine } from './parse.js';
 import { rotatedFiles, splitLines } from './tail.js';
 import type { HistoryDest, HistoryHour, HistorySession } from './history.js';
@@ -136,12 +136,13 @@ export class RangeView {
     kept.flows = less(kept.flows);
     if (dest) dest.flows = less(dest.flows);
     if (rec.scope === 'direct') kept.directFlows = less(kept.directFlows);
-    if (rec.verdict === 'block' || rec.close_reason === 'blocked') {
-      if (dest) dest.blocked = less(dest.blocked);
-      if (rec.rule?.startsWith('builtin:') || isLanOnlyRule(rec.rule)) kept.blockedGuard = less(kept.blockedGuard);
-      else if (rec.rule) kept.blockedRule = less(kept.blockedRule);
-      else kept.blockedDefault = less(kept.blockedDefault);
-    }
+    // The kind of refusal as the store judged it (activity does not matter to a block).
+    const state = classifyFlow({ ...rec, lastActivityAt: opened }, opened);
+    if (!BLOCK_STATES.has(state)) return;
+    if (dest) dest.blocked = less(dest.blocked);
+    if (state === 'guard') kept.blockedGuard = less(kept.blockedGuard);
+    else if (state === 'user_rule') kept.blockedRule = less(kept.blockedRule);
+    else kept.blockedDefault = less(kept.blockedDefault);
   }
 
   /** glove rewrote session.json: re-flag hops here as the live store does. */
@@ -231,7 +232,6 @@ export class RangeView {
   }
 }
 
-const HOUR = 3_600_000;
 const floorHour = (t: number) => Math.floor(t / HOUR) * HOUR;
 const ceilHour = (t: number) => Math.ceil(t / HOUR) * HOUR;
 

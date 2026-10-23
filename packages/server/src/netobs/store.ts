@@ -59,7 +59,7 @@ const UNKNOWN_GLOVE: NetGloveInfo = { template: null, filter: null, transcripts:
 
 const SECOND = 1000;
 const MINUTE = 60 * SECOND;
-const HOUR = 60 * MINUTE;
+export const HOUR = 60 * MINUTE;
 /** A `HistoryHour`'s identity: what `net_hours` is keyed by (null run and tool as ''). */
 export const hourKey = (hour: number, run: string | null, key: string, tool: string | null) => `${hour}|${run ?? ''}|${key}|${tool ?? ''}`;
 const byHour = (a: HistoryHour, b: HistoryHour) =>
@@ -1098,13 +1098,13 @@ export class NetStore extends EventEmitter {
     };
   }
 
-  /** Every destination: live ones with their history, then those only the history has. */
   /** Every destination as All records shows it (no flows): what a range's hourly part takes host and scope from. */
   destinations(token: string): DestinationAggregate[] {
     const s = this.sessions.get(token);
     return s ? this.destViews(s) : [];
   }
 
+  /** Every destination: live ones with their history, then those only the history has. */
   private destViews(s: SessionData): DestinationAggregate[] {
     const out = [...s.aggs.values()].map((e) => this.aggView(s, e));
     for (const k of this.historyOnlyKeys(s)) {
