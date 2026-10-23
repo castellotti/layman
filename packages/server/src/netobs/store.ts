@@ -1360,6 +1360,17 @@ export class NetStore extends EventEmitter {
     return secs.filter((b) => b.t > from);
   }
 
+  /** The session's first record as far as Layman knows, kept history included; null before any. */
+  firstSeen(token: string): number | null {
+    const s = this.sessions.get(token);
+    return s ? this.firstSeenOf(s) : null;
+  }
+
+  private firstSeenOf(s: SessionData): number | null {
+    const h = s.history?.s;
+    return s.firstSeen === null ? h?.firstSeen ?? null : Math.min(s.firstSeen, h?.firstSeen ?? Infinity);
+  }
+
   summaries(): NetSessionSummary[] {
     return [...this.sessions.values()]
       .map((s) => {
@@ -1370,7 +1381,7 @@ export class NetStore extends EventEmitter {
           harness: s.session?.harness ?? null,
           glove: { ...(s.historyOnly ? UNKNOWN_GLOVE : s.glove) },
           live: !s.historyOnly && s.gate.freshness === 'running',
-          firstSeen: s.firstSeen === null ? h?.firstSeen ?? null : Math.min(s.firstSeen, h?.firstSeen ?? Infinity),
+          firstSeen: this.firstSeenOf(s),
           lastSeen: s.lastT === null ? h?.lastSeen ?? null : Math.max(s.lastT, h?.lastSeen ?? 0),
           bytesUp: t.bytesUp,
           bytesDown: t.bytesDown,

@@ -5,7 +5,7 @@
  */
 import React from 'react';
 import type { NetNotObservable, NetRangeInfo, NetSessionSummary } from '../../lib/netobs-types.js';
-import { formatRange, rangeGaps, rangeTitle } from '../../lib/net-range.js';
+import { formatRange, rangeGaps, rangeLead, rangeTitle } from '../../lib/net-range.js';
 import { useNow } from '../../hooks/useNow.js';
 import type { NetSessionData } from '../../lib/net-state.js';
 import type { PanelDef } from '../../lib/net-panels.js';
@@ -123,14 +123,20 @@ export function GateStrip({ sessions, notObservable, token, onPick, data, panels
   );
 }
 
+/** A range running until now: its length grows, so only this ticks. */
+function OpenSpan({ range }: { range: NetRangeInfo }) {
+  const now = useNow(1000);
+  return <>{formatRange(range, now)}</>;
+}
+
 /**
  * A time range is shown: pinned under the strip on every network tab, so figures
  * for one window are never read as All records. Says what the range could not
  * cover (`rangeGaps`), and goes back to All records.
  */
 export function RangeBanner({ range, onClear }: { range: NetRangeInfo; onClear: () => void }) {
-  const now = useNow(range.to === null ? 1000 : 60_000);
   const gaps = rangeGaps(range);
+  const lead = rangeLead(range);
   return (
     <div role="status" style={{
       display: 'flex', alignItems: 'center', gap: 10, padding: '6px 12px', flexShrink: 0, fontFamily: 'var(--font-ui)',
@@ -138,8 +144,10 @@ export function RangeBanner({ range, onClear }: { range: NetRangeInfo; onClear: 
       background: 'color-mix(in srgb, var(--info) 8%, transparent)', color: 'var(--text-body)',
     }}>
       <NetIcon name="clock" color="var(--info)" />
-      <span title={rangeTitle(range)} style={{ fontFamily: 'var(--font-mono)', color: 'var(--text)' }}>{formatRange(range, now)}</span>
-      <span style={{ color: 'var(--text-faint)' }}>Only the traffic in this range: bytes are what moved during it.</span>
+      <span title={rangeTitle(range)} style={{ fontFamily: 'var(--font-mono)', color: 'var(--text)' }}>
+        {range.to === null ? <OpenSpan range={range} /> : formatRange(range)}
+      </span>
+      <span style={{ color: 'var(--text-faint)' }}>Only the traffic in this range: bytes are what moved during it.{lead ? ` ${lead}` : ''}</span>
       {gaps.length > 0 && (
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: 'var(--warn)' }}>
           <NetIcon name="alert" color="var(--warn)" />{gaps.join(' ')}

@@ -39,7 +39,8 @@ const empty = `from=${iso(now - 48 * 3_600_000)}&to=${iso(now - 47 * 3_600_000)}
 await page.goto(`${BASE}/?view=network&glove=${PI}&${empty}`);
 check('a range before any record still loads', await waitFor(has(BANNER), 20000));
 const gap = await page.$eval(BANNER, (e) => e.textContent).catch(() => '');
-check('…and says glove’s files do not reach it', /no records for this range|only reach back/.test(gap), gap);
+// glove kept everything here: the range simply starts before the session, which is not a gap.
+check('…and says when the session began, without claiming traffic was lost', /The session began/.test(gap) && !/only reach back|not counted/.test(gap), gap);
 check('…and shows no destinations', await waitFor(async () => (await destCount()) === 0), await destCount());
 
 // All records, then Back to the range.
@@ -55,8 +56,13 @@ check('Back returns to the range', await waitFor(async () => url().searchParams.
 await page.selectOption('select[aria-label="Glove session"]', { index: 1 }).catch(() => {});
 check('choosing another glove session clears the range', await waitFor(async () => url().searchParams.get('glove') !== PI && !url().searchParams.has('from')), page.url());
 
-// An unknown session's range is answered, not left loading.
+// A malformed range is not a range: All records, never a view left loading.
 await page.goto(`${BASE}/?view=topology&glove=${PI}&from=garbage&to=now`);
 check('a malformed range is ignored: All records', await waitFor(async () => (await page.$$(`${DIAG} g[data-node]`)).length > 10) && !(await page.$(BANNER)));
+
+// A range with no glove session: the default is filled in, and the range kept.
+await page.goto(`${BASE}/?view=network&${recent}`);
+check('a range link with no glove session keeps its range once the default is chosen',
+  await waitFor(async () => url().searchParams.has('glove') && url().searchParams.get('to') === 'now' && await has(BANNER)(), 20000), page.url());
 
 await finish();

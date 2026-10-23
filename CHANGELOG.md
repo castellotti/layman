@@ -13,7 +13,13 @@
   - **Labelled.** While it loads, the view says it is reading glove's files, with progress. Once shown, a banner gives the span in local time (UTC on hover) and says the figures are only the traffic in it. It also warns when glove's files do not reach back to the start, and offers All records.
   - **Safe while switching.** Frames for a range you have left are dropped, so an old range's data is never shown as the new one's.
   - **Picker to come.** The picker (runs, bursts, calendar) is the next step; for now a range is set through the URL.
-  - **Browser check.** `e2e/network/range.mjs` (18 checks). The e2e `control` check now expects Cut all to keep the LLM by `tool: llm`, as it has since the llm-auth change.
+  - **Review fixes.**
+    - A link with a range but no glove session keeps its range when the default session is filled in.
+    - Starts before 1970 and unreadable ends are rejected the same way on both sides, and the server answers a range it rejects with an error, so the view no longer waits forever.
+    - The banner warns only about traffic glove actually deleted, and says when the session began when a range starts before it. A scan cut short by its budget is called skipped.
+    - A previous range's error no longer flashes under a new one.
+    - A loading open range's length ticks.
+  - **Browser check.** `e2e/network/range.mjs` (19 checks). The e2e `control` check now expects Cut all to keep the LLM by `tool: llm`, as it has since the llm-auth change.
 - **Network views: runs, bursts and an hourly history** (server; no UI yet). Design: `docs/extensions/glove.md` → "Runs, bursts and the hourly history".
   - **Kept past glove's rotation.** Migration 6 adds `net_runs` (one row per `glove up`, from glove's collector records) and `net_hours` (traffic per destination, per run, per hour). Both are local only and never synced. They are counted by the same restart rule as the totals and held to it at every restart point. Hours are upserted, only those that changed, so the 30 s save stays cheap.
   - **`GET /api/net/sessions/:token/segments`** gives each run and how it ended, the agent's bursts of work, the Layman sessions joined to the glove session, and the hourly activity.

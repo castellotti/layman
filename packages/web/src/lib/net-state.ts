@@ -75,10 +75,13 @@ export interface NetClientState {
   subscribedRange: string | null;
   /** Data for `subscribed` (and its range); null until its snapshot arrives. */
   data: NetSessionData | null;
-  /** How far the server has read glove's files for the range, while it builds it. */
-  rangeProgress: { scannedBytes: number; totalBytes: number } | null;
-  /** Why the server cannot show the range (`net:range:error`); no snapshot follows. */
-  rangeError: string | null;
+  /**
+   * How far the server has read glove's files for a range, while it builds it. Each names its
+   * range, so the view never shows one range's progress or error under another for a frame.
+   */
+  rangeProgress: { range: string; scannedBytes: number; totalBytes: number } | null;
+  /** Why the server cannot show a range (`net:range:error`); no snapshot follows. */
+  rangeError: { range: string; error: string } | null;
   /** This client's rules operations by opId; the gate's verdict is in `data.rules.write`. */
   ops: Record<string, NetOpResult>;
 }
@@ -144,10 +147,10 @@ export function applyNetMessage(state: NetClientState, msg: NetServerMessage): N
   const forRange = (key: string | null) => key === state.subscribedRange;
 
   if (msg.type === 'net:range:progress') {
-    return forRange(msg.range) ? { ...state, rangeProgress: { scannedBytes: msg.scannedBytes, totalBytes: msg.totalBytes } } : state;
+    return forRange(msg.range) ? { ...state, rangeProgress: { range: msg.range, scannedBytes: msg.scannedBytes, totalBytes: msg.totalBytes } } : state;
   }
   if (msg.type === 'net:range:error') {
-    return forRange(msg.range) ? { ...state, rangeError: msg.error, rangeProgress: null } : state;
+    return forRange(msg.range) ? { ...state, rangeError: { range: msg.range, error: msg.error }, rangeProgress: null } : state;
   }
 
   if (msg.type === 'net:snapshot') {

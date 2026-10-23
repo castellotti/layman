@@ -652,6 +652,11 @@ export interface NetRangeInfo extends NetRange {
    * means the range starts before what glove still keeps (or `truncated` skipped it).
    */
   filesFrom: number | null;
+  /**
+   * The session's first record as far as Layman knows (kept history included), or null. A range
+   * starting before it is not missing anything; `filesFrom` later than it is: glove deleted it.
+   */
+  sessionFrom: number | null;
   /** The scan reached its byte budget, so the range's oldest files were not read. */
   truncated: boolean;
   /** Bytes of glove's files read to build it. */

@@ -249,7 +249,9 @@ const overlaps = (f: ScanFile, range: NetRange) =>
  * Over budget the newest win, as in the backfill, and the range says it was truncated.
  * `filesFrom` is the earliest record the range could read: glove's retention, or the budget's.
  */
-export function planScan(netDir: string, range: NetRange, budget: number): { files: ScanFile[]; truncated: boolean; filesFrom: number | null } {
+export function planScan(
+  netDir: string, range: NetRange, budget: number,
+): { files: ScanFile[]; truncated: boolean; filesFrom: number | null; oldest: number | null } {
   const all = filesOf(netDir, 'flows');
   const wanted = all.filter((f) => overlaps(f, range));
   let left = budget;
@@ -263,8 +265,9 @@ export function planScan(netDir: string, range: NetRange, budget: number): { fil
     left -= wanted[i].size;
     files.unshift(wanted[i]);
   }
-  const from = (truncated ? files : all).find((f) => f.first !== null)?.first ?? null;
-  return { files, truncated, filesFrom: from };
+  const oldest = all.find((f) => f.first !== null)?.first ?? null;
+  const from = truncated ? files.find((f) => f.first !== null)?.first ?? null : oldest;
+  return { files, truncated, filesFrom: from, oldest };
 }
 
 /**
@@ -304,6 +307,8 @@ export interface BuildOptions {
   onProgress?: (scannedBytes: number, totalBytes: number) => void;
   /** Checked between chunks: true stops the scan (nobody wants the range any more). */
   cancelled?: () => boolean;
+  /** The session's first record as the live store knows it (kept history included), if any. */
+  sessionFrom?: number | null;
 }
 
 /** Read a session's files for `view`'s range into it. Resolves to what the range covers. */
@@ -351,5 +356,11 @@ export async function buildRange(view: RangeView, netDir: string, opts: BuildOpt
     if (!missed.length) break;
     for (const f of missed) await scan(f.path);
   }
-  return { key: view.key, from: range.from, to: range.to, filesFrom: plan.filesFrom, truncated: plan.truncated, scannedBytes: scanned };
+  // The live store's first record may be later than the oldest file (its backfill is budgeted), or
+  // earlier (kept history from files since deleted): the session began at the earlier of the two.
+  const known = [opts.sessionFrom ?? null, plan.oldest].filter((t): t is number => t !== null);
+  return {
+    key: view.key, from: range.from, to: range.to, filesFrom: plan.filesFrom,
+    sessionFrom: known.length ? Math.min(...known) : null, truncated: plan.truncated, scannedBytes: scanned,
+  };
 }

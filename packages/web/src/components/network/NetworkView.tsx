@@ -14,6 +14,7 @@ import { defaultNetToken, rangeKey, type NetSessionData } from '../../lib/net-st
 import { formatRange } from '../../lib/net-range.js';
 import { columnPanels, type PanelDef } from '../../lib/net-panels.js';
 import type { ClientMessage } from '../../lib/ws-protocol.js';
+import type { NetRange } from '../../lib/netobs-types.js';
 import { GateStrip, RangeBanner, RulesRejectedBanner } from './GateStrip.js';
 import { DestinationTable } from './DestinationTable.js';
 import { KpiRow, MiniMap, MiniMapExpand, RulesFileLink } from './NetworkPanels.js';
@@ -37,6 +38,17 @@ interface PanelContent {
   ownScroll?: boolean;
   /** The panel's share of its column (CSS `flex`); by default panels share it equally. */
   flex?: string;
+}
+
+/** A range being read: its span (an open one's length ticks) and how far the server has got. */
+function RangeLoading({ range, progress }: { range: NetRange; progress: { scannedBytes: number; totalBytes: number } | null }) {
+  const now = useNow(1000);
+  const pct = progress && progress.totalBytes > 0 ? Math.min(100, Math.round((100 * progress.scannedBytes) / progress.totalBytes)) : null;
+  return (
+    <EmptyState title="Reading glove’s files for this range…">
+      {formatRange(range, now)}{pct !== null ? ` · ${pct}%` : ''}
+    </EmptyState>
+  );
 }
 
 /** A built panel's content, or null for one still to come. */
@@ -219,24 +231,19 @@ export default function NetworkView({ tab, onSend }: { tab: NetTab; onSend: (msg
         </EmptyState>
       );
     }
-    if (rangeKeyed && rangeError) {
+    if (rangeKeyed && rangeError?.range === rangeKeyed) {
       return (
         <EmptyState
           title="This time range cannot be shown"
           action={<button type="button" onClick={() => setNetRange(null)} style={{ fontSize: 11.5, padding: '5px 12px', borderRadius: 6, background: 'var(--bg-pill)', border: '1px solid var(--border-strong)', color: 'var(--text)', cursor: 'pointer' }}>Show All records</button>}
         >
-          {rangeError}
+          {rangeError.error}
         </EmptyState>
       );
     }
     if (!data || data.token !== token || (data.range?.key ?? null) !== rangeKeyed) {
-      if (!rangeKeyed) return <EmptyState title={`Loading ${token}…`} />;
-      const pct = rangeProgress && rangeProgress.totalBytes > 0 ? Math.min(100, Math.round((100 * rangeProgress.scannedBytes) / rangeProgress.totalBytes)) : null;
-      return (
-        <EmptyState title="Reading glove’s files for this range…">
-          {netRange && formatRange(netRange)}{pct !== null ? ` · ${pct}%` : ''}
-        </EmptyState>
-      );
+      if (!rangeKeyed || !netRange) return <EmptyState title={`Loading ${token}…`} />;
+      return <RangeLoading range={netRange} progress={rangeProgress?.range === rangeKeyed ? rangeProgress : null} />;
     }
     return (
       <>

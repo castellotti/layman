@@ -118,6 +118,7 @@ function parseQuery(search: string): RouteOptions {
   if (!query) return opts;
   let from: number | null = null;
   let to: number | null = null;
+  let badTo = false;
 
   for (const pair of query.split('&')) {
     if (!pair) continue;
@@ -138,14 +139,16 @@ function parseQuery(search: string): RouteOptions {
       opts.dest = value;
     } else if (key === 'from') {
       const ms = Date.parse(value);
-      if (Number.isFinite(ms)) from = ms;
+      if (Number.isFinite(ms) && ms >= 0) from = ms;
     } else if (key === 'to' && value !== 'now') {
       const ms = Date.parse(value);
       if (Number.isFinite(ms)) to = ms;
+      else badTo = true;
     }
   }
-  // A range needs its start; one ending before it is not a range.
-  if (from !== null && (to === null || to >= from)) opts.range = { from, to };
+  // A range needs its start (from 1970 on, as the server accepts); one ending before it is not a
+  // range, and nor is one whose end cannot be read: reading it as "now" would silently widen it.
+  if (from !== null && !badTo && (to === null || to >= from)) opts.range = { from, to };
   return opts;
 }
 

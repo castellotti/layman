@@ -87,7 +87,7 @@ describe('applyNetMessage', () => {
 
 describe('time ranges', () => {
   const R = rangeKey({ from: 1000, to: null });
-  const info = { key: R, from: 1000, to: null, filesFrom: 500, truncated: false, scannedBytes: 10 };
+  const info = { key: R, from: 1000, to: null, filesFrom: 500, sessionFrom: 500, truncated: false, scannedBytes: 10 };
   const inRange = () => subscribeTo(subscribed('a'), 'a', R);
 
   it('keys a range as the server does', () => {
@@ -115,11 +115,11 @@ describe('time ranges', () => {
     let s = applyNetMessage(inRange(), { type: 'net:range:progress', token: 'a', range: '1-2', scannedBytes: 1, totalBytes: 9 });
     expect(s.rangeProgress).toBeNull();
     s = applyNetMessage(s, { type: 'net:range:progress', token: 'a', range: R, scannedBytes: 3, totalBytes: 9 });
-    expect(s.rangeProgress).toEqual({ scannedBytes: 3, totalBytes: 9 });
+    expect(s.rangeProgress).toEqual({ range: R, scannedBytes: 3, totalBytes: 9 });
     s = applyNetMessage(s, { type: 'net:snapshot', token: 'a', snapshot: snapshot('a', { range: info }) });
     expect(s.rangeProgress).toBeNull();
     s = applyNetMessage(inRange(), { type: 'net:range:error', token: 'a', range: R, error: 'files gone' });
-    expect([s.rangeError, s.data]).toEqual(['files gone', null]);
+    expect([s.rangeError, s.data]).toEqual([{ range: R, error: 'files gone' }, null]);
   });
 
   it('changing range drops what was shown, so the old range never reads as the new one', () => {

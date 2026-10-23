@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import type { TimelineEvent, PendingApprovalDTO, LaymanConfig, SessionStatus, SetupStatus, BookmarkFolder, Bookmark, HighlightFolder, Highlight, SessionTimeMetrics, SessionAccessLog, SessionMetrics, DriftState, LiveStream, ResolvedId, SyncStatus, HostStats } from '../lib/types.js';
 import type { SessionInfo } from '../lib/ws-protocol.js';
 import type { NetRange } from '../lib/netobs-types.js';
+import { rangeKey } from '../lib/net-state.js';
 import type { LaymanRoute, RouteOptions, ViewName } from '../lib/layman-url.js';
 import { extractTurn } from '../lib/turns.js';
 import { pairFor } from '../lib/event-pairing.js';
@@ -26,9 +27,9 @@ export function isNetworkView(mode: ViewMode): boolean {
   return (NETWORK_VIEW_MODES as readonly string[]).includes(mode);
 }
 
-/** Whether two time ranges (or All records, null) are the same. */
+/** Whether two time ranges (or All records, null) are the same: the same `rangeKey`, as the server tells them apart. */
 export function sameRange(a: NetRange | null, b: NetRange | null): boolean {
-  return a === b || (a !== null && b !== null && a.from === b.from && a.to === b.to);
+  return (a ? rangeKey(a) : null) === (b ? rangeKey(b) : null);
 }
 
 // ─── Expanding-interface layout state ──────────────────────────────────────
@@ -877,7 +878,9 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   setSelectedHighlight: (selectedHighlightId) =>
     set({ selectedHighlightId, ...(selectedHighlightId ? { routeFolderId: null } : {}) }),
 
-  setNetToken: (netToken) => set((s) => (s.netToken === netToken ? {} : { netToken, netDest: null, netRange: null })),
+  // Filling in the default session (from none) keeps what a deep link named alongside it; only
+  // switching from one session to another clears the destination and the range chosen in the old one.
+  setNetToken: (netToken) => set((s) => (s.netToken === netToken ? {} : s.netToken === null ? { netToken } : { netToken, netDest: null, netRange: null })),
   setNetDest: (netDest) => set({ netDest }),
   setNetRange: (netRange) => set((s) => (sameRange(s.netRange, netRange) ? {} : { netRange })),
 

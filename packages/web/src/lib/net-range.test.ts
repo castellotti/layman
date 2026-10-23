@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatDuration, formatRange, formatStamp, rangeGaps, rangeTitle } from './net-range.js';
+import { formatRange, formatSpan, formatStamp, rangeGaps, rangeLead, rangeTitle } from './net-range.js';
 
 // Local-time output depends on the machine's zone, so times are built from local parts.
 const at = (month: number, day: number, h: number, m: number, s: number) => new Date(2026, month, day, h, m, s).getTime();
@@ -10,9 +10,9 @@ describe('net-range', () => {
   });
 
   it('says how long, in the two largest units', () => {
-    expect([formatDuration(40_000), formatDuration(312_000), formatDuration(29 * 3_600_000 + 42 * 60_000), formatDuration(3 * 86_400_000)])
+    expect([formatSpan(40_000), formatSpan(312_000), formatSpan(29 * 3_600_000 + 42 * 60_000), formatSpan(3 * 86_400_000)])
       .toEqual(['40 s', '5 m 12 s', '1 d 5 h', '3 d']);
-    expect(formatDuration(7_200_000)).toBe('2 h');
+    expect(formatSpan(7_200_000)).toBe('2 h');
   });
 
   it('writes a range, leaving out the end’s date on the same day, and "now" for an open one', () => {
@@ -22,11 +22,17 @@ describe('net-range', () => {
     expect(rangeTitle({ from: Date.UTC(2026, 9, 21, 8), to: null })).toBe('2026-10-21T08:00:00.000Z → now (UTC)');
   });
 
-  it('says what a range leaves out', () => {
+  it('says what a range leaves out: what glove deleted, not what came before the session', () => {
     const base = { key: 'k', from: at(9, 16, 0, 0, 0), to: null, scannedBytes: 1, truncated: false };
-    expect(rangeGaps({ ...base, filesFrom: base.from - 1000 })).toEqual([]);
-    expect(rangeGaps({ ...base, filesFrom: at(9, 16, 6, 13, 36) })).toEqual(['glove’s files only reach back to Oct 16 06:13:36: traffic before that is not counted.']);
-    expect(rangeGaps({ ...base, filesFrom: at(9, 18, 0, 0, 0), truncated: true })).toHaveLength(2);
-    expect(rangeGaps({ ...base, filesFrom: null })).toEqual(['glove keeps no records for this range.']);
+    const start = at(9, 16, 6, 13, 36);
+    expect(rangeGaps({ ...base, filesFrom: base.from - 1000, sessionFrom: base.from - 1000 })).toEqual([]);
+    // The session began after the range did, and glove kept everything: nothing is missing.
+    expect(rangeGaps({ ...base, filesFrom: start, sessionFrom: start })).toEqual([]);
+    expect(rangeLead({ ...base, filesFrom: start, sessionFrom: start })).toBe('The session began Oct 16 06:13:36.');
+    // The session began earlier than the oldest file left: glove deleted the rest.
+    expect(rangeGaps({ ...base, filesFrom: start, sessionFrom: base.from - 1000 })).toEqual(['glove’s files only reach back to Oct 16 06:13:36: traffic before that is not counted.']);
+    expect(rangeGaps({ ...base, filesFrom: at(9, 18, 0, 0, 0), sessionFrom: base.from, truncated: true }))
+      .toEqual(['The range is too long to read in full: traffic before Oct 18 00:00:00 was skipped.']);
+    expect(rangeGaps({ ...base, filesFrom: null, sessionFrom: null })).toEqual(['glove keeps no records for this range.']);
   });
 });

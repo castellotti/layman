@@ -416,6 +416,13 @@ describe('network views (glove)', () => {
     expect(readBack()).toBe('/?view=map&glove=b');
   });
 
+  it('filling in the default glove session keeps a range and destination the link named', async () => {
+    const range = { from: Date.parse('2026-10-21T00:00:00.000Z'), to: null };
+    await useSessionStore.getState().hydrateFromRoute({ kind: 'dashboard' }, { view: 'network', dest: 'arxiv.org', range });
+    useSessionStore.getState().setNetToken('pi-search'); // what NetworkView does with the default
+    expect(readBack()).toBe('/?view=network&glove=pi-search&dest=arxiv.org&from=2026-10-21T00:00:00.000Z&to=now');
+  });
+
   it('switching tab keeps the time range; clearing it is All records again', async () => {
     const range = { from: Date.parse('2026-10-21T08:00:00.000Z'), to: Date.parse('2026-10-21T09:00:00.000Z') };
     await useSessionStore.getState().hydrateFromRoute({ kind: 'dashboard' }, { view: 'topology', glove: 'g', range });

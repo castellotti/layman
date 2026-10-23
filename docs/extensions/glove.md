@@ -516,7 +516,15 @@ A socket that moved on never receives the range it left.
 `net:delta` and `net:exit` carry the range's key (`range`, null for All records), so a client can drop
 frames for a range it has left. `net:status` and `net:rules` go to every subscriber of the session. A
 range that cannot be built gets `net:range:error` instead of a snapshot: an unknown session, a read error,
-or a history-only session, whose files are gone so there is nothing to read a window from.
+a history-only session (its files are gone, so there is nothing to read a window from), or something
+that is not a range at all (a start before 1970, an end before the start). The last is answered under
+the key the client built from what it sent: falling back to All records would leave a client that
+waits for its range dropping that snapshot and waiting forever.
+
+`range.sessionFrom` is the session's first record as far as Layman knows: the earlier of the live
+store's first (kept history included) and the oldest file's first record. A range starting before it
+is not missing anything, since the session had not begun; a range whose `filesFrom` is later than it
+is, because glove deleted the older files.
 
 ### The client shell
 
@@ -543,17 +551,24 @@ nothing for finished sessions (their history is not an alarm).
   `sessionName`, else the most recently active — and writes it into the URL by **replacing**, because
   pushing would make Back land on the bare URL, re-default and push again (`historyModeFor`, tested).
 - **Time range.** `netRange` in `sessionStore`, hydrated from `&from=<iso>&to=<iso|now>` (ISO, not ms, so
-  a shared link says what it shows; a missing `to` is "now"; a range with no start, or ending before it,
-  is dropped). Shared by the four tabs, so an investigation survives switching between them; cleared
-  when another glove session is picked, because its runs and records belong to the old one. Setting,
+  a shared link says what it shows; a missing `to` is "now"). A range is dropped when it has no start,
+  starts before 1970 (the server's rule, so the two never disagree), ends before it starts, or has an
+  end that cannot be read: reading that as "now" would silently widen it. Shared by the four tabs, so an
+  investigation survives switching between them. Cleared when another glove session is picked, because
+  its runs and records belong to the old one; but filling in the *default* session (a link with a range
+  and no `glove=`) keeps it, and the destination too. Setting,
   changing or clearing it **pushes**, so Back returns to the previous range. The view subscribes with
   the range, and the reducer keeps the range's key (`rangeKey`, the server's): it drops any snapshot,
   delta or exit for another range (a frame in flight from the range just left), while the gate and
   rules apply to every range. Until the ranged snapshot arrives the view says it is reading glove's
-  files, with the scan's progress; a `net:range:error` is shown with a way back to All records. While
-  a range is shown, a banner under the strip gives its span in local time (UTC on hover), says the
-  figures are only the traffic in it, and names what it leaves out (`rangeGaps`: glove's files not
-  reaching back to its start, or the scan's budget), so a window is never read as All records.
+  files, with the scan's progress; a `net:range:error` is shown with a way back to All records. Both
+  carry the range they are for, so one range's progress or error never shows under another, even for
+  the frame before the new subscription clears them. While a range is shown, a banner under the strip
+  gives its span in local time (UTC on hover; an open range's length ticks), says the figures are only
+  the traffic in it, and names what it leaves out (`rangeGaps`): traffic glove deleted (its files start
+  after the session did), or a scan cut short by its budget, said as skipped, not deleted. A range
+  that merely starts before the session says when the session began, as information rather than a
+  warning. So a window is never read as All records.
 - **Subscription.** The view subscribes the socket to the shown session, re-subscribes after a
   reconnect (the server forgets subscriptions with the socket) and unsubscribes when the tabs close, so a
   dashboard that is not looking stops receiving deltas.

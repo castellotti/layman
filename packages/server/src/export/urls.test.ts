@@ -43,6 +43,9 @@ describe('time ranges in the URL', () => {
     expect(parsePath('/', '?to=2026-10-21T08:00:00Z')!.opts.range).toBeUndefined();
     expect(parsePath('/', '?from=nonsense&to=now')!.opts.range).toBeUndefined();
     expect(parsePath('/', '?from=2026-10-21T09:00:00Z&to=2026-10-21T08:00:00Z')!.opts.range).toBeUndefined();
+    // A start before 1970, which the server would refuse, and an end that cannot be read (never widened to "now").
+    expect(parsePath('/', '?from=1969-12-31T00:00:00Z&to=now')!.opts.range).toBeUndefined();
+    expect(parsePath('/', '?from=2026-10-21T00:00:00Z&to=2026-10-21T01:00:0x')!.opts.range).toBeUndefined();
   });
 });
 

@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { useSessionStore, viewNameForMode, instanceUrlOf, isNetworkView } from '../stores/sessionStore.js';
 import type { SessionState } from '../stores/sessionStore.js';
 import { buildPath, parsePath } from '../lib/layman-url.js';
+import { rangeKey } from '../lib/net-state.js';
 import type { LaymanRoute, RouteOptions } from '../lib/layman-url.js';
 import { ttsPlayer, speechOptionsFrom } from '../lib/tts.js';
 import { toSpeakableText } from '../lib/tts-text.js';
@@ -42,7 +43,7 @@ function entityKey(route: LaymanRoute, opts: RouteOptions = {}): string {
     // selected destination are view state (they replace).
     case 'dashboard': {
       if (!opts.glove) return 'dashboard';
-      const range = opts.range ? `:range:${opts.range.from}-${opts.range.to ?? 'now'}` : '';
+      const range = opts.range ? `:range:${rangeKey(opts.range)}` : '';
       return `dashboard:glove:${opts.glove}${range}`;
     }
     case 'session':   return `s:${route.sessionId}`;

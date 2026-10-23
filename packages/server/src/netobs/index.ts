@@ -12,7 +12,13 @@ import { GeoLocator } from './geo.js';
 import { parseLine, parseSessionFile, parseStatus, type ParsedLine } from './parse.js';
 import type { NetHistory } from './history.js';
 import { NetStore } from './store.js';
-import { DEFAULT_RANGE_SCAN_BYTES, RangeView, buildRange, rangeKey } from './range.js';
+import { DEFAULT_RANGE_SCAN_BYTES, RangeView, buildRange, parseRange, rangeKey } from './range.js';
+
+/** The key a client gives a range the server cannot accept: built as `rangeKey` would, so its error reaches it. */
+function rawRangeKey(raw: unknown): string {
+  const { from, to } = (typeof raw === 'object' && raw !== null ? raw : {}) as { from?: unknown; to?: unknown };
+  return `${String(from)}-${to === null || to === undefined ? 'now' : String(to)}`;
+}
 import { DEFAULT_BACKFILL_BYTES, JsonFileWatcher, NdjsonTailer } from './tail.js';
 import type {
   ExitRecord,
@@ -454,14 +460,22 @@ export class NetObs {
    * One session at a time per socket; null unsubscribes. With a `range`, the
    * snapshot is that window's (`range.ts`), sent once its files are read; a
    * range already built for another socket (or recently) is sent at once. A
-   * range that cannot be built is answered with `net:range:error`.
+   * range that cannot be built, or is not a range (`raw` straight from the
+   * client), is answered with `net:range:error`: never with All records, which a
+   * client waiting for its range would rightly drop and keep waiting.
    */
-  subscribe(socket: NetSocket, token: string | null, range: NetRange | null = null): void {
-    const key = token !== null && range ? rangeKey(range) : null;
+  subscribe(socket: NetSocket, token: string | null, raw: unknown = null): void {
+    const range = parseRange(raw);
+    const invalid = raw !== null && raw !== undefined && !range;
+    const key = token === null ? null : range ? rangeKey(range) : invalid ? rawRangeKey(raw) : null;
     this.leave(socket);
     this.subs.set(socket, { token, range: key });
     this.pruneRanges();
     if (token === null) return;
+    if (invalid) {
+      this.send(socket, { type: 'net:range:error', token, range: key!, error: 'Not a time range: it needs a start from 1970 on, and an end after it (or none, for until now).' });
+      return;
+    }
     if (!range) {
       const snapshot = this.store.snapshot(token);
       if (snapshot) this.send(socket, { type: 'net:snapshot', token, snapshot });
@@ -493,6 +507,7 @@ export class NetObs {
     const wanted = () => this.ranges.get(id) === entry;
     void buildRange(entry.view, loc.netDir, {
       budgetBytes: this.rangeBudgetBytes,
+      sessionFrom: this.store.firstSeen(token),
       cancelled: () => !wanted(),
       onProgress: (scannedBytes, totalBytes) => {
         const now = Date.now();

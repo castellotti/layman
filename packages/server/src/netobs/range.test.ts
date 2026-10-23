@@ -139,7 +139,7 @@ describe('buildRange: reading glove’s files', () => {
     const v = new RangeView('e', range, null);
     const info = await buildRange(v, dir);
     expect(totalsOf(v)).toMatchObject({ flows: 4, bytesUp: 40, bytesDown: 400 });
-    expect(info).toMatchObject({ key: rangeKey(range), truncated: false, filesFrom: T0 });
+    expect(info).toMatchObject({ key: rangeKey(range), truncated: false, filesFrom: T0, sessionFrom: T0 });
   });
 
   it('skips files that end before the lead-in, and says when the range starts before glove’s files', async () => {
@@ -341,6 +341,15 @@ describe('NetObs: ranged subscriptions', () => {
     expect(snap.totals).toMatchObject({ flows: 2, bytesUp: 10 });
     // The two in the range, each once ('old' is before it: a baseline, not a record of the range).
     expect(snap.counters.records).toBe(2);
+  });
+
+  it('answers what is not a range with an error under the key the client gave it, never with All records', () => {
+    const s = new FakeSocket();
+    obs.attach(s);
+    obs.subscribe(s, E, { from: -86_400_000, to: null });
+    obs.subscribe(s, E, { from: 9, to: 5 });
+    expect(s.of('net:range:error').map((m) => m.range)).toEqual(['-86400000-now', '9-5']);
+    expect(s.of('net:snapshot')).toHaveLength(0);
   });
 
   it('answers a range it cannot build, rather than leaving the socket waiting', () => {
