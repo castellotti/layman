@@ -8,9 +8,11 @@ import type {
   FlowFlags,
   FlowRecord,
   FlowScope,
+  GateSince,
   NetGateView,
   NetSessionFile,
   NetState,
+  SinceAt,
   StatusRecord,
 } from './types.js';
 import { FLOW_SCOPES, isLanOnlyRule, neverMapped } from './types.js';
@@ -143,5 +145,60 @@ export function classifySession(inp: SessionInputs, now: number): NetGateView {
     rules: status?.rules ?? null,
     telemetry: status?.telemetry ?? null,
     unwatchedServices: (session?.services ?? []).filter((s) => !s.observed).map((s) => s.service),
+    since: { gate: null, route: null, exit: null, resolver: null },
+  };
+}
+
+/** What the records say, for a part Layman did not see change. */
+export interface SinceRecords {
+  /** Exit records, oldest first. */
+  exits: readonly ExitRecord[];
+  /** The latest collector run's start and stop (`HistoryRun`), if any. */
+  run: { started: number; ended: number | null } | null;
+}
+
+/** The earliest record of the unbroken streak at the end of `exits` that `same` holds for, or null. */
+function streakStart(exits: readonly ExitRecord[], same: (e: ExitRecord) => boolean): number | null {
+  let t: number | null = null;
+  for (let i = exits.length - 1; i >= 0 && same(exits[i]); i--) t = Date.parse(exits[i].t);
+  return t !== null && Number.isFinite(t) ? t : null;
+}
+
+/**
+ * When each part of the gate view became what it is (`GateSince`). A part Layman saw change
+ * (between two reads, a second apart) changed `now`. One it did not see change (the first read
+ * after a start, or a restart) is taken from the records: a running gate since its run's start, a
+ * stopped one since its stop, a stale one since its last heartbeat (`beat`), a verified exit since
+ * the first record of its unbroken healthy streak, an exit IP since its first record in a row.
+ * Where nothing says, null: a tooltip then leaves "since" out rather than guess.
+ */
+export function gateSince(
+  prev: NetGateView, next: NetGateView, rec: SinceRecords & { prevExitIp: string | null }, beat: number | null, now: number,
+): GateSince {
+  // A status had been read before: a difference now is a change seen happening.
+  const seen = prev.state !== null;
+  const keep = (part: keyof GateSince, before: string, after: string, backfill: () => SinceAt | null): SinceAt | null => {
+    if (seen && before === after) return prev.since[part];
+    if (seen) return { t: now, exact: true };
+    return backfill();
+  };
+  const at = (t: number | null | undefined, exact = true): SinceAt | null => (t === null || t === undefined || !Number.isFinite(t) ? null : { t, exact });
+
+  const routeKey = (v: NetGateView) => `${v.route.kind}|${v.route.verified}|${v.route.exitIdentityOff}|${v.route.upstreamHealthy}`;
+  const exitIp = rec.exits.at(-1)?.ip ?? null;
+  return {
+    gate: keep('gate', prev.freshness, next.freshness, () => {
+      switch (next.freshness) {
+        case 'running': return at(rec.run && rec.run.ended === null ? rec.run.started : null);
+        case 'stale': return at(beat);
+        case 'stopped': return at(rec.run?.ended ?? beat);
+        default: return null;
+      }
+    }),
+    route: keep('route', routeKey(prev), routeKey(next), () =>
+      next.route.verified ? at(streakStart(rec.exits, (e) => e.healthy)) : null),
+    exit: keep('exit', String(rec.prevExitIp), String(exitIp), () =>
+      exitIp === null ? null : at(streakStart(rec.exits, (e) => e.ip === exitIp))),
+    resolver: keep('resolver', `${prev.resolver.mode}|${prev.resolver.healthy}`, `${next.resolver.mode}|${next.resolver.healthy}`, () => null),
   };
 }

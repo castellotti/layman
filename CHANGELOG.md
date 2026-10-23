@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- **Network views: when the gate and the route last changed.** The gate chip's tooltip says how long it has been running ("Running since Oct 21 00:27:03 (5 h ago)"), and the VPN chip says since when its exit is verified and since when the exit IP is the current one. A change Layman sees is dated as it happens. After a restart the dates come from glove's own records: the run's start, the exit records, the last heartbeat. They are never "since Layman started". Where no record says, the tip leaves the date out rather than guess. Design: `docs/extensions/glove.md` → "States".
+
 - **Network views: tooltips that say what things mean.** Every glove widget's tooltip is now Layman's own, not the browser's `title`. A tip shows almost at once on hover and at once on keyboard focus, and Escape dismisses it. The native one took about a second, could not be styled, and never showed on focus. Design: `docs/extensions/glove.md` → "The client shell".
   - **Gate chips in plain words.** Each chip's tip has a heading, a sentence for someone who has never read glove's docs, then its facts. "No rules" explains that glove's guard still refuses private addresses and cloud metadata, and what the default does. "Record: metadata" says glove records who connected where, when and how much, not URLs. "Resolver in-tunnel" says your DNS provider never sees what the sandbox visits.
   - **Topology explains itself.** The legend's colours and band width have tips, as do destinations, "+N more" boxes, bands and Map pins. The words live in `lib/net-format.ts` beside the state legend.

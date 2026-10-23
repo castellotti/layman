@@ -3,7 +3,8 @@
  * the state legend every view draws from. Pure, so it is tested in node.
  */
 import type { NetSessionData } from './net-state.js';
-import type { NetState } from './netobs-types.js';
+import type { NetState, SinceAt } from './netobs-types.js';
+import { formatStamp } from './net-range.js';
 
 export function formatBytes(n: number): string {
   if (!Number.isFinite(n) || n < 1000) return `${Math.max(0, Math.round(n || 0))} B`;
@@ -57,7 +58,13 @@ const ROUTE_LABEL: Record<string, string> = { vpn: 'VPN', tor: 'Tor' };
  * incomplete" when the data itself has holes. Each chip's tip says what it means
  * to someone who has never read glove's docs, then the facts behind it.
  */
-export function gateChips(data: NetSessionData): GateChip[] {
+/** "Since Oct 21 00:27:03 (5 h ago)", or "at least since" when Layman did not see it change; nothing when nothing says. */
+function sinceFact(what: string, since: SinceAt | null, now: number): string[] {
+  if (!since) return [];
+  return [`${what} ${since.exact ? 'since' : 'at least since'} ${formatStamp(since.t)} (${formatAge(now - since.t)} ago)`];
+}
+
+export function gateChips(data: NetSessionData, now = Date.now()): GateChip[] {
   const { gate, exit, totals, counters } = data;
   const chips: GateChip[] = [];
   const version = gate.gateVersion ? [`gate ${gate.gateVersion}`] : [];
@@ -70,26 +77,27 @@ export function gateChips(data: NetSessionData): GateChip[] {
   }
 
   const heartbeat = `Heartbeat ${formatAge(gate.heartbeatAgeMs)} ago`;
+  const gateSince = sinceFact(gate.freshness === 'running' ? 'Running' : gate.freshness === 'stale' ? 'Quiet' : 'Stopped', gate.since.gate, now);
   switch (gate.freshness) {
     case 'running':
       chips.push({ key: 'gate', label: 'Gate running', tone: 'ok', icon: 'pulse', tip: {
         heading: 'The gate is running',
         body: 'glove’s gate is the sandbox’s only way out to the network: it records every connection and enforces your rules. It reports a heartbeat every few seconds, and this one is current.',
-        facts: [heartbeat, ...version],
+        facts: [...gateSince, heartbeat, ...version],
       } });
       break;
     case 'stale':
       chips.push({ key: 'gate', label: 'Gate stale · data stopped updating', tone: 'warn', icon: 'clock', tip: {
         heading: 'The gate has gone quiet',
         body: 'Its heartbeat stopped, so the data has stopped updating. That is not the same as the traffic stopping.',
-        facts: [heartbeat, ...version],
+        facts: [...gateSince, heartbeat, ...version],
       } });
       break;
     case 'stopped':
       chips.push({ key: 'gate', label: 'Gate stopped', tone: 'muted', icon: 'clock', tip: {
         heading: 'The gate has stopped',
         body: 'The sandbox has been shut down (glove down). What is shown is the record up to then.',
-        facts: [`glove reported “${gate.state}”`, ...version],
+        facts: [...gateSince, `glove reported “${gate.state}”`, ...version],
       } });
       break;
     default:
@@ -129,13 +137,15 @@ export function gateChips(data: NetSessionData): GateChip[] {
       ? [`Exit ${exit.ip ?? 'unknown IP'}${exit.city ? `, ${exit.city}` : ''}${exit.country ? `, ${exit.country}` : ''}`,
         `Reported by ${exit.source ?? 'an unnamed source'}, not looked up by Layman`]
       : ['No exit has been observed'];
+    const routeSince = sinceFact('As now', gate.since.route, now);
+    const exitSince = exit ? sinceFact('This exit', gate.since.exit, now) : [];
     const failing = unhealthy ? ` The ${name} reports it is failing, so connections may not get through.` : '';
     if (gate.route.verified && exit) {
       chips.push({ key: 'route', label: `${name} · exit verified${exit.country ? ` · ${exit.country}` : ''}${unhealthy}`,
         tone: unhealthy ? 'warn' : 'tunnel', icon: 'tunnel', tip: {
           heading: `${name}: exit verified`,
           body: `Web traffic leaves through the ${name}. glove checked where it comes out (the exit), so this is observed, not just declared.${failing}`,
-          facts: exitFacts,
+          facts: [...sinceFact('Verified', gate.since.route, now), ...exitFacts, ...exitSince],
         } });
     } else if (gate.route.exitIdentityOff) {
       chips.push({ key: 'route', label: `${name} · declared${unhealthy}`, tone: unhealthy ? 'warn' : 'neutral', icon: 'tunnel', tip: {
@@ -146,7 +156,7 @@ export function gateChips(data: NetSessionData): GateChip[] {
       chips.push({ key: 'route', label: `${name} · declared, not verified${unhealthy}`, tone: 'warn', icon: 'tunnel', tip: {
         heading: `${name}: not verified`,
         body: `Web traffic is set to leave through the ${name}, but glove has not confirmed where it comes out. Trust the label less than an observed exit.${failing}`,
-        facts: exitFacts,
+        facts: [...routeSince, ...exitFacts, ...exitSince],
       } });
     }
   } else if (kind === 'corporate') {
@@ -169,13 +179,13 @@ export function gateChips(data: NetSessionData): GateChip[] {
       chips.push({ key: 'resolver', label: 'Resolver down', tone: 'warn', icon: 'alert', tip: {
         heading: 'The resolver is failing',
         body: 'The service that looks up hostnames inside the tunnel is failing, so new destinations go to “Unknown location” on the Map. Traffic itself is not affected.',
-        facts: name,
+        facts: [...sinceFact('Failing', gate.since.resolver, now), ...name],
       } });
     } else {
       chips.push({ key: 'resolver', label: 'Resolver in-tunnel', tone: r.healthy ? 'ok' : 'neutral', icon: 'check', tip: {
         heading: 'Hostnames looked up in the tunnel',
         body: 'Names like example.com are turned into addresses inside the VPN tunnel, so your own DNS provider never sees what the sandbox visits.',
-        facts: [...name, ...(r.healthy === null ? ['Not used yet this session'] : [])],
+        facts: [...sinceFact('As now', gate.since.resolver, now), ...name, ...(r.healthy === null ? ['Not used yet this session'] : [])],
       } });
     }
   }

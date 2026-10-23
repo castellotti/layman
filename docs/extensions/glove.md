@@ -323,6 +323,19 @@ old, falling back to `status.json`'s mtime for a gate that writes no `t`), route
 (verified only while the latest exit is healthy; with `exit_identity: "none"` "declared" is expected,
 not an error), resolver, rules load result, telemetry, and unobserved services.
 
+**Since when** (`gateSince()`, `NetGateView.since`). The strip's tooltips say when the gate, the route,
+the exit IP and the resolver became what they are. A change Layman sees between two reads, a second
+apart, is dated when it saw it. A part it did not see change (the first read after Layman starts) is
+dated from glove's records, never "since Layman started", which would say nothing:
+- a running gate since its collector run's start record;
+- a stale one since its last heartbeat, and a stopped one since its run's stop;
+- a verified exit since the first record of its unbroken healthy streak, and the exit IP since its
+  first record in a row.
+
+Where nothing says (the resolver's health has no record), there is no "since": a tip leaves it out
+rather than guess. `exact: false` reads "at least since" and is reserved for a date that is only a lower
+bound. It is pure and tested at each transition and after a restart (`gate-since.test.ts`).
+
 `gate_lost` is the tenth state, from glove's follow-up: an unclosed flow whose forwarder has gone (next
 section). It is not "open" in any sense the UI means, so `totals.openFlows` and a destination's
 `openFlows` leave it out and `totals.gateLost` counts it. `status.json`'s `rules` also carries glove's

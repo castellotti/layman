@@ -488,6 +488,28 @@ export interface NetGateView {
   telemetry: { written: number; dropped: number; invalid: number; rotations: number } | null;
   /** Declared services with `observed: false`: routes off the sandbox with no visibility. */
   unwatchedServices: string[];
+  /** When each part last changed (`gateSince`), for the strip's tooltips; null where nothing says. */
+  since: GateSince;
+}
+
+/**
+ * A moment something became what it is. `exact` false means "at least since": Layman did not see
+ * it change and no record says when it did (a restart, with the record that would tell rotated away).
+ */
+export interface SinceAt {
+  t: number;
+  exact: boolean;
+}
+
+export interface GateSince {
+  /** The gate's state (`freshness`): running since its run started, stale since its last heartbeat. */
+  gate: SinceAt | null;
+  /** The route as shown: its kind, whether its exit is verified, its upstream's health. */
+  route: SinceAt | null;
+  /** The current exit IP. */
+  exit: SinceAt | null;
+  /** The resolver's mode and health. */
+  resolver: SinceAt | null;
 }
 
 /**

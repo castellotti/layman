@@ -44,6 +44,19 @@ describe('gateChips', () => {
     expect(tipText(chip(data(), 'route')!)).toContain('not looked up by Layman');
   });
 
+  it('says when the gate and the route last changed, and says "at least" when Layman did not see it', () => {
+    const t = new Date(2026, 9, 21, 0, 27, 3).getTime();
+    const d = data({ since: { gate: { t, exact: true }, route: { t: t + 6000, exact: true }, exit: { t: t + 6000, exact: false }, resolver: null } });
+    const now = t + 5 * 3_600_000;
+    const chips = gateChips(d, now);
+    const facts = (k: string) => chips.find((c) => c.key === k)!.tip.facts ?? [];
+    expect(facts('gate')[0]).toBe('Running since Oct 21 00:27:03 (5 h ago)');
+    expect(facts('route')).toContain('Verified since Oct 21 00:27:09 (5 h ago)');
+    expect(facts('route')).toContain('This exit at least since Oct 21 00:27:09 (5 h ago)');
+    // Nothing says when the resolver changed: no fact, rather than a guess.
+    expect(facts('resolver').some((f) => /since/.test(f))).toBe(false);
+  });
+
   it('names a corporate route as allowlist-only, with no exit to verify', () => {
     const c = chip(data({ route: { kind: 'corporate', verified: false, exitIdentityOff: true, upstreamHealthy: null } }), 'route')!;
     expect([c.label, c.tone]).toEqual(['Corporate route · allowlist only', 'neutral']);

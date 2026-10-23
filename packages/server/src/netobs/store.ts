@@ -22,7 +22,7 @@
  * watermark (the part they already counted), plus everything read.
  */
 import { EventEmitter } from 'events';
-import { BLOCK_STATES, aggregateState, classifyFlow, classifySession, flowFlags } from './classify.js';
+import { BLOCK_STATES, aggregateState, classifyFlow, classifySession, flowFlags, gateSince } from './classify.js';
 import { groupKeyFor } from './domain.js';
 import { type NetSessionLocation } from './discovery.js';
 import { blankRulesView } from './control.js';
@@ -174,6 +174,8 @@ interface SessionData {
   /** Latest record time. Sparklines anchor here, so a stopped gate's sparklines freeze rather than drain. */
   lastT: number | null;
   gate: NetGateView;
+  /** The exit IP the last `gateSince` saw, to tell a new exit from the same one. */
+  sinceExitIp: string | null;
   /** The enforced rule set and the one on disk, for each destination's predicted policy. */
   policy: { enforced: RuleSet | null; written: RuleSet | null };
   dirtyFlows: Set<string>;
@@ -318,6 +320,7 @@ export class NetStore extends EventEmitter {
       firstSeen: null,
       lastT: null,
       gate: classifySession({ status: null, statusMtimeMs: null, exit: null, session: null }, Date.now()),
+      sinceExitIp: null,
       dirtyFlows: new Set(),
       dirtyAggs: new Set(),
       removedAggs: new Set(),
@@ -956,6 +959,13 @@ export class NetStore extends EventEmitter {
       now,
     );
     const prev = s.gate;
+    const runs = this.runsByStart(s);
+    const run = runs.at(-1) ?? null;
+    const beat = s.status?.t ? Date.parse(s.status.t) : s.statusMtimeMs;
+    next.since = gateSince(prev, next, {
+      exits: s.exits, run: run && { started: run.started, ended: run.ended }, prevExitIp: s.sinceExitIp,
+    }, beat ?? null, now);
+    s.sinceExitIp = s.exits.at(-1)?.ip ?? null;
     s.gate = next;
     if (force || prev.freshness !== next.freshness) this.emit('status', s.loc.token);
   }
