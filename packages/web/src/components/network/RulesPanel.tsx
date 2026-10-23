@@ -18,6 +18,7 @@ import {
 import type { Rule, RuleAction } from '../../lib/netobs-types.js';
 import { buttonStyle } from './ControlPopover.js';
 import { NetIcon, type NetIconName } from './netui.js';
+import { TipWrap, tipProps } from './NetTip.js';
 
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 const sectionTitle: React.CSSProperties = { fontSize: 10, letterSpacing: '0.08em', fontWeight: 600, color: 'var(--text-muted)', marginBottom: 6 };
@@ -330,10 +331,12 @@ export function RulesPanel({ data, now }: { data: NetSessionData; now: number })
       )}
 
       <div style={{ ...sectionTitle, marginTop: editable ? 0 : 12 }}>WHEN NOTHING MATCHES</div>
-      <div role="radiogroup" aria-label="Default policy" style={{ display: 'flex', border: '1px solid var(--border-strong)', borderRadius: 6, overflow: 'hidden' }}>
+      {/* Disabled radios take no focus or pointer: the group carries why, and is focusable while it does. */}
+      <div role="radiogroup" aria-label="Default policy"
+        {...tipProps(cut ? 'All traffic is cut: restore it first.' : !editable ? disabledReason : null)} tabIndex={!editable || cut ? 0 : undefined}
+        style={{ display: 'flex', border: '1px solid var(--border-strong)', borderRadius: 6, overflow: 'hidden' }}>
         {(['allow', 'block'] as const).map((p, i) => (
           <button key={p} type="button" role="radio" aria-checked={d.default === p} disabled={!editable || cut}
-            data-tip={cut ? 'All traffic is cut: restore it first.' : !editable ? disabledReason ?? '' : undefined}
             onClick={() => edit({ default: p })}
             style={{
               flex: 1, height: 26, border: 'none', borderLeft: i ? '1px solid var(--border-strong)' : 'none', fontSize: 11,
@@ -351,10 +354,12 @@ export function RulesPanel({ data, now }: { data: NetSessionData; now: number })
             <NetIcon name="check" color="var(--net-tunnel)" />Restore all traffic
           </button>
         ) : (
-          <button type="button" disabled={disabledReason !== null || dirty} data-tip={dirty ? 'Save or discard your draft first.' : disabledReason ?? undefined}
-            onClick={() => setKillOpen(true)} style={buttonStyle('danger')}>
-            <NetIcon name="cut" color="#FF8A80" />Cut all traffic now
-          </button>
+          <TipWrap tip={dirty ? 'Save or discard your draft first.' : disabledReason} disabled={disabledReason !== null || dirty}>
+            <button type="button" disabled={disabledReason !== null || dirty}
+              onClick={() => setKillOpen(true)} style={buttonStyle('danger')}>
+              <NetIcon name="cut" color="#FF8A80" />Cut all traffic now
+            </button>
+          </TipWrap>
         )}
       </div>
       <div style={{ fontSize: 10, color: 'var(--text-faint)', marginTop: 4 }}>

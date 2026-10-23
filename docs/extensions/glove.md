@@ -594,10 +594,23 @@ nothing for finished sessions (their history is not an alarm).
   elements included. It replaced the browser's `title` everywhere in these tabs, because a native
   title appears after about a second, cannot be styled, and never appears on keyboard focus: the
   strip's chips read as unexplained labels. A tip appears 120 ms after hover (long enough not to
-  flicker across a row of chips), at once on keyboard focus, and goes on Escape, scroll or a click;
-  the element gets `aria-describedby` while it shows. The words live with the data, not in
-  components: each gate chip's `tip` (a heading, a plain sentence, then its facts) in `gateChips()`,
-  and the Topology legend's in `TOPOLOGY_LEGEND`, both in `lib/net-format.ts` beside `NET_LEGEND`.
+  flicker across a row of chips), at once on keyboard focus, and goes on Escape or a click; the
+  element gets `aria-describedby` while it shows. Details that bit:
+  - **Keyboard focus only** (`:focus-visible`). A click focuses what it hits; showing on that focus
+    brought back the tip the click had just dismissed, over the popover the click opened.
+  - **It follows its element.** It re-reads the element four times a second and on scroll, so a chip
+    that relabels itself is not described by its old words, a tip whose element is gone goes with it,
+    and a chip scrolled into view by focus keeps its tip.
+  - **Disabled controls** (`TipWrap`). A disabled button takes no focus and, in some browsers, no
+    pointer events, so its reason sits on a wrapper that is focusable while the control is disabled.
+  - **It fits.** On whichever side has more room, no taller than that room, with long text and facts
+    cut short.
+
+  The words live with the data, not in components: each gate chip's `tip` (a heading, a plain
+  sentence, then its facts) in `gateChips()`, and the Topology legend's in `TOPOLOGY_LEGEND`, both in
+  `lib/net-format.ts` beside `NET_LEGEND`. The rules chip states only the default the gate *enforces*
+  (`rules.enforced`), never Layman's write or a guess. The legend names the diagram's band kinds and
+  takes its colours from the diagram's own table (`BAND`), so the two cannot drift.
 - **Data and selection live apart.** The network data is in `stores/netStore.ts`, fed by
   `lib/net-state.ts` (a pure reducer, so it is tested in node), because deltas arrive up to twice a
   second and nothing outside these tabs should re-render on them. *Which* glove session and *which*

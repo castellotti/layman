@@ -53,7 +53,10 @@ await page.goBack();
 check('Back returns to the range', await waitFor(async () => url().searchParams.get('to') === 'now' && await has(BANNER)(), 20000), page.url());
 
 // Another glove session clears the range.
-await page.selectOption('select[aria-label="Glove session"]', { index: 1 }).catch(() => {});
+// Any session but this one: the picker's order follows activity, so its second entry may be this one.
+const other = await page.$$eval('select[aria-label="Glove session"] option:not([disabled])', (os, pi) =>
+  os.map((o) => o.value).find((v) => v && v !== pi), PI);
+await page.selectOption('select[aria-label="Glove session"]', other).catch(() => {});
 check('choosing another glove session clears the range', await waitFor(async () => url().searchParams.get('glove') !== PI && !url().searchParams.has('from')), page.url());
 
 // A malformed range is not a range: All records, never a view left loading.

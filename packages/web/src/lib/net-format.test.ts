@@ -26,7 +26,7 @@ describe('gateChips', () => {
     expect(chip(none, 'rules')!.label).toBe('No rules');
     expect(tipText(chip(none, 'rules')!)).toMatch(/haven’t added any rules.*guard still refuses private addresses and cloud metadata/);
     expect(tipText(chip(data(), 'record')!)).toMatch(/who connected to what, when, and how many bytes: not URLs/);
-    expect(tipText(chip(data(), 'resolver')!)).toMatch(/inside the VPN tunnel, so your own DNS provider never sees/);
+    expect(tipText(chip(data(), 'resolver')!)).toMatch(/inside the tunnel, so your own DNS provider never sees/);
     // Every chip has a heading and a sentence.
     for (const c of gateChips(data())) expect([c.key, !!c.tip.heading, c.tip.body.length > 20]).toEqual([c.key, true, true]);
   });
@@ -42,6 +42,21 @@ describe('gateChips', () => {
     ]);
     expect(tipText(chip(data(), 'route')!)).toContain('via-proxy:am.i.mullvad.net');
     expect(tipText(chip(data(), 'route')!)).toContain('not looked up by Layman');
+  });
+
+  it('states only the default the gate enforces, and does not describe what it does not know', () => {
+    const noRules = { loaded_at: null, source_mtime: null, ok: true, error: null, active_count: 0, sha256: null, last_rejected: null };
+    const enforced = (def: 'allow' | 'block' | null) => data({ rules: noRules }, {
+      rules: rulesView({ enforced: def ? { v: 1, env: 'e', session: 'e', default: def, rules: [] } : null, file: { v: 1, env: 'e', session: 'e', default: 'allow', rules: [] } }),
+    });
+    expect(tipText(chip(enforced('block'), 'rules')!)).toMatch(/everything else is blocked/);
+    // Layman's file says allow, but nothing says what the gate enforces: no default is claimed.
+    expect(tipText(chip(enforced(null), 'rules')!)).not.toMatch(/everything else/);
+    // A record mode this Layman does not know is reported as glove's word, not as metadata.
+    expect(tipText(chip(data({ record: 'sampled' }), 'record')!)).toMatch(/“sampled”, which this version of Layman does not describe/);
+    // Not running is not necessarily glove down: glove's own word is in the facts.
+    const notRunning = chip(data({ freshness: 'stopped', state: 'error' }), 'gate')!;
+    expect([notRunning.tip.heading, tipText(notRunning)]).toEqual(['The gate is not running', expect.stringContaining('glove reported “error”')]);
   });
 
   it('says when the gate and the route last changed, and says "at least" when Layman did not see it', () => {

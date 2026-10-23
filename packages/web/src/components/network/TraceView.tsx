@@ -24,6 +24,7 @@ import { buttonStyle, ControlPopover } from './ControlPopover.js';
 import { NetToggle } from './cells.js';
 import { Row, SectionHead } from './DetailCard.js';
 import { EmptyState, NetIcon, type NetIconName } from './netui.js';
+import { TipWrap } from './NetTip.js';
 
 // ─── Shared state ─────────────────────────────────────────────────────────────
 
@@ -352,10 +353,11 @@ function TurnButtons({ view, label }: { view: TraceView; label: string }) {
     <div style={{ display: 'flex', gap: 8, marginTop: 16, alignItems: 'center' }}>
       <a href={href} onClick={(e) => { if (e.button === 0 && !e.metaKey && !e.ctrlKey) { e.preventDefault(); selectTurn(t.sessionId, t.promptEventId); } }}
         style={{ ...buttonStyle('plain'), textDecoration: 'none' }}>Open turn</a>
-      <button type="button" disabled={!t.responseEventId || saved === 'saving' || saved === 'saved'} onClick={bookmark} style={buttonStyle('ghost')}
-        data-tip={t.responseEventId ? 'Save this turn as a highlight' : 'The turn has no response yet'}>
-        {saved === 'saved' ? 'Bookmarked' : saved === 'failed' ? 'Bookmark failed: try again' : 'Bookmark'}
-      </button>
+      <TipWrap tip={t.responseEventId ? 'Save this turn as a highlight' : 'The turn has no response yet'} disabled={!t.responseEventId || saved === 'saving' || saved === 'saved'}>
+        <button type="button" disabled={!t.responseEventId || saved === 'saving' || saved === 'saved'} onClick={bookmark} style={buttonStyle('ghost')}>
+          {saved === 'saved' ? 'Bookmarked' : saved === 'failed' ? 'Bookmark failed: try again' : 'Bookmark'}
+        </button>
+      </TipWrap>
     </div>
   );
 }

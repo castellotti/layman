@@ -7,6 +7,16 @@
 - **Network views: tooltips that say what things mean.** Every glove widget's tooltip is now Layman's own, not the browser's `title`. A tip shows almost at once on hover and at once on keyboard focus, and Escape dismisses it. The native one took about a second, could not be styled, and never showed on focus. Design: `docs/extensions/glove.md` → "The client shell".
   - **Gate chips in plain words.** Each chip's tip has a heading, a sentence for someone who has never read glove's docs, then its facts. "No rules" explains that glove's guard still refuses private addresses and cloud metadata, and what the default does. "Record: metadata" says glove records who connected where, when and how much, not URLs. "Resolver in-tunnel" says your DNS provider never sees what the sandbox visits.
   - **Topology explains itself.** The legend's colours and band width have tips, as do destinations, "+N more" boxes, bands and Map pins. The words live in `lib/net-format.ts` beside the state legend.
+  - **Review fixes.**
+    - A click dismisses a tip, and the focus it gives no longer brings the tip back.
+    - A shown tip follows its element: a relabelled chip updates, and a tip whose element is gone goes too.
+    - A disabled control's reason is on a focusable wrapper, so keyboard users get it.
+    - Tall tips fit the window.
+    - The rules tip states only the default the gate enforces.
+    - The resolver tip no longer says "VPN" on other routes.
+    - "Not running" is no longer described as an orderly glove down.
+    - An unknown record mode is not called metadata-only.
+    - The Topology legend takes its colours from the diagram and names what each one is: direct, refused, and guard or broken.
   - **Browser checks.** A new `tips` check covers hover, keyboard focus, Escape and the legend. `trace` now runs before `control`. Its "Cut all traffic" step left a replayed turn with 10 blocked calls, and `trace` failed on `main` too.
 
 - **Network views: time ranges on the server** (first part; no UI yet). A glove session's network data can now be asked for over one time window: `net:subscribe { token, range: { from, to } }`, with `to: null` for "until now". Without a range nothing changes. Design: `docs/extensions/glove.md` → "Time ranges".

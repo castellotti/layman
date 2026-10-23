@@ -22,7 +22,7 @@ import { ControlPopover, buttonStyle } from './ControlPopover.js';
 import { DetailCard, useGeoStatus } from './DetailCard.js';
 import { WorldMap } from './WorldMap.js';
 import { NetIcon, type NetIconName } from './netui.js';
-import { tipProps } from './NetTip.js';
+import { TipWrap, tipProps } from './NetTip.js';
 
 type Corner = 'tl' | 'tc' | 'tr' | 'bl' | 'br';
 const DEFAULT_CORNER: Record<string, Corner> = { talking: 'tl', unknown: 'tc', detail: 'tr', sandbox: 'bl', legend: 'br' };
@@ -314,11 +314,13 @@ export function MapView({ data, panels }: { data: NetSessionData; panels: Return
               <div style={{ fontSize: 12.5, fontWeight: 700, color: '#FFB4AD' }}>Untunnelled traffic</div>
               {plural(direct.reduce((a, d) => a + d.flows, 0), 'flow')} to <span style={{ fontFamily: 'var(--font-mono)' }}>{direct.map((d) => d.host).slice(0, 3).join(', ')}{direct.length > 3 ? '…' : ''}</span> left through a <b>direct</b> route and carried the operator’s real IP.
             </div>
-            <button type="button" disabled={!!disabled} data-tip={disabled ?? 'One rule: block scope direct, and cut what is open'}
-              onClick={() => useNetStore.getState().applyRules({ kind: 'blockGroup', key: 'scope', value: 'direct', terminate: true, note: 'Blocked direct egress from the Map' })}
-              style={buttonStyle('danger')}>
-              <NetIcon name="blocked" color="#FF8A80" />Block direct egress
-            </button>
+            <TipWrap tip={disabled ?? 'One rule: block scope direct, and cut what is open'} disabled={!!disabled}>
+              <button type="button" disabled={!!disabled}
+                onClick={() => useNetStore.getState().applyRules({ kind: 'blockGroup', key: 'scope', value: 'direct', terminate: true, note: 'Blocked direct egress from the Map' })}
+                style={buttonStyle('danger')}>
+                <NetIcon name="blocked" color="#FF8A80" />Block direct egress
+              </button>
+            </TipWrap>
           </div>
   ) : null;
 

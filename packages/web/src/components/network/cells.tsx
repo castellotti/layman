@@ -7,6 +7,7 @@ import type { ToggleKind } from '../../lib/net-format.js';
 import type { CellText } from '../../lib/net-table.js';
 import type { RateBucket } from '../../lib/netobs-types.js';
 import { NetIcon, type NetIconName } from './netui.js';
+import { TipWrap } from './NetTip.js';
 
 const VERB: Record<ToggleKind, (target: string) => string> = {
   allow: (t) => `Block ${t}`,
@@ -68,11 +69,11 @@ export function NetToggle({ kind, target, disabledReason, onClick }: {
   }
   const disabled = kind === 'locked' || kind === 'pending' || disabledReason !== null;
   return (
+    <TipWrap tip={kind === 'locked' ? LOCKED_TITLE : kind === 'pending' ? PENDING_TITLE : disabledReason ? `${label}. ${disabledReason}` : label} disabled={disabled}>
     <button
       type="button"
       aria-pressed={on}
       aria-label={label}
-      data-tip={kind === 'locked' ? LOCKED_TITLE : kind === 'pending' ? PENDING_TITLE : disabledReason ? `${label}. ${disabledReason}` : label}
       disabled={disabled}
       onClick={(e) => {
         e.stopPropagation();
@@ -83,6 +84,7 @@ export function NetToggle({ kind, target, disabledReason, onClick }: {
       {knob && <span style={knob} />}
       {kind === 'locked' && <NetIcon name="lock" size={9} color="var(--warn)" strokeWidth={1.6} />}
     </button>
+    </TipWrap>
   );
 }
 

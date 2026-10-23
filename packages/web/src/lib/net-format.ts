@@ -5,6 +5,7 @@
 import type { NetSessionData } from './net-state.js';
 import type { NetState, SinceAt } from './netobs-types.js';
 import { formatStamp } from './net-range.js';
+import type { BandKind } from './net-topology.js';
 
 export function formatBytes(n: number): string {
   if (!Number.isFinite(n) || n < 1000) return `${Math.max(0, Math.round(n || 0))} B`;
@@ -95,8 +96,8 @@ export function gateChips(data: NetSessionData, now = Date.now()): GateChip[] {
       break;
     case 'stopped':
       chips.push({ key: 'gate', label: 'Gate stopped', tone: 'muted', icon: 'clock', tip: {
-        heading: 'The gate has stopped',
-        body: 'The sandbox has been shut down (glove down). What is shown is the record up to then.',
+        heading: 'The gate is not running',
+        body: 'Its last status says it is not running: shut down, starting, or failed (glove’s own word is below). What is shown is the record up to then.',
         facts: [...gateSince, `glove reported “${gate.state}”`, ...version],
       } });
       break;
@@ -184,7 +185,7 @@ export function gateChips(data: NetSessionData, now = Date.now()): GateChip[] {
     } else {
       chips.push({ key: 'resolver', label: 'Resolver in-tunnel', tone: r.healthy ? 'ok' : 'neutral', icon: 'check', tip: {
         heading: 'Hostnames looked up in the tunnel',
-        body: 'Names like example.com are turned into addresses inside the VPN tunnel, so your own DNS provider never sees what the sandbox visits.',
+        body: 'Names like example.com are turned into addresses inside the tunnel, so your own DNS provider never sees what the sandbox visits.',
         facts: [...sinceFact('As now', gate.since.resolver, now), ...name, ...(r.healthy === null ? ['Not used yet this session'] : [])],
       } });
     }
@@ -199,18 +200,20 @@ export function gateChips(data: NetSessionData, now = Date.now()): GateChip[] {
         facts: [rules.error ?? 'No reason given'],
       } });
     } else {
-      const def = data.rules.file?.default ?? 'allow';
-      const otherwise = def === 'block' ? 'everything else is blocked (the session’s default)' : 'everything else is allowed (the session’s default)';
+      // What the gate enforces, never what Layman wrote or a guess: without it, the default goes unsaid.
+      const def = data.rules.enforced?.default;
+      const otherwise = def === 'block' ? '; everything else is blocked (the session’s default)'
+        : def === 'allow' ? '; everything else is allowed (the session’s default)' : '';
       chips.push({ key: 'rules', label: rules.active_count ? `${plural(rules.active_count, 'rule')} enforced` : 'No rules',
         tone: 'neutral', icon: 'shield', tip: rules.active_count
           ? {
             heading: `${plural(rules.active_count, 'rule')} in force`,
-            body: `Your rules decide which destinations the sandbox may reach. glove’s built-in guard still refuses private addresses and cloud metadata first; ${otherwise}.`,
+            body: `Your rules decide which destinations the sandbox may reach. glove’s built-in guard still refuses private addresses and cloud metadata first${otherwise}.`,
             facts: [rules.loaded_at ? `Loaded ${rules.loaded_at}` : 'Never loaded'],
           }
           : {
             heading: 'No rules',
-            body: `You haven’t added any rules. glove’s built-in guard still refuses private addresses and cloud metadata; ${otherwise}.`,
+            body: `You haven’t added any rules. glove’s built-in guard still refuses private addresses and cloud metadata${otherwise}.`,
           } });
     }
   }
@@ -220,10 +223,13 @@ export function gateChips(data: NetSessionData, now = Date.now()): GateChip[] {
       heading: 'Recording: full',
       body: 'glove records request URLs (and headers, if enabled) as well as who connected where. More visible, less private.',
     } }
-    : { key: 'record', label: `Record: ${gate.record}`, tone: 'neutral', icon: 'file', tip: {
-      heading: 'Recording: metadata only',
-      body: 'glove records who connected to what, when, and how many bytes: not URLs or what was sent. A session set to “full” would also record request URLs.',
-    } });
+    : { key: 'record', label: `Record: ${gate.record}`, tone: 'neutral', icon: 'file', tip: gate.record === 'metadata'
+      ? {
+        heading: 'Recording: metadata only',
+        body: 'glove records who connected to what, when, and how many bytes: not URLs or what was sent. A session set to “full” would also record request URLs.',
+      }
+      // A mode this Layman does not know: say what glove reports, not what metadata mode records.
+      : { heading: `Recording: ${gate.record}`, body: `glove reports its record mode as “${gate.record}”, which this version of Layman does not describe.` } });
 
   const reasons: string[] = [];
   if (gate.telemetry && gate.telemetry.dropped > 0) reasons.push(`The gate dropped ${plural(gate.telemetry.dropped, 'record')}`);
@@ -359,15 +365,24 @@ export const BLOCK_STATES: ReadonlySet<NetState> = new Set(['guard', 'user_rule'
 export const LEGEND_BY_KEY: Readonly<Record<string, StateInfo>> = Object.fromEntries(NET_LEGEND.map((s) => [s.key, s]));
 
 /** The Topology diagram's legend: what each band colour means, and how wide a band is. */
-export const TOPOLOGY_LEGEND: ReadonlyArray<{ colour: string; label: string; tip: string }> = [
-  { colour: 'var(--net-tunnel)', label: 'Tunnelled',
-    tip: 'Traffic that left through the VPN or Tor, so sites saw the tunnel’s address, not yours.' },
-  { colour: 'var(--net-fanout)', label: 'SearXNG fan-out',
+/**
+ * The Topology diagram's legend: the band kinds (`BandKind`) each entry stands for, its words and
+ * its tip. Its colour is the diagram's own for its first kind (`BAND` in `TopologyView.tsx`), so the
+ * legend cannot drift from what is drawn.
+ */
+export const TOPOLOGY_LEGEND: ReadonlyArray<{ bands: readonly BandKind[]; label: string; tip: string }> = [
+  { bands: ['tunnel'], label: 'Tunnelled',
+    tip: 'Traffic that left through the tunnel (a VPN, Tor, or your corporate proxy), so sites saw its address, not yours.' },
+  { bands: ['fanout'], label: 'SearXNG fan-out',
     tip: 'One web search becomes many: glove’s search service (SearXNG) asks several search engines at once on the agent’s behalf.' },
-  { colour: 'var(--net-local)', label: 'Local',
-    tip: 'Links that never leave your machine or network: the agent’s model, glove’s own services, a LAN host.' },
-  { colour: 'var(--warn)', label: 'Refused / blocked',
-    tip: 'Connections stopped at the policy wall: by glove’s built-in guard, by one of your rules, or by the default.' },
+  { bands: ['local', 'unwatched'], label: 'Not tunnelled',
+    tip: 'Links that do not go through the tunnel: glove’s own services, a host on your network, and the agent’s model, which can still reach a cloud provider.' },
+  { bands: ['direct'], label: 'Direct',
+    tip: 'Traffic that left without the tunnel, carrying your real IP address.' },
+  { bands: ['refused'], label: 'Refused',
+    tip: 'Stopped at the policy wall by one of your rules, or by the default when no rule allowed it.' },
+  { bands: ['guard', 'broken'], label: 'Guard / broken',
+    tip: 'Refused by glove’s built-in guard (private addresses, cloud metadata), or a path that failed upstream: not a policy decision.' },
 ];
 
 /** What a Topology band's width means. */

@@ -12,6 +12,7 @@ import type { PanelDef } from '../../lib/net-panels.js';
 import { gateChips } from '../../lib/net-format.js';
 import { REJECTED_TITLE, rejectedAuthor } from '../../lib/net-rules.js';
 import { Chip, NetIcon, type NetIconName } from './netui.js';
+import { TipWrap } from './NetTip.js';
 import { useNetStore } from '../../stores/netStore.js';
 
 const bannerButton: React.CSSProperties = {
@@ -199,14 +200,18 @@ export function RulesRejectedBanner({ data }: { data: NetSessionData }) {
             status.json · rules.ok false{rules.loaded_at ? ` · last good load ${rules.loaded_at}` : ''}
           </div>
         </div>
-        <button type="button" disabled={!canRevert} data-tip={canRevert ? 'Write back the rules the gate is enforcing' : 'Layman has not seen the file the gate is enforcing'}
-          onClick={() => useNetStore.getState().applyRules({ kind: 'revert' })} style={bannerButton}>
-          <NetIcon name="direct" />Revert to enforced rules
-        </button>
-        <button type="button" disabled={!canRetry} data-tip={canRetry ? 'Write rules.json again, handed to the gate’s user' : control ?? 'The file on disk is invalid'}
-          onClick={() => useNetStore.getState().applyRules({ kind: 'rewrite' })} style={{ ...bannerButton, color: '#FF8A80', border: '1px solid rgba(240,86,74,0.6)', background: 'transparent' }}>
-          Try again
-        </button>
+        <TipWrap tip={canRevert ? 'Write back the rules the gate is enforcing' : 'Layman has not seen the file the gate is enforcing'} disabled={!canRevert}>
+          <button type="button" disabled={!canRevert}
+            onClick={() => useNetStore.getState().applyRules({ kind: 'revert' })} style={bannerButton}>
+            <NetIcon name="direct" />Revert to enforced rules
+          </button>
+        </TipWrap>
+        <TipWrap tip={canRetry ? 'Write rules.json again, handed to the gate’s user' : control ?? 'The file on disk is invalid'} disabled={!canRetry}>
+          <button type="button" disabled={!canRetry}
+            onClick={() => useNetStore.getState().applyRules({ kind: 'rewrite' })} style={{ ...bannerButton, color: '#FF8A80', border: '1px solid rgba(240,86,74,0.6)', background: 'transparent' }}>
+            Try again
+          </button>
+        </TipWrap>
         <button type="button" aria-expanded={open} onClick={() => setOpen((o) => !o)} style={{
           display: 'inline-flex', alignItems: 'center', gap: 6, height: 26, padding: '0 10px', borderRadius: 6,
           fontSize: 11.5, fontWeight: 500, whiteSpace: 'nowrap', background: 'var(--bg-pill)',

@@ -69,7 +69,7 @@ export function TopologyLegend() {
     <div style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 10.5, color: 'var(--text-body)', overflow: 'hidden', minWidth: 0 }}>
       {TOPOLOGY_LEGEND.map((l) => (
         <span key={l.label} {...tipProps({ heading: l.label, body: l.tip })} tabIndex={0} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, whiteSpace: 'nowrap' }}>
-          <span style={{ width: 14, height: 3, borderRadius: 2, background: l.colour }} />{l.label}
+          <span style={{ width: 14, height: 3, borderRadius: 2, background: BAND[l.bands[0]].colour }} />{l.label}
         </span>
       ))}
       <span {...tipProps(TOPOLOGY_BAND_WIDTH_TIP)} tabIndex={0} style={{ color: 'var(--text-faint)', whiteSpace: 'nowrap' }}>Band width: bytes (square root)</span>
