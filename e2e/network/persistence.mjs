@@ -66,7 +66,7 @@ const picker = await page.$eval('select[aria-label="Glove session"]', (s) => [..
 check('the picker says history', /history/.test(picker ?? ''), picker);
 check('Network tab: the kept destinations in the table', await page.$('[role=table] >> text=wikipedia.org') !== null);
 await page.screenshot({ path: `${SHOTS}/p8-history.png` });
-const toggles = await page.$$eval('[role=table] button[aria-pressed]', (bs) => bs.map((b) => [b.disabled || b.getAttribute('aria-disabled') === 'true', b.getAttribute('title') ?? '']));
+const toggles = await page.$$eval('[role=table] button[aria-pressed]', (bs) => bs.map((b) => [b.disabled || b.getAttribute('aria-disabled') === 'true', b.getAttribute('data-tip') ?? '']));
 check('toggles are disabled, saying why', toggles.length > 0 && toggles.every(([d]) => d), JSON.stringify(toggles).slice(0, 200));
 check('no Cut all traffic for a history-only session', (await page.$('button:has-text("Cut all traffic now")')) === null);
 await page.goto(`${BASE}/?view=map&glove=${TOKEN}`);

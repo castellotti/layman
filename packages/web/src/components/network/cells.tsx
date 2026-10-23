@@ -72,7 +72,7 @@ export function NetToggle({ kind, target, disabledReason, onClick }: {
       type="button"
       aria-pressed={on}
       aria-label={label}
-      title={kind === 'locked' ? LOCKED_TITLE : kind === 'pending' ? PENDING_TITLE : disabledReason ? `${label}. ${disabledReason}` : label}
+      data-tip={kind === 'locked' ? LOCKED_TITLE : kind === 'pending' ? PENDING_TITLE : disabledReason ? `${label}. ${disabledReason}` : label}
       disabled={disabled}
       onClick={(e) => {
         e.stopPropagation();

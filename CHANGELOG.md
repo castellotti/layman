@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- **Network views: tooltips that say what things mean.** Every glove widget's tooltip is now Layman's own, not the browser's `title`. A tip shows almost at once on hover and at once on keyboard focus, and Escape dismisses it. The native one took about a second, could not be styled, and never showed on focus. Design: `docs/extensions/glove.md` → "The client shell".
+  - **Gate chips in plain words.** Each chip's tip has a heading, a sentence for someone who has never read glove's docs, then its facts. "No rules" explains that glove's guard still refuses private addresses and cloud metadata, and what the default does. "Record: metadata" says glove records who connected where, when and how much, not URLs. "Resolver in-tunnel" says your DNS provider never sees what the sandbox visits.
+  - **Topology explains itself.** The legend's colours and band width have tips, as do destinations, "+N more" boxes, bands and Map pins. The words live in `lib/net-format.ts` beside the state legend.
+  - **Browser checks.** A new `tips` check covers hover, keyboard focus, Escape and the legend. `trace` now runs before `control`. Its "Cut all traffic" step left a replayed turn with 10 blocked calls, and `trace` failed on `main` too.
+
 - **Network views: time ranges on the server** (first part; no UI yet). A glove session's network data can now be asked for over one time window: `net:subscribe { token, range: { from, to } }`, with `to: null` for "until now". Without a range nothing changes. Design: `docs/extensions/glove.md` → "Time ranges".
   - **Why on the server.** Topology and the other tabs add up a session's whole history, across every `glove up`. Narrowing that to one run or one exchange cannot be a filter on what Layman holds. Memory keeps only the newest 64 MB of glove's files, and what Layman keeps of older traffic is per hour, with no flows. A range is therefore read from glove's files into a fresh store, so it is counted by the same code as All records.
   - **Bytes in a range are what moved during it.** A connection opened before the range and reused during it counts only its traffic in the range. The scan starts an hour early to find each open connection's bytes at the start.

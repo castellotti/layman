@@ -576,6 +576,15 @@ elsewhere) active only while the group is shown. The Network label carries a dot
 *running* gate reports rejected rules or has carried untunnelled traffic, teal while any gate runs,
 nothing for finished sessions (their history is not an alarm).
 
+- **Tooltips** (`components/network/NetTip.tsx`). One host, mounted by `NetworkView`, shows a tip for
+  any element with `data-tip` (and `data-tip-heading`, `data-tip-facts`, written by `tipProps`), SVG
+  elements included. It replaced the browser's `title` everywhere in these tabs, because a native
+  title appears after about a second, cannot be styled, and never appears on keyboard focus: the
+  strip's chips read as unexplained labels. A tip appears 120 ms after hover (long enough not to
+  flicker across a row of chips), at once on keyboard focus, and goes on Escape, scroll or a click;
+  the element gets `aria-describedby` while it shows. The words live with the data, not in
+  components: each gate chip's `tip` (a heading, a plain sentence, then its facts) in `gateChips()`,
+  and the Topology legend's in `TOPOLOGY_LEGEND`, both in `lib/net-format.ts` beside `NET_LEGEND`.
 - **Data and selection live apart.** The network data is in `stores/netStore.ts`, fed by
   `lib/net-state.ts` (a pure reducer, so it is tested in node), because deltas arrive up to twice a
   second and nothing outside these tabs should re-render on them. *Which* glove session and *which*

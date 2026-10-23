@@ -22,6 +22,7 @@ import { ControlPopover, buttonStyle } from './ControlPopover.js';
 import { DetailCard, useGeoStatus } from './DetailCard.js';
 import { WorldMap } from './WorldMap.js';
 import { NetIcon, type NetIconName } from './netui.js';
+import { tipProps } from './NetTip.js';
 
 type Corner = 'tl' | 'tc' | 'tr' | 'bl' | 'br';
 const DEFAULT_CORNER: Record<string, Corner> = { talking: 'tl', unknown: 'tc', detail: 'tr', sandbox: 'bl', legend: 'br' };
@@ -59,7 +60,7 @@ function Card({ id, title, icon, count, extra, onHide, onDragStart, width = 300,
       display: 'flex', flexDirection: 'column', minHeight: 0, flexShrink: 1,
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 7, height: 32, flexShrink: 0, padding: '0 8px', borderBottom: '1px solid var(--border)' }}>
-        <span role="button" tabIndex={-1} aria-label={`Move ${title} to another corner`} title="Drag to another corner"
+        <span role="button" tabIndex={-1} aria-label={`Move ${title} to another corner`} data-tip="Drag to another corner"
           onPointerDown={(e) => { e.preventDefault(); onDragStart(id); }} style={{ cursor: 'grab', display: 'flex' }}>
           <NetIcon name="grip" color="var(--text-faint)" />
         </span>
@@ -240,9 +241,8 @@ function Ribbon({ data, now }: { data: NetSessionData; now: number }) {
             <g key={c.eventId} data-call-marker={c.toolName}>
               <line x1={x * 1000} x2={x * 1000} y1={0} y2={Math.max(10, lanes.length * 5 + 6)} stroke={c.kind === 'search' ? 'var(--net-fanout)' : 'var(--info)'}
                 strokeWidth={1.5} strokeDasharray="2 2" vectorEffect="non-scaling-stroke" opacity={0.85} />
-              <line x1={x * 1000} x2={x * 1000} y1={0} y2={Math.max(10, lanes.length * 5 + 6)} stroke="transparent" strokeWidth={10} vectorEffect="non-scaling-stroke">
-                <title>{`${c.toolName} ${c.kind === 'search' ? `“${c.label}”` : c.label} · ${clockTime(c.start)}${c.timing === 'approximate' ? ' (read time)' : ''}`}</title>
-              </line>
+              <line x1={x * 1000} x2={x * 1000} y1={0} y2={Math.max(10, lanes.length * 5 + 6)} stroke="transparent" strokeWidth={10} vectorEffect="non-scaling-stroke"
+                {...tipProps(`${c.toolName} ${c.kind === 'search' ? `“${c.label}”` : c.label} · ${clockTime(c.start)}${c.timing === 'approximate' ? ' (read time)' : ''}`)} />
             </g>
           ))}
         </svg>
@@ -314,7 +314,7 @@ export function MapView({ data, panels }: { data: NetSessionData; panels: Return
               <div style={{ fontSize: 12.5, fontWeight: 700, color: '#FFB4AD' }}>Untunnelled traffic</div>
               {plural(direct.reduce((a, d) => a + d.flows, 0), 'flow')} to <span style={{ fontFamily: 'var(--font-mono)' }}>{direct.map((d) => d.host).slice(0, 3).join(', ')}{direct.length > 3 ? '…' : ''}</span> left through a <b>direct</b> route and carried the operator’s real IP.
             </div>
-            <button type="button" disabled={!!disabled} title={disabled ?? 'One rule: block scope direct, and cut what is open'}
+            <button type="button" disabled={!!disabled} data-tip={disabled ?? 'One rule: block scope direct, and cut what is open'}
               onClick={() => useNetStore.getState().applyRules({ kind: 'blockGroup', key: 'scope', value: 'direct', terminate: true, note: 'Blocked direct egress from the Map' })}
               style={buttonStyle('danger')}>
               <NetIcon name="blocked" color="#FF8A80" />Block direct egress

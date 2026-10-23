@@ -85,13 +85,13 @@ export function GateStrip({ sessions, notObservable, token, onPick, data, panels
         {data && gateChips(data).map((c) => (
           c.key === 'cut' ? (
             <span key={c.key} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
-              <Chip tone={c.tone} icon={c.icon} label={c.label} title={c.title} strong />
+              <Chip tone={c.tone} icon={c.icon} label={c.label} tip={c.tip} strong />
               <button type="button" disabled={data.rules.control.state !== 'ok'} onClick={() => useNetStore.getState().applyRules({ kind: 'restoreAll' })}
                 style={{ height: 20, padding: '0 8px', borderRadius: 10, fontSize: 10.5, cursor: 'pointer', fontFamily: 'var(--font-ui)', color: 'var(--net-tunnel)', background: 'rgba(53,201,180,0.12)', border: '1px solid rgba(53,201,180,0.45)' }}>
                 Restore
               </button>
             </span>
-          ) : <Chip key={c.key} tone={c.tone} icon={c.icon} label={c.label} title={c.title} strong={c.key === 'direct'} />
+          ) : <Chip key={c.key} tone={c.tone} icon={c.icon} label={c.label} tip={c.tip} strong={c.key === 'direct'} />
         ))}
       </div>
 
@@ -104,7 +104,7 @@ export function GateStrip({ sessions, notObservable, token, onPick, data, panels
               key={p.id}
               type="button"
               aria-pressed={on}
-              title={`Show or hide the ${p.chip} panel`}
+              data-tip={`Show or hide the ${p.chip} panel`}
               onClick={() => onToggle(p.id)}
               style={{
                 display: 'flex', alignItems: 'center', gap: 4, height: 24, padding: '0 7px', fontSize: 10.5,
@@ -144,7 +144,7 @@ export function RangeBanner({ range, onClear }: { range: NetRangeInfo; onClear: 
       background: 'color-mix(in srgb, var(--info) 8%, transparent)', color: 'var(--text-body)',
     }}>
       <NetIcon name="clock" color="var(--info)" />
-      <span title={rangeTitle(range)} style={{ fontFamily: 'var(--font-mono)', color: 'var(--text)' }}>
+      <span data-tip={rangeTitle(range)} style={{ fontFamily: 'var(--font-mono)', color: 'var(--text)' }}>
         {range.to === null ? <OpenSpan range={range} /> : formatRange(range)}
       </span>
       <span style={{ color: 'var(--text-faint)' }}>Only the traffic in this range: bytes are what moved during it.{notes ? ` ${notes}` : ''}</span>
@@ -199,11 +199,11 @@ export function RulesRejectedBanner({ data }: { data: NetSessionData }) {
             status.json · rules.ok false{rules.loaded_at ? ` · last good load ${rules.loaded_at}` : ''}
           </div>
         </div>
-        <button type="button" disabled={!canRevert} title={canRevert ? 'Write back the rules the gate is enforcing' : 'Layman has not seen the file the gate is enforcing'}
+        <button type="button" disabled={!canRevert} data-tip={canRevert ? 'Write back the rules the gate is enforcing' : 'Layman has not seen the file the gate is enforcing'}
           onClick={() => useNetStore.getState().applyRules({ kind: 'revert' })} style={bannerButton}>
           <NetIcon name="direct" />Revert to enforced rules
         </button>
-        <button type="button" disabled={!canRetry} title={canRetry ? 'Write rules.json again, handed to the gate’s user' : control ?? 'The file on disk is invalid'}
+        <button type="button" disabled={!canRetry} data-tip={canRetry ? 'Write rules.json again, handed to the gate’s user' : control ?? 'The file on disk is invalid'}
           onClick={() => useNetStore.getState().applyRules({ kind: 'rewrite' })} style={{ ...bannerButton, color: '#FF8A80', border: '1px solid rgba(240,86,74,0.6)', background: 'transparent' }}>
           Try again
         </button>

@@ -3,7 +3,8 @@
  * design (sizes, colours and structure).
  */
 import React from 'react';
-import type { ChipIcon, ChipTone } from '../../lib/net-format.js';
+import type { ChipIcon, ChipTone, NetTip } from '../../lib/net-format.js';
+import { tipProps } from './NetTip.js';
 
 export type NetIconName =
   | ChipIcon
@@ -75,12 +76,13 @@ export const TONE: Record<ChipTone, { color: string; bg: string; border: string 
   muted: { color: 'var(--text-muted)', bg: 'rgba(255,255,255,0.02)', border: 'var(--border)' },
 };
 
-export function Chip({ tone, icon, label, title, strong }: {
-  tone: ChipTone; icon?: NetIconName; label: string; title?: string; strong?: boolean;
+export function Chip({ tone, icon, label, tip, strong }: {
+  tone: ChipTone; icon?: NetIconName; label: string; tip?: NetTip | string; strong?: boolean;
 }) {
   const t = TONE[tone];
   return (
-    <span title={title} style={{
+    // Focusable, so a keyboard user can read its tip too.
+    <span {...tipProps(tip)} tabIndex={tip ? 0 : undefined} style={{
       display: 'inline-flex', alignItems: 'center', gap: 5, height: 20, padding: '0 7px', borderRadius: 10,
       fontSize: 10.5, color: t.color, background: t.bg, border: `1px solid ${t.border}`, whiteSpace: 'nowrap',
       fontWeight: strong ? 700 : 500, letterSpacing: strong ? '0.02em' : undefined, flexShrink: 0,
@@ -125,7 +127,7 @@ export function PanelFrame({ title, count, actions, onHide, drag, dropTarget, ch
             draggable
             onDragStart={(e) => { e.dataTransfer.effectAllowed = 'move'; drag.onDragStart(); }}
             onDragEnd={drag.onDragEnd}
-            title="Drag to rearrange"
+            data-tip="Drag to rearrange"
             style={{ color: 'var(--text-faint)', cursor: 'grab' }}
           >
             <NetIcon name="grip" color="var(--text-faint)" />

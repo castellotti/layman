@@ -105,7 +105,7 @@ export function TurnBar({ data }: { data: NetSessionData }) {
           <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-faint)' }}>{clockTime(t.startedAt)}</span>
           <span style={{ color: 'var(--text-faint)' }}>{data.session?.harness ?? 'harness'} · {data.token}</span>
         </div>
-        <div title={t.promptText} style={{ fontSize: 13, color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>“{t.promptText}”</div>
+        <div data-tip={t.promptText} style={{ fontSize: 13, color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>“{t.promptText}”</div>
       </div>
       <div style={{ display: 'flex', gap: 6, flexShrink: 0, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
         <Chip tone="neutral">{c.calls} tool call{c.calls === 1 ? '' : 's'}</Chip>
@@ -171,16 +171,16 @@ function RowView({ row, data, selected, onSelect, onToggleRow, onPolicy, axisWid
         <NetIcon name={ICON[row.icon]} size={12} color={isCall ? titleColour : row.outcome && refusal ? TONE[row.outcome.tone] : 'var(--text-muted)'} />
         <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11.5, color: titleColour, whiteSpace: 'nowrap' }}>{row.title}</span>
         {row.detail && (
-          <span title={row.detail} style={{ fontFamily: isCall ? 'var(--font-mono)' : 'var(--font-ui)', fontSize: isCall ? 11.5 : 10.5, color: isCall ? 'var(--text-body)' : 'var(--text-faint)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>
+          <span data-tip={row.detail} style={{ fontFamily: isCall ? 'var(--font-mono)' : 'var(--font-ui)', fontSize: isCall ? 11.5 : 10.5, color: isCall ? 'var(--text-body)' : 'var(--text-faint)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>
             {row.detail}
           </span>
         )}
         {row.call?.redacted && (
-          <span title="The PII filter redacted this URL's host when Layman recorded the call, so no flow can be joined to it; its traffic is under Unattributed. To keep IP addresses in glove sessions, turn on Settings → glove → Show IP addresses in sandboxed sessions (calls recorded from then on)."
+          <span data-tip="The PII filter redacted this URL's host when Layman recorded the call, so no flow can be joined to it; its traffic is under Unattributed. To keep IP addresses in glove sessions, turn on Settings → glove → Show IP addresses in sandboxed sessions (calls recorded from then on)."
             style={{ fontSize: 9.5, color: 'var(--warn)', border: '1px solid rgba(229,168,59,0.5)', borderRadius: 4, padding: '0 4px', flexShrink: 0 }}>redacted</span>
         )}
         {row.call?.timing === 'approximate' && (
-          <span title="Layman read this call after it ran and did not keep the transcript's own times, so its flows were joined by host alone."
+          <span data-tip="Layman read this call after it ran and did not keep the transcript's own times, so its flows were joined by host alone."
             style={{ fontSize: 9.5, color: 'var(--warn)', border: '1px solid rgba(229,168,59,0.5)', borderRadius: 4, padding: '0 4px', flexShrink: 0 }}>≈ time</span>
         )}
       </div>
@@ -326,7 +326,7 @@ function CanIAllow({ data, flow }: { data: NetSessionData; flow: FlowView }) {
       <div style={{ display: 'flex', gap: 7, fontSize: 11.5, color: 'var(--text-body)', lineHeight: 1.5 }}>
         {(flow.state === 'guard' || !host) && <NetIcon name="lock" size={12} color="var(--warn)" />}<span>{text}</span>
       </div>
-      {action && <div style={{ marginTop: 8 }} title={disabled ?? undefined}>{action}</div>}
+      {action && <div style={{ marginTop: 8 }} data-tip={disabled ?? undefined}>{action}</div>}
     </>
   );
 }
@@ -353,7 +353,7 @@ function TurnButtons({ view, label }: { view: TraceView; label: string }) {
       <a href={href} onClick={(e) => { if (e.button === 0 && !e.metaKey && !e.ctrlKey) { e.preventDefault(); selectTurn(t.sessionId, t.promptEventId); } }}
         style={{ ...buttonStyle('plain'), textDecoration: 'none' }}>Open turn</a>
       <button type="button" disabled={!t.responseEventId || saved === 'saving' || saved === 'saved'} onClick={bookmark} style={buttonStyle('ghost')}
-        title={t.responseEventId ? 'Save this turn as a highlight' : 'The turn has no response yet'}>
+        data-tip={t.responseEventId ? 'Save this turn as a highlight' : 'The turn has no response yet'}>
         {saved === 'saved' ? 'Bookmarked' : saved === 'failed' ? 'Bookmark failed: try again' : 'Bookmark'}
       </button>
     </div>

@@ -120,7 +120,7 @@ function RuleRow({ index, rule, hits, locked, unsaved, editable, drag, dropTarge
     >
       {locked ? <NetIcon name="lock" color="var(--warn)" />
         : editable && drag ? (
-          <span draggable title="Drag to reorder" aria-label="Drag to reorder" onDragStart={(e) => { e.dataTransfer.effectAllowed = 'move'; drag.onDragStart(); }} onDragEnd={drag.onDragEnd} style={{ cursor: 'grab' }}>
+          <span draggable data-tip="Drag to reorder" aria-label="Drag to reorder" onDragStart={(e) => { e.dataTransfer.effectAllowed = 'move'; drag.onDragStart(); }} onDragEnd={drag.onDragEnd} style={{ cursor: 'grab' }}>
             <NetIcon name="grip" color="var(--text-faint)" />
           </span>
         ) : <span style={{ width: 12 }} />}
@@ -129,7 +129,7 @@ function RuleRow({ index, rule, hits, locked, unsaved, editable, drag, dropTarge
         {rule.action.toUpperCase()}
       </span>
       <div style={{ minWidth: 0, flex: 1 }}>
-        <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={match}>{match}</div>
+        <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} data-tip={match}>{match}</div>
         <div style={{ fontSize: 10, color: 'var(--text-faint)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{sub}</div>
       </div>
       {rule.terminate && !locked && <Badge>CUTS OPEN</Badge>}
@@ -333,7 +333,7 @@ export function RulesPanel({ data, now }: { data: NetSessionData; now: number })
       <div role="radiogroup" aria-label="Default policy" style={{ display: 'flex', border: '1px solid var(--border-strong)', borderRadius: 6, overflow: 'hidden' }}>
         {(['allow', 'block'] as const).map((p, i) => (
           <button key={p} type="button" role="radio" aria-checked={d.default === p} disabled={!editable || cut}
-            title={cut ? 'All traffic is cut: restore it first.' : !editable ? disabledReason ?? '' : undefined}
+            data-tip={cut ? 'All traffic is cut: restore it first.' : !editable ? disabledReason ?? '' : undefined}
             onClick={() => edit({ default: p })}
             style={{
               flex: 1, height: 26, border: 'none', borderLeft: i ? '1px solid var(--border-strong)' : 'none', fontSize: 11,
@@ -351,7 +351,7 @@ export function RulesPanel({ data, now }: { data: NetSessionData; now: number })
             <NetIcon name="check" color="var(--net-tunnel)" />Restore all traffic
           </button>
         ) : (
-          <button type="button" disabled={disabledReason !== null || dirty} title={dirty ? 'Save or discard your draft first.' : disabledReason ?? undefined}
+          <button type="button" disabled={disabledReason !== null || dirty} data-tip={dirty ? 'Save or discard your draft first.' : disabledReason ?? undefined}
             onClick={() => setKillOpen(true)} style={buttonStyle('danger')}>
             <NetIcon name="cut" color="#FF8A80" />Cut all traffic now
           </button>

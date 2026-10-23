@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatAge, formatBytes, gateChips } from './net-format.js';
+import { formatAge, formatBytes, gateChips, type GateChip } from './net-format.js';
 import type { NetSessionData } from './net-state.js';
 import { rulesView, sessionData } from './net-test-fixtures.js';
 
@@ -17,7 +17,20 @@ describe('formatBytes / formatAge', () => {
   });
 });
 
+/** Everything a chip's tip says, heading to facts. */
+const tipText = (c: GateChip) => [c.tip.heading, c.tip.body, ...(c.tip.facts ?? [])].filter(Boolean).join(' ');
+
 describe('gateChips', () => {
+  it('explains the chips a newcomer cannot read, in plain words', () => {
+    const none = data({ rules: { loaded_at: null, source_mtime: null, ok: true, error: null, active_count: 0, sha256: null, last_rejected: null } });
+    expect(chip(none, 'rules')!.label).toBe('No rules');
+    expect(tipText(chip(none, 'rules')!)).toMatch(/haven’t added any rules.*guard still refuses private addresses and cloud metadata/);
+    expect(tipText(chip(data(), 'record')!)).toMatch(/who connected to what, when, and how many bytes: not URLs/);
+    expect(tipText(chip(data(), 'resolver')!)).toMatch(/inside the VPN tunnel, so your own DNS provider never sees/);
+    // Every chip has a heading and a sentence.
+    for (const c of gateChips(data())) expect([c.key, !!c.tip.heading, c.tip.body.length > 20]).toEqual([c.key, true, true]);
+  });
+
   it('says only "History only" for a session whose files are gone: its gate and route are not current', () => {
     const chips = gateChips(sessionData({}, { historyOnly: true }));
     expect(chips.map((c) => [c.key, c.label, c.tone])).toEqual([['history', 'History only', 'muted']]);
@@ -27,14 +40,14 @@ describe('gateChips', () => {
     expect(labels(data())).toEqual([
       'Gate running', 'VPN · exit verified · Switzerland', 'Resolver in-tunnel', '1 rule enforced', 'Record: metadata',
     ]);
-    expect(chip(data(), 'route')!.title).toContain('via-proxy:am.i.mullvad.net');
-    expect(chip(data(), 'route')!.title).toContain('not looked up by Layman');
+    expect(tipText(chip(data(), 'route')!)).toContain('via-proxy:am.i.mullvad.net');
+    expect(tipText(chip(data(), 'route')!)).toContain('not looked up by Layman');
   });
 
   it('names a corporate route as allowlist-only, with no exit to verify', () => {
     const c = chip(data({ route: { kind: 'corporate', verified: false, exitIdentityOff: true, upstreamHealthy: null } }), 'route')!;
     expect([c.label, c.tone]).toEqual(['Corporate route · allowlist only', 'neutral']);
-    expect(c.title).toMatch(/cannot allow more/);
+    expect(tipText(c)).toMatch(/cannot allow more/);
   });
 
   it('puts the untunnelled alarm straight after the gate chip', () => {
@@ -46,7 +59,7 @@ describe('gateChips', () => {
   it('says the data stopped, not the traffic, when the gate is stale', () => {
     const c = chip(data({ freshness: 'stale', heartbeatAgeMs: 45_000 }), 'gate')!;
     expect(c.label).toBe('Gate stale · data stopped updating');
-    expect(c.title).toContain('not the same as the traffic stopping');
+    expect(tipText(c)).toContain('not the same as the traffic stopping');
   });
 
   it('declared vs verified vs exit identity off', () => {
@@ -62,7 +75,7 @@ describe('gateChips', () => {
     expect(chip(data({ resolver: { mode: 'in-tunnel', healthy: false, name: null } }), 'resolver')!.label).toBe('Resolver down');
     const rejected = chip(data({ rules: { loaded_at: null, source_mtime: null, ok: false, error: 'rules[1].match: unknown keys', active_count: 1, sha256: null, last_rejected: null } }), 'rules')!;
     expect(rejected).toMatchObject({ label: 'Rules rejected', tone: 'error' });
-    expect(rejected.title).toContain('still enforcing the previous 1 rule');
+    expect(tipText(rejected)).toContain('still enforcing the previous 1 rule');
     expect(chip(data({ record: 'full' }), 'record')!).toMatchObject({ label: 'Record: full', tone: 'violet' });
   });
 
@@ -73,12 +86,12 @@ describe('gateChips', () => {
       { id: 'r_layman_cut_X_1', action: 'block', match: { scope: 'tunnelled' }, terminate: true },
     ] } }) });
     expect(labels(cut).slice(0, 2)).toEqual(['Gate running', 'ALL TRAFFIC CUT']);
-    expect(chip(cut, 'cut')!.title).toContain('except the LLM link');
+    expect(tipText(chip(cut, 'cut')!)).toContain('except the agent’s model (LLM) link');
   });
 
   it('flags an incomplete view, and only then', () => {
     expect(chip(data(), 'incomplete')).toBeUndefined();
-    expect(chip(data({ telemetry: { written: 9, dropped: 12, invalid: 0, rotations: 0 } }), 'incomplete')!.title).toContain('dropped 12 records');
+    expect(tipText(chip(data({ telemetry: { written: 9, dropped: 12, invalid: 0, rotations: 0 } }), 'incomplete')!)).toContain('dropped 12 records');
     expect(chip(data({}, { counters: { records: 0, invalid: 0, skipped: 0, gaps: 1 } }), 'incomplete')).toBeDefined();
     expect(chip(data({}, { historyTruncated: true }), 'incomplete')).toBeDefined();
   });

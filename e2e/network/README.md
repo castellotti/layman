@@ -27,8 +27,14 @@ Layman on :8880, its data, or `~/.glove`. Screenshots land in `$LAYMAN_E2E_DIR/s
 | `trace` | turns, waterfall, joins, details, open-in-trace |
 | `persistence` | rollups across three container restarts, no double count, history-only sessions (needs `sqlite3`) |
 | `ip-setting` | `glove.showIpAddresses` in Settings, and the metadata fetch joined to its guard refusal |
+| `tips` | tooltips: a gate chip on hover and on keyboard focus, Escape, the Topology legend and nodes, no native `title` left |
 
 Needs Node with the workspace installed (`pnpm install`), Docker or Podman, and Chrome
 (`CHROME_PATH` for another binary). Variables are listed in `env.mjs`. The `persistence` and
 `control` checks change the fake home and restart the container, so run the checks in the order
 `run` uses when running all of them.
+
+**Order matters for `trace`.** It reads a turn of the looping replay, so what it sees depends on
+when it runs. It runs before `control`, whose "Cut all traffic" step refuses every connection for a
+while: a turn replayed then showed 10 blocked calls instead of 1, and `trace` failed. Slow checks go
+after `trace` too, which is why `tips` runs last.

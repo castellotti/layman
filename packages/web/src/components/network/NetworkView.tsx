@@ -16,6 +16,7 @@ import { columnPanels, type PanelDef } from '../../lib/net-panels.js';
 import type { ClientMessage } from '../../lib/ws-protocol.js';
 import type { NetRange } from '../../lib/netobs-types.js';
 import { GateStrip, RangeBanner, RulesRejectedBanner } from './GateStrip.js';
+import { NetTipHost } from './NetTip.js';
 import { DestinationTable } from './DestinationTable.js';
 import { KpiRow, MiniMap, MiniMapExpand, RulesFileLink } from './NetworkPanels.js';
 import { RulesPanel } from './RulesPanel.js';
@@ -265,6 +266,7 @@ export default function NetworkView({ tab, onSend }: { tab: NetTab; onSend: (msg
   const shown = data && data.token === token && (data.range?.key ?? null) === rangeKeyed ? data : null;
   return (
     <div className="net-view" style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, overflow: 'hidden', background: 'var(--bg)' }}>
+      <NetTipHost />
       <GateStrip
         sessions={sessions}
         notObservable={notObservable}
