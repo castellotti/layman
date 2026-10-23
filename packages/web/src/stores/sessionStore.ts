@@ -28,7 +28,7 @@ export function isNetworkView(mode: ViewMode): boolean {
 }
 
 /** Whether two time ranges (or All records, null) are the same: the same `rangeKey`, as the server tells them apart. */
-export function sameRange(a: NetRange | null, b: NetRange | null): boolean {
+function sameRange(a: NetRange | null, b: NetRange | null): boolean {
   return (a ? rangeKey(a) : null) === (b ? rangeKey(b) : null);
 }
 

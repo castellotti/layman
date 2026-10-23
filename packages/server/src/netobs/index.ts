@@ -13,12 +13,6 @@ import { parseLine, parseSessionFile, parseStatus, type ParsedLine } from './par
 import type { NetHistory } from './history.js';
 import { NetStore } from './store.js';
 import { DEFAULT_RANGE_SCAN_BYTES, RangeView, buildRange, parseRange, rangeKey } from './range.js';
-
-/** The key a client gives a range the server cannot accept: built as `rangeKey` would, so its error reaches it. */
-function rawRangeKey(raw: unknown): string {
-  const { from, to } = (typeof raw === 'object' && raw !== null ? raw : {}) as { from?: unknown; to?: unknown };
-  return `${String(from)}-${to === null || to === undefined ? 'now' : String(to)}`;
-}
 import { DEFAULT_BACKFILL_BYTES, JsonFileWatcher, NdjsonTailer } from './tail.js';
 import type {
   ExitRecord,
@@ -467,7 +461,8 @@ export class NetObs {
   subscribe(socket: NetSocket, token: string | null, raw: unknown = null): void {
     const range = parseRange(raw);
     const invalid = raw !== null && raw !== undefined && !range;
-    const key = token === null ? null : range ? rangeKey(range) : invalid ? rawRangeKey(raw) : null;
+    // What is not a range is keyed as the client keyed it (`rangeKey` of what it sent), so its error reaches it.
+    const key = token !== null && (range || invalid) ? rangeKey((range ?? raw) as NetRange) : null;
     this.leave(socket);
     this.subs.set(socket, { token, range: key });
     this.pruneRanges();

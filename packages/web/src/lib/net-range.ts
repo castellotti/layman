@@ -9,10 +9,13 @@ import type { NetRange, NetRangeInfo } from './netobs-types.js';
 const pad = (n: number) => String(n).padStart(2, '0');
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
+/** "00:27:03" in local time. */
+const clock = (d: Date) => `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+
 /** "Oct 21 00:27:03" in local time. */
 export function formatStamp(t: number): string {
   const d = new Date(t);
-  return `${MONTHS[d.getMonth()]} ${d.getDate()} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+  return `${MONTHS[d.getMonth()]} ${d.getDate()} ${clock(d)}`;
 }
 
 /** A range's length in its two largest units: "1 d 5 h", "5 m 12 s", "40 s". */
@@ -32,7 +35,7 @@ const sameDay = (a: number, b: number) => new Date(a).toDateString() === new Dat
 /** "Oct 21 00:27:03 → Oct 22 06:09:02 (29 h 42 m)"; the end's date is left out on the same day; an open range ends "now". */
 export function formatRange(r: NetRange, now = Date.now()): string {
   const end = r.to ?? now;
-  const to = r.to === null ? 'now' : sameDay(r.from, r.to) ? formatStamp(r.to).split(' ').at(-1)! : formatStamp(r.to);
+  const to = r.to === null ? 'now' : sameDay(r.from, r.to) ? clock(new Date(r.to)) : formatStamp(r.to);
   return `${formatStamp(r.from)} → ${to} (${formatSpan(end - r.from)})`;
 }
 

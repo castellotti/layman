@@ -51,6 +51,12 @@ function RangeLoading({ range, progress }: { range: NetRange; progress: { scanne
   );
 }
 
+/** The button an empty state offers (open Settings, show All records). */
+const actionButton: React.CSSProperties = {
+  fontSize: 11.5, padding: '5px 12px', borderRadius: 6, background: 'var(--bg-pill)',
+  border: '1px solid var(--border-strong)', color: 'var(--text)', cursor: 'pointer',
+};
+
 /** A built panel's content, or null for one still to come. */
 const HISTORY_ONLY = (
   <EmptyState title="History only">
@@ -189,7 +195,7 @@ export default function NetworkView({ tab, onSend }: { tab: NetTab; onSend: (msg
       return (
         <EmptyState
           title="Network views need glove"
-          action={<button type="button" onClick={() => setSettingsOpen(true)} style={{ fontSize: 11.5, padding: '5px 12px', borderRadius: 6, background: 'var(--bg-pill)', border: '1px solid var(--border-strong)', color: 'var(--text)', cursor: 'pointer' }}>Open Settings</button>}
+          action={<button type="button" onClick={() => setSettingsOpen(true)} style={actionButton}>Open Settings</button>}
         >
           These tabs show the network traffic of glove-sandboxed sessions. Enable glove (and its network views) in Settings.
         </EmptyState>
@@ -235,7 +241,7 @@ export default function NetworkView({ tab, onSend }: { tab: NetTab; onSend: (msg
       return (
         <EmptyState
           title="This time range cannot be shown"
-          action={<button type="button" onClick={() => setNetRange(null)} style={{ fontSize: 11.5, padding: '5px 12px', borderRadius: 6, background: 'var(--bg-pill)', border: '1px solid var(--border-strong)', color: 'var(--text)', cursor: 'pointer' }}>Show All records</button>}
+          action={<button type="button" onClick={() => setNetRange(null)} style={actionButton}>Show All records</button>}
         >
           {rangeError.error}
         </EmptyState>
