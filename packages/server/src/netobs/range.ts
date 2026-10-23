@@ -21,13 +21,21 @@
  * Gate records are read up to `to`, so the gate lifecycle (`ended_runs`) is judged
  * as it is live.
  *
+ * **The part the files no longer hold** (glove deleted it, or the scan's budget
+ * skipped it) is answered from the hourly history, up to a hand-over hour, and the
+ * files count from there (`buildRange`). It goes into the store as kept history
+ * (`hourlyHistory`, `useHourly`), so it is summed by the store's own code too. A
+ * connection the files count that opened in the hourly part is taken back out of it
+ * (`uncountOpening`), so it is one flow, as in All records.
+ *
  * The gate, rules and session file shown with a range are the current ones:
  * glove keeps no history of them, and the controls act on the gate now.
  */
 import { open } from 'fs/promises';
 import { closeSync, openSync, readSync, statSync } from 'fs';
 import { join } from 'path';
-import { NetStore, type NetStoreOptions } from './store.js';
+import { NetStore, destKey, type NetStoreOptions } from './store.js';
+import { isLanOnlyRule } from './types.js';
 import { parseLine, type ParsedLine } from './parse.js';
 import { rotatedFiles, splitLines } from './tail.js';
 import type { HistoryDest, HistoryHour, HistorySession } from './history.js';
@@ -84,6 +92,10 @@ export class RangeView {
   private readonly overlapFrom: number;
   /** Records before this only give baselines: `from`, or where the hourly history hands over to the files. */
   private countFrom: number;
+  /** The hourly part (`useHourly`), its first hour, and its destinations by key, or null. */
+  private hourly: { fromHour: number; history: HistorySession; dests: Map<string, HistoryDest> } | null = null;
+  /** Flows the store has been given a record of. */
+  private readonly counted = new Set<string>();
 
   constructor(readonly token: string, readonly range: NetRange, session: NetSessionFile | null, opts: NetStoreOptions = {}, now = Date.now()) {
     this.key = rangeKey(range);
@@ -97,13 +109,39 @@ export class RangeView {
   }
 
   /**
-   * Answer the range before `cut` from Layman's hourly history (`hourlyHistory`): it goes into the
-   * store as kept history, which the store adds to what the files give, as it does for All records;
-   * the files count from `cut` on. Call before any record, or the store will not take it.
+   * Answer the range before `cut` from Layman's hourly history (`hourlyHistory`, from `fromHour`;
+   * null when it had no traffic there): it goes into the store as kept history, which the store adds
+   * to what the files give, as it does for All records; the files count from `cut` on. Call before
+   * any record, or the store will not take it.
    */
-  useHourly(history: HistorySession, cut: number): void {
-    this.store.setHistory(history);
+  useHourly(history: HistorySession | null, fromHour: number, cut: number): void {
+    if (history) this.store.setHistory(history);
+    this.hourly = history ? { fromHour, history, dests: new Map(history.destinations.map((d) => [d.key, d])) } : null;
     this.countFrom = Math.max(this.range.from, cut);
+  }
+
+  /**
+   * A flow the files count that opened in the hours' part was counted there already, as opened (and
+   * refused, or direct): take it out of the hourly part, so a pooled connection spanning the cut is
+   * one flow, as in All records. Its bytes are not affected: the hours hold those before the cut,
+   * and the files only what moved after it (the baseline).
+   */
+  private uncountOpening(rec: FlowRecord): void {
+    const h = this.hourly;
+    const opened = Date.parse(rec.t_open);
+    if (!h || this.counted.has(rec.id) || !(opened >= h.fromHour && opened < this.countFrom)) return;
+    const kept = h.history;
+    const dest = h.dests.get(destKey(rec.dest.host, rec.dest.port, rec.service));
+    const less = (n: number) => Math.max(0, n - 1);
+    kept.flows = less(kept.flows);
+    if (dest) dest.flows = less(dest.flows);
+    if (rec.scope === 'direct') kept.directFlows = less(kept.directFlows);
+    if (rec.verdict === 'block' || rec.close_reason === 'blocked') {
+      if (dest) dest.blocked = less(dest.blocked);
+      if (rec.rule?.startsWith('builtin:') || isLanOnlyRule(rec.rule)) kept.blockedGuard = less(kept.blockedGuard);
+      else if (rec.rule) kept.blockedRule = less(kept.blockedRule);
+      else kept.blockedDefault = less(kept.blockedDefault);
+    }
   }
 
   /** glove rewrote session.json: re-flag hops here as the live store does. */
@@ -131,6 +169,8 @@ export class RangeView {
     }
     const b = this.baseline.get(rec.id);
     const bytes = b ? { up: Math.max(0, rec.bytes.up - b.up), down: Math.max(0, rec.bytes.down - b.down) } : rec.bytes;
+    this.uncountOpening(rec);
+    this.counted.add(rec.id);
     this.store.ingestFlow(this.token, b ? { ...rec, bytes } : rec, this.clock(now));
   }
 
@@ -191,7 +231,6 @@ export class RangeView {
   }
 }
 
-/** Where the hourly history hands over to the files: the hour after the files begin. */
 const HOUR = 3_600_000;
 const floorHour = (t: number) => Math.floor(t / HOUR) * HOUR;
 const ceilHour = (t: number) => Math.ceil(t / HOUR) * HOUR;
@@ -199,13 +238,13 @@ const ceilHour = (t: number) => Math.ceil(t / HOUR) * HOUR;
 /**
  * A range's older part as kept history (`HistorySession`) from the session's hours in
  * [`fromHour`, `cut`), or null when no hour there had traffic. Totals and destinations only:
- * the hours keep no connections. What the hours do not keep is taken from the destination as
- * All records shows it (`dests`): its host, scope and tool, and which kind of refusal its
- * blocks were (its state), and a destination reached directly counts its flows as direct.
+ * the hours keep no connections. Refusals by kind and direct flows are the hours' own counts;
+ * what the hours do not keep about a destination (its host, scope, IP) is taken from it as All
+ * records shows it (`dests`).
  */
 export function hourlyHistory(
   token: string, hours: readonly HistoryHour[], dests: readonly DestinationAggregate[], fromHour: number, cut: number,
-): { history: HistorySession; from: number } | null {
+): HistorySession | null {
   const inSpan = hours.filter((h) => h.hour >= fromHour && h.hour < cut);
   if (!inSpan.length) return null;
   const meta = new Map(dests.map((d) => [d.key, d]));
@@ -232,22 +271,23 @@ export function hourlyHistory(
       totals.bytesDown += h.bytesDown;
     }
     totals.flows += h.flows;
-    const state = d?.state;
-    if (state === 'guard') totals.blockedGuard += h.blocked;
-    else if (state === 'user_rule') totals.blockedRule += h.blocked;
-    else totals.blockedDefault += h.blocked;
-    if (d?.scope === 'direct') totals.directFlows += h.flows;
+    totals.blockedGuard += h.blockedGuard;
+    totals.blockedRule += h.blockedRule;
+    totals.blockedDefault += h.blocked - h.blockedGuard - h.blockedRule;
+    totals.directFlows += h.direct;
   }
-  const dsts = [...byKey.values()];
+  // Loops, not spreads: a long session has more hours than a call takes arguments.
+  let firstSeen = Infinity;
+  let lastSeen = -Infinity;
+  for (const d of byKey.values()) {
+    firstSeen = Math.min(firstSeen, d.firstSeen);
+    lastSeen = Math.max(lastSeen, d.lastSeen);
+  }
   return {
-    from: Math.min(...inSpan.map((h) => h.hour)),
-    history: {
-      token, filterSince: null, filterSawDir: false,
-      firstSeen: Math.min(...dsts.map((d) => d.firstSeen)), lastSeen: Math.max(...dsts.map((d) => d.lastSeen)),
-      // Nothing read from the files is already in it: they count from the cut on.
-      watermark: -Infinity, carry: {}, ...totals,
-      lastExit: null, lastStatus: null, sessionFile: null, destinations: dsts,
-    },
+    token, filterSince: null, filterSawDir: false, firstSeen, lastSeen,
+    // Nothing read from the files is already in it: they count from the cut on.
+    watermark: -Infinity, carry: {}, ...totals,
+    lastExit: null, lastStatus: null, sessionFile: null, destinations: [...byKey.values()],
   };
 }
 
@@ -388,6 +428,8 @@ export interface BuildOptions {
    * the range glove's files no longer hold (or the budget skipped) (`hourlyHistory`).
    */
   hourly?: { hours: readonly HistoryHour[]; dests: readonly DestinationAggregate[] };
+  /** The clock: where the hand-over may fall (never in the future). */
+  now?: number;
 }
 
 /** Grace for comparing the session's first record with the files' first (a flow's open can precede its first record). */
@@ -410,20 +452,30 @@ export async function buildRange(view: RangeView, netDir: string | null, opts: B
   const sessionFrom = known.length ? Math.min(...known) : null;
 
   // The part before the files: answered from the hours when glove deleted it (the session began
-  // before the files do) or the budget skipped it. Handed over at the hour after the files begin,
-  // so each hour is counted once, from one source. Before any record is read (`useHourly`).
+  // before the files do) or the budget skipped it, so each hour is counted once, from one source.
+  // Before any record is read (`useHourly`).
   const missing = plan.filesFrom === null
     || (plan.filesFrom > range.from && (plan.truncated || (sessionFrom !== null && plan.filesFrom > sessionFrom + SAME_START_MS)));
   let hourly: NetRangeInfo['hourly'] = null;
-  if (missing && opts.hourly) {
-    // The hours that overlap the range, up to the cut: whole hours, so its edges are rounded out.
-    const cut = plan.filesFrom === null ? Infinity : ceilHour(plan.filesFrom);
-    const end = range.to === null ? cut : Math.min(cut, ceilHour(range.to));
-    const part = hourlyHistory(view.token, opts.hourly.hours, opts.hourly.dests, floorHour(range.from), end);
-    if (part) {
-      view.useHourly(part.history, cut);
-      hourly = { from: part.from, to: Number.isFinite(end) ? end : ceilHour(Date.now()) };
-    }
+  if (missing && opts.hourly?.hours.length) {
+    const now = opts.now ?? Date.now();
+    const fromHour = floorHour(range.from);
+    // The hand-over (`cut`). Nothing to read: the hours answer it all. Files with no record yet:
+    // the hours up to now, the files after. Otherwise the hour after the files begin, so the hour
+    // they begin in is answered whole by the hours, which hold its start too, unless that hour is
+    // still going: the hours are a copy taken now, and the rest of it must come from the files as it
+    // is written, so the hand-over falls at its start (and what glove deleted of it is not counted).
+    const cut = netDir === null ? Infinity
+      : plan.filesFrom === null ? now
+      : ceilHour(plan.filesFrom) <= floorHour(now) ? ceilHour(plan.filesFrom) : floorHour(plan.filesFrom);
+    // The hours that overlap the range, up to the cut: whole hours, its edges rounded out
+    // (`to` itself included: an hour starting at it counts).
+    const end = range.to === null ? cut : Math.min(cut, floorHour(range.to) + HOUR);
+    view.useHourly(hourlyHistory(view.token, opts.hourly.hours, opts.hourly.dests, fromHour, end), fromHour, cut);
+    // Where Layman's hours begin, if later than the range: before it, nothing was kept (`rangeGaps`).
+    let firstKept = Infinity;
+    for (const h of opts.hourly.hours) firstKept = Math.min(firstKept, h.hour);
+    hourly = { from: Math.max(fromHour, firstKept), to: Number.isFinite(end) ? end : ceilHour(now) };
   }
   const total = plan.files.reduce((a, f) => a + f.size, 0) + exits.reduce((a, f) => a + f.size, 0);
   let scanned = 0;

@@ -43,5 +43,17 @@ describe('net-range', () => {
     expect(rangeHourly(mixed)).toBe('Before Oct 17 07:00:00 is from Layman’s hourly history (glove no longer has those files): whole hours, totals by destination, no individual connections.');
     expect(rangeHourly({ ...mixed, filesFrom: null })).toMatch(/^All of it is from Layman’s hourly history/);
     expect(rangeHourly({ ...mixed, hourly: null })).toBeNull();
+    // A range ending before the files take over is all hourly; budget-skipped files are still on disk.
+    expect(rangeHourly({ ...mixed, to: at(9, 16, 3, 0, 0) })).toMatch(/^All of it/);
+    expect(rangeHourly({ ...mixed, truncated: true })).toMatch(/too long to read those files in full/);
+  });
+
+  it('still names a gap when Layman’s hours begin after the session did', () => {
+    const base = { key: 'k', from: at(9, 16, 0, 0, 0), to: null, scannedBytes: 1, truncated: false, filesFrom: at(9, 19, 0, 0, 0) };
+    // The session ran from the 16th, Layman's hours start on the 18th: the 16th and 17th are not counted.
+    expect(rangeGaps({ ...base, sessionFrom: at(9, 16, 0, 0, 0), hourly: { from: at(9, 18, 0, 0, 0), to: at(9, 19, 1, 0, 0) } }))
+      .toEqual(['Layman kept nothing before Oct 18 00:00:00: traffic before that is not counted.']);
+    // The range starts before the session: the hours reaching back to the session's start is enough.
+    expect(rangeGaps({ ...base, sessionFrom: at(9, 18, 0, 20, 0), hourly: { from: at(9, 18, 0, 0, 0), to: at(9, 19, 1, 0, 0) } })).toEqual([]);
   });
 });

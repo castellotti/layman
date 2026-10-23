@@ -156,6 +156,9 @@ linked above.
    flows. Keep it that way so a range and
    All records are counted by the same code. The only addition is the clip (a flow's bytes in a range
    are what moved during it), and `range.test.ts` holds a range around everything equal to All records.
+   The part glove's files no longer hold is answered from `net_hours`, fed into that same store as kept
+   history, up to a hand-over hour that is never in the future; move the hand-over only with the
+   `range.test.ts` cases that fail when it is an hour off either way.
    Design and rules: `docs/extensions/glove.md` → Network.
 
 5. **OpenCode plugin** (`docs/harnesses/opencode.md`): a bidirectional plugin (`packages/opencode-plugin`)

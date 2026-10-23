@@ -7,6 +7,7 @@
 import type { NetRange, NetRangeInfo } from './netobs-types.js';
 
 const pad = (n: number) => String(n).padStart(2, '0');
+const HOUR = 3_600_000;
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 /** "00:27:03" in local time. */
@@ -57,8 +58,14 @@ const SAME_START_MS = 60_000;
  * files were skipped instead, and the message says so.
  */
 export function rangeGaps(info: NetRangeInfo): string[] {
-  // Layman's hourly history answered the part the files no longer hold: nothing is missing (`rangeHourly` says how it differs).
-  if (info.hourly) return [];
+  // Layman's hourly history answered the part the files no longer hold (`rangeHourly` says how it
+  // differs), as far back as Layman kept hours: before that, if the session ran, nothing was kept.
+  if (info.hourly) {
+    const ran = Math.max(info.from, info.sessionFrom ?? info.from);
+    return info.hourly.from > Math.floor(ran / HOUR) * HOUR
+      ? [`Layman kept nothing before ${formatStamp(info.hourly.from)}: traffic before that is not counted.`]
+      : [];
+  }
   if (info.filesFrom === null) return ['glove keeps no records for this range.'];
   // Over the scan's budget the older files are still there, just not read: say that, not "deleted".
   if (info.truncated) return [`The range is too long to read in full: traffic before ${formatStamp(info.filesFrom)} was skipped.`];
@@ -74,8 +81,10 @@ export function rangeGaps(info: NetRangeInfo): string[] {
 export function rangeHourly(info: NetRangeInfo): string | null {
   const h = info.hourly;
   if (!h) return null;
-  const span = info.filesFrom === null ? 'All of it' : `Before ${formatStamp(h.to)}`;
-  return `${span} is from Layman’s hourly history (glove no longer has those files): whole hours, totals by destination, no individual connections.`;
+  // All of it when there are no files, or the range ends before they take over.
+  const all = info.filesFrom === null || (info.to !== null && info.to < h.to);
+  const why = info.truncated ? 'the range is too long to read those files in full' : 'glove no longer has those files';
+  return `${all ? 'All of it' : `Before ${formatStamp(h.to)}`} is from Layman’s hourly history (${why}): whole hours, totals by destination, no individual connections.`;
 }
 
 /** When the session began, if the range starts before it (not a gap: there was nothing yet). */

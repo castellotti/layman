@@ -118,6 +118,14 @@ export interface HistoryHour {
   bytesDown: number;
   flows: number;
   blocked: number;
+  /**
+   * Of `blocked`, those glove's guard refused and those a user's rule did (the rest, the default):
+   * kept per hour, since a destination's kind of refusal can change (`hourlyHistory` reads them).
+   */
+  blockedGuard: number;
+  blockedRule: number;
+  /** Of `flows`, those that went out directly, not through the tunnel. */
+  direct: number;
   first: number;
   last: number;
 }

@@ -494,7 +494,8 @@ export class NetObs {
     if (!loc) return `No glove network session '${token}'`;
     // A session whose files are gone has no files to read (its `netDir` is empty): the hours answer all of it.
     const netDir = this.store.isHistoryOnly(token) ? null : loc.netDir;
-    if (netDir === null && !this.store.hourly(token).length) {
+    const hours = this.store.hourly(token);
+    if (netDir === null && !hours.length) {
       return 'glove’s files for this session are gone, and Layman kept no hourly history for it: only All records is kept.';
     }
     const entry: RangeEntry = {
@@ -507,7 +508,7 @@ export class NetObs {
       budgetBytes: this.rangeBudgetBytes,
       sessionFrom: this.store.firstSeen(token),
       // For the part glove's files no longer hold: the hours, and the destinations as All records knows them.
-      hourly: { hours: this.store.hourly(token), dests: this.store.snapshot(token, 0)?.destinations ?? [] },
+      hourly: { hours, dests: this.store.destinations(token) },
       cancelled: () => !wanted(),
       onProgress: (scannedBytes, totalBytes) => {
         const now = Date.now();

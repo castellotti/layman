@@ -12,6 +12,12 @@
   - **Each hour counted once.** The hourly part hands over to the files at the hour after they begin, so a file starting mid-hour loses nothing and counts nothing twice. Both parts are summed by the store's existing kept-history code.
   - **Said plainly.** The banner says which part is from the hourly history and how it differs: whole hours, totals by destination, no individual connections. It no longer warns of missing traffic there.
   - **Checked on real data.** On a copy of a real session with its two oldest files deleted, a 3-day run and a 2-hour report gave the same bytes as with every file. Connection counts differ by a handful, because the hours count connections opened in them.
+  - **Review fixes.**
+    - The hand-over is never in the future, so an open range no longer drops up to an hour of live traffic.
+    - Files that exist but are empty no longer freeze a range.
+    - A connection spanning the hand-over is counted once.
+    - Hourly rows keep refusals by kind and direct connections, so those come out exact.
+    - The banner names a real gap where Layman's hours begin late, says why a part came from the hours, and calls a quiet stretch covered.
 - **Network views: a time range from the URL.** `&from=<iso>&to=<iso|now>` on any of the four network tabs shows that window, built by the server.
   - **Kept and cleared sensibly.** The range stays when you switch between Network, Map, Topology and Trace, and is cleared when you pick another glove session. Setting or clearing it is a history entry, so Back returns to the previous range.
   - **Labelled.** While it loads, the view says it is reading glove's files, with progress. Once shown, a banner gives the span in local time (UTC on hover) and says the figures are only the traffic in it. It also warns when glove's files do not reach back to the start, and offers All records.

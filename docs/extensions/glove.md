@@ -499,21 +499,35 @@ no kept hours still gets `net:range:error`). How the two parts meet:
   Records before the cut only set each flow's baseline. So every hour is counted once, from one
   source: a file starting mid-hour gives that hour's start to the history and its end to the files,
   and neither is lost nor counted twice (`range.test.ts` fails if the cut moves an hour either way).
+  **The cut is never in the future.** The hours are a copy taken when the range is built, so an hour
+  still going cannot be answered by them: when the files begin in the current hour, the cut falls at
+  its start, and what glove deleted of that hour is not counted. Without this, an open range dropped
+  up to an hour of live traffic. Files that exist but hold no record yet hand over at the moment the
+  range is built. Only a session whose files are gone is answered by the hours throughout.
+- **A connection across the cut is one.** A pooled connection that opened in the hourly part and is
+  still recorded after the cut was counted by the hours when it opened, and would be counted again by
+  the files. It is taken back out of the hourly part (with its refusal or direct count), so a range
+  around everything equals All records.
 - **The same code.** The hourly part goes into the range's store as kept history (`hourlyHistory`,
   then `setHistory`), the mechanism that adds kept totals to All records. So the merge is the store's
   own, tested one, not a new sum.
-- **What the hours keep.** Whole hours: the part's edges round out to them. Totals by destination,
-  with no individual connections: the flow list and Trace do not cover that part. What the hours lack
-  comes from the destination as All records shows it: its host, scope and tool. Each refusal is
-  counted under the kind of its destination's state, and a destination reached directly counts its
-  connections as direct.
+- **What the hours keep.** Whole hours: the part's edges round out to them, `to` included (a range
+  ending on the hour takes in the hour starting there). Totals by destination, with no individual
+  connections: the flow list and Trace do not cover that part. Each hour keeps its refusals by kind
+  (guard, rule, default) and its direct connections, because a destination's kind of refusal can
+  change; only what the hours lack about a destination (its host, scope, IP) comes from it as All
+  records shows it.
+- **Gaps.** An hourly part with no traffic in it is covered, and simply empty. If Layman's hours begin
+  after the range and the session do (they start with migration 6, or when recording was turned on),
+  the banner says nothing was kept before then.
 - **Measured.** On a copy of a real session with its two oldest files deleted, a 3-day run and a
   2-hour report gave the same bytes as with every file (702.7 MB and 175.7 MB sent). Connections
   differ by a few, as the rules above say they will. The hours count connections *opened* in them,
   so 8 opened before the report and reused during it are not counted (1,621 against 1,629). The run's
   first hour rounds out to 06:00 and takes in 4 from the previous run (35,752 against 35,748).
-- **Reported.** `range.hourly` gives the part's first hour and the hand-over; the banner says what it
-  is, and that nothing is missing.
+- **Reported.** `range.hourly` gives the part's first hour Layman kept and the hand-over. The banner
+  says what that part is and why it came from the hours: glove deleted the files, or they were too
+  much to read. It says "All of it" when the files had nothing to add.
 
 glove can rotate while a range is being read. The live path then opens the new, near-empty file, and
 the one the scan meant sits under a rotated name it never planned. After its planned files the scan

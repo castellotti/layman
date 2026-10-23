@@ -21,7 +21,7 @@ interface SessionRow {
 }
 interface HourRow {
   token: string; hour: number; run: string; dest_key: string; tool: string; hop: number; bytes_up: number; bytes_down: number;
-  flows: number; blocked: number; first_t: number; last_t: number;
+  flows: number; blocked: number; blocked_guard: number; blocked_rule: number; direct: number; first_t: number; last_t: number;
 }
 interface RunRow {
   token: string; run: string; started: number; ended: number | null; inferred: number;
@@ -74,7 +74,8 @@ export class SqliteNetHistory implements NetHistory {
     });
     const hours = byTokenOf(this.db.prepare('SELECT * FROM net_hours ORDER BY hour, run, dest_key, tool').all() as HourRow[], (h) => ({
       hour: h.hour, run: h.run === '' ? null : h.run, key: h.dest_key, tool: h.tool === '' ? null : h.tool, hop: h.hop === 1,
-      bytesUp: h.bytes_up, bytesDown: h.bytes_down, flows: h.flows, blocked: h.blocked, first: h.first_t, last: h.last_t,
+      bytesUp: h.bytes_up, bytesDown: h.bytes_down, flows: h.flows, blocked: h.blocked, blockedGuard: h.blocked_guard, blockedRule: h.blocked_rule,
+      direct: h.direct, first: h.first_t, last: h.last_t,
     }));
     const runs = byTokenOf(this.db.prepare('SELECT * FROM net_runs ORDER BY started').all() as RunRow[], (r) => ({
       run: r.run, started: r.started, ended: r.ended, inferred: r.inferred === 1,
@@ -113,10 +114,11 @@ export class SqliteNetHistory implements NetHistory {
         filter_since = excluded.filter_since, filter_saw_dir = excluded.filter_saw_dir,
         hours_kept = MAX(hours_kept, excluded.hours_kept)`);
     const hour = this.db.prepare(`
-      INSERT INTO net_hours (token, hour, run, dest_key, tool, hop, bytes_up, bytes_down, flows, blocked, first_t, last_t)
-      VALUES (@token, @hour, @run, @key, @tool, @hop, @bytesUp, @bytesDown, @flows, @blocked, @first, @last)
+      INSERT INTO net_hours (token, hour, run, dest_key, tool, hop, bytes_up, bytes_down, flows, blocked, blocked_guard, blocked_rule, direct, first_t, last_t)
+      VALUES (@token, @hour, @run, @key, @tool, @hop, @bytesUp, @bytesDown, @flows, @blocked, @blockedGuard, @blockedRule, @direct, @first, @last)
       ON CONFLICT(token, hour, run, dest_key, tool) DO UPDATE SET hop = excluded.hop, bytes_up = excluded.bytes_up,
-        bytes_down = excluded.bytes_down, flows = excluded.flows, blocked = excluded.blocked, first_t = excluded.first_t, last_t = excluded.last_t`);
+        bytes_down = excluded.bytes_down, flows = excluded.flows, blocked = excluded.blocked, blocked_guard = excluded.blocked_guard,
+        blocked_rule = excluded.blocked_rule, direct = excluded.direct, first_t = excluded.first_t, last_t = excluded.last_t`);
     const run = this.db.prepare(`
       INSERT INTO net_runs (token, run, started, ended, inferred)
       VALUES (@token, @run, @started, @ended, @inferred)
@@ -143,7 +145,8 @@ export class SqliteNetHistory implements NetHistory {
         for (const h of s.hours ?? []) {
           hour.run({
             token: s.token, hour: h.hour, run: h.run ?? '', key: h.key, tool: h.tool ?? '', hop: h.hop ? 1 : 0, bytesUp: h.bytesUp, bytesDown: h.bytesDown, flows: h.flows,
-            blocked: h.blocked, first: Math.round(h.first), last: Math.round(h.last),
+            blocked: h.blocked, blockedGuard: h.blockedGuard, blockedRule: h.blockedRule, direct: h.direct,
+            first: Math.round(h.first), last: Math.round(h.last),
           });
         }
         for (const r of s.runs ?? []) {

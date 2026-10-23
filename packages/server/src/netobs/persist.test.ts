@@ -60,7 +60,7 @@ describe('SqliteNetHistory', () => {
   it('keeps hours and runs as upserts, and tells a row kept before them apart from one with no traffic', () => {
     const d = db();
     const h = new SqliteNetHistory(d, () => true);
-    const hour = { hour: 3_600_000, run: 'g_1' as string | null, key: 'arxiv.org:443', tool: 'web_fetch' as string | null, hop: false, bytesUp: 5, bytesDown: 50, flows: 1, blocked: 0, first: 3_600_100, last: 3_600_900 };
+    const hour = { hour: 3_600_000, run: 'g_1' as string | null, key: 'arxiv.org:443', tool: 'web_fetch' as string | null, hop: false, bytesUp: 5, bytesDown: 50, flows: 1, blocked: 0, blockedGuard: 0, blockedRule: 0, direct: 0, first: 3_600_100, last: 3_600_900 };
     const run = { run: 'g_1', started: 1000, ended: null as number | null, inferred: false };
     h.save([session({ hours: [hour], runs: [run] })]);
     // A later save with only the hour that changed leaves the others, and updates the run.

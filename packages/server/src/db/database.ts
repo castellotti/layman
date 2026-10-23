@@ -188,6 +188,9 @@ export function applyNetTimeMigration(db: Database): void {
       bytes_down  INTEGER NOT NULL DEFAULT 0,
       flows       INTEGER NOT NULL DEFAULT 0,
       blocked     INTEGER NOT NULL DEFAULT 0,
+      blocked_guard INTEGER NOT NULL DEFAULT 0,
+      blocked_rule  INTEGER NOT NULL DEFAULT 0,
+      direct      INTEGER NOT NULL DEFAULT 0,
       first_t     INTEGER NOT NULL,
       last_t      INTEGER NOT NULL,
       -- run '' is "outside any collector run" and tool '' "none": key columns, so not NULL.

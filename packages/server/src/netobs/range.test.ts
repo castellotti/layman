@@ -273,6 +273,67 @@ describe('buildRange: reading glove’s files', () => {
       expect(totalsOf(v)).toMatchObject({ flows: 2, bytesUp: 20 });
     });
 
+    it('never hands over in the future: an open range keeps counting what is written this hour', async () => {
+      const now = T0 + 25 * 60 * MIN + 30 * MIN;
+      const recs = [rec('gone', 'close', T0 + 24 * 60 * MIN + 50 * MIN, 1, 10), rec('file', 'close', T0 + 25 * 60 * MIN + 10 * MIN, 2, 20)];
+      const live = allRecords(recs);
+      writeFileSync(join(dir, 'flows.ndjson'), ndjson(recs.slice(1)));
+      const v = new RangeView('e', { from: T0, to: null }, null);
+      const info = await buildRange(v, dir, { hourly: hourlyOf(live), sessionFrom: T0 + 24 * 60 * MIN + 50 * MIN, now });
+      // The files begin in the hour still going: the hand-over is its start, not the next hour.
+      expect(info.hourly?.to).toBe(T0 + 25 * 60 * MIN);
+      v.endOverlap();
+      v.record({ kind: 'flow', record: rec('later', 'close', now + 10 * MIN, 4, 40) }, now + 10 * MIN, 'live');
+      expect(totalsOf(v)).toMatchObject({ flows: 3, bytesUp: 7 });
+    });
+
+    it('keeps counting live records when the files exist but hold none yet', async () => {
+      const live = allRecords([rec('old', 'close', T0 + 10 * MIN, 1, 10)]);
+      writeFileSync(join(dir, 'flows.ndjson'), ''); // just rotated, nothing written yet
+      const now = T0 + 3 * 60 * MIN;
+      const v = new RangeView('e', { from: 0, to: null }, null);
+      await buildRange(v, dir, { hourly: hourlyOf(live), sessionFrom: T0, now });
+      v.endOverlap();
+      v.record({ kind: 'flow', record: rec('new', 'close', now + MIN, 4, 40) }, now + MIN, 'live');
+      expect(totalsOf(v)).toMatchObject({ flows: 2, bytesUp: 5 });
+    });
+
+    it('counts a pooled connection spanning the hand-over once, as All records does', async () => {
+      const x = { t_open: iso(T0 + 10 * MIN) };
+      const recs = [
+        rec('gone', 'close', T0 + 5 * MIN, 1, 10),
+        rec('x', 'open', T0 + 10 * MIN, 2, 20, x),
+        rec('x', 'update', T0 + 50 * MIN, 3, 30, x),
+        rec('x', 'close', T0 + 70 * MIN, 9, 90, x),
+      ];
+      const live = allRecords(recs);
+      writeFileSync(join(dir, 'flows.ndjson'), ndjson(recs.slice(1)));
+      const v = new RangeView('e', { from: 0, to: null }, null);
+      await buildRange(v, dir, { hourly: hourlyOf(live), sessionFrom: T0 + 5 * MIN });
+      const a = live.snapshot('e')!.totals;
+      expect(totalsOf(v)).toMatchObject({ flows: a.flows, bytesUp: a.bytesUp, bytesDown: a.bytesDown });
+      expect(v.store.snapshot('e')!.destinations[0].flows).toBe(2);
+    });
+
+    it('files each refusal under its own kind, not its destination’s latest', async () => {
+      const live = allRecords([
+        rec('refused', 'close', T0 + 5 * MIN, 0, 0, { verdict: 'block', rule: 'r_1', close_reason: 'blocked' }),
+        rec('allowed', 'close', T0 + 6 * MIN, 1, 10),
+      ]);
+      const v = new RangeView('e', { from: 0, to: T0 + 60 * MIN }, null);
+      await buildRange(v, null, { hourly: hourlyOf(live) });
+      expect(totalsOf(v).blocked).toEqual(live.snapshot('e')!.totals.blocked);
+      expect(totalsOf(v).blocked).toMatchObject({ userRule: 1, default: 0 });
+    });
+
+    it('a quiet stretch of a covered range is covered, not missing', async () => {
+      const live = allRecords([rec('a', 'close', T0 + 5 * MIN, 1, 10)]);
+      const v = new RangeView('e', { from: T0 + 5 * 60 * MIN, to: T0 + 6 * 60 * MIN }, null);
+      const info = await buildRange(v, null, { hourly: hourlyOf(live) });
+      expect(info.hourly).toEqual({ from: T0 + 5 * 60 * MIN, to: T0 + 7 * 60 * MIN });
+      expect(totalsOf(v).flows).toBe(0);
+    });
+
     it('fills what the budget skipped too, and leaves alone a range glove kept in full', async () => {
       const live = allRecords(twoDays());
       const liveFile = planScan(dir, { from: 0, to: null }, Infinity).files.at(-1)!;
@@ -436,7 +497,7 @@ describe('NetObs: ranged subscriptions', () => {
       lastExit: null, lastStatus: null, sessionFile: null,
       destinations: [{ key: 'arxiv.org:443', host: 'arxiv.org', port: 443, groupKey: 'arxiv.org', lastIp: null, scope: 'tunnelled', resolution: 'in-tunnel',
         tool: 'web_fetch', firstSeen: hour, lastSeen: hour + 60_000, bytesUp: 5, bytesDown: 50, flows: 1, blocked: 0, lastState: 'finished', hop: false }],
-      hours: [{ hour, run: null, key: 'arxiv.org:443', tool: 'web_fetch', hop: false, bytesUp: 5, bytesDown: 50, flows: 1, blocked: 0, first: hour, last: hour + 60_000 }],
+      hours: [{ hour, run: null, key: 'arxiv.org:443', tool: 'web_fetch', hop: false, bytesUp: 5, bytesDown: 50, flows: 1, blocked: 0, blockedGuard: 0, blockedRule: 0, direct: 0, first: hour, last: hour + 60_000 }],
       runs: [],
     });
     const s = new FakeSocket();
@@ -444,7 +505,8 @@ describe('NetObs: ranged subscriptions', () => {
     obs.subscribe(s, 'kept-000000', { from: hour, to: hour + 3_600_000 });
     await vi.waitFor(() => expect(s.of('net:snapshot')).toHaveLength(1));
     const snap = s.of('net:snapshot')[0].snapshot;
-    expect(snap.range).toMatchObject({ filesFrom: null, hourly: { from: hour, to: hour + 3_600_000 } });
+    // `to` is on the hour and included, so rounding out takes in the hour starting at it.
+    expect(snap.range).toMatchObject({ filesFrom: null, hourly: { from: hour, to: hour + 2 * 3_600_000 } });
     expect(snap.totals).toMatchObject({ flows: 1, bytesUp: 5, bytesDown: 50 });
     expect(snap.destinations.map((d) => d.key)).toEqual(['arxiv.org:443']);
   });

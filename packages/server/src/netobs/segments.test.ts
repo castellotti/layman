@@ -11,7 +11,7 @@ const iso = (t: number) => new Date(t).toISOString();
 
 const run = (id: string, started: number, ended: number | null, inferred = false): HistoryRun => ({ run: id, started, ended, inferred });
 const hour = (t: number, over: Partial<HistoryHour> = {}): HistoryHour => ({
-  hour: Math.floor(t / H) * H, run: 'r1', key: 'api.anthropic.com:443', tool: 'llm', hop: false, bytesUp: 10, bytesDown: 100, flows: 1, blocked: 0,
+  hour: Math.floor(t / H) * H, run: 'r1', key: 'api.anthropic.com:443', tool: 'llm', hop: false, bytesUp: 10, bytesDown: 100, flows: 1, blocked: 0, blockedGuard: 0, blockedRule: 0, direct: 0,
   first: t, last: t + 60_000, ...over,
 });
 /** The browser sidecar's background traffic, every hour: what a sandbox does between jobs. */

@@ -500,11 +500,16 @@ export class NetStore extends EventEmitter {
     const hour = Math.floor(t / HOUR) * HOUR;
     const tool = entry.rec.tool;
     const k = hourKey(hour, run, key, tool);
-    const h = s.hours.get(k) ?? { hour, run, key, tool, hop: entry.flags.hop, bytesUp: 0, bytesDown: 0, flows: 0, blocked: 0, first: t, last: t };
+    const h = s.hours.get(k) ?? {
+      hour, run, key, tool, hop: entry.flags.hop, bytesUp: 0, bytesDown: 0, flows: 0, blocked: 0, blockedGuard: 0, blockedRule: 0, direct: 0, first: t, last: t,
+    };
     h.bytesUp += up;
     h.bytesDown += down;
     h.flows += opened ? 1 : 0;
     h.blocked += refused ? 1 : 0;
+    h.blockedGuard += refused && entry.state === 'guard' ? 1 : 0;
+    h.blockedRule += refused && entry.state === 'user_rule' ? 1 : 0;
+    h.direct += opened && entry.flags.scope === 'direct' ? 1 : 0;
     h.hop = entry.flags.hop;
     h.first = Math.min(h.first, t);
     h.last = Math.max(h.last, t);
@@ -1094,6 +1099,12 @@ export class NetStore extends EventEmitter {
   }
 
   /** Every destination: live ones with their history, then those only the history has. */
+  /** Every destination as All records shows it (no flows): what a range's hourly part takes host and scope from. */
+  destinations(token: string): DestinationAggregate[] {
+    const s = this.sessions.get(token);
+    return s ? this.destViews(s) : [];
+  }
+
   private destViews(s: SessionData): DestinationAggregate[] {
     const out = [...s.aggs.values()].map((e) => this.aggView(s, e));
     for (const k of this.historyOnlyKeys(s)) {
