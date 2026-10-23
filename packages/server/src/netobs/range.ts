@@ -30,8 +30,9 @@ import { join } from 'path';
 import { NetStore, type NetStoreOptions } from './store.js';
 import { parseLine, type ParsedLine } from './parse.js';
 import { rotatedFiles, splitLines } from './tail.js';
+import type { HistoryDest, HistoryHour, HistorySession } from './history.js';
 import type {
-  ExitRecord, FlowRecord, GateRecord, NetGateView, NetRange, NetRangeInfo, NetSessionFile, NetSnapshot, RulesView,
+  DestinationAggregate, ExitRecord, FlowRecord, GateRecord, NetGateView, NetRange, NetRangeInfo, NetSessionFile, NetSnapshot, RulesView,
 } from './types.js';
 
 /** How far before `from` the scan starts, to find each open flow's bytes at `from`. */
@@ -81,15 +82,28 @@ export class RangeView {
    */
   private overlap: Set<string> | null = new Set();
   private readonly overlapFrom: number;
+  /** Records before this only give baselines: `from`, or where the hourly history hands over to the files. */
+  private countFrom: number;
 
   constructor(readonly token: string, readonly range: NetRange, session: NetSessionFile | null, opts: NetStoreOptions = {}, now = Date.now()) {
     this.key = rangeKey(range);
+    this.countFrom = range.from;
     this.store = new NetStore(opts);
     this.store.ensure({ token, netDir: '', controlDir: '', rulesPath: '' });
     // Before any flow: which services are hops decides how their bytes count.
     this.store.setSessionFile(token, session);
     // Records reach the live reader within a poll of being written; a minute covers glove's own ordering too.
     this.overlapFrom = now - TAIL_SLACK_MS;
+  }
+
+  /**
+   * Answer the range before `cut` from Layman's hourly history (`hourlyHistory`): it goes into the
+   * store as kept history, which the store adds to what the files give, as it does for All records;
+   * the files count from `cut` on. Call before any record, or the store will not take it.
+   */
+  useHourly(history: HistorySession, cut: number): void {
+    this.store.setHistory(history);
+    this.countFrom = Math.max(this.range.from, cut);
   }
 
   /** glove rewrote session.json: re-flag hops here as the live store does. */
@@ -110,7 +124,7 @@ export class RangeView {
   flow(rec: FlowRecord, now = Date.now()): void {
     const t = Date.parse(rec.t);
     if (this.after(t)) return;
-    if (t < this.range.from) {
+    if (t < this.countFrom) {
       const b = this.baseline.get(rec.id);
       this.baseline.set(rec.id, { up: Math.max(b?.up ?? 0, rec.bytes.up), down: Math.max(b?.down ?? 0, rec.bytes.down) });
       return;
@@ -175,6 +189,66 @@ export class RangeView {
       range: info,
     };
   }
+}
+
+/** Where the hourly history hands over to the files: the hour after the files begin. */
+const HOUR = 3_600_000;
+const floorHour = (t: number) => Math.floor(t / HOUR) * HOUR;
+const ceilHour = (t: number) => Math.ceil(t / HOUR) * HOUR;
+
+/**
+ * A range's older part as kept history (`HistorySession`) from the session's hours in
+ * [`fromHour`, `cut`), or null when no hour there had traffic. Totals and destinations only:
+ * the hours keep no connections. What the hours do not keep is taken from the destination as
+ * All records shows it (`dests`): its host, scope and tool, and which kind of refusal its
+ * blocks were (its state), and a destination reached directly counts its flows as direct.
+ */
+export function hourlyHistory(
+  token: string, hours: readonly HistoryHour[], dests: readonly DestinationAggregate[], fromHour: number, cut: number,
+): { history: HistorySession; from: number } | null {
+  const inSpan = hours.filter((h) => h.hour >= fromHour && h.hour < cut);
+  if (!inSpan.length) return null;
+  const meta = new Map(dests.map((d) => [d.key, d]));
+  const byKey = new Map<string, HistoryDest>();
+  const totals = { bytesUp: 0, bytesDown: 0, flows: 0, blockedGuard: 0, blockedRule: 0, blockedDefault: 0, directFlows: 0 };
+  for (const h of inSpan) {
+    const d = meta.get(h.key);
+    const host = d?.host ?? (h.key.startsWith('@') ? null : h.key.replace(/:\d+$/, ''));
+    const kept = byKey.get(h.key) ?? {
+      key: h.key, host, port: d?.port ?? null, groupKey: d?.groupKey ?? host ?? h.key, lastIp: d?.ips[0] ?? null,
+      scope: d?.scope ?? null, resolution: d?.resolution ?? null, tool: h.tool, firstSeen: h.first, lastSeen: h.last,
+      bytesUp: 0, bytesDown: 0, flows: 0, blocked: 0, lastState: d?.state ?? 'finished', hop: h.hop,
+    };
+    kept.bytesUp += h.bytesUp;
+    kept.bytesDown += h.bytesDown;
+    kept.flows += h.flows;
+    kept.blocked += h.blocked;
+    kept.firstSeen = Math.min(kept.firstSeen, h.first);
+    kept.lastSeen = Math.max(kept.lastSeen, h.last);
+    byKey.set(h.key, kept);
+    // The session's totals leave a hop's bytes out, as the store's do.
+    if (!h.hop) {
+      totals.bytesUp += h.bytesUp;
+      totals.bytesDown += h.bytesDown;
+    }
+    totals.flows += h.flows;
+    const state = d?.state;
+    if (state === 'guard') totals.blockedGuard += h.blocked;
+    else if (state === 'user_rule') totals.blockedRule += h.blocked;
+    else totals.blockedDefault += h.blocked;
+    if (d?.scope === 'direct') totals.directFlows += h.flows;
+  }
+  const dsts = [...byKey.values()];
+  return {
+    from: Math.min(...inSpan.map((h) => h.hour)),
+    history: {
+      token, filterSince: null, filterSawDir: false,
+      firstSeen: Math.min(...dsts.map((d) => d.firstSeen)), lastSeen: Math.max(...dsts.map((d) => d.lastSeen)),
+      // Nothing read from the files is already in it: they count from the cut on.
+      watermark: -Infinity, carry: {}, ...totals,
+      lastExit: null, lastStatus: null, sessionFile: null, destinations: dsts,
+    },
+  };
 }
 
 interface ScanFile {
@@ -309,13 +383,48 @@ export interface BuildOptions {
   cancelled?: () => boolean;
   /** The session's first record as the live store knows it (kept history included), if any. */
   sessionFrom?: number | null;
+  /**
+   * The session's hours and its destinations as All records shows them: what answers the part of
+   * the range glove's files no longer hold (or the budget skipped) (`hourlyHistory`).
+   */
+  hourly?: { hours: readonly HistoryHour[]; dests: readonly DestinationAggregate[] };
 }
 
-/** Read a session's files for `view`'s range into it. Resolves to what the range covers. */
-export async function buildRange(view: RangeView, netDir: string, opts: BuildOptions = {}): Promise<NetRangeInfo> {
+/** Grace for comparing the session's first record with the files' first (a flow's open can precede its first record). */
+const SAME_START_MS = 60_000;
+
+/**
+ * Read a session's files for `view`'s range into it, and its hourly history for the part they no
+ * longer hold. Resolves to what the range covers. `netDir` null: no files at all (a session whose
+ * files are gone), so the hourly history answers all of it.
+ */
+export async function buildRange(view: RangeView, netDir: string | null, opts: BuildOptions = {}): Promise<NetRangeInfo> {
   const { range } = view;
-  const plan = planScan(netDir, range, opts.budgetBytes ?? DEFAULT_RANGE_SCAN_BYTES);
-  const exits = filesOf(netDir, 'exit');
+  const plan = netDir === null
+    ? { files: [], truncated: false, filesFrom: null, oldest: null }
+    : planScan(netDir, range, opts.budgetBytes ?? DEFAULT_RANGE_SCAN_BYTES);
+  const exits = netDir === null ? [] : filesOf(netDir, 'exit');
+  // The session began at the earlier of the live store's first record (its backfill is budgeted,
+  // so it can be later than the oldest file) and the oldest file's (kept history can be earlier).
+  const known = [opts.sessionFrom ?? null, plan.oldest].filter((t): t is number => t !== null);
+  const sessionFrom = known.length ? Math.min(...known) : null;
+
+  // The part before the files: answered from the hours when glove deleted it (the session began
+  // before the files do) or the budget skipped it. Handed over at the hour after the files begin,
+  // so each hour is counted once, from one source. Before any record is read (`useHourly`).
+  const missing = plan.filesFrom === null
+    || (plan.filesFrom > range.from && (plan.truncated || (sessionFrom !== null && plan.filesFrom > sessionFrom + SAME_START_MS)));
+  let hourly: NetRangeInfo['hourly'] = null;
+  if (missing && opts.hourly) {
+    // The hours that overlap the range, up to the cut: whole hours, so its edges are rounded out.
+    const cut = plan.filesFrom === null ? Infinity : ceilHour(plan.filesFrom);
+    const end = range.to === null ? cut : Math.min(cut, ceilHour(range.to));
+    const part = hourlyHistory(view.token, opts.hourly.hours, opts.hourly.dests, floorHour(range.from), end);
+    if (part) {
+      view.useHourly(part.history, cut);
+      hourly = { from: part.from, to: Number.isFinite(end) ? end : ceilHour(Date.now()) };
+    }
+  }
   const total = plan.files.reduce((a, f) => a + f.size, 0) + exits.reduce((a, f) => a + f.size, 0);
   let scanned = 0;
   const onBytes = (n: number) => {
@@ -351,16 +460,14 @@ export async function buildRange(view: RangeView, netDir: string, opts: BuildOpt
   // by their first line, as the tailer knows them by content. What the live file gained after
   // the scan read it reaches the range through the live reader.
   for (let pass = 0; pass < ROTATION_PASSES && live(); pass++) {
+    if (netDir === null) break;
     const missed = filesOf(netDir, 'flows').filter((f) =>
       f.path !== join(netDir, 'flows.ndjson') && f.head !== null && !read.has(f.head) && overlaps(f, range) && (f.last ?? Infinity) >= (plan.files[0]?.first ?? -Infinity));
     if (!missed.length) break;
     for (const f of missed) await scan(f.path);
   }
-  // The live store's first record may be later than the oldest file (its backfill is budgeted), or
-  // earlier (kept history from files since deleted): the session began at the earlier of the two.
-  const known = [opts.sessionFrom ?? null, plan.oldest].filter((t): t is number => t !== null);
   return {
     key: view.key, from: range.from, to: range.to, filesFrom: plan.filesFrom,
-    sessionFrom: known.length ? Math.min(...known) : null, truncated: plan.truncated, scannedBytes: scanned,
+    sessionFrom, truncated: plan.truncated, hourly, scannedBytes: scanned,
   };
 }

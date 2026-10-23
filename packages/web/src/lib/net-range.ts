@@ -57,11 +57,25 @@ const SAME_START_MS = 60_000;
  * files were skipped instead, and the message says so.
  */
 export function rangeGaps(info: NetRangeInfo): string[] {
+  // Layman's hourly history answered the part the files no longer hold: nothing is missing (`rangeHourly` says how it differs).
+  if (info.hourly) return [];
   if (info.filesFrom === null) return ['glove keeps no records for this range.'];
   // Over the scan's budget the older files are still there, just not read: say that, not "deleted".
   if (info.truncated) return [`The range is too long to read in full: traffic before ${formatStamp(info.filesFrom)} was skipped.`];
   const deleted = info.filesFrom > info.from && (info.sessionFrom === null || info.filesFrom > info.sessionFrom + SAME_START_MS);
   return deleted ? [`glove’s files only reach back to ${formatStamp(info.filesFrom)}: traffic before that is not counted.`] : [];
+}
+
+/**
+ * How the part answered from Layman's hourly history differs from the rest, or null when the
+ * files answered all of it: whole hours (its edges rounded out to them), totals by destination,
+ * and no individual connections, so the flow list and Trace do not cover it.
+ */
+export function rangeHourly(info: NetRangeInfo): string | null {
+  const h = info.hourly;
+  if (!h) return null;
+  const span = info.filesFrom === null ? 'All of it' : `Before ${formatStamp(h.to)}`;
+  return `${span} is from Layman’s hourly history (glove no longer has those files): whole hours, totals by destination, no individual connections.`;
 }
 
 /** When the session began, if the range starts before it (not a gap: there was nothing yet). */

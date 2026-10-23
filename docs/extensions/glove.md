@@ -491,6 +491,30 @@ range could read: later than `from` means the window starts before what glove st
 1 MB chunks asynchronously, so it never blocks hooks, and `net:range:progress` frames (at most 4 a
 second) report how far it has got.
 
+**The part glove no longer holds** is answered from Layman's hourly history (`net_hours`, below), when
+glove has deleted it (the files start later than the session did) or the scan's budget skipped it. A
+session whose files are all gone gets its whole range from the hours, rather than an error (one with
+no kept hours still gets `net:range:error`). How the two parts meet:
+- **The cut.** The hours answer up to the hour after the files begin, and the files count from there.
+  Records before the cut only set each flow's baseline. So every hour is counted once, from one
+  source: a file starting mid-hour gives that hour's start to the history and its end to the files,
+  and neither is lost nor counted twice (`range.test.ts` fails if the cut moves an hour either way).
+- **The same code.** The hourly part goes into the range's store as kept history (`hourlyHistory`,
+  then `setHistory`), the mechanism that adds kept totals to All records. So the merge is the store's
+  own, tested one, not a new sum.
+- **What the hours keep.** Whole hours: the part's edges round out to them. Totals by destination,
+  with no individual connections: the flow list and Trace do not cover that part. What the hours lack
+  comes from the destination as All records shows it: its host, scope and tool. Each refusal is
+  counted under the kind of its destination's state, and a destination reached directly counts its
+  connections as direct.
+- **Measured.** On a copy of a real session with its two oldest files deleted, a 3-day run and a
+  2-hour report gave the same bytes as with every file (702.7 MB and 175.7 MB sent). Connections
+  differ by a few, as the rules above say they will. The hours count connections *opened* in them,
+  so 8 opened before the report and reused during it are not counted (1,621 against 1,629). The run's
+  first hour rounds out to 06:00 and takes in 4 from the previous run (35,752 against 35,748).
+- **Reported.** `range.hourly` gives the part's first hour and the hand-over; the banner says what it
+  is, and that nothing is missing.
+
 glove can rotate while a range is being read. The live path then opens the new, near-empty file, and
 the one the scan meant sits under a rotated name it never planned. After its planned files the scan
 therefore lists them again and reads any rotated file whose first line it has not read: files are known
@@ -516,7 +540,7 @@ A socket that moved on never receives the range it left.
 `net:delta` and `net:exit` carry the range's key (`range`, null for All records), so a client can drop
 frames for a range it has left. `net:status` and `net:rules` go to every subscriber of the session. A
 range that cannot be built gets `net:range:error` instead of a snapshot: an unknown session, a read error,
-a history-only session (its files are gone, so there is nothing to read a window from), or something
+a history-only session with no kept hours (its files are gone, and nothing else holds a window), or something
 that is not a range at all (a start before 1970, an end before the start). The last is answered under
 the key the client built from what it sent: falling back to All records would leave a client that
 waits for its range dropping that snapshot and waiting forever.

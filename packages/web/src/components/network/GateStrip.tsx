@@ -5,7 +5,7 @@
  */
 import React from 'react';
 import type { NetNotObservable, NetRangeInfo, NetSessionSummary } from '../../lib/netobs-types.js';
-import { formatRange, rangeGaps, rangeLead, rangeTitle } from '../../lib/net-range.js';
+import { formatRange, rangeGaps, rangeHourly, rangeLead, rangeTitle } from '../../lib/net-range.js';
 import { useNow } from '../../hooks/useNow.js';
 import type { NetSessionData } from '../../lib/net-state.js';
 import type { PanelDef } from '../../lib/net-panels.js';
@@ -136,7 +136,7 @@ function OpenSpan({ range }: { range: NetRangeInfo }) {
  */
 export function RangeBanner({ range, onClear }: { range: NetRangeInfo; onClear: () => void }) {
   const gaps = rangeGaps(range);
-  const lead = rangeLead(range);
+  const notes = [rangeLead(range), rangeHourly(range)].filter(Boolean).join(' ');
   return (
     <div role="status" style={{
       display: 'flex', alignItems: 'center', gap: 10, padding: '6px 12px', flexShrink: 0, fontFamily: 'var(--font-ui)',
@@ -147,7 +147,7 @@ export function RangeBanner({ range, onClear }: { range: NetRangeInfo; onClear: 
       <span title={rangeTitle(range)} style={{ fontFamily: 'var(--font-mono)', color: 'var(--text)' }}>
         {range.to === null ? <OpenSpan range={range} /> : formatRange(range)}
       </span>
-      <span style={{ color: 'var(--text-faint)' }}>Only the traffic in this range: bytes are what moved during it.{lead ? ` ${lead}` : ''}</span>
+      <span style={{ color: 'var(--text-faint)' }}>Only the traffic in this range: bytes are what moved during it.{notes ? ` ${notes}` : ''}</span>
       {gaps.length > 0 && (
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: 'var(--warn)' }}>
           <NetIcon name="alert" color="var(--warn)" />{gaps.join(' ')}

@@ -87,7 +87,7 @@ describe('applyNetMessage', () => {
 
 describe('time ranges', () => {
   const R = rangeKey({ from: 1000, to: null });
-  const info = { key: R, from: 1000, to: null, filesFrom: 500, sessionFrom: 500, truncated: false, scannedBytes: 10 };
+  const info = { key: R, from: 1000, to: null, filesFrom: 500, sessionFrom: 500, truncated: false, hourly: null, scannedBytes: 10 };
   const inRange = () => subscribeTo(subscribed('a'), 'a', R);
 
   it('keys a range as the server does', () => {

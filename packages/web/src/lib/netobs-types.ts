@@ -659,6 +659,13 @@ export interface NetRangeInfo extends NetRange {
   sessionFrom: number | null;
   /** The scan reached its byte budget, so the range's oldest files were not read. */
   truncated: boolean;
+  /**
+   * The part of the range answered from Layman's hourly history (`net_hours`), because glove had
+   * deleted those files or the scan's budget skipped them: whole hours, totals by destination, no
+   * individual connections. `from` is its first hour with traffic, `to` where the files take over.
+   * Null when the files answered all of it.
+   */
+  hourly: { from: number; to: number } | null;
   /** Bytes of glove's files read to build it. */
   scannedBytes: number;
 }

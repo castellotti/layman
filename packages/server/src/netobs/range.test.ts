@@ -227,6 +227,66 @@ describe('buildRange: reading glove’s files', () => {
     expect(v.store.snapshot('e')!.counters.records).toBe(2);
   });
 
+  describe('the part glove no longer holds, from the hourly history', () => {
+    /** All records, read once from everything: its hours are what Layman kept. */
+    const allRecords = (records: FlowRecord[]) => {
+      const live = new NetStore();
+      live.ensure({ token: 'e', netDir: '', controlDir: '', rulesPath: '' });
+      for (const r of records) live.ingestFlow('e', r, T0 + 72 * 60 * MIN);
+      return live;
+    };
+    const hourlyOf = (live: NetStore) => ({ hours: live.hourly('e'), dests: live.snapshot('e')!.destinations });
+
+    it('answers a range across deleted files with each hour counted once: equal to All records', async () => {
+      const live = allRecords(twoDays());
+      rmSync(join(dir, 'flows-20261022T000000000Z.ndjson')); // glove deleted day one
+      const v = new RangeView('e', { from: 0, to: null }, null);
+      const info = await buildRange(v, dir, { hourly: hourlyOf(live), sessionFrom: T0 });
+      expect(info.hourly).toEqual({ from: T0, to: T0 + 24 * 60 * MIN });
+      const a = live.snapshot('e')!;
+      const b = v.store.snapshot('e')!;
+      expect(b.totals).toMatchObject({ flows: a.totals.flows, bytesUp: a.totals.bytesUp, bytesDown: a.totals.bytesDown });
+      expect(b.destinations.map((d) => [d.key, d.bytesUp, d.flows])).toEqual(a.destinations.map((d) => [d.key, d.bytesUp, d.flows]));
+    });
+
+    it('hands over at the hour after the files begin, so a mid-hour start is neither lost nor counted twice', async () => {
+      const recs = [
+        rec('gone', 'close', T0 + 10 * MIN, 1, 10), // deleted
+        rec('kept', 'close', T0 + 40 * MIN, 2, 20), // in the files, and in the hour the history answers
+        rec('late', 'close', T0 + 2 * 60 * MIN, 4, 40),
+      ];
+      const live = allRecords(recs);
+      writeFileSync(join(dir, 'flows.ndjson'), ndjson(recs.slice(1)));
+      const v = new RangeView('e', { from: 0, to: null }, null);
+      const info = await buildRange(v, dir, { hourly: hourlyOf(live), sessionFrom: T0 + 10 * MIN });
+      expect(info.hourly).toEqual({ from: T0, to: T0 + 60 * MIN });
+      expect(totalsOf(v)).toMatchObject({ flows: 3, bytesUp: 7 });
+    });
+
+    it('answers a session whose files are gone from the hours alone', async () => {
+      const live = allRecords(twoDays());
+      const v = new RangeView('e', { from: T0 + 2 * 60 * MIN, to: T0 + 4 * 60 * MIN - 1 }, null);
+      const info = await buildRange(v, null, { hourly: hourlyOf(live), sessionFrom: T0 });
+      // Whole hours: 02:00 to 03:59 is two hours of one flow each.
+      expect(info.hourly).toEqual({ from: T0 + 2 * 60 * MIN, to: T0 + 4 * 60 * MIN });
+      expect([info.filesFrom, info.scannedBytes]).toEqual([null, 0]);
+      expect(totalsOf(v)).toMatchObject({ flows: 2, bytesUp: 20 });
+    });
+
+    it('fills what the budget skipped too, and leaves alone a range glove kept in full', async () => {
+      const live = allRecords(twoDays());
+      const liveFile = planScan(dir, { from: 0, to: null }, Infinity).files.at(-1)!;
+      const cut = new RangeView('e', { from: 0, to: null }, null);
+      const info = await buildRange(cut, dir, { budgetBytes: liveFile.size, hourly: hourlyOf(live), sessionFrom: T0 });
+      expect([info.truncated, info.hourly?.from]).toEqual([true, T0]);
+      expect(totalsOf(cut).flows).toBe(48);
+      // Everything on disk: the history is not used, whatever the range.
+      const whole = new RangeView('e', { from: T0 - 60 * MIN, to: null }, null);
+      expect((await buildRange(whole, dir, { hourly: hourlyOf(live), sessionFrom: T0 })).hourly).toBeNull();
+      expect(totalsOf(whole).flows).toBe(48);
+    });
+  });
+
   it('stops when nobody wants the range any more', async () => {
     twoDays();
     const v = new RangeView('e', { from: 0, to: null }, null);
@@ -366,6 +426,27 @@ describe('NetObs: ranged subscriptions', () => {
     obs.subscribe(s, 'gone-000000', { from: 0, to: null });
     expect(s.of('net:range:error')[1].error).toMatch(/files for this session are gone/);
     expect(s.of('net:snapshot')).toHaveLength(0);
+  });
+
+  it('serves a range of a session whose files are gone from the hours Layman kept', async () => {
+    const hour = Math.floor(hourAgo / 3_600_000) * 3_600_000;
+    obs.store.setHistory({
+      token: 'kept-000000', filterSince: null, filterSawDir: false, firstSeen: hour, lastSeen: hour + 60_000, watermark: hour + 60_000, carry: {},
+      bytesUp: 5, bytesDown: 50, flows: 1, blockedGuard: 0, blockedRule: 0, blockedDefault: 0, directFlows: 0,
+      lastExit: null, lastStatus: null, sessionFile: null,
+      destinations: [{ key: 'arxiv.org:443', host: 'arxiv.org', port: 443, groupKey: 'arxiv.org', lastIp: null, scope: 'tunnelled', resolution: 'in-tunnel',
+        tool: 'web_fetch', firstSeen: hour, lastSeen: hour + 60_000, bytesUp: 5, bytesDown: 50, flows: 1, blocked: 0, lastState: 'finished', hop: false }],
+      hours: [{ hour, run: null, key: 'arxiv.org:443', tool: 'web_fetch', hop: false, bytesUp: 5, bytesDown: 50, flows: 1, blocked: 0, first: hour, last: hour + 60_000 }],
+      runs: [],
+    });
+    const s = new FakeSocket();
+    obs.attach(s);
+    obs.subscribe(s, 'kept-000000', { from: hour, to: hour + 3_600_000 });
+    await vi.waitFor(() => expect(s.of('net:snapshot')).toHaveLength(1));
+    const snap = s.of('net:snapshot')[0].snapshot;
+    expect(snap.range).toMatchObject({ filesFrom: null, hourly: { from: hour, to: hour + 3_600_000 } });
+    expect(snap.totals).toMatchObject({ flows: 1, bytesUp: 5, bytesDown: 50 });
+    expect(snap.destinations.map((d) => d.key)).toEqual(['arxiv.org:443']);
   });
 
   it('stop() ends a scan still running, and sends nothing after', async () => {

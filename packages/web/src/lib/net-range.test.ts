@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatRange, formatSpan, formatStamp, rangeGaps, rangeLead, rangeTitle } from './net-range.js';
+import { formatRange, formatSpan, formatStamp, rangeGaps, rangeHourly, rangeLead, rangeTitle } from './net-range.js';
 
 // Local-time output depends on the machine's zone, so times are built from local parts.
 const at = (month: number, day: number, h: number, m: number, s: number) => new Date(2026, month, day, h, m, s).getTime();
@@ -23,7 +23,7 @@ describe('net-range', () => {
   });
 
   it('says what a range leaves out: what glove deleted, not what came before the session', () => {
-    const base = { key: 'k', from: at(9, 16, 0, 0, 0), to: null, scannedBytes: 1, truncated: false };
+    const base = { key: 'k', from: at(9, 16, 0, 0, 0), to: null, scannedBytes: 1, truncated: false, hourly: null };
     const start = at(9, 16, 6, 13, 36);
     expect(rangeGaps({ ...base, filesFrom: base.from - 1000, sessionFrom: base.from - 1000 })).toEqual([]);
     // The session began after the range did, and glove kept everything: nothing is missing.
@@ -34,5 +34,14 @@ describe('net-range', () => {
     expect(rangeGaps({ ...base, filesFrom: at(9, 18, 0, 0, 0), sessionFrom: base.from, truncated: true }))
       .toEqual(['The range is too long to read in full: traffic before Oct 18 00:00:00 was skipped.']);
     expect(rangeGaps({ ...base, filesFrom: null, sessionFrom: null })).toEqual(['glove keeps no records for this range.']);
+  });
+
+  it('says how a part answered from the hourly history differs, and calls nothing missing', () => {
+    const base = { key: 'k', from: at(9, 16, 0, 0, 0), to: null, scannedBytes: 1, truncated: false, sessionFrom: at(9, 15, 0, 0, 0) };
+    const mixed = { ...base, filesFrom: at(9, 17, 6, 13, 36), hourly: { from: at(9, 16, 0, 0, 0), to: at(9, 17, 7, 0, 0) } };
+    expect(rangeGaps(mixed)).toEqual([]);
+    expect(rangeHourly(mixed)).toBe('Before Oct 17 07:00:00 is from Layman’s hourly history (glove no longer has those files): whole hours, totals by destination, no individual connections.');
+    expect(rangeHourly({ ...mixed, filesFrom: null })).toMatch(/^All of it is from Layman’s hourly history/);
+    expect(rangeHourly({ ...mixed, hourly: null })).toBeNull();
   });
 });
