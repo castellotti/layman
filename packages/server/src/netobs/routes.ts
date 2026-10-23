@@ -7,6 +7,7 @@ import { randomUUID } from 'crypto';
 import type { FastifyInstance } from 'fastify';
 import type { NetObs, RulesOp } from './index.js';
 import { buildTrace, callsBetween, downloadsIn, type TraceDeps } from './trace.js';
+import { DEFAULT_BURST_GAP_MS, agentSegment, buildSegments } from './segments.js';
 
 const OP_KINDS = new Set([
   'blockHost', 'blockDomain', 'blockIp', 'blockGroup', 'allowHost', 'allowDomain', 'removeRule', 'setDefault',
@@ -90,6 +91,24 @@ export function registerNetRoutes(fastify: FastifyInstance, deps: { netObs: NetO
     if (!deps.trace) return reply.status(501).send({ error: 'Trace is not available on this server' });
     const downloads = downloadsIn(store, token, deps.trace);
     return downloads ? { downloads } : reply.status(404).send(notFound(token));
+  });
+
+  // Ready-made time ranges (`segments.ts`): runs, bursts split at a `gap` of hours (1–24, default 6),
+  // the agent sessions Trace joins, and the hourly activity. From what Layman kept, so older than glove's files.
+  fastify.get<{ Params: { token: string }; Querystring: { gap?: string } }>('/api/net/sessions/:token/segments', async (request, reply) => {
+    const { token } = request.params;
+    if (!store.has(token)) return reply.status(404).send(notFound(token));
+    const gapHours = request.query.gap === undefined ? DEFAULT_BURST_GAP_MS / 3_600_000 : Number(request.query.gap);
+    if (!Number.isFinite(gapHours) || gapHours < 1 || gapHours > 24) return reply.status(400).send({ error: 'gap must be 1 to 24 hours' });
+    const trace = deps.trace;
+    const agentSessions = !trace ? [] : trace.sessionsNamed(token).flatMap((sid) => {
+      const { turns, events } = trace.session(sid);
+      const seg = agentSegment(sid, events, turns.length);
+      return seg ? [seg] : [];
+    });
+    return buildSegments(token, {
+      hours: store.hourly(token), runs: store.gateRuns(token), live: store.gate(token)?.freshness === 'running', agentSessions,
+    }, gapHours * 3_600_000);
   });
 
   fastify.get<{ Params: { token: string } }>('/api/net/sessions/:token/rules', async (request, reply) => {

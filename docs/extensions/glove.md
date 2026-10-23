@@ -457,6 +457,113 @@ accumulates nothing. The list is re-broadcast only when something the picker sho
 it: `GET /api/net/sessions`, `/api/net/sessions/:token` (the snapshot), `…/flows?since=&limit=`, and
 `…/buckets?window=60s|5m|1h|session`.
 
+### Time ranges (`netobs/range.ts`)
+
+`net:subscribe { token, range: { from, to } }` (epoch ms; `to: null` means until now) shows one window of
+a session instead of All records. Without a `range`, nothing changes: the snapshot is the live store's,
+with `range: null`.
+
+**A range is built from glove's files, never filtered from the live view.** Layman holds only the newest
+records in memory (the 64 MB backfill budget), and what it keeps of the rest is per hour and per
+destination (`net_hours`, below): no flows, and too coarse for a window that starts and ends mid-hour.
+So a past window is not there to filter. On a real session with 260 MB of flow files, the live store held about a quarter of
+them. The window's records go into a fresh `NetStore`, so a range is counted by the same code as All
+records, with one addition, the clip:
+
+- A flow is in the range when it has a record in it. Its bytes in the range are what moved during it: its
+  cumulative bytes at its last record in the range, less those at its last record *before* the range. A
+  pooled connection opened yesterday and reused for one exchange counts only what that exchange moved.
+- To find each open flow's bytes at `from`, the scan starts an hour early (`LEAD_IN_MS`). glove writes an
+  `update` for an open flow every few seconds (measured: 3 s typically, 30 s at the 99th percentile, 29 min
+  at most), so a flow open at `from` has a record in the lead-in. A flow idle for longer than the lead-in
+  would count from zero.
+- A refusal counts when its record is in the range. Exits are read whole: the one shown is the last at or
+  before `to`.
+- The gate, rules and session file are the current ones. glove keeps no history of them, and the controls
+  act on the gate now. Destinations' predicted verdicts follow rule changes in every range.
+
+Which files are read is decided from each file's first and last record times, so files outside the window
+(less the lead-in) are skipped. A file's read stops at the first record more than a minute past `to`.
+Measured on a copy of that session: everything (264 MB) in 2.1 s, one multi-day run in 1.2 s, one hour in
+under 0.3 s. The scan reads at most 512 MB (`rangeBudgetBytes`), newest files first, and says so
+(`range.truncated`, which also sets `historyTruncated`). `range.filesFrom` is the earliest record the
+range could read: later than `from` means the window starts before what glove still keeps. The scan reads
+1 MB chunks asynchronously, so it never blocks hooks, and `net:range:progress` frames (at most 4 a
+second) report how far it has got.
+
+**The part glove no longer holds** is answered from Layman's hourly history (`net_hours`, below), when
+glove has deleted it (the files start later than the session did) or the scan's budget skipped it. A
+session whose files are all gone gets its whole range from the hours, rather than an error (one with
+no kept hours still gets `net:range:error`). How the two parts meet:
+- **The cut.** The hours answer up to the hour after the files begin, and the files count from there.
+  Records before the cut only set each flow's baseline. So every hour is counted once, from one
+  source: a file starting mid-hour gives that hour's start to the history and its end to the files,
+  and neither is lost nor counted twice (`range.test.ts` fails if the cut moves an hour either way).
+  **The cut is never in the future.** The hours are a copy taken when the range is built, so an hour
+  still going cannot be answered by them: when the files begin in the current hour, the cut falls at
+  its start, and what glove deleted of that hour is not counted. Without this, an open range dropped
+  up to an hour of live traffic. Files that exist but hold no record yet hand over at the moment the
+  range is built. Only a session whose files are gone is answered by the hours throughout.
+- **A connection across the cut is one.** A pooled connection that opened in the hourly part and is
+  still recorded after the cut was counted by the hours when it opened, and would be counted again by
+  the files. It is taken back out of the hourly part (with its refusal or direct count), so a range
+  around everything equals All records.
+- **The same code.** The hourly part goes into the range's store as kept history (`hourlyHistory`,
+  then `setHistory`), the mechanism that adds kept totals to All records. So the merge is the store's
+  own, tested one, not a new sum.
+- **What the hours keep.** Whole hours: the part's edges round out to them, `to` included (a range
+  ending on the hour takes in the hour starting there). Totals by destination, with no individual
+  connections: the flow list and Trace do not cover that part. Each hour keeps its refusals by kind
+  (guard, rule, default) and its direct connections, because a destination's kind of refusal can
+  change; only what the hours lack about a destination (its host, scope, IP) comes from it as All
+  records shows it.
+- **Gaps.** An hourly part with no traffic in it is covered, and simply empty. If Layman's hours begin
+  after the range and the session do (they start with migration 6, or when recording was turned on),
+  the banner says nothing was kept before then.
+- **Measured.** On a copy of a real session with its two oldest files deleted, a 3-day run and a
+  2-hour report gave the same bytes as with every file (702.7 MB and 175.7 MB sent). Connections
+  differ by a few, as the rules above say they will. The hours count connections *opened* in them,
+  so 8 opened before the report and reused during it are not counted (1,621 against 1,629). The run's
+  first hour rounds out to 06:00 and takes in 4 from the previous run (35,752 against 35,748).
+- **Reported.** `range.hourly` gives the part's first hour Layman kept and the hand-over. The banner
+  says what that part is and why it came from the hours: glove deleted the files, or they were too
+  much to read. It says "All of it" when the files had nothing to add.
+
+glove can rotate while a range is being read. The live path then opens the new, near-empty file, and
+the one the scan meant sits under a rotated name it never planned. After its planned files the scan
+therefore lists them again and reads any rotated file whose first line it has not read: files are known
+by content, as the tailer knows them.
+
+One built range is shared by every socket that asks for it. A range somebody is watching follows the
+live reader: each newly read record is handed to it, along with session.json changes (which services
+are hops) and a new geolocation database. A range that ended drops those records itself, so it never
+changes. A record that arrives while the scan runs is queued and applied after.
+
+The scan and the live reader can both hand over the same record: one written while the scan ran, or
+read by the scan just before the next poll. A store counts a repeated flow record's bytes once, but not
+its record count, and a repeated gate record of an old run would revive that run. So the range remembers
+what the scan read from a minute before it started, skips those records when the live reader repeats
+them, and forgets them after the first poll once it is built. Exits are deduplicated by content.
+
+Once nobody is looking at a range, it is kept for the next subscriber (switching tabs, Back) only if
+it has ended: an idle range no longer follows the live reader, so one reaching into the present would
+go stale. The four most recently used are kept, where "used" is when the last socket left it. A range
+still being read when its last subscriber leaves is dropped, which stops its scan, and so does `stop()`.
+A socket that moved on never receives the range it left.
+
+`net:delta` and `net:exit` carry the range's key (`range`, null for All records), so a client can drop
+frames for a range it has left. `net:status` and `net:rules` go to every subscriber of the session. A
+range that cannot be built gets `net:range:error` instead of a snapshot: an unknown session, a read error,
+a history-only session with no kept hours (its files are gone, and nothing else holds a window), or something
+that is not a range at all (a start before 1970, an end before the start). The last is answered under
+the key the client built from what it sent: falling back to All records would leave a client that
+waits for its range dropping that snapshot and waiting forever.
+
+`range.sessionFrom` is the session's first record as far as Layman knows: the earlier of the live
+store's first (kept history included) and the oldest file's first record. A range starting before it
+is not missing anything, since the session had not begun; a range whose `filesFrom` is later than it
+is, because glove deleted the older files.
+
 ### The client shell
 
 The header gains `Network  Map  Topology  Trace` between their own dividers — **only** when
@@ -481,6 +588,25 @@ nothing for finished sessions (their history is not an alarm).
   `/?view=network` shows the default session — the one matching the active Layman session's
   `sessionName`, else the most recently active — and writes it into the URL by **replacing**, because
   pushing would make Back land on the bare URL, re-default and push again (`historyModeFor`, tested).
+- **Time range.** `netRange` in `sessionStore`, hydrated from `&from=<iso>&to=<iso|now>` (ISO, not ms, so
+  a shared link says what it shows; a missing `to` is "now"). A range is dropped when it has no start,
+  starts before 1970 (the server's rule, so the two never disagree), ends before it starts, or has an
+  end that cannot be read: reading that as "now" would silently widen it. Shared by the four tabs, so an
+  investigation survives switching between them. Cleared when another glove session is picked, because
+  its runs and records belong to the old one; but filling in the *default* session (a link with a range
+  and no `glove=`) keeps it, and the destination too. Setting,
+  changing or clearing it **pushes**, so Back returns to the previous range. The view subscribes with
+  the range, and the reducer keeps the range's key (`rangeKey`, the server's): it drops any snapshot,
+  delta or exit for another range (a frame in flight from the range just left), while the gate and
+  rules apply to every range. Until the ranged snapshot arrives the view says it is reading glove's
+  files, with the scan's progress; a `net:range:error` is shown with a way back to All records. Both
+  carry the range they are for, so one range's progress or error never shows under another, even for
+  the frame before the new subscription clears them. While a range is shown, a banner under the strip
+  gives its span in local time (UTC on hover; an open range's length ticks), says the figures are only
+  the traffic in it, and names what it leaves out (`rangeGaps`): traffic glove deleted (its files start
+  after the session did), or a scan cut short by its budget, said as skipped, not deleted. A range
+  that merely starts before the session says when the session began, as information rather than a
+  warning. So a window is never read as All records.
 - **Subscription.** The view subscribes the socket to the shown session, re-subscribes after a
   reconnect (the server forgets subscriptions with the socket) and unsubscribes when the tabs close, so a
   dashboard that is not looking stops receiving deltas.
@@ -941,7 +1067,8 @@ links them.
 ### Persistence (`netobs/persist.ts`, `netobs/history.ts`)
 
 Per-flow rows would dwarf the event tables, so Layman keeps **rollups**: one row per glove session
-(`net_sessions`) and one per destination (`net_destinations`), migration 3 in `db/database.ts`.
+(`net_sessions`) and one per destination (`net_destinations`), migration 3 in `db/database.ts`, plus
+their time axis (below).
 - **When.** Written every 30 s, on shutdown, and before glove is switched off, only while session
   recording is on. Writes replace a session's rows in one transaction, so writing the same rollup
   twice changes nothing.
@@ -987,6 +1114,62 @@ with its totals and destinations. The gate strip shows only a "History only" chi
 route and rules it last saw are not current. Toggles are disabled with that reason. The Map, Topology,
 Trace, Activity, Rules and Details panels say "History only". If its files come back, it is read
 again, from its watermark.
+
+### Runs, bursts and the hourly history (`netobs/segments.ts`, migration 6)
+
+The session and destination rows above have no time axis, and a time range is read from glove's files,
+which rotation deletes. Migration 6 adds the axis, kept for as long as Layman has recorded:
+- **`net_runs`**: the collector's runs. A run is one `glove up` to its `glove down`, from glove's
+  `type: gate`, `role: collect` start and stop records. What moved during a run is not stored with it:
+  it is summed from the run's hours, so the two can never disagree.
+- **`net_hours`**: one row per destination, tool, collector run and hour it was active. Each row holds
+  the bytes moved in that hour, by record time, which is the same clip a time range uses. It also
+  holds the flows first seen and refusals recorded in the hour, whether it is a hop, and the first and
+  last record in the hour that moved bytes, opened a flow or was refused. A heartbeat is not activity;
+  a refused connection is (the agent was trying something).
+  - **By run**, so an hour in which one `glove up` ends and the next starts is two rows, each with
+    exact edges. A record belongs to the latest run started at or before it, unless that run had
+    stopped more than 5 s earlier (forwarders' last records trail the collector's stop): traffic while
+    no run was up belongs to none.
+  - **By tool**, so a model call is never hidden by another tool using the same host in that hour.
+  - **Hops follow session.json.** When it changes which services are hops (it was unreadable when the
+    flows were read, or glove rewrote `next`), the store re-flags the destination's hours along with
+    its flows. Without that, the hop leg of a model call stayed in the hours and counted twice.
+
+Both tables are local only and never synced, as migration 3. They are counted by the restart rule
+above: records before the watermark are already held, and a carried flow counts only what it moved
+beyond the carried part. `history.test.ts` holds the hours and runs to one uninterrupted read at
+every restart point, alongside the totals; disabling either part of the rule fails it. Hours are
+**upserted**, not rewritten. A save every 30 s writes only the hours that changed, which keeps the
+cost flat as history grows. Rows kept before migration 6 (`net_sessions.hours_kept = 0`) hold no
+hours, so the store counts the hours of everything it re-reads instead of skipping what came before
+the watermark.
+
+`GET /api/net/sessions/:token/segments?gap=<hours>` (1–24, default 6) builds the ready-made ranges
+from them:
+- **Runs.** How each run ended: `stopped`, `died` (the collector's inferred stop, or none written for
+  the last run of a gate no longer running, which then ends at its last activity), or `replaced`
+  (no stop, and the next run started).
+- **Bursts: the agent at work.** Model calls (`tool: llm`) with no pause of `gap` or more, inside one
+  run. On a real session, one `glove up` ran three days and held four daily reports, so a run alone is
+  too coarse. **Model calls, not any traffic**, because a sandbox is never quiet: between reports the
+  headless browser's sidecar kept up about 550 connections and 770 KB an hour, plus its telemetry, so
+  the busiest 6 h pause in all traffic was none at all. Measured on a copy of that session, the 3-day
+  run split into its four reports (Oct 17 06:31–10:45, 21:33–22:38, Oct 18 20:07–21:15 and Oct 20
+  04:14). A session with no model calls observed (a model the gate does not carry) falls back to all
+  traffic, and `burstBasis` says which was used. A burst's edges are its first and last active record.
+  Its totals are all the traffic in the hours it spans.
+- **Agent sessions.** The Layman sessions Trace joins (`sessionName` is the token), from their first
+  to last event, by transcript time where the pi watcher kept it.
+- **`hours`.** The session's activity per hour, hops' bytes left out, with `inference` marking hours
+  with model calls, for an activity calendar.
+
+On that session, runs, hours and the store agree to the byte (984.6 MB sent).
+
+**Known imprecision.** A run whose start record glove deleted before Layman ever read it (Layman first
+installed partway through a long run) starts at the earliest collector record Layman saw, its stop. Its
+traffic before that stop belongs to no run, so it shows as bursts of no run, and the run itself as
+having moved nothing. Once Layman has seen a run start, its row keeps it.
 
 ### Configuration
 

@@ -150,6 +150,15 @@ linked above.
    store subtracts what the re-read files already account for, so nothing is counted twice and
    traffic from deleted files is kept. A glove session whose files are gone is listed, history only.
    Change the counting only with `history.test.ts`, which restarts at every record.
+   A **time range** (`net:subscribe { token, range }`, `netobs/range.ts`) is built on the server from
+   glove's files into a fresh `NetStore`, never filtered from the live view or on the client: memory
+   holds only the newest records, and the rollups' time axis (`net_hours`) is per hour and holds no
+   flows. Keep it that way so a range and
+   All records are counted by the same code. The only addition is the clip (a flow's bytes in a range
+   are what moved during it), and `range.test.ts` holds a range around everything equal to All records.
+   The part glove's files no longer hold is answered from `net_hours`, fed into that same store as kept
+   history, up to a hand-over hour that is never in the future; move the hand-over only with the
+   `range.test.ts` cases that fail when it is an hour off either way.
    Design and rules: `docs/extensions/glove.md` → Network.
 
 5. **OpenCode plugin** (`docs/harnesses/opencode.md`): a bidirectional plugin (`packages/opencode-plugin`)
@@ -204,6 +213,7 @@ store for unrecorded sessions, and memoizes per session until a new event arrive
 /h/{id}  /b/{id}  /f/{id}            highlight / bookmark / bookmark folder
 ?view=dashboard|logs|prompts|flow|sessions   ?play=1   ?t=<ms>
 ?view=network|map|topology|trace&glove=<token>&dest=<host>   glove network views
+  &from=<iso>&to=<iso|now>           …and their time range (pushes: Back returns to the previous one)
 ```
 
 Ids may be given as an unambiguous prefix of ≥8 characters; ambiguous prefixes return 409 with
@@ -369,7 +379,7 @@ Four rules that must not be relaxed casually:
   `config.ts` so a partial Settings update can never blank it and orphan every row.
 
 - **The glove network rollups are deliberately not synced** (`net_sessions`, `net_destinations`,
-  migration 3; `netobs/persist.ts`). No triggers, no `SYNC_ENTITIES` entry. They record where one
+  migration 3; their time axis `net_hours` and `net_runs`, migration 6; `netobs/persist.ts`). No triggers, no `SYNC_ENTITIES` entry. They record where one
   host's sandboxes browsed, and syncing them would ship that to a central instance. Do not "fix" this
   by adding them to the journal.
 

@@ -138,13 +138,16 @@ describe('applyMigrations (multi-host sync migration)', () => {
     }
 
     // Every migration version recorded (3: glove network rollups, netobs/persist.ts; 4: their
-    // filter_since, how a revoked glove filter grant is remembered; 5: a kept destination's hop flag).
+    // filter_since, how a revoked glove filter grant is remembered; 5: a kept destination's hop flag;
+    // 6: their time axis, net_hours and net_runs).
     const versions = (db.prepare('SELECT version FROM schema_migrations ORDER BY version').all() as Array<{ version: number }>).map((r) => r.version);
-    expect(versions).toEqual([1, 2, 3, 4, 5]);
+    expect(versions).toEqual([1, 2, 3, 4, 5, 6]);
     const netCols = (db.prepare('PRAGMA table_info(net_sessions)').all() as Array<{ name: string }>).map((c) => c.name);
-    expect(netCols).toContain('filter_since');
+    expect(netCols).toEqual(expect.arrayContaining(['filter_since', 'hours_kept']));
     const destCols = (db.prepare('PRAGMA table_info(net_destinations)').all() as Array<{ name: string }>).map((c) => c.name);
     expect(destCols).toContain('hop');
+    const tables = (db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('net_hours', 'net_runs')").all() as Array<{ name: string }>).map((t) => t.name);
+    expect(tables.sort()).toEqual(['net_hours', 'net_runs']);
 
     // Journal triggers installed.
     const triggers = triggerNames(db);

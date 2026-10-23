@@ -10,6 +10,7 @@ import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import type { HistorySession, NetHistory } from './history.js';
 import { NetObs } from './index.js';
+import { hourKey } from './store.js';
 import { TEST_ID, addGloveSession } from './testing/glove-home.js';
 import { roundsRecords, roundsSessionFile } from './testing/rounds.js';
 import type { DestinationAggregate, NetSnapshot, NetTotals } from './types.js';
@@ -20,7 +21,7 @@ const TOKEN = TEST_ID;
 const NOW = Date.parse('2026-09-23T14:14:48.000Z');
 const LINES = readFileSync(join(FIXTURE, 'flows.ndjson'), 'utf8').split('\n').filter(Boolean);
 
-/** Rollups in memory, as SQLite would keep them. */
+/** Rollups in memory, as SQLite would keep them: rows replaced, hours and runs upserted. */
 class MemHistory implements NetHistory {
   rows = new Map<string, HistorySession>();
   saves = 0;
@@ -29,7 +30,18 @@ class MemHistory implements NetHistory {
   load(): HistorySession[] { return [...this.rows.values()].map((r) => structuredClone(r)); }
   save(rows: HistorySession[]): void {
     this.saves++;
-    for (const r of rows) this.rows.set(r.token, structuredClone(r));
+    for (const r of rows) {
+      const was = this.rows.get(r.token);
+      const merge = <T>(old: T[] | undefined, next: T[] | undefined, key: (x: T) => string) =>
+        [...new Map([...(old ?? []), ...(next ?? [])].map((x) => [key(x), x])).values()];
+      this.rows.set(r.token, structuredClone({
+        ...r,
+        // Keyed as net_hours is (`hourKey`), and in the store's order.
+        hours: merge(was?.hours, r.hours, (h) => hourKey(h.hour, h.run, h.key, h.tool)).sort((a, b) =>
+          a.hour - b.hour || (a.run ?? '').localeCompare(b.run ?? '') || a.key.localeCompare(b.key) || (a.tool ?? '').localeCompare(b.tool ?? '')),
+        runs: merge(was?.runs, r.runs, (x) => x.run),
+      }));
+    }
   }
 }
 
@@ -57,6 +69,8 @@ const once = (lines: string[]) => {
   writeSession(lines);
   return run(new MemHistory(false)).snap;
 };
+/** The time axis as one read shows it: every hour, and every run. */
+const axis = (obs: NetObs, token = TOKEN) => [obs.store.hourly(token), obs.store.gateRuns(token)];
 
 describe('kept network history', () => {
   it('shows the same totals after a restart over the same files', () => {
@@ -143,6 +157,20 @@ describe('kept network history', () => {
     expect(one?.watermark).toBe(Date.parse(JSON.parse(LINES[LINES.length - 1]).t));
   });
 
+  it('counts the hours of what it re-reads when the kept row predates them', () => {
+    const h = new MemHistory();
+    writeSession(LINES);
+    const first = run(h);
+    first.obs.persist();
+    // As a row kept before migration 6 loads: totals and destinations, no time axis.
+    const row = h.rows.get(TOKEN)!;
+    delete row.hours;
+    delete row.runs;
+    const { obs } = run(h);
+    expect(axis(obs)).toEqual(axis(first.obs));
+    expect(obs.store.hourly(TOKEN).length).toBeGreaterThan(0);
+  });
+
   it('writes nothing while session recording is off', () => {
     const h = new MemHistory(false);
     writeSession(LINES);
@@ -151,8 +179,10 @@ describe('kept network history', () => {
   });
 
   it('holds at every point: persist after i records, restart with the first j ≤ i expired and the rest written', () => {
-    const ref = once(LINES);
-    const want = [totals(ref.totals), dests(ref.destinations)];
+    writeSession(LINES);
+    const refObs = run(new MemHistory(false)).obs;
+    const ref = refObs.store.snapshot(TOKEN)!;
+    const want = [totals(ref.totals), dests(ref.destinations), axis(refObs)];
     const bad: string[] = [];
     for (let i = 1; i <= LINES.length; i += 3) {
       for (const j of [0, Math.floor(i / 2), i]) {
@@ -160,8 +190,8 @@ describe('kept network history', () => {
         writeSession(LINES.slice(0, i));
         run(h).obs.persist();
         writeSession(LINES.slice(j));
-        const got = run(h).snap;
-        if (JSON.stringify([totals(got.totals), dests(got.destinations)]) !== JSON.stringify(want)) {
+        const { obs, snap: got } = run(h);
+        if (JSON.stringify([totals(got.totals), dests(got.destinations), axis(obs)]) !== JSON.stringify(want)) {
           if (process.env.DIAG && bad.length < 3) console.log(i, j, JSON.stringify(totals(got.totals)), JSON.stringify(want[0]), JSON.stringify(Object.entries(dests(got.destinations)).filter(([k, v]) => JSON.stringify(v) !== JSON.stringify((want[1] as Record<string, unknown>)[k]))), JSON.stringify(Object.keys(want[1] as object).filter((k) => !(k in dests(got.destinations)))));
           bad.push(`${i}/${j}`);
         }
@@ -180,11 +210,12 @@ describe('kept network history', () => {
       writeSession(lines.slice(0, i), dir, token);
       run(h, token).obs.persist();
     }
-    const after = run(h, token).snap;
+    const { obs: afterObs, snap: after } = run(h, token);
     writeSession(lines, dir, token);
-    const ref = run(new MemHistory(false), token).snap;
+    const { obs: refObs, snap: ref } = run(new MemHistory(false), token);
     expect(totals(after.totals)).toEqual(totals(ref.totals));
     expect(dests(after.destinations)).toEqual(dests(ref.destinations));
+    expect(axis(afterObs, token)).toEqual(axis(refObs, token));
   });
 
   // llm-auth's hop is left out of the session totals (counted at the provider leg) but keeps
@@ -202,16 +233,18 @@ describe('kept network history', () => {
       write(lines.slice(0, i));
       run(h).obs.persist();
     }
-    const after = run(h).snap;
+    const { obs: afterObs, snap: after } = run(h);
     write(lines);
-    const ref = run(new MemHistory(false)).snap;
+    const { obs: refObs, snap: ref } = run(new MemHistory(false));
     expect(totals(after.totals)).toEqual(totals(ref.totals));
     expect(dests(after.destinations)).toEqual(dests(ref.destinations));
+    expect(axis(afterObs)).toEqual(axis(refObs));
     // …and with the older half expired from the files.
     write(lines.slice(Math.floor(lines.length / 2)));
-    const expired = run(h).snap;
+    const { obs: expiredObs, snap: expired } = run(h);
     expect(totals(expired.totals)).toEqual(totals(ref.totals));
     expect(dests(expired.destinations)).toEqual(dests(ref.destinations));
+    expect(axis(expiredObs)).toEqual(axis(refObs));
     // …and with every record gone: a kept hop is still a hop (a local link, off the Map).
     const hops = ref.destinations.filter((d) => d.flags.hop).map((d) => d.key);
     expect(hops.length).toBeGreaterThan(0);

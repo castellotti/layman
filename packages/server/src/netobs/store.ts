@@ -27,7 +27,7 @@ import { groupKeyFor } from './domain.js';
 import { type NetSessionLocation } from './discovery.js';
 import { blankRulesView } from './control.js';
 import { predict, type FlowFacts, type GateFacts, type RuleSet } from './rules.js';
-import type { CarryFlow, HistoryDest, HistorySession } from './history.js';
+import type { CarryFlow, HistoryDest, HistoryHour, HistoryRun, HistorySession } from './history.js';
 import { isHopService, isLanOnlyRule, offMap } from './types.js';
 import { mayGeolocate } from './geo.js';
 import type {
@@ -59,6 +59,15 @@ const UNKNOWN_GLOVE: NetGloveInfo = { template: null, filter: null, transcripts:
 
 const SECOND = 1000;
 const MINUTE = 60 * SECOND;
+export const HOUR = 60 * MINUTE;
+/** A `HistoryHour`'s identity: what `net_hours` is keyed by (null run and tool as ''). */
+export const hourKey = (hour: number, run: string | null, key: string, tool: string | null) => `${hour}|${run ?? ''}|${key}|${tool ?? ''}`;
+const byHour = (a: HistoryHour, b: HistoryHour) =>
+  a.hour - b.hour || (a.run ?? '').localeCompare(b.run ?? '') || a.key.localeCompare(b.key) || (a.tool ?? '').localeCompare(b.tool ?? '');
+/** Copies of `hours`, in `net_hours` order. */
+const sortedHours = (hours: Iterable<HistoryHour>) => [...hours].sort(byHour).map((h) => ({ ...h }));
+/** How long after its collector's stop a record still belongs to that run. */
+const RUN_STOP_GRACE_MS = 5 * SECOND;
 /** 1 s buckets are kept for this long, then folded into 1 min buckets for the session. */
 const SECOND_BUCKET_SPAN = 60 * MINUTE;
 const SPARK_SPAN = 60 * SECOND;
@@ -135,6 +144,12 @@ interface SessionData {
   runs: Map<string, RunState>;
   /** The latest run seen per service: a newer one means the forwarder restarted. */
   serviceRun: Map<string, string>;
+  /** Traffic per hour per destination, by `hourKey` (`HistoryHour`), and those changed since the last save. */
+  hours: Map<string, HistoryHour>;
+  dirtyHours: Set<string>;
+  /** The collector's runs (`HistoryRun`): one per `glove up`. `runOrder` is them by start, for `runAt`. */
+  gateRuns: Map<string, HistoryRun>;
+  runOrder: HistoryRun[] | null;
   flows: Map<string, FlowEntry>;
   /** Closed flow ids, oldest close first, for eviction. */
   closedOrder: string[];
@@ -277,6 +292,10 @@ export class NetStore extends EventEmitter {
       seenByKey: new Map(),
       runs: new Map(),
       serviceRun: new Map(),
+      hours: new Map(),
+      dirtyHours: new Set(),
+      gateRuns: new Map(),
+      runOrder: null,
       flows: new Map(),
       closedOrder: [],
       aggs: new Map(),
@@ -335,6 +354,9 @@ export class NetStore extends EventEmitter {
     }
     if (s.counters.records > 0) return; // too late to tell re-read records from new ones
     s.history = { s: h, dests: new Map(h.destinations.map((d) => [d.key, d])) };
+    for (const hr of h.hours ?? []) s.hours.set(hourKey(hr.hour, hr.run, hr.key, hr.tool), { ...hr });
+    for (const r of h.runs ?? []) s.gateRuns.set(r.run, { ...r });
+    s.runOrder = null;
   }
 
   /** A history-only session whose files have (re)appeared. */
@@ -424,6 +446,7 @@ export class NetStore extends EventEmitter {
     }
 
     this.apply(s, rec.id, prev ?? null, entry);
+    this.credit(s, rec, entry, prev, t, before, bytes);
 
     if (dUp || dDown) {
       const sec = Math.floor(t / SECOND) * SECOND;
@@ -450,6 +473,67 @@ export class NetStore extends EventEmitter {
     }
     s.dirtyTotals = true;
     this.emit('changed', token);
+  }
+
+  /**
+   * Count a flow record into its hour (of its collector run). The kept hours already hold every
+   * record before the watermark, so those are skipped; a carried flow (`CarryFlow`) counts only
+   * what it moved beyond what the kept rows held for it; and a record in the watermark's own
+   * millisecond that is not carried was not read then, so it is new. Kept history from before
+   * the hours existed (no `hours`) holds none of them: everything read is counted.
+   */
+  private credit(
+    s: SessionData, rec: FlowRecord, entry: FlowEntry, prev: FlowEntry | undefined, t: number,
+    before: { up: number; down: number }, bytes: { up: number; down: number },
+  ): void {
+    const kept = s.history?.s.hours !== undefined ? s.history.s : null;
+    if (kept && t < kept.watermark) return;
+    const c = kept?.carry[rec.id];
+    const up = Math.max(0, bytes.up - Math.max(before.up, c?.up ?? 0));
+    const down = Math.max(0, bytes.down - Math.max(before.down, c?.down ?? 0));
+    const opened = !prev && !c;
+    const refused = BLOCK_STATES.has(entry.state) && !(prev && BLOCK_STATES.has(prev.state)) && !c?.blocked;
+    const key = entry.destKey;
+    if (!key || (!up && !down && !opened && !refused)) return;
+
+    const run = this.runAt(s, t)?.run ?? null;
+    const hour = Math.floor(t / HOUR) * HOUR;
+    const tool = entry.rec.tool;
+    const k = hourKey(hour, run, key, tool);
+    const h = s.hours.get(k) ?? {
+      hour, run, key, tool, hop: entry.flags.hop, bytesUp: 0, bytesDown: 0, flows: 0, blocked: 0, blockedGuard: 0, blockedRule: 0, direct: 0, first: t, last: t,
+    };
+    h.bytesUp += up;
+    h.bytesDown += down;
+    h.flows += opened ? 1 : 0;
+    h.blocked += refused ? 1 : 0;
+    h.blockedGuard += refused && entry.state === 'guard' ? 1 : 0;
+    h.blockedRule += refused && entry.state === 'user_rule' ? 1 : 0;
+    h.direct += opened && entry.flags.scope === 'direct' ? 1 : 0;
+    h.hop = entry.flags.hop;
+    h.first = Math.min(h.first, t);
+    h.last = Math.max(h.last, t);
+    s.hours.set(k, h);
+    s.dirtyHours.add(k);
+  }
+
+  /**
+   * The collector run a record at `t` belongs to: the latest started at or before it, unless that
+   * one had stopped by then (a gap between runs). Forwarders' last records trail the collector's
+   * stop by moments, hence the grace.
+   */
+  private runAt(s: SessionData, t: number): HistoryRun | null {
+    let found: HistoryRun | null = null;
+    for (const r of this.runsByStart(s)) {
+      if (r.started > t) break;
+      found = r;
+    }
+    return found && (found.ended === null || t <= found.ended + RUN_STOP_GRACE_MS) ? found : null;
+  }
+
+  /** The collector's runs by start (`runOrder`, rebuilt when a run is added or starts earlier). */
+  private runsByStart(s: SessionData): HistoryRun[] {
+    return (s.runOrder ??= [...s.gateRuns.values()].sort((a, b) => a.started - b.started));
   }
 
   /** A record from before the kept watermark: the kept rows hold it, under the flow's key then. */
@@ -537,6 +621,7 @@ export class NetStore extends EventEmitter {
    */
   private reflagHops(s: SessionData): boolean {
     let changed = false;
+    const flipped = new Map<string, boolean>();
     const cutoff = (s.lastT ?? 0) - SECOND_BUCKET_SPAN;
     for (const [id, e] of s.flows) {
       const hop = this.isHop(s, e.rec.service);
@@ -560,7 +645,15 @@ export class NetStore extends EventEmitter {
         agg.agg.flags = destFlags(e.flags, agg.agg.ips);
         s.dirtyAggs.add(e.destKey!);
       }
+      if (e.destKey) flipped.set(e.destKey, hop);
       changed = true;
+    }
+    // The hours follow: a hop is a property of the service, so every hour of the destination flips with it.
+    for (const [k, h] of s.hours) {
+      const hop = flipped.get(h.key);
+      if (hop === undefined || h.hop === hop) continue;
+      h.hop = hop;
+      s.dirtyHours.add(k);
     }
     return changed;
   }
@@ -584,6 +677,7 @@ export class NetStore extends EventEmitter {
     const s = this.sessions.get(token);
     if (!s) return;
     s.counters.records++;
+    if (rec.role === 'collect') this.noteGateRun(s, rec);
     if (rec.role !== 'forward') return;
     if (rec.event === 'stop') {
       if (!s.runs.has(rec.run)) s.runs.set(rec.run, { service: rec.service, ended: false });
@@ -592,6 +686,23 @@ export class NetStore extends EventEmitter {
       this.noteRun(s, rec.run, rec.service, now);
     }
     this.emit('changed', token);
+  }
+
+  /**
+   * A collector record: when a `glove up` started and stopped. Taking the earliest start and the
+   * latest stop makes reading a record twice (a restart, a range) change nothing.
+   */
+  private noteGateRun(s: SessionData, rec: GateRecord): void {
+    const t = Date.parse(rec.t);
+    const known = s.gateRuns.get(rec.run);
+    const r = known ?? { run: rec.run, started: t, ended: null, inferred: false };
+    r.started = Math.min(r.started, t);
+    if (rec.event === 'stop') {
+      if (r.ended === null || t >= r.ended) r.inferred = rec.inferred;
+      r.ended = Math.max(r.ended ?? t, t);
+    }
+    if (!known || r.started !== known.started) s.runOrder = null;
+    s.gateRuns.set(rec.run, r);
   }
 
   /** A forwarder record (a `start`, or any flow record) of `run`: it is alive, and its service's current run. */
@@ -987,6 +1098,12 @@ export class NetStore extends EventEmitter {
     };
   }
 
+  /** Every destination as All records shows it (no flows): what a range's hourly part takes host and scope from. */
+  destinations(token: string): DestinationAggregate[] {
+    const s = this.sessions.get(token);
+    return s ? this.destViews(s) : [];
+  }
+
   /** Every destination: live ones with their history, then those only the history has. */
   private destViews(s: SessionData): DestinationAggregate[] {
     const out = [...s.aggs.values()].map((e) => this.aggView(s, e));
@@ -1043,8 +1160,10 @@ export class NetStore extends EventEmitter {
   /**
    * What to keep of a session (`history.ts`): the totals and destinations as
    * shown, and the latest record time they include. Null before anything was read.
+   * `changedHours` carries only the hours changed since `hoursSaved`, as a save
+   * every 30 s needs; by default every hour is in it.
    */
-  rollup(token: string): HistorySession | null {
+  rollup(token: string, changedHours = false): HistorySession | null {
     const s = this.sessions.get(token);
     if (!s || (s.lastT === null && !s.history)) return null;
     const t = this.totals(s);
@@ -1067,7 +1186,26 @@ export class NetStore extends EventEmitter {
         tool: d.tools[0] ?? null, firstSeen: d.firstSeen, lastSeen: d.lastSeen, bytesUp: d.bytesUp, bytesDown: d.bytesDown,
         flows: d.flows, blocked: d.blocked, lastState: d.state, hop: d.flags.hop,
       })),
+      hours: sortedHours(changedHours ? [...s.dirtyHours].map((k) => s.hours.get(k)!) : s.hours.values()),
+      runs: this.runsByStart(s).map((r) => ({ ...r })),
     };
+  }
+
+  /** The changed hours of the last `rollup(…, true)` were kept. */
+  hoursSaved(token: string): void {
+    this.sessions.get(token)?.dirtyHours.clear();
+  }
+
+  /** Traffic per hour per destination, oldest first (`HistoryHour`). */
+  hourly(token: string): HistoryHour[] {
+    const s = this.sessions.get(token);
+    return s ? sortedHours(s.hours.values()) : [];
+  }
+
+  /** The collector's runs, oldest first (`HistoryRun`). */
+  gateRuns(token: string): HistoryRun[] {
+    const s = this.sessions.get(token);
+    return s ? this.runsByStart(s).map((r) => ({ ...r })) : [];
   }
 
   /** Forwarder runs that are over (for the cross-check against glove's `ended_runs`). */
@@ -1119,6 +1257,7 @@ export class NetStore extends EventEmitter {
       emptyFolded: s.stateCounts.get('empty') ?? 0,
       historyTruncated: s.historyTruncated,
       historyOnly: s.historyOnly,
+      range: null,
     };
   }
 
@@ -1232,6 +1371,17 @@ export class NetStore extends EventEmitter {
     return secs.filter((b) => b.t > from);
   }
 
+  /** The session's first record as far as Layman knows, kept history included; null before any. */
+  firstSeen(token: string): number | null {
+    const s = this.sessions.get(token);
+    return s ? this.firstSeenOf(s) : null;
+  }
+
+  private firstSeenOf(s: SessionData): number | null {
+    const h = s.history?.s;
+    return s.firstSeen === null ? h?.firstSeen ?? null : Math.min(s.firstSeen, h?.firstSeen ?? Infinity);
+  }
+
   summaries(): NetSessionSummary[] {
     return [...this.sessions.values()]
       .map((s) => {
@@ -1242,7 +1392,7 @@ export class NetStore extends EventEmitter {
           harness: s.session?.harness ?? null,
           glove: { ...(s.historyOnly ? UNKNOWN_GLOVE : s.glove) },
           live: !s.historyOnly && s.gate.freshness === 'running',
-          firstSeen: s.firstSeen === null ? h?.firstSeen ?? null : Math.min(s.firstSeen, h?.firstSeen ?? Infinity),
+          firstSeen: this.firstSeenOf(s),
           lastSeen: s.lastT === null ? h?.lastSeen ?? null : Math.max(s.lastT, h?.lastSeen ?? 0),
           bytesUp: t.bytesUp,
           bytesDown: t.bytesDown,

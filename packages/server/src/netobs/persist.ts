@@ -1,8 +1,9 @@
 /**
- * The glove network rollups in SQLite (migration 3 in
+ * The glove network rollups in SQLite (migrations 3 and 6 in
  * `db/database.ts`): `NetHistory` for `NetObs`. Per-flow rows would dwarf the
- * event tables, so only sessions and destinations are kept (`history.ts`
- * explains how the totals survive a restart without double counting).
+ * event tables, so only sessions, destinations, each destination's active hours
+ * and the gate's collector runs are kept (`history.ts` explains how the totals
+ * survive a restart without double counting).
  *
  * Written only while session recording is on, like everything Layman records,
  * and never synced to other hosts (no triggers, no SYNC_ENTITIES entry).
@@ -16,12 +17,31 @@ interface SessionRow {
   token: string; env: string; session_name: string; first_seen: number; last_seen: number; watermark: number;
   bytes_up: number; bytes_down: number; flows: number; blocked_guard: number; blocked_rule: number; blocked_default: number;
   direct_flows: number; last_exit_json: string | null; last_status_json: string | null; session_json: string | null;
-  carry_json: string | null; filter_since: string | null; filter_saw_dir: number;
+  carry_json: string | null; filter_since: string | null; filter_saw_dir: number; hours_kept: number;
 }
+interface HourRow {
+  token: string; hour: number; run: string; dest_key: string; tool: string; hop: number; bytes_up: number; bytes_down: number;
+  flows: number; blocked: number; blocked_guard: number; blocked_rule: number; direct: number; first_t: number; last_t: number;
+}
+interface RunRow {
+  token: string; run: string; started: number; ended: number | null; inferred: number;
+}
+
 interface DestRow {
   token: string; host: string; port: number; group_key: string; last_ip: string | null; scope: string | null; resolution: string | null;
   tool: string | null; first_seen: number; last_seen: number; bytes_up: number; bytes_down: number; flows: number; blocked: number;
   last_state: string | null; hop: number;
+}
+
+/** Rows by token. */
+function byTokenOf<R extends { token: string }, T>(rows: R[], map: (r: R) => T): Map<string, T[]> {
+  const out = new Map<string, T[]>();
+  for (const r of rows) {
+    const list = out.get(r.token);
+    if (list) list.push(map(r));
+    else out.set(r.token, [map(r)]);
+  }
+  return out;
 }
 
 const json = <T>(s: string | null): T | null => {
@@ -42,20 +62,24 @@ export class SqliteNetHistory implements NetHistory {
 
   load(): HistorySession[] {
     const sessions = this.db.prepare('SELECT * FROM net_sessions').all() as SessionRow[];
-    const dests = this.db.prepare('SELECT * FROM net_destinations').all() as DestRow[];
-    const byToken = new Map<string, HistoryDest[]>();
-    for (const d of dests) {
-      const list = byToken.get(d.token) ?? [];
+    const byToken = byTokenOf(this.db.prepare('SELECT * FROM net_destinations').all() as DestRow[], (d): HistoryDest => {
       // `@service` keys (no host) are stored with the key as the host and port 0.
       const host = d.host.startsWith('@') ? null : d.host;
-      list.push({
+      return {
         key: destKey(host, d.port, d.host.slice(1)), host, port: host === null ? null : d.port,
         groupKey: d.group_key, lastIp: d.last_ip, scope: d.scope, resolution: d.resolution, tool: d.tool,
         firstSeen: d.first_seen, lastSeen: d.last_seen, bytesUp: d.bytes_up, bytesDown: d.bytes_down, flows: d.flows, blocked: d.blocked,
         lastState: d.last_state as NetState | null, hop: d.hop === 1,
-      });
-      byToken.set(d.token, list);
-    }
+      };
+    });
+    const hours = byTokenOf(this.db.prepare('SELECT * FROM net_hours ORDER BY hour, run, dest_key, tool').all() as HourRow[], (h) => ({
+      hour: h.hour, run: h.run === '' ? null : h.run, key: h.dest_key, tool: h.tool === '' ? null : h.tool, hop: h.hop === 1,
+      bytesUp: h.bytes_up, bytesDown: h.bytes_down, flows: h.flows, blocked: h.blocked, blockedGuard: h.blocked_guard, blockedRule: h.blocked_rule,
+      direct: h.direct, first: h.first_t, last: h.last_t,
+    }));
+    const runs = byTokenOf(this.db.prepare('SELECT * FROM net_runs ORDER BY started').all() as RunRow[], (r) => ({
+      run: r.run, started: r.started, ended: r.ended, inferred: r.inferred === 1,
+    }));
     return sessions.map((s) => ({
       token: s.token, filterSince: s.filter_since, filterSawDir: s.filter_saw_dir === 1, firstSeen: s.first_seen, lastSeen: s.last_seen, watermark: s.watermark,
       carry: json(s.carry_json) ?? {},
@@ -63,23 +87,42 @@ export class SqliteNetHistory implements NetHistory {
       blockedGuard: s.blocked_guard, blockedRule: s.blocked_rule, blockedDefault: s.blocked_default, directFlows: s.direct_flows,
       lastExit: json(s.last_exit_json), lastStatus: json(s.last_status_json), sessionFile: json(s.session_json),
       destinations: byToken.get(s.token) ?? [],
+      // A row kept before migration 6 has no time axis: leaving it out tells the store to count every hour it reads.
+      ...(s.hours_kept === 1 ? { hours: hours.get(s.token) ?? [], runs: runs.get(s.token) ?? [] } : {}),
     }));
   }
 
-  /** Replace each session's rows with its rollup, in one transaction: writing the same rollup twice changes nothing. */
+  /**
+   * Replace each session's row and destinations with its rollup and upsert its hours and runs,
+   * in one transaction: writing the same rollup twice changes nothing. Hours are upserted, not
+   * replaced, because a rollup every 30 s carries only those that changed.
+   */
   save(sessions: HistorySession[]): void {
     if (!sessions.length) return;
     const upsert = this.db.prepare(`
       INSERT INTO net_sessions (token, env, session_name, first_seen, last_seen, watermark, bytes_up, bytes_down, flows, blocked,
-        blocked_guard, blocked_rule, blocked_default, direct_flows, last_exit_json, last_status_json, session_json, carry_json, filter_since, filter_saw_dir)
+        blocked_guard, blocked_rule, blocked_default, direct_flows, last_exit_json, last_status_json, session_json, carry_json, filter_since, filter_saw_dir,
+        hours_kept)
       VALUES (@token, @env, @name, @firstSeen, @lastSeen, @watermark, @bytesUp, @bytesDown, @flows, @blocked,
-        @blockedGuard, @blockedRule, @blockedDefault, @directFlows, @lastExit, @lastStatus, @sessionFile, @carry, @filterSince, @filterSawDir)
+        @blockedGuard, @blockedRule, @blockedDefault, @directFlows, @lastExit, @lastStatus, @sessionFile, @carry, @filterSince, @filterSawDir,
+        @hoursKept)
       ON CONFLICT(token) DO UPDATE SET env = excluded.env, session_name = excluded.session_name, first_seen = excluded.first_seen,
         last_seen = excluded.last_seen, watermark = excluded.watermark, bytes_up = excluded.bytes_up, bytes_down = excluded.bytes_down,
         flows = excluded.flows, blocked = excluded.blocked, blocked_guard = excluded.blocked_guard, blocked_rule = excluded.blocked_rule,
         blocked_default = excluded.blocked_default, direct_flows = excluded.direct_flows, last_exit_json = excluded.last_exit_json,
         last_status_json = excluded.last_status_json, session_json = excluded.session_json, carry_json = excluded.carry_json,
-        filter_since = excluded.filter_since, filter_saw_dir = excluded.filter_saw_dir`);
+        filter_since = excluded.filter_since, filter_saw_dir = excluded.filter_saw_dir,
+        hours_kept = MAX(hours_kept, excluded.hours_kept)`);
+    const hour = this.db.prepare(`
+      INSERT INTO net_hours (token, hour, run, dest_key, tool, hop, bytes_up, bytes_down, flows, blocked, blocked_guard, blocked_rule, direct, first_t, last_t)
+      VALUES (@token, @hour, @run, @key, @tool, @hop, @bytesUp, @bytesDown, @flows, @blocked, @blockedGuard, @blockedRule, @direct, @first, @last)
+      ON CONFLICT(token, hour, run, dest_key, tool) DO UPDATE SET hop = excluded.hop, bytes_up = excluded.bytes_up,
+        bytes_down = excluded.bytes_down, flows = excluded.flows, blocked = excluded.blocked, blocked_guard = excluded.blocked_guard,
+        blocked_rule = excluded.blocked_rule, direct = excluded.direct, first_t = excluded.first_t, last_t = excluded.last_t`);
+    const run = this.db.prepare(`
+      INSERT INTO net_runs (token, run, started, ended, inferred)
+      VALUES (@token, @run, @started, @ended, @inferred)
+      ON CONFLICT(token, run) DO UPDATE SET started = excluded.started, ended = excluded.ended, inferred = excluded.inferred`);
     const clear = this.db.prepare('DELETE FROM net_destinations WHERE token = ?');
     const insert = this.db.prepare(`
       INSERT INTO net_destinations (token, host, port, group_key, last_ip, scope, resolution, tool, first_seen, last_seen,
@@ -97,7 +140,21 @@ export class SqliteNetHistory implements NetHistory {
           lastExit: s.lastExit ? JSON.stringify(s.lastExit) : null, lastStatus: s.lastStatus ? JSON.stringify(s.lastStatus) : null,
           sessionFile: s.sessionFile ? JSON.stringify(s.sessionFile) : null,
           carry: JSON.stringify(s.carry), filterSince: s.filterSince, filterSawDir: s.filterSawDir ? 1 : 0,
+          hoursKept: s.hours ? 1 : 0,
         });
+        for (const h of s.hours ?? []) {
+          hour.run({
+            token: s.token, hour: h.hour, run: h.run ?? '', key: h.key, tool: h.tool ?? '', hop: h.hop ? 1 : 0, bytesUp: h.bytesUp, bytesDown: h.bytesDown, flows: h.flows,
+            blocked: h.blocked, blockedGuard: h.blockedGuard, blockedRule: h.blockedRule, direct: h.direct,
+            first: Math.round(h.first), last: Math.round(h.last),
+          });
+        }
+        for (const r of s.runs ?? []) {
+          run.run({
+            token: s.token, run: r.run, started: Math.round(r.started), ended: r.ended === null ? null : Math.round(r.ended),
+            inferred: r.inferred ? 1 : 0,
+          });
+        }
         clear.run(s.token);
         for (const d of s.destinations) {
           const noHost = d.host === null;

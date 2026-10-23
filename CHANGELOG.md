@@ -2,6 +2,44 @@
 
 ## Unreleased
 
+- **Network views: time ranges on the server** (first part; no UI yet). A glove session's network data can now be asked for over one time window: `net:subscribe { token, range: { from, to } }`, with `to: null` for "until now". Without a range nothing changes. Design: `docs/extensions/glove.md` → "Time ranges".
+  - **Why on the server.** Topology and the other tabs add up a session's whole history, across every `glove up`. Narrowing that to one run or one exchange cannot be a filter on what Layman holds. Memory keeps only the newest 64 MB of glove's files, and what Layman keeps of older traffic is per hour, with no flows. A range is therefore read from glove's files into a fresh store, so it is counted by the same code as All records.
+  - **Bytes in a range are what moved during it.** A connection opened before the range and reused during it counts only its traffic in the range. The scan starts an hour early to find each open connection's bytes at the start.
+  - **Fast enough to use.** On a copy of a real session (264 MB of flow files): everything in 2.1 s, one multi-day run in 1.2 s, one hour in under 0.3 s. Files outside the window are skipped. The scan is asynchronous, reports progress (`net:range:progress`), and reads at most 512 MB, saying so when it hits that.
+  - **Shared and live where it should be.** One built range serves every socket that asks for it, and recent ones are kept for switching tabs. A range reaching into the present follows the gate as All records does; one that has ended gets no deltas. `net:delta` and `net:exit` now carry the range they are for (`range`, null for All records).
+  - **Review fixes.** A scan now reads a file glove rotated away while it ran. A record read by both the scan and the live reader counts once. Ranges someone is watching follow `session.json` and a new geolocation database. A range that cannot be built (an unknown session, a read error, a session whose files are gone) is answered with `net:range:error`, never silence. `stop()` ends scans. Idle ranges are kept only once they have ended.
+- **Network views: a range older than glove's files.** glove's rotation deletes old flow files. A range reaching back past them is now answered from Layman's hourly history, instead of counting only what is left. A session whose files are all gone gets ranges this way too, instead of an error. Design: `docs/extensions/glove.md` → "Time ranges".
+  - **Each hour counted once.** The hourly part hands over to the files at the hour after they begin, so a file starting mid-hour loses nothing and counts nothing twice. Both parts are summed by the store's existing kept-history code.
+  - **Said plainly.** The banner says which part is from the hourly history and how it differs: whole hours, totals by destination, no individual connections. It no longer warns of missing traffic there.
+  - **Checked on real data.** On a copy of a real session with its two oldest files deleted, a 3-day run and a 2-hour report gave the same bytes as with every file. Connection counts differ by a handful, because the hours count connections opened in them.
+  - **Review fixes.**
+    - The hand-over is never in the future, so an open range no longer drops up to an hour of live traffic.
+    - Files that exist but are empty no longer freeze a range.
+    - A connection spanning the hand-over is counted once.
+    - Hourly rows keep refusals by kind and direct connections, so those come out exact.
+    - The banner names a real gap where Layman's hours begin late, says why a part came from the hours, and calls a quiet stretch covered.
+- **Network views: a time range from the URL.** `&from=<iso>&to=<iso|now>` on any of the four network tabs shows that window, built by the server.
+  - **Kept and cleared sensibly.** The range stays when you switch between Network, Map, Topology and Trace, and is cleared when you pick another glove session. Setting or clearing it is a history entry, so Back returns to the previous range.
+  - **Labelled.** While it loads, the view says it is reading glove's files, with progress. Once shown, a banner gives the span in local time (UTC on hover) and says the figures are only the traffic in it. It also warns when glove's files do not reach back to the start, and offers All records.
+  - **Safe while switching.** Frames for a range you have left are dropped, so an old range's data is never shown as the new one's.
+  - **Picker to come.** The picker (runs, bursts, calendar) is the next step; for now a range is set through the URL.
+  - **Review fixes.**
+    - A link with a range but no glove session keeps its range when the default session is filled in.
+    - Starts before 1970 and unreadable ends are rejected the same way on both sides, and the server answers a range it rejects with an error, so the view no longer waits forever.
+    - The banner warns only about traffic glove actually deleted, and says when the session began when a range starts before it. A scan cut short by its budget is called skipped.
+    - A previous range's error no longer flashes under a new one.
+    - A loading open range's length ticks.
+  - **Browser check.** `e2e/network/range.mjs` (19 checks). The e2e `control` check now expects Cut all to keep the LLM by `tool: llm`, as it has since the llm-auth change.
+- **Network views: runs, bursts and an hourly history** (server; no UI yet). Design: `docs/extensions/glove.md` → "Runs, bursts and the hourly history".
+  - **Kept past glove's rotation.** Migration 6 adds `net_runs` (one row per `glove up`, from glove's collector records) and `net_hours` (traffic per destination, per run, per hour). Both are local only and never synced. They are counted by the same restart rule as the totals and held to it at every restart point. Hours are upserted, only those that changed, so the 30 s save stays cheap.
+  - **`GET /api/net/sessions/:token/segments`** gives each run and how it ended, the agent's bursts of work, the Layman sessions joined to the glove session, and the hourly activity.
+  - **Bursts are model calls, not traffic.** A sandbox is never quiet: between a session's daily reports, its browser sidecar kept up ~550 connections an hour, so a 6 h gap in traffic never came and a 3-day run stayed one burst. Split on gaps in `tool: llm` traffic, the same run separates into its four reports. Sessions with no model calls observed fall back to all traffic.
+  - **Review fixes.**
+    - Hours follow `session.json` when it changes which services are hops; before, a model call's hop leg stayed in the hours and counted twice.
+    - Hours are keyed by tool too, so another tool on the same host can no longer hide a model call.
+    - A run's totals are summed from its hours rather than kept separately.
+    - Traffic while no run is up belongs to no run.
+    - Loading the hours is linear, not quadratic.
 - **better-sqlite3 9.6.0 → 13.0.3: the server runs on Node 24+.** 9.x shipped prebuilds only up to Node 22 and did not compile against newer Node, so on Node 24+ every test that opens a database failed with "Could not locate the bindings file" and the server could not start natively. 13.x is built on N-API and bundles its prebuilt binaries in the package, so one binary serves every Node ≥ 22 (its new minimum, which Layman already meets). No API Layman uses changed (12.0 dropped Node 18; 13.0 moved to N-API and added `db.explain()` and `statement.toString()`). Checked on Node 26.12 (typecheck clean; server 989 passed, 9 skipped (the glove cross-checks, which need `../glove`); web 485 passed) and in the `node:22-slim` image (builds, the binding opens a database). `docs/development.md` no longer tells you to stay on Node 22.
 
 - **Dashboard panes autoscroll, and the mouse wheel scrolls the Dashboard.** With more session panes open than fit in the window, each pane's tail was its own scroll box. A wheel over one scrolled that session's history instead of the page, and on macOS the page's overlay scrollbar faded, leaving no way back up. Each pane header now has an **autoscroll** toggle, on by default.

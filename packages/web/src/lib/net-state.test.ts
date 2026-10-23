@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  MAX_CLOSED_FLOWS, applyNetMessage, defaultNetToken, initialNetState, networkTabSignal,
+  MAX_CLOSED_FLOWS, applyNetMessage, defaultNetToken, initialNetState, networkTabSignal, rangeKey, subscribeTo,
   type NetClientState,
 } from './net-state.js';
 import type {
@@ -13,7 +13,7 @@ const snapshot = (token: string, over: Partial<NetSnapshot> = {}): NetSnapshot =
   rules: rulesView({ exists: false, file: null }),
   destinations: [dest('arxiv.org:443'), dest('gone.example:443')], flows: [flow('f1')], buckets: [{ t: 1000, up: 1, down: 2 }],
   totals: totals({ flows: 1 }), counters: { records: 1, invalid: 0, skipped: 0, gaps: 0 }, emptyFolded: 0,
-  historyTruncated: false, historyOnly: false, ...over,
+  historyTruncated: false, historyOnly: false, range: null, ...over,
 });
 const delta = (over: Partial<NetDelta> = {}): NetDelta => ({
   flows: [], destinations: [], removedDestinations: [], buckets: [], totals: totals(),
@@ -40,7 +40,7 @@ describe('applyNetMessage', () => {
   });
 
   it('drops a delta that arrives before the snapshot', () => {
-    const s = applyNetMessage(subscribed('a'), { type: 'net:delta', token: 'a', delta: delta({ flows: [flow('f9')] }) });
+    const s = applyNetMessage(subscribed('a'), { type: 'net:delta', token: 'a', range: null, delta: delta({ flows: [flow('f9')] }) });
     expect(s.data).toBeNull();
   });
 
@@ -53,8 +53,8 @@ describe('applyNetMessage', () => {
       buckets: [{ t: 1000, up: 5, down: 6 }, { t: 2000, up: 1, down: 1 }],
       totals: totals({ flows: 2 }),
     });
-    s = applyNetMessage(s, { type: 'net:delta', token: 'a', delta: d });
-    s = applyNetMessage(s, { type: 'net:delta', token: 'a', delta: d });
+    s = applyNetMessage(s, { type: 'net:delta', token: 'a', range: null, delta: d });
+    s = applyNetMessage(s, { type: 'net:delta', token: 'a', range: null, delta: d });
     expect([...s.data!.flows.keys()].sort()).toEqual(['f1', 'f2']);
     expect(s.data!.flows.get('f1')!.bytes).toEqual({ up: 9, down: 90 });
     expect([...s.data!.destinations.keys()]).toEqual(['arxiv.org:443']);
@@ -66,7 +66,7 @@ describe('applyNetMessage', () => {
   it('bounds closed flows but never evicts an open one', () => {
     let s = applyNetMessage(subscribed('a'), { type: 'net:snapshot', token: 'a', snapshot: snapshot('a') });
     const closed = Array.from({ length: MAX_CLOSED_FLOWS + 10 }, (_, i) => flow(`c${i}`, { phase: 'close', lastT: i }));
-    s = applyNetMessage(s, { type: 'net:delta', token: 'a', delta: delta({ flows: closed }) });
+    s = applyNetMessage(s, { type: 'net:delta', token: 'a', range: null, delta: delta({ flows: closed }) });
     expect(s.data!.flows.size).toBe(MAX_CLOSED_FLOWS + 1);
     expect(s.data!.flows.has('f1')).toBe(true);
     expect(s.data!.flows.has('c0')).toBe(false);
@@ -79,9 +79,53 @@ describe('applyNetMessage', () => {
     s = applyNetMessage(s, { type: 'net:rules', token: 'a', rules: rulesView({ file: null, readError: 'bad' }) });
     expect(s.data!.rules.readError).toBe('bad');
     const exit = { v: 1 as const, type: 'exit' as const, t: 't', env: 'a', session: 'a', kind: 'vpn', ip: '1.2.3.4', country: 'Sweden', city: null, lat: null, lon: null, source: 'x', healthy: true };
-    s = applyNetMessage(s, { type: 'net:exit', token: 'a', exit });
+    s = applyNetMessage(s, { type: 'net:exit', token: 'a', range: null, exit });
     expect(s.data!.exit?.country).toBe('Sweden');
     expect(s.data!.exits).toHaveLength(1);
+  });
+});
+
+describe('time ranges', () => {
+  const R = rangeKey({ from: 1000, to: null });
+  const info = { key: R, from: 1000, to: null, filesFrom: 500, sessionFrom: 500, truncated: false, hourly: null, scannedBytes: 10 };
+  const inRange = () => subscribeTo(subscribed('a'), 'a', R);
+
+  it('keys a range as the server does', () => {
+    expect([rangeKey({ from: 5, to: null }), rangeKey({ from: 5, to: 9 })]).toEqual(['5-now', '5-9']);
+  });
+
+  it('shows only the subscribed range: another range’s snapshot, deltas and exits are dropped', () => {
+    // All records' snapshot, arriving after the client asked for a range: not this view's.
+    let s = applyNetMessage(inRange(), { type: 'net:snapshot', token: 'a', snapshot: snapshot('a') });
+    expect(s.data).toBeNull();
+    s = applyNetMessage(s, { type: 'net:snapshot', token: 'a', snapshot: snapshot('a', { range: info }) });
+    expect(s.data?.range?.key).toBe(R);
+    const before = s.data;
+    s = applyNetMessage(s, { type: 'net:delta', token: 'a', range: null, delta: delta({ flows: [flow('live')] }) });
+    s = applyNetMessage(s, { type: 'net:delta', token: 'a', range: '1-2', delta: delta({ flows: [flow('other')] }) });
+    expect(s.data).toBe(before);
+    s = applyNetMessage(s, { type: 'net:delta', token: 'a', range: R, delta: delta({ flows: [flow('mine')] }) });
+    expect(s.data!.flows.has('mine')).toBe(true);
+    // The gate is the same in every range.
+    s = applyNetMessage(s, { type: 'net:status', token: 'a', status: gate({ freshness: 'stale' }) });
+    expect(s.data!.gate.freshness).toBe('stale');
+  });
+
+  it('tracks progress and errors for its own range only, and clears both with the snapshot', () => {
+    let s = applyNetMessage(inRange(), { type: 'net:range:progress', token: 'a', range: '1-2', scannedBytes: 1, totalBytes: 9 });
+    expect(s.rangeProgress).toBeNull();
+    s = applyNetMessage(s, { type: 'net:range:progress', token: 'a', range: R, scannedBytes: 3, totalBytes: 9 });
+    expect(s.rangeProgress).toEqual({ range: R, scannedBytes: 3, totalBytes: 9 });
+    s = applyNetMessage(s, { type: 'net:snapshot', token: 'a', snapshot: snapshot('a', { range: info }) });
+    expect(s.rangeProgress).toBeNull();
+    s = applyNetMessage(inRange(), { type: 'net:range:error', token: 'a', range: R, error: 'files gone' });
+    expect([s.rangeError, s.data]).toEqual([{ range: R, error: 'files gone' }, null]);
+  });
+
+  it('changing range drops what was shown, so the old range never reads as the new one', () => {
+    const s = applyNetMessage(subscribed('a'), { type: 'net:snapshot', token: 'a', snapshot: snapshot('a') });
+    expect(subscribeTo(s, 'a', R).data).toBeNull();
+    expect(subscribeTo(s, 'a', null)).toBe(s);
   });
 });
 

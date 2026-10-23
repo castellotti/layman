@@ -1779,7 +1779,7 @@ export function createServer(config: LaymanConfig): LaymanServer {
             const message = JSON.parse(String(data)) as ClientMessage;
             // Per-socket, so it cannot go through the socket-less handler below.
             if (message.type === 'net:subscribe') {
-              netObs.subscribe(ws, typeof message.token === 'string' ? message.token : null);
+              netObs.subscribe(ws, typeof message.token === 'string' ? message.token : null, message.range);
               return;
             }
             if (message.type === 'net:rules:apply') {

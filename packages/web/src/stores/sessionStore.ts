@@ -1,6 +1,8 @@
 import { create } from 'zustand';
 import type { TimelineEvent, PendingApprovalDTO, LaymanConfig, SessionStatus, SetupStatus, BookmarkFolder, Bookmark, HighlightFolder, Highlight, SessionTimeMetrics, SessionAccessLog, SessionMetrics, DriftState, LiveStream, ResolvedId, SyncStatus, HostStats } from '../lib/types.js';
 import type { SessionInfo } from '../lib/ws-protocol.js';
+import type { NetRange } from '../lib/netobs-types.js';
+import { rangeKey } from '../lib/net-state.js';
 import type { LaymanRoute, RouteOptions, ViewName } from '../lib/layman-url.js';
 import { extractTurn } from '../lib/turns.js';
 import { pairFor } from '../lib/event-pairing.js';
@@ -23,6 +25,11 @@ export const NETWORK_VIEW_MODES: readonly ViewMode[] = ['network', 'map', 'topol
 
 export function isNetworkView(mode: ViewMode): boolean {
   return (NETWORK_VIEW_MODES as readonly string[]).includes(mode);
+}
+
+/** Whether two time ranges (or All records, null) are the same: the same `rangeKey`, as the server tells them apart. */
+function sameRange(a: NetRange | null, b: NetRange | null): boolean {
+  return (a ? rangeKey(a) : null) === (b ? rangeKey(b) : null);
 }
 
 // ─── Expanding-interface layout state ──────────────────────────────────────
@@ -295,12 +302,18 @@ export interface SessionState {
   flowchartOpen: boolean;
 
   // Network views (glove). Selection only — the network *data* lives in
-  // netStore, which updates several times a second. These two are hydrated from
-  // `?glove=` / `?dest=` and read back by routeForState, so they belong here.
+  // netStore, which updates several times a second. These are hydrated from
+  // `?glove=` / `?dest=` / `?from=&to=` and read back by routeForState, so they belong here.
   /** The glove session token shown, or null for "pick the default". */
   netToken: string | null;
   /** Selected destination host, shared across the four network tabs. */
   netDest: string | null;
+  /**
+   * The time range the four network tabs show (epoch ms; `to: null` runs until now), or null
+   * for All records. Shared across the tabs, so an investigation survives switching between
+   * them; cleared with the glove session, whose runs and records it was chosen from.
+   */
+  netRange: NetRange | null;
 
   // Dashboard view
   dashboardFocusedSession: string | null;
@@ -396,9 +409,11 @@ export interface SessionState {
   removeHighlight: (highlightId: string) => void;
   navigateFromPromptsToSession: (sessionId: string, promptEventId: string) => void;
   setSelectedHighlight: (highlightId: string | null) => void;
-  /** Choose the glove session the network views show; clears the destination selection. */
+  /** Choose the glove session the network views show; clears the destination selection and the time range. */
   setNetToken: (token: string | null) => void;
   setNetDest: (host: string | null) => void;
+  /** Show one time range of the glove session, or All records (null). */
+  setNetRange: (range: NetRange | null) => void;
   selectTurn: (sessionId: string, promptEventId: string | null) => void;
   hydrateFromRoute: (route: LaymanRoute, opts: RouteOptions) => Promise<void>;
   clearRouteError: () => void;
@@ -493,6 +508,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
 
   netToken: null,
   netDest: null,
+  netRange: null,
 
   dashboardFocusedSession: null,
   dashboardSessionOrder: [],
@@ -862,8 +878,11 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   setSelectedHighlight: (selectedHighlightId) =>
     set({ selectedHighlightId, ...(selectedHighlightId ? { routeFolderId: null } : {}) }),
 
-  setNetToken: (netToken) => set((s) => (s.netToken === netToken ? {} : { netToken, netDest: null })),
+  // Filling in the default session (from none) keeps what a deep link named alongside it; only
+  // switching from one session to another clears the destination and the range chosen in the old one.
+  setNetToken: (netToken) => set((s) => (s.netToken === netToken ? {} : s.netToken === null ? { netToken } : { netToken, netDest: null, netRange: null })),
   setNetDest: (netDest) => set({ netDest }),
+  setNetRange: (netRange) => set((s) => (sameRange(s.netRange, netRange) ? {} : { netRange })),
 
   // An explicit user navigation to one turn — the URL becomes /s/<sid>/t/<pid>.
   selectTurn: (sessionId, promptEventId) => set({
@@ -997,7 +1016,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
           ...(mode === 'stream' ? { logsOverride: true, dashboardOverride: false, splitOverrides: {} } : {}),
           // A network deep link names its glove session and selection; any
           // other view leaves the last choice alone for the next visit.
-          ...(isNetworkView(mode) ? { netToken: opts.glove ?? null, netDest: opts.dest ?? null } : {}),
+          ...(isNetworkView(mode) ? { netToken: opts.glove ?? null, netDest: opts.dest ?? null, netRange: opts.range ?? null } : {}),
         });
         return;
       }

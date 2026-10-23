@@ -49,6 +49,18 @@ describe('net REST routes', () => {
     expect(counts).toEqual({ finished: 9, gate_shutdown: 1, broken: 1, guard: 3, user_rule: 1 });
   });
 
+  it('GET …/segments gives the runs, bursts and hours, and checks the gap', async () => {
+    const res = await app.inject(`/api/net/sessions/${TEST_ID}/segments`);
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body).toMatchObject({ token: TEST_ID, gapMs: 6 * 3_600_000, agentSessions: [] });
+    expect(body.hours.length).toBeGreaterThan(0);
+    expect(body.bursts.length).toBeGreaterThan(0);
+    expect((await app.inject(`/api/net/sessions/${TEST_ID}/segments?gap=0`)).statusCode).toBe(400);
+    expect((await app.inject(`/api/net/sessions/${TEST_ID}/segments?gap=12`)).json().gapMs).toBe(12 * 3_600_000);
+    expect((await app.inject('/api/net/sessions/nope/segments')).statusCode).toBe(404);
+  });
+
   it('404s an unknown token', async () => {
     expect((await app.inject('/api/net/sessions/nope')).statusCode).toBe(404);
     expect((await app.inject('/api/net/sessions/nope/flows')).statusCode).toBe(404);

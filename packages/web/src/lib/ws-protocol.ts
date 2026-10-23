@@ -15,7 +15,7 @@ import type {
   SyncStatus,
   HostStats,
 } from './types.js';
-import type { NetServerMessage, RulesOp } from './netobs-types.js';
+import type { NetRange, NetServerMessage, RulesOp } from './netobs-types.js';
 
 export interface SessionInfo {
   sessionId: string;
@@ -83,6 +83,9 @@ export type ClientMessage =
   | { type: 'drift:reset'; sessionId: string }
   | { type: 'drift:dismiss'; sessionId: string; approvalId: string }
   | { type: 'drift:dismiss-item'; sessionId: string; category: 'indicator' | 'patternBreak' | 'phantomReference' | 'violation'; value: string }
-  /** Network data for one glove session at a time per socket; null unsubscribes. */
-  | { type: 'net:subscribe'; token: string | null }
+  /**
+   * Network data for one glove session at a time per socket; null unsubscribes. With a
+   * `range`, only that window's records (`netobs/range.ts`); without one, All records.
+   */
+  | { type: 'net:subscribe'; token: string | null; range?: NetRange | null }
   | { type: 'net:rules:apply'; token: string; op: RulesOp; opId: string };

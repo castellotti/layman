@@ -22,7 +22,7 @@ if [ -z "${CONTAINER_ENGINE:-}" ]; then
 fi
 export LAYMAN_E2E_DIR="$DIR" LAYMAN_E2E_URL="http://localhost:$PORT" LAYMAN_E2E_NAME="$NAME" CONTAINER_ENGINE
 case "$DIR" in /|"$HOME"|"$HOME"/.glove*|"$HOME"/.local*|"") echo "Refusing LAYMAN_E2E_DIR=$DIR: it is deleted and recreated." >&2; exit 1 ;; esac
-CHECKS=(network control map topology trace persistence ip-setting)
+CHECKS=(network control map topology trace range persistence ip-setting)
 
 replay() {
   (cd "$REPO/packages/server" && nohup node --import tsx scripts/netobs-replay.ts --dir "$DIR/glove" "$@" >>"$DIR/replay.log" 2>&1 & echo $! >>"$DIR/replay.pids")

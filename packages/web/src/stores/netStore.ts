@@ -7,14 +7,17 @@
  * view state and lives in sessionStore, where the URL routing reads it.
  */
 import { create } from 'zustand';
-import { applyNetMessage, initialNetState, startOp, type NetClientState } from '../lib/net-state.js';
+import { applyNetMessage, initialNetState, startOp, subscribeTo, type NetClientState } from '../lib/net-state.js';
 import type { NetServerMessage, RulesOp } from '../lib/netobs-types.js';
 import type { ClientMessage } from '../lib/ws-protocol.js';
 
 interface NetStore extends NetClientState {
   apply: (msg: NetServerMessage) => void;
-  /** Record which token this client subscribed to; data for any other token is dropped. */
-  setSubscribed: (token: string | null) => void;
+  /**
+   * Record which token (and time range, by `rangeKey`; null for All records) this client
+   * subscribed to; data for any other is dropped.
+   */
+  setSubscribed: (token: string | null, range?: string | null) => void;
   /** The socket's send, registered by NetworkView while the tabs are open. */
   sender: ((msg: ClientMessage) => void) | null;
   setSender: (send: ((msg: ClientMessage) => void) | null) => void;
@@ -31,8 +34,7 @@ export const useNetStore = create<NetStore>((set, get) => ({
   ...initialNetState,
   sender: null,
   apply: (msg) => set((s) => applyNetMessage(s, msg)),
-  setSubscribed: (token) =>
-    set((s) => (s.subscribed === token ? {} : { subscribed: token, data: null })),
+  setSubscribed: (token, range = null) => set((s) => subscribeTo(s, token, range)),
   setSender: (sender) => set({ sender }),
   applyRules: (op) => {
     const { sender, subscribed } = get();

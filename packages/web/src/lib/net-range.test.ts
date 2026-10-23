@@ -1,0 +1,59 @@
+import { describe, expect, it } from 'vitest';
+import { formatRange, formatSpan, formatStamp, rangeGaps, rangeHourly, rangeLead, rangeTitle } from './net-range.js';
+
+// Local-time output depends on the machine's zone, so times are built from local parts.
+const at = (month: number, day: number, h: number, m: number, s: number) => new Date(2026, month, day, h, m, s).getTime();
+
+describe('net-range', () => {
+  it('stamps local time to the second', () => {
+    expect(formatStamp(at(9, 21, 0, 27, 3))).toBe('Oct 21 00:27:03');
+  });
+
+  it('says how long, in the two largest units', () => {
+    expect([formatSpan(40_000), formatSpan(312_000), formatSpan(29 * 3_600_000 + 42 * 60_000), formatSpan(3 * 86_400_000)])
+      .toEqual(['40 s', '5 m 12 s', '1 d 5 h', '3 d']);
+    expect(formatSpan(7_200_000)).toBe('2 h');
+  });
+
+  it('writes a range, leaving out the end’s date on the same day, and "now" for an open one', () => {
+    expect(formatRange({ from: at(9, 21, 0, 27, 3), to: at(9, 22, 6, 9, 2) })).toBe('Oct 21 00:27:03 → Oct 22 06:09:02 (1 d 5 h)');
+    expect(formatRange({ from: at(9, 21, 8, 0, 0), to: at(9, 21, 8, 47, 5) })).toBe('Oct 21 08:00:00 → 08:47:05 (47 m 5 s)');
+    expect(formatRange({ from: at(9, 21, 8, 0, 0), to: null }, at(9, 21, 9, 0, 0))).toBe('Oct 21 08:00:00 → now (1 h)');
+    expect(rangeTitle({ from: Date.UTC(2026, 9, 21, 8), to: null })).toBe('2026-10-21T08:00:00.000Z → now (UTC)');
+  });
+
+  it('says what a range leaves out: what glove deleted, not what came before the session', () => {
+    const base = { key: 'k', from: at(9, 16, 0, 0, 0), to: null, scannedBytes: 1, truncated: false, hourly: null };
+    const start = at(9, 16, 6, 13, 36);
+    expect(rangeGaps({ ...base, filesFrom: base.from - 1000, sessionFrom: base.from - 1000 })).toEqual([]);
+    // The session began after the range did, and glove kept everything: nothing is missing.
+    expect(rangeGaps({ ...base, filesFrom: start, sessionFrom: start })).toEqual([]);
+    expect(rangeLead({ ...base, filesFrom: start, sessionFrom: start })).toBe('The session began Oct 16 06:13:36.');
+    // The session began earlier than the oldest file left: glove deleted the rest.
+    expect(rangeGaps({ ...base, filesFrom: start, sessionFrom: base.from - 1000 })).toEqual(['glove’s files only reach back to Oct 16 06:13:36: traffic before that is not counted.']);
+    expect(rangeGaps({ ...base, filesFrom: at(9, 18, 0, 0, 0), sessionFrom: base.from, truncated: true }))
+      .toEqual(['The range is too long to read in full: traffic before Oct 18 00:00:00 was skipped.']);
+    expect(rangeGaps({ ...base, filesFrom: null, sessionFrom: null })).toEqual(['glove keeps no records for this range.']);
+  });
+
+  it('says how a part answered from the hourly history differs, and calls nothing missing', () => {
+    const base = { key: 'k', from: at(9, 16, 0, 0, 0), to: null, scannedBytes: 1, truncated: false, sessionFrom: at(9, 15, 0, 0, 0) };
+    const mixed = { ...base, filesFrom: at(9, 17, 6, 13, 36), hourly: { from: at(9, 16, 0, 0, 0), to: at(9, 17, 7, 0, 0) } };
+    expect(rangeGaps(mixed)).toEqual([]);
+    expect(rangeHourly(mixed)).toBe('Before Oct 17 07:00:00 is from Layman’s hourly history (glove no longer has those files): whole hours, totals by destination, no individual connections.');
+    expect(rangeHourly({ ...mixed, filesFrom: null })).toMatch(/^All of it is from Layman’s hourly history/);
+    expect(rangeHourly({ ...mixed, hourly: null })).toBeNull();
+    // A range ending before the files take over is all hourly; budget-skipped files are still on disk.
+    expect(rangeHourly({ ...mixed, to: at(9, 16, 3, 0, 0) })).toMatch(/^All of it/);
+    expect(rangeHourly({ ...mixed, truncated: true })).toMatch(/too long to read those files in full/);
+  });
+
+  it('still names a gap when Layman’s hours begin after the session did', () => {
+    const base = { key: 'k', from: at(9, 16, 0, 0, 0), to: null, scannedBytes: 1, truncated: false, filesFrom: at(9, 19, 0, 0, 0) };
+    // The session ran from the 16th, Layman's hours start on the 18th: the 16th and 17th are not counted.
+    expect(rangeGaps({ ...base, sessionFrom: at(9, 16, 0, 0, 0), hourly: { from: at(9, 18, 0, 0, 0), to: at(9, 19, 1, 0, 0) } }))
+      .toEqual(['Layman kept nothing before Oct 18 00:00:00: traffic before that is not counted.']);
+    // The range starts before the session: the hours reaching back to the session's start is enough.
+    expect(rangeGaps({ ...base, sessionFrom: at(9, 18, 0, 20, 0), hourly: { from: at(9, 18, 0, 0, 0), to: at(9, 19, 1, 0, 0) } })).toEqual([]);
+  });
+});
