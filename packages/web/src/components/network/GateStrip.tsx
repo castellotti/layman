@@ -39,7 +39,6 @@ function sessionOption(s: NetSessionSummary): string {
 const DISPLAY_KEY = 'layman.net.rangeDisplay';
 const GAP_KEY = 'layman.net.burstGap';
 
-/** A setting kept per browser, like Panels visibility. */
 /** A range running until now: its length grows, so only this ticks. */
 function RangeText({ range }: { range: NetRange }) {
   const now = useNow(range.to === null ? 1000 : 3_600_000);

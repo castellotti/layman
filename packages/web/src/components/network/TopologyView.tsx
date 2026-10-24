@@ -13,7 +13,7 @@ import { controlDisabledReason, siblingIds } from '../../lib/net-rules.js';
 import { toolLabel } from '../../lib/net-table.js';
 import {
   easeScroll, keyScroll, layoutTopology, pathHops, projectTopology, scrollThumb, scrollToDest, thumbDrag, wheelDelta,
-  type BandKind, type DestSort, type DestStub, type HopEvidence, type LineTone, type Tone, type TopoBand, type TopoNode, type Topology,
+  type BandKind, type DestSort, type DestStub, type HopEvidence, type LineTone, type Tone, type TopoBand, type TopoNode, type TopoProjection, type Topology,
 } from '../../lib/net-topology.js';
 import { buttonStyle } from './ControlPopover.js';
 import { Badge, Tile } from './DetailCard.js';
@@ -153,6 +153,15 @@ const SORT_KEY = 'layman.topology.destSort';
 
 const reducedMotion = () => typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 
+/** The stubs' counts, as a key: a frame that changes it must commit. */
+const counts = (p: TopoProjection) => `${p.above?.count ?? 0}/${p.below?.count ?? 0}`;
+
+/** Diagram units per screen pixel down the svg `el` is in (the viewBox scales it). */
+function unitsPerPx(el: SVGElement | null): number {
+  const ctm = el?.ownerSVGElement?.getScreenCTM();
+  return ctm && ctm.d ? 1 / ctm.d : 1;
+}
+
 /**
  * The destination column's scroll. React renders at the committed scroll; between commits an
  * animation frame moves the rows, the bands into them and the thumb directly through the DOM
@@ -170,7 +179,6 @@ function useDestScroll(t: Topology) {
   const rowsEl = useRef<SVGGElement>(null);
   const thumbEl = useRef<SVGRectElement>(null);
   const bandEls = useRef(new Map<string, SVGGElement>());
-  const counts = (p: ReturnType<typeof projectTopology>) => `${p.above?.count ?? 0}/${p.below?.count ?? 0}`;
 
   const paint = useCallback((s: number) => {
     const p = projectTopology(tRef.current, s);
@@ -265,8 +273,7 @@ export function TopologyDiagram({ data }: { data: NetSessionData }) {
     const wheel = (e: WheelEvent) => {
       if (t.dests.maxScroll <= 0) return;
       e.preventDefault();
-      const ctm = el.ownerSVGElement?.getScreenCTM();
-      scrollTo(target.current + wheelDelta(t, e.deltaY, e.deltaMode, ctm && ctm.d ? 1 / ctm.d : 1));
+      scrollTo(target.current + wheelDelta(t, e.deltaY, e.deltaMode, unitsPerPx(el)));
     };
     el.addEventListener('wheel', wheel, { passive: false });
     return () => el.removeEventListener('wheel', wheel);
@@ -375,13 +382,18 @@ export function TopologyDiagram({ data }: { data: NetSessionData }) {
           {thumb && (
             <g data-dest-scrollbar="">
               <rect x={thumb.x} y={thumb.track.y} width={thumb.w} height={thumb.track.h} rx={1.5} fill="var(--border)" opacity={0.5}
-                onPointerDown={(e) => { const ctm = column.current?.ownerSVGElement?.getScreenCTM(); const y = ctm ? (e.clientY - ctm.f) / ctm.d : e.clientY; scrollTo(target.current + (y < (scrollThumb(t, target.current)?.y ?? 0) ? -1 : 1) * (t.dests.bottom - t.dests.top - t.dests.pitch)); }} />
+                onPointerDown={(e) => {
+                  // A click on the track pages towards it, as Page Up / Page Down would.
+                  const ctm = column.current?.ownerSVGElement?.getScreenCTM();
+                  const y = ctm ? (e.clientY - ctm.f) / ctm.d : e.clientY;
+                  const to = keyScroll(t, target.current, y < (scrollThumb(t, target.current)?.y ?? 0) ? 'PageUp' : 'PageDown');
+                  if (to !== null) scrollTo(to);
+                }} />
               <rect ref={thumbEl} x={thumb.x} y={thumb.y} width={thumb.w} height={thumb.h} rx={1.5} fill="var(--text-faint)" style={{ cursor: 'grab' }}
                 onPointerDown={(e) => {
                   e.stopPropagation();
                   e.currentTarget.setPointerCapture(e.pointerId);
-                  const ctm = column.current?.ownerSVGElement?.getScreenCTM();
-                  drag.current = { y: e.clientY, from: pos.current, perPx: ctm && ctm.d ? 1 / ctm.d : 1 };
+                  drag.current = { y: e.clientY, from: pos.current, perPx: unitsPerPx(column.current) };
                 }}
                 onPointerMove={(e) => { const d = drag.current; if (d) scrollTo(thumbDrag(t, d.from, (e.clientY - d.y) * d.perPx), 'live'); }}
                 // Released, cancelled or lost, the capture ends: one place ends the drag.
