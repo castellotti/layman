@@ -6,7 +6,7 @@ import { callsFrom, callTiming, correlate, flowRole, isFetchTool, joinDistance, 
 import { parseLine, parseSessionFile } from './parse.js';
 import { NetStore } from './store.js';
 import type { FlowView, NetService, TraceCall } from './types.js';
-import { FIXTURE, fixtureAt } from './testing/fixture-clock.js';
+import { FIXTURE, fixtureAt } from './testing/glove-fixture.js';
 
 const SERVICES: NetService[] = parseSessionFile(JSON.parse(readFileSync(join(FIXTURE, 'session.json'), 'utf8')))!.services;
 

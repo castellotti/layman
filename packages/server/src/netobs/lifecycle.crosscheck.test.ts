@@ -12,10 +12,9 @@ import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { NetStore } from './store.js';
 import { parseLine } from './parse.js';
-import { GLOVE_CHECKOUT } from './testing/glove-checkout.js';
+import { GLOVE_CHECKOUT as GLOVE } from './testing/glove-checkout.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const GLOVE = GLOVE_CHECKOUT;
 const SCENARIOS = join(HERE, '__scenarios__');
 
 function uvAvailable(): boolean {

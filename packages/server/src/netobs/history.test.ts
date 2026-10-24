@@ -14,11 +14,11 @@ import { hourKey } from './store.js';
 import { TEST_ID, addGloveSession } from './testing/glove-home.js';
 import { roundsRecords, roundsSessionFile } from './testing/rounds.js';
 import type { DestinationAggregate, NetSnapshot, NetTotals } from './types.js';
+import { FIXTURE, fixtureAt } from './testing/glove-fixture.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const FIXTURE = join(HERE, '__fixtures__');
 const TOKEN = TEST_ID;
-const NOW = Date.parse('2026-09-23T14:14:48.000Z');
+const NOW = fixtureAt('2026-09-23T14:14:48.000Z');
 const LINES = readFileSync(join(FIXTURE, 'flows.ndjson'), 'utf8').split('\n').filter(Boolean);
 
 /** Rollups in memory, as SQLite would keep them: rows replaced, hours and runs upserted. */

@@ -17,8 +17,8 @@ cp ../glove/tests/fixtures/netobs/* packages/server/src/netobs/__fixtures__/
 
 then update the date and commit above. glove regenerates it in real time, so its clock and flow ids
 change with every copy: tests write times against the 2026-09-23 copy through
-`../testing/fixture-clock.ts` and look flows up by host, so a refresh needs no test edits.
-`fixture.test.ts` includes a drift guard that fails when this copy differs from
+`../testing/glove-fixture.ts` and read the flows, ids and counters they line up with from the copy,
+so a refresh needs no test edits. `fixture.test.ts` includes a drift guard that fails when this copy differs from
 `../glove/tests/fixtures/netobs/` (and is skipped when glove is not checked out next to this repo;
 `../testing/glove-checkout.ts` finds it from a worktree too), so a stale copy is noticed rather than
 silently tested against.

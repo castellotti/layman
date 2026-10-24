@@ -12,9 +12,7 @@ import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { applyOp, emptyRules, evaluate, GUARD_RULE, guardRefuses, parseRulesBytes, predict, serializeRules, type FlowFacts } from './rules.js';
-import { GLOVE_CHECKOUT } from './testing/glove-checkout.js';
-
-const GLOVE = GLOVE_CHECKOUT;
+import { GLOVE_CHECKOUT as GLOVE } from './testing/glove-checkout.js';
 
 function available(): boolean {
   // glove v3 moved the gate into the `gate` extension; a v2 checkout (glove/netgate/) is not cross-checked.
