@@ -88,10 +88,10 @@ export interface TopoBand {
   dashed: boolean;
   label: { text: string; x: number; y: number; anchor: 'start' | 'end' } | null;
   /**
-   * A band into a destination: its ends with the column unscrolled. `projectTopology` redraws
-   * `d` from these as the column scrolls; the far end follows its row.
+   * A band into a destination: its far end with the column unscrolled (the near end is `start`).
+   * `projectTopology` redraws `d` from these as the column scrolls; the far end follows its row.
    */
-  toDest?: { x1: number; y1: number; x2: number; y2: number };
+  toDest?: { x2: number; y2: number };
 }
 
 export interface WallLabel { text: string; sub: string | null; y: number; kind: 'guard' | 'refused' }
@@ -699,20 +699,16 @@ export function layoutTopology(data: TopoInput, width: number, height: number, o
   };
   // Grouped once: with hundreds of destinations, filtering every draft per node is quadratic.
   const outOf = new Map<TopoNode, Draft[]>();
-  const into = new Map<TopoNode, Draft[]>();
+  const inTo = new Map<TopoNode, Draft[]>();
+  const add = (m: Map<TopoNode, Draft[]>, n: TopoNode, d: Draft) => { const ds = m.get(n); if (ds) ds.push(d); else m.set(n, [d]); };
   for (const d of drafts) {
-    const out = outOf.get(d.from);
-    if (out) out.push(d);
-    else outOf.set(d.from, [d]);
-    if (!isNode(d.to)) continue;
-    const inc = into.get(d.to);
-    if (inc) inc.push(d);
-    else into.set(d.to, [d]);
+    add(outOf, d.from, d);
+    if (isNode(d.to)) add(inTo, d.to, d);
   }
   for (const n of nodes) {
     const out = outOf.get(n);
     if (out) stackPorts(n, out, (d) => endY(d.to), outPort);
-    const inc = into.get(n);
+    const inc = inTo.get(n);
     if (inc) stackPorts(n, inc, (d) => centre(d.from), inPort);
   }
 
@@ -728,7 +724,7 @@ export function layoutTopology(data: TopoInput, width: number, height: number, o
     return {
       id: dr.id, kind: dr.kind, from: dr.from.id, to: isNode(dr.to) ? dr.to.id : 'wall', d: bandPath(x1, y1, x2, y2), start: [x1, y1], width, bytes,
       hosts: uniq(dr.legs.map((l) => l.host)), live: dr.legs.some((l) => l.live), dashed: !!dr.dashed, label,
-      ...(isNode(dr.to) && dr.to.kind === 'dest' ? { toDest: { x1, y1, x2, y2 } } : {}),
+      ...(isNode(dr.to) && dr.to.kind === 'dest' ? { toDest: { x2, y2 } } : {}),
     };
   });
 
@@ -834,6 +830,7 @@ const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v
 /** What a projection needs that does not depend on the scroll, worked out once per layout. */
 interface DestIndex {
   rows: TopoNode[];
+  byId: Map<string, TopoNode>;
   bytes: Map<string, number>;
   width: Map<string, number>;
 }
@@ -842,7 +839,7 @@ function destIndex(t: Topology): DestIndex {
   let ix = destIndexes.get(t);
   if (ix) return ix;
   const byId = new Map(t.nodes.filter((n) => n.kind === 'dest').map((n) => [n.id, n]));
-  ix = { rows: t.dests.rows.map((id) => byId.get(id)!), bytes: new Map(), width: new Map() };
+  ix = { rows: t.dests.rows.map((id) => byId.get(id)!), byId, bytes: new Map(), width: new Map() };
   for (const b of t.bands) {
     if (!b.toDest) continue;
     ix.bytes.set(b.to, (ix.bytes.get(b.to) ?? 0) + b.bytes);
@@ -864,13 +861,11 @@ export function projectTopology(t: Topology, scrollTop: number): TopoProjection 
   const { top, bottom, maxScroll } = t.dests;
   const s = clamp(scrollTop, 0, maxScroll);
   const ix = destIndex(t);
-  const byId = new Map<string, TopoNode>();
   const rows: TopoNode[] = [];
   const visible = new Set<string>();
   const above: TopoNode[] = [];
   const below: TopoNode[] = [];
   for (const n of ix.rows) {
-    byId.set(n.id, n);
     const y = n.y - s;
     const c = y + n.h / 2;
     if (y < bottom && y + n.h > top) rows.push(s === 0 ? n : { ...n, y });
@@ -880,12 +875,12 @@ export function projectTopology(t: Topology, scrollTop: number): TopoProjection 
   }
   const bands = t.bands.map((b) => {
     if (!b.toDest) return b;
-    const n = byId.get(b.to)!;
+    const n = ix.byId.get(b.to)!;
     const c = n.y + n.h / 2 - s;
     const edge = clamp(c, top, bottom);
     const fade = Math.max(0, 1 - Math.abs(c - edge) / n.h);
     const y2 = edge + (b.toDest.y2 - (n.y + n.h / 2)) * fade;
-    return y2 === b.toDest.y2 ? b : { ...b, d: bandPath(b.toDest.x1, b.toDest.y1, b.toDest.x2, y2) };
+    return y2 === b.toDest.y2 ? b : { ...b, d: bandPath(b.start[0], b.start[1], b.toDest.x2, y2) };
   });
   const stub = (edge: DestStub['edge'], ns: TopoNode[]): DestStub | null => {
     if (!ns.length) return null;
@@ -908,7 +903,7 @@ export function projectTopology(t: Topology, scrollTop: number): TopoProjection 
 
 /** The scroll that centres a destination row in the window (clamped), or null for one with no row. */
 export function scrollToDest(t: Topology, id: string): number | null {
-  const n = t.nodes.find((x) => x.id === id && x.kind === 'dest');
+  const n = destIndex(t).byId.get(id);
   if (!n) return null;
   return clamp(n.y + n.h / 2 - (t.dests.top + t.dests.bottom) / 2, 0, t.dests.maxScroll);
 }

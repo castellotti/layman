@@ -79,14 +79,18 @@ export function TopologyLegend() {
   );
 }
 
+/** An SVG group that acts as a button: a click, Enter or Space activates it. */
+function svgButton(label: string, activate: () => void) {
+  return {
+    role: 'button', tabIndex: 0, style: { cursor: 'pointer' }, 'aria-label': label,
+    onClick: activate,
+    onKeyDown: (e: React.KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); activate(); } },
+  };
+}
+
 function Node({ n, selected, onSelect }: { n: TopoNode; selected: boolean; onSelect: (n: TopoNode) => void }) {
   const clickable = n.hosts.length > 0 && (n.kind === 'dest' || n.kind === 'broken');
-  const common = clickable ? {
-    role: 'button', tabIndex: 0, style: { cursor: 'pointer' },
-    'aria-label': `Follow the path to ${n.title}`,
-    onClick: () => onSelect(n),
-    onKeyDown: (e: React.KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSelect(n); } },
-  } : {};
+  const common = clickable ? svgButton(`Follow the path to ${n.title}`, () => onSelect(n)) : {};
   if (n.kind === 'broken') {
     return (
       <g {...common} data-node={n.id}>
@@ -130,10 +134,8 @@ function Node({ n, selected, onSelect }: { n: TopoNode; selected: boolean; onSel
 
 /** Destinations scrolled out of the window: the bands converge on it, and it says how many and how much. */
 function Stub({ stub, x, onScroll }: { stub: DestStub; x: number; onScroll: (top: number) => void }) {
-  const go = () => onScroll(stub.scrollTo);
   return (
-    <g data-stub={stub.edge} role="button" tabIndex={0} style={{ cursor: 'pointer' }} aria-label={`Scroll to the ${stub.count} destinations ${stub.edge}`}
-      onClick={go} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } }}
+    <g data-stub={stub.edge} {...svgButton(`Scroll to the ${stub.count} destinations ${stub.edge}`, () => onScroll(stub.scrollTo))}
       {...tipProps({ heading: `${stub.count} destination${stub.count === 1 ? '' : 's'} ${stub.edge}`, body: stub.hosts.slice(0, 12).join('\n') + (stub.hosts.length > 12 ? `\n+${stub.hosts.length - 12} more` : '') })}>
       <rect x={x - 3} y={stub.bar.y} width={3} height={stub.bar.h} fill="var(--text-faint)" opacity={0.6} />
       <text x={x + 6} y={stub.textY} fontSize={10} fontFamily="var(--font-mono)" fill="var(--text-muted)">
@@ -154,9 +156,10 @@ export function TopologyDiagram({ data }: { data: NetSessionData }) {
   // A destination chosen elsewhere (the Network tab, a link) is scrolled into the window.
   useEffect(() => {
     const id = netDest ? t.nodes.find((n) => n.kind === 'dest' && n.hosts.includes(netDest))?.id : undefined;
-    const to = id ? scrollToDest(t, id) : null;
     // Only when the choice or the layout changes, never on a scroll: a row scrolled away stays away.
-    if (to !== null && id && !projectTopology(t, scrollTop).visible.has(id)) setScrollTop(to);
+    if (!id || view.visible.has(id)) return;
+    const to = scrollToDest(t, id);
+    if (to !== null) setScrollTop(to);
   }, [netDest, t]); // eslint-disable-line react-hooks/exhaustive-deps
   const bytesOf = useMemo(() => {
     const m = new Map<string, number>();
