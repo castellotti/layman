@@ -267,6 +267,7 @@ export function RulesPanel({ data, now }: { data: NetSessionData; now: number })
   const drag = useDragReorder((from, to) => edit({ rules: moveRule(d.rules, from, to) }));
   const baseIds = new Set(d.baseRules.map((r) => r.id));
   const dirty = draft !== null && isDirty(draft);
+  const cutDisabled = disabledReason !== null || dirty;
 
   const save = () => {
     const opId = useNetStore.getState().applyRules({ kind: 'saveDraft', baseSha256: d.base, default: d.default, rules: d.rules });
@@ -354,8 +355,8 @@ export function RulesPanel({ data, now }: { data: NetSessionData; now: number })
             <NetIcon name="check" color="var(--net-tunnel)" />Restore all traffic
           </button>
         ) : (
-          <TipWrap tip={dirty ? 'Save or discard your draft first.' : disabledReason} disabled={disabledReason !== null || dirty}>
-            <button type="button" disabled={disabledReason !== null || dirty}
+          <TipWrap tip={dirty ? 'Save or discard your draft first.' : disabledReason} disabled={cutDisabled}>
+            <button type="button" disabled={cutDisabled}
               onClick={() => setKillOpen(true)} style={buttonStyle('danger')}>
               <NetIcon name="cut" color="#FF8A80" />Cut all traffic now
             </button>

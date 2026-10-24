@@ -500,7 +500,7 @@ export interface SinceAt {
 export interface GateSince {
   /** The gate's state (`freshness`): running since its run started, stale since its last heartbeat. */
   gate: SinceAt | null;
-  /** The route as shown: its kind, whether its exit is verified, its upstream's health. */
+  /** The route as shown: its kind and whether its exit is verified (not its upstream's health, which glove does not date). */
   route: SinceAt | null;
   /** The current exit IP. */
   exit: SinceAt | null;

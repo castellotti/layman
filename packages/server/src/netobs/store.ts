@@ -256,6 +256,9 @@ function policyFor(
 /** A destination's flags from its latest flow's: unresolved only while no flow brought an IP. */
 const destFlags = (f: FlowFlags, ips: readonly string[]): FlowFlags => ({ ...f, unresolved: f.unresolved && ips.length === 0 });
 
+/** A gate view read from nothing yet: what a session starts from, and restarts from when re-found. */
+const blankGate = () => classifySession({ status: null, statusMtimeMs: null, exit: null, session: null }, Date.now());
+
 export class NetStore extends EventEmitter {
   private sessions = new Map<string, SessionData>();
   private readonly stringFilter?: (text: string) => string;
@@ -321,7 +324,7 @@ export class NetStore extends EventEmitter {
       directFlows: 0,
       firstSeen: null,
       lastT: null,
-      gate: classifySession({ status: null, statusMtimeMs: null, exit: null, session: null }, Date.now()),
+      gate: blankGate(),
       sinceExitIp: null,
       sinceRunId: null,
       dirtyFlows: new Set(),
@@ -377,7 +380,7 @@ export class NetStore extends EventEmitter {
     s.rules = blankRulesView(loc);
     // The gate view it kept describes the past: start again, so its "since" is read from the
     // records about to be re-read rather than dated as changes seen now.
-    s.gate = classifySession({ status: null, statusMtimeMs: null, exit: null, session: null }, Date.now());
+    s.gate = blankGate();
     s.sinceExitIp = null;
     s.sinceRunId = null;
   }

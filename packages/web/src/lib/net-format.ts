@@ -52,6 +52,12 @@ export interface GateChip {
 
 const ROUTE_LABEL: Record<string, string> = { vpn: 'VPN', tor: 'Tor' };
 
+/** "Since Oct 21 00:27:03 (5 h ago)", or "at least since" when Layman did not see it change; nothing when nothing says. */
+function sinceFact(what: string, since: SinceAt | null, now: number): string[] {
+  if (!since) return [];
+  return [`${what} ${since.exact ? 'since' : 'at least since'} ${formatStamp(since.t)} (${formatAge(Math.max(0, now - since.t))} ago)`];
+}
+
 /**
  * The gate strip, left to right :
  * gate state; the untunnelled alarm when there is one, straight after it so it
@@ -59,12 +65,6 @@ const ROUTE_LABEL: Record<string, string> = { vpn: 'VPN', tor: 'Tor' };
  * incomplete" when the data itself has holes. Each chip's tip says what it means
  * to someone who has never read glove's docs, then the facts behind it.
  */
-/** "Since Oct 21 00:27:03 (5 h ago)", or "at least since" when Layman did not see it change; nothing when nothing says. */
-function sinceFact(what: string, since: SinceAt | null, now: number): string[] {
-  if (!since) return [];
-  return [`${what} ${since.exact ? 'since' : 'at least since'} ${formatStamp(since.t)} (${formatAge(Math.max(0, now - since.t))} ago)`];
-}
-
 export function gateChips(data: NetSessionData, now = Date.now()): GateChip[] {
   const { gate, exit, totals, counters } = data;
   const chips: GateChip[] = [];
@@ -138,7 +138,6 @@ export function gateChips(data: NetSessionData, now = Date.now()): GateChip[] {
       ? [`Exit ${exit.ip ?? 'unknown IP'}${exit.city ? `, ${exit.city}` : ''}${exit.country ? `, ${exit.country}` : ''}`,
         `Reported by ${exit.source ?? 'an unnamed source'}, not looked up by Layman`]
       : ['No exit has been observed'];
-    const routeSince = sinceFact('As now', gate.since.route, now);
     const exitSince = exit ? sinceFact('This exit', gate.since.exit, now) : [];
     const failing = unhealthy ? ` The ${name} reports it is failing, so connections may not get through.` : '';
     if (gate.route.verified && exit) {
@@ -157,7 +156,7 @@ export function gateChips(data: NetSessionData, now = Date.now()): GateChip[] {
       chips.push({ key: 'route', label: `${name} · declared, not verified${unhealthy}`, tone: 'warn', icon: 'tunnel', tip: {
         heading: `${name}: not verified`,
         body: `Web traffic is set to leave through the ${name}, but glove has not confirmed where it comes out. Trust the label less than an observed exit.${failing}`,
-        facts: [...routeSince, ...exitFacts, ...exitSince],
+        facts: [...sinceFact('As now', gate.since.route, now), ...exitFacts, ...exitSince],
       } });
     }
   } else if (kind === 'corporate') {
@@ -364,7 +363,6 @@ export const BLOCK_STATES: ReadonlySet<NetState> = new Set(['guard', 'user_rule'
 
 export const LEGEND_BY_KEY: Readonly<Record<string, StateInfo>> = Object.fromEntries(NET_LEGEND.map((s) => [s.key, s]));
 
-/** The Topology diagram's legend: what each band colour means, and how wide a band is. */
 /**
  * The Topology diagram's legend: the band kinds (`BandKind`) each entry stands for, its words and
  * its tip. Its colour is the diagram's own for its first kind (`BAND` in `TopologyView.tsx`), so the
