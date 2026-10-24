@@ -63,13 +63,20 @@ check('Open turn goes to /s/{session}/t/{prompt}', /^\/s\/[^/]+\/t\/[^/?]+/.test
 // Arrival: looking at a gloved session in Logs, a network tab opens on it, even if another was chosen there before.
 const gloveOf = () => new URL(page.url()).searchParams.get('glove');
 await page.keyboard.press('o');
-await waitFor(async () => gloveOf() === PI);
+check('(setup) Topology opens on the session from Logs', await waitFor(async () => gloveOf() === PI), page.url());
 await page.selectOption('select[aria-label="Glove session"]', sid('direct'));
-await waitFor(async () => gloveOf() === sid('direct'));
+check('(setup) another session chosen there', await waitFor(async () => gloveOf() === sid('direct')), page.url());
 await page.click('button[title="Logs (S)"]');
-await waitFor(async () => !new URL(page.url()).searchParams.get('view'));
+check('(setup) back in Logs', await waitFor(async () => new URL(page.url()).pathname.startsWith('/s/')), page.url());
+const depth = await page.evaluate(() => history.length);
 await page.click('button[title="Topology (O)"]');
 check('arriving from Logs opens the session being looked at, not the one chosen before', await waitFor(async () => gloveOf() === PI, 5000), page.url());
+check('…as one history entry: Back returns to Logs', await page.evaluate(() => history.length) === depth + 1
+  && (await page.goBack(), await waitFor(async () => new URL(page.url()).pathname.startsWith('/s/'))), page.url());
+// Hydrating the Logs route is async (it fetches the session): let it land before going forward again.
+await page.waitForTimeout(1500);
+await page.goForward();
+await waitFor(async () => gloveOf() === PI);
 await page.selectOption('select[aria-label="Glove session"]', sid('direct'));
 await page.click('button[title="Map (M)"]');
 check('moving between the network tabs keeps the choice', await waitFor(async () => new URL(page.url()).searchParams.get('view') === 'map') && gloveOf() === sid('direct'), page.url());

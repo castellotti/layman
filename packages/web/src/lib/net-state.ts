@@ -237,9 +237,10 @@ export function defaultNetToken(sessions: NetSessionSummary[], activeSessionName
 /**
  * The glove picker's order. Sessions the Dashboard lists come first, in its order (a gloved
  * Layman session's `sessionName` is its glove token). Then the rest: live first, then the newest
- * started, then by token. Nothing in it moves with traffic: a live gate writes records while idle,
- * and ordering by the latest record swapped two idle sessions under the pointer while the list
- * was open.
+ * started, then by token. Gate records never move it: a live gate writes them while idle, and
+ * ordering by the latest record swapped two idle sessions under the pointer while the list was
+ * open. The Dashboard's own order can follow agent activity, so the picker also freezes its order
+ * while the list is open (`GateStrip`).
  */
 export function netPickerOrder<T extends Pick<NetSessionSummary, 'token' | 'live' | 'firstSeen'>>(
   sessions: readonly T[], dashboard: readonly { sessionName?: string }[],

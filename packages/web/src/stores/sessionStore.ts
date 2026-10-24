@@ -2,7 +2,8 @@ import { create } from 'zustand';
 import type { TimelineEvent, PendingApprovalDTO, LaymanConfig, SessionStatus, SetupStatus, BookmarkFolder, Bookmark, HighlightFolder, Highlight, SessionTimeMetrics, SessionAccessLog, SessionMetrics, DriftState, LiveStream, ResolvedId, SyncStatus, HostStats } from '../lib/types.js';
 import type { SessionInfo } from '../lib/ws-protocol.js';
 import type { NetRange } from '../lib/netobs-types.js';
-import { rangeKey, sameRange } from '../lib/net-state.js';
+import { arrivalNetToken, rangeKey, sameRange } from '../lib/net-state.js';
+import { useNetStore } from './netStore.js';
 import type { DashboardSortMode } from '../lib/session-state.js';
 import type { LaymanRoute, RouteOptions, ViewName } from '../lib/layman-url.js';
 import { extractTurn } from '../lib/turns.js';
@@ -310,12 +311,6 @@ export interface SessionState {
    * them; cleared with the glove session, whose runs and records it was chosen from.
    */
   netRange: NetRange | null;
-  /**
-   * Set on entering the network tabs from any other view: the active Layman session's name, which
-   * NetworkView adopts as `netToken` when it is a glove session (then clears). A deep link with
-   * `?glove=` never sets it (hydration does not go through `setViewMode`), so the link wins.
-   */
-  netArrival: string | null;
 
   // Dashboard view
   dashboardFocusedSession: string | null;
@@ -415,7 +410,6 @@ export interface SessionState {
   setSelectedHighlight: (highlightId: string | null) => void;
   /** Choose the glove session the network views show; clears the destination selection and the time range. */
   setNetToken: (token: string | null) => void;
-  clearNetArrival: () => void;
   setDashboardSortMode: (mode: DashboardSortMode) => void;
   setNetDest: (host: string | null) => void;
   /** Show one time range of the glove session, or All records (null). */
@@ -454,6 +448,25 @@ export interface SessionState {
   toggleLogHighlight: (eventId: string) => void;
   setExpandedLogEventIds: (ids: Set<string> | 'all') => void;
   toggleExpandAllLogs: (detailEventIds: string[]) => void;
+}
+
+/**
+ * Entering the network tabs from another view while looking at a gloved session shows that
+ * session, even if another was chosen on the tabs before. "Looking at" is the session open in
+ * Logs or a session view, or the Dashboard's focused one (its `activeSessionId` is whatever Logs
+ * last showed). Resolved here, in the same update as the view, so the switch is one history entry
+ * and one subscription. A `?glove=` link is hydrated without `setViewMode`, so the link wins.
+ * Before the glove sessions are known nothing is chosen here; the default (`defaultNetToken`)
+ * then prefers the active session anyway.
+ */
+function arrival(s: SessionState): Partial<SessionState> {
+  const id = s.viewMode === 'dashboard' ? s.dashboardFocusedSession : s.viewingSessionId ?? s.activeSessionId;
+  const name = id ? s.sessions.find((x) => x.sessionId === id)?.sessionName ?? null : null;
+  const net = useNetStore.getState();
+  const token = arrivalNetToken(name, [...net.sessions, ...net.notObservable]);
+  if (token === null || token === s.netToken) return {};
+  // Another glove session: its destination and range belong to the old one (as setNetToken).
+  return s.netToken === null ? { netToken: token } : { netToken: token, netDest: null, netRange: null };
 }
 
 export const useSessionStore = create<SessionState>((set, get) => ({
@@ -515,7 +528,6 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   netToken: null,
   netDest: null,
   netRange: null,
-  netArrival: null,
 
   dashboardFocusedSession: null,
   dashboardSessionOrder: [],
@@ -785,9 +797,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     viewMode: mode,
     ...viewModeFlags(mode),
     ...(mode !== 'dashboard' ? { returnToDashboard: false } : {}),
-    // Arriving from elsewhere: the session being looked at is the one to show. Between the four tabs, never.
-    ...(isNetworkView(mode) && !isNetworkView(s.viewMode)
-      ? { netArrival: s.sessions.find((x) => x.sessionId === s.activeSessionId)?.sessionName ?? null } : {}),
+    ...(isNetworkView(mode) && !isNetworkView(s.viewMode) ? arrival(s) : {}),
   })),
 
   setBookmarks: (bookmarkFolders, bookmarks) => set({ bookmarkFolders, bookmarks }),
@@ -893,7 +903,6 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   // switching from one session to another clears the destination and the range chosen in the old one.
   setNetToken: (netToken) => set((s) => (s.netToken === netToken ? {} : s.netToken === null ? { netToken } : { netToken, netDest: null, netRange: null })),
   setNetDest: (netDest) => set({ netDest }),
-  clearNetArrival: () => set((s) => (s.netArrival === null ? {} : { netArrival: null })),
   setDashboardSortMode: (dashboardSortMode) => set({ dashboardSortMode }),
   setNetRange: (netRange) => set((s) => (sameRange(s.netRange, netRange) ? {} : { netRange })),
 

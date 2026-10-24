@@ -635,15 +635,22 @@ nothing for finished sessions (their history is not an alarm).
   Dashboard lists come first, in the Dashboard's order: most recent first, or as the user dragged
   them. `orderDashboardSessions` in `lib/session-state.ts` is that order, shared with the Dashboard,
   and its sort mode is kept in `sessionStore` so both read it. The rest follow: live first, then the
-  newest started, then by token. Nothing in the order moves with traffic. The server's list is
-  sorted by the latest record, and a live gate writes records while it is idle, so two idle live
-  sessions swapped places under the pointer while the list was open and a click picked the wrong one.
-- **Arriving from another view.** Entering any of the four tabs from elsewhere (Logs, the Dashboard,
-  a session) while the active Layman session is a gloved one shows that session, even if another was
-  chosen on these tabs before. `setViewMode` notes the active session's name (`netArrival`), and
-  `NetworkView` adopts it once the glove sessions are known, if it is one of them
-  (`arrivalNetToken`). Moving between the four tabs never changes the session. A deep link with
-  `glove=` is hydrated without passing through `setViewMode`, so the link wins.
+  newest started, then by token. Gate records never move it. The server's list is sorted by the
+  latest record, and a live gate writes records while it is idle, so two idle live sessions swapped
+  places under the pointer while the list was open and a click picked the wrong one. The Dashboard's
+  own order does follow agent activity, so the picker also freezes its order while the list is open
+  (focus to blur or a choice; a new session joins at the end). The Dashboard still opens at most
+  recent each time, as before the sort mode moved into the store.
+- **Arriving from another view.** Entering any of the four tabs from elsewhere while looking at a
+  gloved session shows that session, even if another was chosen on these tabs before. "Looking at"
+  is the session open in Logs or a session view, or the Dashboard's focused one (from the Dashboard,
+  `activeSessionId` is only whatever Logs last showed). `setViewMode` resolves it in the same update
+  as the view (`arrival` in `sessionStore.ts`, `arrivalNetToken`), so the switch is one history entry
+  and one subscription: resolving it in an effect afterwards first pushed and subscribed to the old
+  session, and Back landed on it. It also shows a session that is not observable, which the default
+  skips. Before the glove sessions are known nothing is chosen, and the default prefers the active
+  session anyway. Moving between the four tabs never changes the session. A deep link with `glove=`
+  is hydrated without `setViewMode`, so the link wins.
 - **Time range.** `netRange` in `sessionStore`, hydrated from `&from=<iso>&to=<iso|now>` (ISO, not ms, so
   a shared link says what it shows; a missing `to` is "now"). A range is dropped when it has no start,
   starts before 1970 (the server's rule, so the two never disagree), ends before it starts, or has an

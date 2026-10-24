@@ -1,5 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { useSessionStore, viewModeForName, viewNameForMode, instanceUrlOf } from './sessionStore.js';
+import { useNetStore } from './netStore.js';
+import type { NetSessionSummary } from '../lib/netobs-types.js';
+
+const summary = (token: string) => ({ token, live: false, firstSeen: 0, lastSeen: 0 }) as NetSessionSummary;
 import { routeForState, historyModeFor } from '../hooks/useLaymanRoute.js';
 import { buildPath, parsePath, VIEW_NAMES } from '../lib/layman-url.js';
 import type { TimelineEvent, EventType, LaymanConfig } from '../lib/types.js';
@@ -79,8 +83,8 @@ beforeEach(() => {
     netToken: null,
     netDest: null,
     netRange: null,
-    netArrival: null,
     sessions: [],
+    dashboardFocusedSession: null,
   });
 });
 
@@ -444,23 +448,64 @@ describe('network views (glove)', () => {
     expect(readBack()).toBe('/?view=network&glove=pi-search');
   });
 
-  it('arriving from another view notes the active session for NetworkView; moving between the tabs does not', () => {
-    useSessionStore.setState({
-      viewMode: 'stream', netToken: 'stale-000000', activeSessionId: 's1',
-      sessions: [{ sessionId: 's1', cwd: '/w', lastSeen: 0, agentType: 'pi', sessionName: 'pi-search-c0ffee' }],
+  describe('arriving from another view', () => {
+    const gloved = (sessionId: string, sessionName: string) => ({ sessionId, cwd: '/w', lastSeen: 0, agentType: 'pi', sessionName });
+    beforeEach(() => {
+      useNetStore.setState({ sessions: [summary('pi-search-c0ffee'), summary('direct-c0ffee')], notObservable: [{ token: 'dark-c0ffee', harness: null }] as never, sessionsKnown: true });
     });
-    useSessionStore.getState().setViewMode('topology');
-    expect(useSessionStore.getState().netArrival).toBe('pi-search-c0ffee');
-    useSessionStore.getState().clearNetArrival();
-    useSessionStore.getState().setViewMode('map');
-    expect(useSessionStore.getState().netArrival).toBeNull();
-  });
+    afterEach(() => useNetStore.setState({ sessions: [], notObservable: [], sessionsKnown: false }));
 
-  it('a deep link with ?glove= is not overridden by an arrival', async () => {
-    useSessionStore.setState({ activeSessionId: 's1', sessions: [{ sessionId: 's1', cwd: '/w', lastSeen: 0, agentType: 'pi', sessionName: 'other-c0ffee' }] });
-    await useSessionStore.getState().hydrateFromRoute({ kind: 'dashboard' }, { view: 'topology', glove: 'pi-search-c0ffee' });
-    expect(useSessionStore.getState().netArrival).toBeNull();
-    expect(readBack()).toBe('/?view=topology&glove=pi-search-c0ffee');
+    it('shows the gloved session being looked at, in one update, clearing the old one’s range', () => {
+      const range = { from: 0, to: null };
+      useSessionStore.setState({ viewMode: 'stream', netToken: 'direct-c0ffee', netDest: 'x.org', netRange: range, activeSessionId: 's1', sessions: [gloved('s1', 'pi-search-c0ffee')] });
+      const states: string[] = [];
+      const off = useSessionStore.subscribe(() => states.push(readBack()));
+      useSessionStore.getState().setViewMode('topology');
+      off();
+      expect(states).toEqual(['/?view=topology&glove=pi-search-c0ffee']);
+      // Between the tabs, the choice holds.
+      useSessionStore.getState().setNetToken('direct-c0ffee');
+      useSessionStore.getState().setViewMode('map');
+      expect(readBack()).toBe('/?view=map&glove=direct-c0ffee');
+    });
+
+    it('keeps the range when it is the session already shown', () => {
+      const range = { from: 5, to: null };
+      useSessionStore.setState({ viewMode: 'stream', netToken: 'pi-search-c0ffee', netRange: range, activeSessionId: 's1', sessions: [gloved('s1', 'pi-search-c0ffee')] });
+      useSessionStore.getState().setViewMode('network');
+      expect(useSessionStore.getState().netRange).toEqual(range);
+    });
+
+    it('shows a session that is not observable, which the default would skip', () => {
+      useSessionStore.setState({ viewMode: 'stream', netToken: null, activeSessionId: 's1', sessions: [gloved('s1', 'dark-c0ffee')] });
+      useSessionStore.getState().setViewMode('network');
+      expect(useSessionStore.getState().netToken).toBe('dark-c0ffee');
+    });
+
+    it('from the Dashboard, uses its focused session, not the one Logs last showed', () => {
+      useSessionStore.setState({ viewMode: 'dashboard', netToken: 'direct-c0ffee', activeSessionId: 's1', dashboardFocusedSession: null, sessions: [gloved('s1', 'pi-search-c0ffee')] });
+      useSessionStore.getState().setViewMode('network');
+      expect(useSessionStore.getState().netToken).toBe('direct-c0ffee');
+      useSessionStore.setState({ viewMode: 'dashboard', dashboardFocusedSession: 's1' });
+      useSessionStore.getState().setViewMode('network');
+      expect(useSessionStore.getState().netToken).toBe('pi-search-c0ffee');
+    });
+
+    it('leaves the choice alone for a session that is not gloved, or before the glove sessions are known', () => {
+      useSessionStore.setState({ viewMode: 'stream', netToken: 'direct-c0ffee', activeSessionId: 's1', sessions: [gloved('s1', 'renamed')] });
+      useSessionStore.getState().setViewMode('network');
+      expect(useSessionStore.getState().netToken).toBe('direct-c0ffee');
+      useNetStore.setState({ sessions: [], notObservable: [], sessionsKnown: false });
+      useSessionStore.setState({ viewMode: 'stream', sessions: [gloved('s1', 'pi-search-c0ffee')] });
+      useSessionStore.getState().setViewMode('network');
+      expect(useSessionStore.getState().netToken).toBe('direct-c0ffee');
+    });
+
+    it('a deep link with ?glove= wins', async () => {
+      useSessionStore.setState({ activeSessionId: 's1', sessions: [gloved('s1', 'direct-c0ffee')] });
+      await useSessionStore.getState().hydrateFromRoute({ kind: 'dashboard' }, { view: 'topology', glove: 'pi-search-c0ffee' });
+      expect(readBack()).toBe('/?view=topology&glove=pi-search-c0ffee');
+    });
   });
 
   it('leaving the network views keeps the choice for next time but drops it from the URL', () => {

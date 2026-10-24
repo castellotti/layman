@@ -47,6 +47,8 @@ export function DashboardView({ onSend, sessionListWidth, onResizeSessionList }:
   const autoOpenedRef = useRef<Set<string>>(new Set());
   // Filter (the sort is in the store: the glove picker follows the Dashboard's order)
   const [filter, setFilter] = useState('');
+  // As when the sort was this view's own state: opening the Dashboard starts at most recent.
+  useEffect(() => { setSortMode('recent'); }, [setSortMode]);
 
   const panelRef = useRef<HTMLDivElement>(null);
 
