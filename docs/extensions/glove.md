@@ -629,8 +629,21 @@ nothing for finished sessions (their history is not an alarm).
   `/f/` folder id, which would otherwise outrank them. Changing the glove session pushes a history
   entry; changing tab or destination replaces (like every view on the dashboard route). A bare
   `/?view=network` shows the default session — the one matching the active Layman session's
-  `sessionName`, else the most recently active — and writes it into the URL by **replacing**, because
+  `sessionName`, else the first in the picker — and writes it into the URL by **replacing**, because
   pushing would make Back land on the bare URL, re-default and push again (`historyModeFor`, tested).
+- **The picker's order** (`netPickerOrder` in `lib/net-state.ts`, tested). Glove sessions the
+  Dashboard lists come first, in the Dashboard's order: most recent first, or as the user dragged
+  them. `orderDashboardSessions` in `lib/session-state.ts` is that order, shared with the Dashboard,
+  and its sort mode is kept in `sessionStore` so both read it. The rest follow: live first, then the
+  newest started, then by token. Nothing in the order moves with traffic. The server's list is
+  sorted by the latest record, and a live gate writes records while it is idle, so two idle live
+  sessions swapped places under the pointer while the list was open and a click picked the wrong one.
+- **Arriving from another view.** Entering any of the four tabs from elsewhere (Logs, the Dashboard,
+  a session) while the active Layman session is a gloved one shows that session, even if another was
+  chosen on these tabs before. `setViewMode` notes the active session's name (`netArrival`), and
+  `NetworkView` adopts it once the glove sessions are known, if it is one of them
+  (`arrivalNetToken`). Moving between the four tabs never changes the session. A deep link with
+  `glove=` is hydrated without passing through `setViewMode`, so the link wins.
 - **Time range.** `netRange` in `sessionStore`, hydrated from `&from=<iso>&to=<iso|now>` (ISO, not ms, so
   a shared link says what it shows; a missing `to` is "now"). A range is dropped when it has no start,
   starts before 1970 (the server's rule, so the two never disagree), ends before it starts, or has an

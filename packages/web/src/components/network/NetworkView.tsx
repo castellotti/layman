@@ -10,7 +10,8 @@ import React, { useEffect, useMemo } from 'react';
 import { useSessionStore } from '../../stores/sessionStore.js';
 import { useNetStore } from '../../stores/netStore.js';
 import { useNetPanels } from '../../hooks/useNetPanels.js';
-import { defaultNetToken, rangeKey, type NetSessionData } from '../../lib/net-state.js';
+import { arrivalNetToken, defaultNetToken, netPickerOrder, rangeKey, type NetSessionData } from '../../lib/net-state.js';
+import { orderDashboardSessions } from '../../lib/session-state.js';
 import { formatRange } from '../../lib/net-range.js';
 import { columnPanels, type PanelDef } from '../../lib/net-panels.js';
 import type { ClientMessage } from '../../lib/ws-protocol.js';
@@ -159,7 +160,17 @@ export default function NetworkView({ tab, onSend }: { tab: NetTab; onSend: (msg
   const setSettingsOpen = useSessionStore((s) => s.setSettingsOpen);
   const activeSessionName = useSessionStore((s) =>
     s.sessions.find((x) => x.sessionId === s.activeSessionId)?.sessionName ?? null);
-  const { sessions, notObservable, sessionsKnown, registry, data, setSubscribed } = useNetStore();
+  const { sessions: listedSessions, notObservable, sessionsKnown, registry, data, setSubscribed } = useNetStore();
+  const laymanSessions = useSessionStore((s) => s.sessions);
+  const dismissed = useSessionStore((s) => s.dashboardDismissedSessions);
+  const sortMode = useSessionStore((s) => s.dashboardSortMode);
+  const order = useSessionStore((s) => s.dashboardSessionOrder);
+  const netArrival = useSessionStore((s) => s.netArrival);
+  // The picker's order: the Dashboard's, then a stable one (never by the latest record).
+  const sessions = useMemo(
+    () => netPickerOrder(listedSessions, orderDashboardSessions(laymanSessions, { dismissed, sortMode, order })),
+    [listedSessions, laymanSessions, dismissed, sortMode, order],
+  );
   const panels = useNetPanels(tab, TAB_PANELS[tab]);
 
   const enabled = !!config?.glove.enabled && config.glove.network?.enabled !== false;
@@ -168,6 +179,15 @@ export default function NetworkView({ tab, onSend }: { tab: NetTab; onSend: (msg
   const listed = picked !== undefined;
   // A registered session without the observe grant has nothing to subscribe to.
   const dark = token !== null && !listed && notObservable.some((s) => s.token === token);
+
+  // Arriving from another view while looking at a gloved session shows that session, even if
+  // another was chosen here before. Resolved once the glove sessions are known.
+  useEffect(() => {
+    if (netArrival === null || !sessionsKnown) return;
+    const arrived = arrivalNetToken(netArrival, [...sessions, ...notObservable]);
+    if (arrived !== null) setNetToken(arrived);
+    useSessionStore.getState().clearNetArrival();
+  }, [netArrival, sessionsKnown, sessions, notObservable, setNetToken]);
 
   // Make the default explicit, so the address bar names the session shown.
   useEffect(() => {

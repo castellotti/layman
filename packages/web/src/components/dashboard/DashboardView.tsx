@@ -5,7 +5,7 @@ import { PreviewPane } from './PreviewPane.js';
 import { SearchInput } from '../primitives/index.js';
 import { PanelDivider } from '../layout/PanelDivider.js';
 import { saveAndBookmarkSession } from '../../lib/bookmarks-api.js';
-import { isSessionLive } from '../../lib/session-state.js';
+import { orderDashboardSessions } from '../../lib/session-state.js';
 import { useDragReorder } from '../../hooks/useDragReorder.js';
 import type { ClientMessage } from '../../lib/ws-protocol.js';
 import './dashboard.css';
@@ -14,8 +14,6 @@ const SESSION_LIST_WIDTH_DEFAULT = 410;
 const SESSION_LIST_MIN = 220;
 const SESSION_LIST_MAX = 480;
 const MIN_PANE_HEIGHT = 240;
-
-type SortMode = 'recent' | 'custom';
 
 interface DashboardViewProps {
   onSend: (msg: ClientMessage) => void;
@@ -33,6 +31,8 @@ export function DashboardView({ onSend, sessionListWidth, onResizeSessionList }:
     dashboardSessionOrder,
     setDashboardSessionOrder,
     dashboardDismissedSessions,
+    dashboardSortMode: sortMode,
+    setDashboardSortMode: setSortMode,
     dismissDashboardSession,
     navigateFromDashboardToLogs,
     navigateToLogsForSession,
@@ -45,8 +45,7 @@ export function DashboardView({ onSend, sessionListWidth, onResizeSessionList }:
   // Sessions we've already auto-opened at least once — prevents reopening a pane
   // the user explicitly closed when orderedSessions merely reorders.
   const autoOpenedRef = useRef<Set<string>>(new Set());
-  // Sort + filter
-  const [sortMode, setSortMode] = useState<SortMode>('recent');
+  // Filter (the sort is in the store: the glove picker follows the Dashboard's order)
   const [filter, setFilter] = useState('');
 
   const panelRef = useRef<HTMLDivElement>(null);
@@ -62,33 +61,10 @@ export function DashboardView({ onSend, sessionListWidth, onResizeSessionList }:
   }, [allEvents]);
 
   // Filtered + sorted session list
-  const orderedSessions = useMemo(() => {
-    const activeSessions = sessions.filter(
-      s => isSessionLive(s) && !dashboardDismissedSessions.has(s.sessionId)
-    );
-
-    let filtered = activeSessions;
-    if (filter.trim()) {
-      const q = filter.toLowerCase();
-      filtered = activeSessions.filter(s =>
-        (s.sessionName ?? '').toLowerCase().includes(q) ||
-        s.cwd.toLowerCase().includes(q) ||
-        s.sessionId.toLowerCase().includes(q)
-      );
-    }
-
-    const sorted = [...filtered].sort((a, b) => {
-      if (sortMode === 'custom') {
-        const orderMap = new Map(dashboardSessionOrder.map((id, i) => [id, i]));
-        const aO = orderMap.get(a.sessionId) ?? 999;
-        const bO = orderMap.get(b.sessionId) ?? 999;
-        return aO - bO;
-      }
-      // Default: most recently active
-      return b.lastSeen - a.lastSeen;
-    });
-    return sorted;
-  }, [sessions, dashboardSessionOrder, dashboardDismissedSessions, sortMode, filter]);
+  const orderedSessions = useMemo(
+    () => orderDashboardSessions(sessions, { dismissed: dashboardDismissedSessions, sortMode, order: dashboardSessionOrder, filter }),
+    [sessions, dashboardSessionOrder, dashboardDismissedSessions, sortMode, filter],
+  );
 
   // Auto-open pane for newly detected sessions (only the first time each session is seen —
   // reordering orderedSessions, e.g. via attention sort, must not reopen a pane the user closed).

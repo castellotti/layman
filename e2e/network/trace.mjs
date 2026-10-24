@@ -60,6 +60,24 @@ check('Bookmark saves the turn as a highlight', await waitFor(async () => (await
 const href = await page.$eval('a:has-text("Open turn")', (a) => a.getAttribute('href'));
 await page.click('a:has-text("Open turn")');
 check('Open turn goes to /s/{session}/t/{prompt}', /^\/s\/[^/]+\/t\/[^/?]+/.test(href) && await waitFor(async () => new URL(page.url()).pathname === href.split('?')[0]), `${href} → ${page.url()}`);
+// Arrival: looking at a gloved session in Logs, a network tab opens on it, even if another was chosen there before.
+const gloveOf = () => new URL(page.url()).searchParams.get('glove');
+await page.keyboard.press('o');
+await waitFor(async () => gloveOf() === PI);
+await page.selectOption('select[aria-label="Glove session"]', sid('direct'));
+await waitFor(async () => gloveOf() === sid('direct'));
+await page.click('button[title="Logs (S)"]');
+await waitFor(async () => !new URL(page.url()).searchParams.get('view'));
+await page.click('button[title="Topology (O)"]');
+check('arriving from Logs opens the session being looked at, not the one chosen before', await waitFor(async () => gloveOf() === PI, 5000), page.url());
+await page.selectOption('select[aria-label="Glove session"]', sid('direct'));
+await page.click('button[title="Map (M)"]');
+check('moving between the network tabs keeps the choice', await waitFor(async () => new URL(page.url()).searchParams.get('view') === 'map') && gloveOf() === sid('direct'), page.url());
+// The picker's order holds still while live gates write records.
+const optionOrder = () => page.$$eval('select[aria-label="Glove session"] option', (os) => os.map((o) => o.value).join());
+const orders = new Set();
+for (let i = 0; i < 6; i++) { orders.add(await optionOrder()); await page.waitForTimeout(500); }
+check('the session picker keeps its order as records arrive', orders.size === 1, [...orders].join(' | '));
 // The detail card's "Agent asked for", and Open in Trace.
 await page.goto(`${BASE}/?view=map&glove=${PI}&dest=en.wikipedia.org`);
 const asked = async () => page.evaluate(() => {

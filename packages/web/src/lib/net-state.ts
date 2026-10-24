@@ -227,12 +227,36 @@ export function applyNetMessage(state: NetClientState, msg: NetServerMessage): N
 /**
  * The glove session the tabs show when none is chosen: the one whose
  * token is the `sessionName` of Layman's active session, if that is a gloved
- * one; otherwise the most recently active (the server sorts live first, then by
- * last activity).
+ * one; otherwise the first in the picker (`netPickerOrder`), which is how `sessions` is passed.
  */
 export function defaultNetToken(sessions: NetSessionSummary[], activeSessionName: string | null | undefined): string | null {
   if (activeSessionName && sessions.some((s) => s.token === activeSessionName)) return activeSessionName;
   return sessions[0]?.token ?? null;
+}
+
+/**
+ * The glove picker's order. Sessions the Dashboard lists come first, in its order (a gloved
+ * Layman session's `sessionName` is its glove token). Then the rest: live first, then the newest
+ * started, then by token. Nothing in it moves with traffic: a live gate writes records while idle,
+ * and ordering by the latest record swapped two idle sessions under the pointer while the list
+ * was open.
+ */
+export function netPickerOrder<T extends Pick<NetSessionSummary, 'token' | 'live' | 'firstSeen'>>(
+  sessions: readonly T[], dashboard: readonly { sessionName?: string }[],
+): T[] {
+  const at = new Map<string, number>();
+  dashboard.forEach((s, i) => { if (s.sessionName && !at.has(s.sessionName)) at.set(s.sessionName, i); });
+  const rank = (s: T) => at.get(s.token) ?? Infinity;
+  return [...sessions].sort((a, b) => rank(a) - rank(b) || Number(b.live) - Number(a.live)
+    || (b.firstSeen ?? 0) - (a.firstSeen ?? 0) || a.token.localeCompare(b.token));
+}
+
+/**
+ * Where an arrival from another view lands: the active Layman session's glove session, if it is
+ * one of `known`; otherwise null (keep what was shown).
+ */
+export function arrivalNetToken(arrival: string | null, known: readonly { token: string }[]): string | null {
+  return arrival !== null && known.some((s) => s.token === arrival) ? arrival : null;
 }
 
 export type NetTabSignal = 'alert' | 'live' | null;

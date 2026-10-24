@@ -28,6 +28,28 @@ export function isSessionLive(session: SessionInfo): boolean {
   return session.active !== false;
 }
 
+/** How the Dashboard orders its sessions: by last activity, or as the user dragged them. */
+export type DashboardSortMode = 'recent' | 'custom';
+
+/**
+ * The sessions the Dashboard lists, in its order: live and not dismissed, matching `filter`
+ * (name, cwd or id), then most recently active first, or in `order` once the user has dragged
+ * them (sessions missing from it go last). The glove picker follows it (`netPickerOrder`).
+ */
+export function orderDashboardSessions(
+  sessions: readonly SessionInfo[],
+  opts: { dismissed: ReadonlySet<string>; sortMode: DashboardSortMode; order: readonly string[]; filter?: string },
+): SessionInfo[] {
+  const q = (opts.filter ?? '').trim().toLowerCase();
+  const shown = sessions.filter((s) => isSessionLive(s) && !opts.dismissed.has(s.sessionId)
+    && (!q || (s.sessionName ?? '').toLowerCase().includes(q) || s.cwd.toLowerCase().includes(q) || s.sessionId.toLowerCase().includes(q)));
+  if (opts.sortMode === 'custom') {
+    const at = new Map(opts.order.map((id, i) => [id, i]));
+    return shown.sort((a, b) => (at.get(a.sessionId) ?? 999) - (at.get(b.sessionId) ?? 999));
+  }
+  return shown.sort((a, b) => b.lastSeen - a.lastSeen);
+}
+
 /** Color for a context-window-usage percentage, shared by the dashboard row and pane header. */
 export function contextPctColor(pct: number, fallback: string): string {
   if (pct >= 75) return 'var(--error)';

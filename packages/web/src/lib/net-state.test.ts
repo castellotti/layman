@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  MAX_CLOSED_FLOWS, applyNetMessage, defaultNetToken, initialNetState, networkTabSignal, rangeKey, subscribeTo,
+  MAX_CLOSED_FLOWS, applyNetMessage, arrivalNetToken, defaultNetToken, netPickerOrder, initialNetState, networkTabSignal, rangeKey, subscribeTo,
   type NetClientState,
 } from './net-state.js';
 import type {
@@ -139,12 +139,46 @@ describe('defaultNetToken', () => {
   it('prefers the glove session of the active Layman session', () => {
     expect(defaultNetToken([summary('a'), summary('b')], 'b')).toBe('b');
   });
-  it('otherwise the first (most recently active) one', () => {
+  it('otherwise the first in the list (the picker’s order)', () => {
     expect(defaultNetToken([summary('a'), summary('b')], 'not-gloved')).toBe('a');
     expect(defaultNetToken([summary('a')], null)).toBe('a');
   });
   it('null with no sessions', () => {
     expect(defaultNetToken([], 'x')).toBeNull();
+  });
+});
+
+describe('netPickerOrder', () => {
+  const tokens = (xs: NetSessionSummary[]) => xs.map((s) => s.token);
+  it('puts the Dashboard’s sessions first, in its order, then live, then the newest started', () => {
+    const net = [summary('old', { firstSeen: 1 }), summary('idle', { firstSeen: 5, live: true }), summary('dash2', { firstSeen: 2 }),
+      summary('new', { firstSeen: 9 }), summary('dash1', { firstSeen: 3, live: true })];
+    const dashboard = [{ sessionName: 'dash1' }, { sessionName: 'not-gloved' }, {}, { sessionName: 'dash2' }];
+    expect(tokens(netPickerOrder(net, dashboard))).toEqual(['dash1', 'dash2', 'idle', 'new', 'old']);
+    // A dragged Dashboard order is followed.
+    expect(tokens(netPickerOrder(net, [{ sessionName: 'dash2' }, { sessionName: 'dash1' }])).slice(0, 2)).toEqual(['dash2', 'dash1']);
+  });
+  it('does not move with traffic: two idle live sessions keep their places as records arrive', () => {
+    const a = summary('a', { live: true, firstSeen: 10, lastSeen: 100 });
+    const b = summary('b', { live: true, firstSeen: 20, lastSeen: 50 });
+    const first = tokens(netPickerOrder([a, b], []));
+    for (let t = 101; t < 120; t++) {
+      // Each heartbeat makes the other the most recent, and the server reorders by it.
+      const server = t % 2 ? [{ ...b, lastSeen: t }, a] : [{ ...a, lastSeen: t }, b];
+      expect(tokens(netPickerOrder(server, []))).toEqual(first);
+    }
+    expect(first).toEqual(['b', 'a']);
+  });
+  it('breaks a tie by token', () => {
+    expect(tokens(netPickerOrder([summary('z'), summary('m')], []))).toEqual(['m', 'z']);
+  });
+});
+
+describe('arrivalNetToken', () => {
+  it('adopts the active session’s glove session only if it is one', () => {
+    expect(arrivalNetToken('b', [summary('a'), summary('b')])).toBe('b');
+    expect(arrivalNetToken('renamed', [summary('a')])).toBeNull();
+    expect(arrivalNetToken(null, [summary('a')])).toBeNull();
   });
 });
 

@@ -79,6 +79,8 @@ beforeEach(() => {
     netToken: null,
     netDest: null,
     netRange: null,
+    netArrival: null,
+    sessions: [],
   });
 });
 
@@ -440,6 +442,25 @@ describe('network views (glove)', () => {
     useSessionStore.getState().setViewMode('network');
     useSessionStore.getState().setNetToken('pi-search');
     expect(readBack()).toBe('/?view=network&glove=pi-search');
+  });
+
+  it('arriving from another view notes the active session for NetworkView; moving between the tabs does not', () => {
+    useSessionStore.setState({
+      viewMode: 'stream', netToken: 'stale-000000', activeSessionId: 's1',
+      sessions: [{ sessionId: 's1', cwd: '/w', lastSeen: 0, agentType: 'pi', sessionName: 'pi-search-c0ffee' }],
+    });
+    useSessionStore.getState().setViewMode('topology');
+    expect(useSessionStore.getState().netArrival).toBe('pi-search-c0ffee');
+    useSessionStore.getState().clearNetArrival();
+    useSessionStore.getState().setViewMode('map');
+    expect(useSessionStore.getState().netArrival).toBeNull();
+  });
+
+  it('a deep link with ?glove= is not overridden by an arrival', async () => {
+    useSessionStore.setState({ activeSessionId: 's1', sessions: [{ sessionId: 's1', cwd: '/w', lastSeen: 0, agentType: 'pi', sessionName: 'other-c0ffee' }] });
+    await useSessionStore.getState().hydrateFromRoute({ kind: 'dashboard' }, { view: 'topology', glove: 'pi-search-c0ffee' });
+    expect(useSessionStore.getState().netArrival).toBeNull();
+    expect(readBack()).toBe('/?view=topology&glove=pi-search-c0ffee');
   });
 
   it('leaving the network views keeps the choice for next time but drops it from the URL', () => {
