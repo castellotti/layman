@@ -168,7 +168,7 @@ export default function NetworkView({ tab, onSend }: { tab: NetTab; onSend: (msg
   }).map((x) => x.sessionName ?? '').join('\n'));
   // The picker's order: the Dashboard's, then a stable one (never by the latest record).
   const sessions = useMemo(
-    () => netPickerOrder(listedSessions, dashboardNames.split('\n').map((sessionName) => ({ sessionName }))),
+    () => netPickerOrder(listedSessions, dashboardNames.split('\n')),
     [listedSessions, dashboardNames],
   );
   const panels = useNetPanels(tab, TAB_PANELS[tab]);

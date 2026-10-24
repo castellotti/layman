@@ -153,10 +153,10 @@ describe('netPickerOrder', () => {
   it('puts the Dashboard’s sessions first, in its order, then live, then the newest started', () => {
     const net = [summary('old', { firstSeen: 1 }), summary('idle', { firstSeen: 5, live: true }), summary('dash2', { firstSeen: 2 }),
       summary('new', { firstSeen: 9 }), summary('dash1', { firstSeen: 3, live: true })];
-    const dashboard = [{ sessionName: 'dash1' }, { sessionName: 'not-gloved' }, {}, { sessionName: 'dash2' }];
+    const dashboard = ['dash1', 'not-gloved', '', 'dash2'];
     expect(tokens(netPickerOrder(net, dashboard))).toEqual(['dash1', 'dash2', 'idle', 'new', 'old']);
     // A dragged Dashboard order is followed.
-    expect(tokens(netPickerOrder(net, [{ sessionName: 'dash2' }, { sessionName: 'dash1' }])).slice(0, 2)).toEqual(['dash2', 'dash1']);
+    expect(tokens(netPickerOrder(net, ['dash2', 'dash1'])).slice(0, 2)).toEqual(['dash2', 'dash1']);
   });
   it('does not move with traffic: two idle live sessions keep their places as records arrive', () => {
     const a = summary('a', { live: true, firstSeen: 10, lastSeen: 100 });

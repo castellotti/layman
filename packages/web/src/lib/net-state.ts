@@ -243,10 +243,10 @@ export function defaultNetToken(sessions: NetSessionSummary[], activeSessionName
  * while the list is open (`GateStrip`).
  */
 export function netPickerOrder<T extends Pick<NetSessionSummary, 'token' | 'live' | 'firstSeen'>>(
-  sessions: readonly T[], dashboard: readonly { sessionName?: string }[],
+  sessions: readonly T[], dashboardNames: readonly string[],
 ): T[] {
   const at = new Map<string, number>();
-  dashboard.forEach((s, i) => { if (s.sessionName && !at.has(s.sessionName)) at.set(s.sessionName, i); });
+  dashboardNames.forEach((name, i) => { if (name && !at.has(name)) at.set(name, i); });
   const rank = (s: T) => at.get(s.token) ?? Infinity;
   return [...sessions].sort((a, b) => rank(a) - rank(b) || Number(b.live) - Number(a.live)
     || (b.firstSeen ?? 0) - (a.firstSeen ?? 0) || a.token.localeCompare(b.token));

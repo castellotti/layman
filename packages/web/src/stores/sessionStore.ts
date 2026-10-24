@@ -464,9 +464,12 @@ function arrival(s: SessionState): Partial<SessionState> {
   const name = id ? s.sessions.find((x) => x.sessionId === id)?.sessionName ?? null : null;
   const net = useNetStore.getState();
   const token = arrivalNetToken(name, [...net.sessions, ...net.notObservable]);
-  if (token === null || token === s.netToken) return {};
-  // Another glove session: its destination and range belong to the old one (as setNetToken).
-  return s.netToken === null ? { netToken: token } : { netToken: token, netDest: null, netRange: null };
+  return token === null ? {} : netTokenChange(s, token);
+}
+
+/** Choosing a glove session: another one clears the destination and range chosen in the old one. */
+function netTokenChange(s: SessionState, netToken: string | null): Partial<SessionState> {
+  return s.netToken === netToken ? {} : s.netToken === null ? { netToken } : { netToken, netDest: null, netRange: null };
 }
 
 export const useSessionStore = create<SessionState>((set, get) => ({
@@ -901,7 +904,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
 
   // Filling in the default session (from none) keeps what a deep link named alongside it; only
   // switching from one session to another clears the destination and the range chosen in the old one.
-  setNetToken: (netToken) => set((s) => (s.netToken === netToken ? {} : s.netToken === null ? { netToken } : { netToken, netDest: null, netRange: null })),
+  setNetToken: (netToken) => set((s) => netTokenChange(s, netToken)),
   setNetDest: (netDest) => set({ netDest }),
   setDashboardSortMode: (dashboardSortMode) => set({ dashboardSortMode }),
   setNetRange: (netRange) => set((s) => (sameRange(s.netRange, netRange) ? {} : { netRange })),
