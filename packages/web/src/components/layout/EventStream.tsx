@@ -13,6 +13,8 @@ import { JumpToLatest } from '../primitives/index.js';
 import { saveAndBookmarkSession } from '../../lib/bookmarks-api.js';
 import { pairFor, hasLogDetail } from '../../lib/event-pairing.js';
 import { extractTurns } from '../../lib/turns.js';
+import { turnSpan } from '../../lib/turn-range.js';
+import { gloveLive, useGloveToken } from '../network/NetworkForTurn.js';
 import { sessionDisplayName } from '../../lib/session-state.js';
 import type { ClientMessage } from '../../lib/ws-protocol.js';
 
@@ -25,9 +27,11 @@ interface EventStreamProps {
    * Logs view keeps its current density; the archived transcript turns it on.
    */
   turnRuler?: boolean;
+  /** The recorded session's name, for one no longer in the live list ("Network for this turn"). */
+  sessionName?: string | null;
 }
 
-export function EventStream({ onSend, archived = false, archivedDate, turnRuler = false }: EventStreamProps) {
+export function EventStream({ onSend, archived = false, archivedDate, turnRuler = false, sessionName }: EventStreamProps) {
   const [promptsOnly, setPromptsOnly] = useState(false);
   const [requestsOnly, setRequestsOnly] = useState(false);
   const [responsesOnly, setResponsesOnly] = useState(false);
@@ -107,6 +111,19 @@ export function EventStream({ onSend, archived = false, archivedDate, turnRuler 
     [turnRuler, sessionEvents]
   );
   const turnByPromptId = useMemo(() => new Map(turns.map((t) => [t.promptEventId, t])), [turns]);
+  // A gloved session's turns can open the network tabs over their own time ("Network for this turn").
+  const turnSession = turns[0]?.sessionId ?? null;
+  const gloveToken = useGloveToken(turnSession, sessionName);
+  // Read when a button is clicked, through a ref, so the headers keep one callback for good.
+  const latest = useRef({ turns, sessionEvents, gloveToken });
+  latest.current = { turns, sessionEvents, gloveToken };
+  const spanOf = useCallback((promptEventId: string) => {
+    const { turns: ts, sessionEvents: evs, gloveToken: token } = latest.current;
+    const i = ts.findIndex((t) => t.promptEventId === promptEventId);
+    if (i < 0 || !token) return null;
+    const owned = new Set(ts[i].eventIds);
+    return turnSpan(evs.filter((e) => owned.has(e.id)), { last: i === ts.length - 1, live: gloveLive(token) });
+  }, []);
   /** Events hidden because the turn owning them is collapsed. */
   const hiddenByCollapse = useMemo(() => {
     if (collapsedTurns.size === 0) return new Set<string>();
@@ -512,6 +529,8 @@ export function EventStream({ onSend, archived = false, archivedDate, turnRuler 
                       addressed={selectedTurnPromptEventId === turn.promptEventId}
                       onToggle={() => toggleTurnCollapsed(turn.promptEventId)}
                       onSelect={() => selectTurn(turn.sessionId, turn.promptEventId)}
+                      gloveToken={gloveToken}
+                      spanOf={spanOf}
                     />
                   )}
                   {!hidden && (

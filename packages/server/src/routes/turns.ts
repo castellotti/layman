@@ -63,7 +63,7 @@ export function registerTurnRoutes(fastify: FastifyInstance, deps: TurnRouteDeps
   // ── A single turn, full text or markdown ───────────────────────────────────
   fastify.get<{
     Params: { sessionId: string; promptEventId: string };
-    Querystring: { format?: string; toolCalls?: string; analysis?: string };
+    Querystring: { format?: string; toolCalls?: string; analysis?: string; events?: string };
   }>('/api/turns/:sessionId/:promptEventId', async (request, reply) => {
     const { sessionId, promptEventId } = request.params;
     // getTurnWithEvents() returns both from one eventsFor() fetch — calling getTurn()
@@ -71,10 +71,10 @@ export function registerTurnRoutes(fastify: FastifyInstance, deps: TurnRouteDeps
     // live, not-yet-persisted session means scanning the whole in-memory EventStore twice.
     const found = turnStore.getTurnWithEvents(sessionId, promptEventId);
     if (!found) return reply.status(404).send(notFound('Turn'));
-    const { turn, events } = found;
+    const { turn, events, last } = found;
+    const owned = new Set(turn.eventIds);
 
     if (request.query.format === 'md') {
-      const owned = new Set(turn.eventIds);
       const markdown = turnToMarkdown(
         turn,
         events.filter((e) => owned.has(e.id)),
@@ -83,6 +83,11 @@ export function registerTurnRoutes(fastify: FastifyInstance, deps: TurnRouteDeps
       return reply.type('text/markdown; charset=utf-8').send(markdown);
     }
 
+    // `?events=1`: the events the turn owns, and whether it is its session's last turn, for the
+    // client's "Network for this turn" (`turnSpan` in packages/web/src/lib/turn-range.ts).
+    if (request.query.events === '1') {
+      return { turn, events: events.filter((e) => owned.has(e.id)), last };
+    }
     return { turn };
   });
 

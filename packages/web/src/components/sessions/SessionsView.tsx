@@ -700,7 +700,7 @@ export function SessionsView({ onSend }: SessionsViewProps) {
                   </Suspense>
                 </div>
               ) : (
-                <EventStream onSend={onSend} archived archivedDate={archivedDate} turnRuler />
+                <EventStream onSend={onSend} archived archivedDate={archivedDate} turnRuler sessionName={viewingSession?.sessionName} />
               )}
             </div>
 

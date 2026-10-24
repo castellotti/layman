@@ -10,7 +10,8 @@ import React, { useEffect, useMemo } from 'react';
 import { useSessionStore } from '../../stores/sessionStore.js';
 import { useNetStore } from '../../stores/netStore.js';
 import { useNetPanels } from '../../hooks/useNetPanels.js';
-import { defaultNetToken, rangeKey, type NetSessionData } from '../../lib/net-state.js';
+import { defaultNetToken, netPickerOrder, rangeKey, type NetSessionData } from '../../lib/net-state.js';
+import { orderDashboardSessions } from '../../lib/session-state.js';
 import { formatRange } from '../../lib/net-range.js';
 import { columnPanels, type PanelDef } from '../../lib/net-panels.js';
 import type { ClientMessage } from '../../lib/ws-protocol.js';
@@ -159,7 +160,17 @@ export default function NetworkView({ tab, onSend }: { tab: NetTab; onSend: (msg
   const setSettingsOpen = useSessionStore((s) => s.setSettingsOpen);
   const activeSessionName = useSessionStore((s) =>
     s.sessions.find((x) => x.sessionId === s.activeSessionId)?.sessionName ?? null);
-  const { sessions, notObservable, sessionsKnown, registry, data, setSubscribed } = useNetStore();
+  const { sessions: listedSessions, notObservable, sessionsKnown, registry, data, setSubscribed } = useNetStore();
+  // The Dashboard's sessions' names, in its order, as one string: a sessions frame that changes
+  // nothing the picker uses does not re-render these tabs.
+  const dashboardNames = useSessionStore((s) => orderDashboardSessions(s.sessions, {
+    dismissed: s.dashboardDismissedSessions, sortMode: s.dashboardSortMode, order: s.dashboardSessionOrder,
+  }).map((x) => x.sessionName ?? '').join('\n'));
+  // The picker's order: the Dashboard's, then a stable one (never by the latest record).
+  const sessions = useMemo(
+    () => netPickerOrder(listedSessions, dashboardNames.split('\n')),
+    [listedSessions, dashboardNames],
+  );
   const panels = useNetPanels(tab, TAB_PANELS[tab]);
 
   const enabled = !!config?.glove.enabled && config.glove.network?.enabled !== false;

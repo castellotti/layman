@@ -39,6 +39,8 @@ function sessionOption(s: NetSessionSummary): string {
 const DISPLAY_KEY = 'layman.net.rangeDisplay';
 const GAP_KEY = 'layman.net.burstGap';
 
+const rankIn = (order: readonly string[], token: string) => { const i = order.indexOf(token); return i < 0 ? order.length : i; };
+
 /** A range running until now: its length grows, so only this ticks. */
 function RangeText({ range }: { range: NetRange }) {
   const now = useNow(range.to === null ? 1000 : 3_600_000);
@@ -123,6 +125,10 @@ export function GateStrip({ sessions, notObservable, token, onPick, range, onRan
   onToggle: (id: string) => void;
 }) {
   const known = token !== null && (sessions.some((s) => s.token === token) || notObservable.some((s) => s.token === token));
+  // While the list is open its order is frozen: the Dashboard's order follows agent activity, and
+  // a row moving under the pointer picks the wrong session. New sessions join at the end.
+  const [frozen, setFrozen] = useState<string[] | null>(null);
+  const listed = frozen === null ? sessions : [...sessions].sort((a, b) => rankIn(frozen, a.token) - rankIn(frozen, b.token));
   const [display, setDisplay] = useStored<'on' | 'off'>(DISPLAY_KEY, 'on', (raw) => (raw === 'off' || raw === 'on' ? raw : null));
   const shown = display === 'on';
   return (
@@ -136,7 +142,8 @@ export function GateStrip({ sessions, notObservable, token, onPick, range, onRan
           <select
             aria-label="Glove session"
             value={known ? token! : ''}
-            onChange={(e) => e.target.value && onPick(e.target.value)}
+            onChange={(e) => { setFrozen(null); if (e.target.value) onPick(e.target.value); }}
+            onFocus={() => setFrozen(sessions.map((s) => s.token))} onBlur={() => setFrozen(null)}
             style={{
               fontSize: 10, letterSpacing: '0.04em', fontWeight: 600, fontFamily: 'var(--font-ui)',
               color: 'var(--text-muted)', background: 'transparent', border: 'none', outline: 'none',
@@ -145,7 +152,7 @@ export function GateStrip({ sessions, notObservable, token, onPick, range, onRan
           >
             {!known && <option value="">{token ?? 'choose a session'}</option>}
             {/* A session without the observe grant is listed greyed out: Layman may not read it. */}
-            {sessions.map((s) => <option key={s.token} value={s.token}>{sessionOption(s)}</option>)}
+            {listed.map((s) => <option key={s.token} value={s.token}>{sessionOption(s)}</option>)}
             {notObservable.map((s) => <option key={s.token} value={s.token} disabled>{[s.token, s.harness, 'not observable'].filter(Boolean).join(' · ')}</option>)}
           </select>
         ) : (

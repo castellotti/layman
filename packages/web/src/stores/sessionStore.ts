@@ -2,7 +2,9 @@ import { create } from 'zustand';
 import type { TimelineEvent, PendingApprovalDTO, LaymanConfig, SessionStatus, SetupStatus, BookmarkFolder, Bookmark, HighlightFolder, Highlight, SessionTimeMetrics, SessionAccessLog, SessionMetrics, DriftState, LiveStream, ResolvedId, SyncStatus, HostStats } from '../lib/types.js';
 import type { SessionInfo } from '../lib/ws-protocol.js';
 import type { NetRange } from '../lib/netobs-types.js';
-import { rangeKey, sameRange } from '../lib/net-state.js';
+import { arrivalNetToken, rangeKey, sameRange } from '../lib/net-state.js';
+import { useNetStore } from './netStore.js';
+import type { DashboardSortMode } from '../lib/session-state.js';
 import type { LaymanRoute, RouteOptions, ViewName } from '../lib/layman-url.js';
 import { extractTurn } from '../lib/turns.js';
 import { pairFor } from '../lib/event-pairing.js';
@@ -313,6 +315,8 @@ export interface SessionState {
   // Dashboard view
   dashboardFocusedSession: string | null;
   dashboardSessionOrder: string[];
+  /** Kept here, not in the Dashboard, so the glove picker can follow the same order. */
+  dashboardSortMode: DashboardSortMode;
   dashboardDismissedSessions: Set<string>;
   returnToDashboard: boolean;
   scrollToEventId: string | null;
@@ -406,9 +410,12 @@ export interface SessionState {
   setSelectedHighlight: (highlightId: string | null) => void;
   /** Choose the glove session the network views show; clears the destination selection and the time range. */
   setNetToken: (token: string | null) => void;
+  setDashboardSortMode: (mode: DashboardSortMode) => void;
   setNetDest: (host: string | null) => void;
   /** Show one time range of the glove session, or All records (null). */
   setNetRange: (range: NetRange | null) => void;
+  /** Open the Topology tab on a glove session over a range ("Network for this turn"): one update, one history entry. */
+  showNetworkRange: (token: string, range: NetRange) => void;
   selectTurn: (sessionId: string, promptEventId: string | null) => void;
   hydrateFromRoute: (route: LaymanRoute, opts: RouteOptions) => Promise<void>;
   clearRouteError: () => void;
@@ -443,6 +450,28 @@ export interface SessionState {
   toggleLogHighlight: (eventId: string) => void;
   setExpandedLogEventIds: (ids: Set<string> | 'all') => void;
   toggleExpandAllLogs: (detailEventIds: string[]) => void;
+}
+
+/**
+ * Entering the network tabs from another view while looking at a gloved session shows that
+ * session, even if another was chosen on the tabs before. "Looking at" is the Dashboard's focused
+ * session, the Sessions view's open transcript (`viewingSessionId`, read only there because it
+ * outlives the transcript), and otherwise the one Logs shows (`activeSessionId`). Resolved here,
+ * in the same update as the view, so the switch is one history entry and one subscription. A `?glove=` link is hydrated without `setViewMode`, so the link wins.
+ * Before the glove sessions are known nothing is chosen here; the default (`defaultNetToken`)
+ * then prefers the active session anyway.
+ */
+function arrival(s: SessionState): Partial<SessionState> {
+  const id = s.viewMode === 'dashboard' ? s.dashboardFocusedSession : s.viewMode === 'sessions' ? s.viewingSessionId : s.activeSessionId;
+  const name = id ? s.sessions.find((x) => x.sessionId === id)?.sessionName ?? null : null;
+  const net = useNetStore.getState();
+  const token = arrivalNetToken(name, [...net.sessions, ...net.notObservable]);
+  return token === null ? {} : netTokenChange(s, token);
+}
+
+/** Choosing a glove session: another one clears the destination and range chosen in the old one. */
+function netTokenChange(s: SessionState, netToken: string | null): Partial<SessionState> {
+  return s.netToken === netToken ? {} : s.netToken === null ? { netToken } : { netToken, netDest: null, netRange: null };
 }
 
 export const useSessionStore = create<SessionState>((set, get) => ({
@@ -507,6 +536,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
 
   dashboardFocusedSession: null,
   dashboardSessionOrder: [],
+  dashboardSortMode: 'recent',
   dashboardDismissedSessions: new Set<string>(),
   returnToDashboard: false,
   scrollToEventId: null,
@@ -768,11 +798,12 @@ export const useSessionStore = create<SessionState>((set, get) => ({
 
   clearEvents: () => set({ events: [], selectedEventId: null }),
 
-  setViewMode: (mode) => set({
+  setViewMode: (mode) => set((s) => ({
     viewMode: mode,
     ...viewModeFlags(mode),
     ...(mode !== 'dashboard' ? { returnToDashboard: false } : {}),
-  }),
+    ...(isNetworkView(mode) && !isNetworkView(s.viewMode) ? arrival(s) : {}),
+  })),
 
   setBookmarks: (bookmarkFolders, bookmarks) => set({ bookmarkFolders, bookmarks }),
 
@@ -875,8 +906,14 @@ export const useSessionStore = create<SessionState>((set, get) => ({
 
   // Filling in the default session (from none) keeps what a deep link named alongside it; only
   // switching from one session to another clears the destination and the range chosen in the old one.
-  setNetToken: (netToken) => set((s) => (s.netToken === netToken ? {} : s.netToken === null ? { netToken } : { netToken, netDest: null, netRange: null })),
+  setNetToken: (netToken) => set((s) => netTokenChange(s, netToken)),
+  showNetworkRange: (token, range) => set((s) => ({
+    viewMode: 'topology', ...viewModeFlags('topology'), returnToDashboard: false,
+    // A destination chosen earlier belongs to another question, not this range.
+    ...netTokenChange(s, token), netDest: null, netRange: range,
+  })),
   setNetDest: (netDest) => set({ netDest }),
+  setDashboardSortMode: (dashboardSortMode) => set({ dashboardSortMode }),
   setNetRange: (netRange) => set((s) => (sameRange(s.netRange, netRange) ? {} : { netRange })),
 
   // An explicit user navigation to one turn — the URL becomes /s/<sid>/t/<pid>.

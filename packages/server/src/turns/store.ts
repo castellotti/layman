@@ -107,14 +107,15 @@ export class TurnStore {
   /**
    * Like getTurn(), but also returns the session's full event list — for callers
    * (e.g. the single-turn markdown export route) that need both and would
-   * otherwise call eventsFor() a second time to get them.
+   * otherwise call eventsFor() a second time to get them. `last`: it is the session's last turn.
    */
-  getTurnWithEvents(sessionId: string, promptEventId: string): { turn: Turn; events: TimelineEvent[] } | null {
+  getTurnWithEvents(sessionId: string, promptEventId: string): { turn: Turn; events: TimelineEvent[]; last: boolean } | null {
     const events = this.eventsFor(sessionId);
     const turns = this.turnsFor(sessionId, events);
+    const found = (turn: Turn) => ({ turn, events, last: turn === turns[turns.length - 1] });
 
     const exact = turns.find((t) => t.promptEventId === promptEventId);
-    if (exact) return { turn: exact, events };
+    if (exact) return found(exact);
 
     // A duplicate prompt collapsed by extractTurns is no longer any turn's
     // promptEventId, but links minted before the collapse still name it. Only
@@ -122,7 +123,7 @@ export class TurnStore {
     const isPrompt = events.some((e) => e.id === promptEventId && e.type === 'user_prompt');
     if (!isPrompt) return null;
     const turn = turns.find((t) => t.eventIds.includes(promptEventId));
-    return turn ? { turn, events } : null;
+    return turn ? found(turn) : null;
   }
 
   /** The turn that owns an arbitrary event, so any event id can be addressed as a turn. */

@@ -629,8 +629,58 @@ nothing for finished sessions (their history is not an alarm).
   `/f/` folder id, which would otherwise outrank them. Changing the glove session pushes a history
   entry; changing tab or destination replaces (like every view on the dashboard route). A bare
   `/?view=network` shows the default session — the one matching the active Layman session's
-  `sessionName`, else the most recently active — and writes it into the URL by **replacing**, because
+  `sessionName`, else the first in the picker — and writes it into the URL by **replacing**, because
   pushing would make Back land on the bare URL, re-default and push again (`historyModeFor`, tested).
+- **The picker's order** (`netPickerOrder` in `lib/net-state.ts`, tested). Glove sessions the
+  Dashboard lists come first, in the Dashboard's order: most recent first, or as the user dragged
+  them. `orderDashboardSessions` in `lib/session-state.ts` is that order, shared with the Dashboard,
+  and its sort mode is kept in `sessionStore` so both read it. The rest follow: live first, then the
+  newest started, then by token. Gate records never move it. The server's list is sorted by the
+  latest record, and a live gate writes records while it is idle, so two idle live sessions swapped
+  places under the pointer while the list was open and a click picked the wrong one. The Dashboard's
+  own order does follow agent activity, so the picker also freezes its order while the list is open
+  (focus to blur or a choice; a new session joins at the end). The Dashboard still opens at most
+  recent each time, as before the sort mode moved into the store.
+- **Arriving from another view.** Entering any of the four tabs from elsewhere while looking at a
+  gloved session shows that session, even if another was chosen on these tabs before. "Looking at"
+  is the session open in Logs or a session view, or the Dashboard's focused one (from the Dashboard,
+  `activeSessionId` is only whatever Logs last showed). `setViewMode` resolves it in the same update
+  as the view (`arrival` in `sessionStore.ts`, `arrivalNetToken`), so the switch is one history entry
+  and one subscription: resolving it in an effect afterwards first pushed and subscribed to the old
+  session, and Back landed on it. It also shows a session that is not observable, which the default
+  skips. Before the glove sessions are known nothing is chosen, and the default prefers the active
+  session anyway. Moving between the four tabs never changes the session. A deep link with `glove=`
+  is hydrated without `setViewMode`, so the link wins.
+- **A turn as a range ("Network for this turn").** A globe button on a gloved session's turn
+  headers (the session transcript), on a highlight in Prompts, and on Trace's turn bar opens Topology
+  for the turn's glove session over the turn's time (`showNetworkRange`: one update, one history
+  entry). The range runs from 1 s before the prompt (`TURN_LEAD_MS`; 3 s, `TURN_READ_LEAD_MS` as
+  Trace's `READ_LAG_MS`, when the prompt is known only by when it was read) to 2 s after the turn's
+  last event finished (`TURN_TAIL_MS`; a session's end, which can come hours later, does not
+  count): the gate batches its records, and a pooled connection's last bytes trail. The tooltip
+  says so. Only a session Layman may read gets the button. Times are the transcript's
+  (`transcriptAt`, `transcriptCompletedAt`) when the harness kept them, because a passive watcher's
+  `timestamp` is when it read the event; without them the range is the events' times and the
+  tooltip calls it approximate. The last turn of its Layman session, while the glove gate runs, is
+  still running unless an answer that said something, a stop or the session's end follows its last
+  tool call (not necessarily as its very last event: a note can follow the answer), and gives an
+  open range (`to: null`, until now). "Live" is the gate's on both sides, never the Layman session's, so the
+  transcript and Trace agree about the same turn. The span is worked out when the button is clicked
+  (a long live session would otherwise recompute every turn's on every event), and for a highlight
+  it comes from the server (`GET /api/turns/:sid/:pid?events=1`: the turn's events and whether it is
+  the last), because a highlight holds only its prompt and response and the turn's tool calls can
+  end later. It also clears a destination picked earlier, which belongs to another question. A
+  recorded session no longer in the live list still gets the button: its name comes from the
+  recorded sessions. When Trace sets the range (this button, or a drag), it keeps showing the turn
+  it showed (`keep`): a new range otherwise opens on its latest turn, and a drag that starts after
+  the turn's prompt left that turn out of it. The rule
+  is `turnSpan` in `lib/turn-range.ts` for the transcript and Prompts, and `turnEnd` in
+  `netobs/trace.ts` for Trace's turns (`TraceTurn.endedAt`, `exact`, from the same events); the two
+  are kept in step by hand, like the turn rule itself. The URL is the network tab's
+  (`/?view=topology&glove=…&from=…&to=…`), not the turn's: the range in it reproduces what is
+  shown. **Range from selection:** dragging across the Trace waterfall's time axis makes that
+  stretch the range (`axisRange` in `lib/net-trace.ts`; a drag shorter than 200 ms is a click; only
+  the main button, on the axis as it was when the drag began).
 - **Time range.** `netRange` in `sessionStore`, hydrated from `&from=<iso>&to=<iso|now>` (ISO, not ms, so
   a shared link says what it shows; a missing `to` is "now"). A range is dropped when it has no start,
   starts before 1970 (the server's rule, so the two never disagree), ends before it starts, or has an

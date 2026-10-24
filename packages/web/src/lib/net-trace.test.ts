@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { callForFlow, defaultSelection, flowOutcome, isRowExpanded, tickLabel, traceAxis, traceRows } from './net-trace.js';
+import { axisRange, MIN_AXIS_RANGE_MS, callForFlow, defaultSelection, flowOutcome, isRowExpanded, tickLabel, traceAxis, traceRows } from './net-trace.js';
 import { flow } from './net-test-fixtures.js';
 import type { FlowView, TraceCall, TraceView } from './netobs-types.js';
 
@@ -27,7 +27,7 @@ function view(): TraceView {
   return {
     token: 'pi-search', sessionIds: ['s1'],
     nav: { index: 0, count: 1, prev: null, next: null },
-    turn: { sessionId: 's1', promptEventId: 'p1', responseEventId: 'r1', index: 2, startedAt: T, promptText: 'onion routing', toolCallCount: 4 },
+    turn: { sessionId: 's1', promptEventId: 'p1', responseEventId: 'r1', index: 2, startedAt: T, promptText: 'onion routing', toolCallCount: 4, endedAt: T + 50_000, exact: true },
     window: { from: T - 1000, to: T + 60_000 },
     items: [
       { kind: 'llm', flowId: 'llm1', hopIds: [] },
@@ -43,6 +43,18 @@ function view(): TraceView {
 }
 
 const RULES = [{ id: 'r_ads', action: 'block' as const, match: { host: '*.tracker.example' }, note: 'ads' }];
+
+describe('a range from a drag across the axis', () => {
+  const axis = { t0: 10_000, span: 20_000, ticks: [] };
+  it('maps the drag to times, in either direction, clamped to the axis', () => {
+    expect(axisRange(axis, 0.25, 0.5)).toEqual({ from: 15_000, to: 20_000 });
+    expect(axisRange(axis, 0.5, 0.25)).toEqual({ from: 15_000, to: 20_000 });
+    expect(axisRange(axis, -1, 2)).toEqual({ from: 10_000, to: 30_000 });
+  });
+  it('treats a short drag as a click', () => {
+    expect(axisRange(axis, 0.5, 0.5 + (MIN_AXIS_RANGE_MS - 1) / axis.span)).toBeNull();
+  });
+});
 
 describe('the axis', () => {
   it('runs from the turn start to its last event, in round ticks', () => {

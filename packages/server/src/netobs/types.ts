@@ -837,6 +837,13 @@ export interface TraceTurn {
   /** 0-based position of the turn in its Layman session. */
   index: number;
   startedAt: number;
+  /**
+   * When the turn's last event finished (its transcript time when the harness kept one), or
+   * null while it is still running: the end of "Network for this turn" (`turnRange`).
+   */
+  endedAt: number | null;
+  /** The times are the transcript's; else the events' read time, and a range from them is approximate. */
+  exact: boolean;
   promptText: string;
   toolCallCount: number;
 }

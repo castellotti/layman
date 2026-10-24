@@ -1,5 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { useSessionStore, viewModeForName, viewNameForMode, instanceUrlOf } from './sessionStore.js';
+import { useNetStore } from './netStore.js';
+import type { NetSessionSummary } from '../lib/netobs-types.js';
+
+const summary = (token: string) => ({ token, live: false, firstSeen: 0, lastSeen: 0 }) as NetSessionSummary;
 import { routeForState, historyModeFor } from '../hooks/useLaymanRoute.js';
 import { buildPath, parsePath, VIEW_NAMES } from '../lib/layman-url.js';
 import type { TimelineEvent, EventType, LaymanConfig } from '../lib/types.js';
@@ -79,6 +83,8 @@ beforeEach(() => {
     netToken: null,
     netDest: null,
     netRange: null,
+    sessions: [],
+    dashboardFocusedSession: null,
   });
 });
 
@@ -440,6 +446,85 @@ describe('network views (glove)', () => {
     useSessionStore.getState().setViewMode('network');
     useSessionStore.getState().setNetToken('pi-search');
     expect(readBack()).toBe('/?view=network&glove=pi-search');
+  });
+
+  describe('arriving from another view', () => {
+    const gloved = (sessionId: string, sessionName: string) => ({ sessionId, cwd: '/w', lastSeen: 0, agentType: 'pi', sessionName });
+    beforeEach(() => {
+      useNetStore.setState({ sessions: [summary('pi-search-c0ffee'), summary('direct-c0ffee')], notObservable: [{ token: 'dark-c0ffee', harness: null }] as never, sessionsKnown: true });
+    });
+    afterEach(() => useNetStore.setState({ sessions: [], notObservable: [], sessionsKnown: false }));
+
+    it('shows the gloved session being looked at, in one update, clearing the old one’s range', () => {
+      const range = { from: 0, to: null };
+      useSessionStore.setState({ viewMode: 'stream', netToken: 'direct-c0ffee', netDest: 'x.org', netRange: range, activeSessionId: 's1', sessions: [gloved('s1', 'pi-search-c0ffee')] });
+      const states: string[] = [];
+      const off = useSessionStore.subscribe(() => states.push(readBack()));
+      useSessionStore.getState().setViewMode('topology');
+      off();
+      expect(states).toEqual(['/?view=topology&glove=pi-search-c0ffee']);
+      // Between the tabs, the choice holds.
+      useSessionStore.getState().setNetToken('direct-c0ffee');
+      useSessionStore.getState().setViewMode('map');
+      expect(readBack()).toBe('/?view=map&glove=direct-c0ffee');
+    });
+
+    it('keeps the range when it is the session already shown', () => {
+      const range = { from: 5, to: null };
+      useSessionStore.setState({ viewMode: 'stream', netToken: 'pi-search-c0ffee', netRange: range, activeSessionId: 's1', sessions: [gloved('s1', 'pi-search-c0ffee')] });
+      useSessionStore.getState().setViewMode('network');
+      expect(useSessionStore.getState().netRange).toEqual(range);
+    });
+
+    it('shows a session that is not observable, which the default would skip', () => {
+      useSessionStore.setState({ viewMode: 'stream', netToken: null, activeSessionId: 's1', sessions: [gloved('s1', 'dark-c0ffee')] });
+      useSessionStore.getState().setViewMode('network');
+      expect(useSessionStore.getState().netToken).toBe('dark-c0ffee');
+    });
+
+    it('from the Dashboard, uses its focused session, not the one Logs last showed', () => {
+      useSessionStore.setState({ viewMode: 'dashboard', netToken: 'direct-c0ffee', activeSessionId: 's1', dashboardFocusedSession: null, sessions: [gloved('s1', 'pi-search-c0ffee')] });
+      useSessionStore.getState().setViewMode('network');
+      expect(useSessionStore.getState().netToken).toBe('direct-c0ffee');
+      useSessionStore.setState({ viewMode: 'dashboard', dashboardFocusedSession: 's1' });
+      useSessionStore.getState().setViewMode('network');
+      expect(useSessionStore.getState().netToken).toBe('pi-search-c0ffee');
+    });
+
+    it('in Logs uses the session Logs shows, not a transcript opened earlier', () => {
+      useSessionStore.setState({ viewMode: 'stream', netToken: null, viewingSessionId: 's2', activeSessionId: 's1',
+        sessions: [gloved('s1', 'pi-search-c0ffee'), gloved('s2', 'direct-c0ffee')] });
+      useSessionStore.getState().setViewMode('network');
+      expect(useSessionStore.getState().netToken).toBe('pi-search-c0ffee');
+      useSessionStore.setState({ viewMode: 'sessions' });
+      useSessionStore.getState().setViewMode('network');
+      expect(useSessionStore.getState().netToken).toBe('direct-c0ffee');
+    });
+
+    it('leaves the choice alone for a session that is not gloved, or before the glove sessions are known', () => {
+      useSessionStore.setState({ viewMode: 'stream', netToken: 'direct-c0ffee', activeSessionId: 's1', sessions: [gloved('s1', 'renamed')] });
+      useSessionStore.getState().setViewMode('network');
+      expect(useSessionStore.getState().netToken).toBe('direct-c0ffee');
+      useNetStore.setState({ sessions: [], notObservable: [], sessionsKnown: false });
+      useSessionStore.setState({ viewMode: 'stream', sessions: [gloved('s1', 'pi-search-c0ffee')] });
+      useSessionStore.getState().setViewMode('network');
+      expect(useSessionStore.getState().netToken).toBe('direct-c0ffee');
+    });
+
+    it('a deep link with ?glove= wins', async () => {
+      useSessionStore.setState({ activeSessionId: 's1', sessions: [gloved('s1', 'direct-c0ffee')] });
+      await useSessionStore.getState().hydrateFromRoute({ kind: 'dashboard' }, { view: 'topology', glove: 'pi-search-c0ffee' });
+      expect(readBack()).toBe('/?view=topology&glove=pi-search-c0ffee');
+    });
+  });
+
+  it('"Network for this turn" opens Topology on the session and range in one history step', () => {
+    useSessionStore.setState({ viewMode: 'stream', netToken: 'other-c0ffee', netDest: 'x.org', activeSessionId: null });
+    const states: string[] = [];
+    const off = useSessionStore.subscribe(() => states.push(readBack()));
+    useSessionStore.getState().showNetworkRange('pi-search-c0ffee', { from: Date.parse('2026-10-21T08:00:00.000Z'), to: Date.parse('2026-10-21T08:05:00.000Z') });
+    off();
+    expect(states).toEqual(['/?view=topology&glove=pi-search-c0ffee&from=2026-10-21T08:00:00.000Z&to=2026-10-21T08:05:00.000Z']);
   });
 
   it('leaving the network views keeps the choice for next time but drops it from the URL', () => {

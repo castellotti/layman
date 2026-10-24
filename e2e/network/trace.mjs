@@ -60,6 +60,62 @@ check('Bookmark saves the turn as a highlight', await waitFor(async () => (await
 const href = await page.$eval('a:has-text("Open turn")', (a) => a.getAttribute('href'));
 await page.click('a:has-text("Open turn")');
 check('Open turn goes to /s/{session}/t/{prompt}', /^\/s\/[^/]+\/t\/[^/?]+/.test(href) && await waitFor(async () => new URL(page.url()).pathname === href.split('?')[0]), `${href} → ${page.url()}`);
+// Arrival: looking at a gloved session in Logs, a network tab opens on it, even if another was chosen there before.
+const gloveOf = () => new URL(page.url()).searchParams.get('glove');
+await page.keyboard.press('o');
+check('(setup) Topology opens on the session from Logs', await waitFor(async () => gloveOf() === PI), page.url());
+await page.selectOption('select[aria-label="Glove session"]', sid('direct'));
+check('(setup) another session chosen there', await waitFor(async () => gloveOf() === sid('direct')), page.url());
+await page.click('button[title="Logs (S)"]');
+check('(setup) back in Logs', await waitFor(async () => new URL(page.url()).pathname.startsWith('/s/')), page.url());
+const depth = await page.evaluate(() => history.length);
+await page.click('button[title="Topology (O)"]');
+check('arriving from Logs opens the session being looked at, not the one chosen before', await waitFor(async () => gloveOf() === PI, 5000), page.url());
+check('…as one history entry: Back returns to Logs', await page.evaluate(() => history.length) === depth + 1
+  && (await page.goBack(), await waitFor(async () => new URL(page.url()).pathname.startsWith('/s/'))), page.url());
+// Hydrating the Logs route is async (it fetches the session): let it land before going forward again.
+await page.waitForTimeout(1500);
+await page.goForward();
+await waitFor(async () => gloveOf() === PI);
+await page.selectOption('select[aria-label="Glove session"]', sid('direct'));
+await page.click('button[title="Map (M)"]');
+check('moving between the network tabs keeps the choice', await waitFor(async () => new URL(page.url()).searchParams.get('view') === 'map') && gloveOf() === sid('direct'), page.url());
+// The picker's order holds still while live gates write records.
+const optionOrder = () => page.$$eval('select[aria-label="Glove session"] option', (os) => os.map((o) => o.value).join());
+const orders = new Set();
+for (let i = 0; i < 6; i++) { orders.add(await optionOrder()); await page.waitForTimeout(500); }
+check('the session picker keeps its order as records arrive', orders.size === 1, [...orders].join(' | '));
+// "Network for this turn" from the session's transcript: Topology over the turn's time.
+await page.goto(`${BASE}${href}`);
+const turnButton = `[data-turn-header][data-prompt-event-id="${href.split('/t/')[1].split('?')[0]}"] [data-network-for-turn]`;
+check('a gloved turn’s header offers "Network for this turn"', await waitFor(async () => (await page.$(turnButton)) !== null, 8000));
+await page.click(turnButton);
+const turnUrl = () => new URL(page.url()).searchParams;
+check('…which opens Topology for its glove session over a range', await waitFor(async () => turnUrl().get('view') === 'topology' && turnUrl().get('glove') === PI && !!turnUrl().get('from')), page.url());
+const [tf, tt] = [Date.parse(turnUrl().get('from')), turnUrl().get('to')];
+check('…a closed range of minutes, not hours (an earlier turn ended)', tt !== 'now' && Date.parse(tt) > tf && Date.parse(tt) - tf < 3600_000, `${turnUrl().get('from')} → ${tt}`);
+check('…and the range bar names it', await waitFor(async () => (await page.$('button[aria-label="Show All records"]')) !== null));
+// A highlight in Prompts (the Bookmark above saved one) has it too, over the whole turn from the server.
+const hl = (await (await page.request.get(`${BASE}/api/highlights`)).json()).highlights[0];
+await page.goto(`${BASE}/h/${hl.id}`);
+check('a gloved highlight in Prompts offers "Network for this turn"', await waitFor(async () => (await page.$('[data-network-for-turn]')) !== null, 8000));
+await page.click('[data-network-for-turn]');
+check('…which opens Topology over the turn', await waitFor(async () => turnUrl().get('view') === 'topology' && turnUrl().get('glove') === PI && !!turnUrl().get('from')), page.url());
+// The Trace tab's turn bar has it too, and a drag across the waterfall's axis sets a range.
+await page.goto(`${BASE}/?view=trace&glove=${PI}`);
+await page.waitForSelector('[role=region][aria-label="Turn"] [data-network-for-turn]', { timeout: 10000 });
+check('the Trace turn bar offers "Network for this turn"', true);
+const promptShown = () => page.$eval('[role=region][aria-label="Turn"]', (r) => r.textContent.match(/“[^”]*”/)?.[0] ?? '');
+const dragged = await promptShown();
+const axisBox = await (await page.$('[data-trace-axis]')).boundingBox();
+await page.mouse.move(axisBox.x + axisBox.width * 0.2, axisBox.y + axisBox.height / 2);
+await page.mouse.down();
+await page.mouse.move(axisBox.x + axisBox.width * 0.6, axisBox.y + axisBox.height / 2, { steps: 5 });
+check('dragging across the axis draws the selection', await page.$('[data-trace-brush]') !== null);
+await page.mouse.up();
+check('…and releasing makes it the range', await waitFor(async () => !!new URL(page.url()).searchParams.get('from') && new URL(page.url()).searchParams.get('to') !== 'now'), page.url());
+await page.waitForTimeout(1500);
+check('…and Trace still shows the turn dragged across', await promptShown() === dragged, `${dragged} → ${await promptShown()}`);
 // The detail card's "Agent asked for", and Open in Trace.
 await page.goto(`${BASE}/?view=map&glove=${PI}&dest=en.wikipedia.org`);
 const asked = async () => page.evaluate(() => {
