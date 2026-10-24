@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  bandPath, bandWidth, countLabel, exitSourceHost, layoutTopology, outcomeOf, pathHops, projectTopology, scrollToDest, spread, topologyServices,
+  bandPath, bandWidth, countLabel, exitSourceHost, layoutTopology, outcomeOf, pathHops, projectTopology, scrollThumb, scrollToDest, spread, thumbDrag, keyScroll, wheelDelta, easeScroll, topologyServices,
   upstreamHost, MIN_WIDTH, type Topology, type TopoBand,
 } from './net-topology.js';
 import { dest, rulesView, sessionData } from './net-test-fixtures.js';
@@ -336,16 +336,40 @@ describe('other sessions', () => {
       }
     });
 
-    it('draws the rows that touch the window, moved by the scroll', () => {
-      const s = t.dests.maxScroll / 2;
-      const p = projectTopology(t, s);
-      for (const n of p.rows) {
-        expect(n.y).toBeCloseTo(rows.find((r) => r.id === n.id)!.y - s);
-        expect(n.y < t.dests.bottom && n.y + n.h > t.dests.top).toBe(true);
-      }
-      for (const id of p.visible) expect(p.rows.some((n) => n.id === id)).toBe(true);
-      expect(p.rows.length).toBeGreaterThanOrEqual(p.visible.size);
-      expect(projectTopology(t, 0).rows.every((n) => rows.includes(n))).toBe(true);
+    it('puts a scrollbar beside the column that drags in proportion, and keys that scroll by row and page', () => {
+      expect(scrollThumb(layoutTopology(fixture({}, many(3)), 1080, 500), 0)).toBeNull();
+      const top = scrollThumb(t, 0)!;
+      const end = scrollThumb(t, t.dests.maxScroll)!;
+      expect(top.y).toBe(t.dests.top);
+      expect(end.y + end.h).toBeCloseTo(t.dests.bottom);
+      expect(top.x).toBeGreaterThanOrEqual(t.dests.x + t.dests.w);
+      expect(top.x + top.w).toBeLessThanOrEqual(t.width);
+      // Dragging the thumb across its track scrolls the whole column, and no further.
+      expect(thumbDrag(t, 0, top.track.h - top.h)).toBeCloseTo(t.dests.maxScroll);
+      expect(thumbDrag(t, 0, 1e6)).toBe(t.dests.maxScroll);
+      expect(thumbDrag(t, t.dests.maxScroll, -1e6)).toBe(0);
+      expect(keyScroll(t, 0, 'ArrowDown')).toBeCloseTo(t.dests.pitch);
+      expect(keyScroll(t, 0, 'ArrowUp')).toBe(0);
+      expect(keyScroll(t, 0, 'PageDown')).toBeCloseTo(t.dests.bottom - t.dests.top - t.dests.pitch);
+      expect([keyScroll(t, 100, 'Home'), keyScroll(t, 0, 'End')]).toEqual([0, t.dests.maxScroll]);
+      expect(keyScroll(t, 0, 'a')).toBeNull();
+      expect(keyScroll(layoutTopology(fixture({}, many(3)), 1080, 500), 0, 'End')).toBeNull();
+      expect(wheelDelta(t, 3, 1, 2)).toBeCloseTo(3 * t.dests.pitch);
+      expect(wheelDelta(t, 100, 0, 0.5)).toBe(50);
+    });
+
+    it('eases a scroll the same whatever the frame rate, and lands exactly', () => {
+      let a = 0;
+      for (let i = 0; i < 4; i++) a = easeScroll(a, 1000, 1000 / 60);
+      let b = 0;
+      for (let i = 0; i < 2; i++) b = easeScroll(b, 1000, 2000 / 60);
+      expect(a).toBeCloseTo(b);
+      let s = 0;
+      let frames = 0;
+      while (s !== 1000 && frames < 100) { s = easeScroll(s, 1000, 16); frames++; }
+      expect(s).toBe(1000);
+      expect(frames).toBeLessThan(40);
+      expect(easeScroll(500, 500, 16)).toBe(500);
     });
 
     it('keeps every band’s ports inside its box, however many destinations it feeds', () => {

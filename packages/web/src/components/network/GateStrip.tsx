@@ -15,7 +15,7 @@ import type { PanelDef } from '../../lib/net-panels.js';
 import { chipCollapses, gateChips } from '../../lib/net-format.js';
 import { RangePicker } from './RangePicker.js';
 import { REJECTED_TITLE, rejectedAuthor } from '../../lib/net-rules.js';
-import { Chip, NetIcon, type NetIconName } from './netui.js';
+import { Chip, NetIcon, useStored, type NetIconName } from './netui.js';
 import { TipWrap, tipProps } from './NetTip.js';
 import { useNetStore } from '../../stores/netStore.js';
 
@@ -40,20 +40,6 @@ const DISPLAY_KEY = 'layman.net.rangeDisplay';
 const GAP_KEY = 'layman.net.burstGap';
 
 /** A setting kept per browser, like Panels visibility. */
-function useStored<T extends string | number>(key: string, initial: T, parse: (raw: string) => T | null): [T, (v: T) => void] {
-  const [value, setValue] = useState<T>(() => {
-    let raw: string | null = null;
-    // Reading throws too where storage is blocked (Safari with storage off, a sandboxed frame).
-    try { raw = typeof localStorage === 'undefined' ? null : localStorage.getItem(key); } catch { /* the default, then */ }
-    return (raw === null ? null : parse(raw)) ?? initial;
-  });
-  const set = useCallback((v: T) => {
-    setValue(v);
-    try { localStorage.setItem(key, String(v)); } catch { /* private mode: kept for this page only */ }
-  }, [key]);
-  return [value, set];
-}
-
 /** A range running until now: its length grows, so only this ticks. */
 function RangeText({ range }: { range: NetRange }) {
   const now = useNow(range.to === null ? 1000 : 3_600_000);

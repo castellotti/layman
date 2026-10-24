@@ -130,6 +130,8 @@ export interface DestColumn {
   bottom: number;
   /** How far the column scrolls: 0 when every row fits. */
   maxScroll: number;
+  /** From one row to the next: what an arrow key scrolls. */
+  pitch: number;
   /** Row ids (`dest:<key>`), top to bottom. */
   rows: string[];
 }
@@ -589,7 +591,7 @@ export function layoutTopology(data: TopoInput, width: number, height: number, o
     for (const l of r.legs) destOf.set(l, n);
   });
   const dests: DestColumn = {
-    x: destX, w: NODE_W.dests, top: viewTop, bottom: viewBottom, maxScroll: Math.max(0, stack - view), rows: destNodes.map((x) => x.n.id),
+    x: destX, w: NODE_W.dests, top: viewTop, bottom: viewBottom, maxScroll: Math.max(0, stack - view), pitch: destPitch, rows: destNodes.map((x) => x.n.id),
   };
 
   // The policy wall, level with the services that refused something, above their pass-through bands.
@@ -814,12 +816,9 @@ export interface TopoProjection {
   /** Every band, those into a destination redrawn for the scroll. */
   bands: TopoBand[];
   /**
-   * The destination rows to draw, moved by the scroll: every one that touches the window (the
-   * window clips them). A row half out is drawn but still counted on its stub until its centre
-   * is in, as its bands meet the edge until then.
+   * Destination row ids whose centre is in the window. A row half out is drawn (the window clips
+   * it) but still counted on its stub until its centre is in, as its bands meet the edge until then.
    */
-  rows: TopoNode[];
-  /** Destination row ids whose centre is in the window. */
   visible: Set<string>;
   above: DestStub | null;
   below: DestStub | null;
@@ -861,14 +860,11 @@ export function projectTopology(t: Topology, scrollTop: number): TopoProjection 
   const { top, bottom, maxScroll } = t.dests;
   const s = clamp(scrollTop, 0, maxScroll);
   const ix = destIndex(t);
-  const rows: TopoNode[] = [];
   const visible = new Set<string>();
   const above: TopoNode[] = [];
   const below: TopoNode[] = [];
   for (const n of ix.rows) {
-    const y = n.y - s;
-    const c = y + n.h / 2;
-    if (y < bottom && y + n.h > top) rows.push(s === 0 ? n : { ...n, y });
+    const c = n.y + n.h / 2 - s;
     if (c < top) above.push(n);
     else if (c > bottom) below.push(n);
     else visible.add(n.id);
@@ -898,7 +894,7 @@ export function projectTopology(t: Topology, scrollTop: number): TopoProjection 
       hosts: ns.flatMap((n) => n.hosts),
     };
   };
-  return { scrollTop: s, bands, rows, visible, above: stub('above', above), below: stub('below', below) };
+  return { scrollTop: s, bands, visible, above: stub('above', above), below: stub('below', below) };
 }
 
 /** The scroll that centres a destination row in the window (clamped), or null for one with no row. */
@@ -906,6 +902,48 @@ export function scrollToDest(t: Topology, id: string): number | null {
   const n = destIndex(t).byId.get(id);
   if (!n) return null;
   return clamp(n.y + n.h / 2 - (t.dests.top + t.dests.bottom) / 2, 0, t.dests.maxScroll);
+}
+
+/** The scrollbar beside the destination column, for a scroll: null when nothing scrolls. */
+export function scrollThumb(t: Topology, scrollTop: number): { x: number; w: number; track: { y: number; h: number }; y: number; h: number } | null {
+  const { top, bottom, maxScroll } = t.dests;
+  if (maxScroll <= 0) return null;
+  const view = bottom - top;
+  const h = Math.max(16, (view * view) / (view + maxScroll));
+  return { x: t.dests.x + t.dests.w + 2, w: 3, track: { y: top, h: view }, y: top + ((view - h) * clamp(scrollTop, 0, maxScroll)) / maxScroll, h };
+}
+
+/** The scroll after dragging the thumb by `dy` (diagram units) from where it was at scroll `from`. */
+export function thumbDrag(t: Topology, from: number, dy: number): number {
+  const thumb = scrollThumb(t, from);
+  if (!thumb) return 0;
+  return clamp(from + (dy * t.dests.maxScroll) / Math.max(1, thumb.track.h - thumb.h), 0, t.dests.maxScroll);
+}
+
+/** The scroll a key moves the column to from `from`, or null for a key that does not scroll it. */
+export function keyScroll(t: Topology, from: number, key: string): number | null {
+  const { pitch, maxScroll, top, bottom } = t.dests;
+  const page = Math.max(pitch, bottom - top - pitch);
+  const to = key === 'ArrowDown' ? from + pitch : key === 'ArrowUp' ? from - pitch : key === 'PageDown' ? from + page : key === 'PageUp' ? from - page
+    : key === 'Home' ? 0 : key === 'End' ? maxScroll : null;
+  return to === null || maxScroll <= 0 ? null : clamp(to, 0, maxScroll);
+}
+
+/**
+ * How far a wheel event scrolls, in diagram units: pixels scaled by `unitsPerPx`, lines as rows,
+ * pages as the window (`deltaMode` 0, 1 and 2).
+ */
+export function wheelDelta(t: Topology, deltaY: number, deltaMode: number, unitsPerPx: number): number {
+  return deltaY * (deltaMode === 1 ? t.dests.pitch : deltaMode === 2 ? t.dests.bottom - t.dests.top : unitsPerPx);
+}
+
+/**
+ * One frame of an animated scroll from `from` towards `to`, `ms` after the last: a quarter of the
+ * way per 60 Hz frame, whatever the frame rate, landing exactly once within half a unit.
+ */
+export function easeScroll(from: number, to: number, ms: number): number {
+  const next = from + (to - from) * (1 - Math.pow(0.75, Math.max(0, ms) / (1000 / 60)));
+  return Math.abs(to - next) < 0.5 ? to : next;
 }
 
 // ─── The Selected path panel ──────────────────────────────────────────────────

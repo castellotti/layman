@@ -73,12 +73,72 @@ for (const s of ['direct', 'gate-lost', 'stopped', 'exit-none', 'default-block',
 }
 // Nothing is folded: rows past the window are counted by the stub the bands converge on.
 const below = await page.$eval(`${DIAG} g[data-stub="below"]`, (g) => g.textContent).catch(() => '');
-const shownRows = (await page.$$(`${DIAG} g[data-node^="dest:"]`)).length;
-check('big session: no folding, the rest counted below', !(await page.$(`${DIAG} g[data-node^="more:"]`)) && /↓ \d+ below/.test(below)
-  && shownRows > 5 && Number(below.match(/\d+/)[0]) > 100, `${shownRows} shown · ${below}`);
+const allRows = (await page.$$(`${DIAG} g[data-node^="dest:"]`)).length;
+check('big session: no folding, every row drawn, the rest counted below', !(await page.$(`${DIAG} g[data-node^="more:"]`)) && /↓ \d+ below/.test(below)
+  && allRows === 300 && Number(below.match(/\d+/)[0]) > 100, `${allRows} rows · ${below}`);
 await page.click(`${DIAG} g[data-stub="below"]`);
 const above = await waitFor(async () => /↑ \d+ above/.test(await page.$eval(`${DIAG} g[data-stub="above"]`, (g) => g.textContent).catch(() => '')));
 check('big session: clicking the stub scrolls the next rows in', above);
+// The column scrolls on its own, and the bands follow the rows.
+const COL = `${DIAG} g[data-dest-scroll]`;
+/** Rows whose centre is in the window, and for each the screen y where its bands end against its box. */
+const rowsInWindow = () => page.$eval(COL, (col) => {
+  const win = col.querySelector(':scope > rect').getBoundingClientRect();
+  const svg = col.ownerSVGElement;
+  return [...col.querySelectorAll('g[data-node^="dest:"]')].map((g) => {
+    const r = g.querySelector('rect').getBoundingClientRect();
+    const c = (r.top + r.bottom) / 2;
+    if (c < win.top || c > win.bottom) return null;
+    const ends = [...svg.querySelectorAll(`g[data-band$=">${g.dataset.node}"] > path:first-child`)].map((p) => {
+      const pt = p.getPointAtLength(p.getTotalLength()).matrixTransform(p.getScreenCTM());
+      return pt.y >= r.top - 1 && pt.y <= r.bottom + 1;
+    });
+    return { id: g.dataset.node, ends };
+  }).filter(Boolean);
+});
+await page.goto(`${BASE}/?view=topology&glove=${sid('big')}`);
+await waitFor(async () => (await page.$$(`${DIAG} g[data-node^="dest:"]`)).length > 100);
+const first = (await rowsInWindow())[0]?.id;
+await page.hover(COL);
+await page.mouse.wheel(0, 900);
+const moved = await waitFor(async () => { const rs = await rowsInWindow(); return rs.length > 5 && !rs.some((r) => r.id === first); });
+await page.waitForTimeout(700);
+const after = await rowsInWindow();
+check('big session: the wheel scrolls the destination column', moved, `${first} → ${after[0]?.id}`);
+check('big session: every band into a row in the window ends at its row', after.length > 5 && after.every((r) => r.ends.length > 0 && r.ends.every(Boolean)),
+  after.filter((r) => !r.ends.every(Boolean)).map((r) => r.id).join(',') || after.length);
+check('big session: the wheel scrolled the column, not the page', await page.evaluate(() => window.scrollY === 0 && document.scrollingElement.scrollTop === 0));
+check('big session: a scrollbar beside the column', await page.$(`${COL} g[data-dest-scrollbar]`) !== null);
+await page.focus(COL);
+await page.keyboard.press('End');
+check('big session: End scrolls to the last row', await waitFor(async () => (await page.$(`${DIAG} g[data-stub="below"]`)) === null));
+await page.keyboard.press('Home');
+check('big session: Home scrolls back to the first', await waitFor(async () => (await page.$(`${DIAG} g[data-stub="above"]`)) === null && (await rowsInWindow())[0]?.id === first));
+// A destination chosen in the Network tab is scrolled into view on the Topology tab.
+const lastId = await page.$$eval(`${COL} g[data-node^="dest:"]`, (gs) => gs.at(-1).dataset.node);
+const lastHost = lastId.replace(/^dest:/, '').replace(/:\d+$/, '');
+await page.goto(`${BASE}/?view=network&glove=${sid('big')}&dest=${encodeURIComponent(lastHost)}`);
+await page.waitForTimeout(800);
+await page.click('nav >> text=Topology').catch(() => page.click('text=Topology'));
+check('big session: a destination chosen in the Network tab is scrolled into view', await waitFor(async () => (await rowsInWindow()).some((r) => r.id === lastId), 8000), lastId);
+// Sorting, on a session whose destinations differ in bytes and name.
+await page.goto(`${BASE}/?view=topology&glove=${PI}`);
+await page.waitForSelector(`${DIAG} text[data-dest-sort="bytes"]`);
+const titles = () => page.$$eval(`${COL} g[data-node^="dest:"]`, (gs) => gs.map((g) => g.dataset.node));
+const byBytes = await titles();
+await page.click(`${DIAG} text[data-dest-sort]`);
+check('the sort toggles to name, and is kept', await waitFor(async () => (await page.$(`${DIAG} text[data-dest-sort="name"]`)) !== null)
+  && await page.evaluate(() => localStorage.getItem('layman.topology.destSort')) === 'name');
+const byName = await titles();
+check('sorting by name reorders the rows', byName.join() !== byBytes.join() && [...byName].sort().join() === [...byBytes].sort().join(), byName.slice(0, 6).join(','));
+await page.evaluate(() => localStorage.removeItem('layman.topology.destSort'));
+// Reduced motion: a stub click lands at once.
+await page.emulateMedia({ reducedMotion: 'reduce' });
+await page.goto(`${BASE}/?view=topology&glove=${sid('big')}`);
+await waitFor(async () => (await page.$(`${DIAG} g[data-stub="below"]`)) !== null);
+await page.click(`${DIAG} g[data-stub="below"]`);
+check('reduced motion: a stub click scrolls at once', await page.$(`${DIAG} g[data-stub="above"]`) !== null);
+await page.emulateMedia({ reducedMotion: null });
 // Sizes.
 for (const [w, h] of [[1440, 900], [1280, 800]]) {
   await page.setViewportSize({ width: w, height: h });
