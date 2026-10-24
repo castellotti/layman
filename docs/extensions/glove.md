@@ -1043,13 +1043,20 @@ Selected path panel that walks one destination's path hop by hop.
   - **Scrolling it.** The wheel over the column scrolls it, not the page (a non-passive listener:
     React's is passive and cannot prevent the page's scroll). So do the scrollbar beside it (drag
     the thumb, click the track for a page), and, with the column focused, the arrow keys (a row),
-    Page Up and Page Down (a window less a row), Home and End. Tabbing onto a row scrolled away
-    brings it in. Every row is drawn once, in a group that is moved, and the window clips the rest.
+    Page Up and Page Down (a window less a row), Home and End. Only the rows in the window are Tab
+    stops (hundreds of hidden ones would trap the keyboard), and the diagram is a `group`, not an
+    `img`, so its buttons and the column's key hint reach assistive technology. A destination
+    chosen elsewhere is revealed when the choice, the session, the order or the size changes, never
+    on live data: every delta is a new layout, and revealing on it pulled a selected row back while
+    the user scrolled away from it. Every row is drawn once, in a group that is moved, and the window clips the rest.
     The scroll eases a quarter of the way per 60 Hz frame (`easeScroll`, the same whatever the frame
     rate), and lands at once when the user prefers reduced motion. During an animation, React does
     not re-render: each frame moves the row group, the thumb and the bands into destinations through
     the DOM, from `projectTopology`, and commits to React state when it lands or a stub's count
-    changes. Re-rendering every band and row 60 times a second is what that avoids. The key, wheel and
+    changes. Re-rendering every band and row 60 times a second is what that avoids. A render that
+    lands mid-scroll (live data during a drag or an animation) draws the bands at the committed
+    scroll, so a layout effect repaints them at the live one; a new layout that scrolls less clamps
+    the live and target scroll, or keys and the wheel would move nothing until they caught up. The key, wheel and
     scrollbar arithmetic is pure (`keyScroll`, `wheelDelta`, `scrollThumb`, `thumbDrag`) and tested.
     Another session or sort starts at the top.
 - **Selecting.** Clicking a destination or a band selects that path. A band shared by

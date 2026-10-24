@@ -81,8 +81,8 @@ const above = await waitFor(async () => /↑ \d+ above/.test(await page.$eval(`$
 check('big session: clicking the stub scrolls the next rows in', above);
 // The column scrolls on its own, and the bands follow the rows.
 const COL = `${DIAG} g[data-dest-scroll]`;
-/** Rows whose centre is in the window, and for each the screen y where its bands end against its box. */
-const rowsInWindow = () => page.$eval(COL, (col) => {
+/** Rows whose centre is in the window, and for each whether its bands end against its box. Runs in the page. */
+function measureRows(col) {
   const win = col.querySelector(':scope > rect').getBoundingClientRect();
   const svg = col.ownerSVGElement;
   return [...col.querySelectorAll('g[data-node^="dest:"]')].map((g) => {
@@ -95,7 +95,10 @@ const rowsInWindow = () => page.$eval(COL, (col) => {
     });
     return { id: g.dataset.node, ends };
   }).filter(Boolean);
-});
+}
+const rowsInWindow = () => page.$eval(COL, measureRows);
+const bandsAtRows = (rs) => rs.length > 5 && rs.every((r) => r.ends.length > 0 && r.ends.every(Boolean));
+const ROWS_G = `${COL} g[clip-path] > g`;
 await page.goto(`${BASE}/?view=topology&glove=${sid('big')}`);
 await waitFor(async () => (await page.$$(`${DIAG} g[data-node^="dest:"]`)).length > 100);
 const first = (await rowsInWindow())[0]?.id;
@@ -105,10 +108,26 @@ const moved = await waitFor(async () => { const rs = await rowsInWindow(); retur
 await page.waitForTimeout(700);
 const after = await rowsInWindow();
 check('big session: the wheel scrolls the destination column', moved, `${first} → ${after[0]?.id}`);
-check('big session: every band into a row in the window ends at its row', after.length > 5 && after.every((r) => r.ends.length > 0 && r.ends.every(Boolean)),
-  after.filter((r) => !r.ends.every(Boolean)).map((r) => r.id).join(',') || after.length);
-check('big session: the wheel scrolled the column, not the page', await page.evaluate(() => window.scrollY === 0 && document.scrollingElement.scrollTop === 0));
+check('big session: every band into a row in the window ends at its row', bandsAtRows(after), after.filter((r) => !r.ends.every(Boolean)).map((r) => r.id).join(',') || after.length);
+// Mid-animation, when only the frame-by-frame DOM path has moved them: three frames into an eased scroll.
+const mid = await page.evaluate(async ({ col, rowsG, measure }) => {
+  const c = document.querySelector(col);
+  const g = document.querySelector(rowsG);
+  const before = g.getAttribute('transform');
+  // A wheel the column takes for itself: its listener prevents the page's scroll.
+  const kept = !c.dispatchEvent(new WheelEvent('wheel', { deltaY: 600, bubbles: true, cancelable: true }));
+  for (let i = 0; i < 3; i++) await new Promise((r) => requestAnimationFrame(r));
+  const during = g.getAttribute('transform');
+  const rows = (0, eval)(`(${measure})`)(c);
+  await new Promise((r) => setTimeout(r, 900));
+  return { kept, before, during, after: g.getAttribute('transform'), rows };
+}, { col: COL, rowsG: ROWS_G, measure: measureRows.toString() });
+check('big session: mid-scroll, the bands follow the rows frame by frame', mid.during !== mid.before && mid.during !== mid.after && bandsAtRows(mid.rows),
+  `${mid.before} → ${mid.during} → ${mid.after}`);
+check('big session: the column keeps its wheel from the page (default prevented)', mid.kept);
 check('big session: a scrollbar beside the column', await page.$(`${COL} g[data-dest-scrollbar]`) !== null);
+const tabStops = await page.$$eval(`${COL} g[data-node^="dest:"][tabindex="0"]`, (gs) => gs.length);
+check('big session: only rows in the window are Tab stops', tabStops > 5 && tabStops < 40, tabStops);
 await page.focus(COL);
 await page.keyboard.press('End');
 check('big session: End scrolls to the last row', await waitFor(async () => (await page.$(`${DIAG} g[data-stub="below"]`)) === null));
@@ -136,9 +155,20 @@ await page.evaluate(() => localStorage.removeItem('layman.topology.destSort'));
 await page.emulateMedia({ reducedMotion: 'reduce' });
 await page.goto(`${BASE}/?view=topology&glove=${sid('big')}`);
 await waitFor(async () => (await page.$(`${DIAG} g[data-stub="below"]`)) !== null);
-await page.click(`${DIAG} g[data-stub="below"]`);
-check('reduced motion: a stub click scrolls at once', await page.$(`${DIAG} g[data-stub="above"]`) !== null);
+/** The rows' transform just before and just after a stub click, in the same task: no frame in between. */
+const clickNow = () => page.evaluate(({ stub, rowsG }) => {
+  const g = document.querySelector(rowsG);
+  const before = g.getAttribute('transform');
+  document.querySelector(stub).dispatchEvent(new MouseEvent('click', { bubbles: true }));
+  return [before, g.getAttribute('transform')];
+}, { stub: `${DIAG} g[data-stub="below"]`, rowsG: ROWS_G });
+const [rb, ra] = await clickNow();
+check('reduced motion: a stub click scrolls at once', rb !== ra, `${rb} → ${ra}`);
 await page.emulateMedia({ reducedMotion: null });
+await page.goto(`${BASE}/?view=topology&glove=${sid('big')}`);
+await waitFor(async () => (await page.$(`${DIAG} g[data-stub="below"]`)) !== null);
+const [eb, ea] = await clickNow();
+check('…and without it, the same click eases (nothing has moved yet in that task)', eb === ea, `${eb} → ${ea}`);
 // Sizes.
 for (const [w, h] of [[1440, 900], [1280, 800]]) {
   await page.setViewportSize({ width: w, height: h });

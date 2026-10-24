@@ -4,7 +4,7 @@
  * only draws it. Clicking a destination or a band selects that path (the
  * `netDest` the Map and the Network tab share), which dims every other band.
  */
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useNetStore } from '../../stores/netStore.js';
 import { useSessionStore } from '../../stores/sessionStore.js';
 import { TOPOLOGY_BAND_WIDTH_TIP, TOPOLOGY_LEGEND, formatBytes } from '../../lib/net-format.js';
@@ -80,18 +80,18 @@ export function TopologyLegend() {
   );
 }
 
-/** An SVG group that acts as a button: a click, Enter or Space activates it. */
-function svgButton(label: string, activate: () => void) {
+/** An SVG group that acts as a button: a click, Enter or Space activates it. `tabIndex` -1 keeps it out of the Tab order. */
+function svgButton(label: string, activate: () => void, tabIndex = 0) {
   return {
-    role: 'button', tabIndex: 0, style: { cursor: 'pointer' }, 'aria-label': label,
+    role: 'button', tabIndex, style: { cursor: 'pointer' }, 'aria-label': label,
     onClick: activate,
     onKeyDown: (e: React.KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); activate(); } },
   };
 }
 
-function Node({ n, selected, onSelect }: { n: TopoNode; selected: boolean; onSelect: (n: TopoNode) => void }) {
+function Node({ n, selected, onSelect, tabbable = true }: { n: TopoNode; selected: boolean; onSelect: (n: TopoNode) => void; tabbable?: boolean }) {
   const clickable = n.hosts.length > 0 && (n.kind === 'dest' || n.kind === 'broken');
-  const common = clickable ? svgButton(`Follow the path to ${n.title}`, () => onSelect(n)) : {};
+  const common = clickable ? svgButton(`Follow the path to ${n.title}`, () => onSelect(n), tabbable ? 0 : -1) : {};
   if (n.kind === 'broken') {
     return (
       <g {...common} data-node={n.id}>
@@ -215,6 +215,15 @@ function useDestScroll(t: Topology) {
 
   const view = useMemo(() => projectTopology(t, scrollTop), [t, scrollTop]);
   shown.current = counts(view);
+  useLayoutEffect(() => {
+    // A new layout can scroll less (a taller pane, destinations gone): the next key or wheel moves from there.
+    pos.current = Math.min(pos.current, t.dests.maxScroll);
+    target.current = Math.min(target.current, t.dests.maxScroll);
+  }, [t]);
+  useLayoutEffect(() => {
+    // A render mid-animation or mid-drag (live data) drew the bands at the committed scroll: put them back.
+    if (pos.current !== view.scrollTop) paint(pos.current);
+  });
   const band = useCallback((id: string) => (el: SVGGElement | null) => {
     if (el) bandEls.current.set(id, el);
     else bandEls.current.delete(id);
@@ -238,9 +247,14 @@ export function TopologyDiagram({ data }: { data: NetSessionData }) {
     const to = scrollToDest(t, id);
     if (to !== null) scrollTo(to);
   }, [t, pos, scrollTo]);
-  // A destination chosen elsewhere (the Network tab, a link) is scrolled into the window.
-  // Only when the choice or the layout changes, never on a scroll: a row scrolled away stays away.
+  // A destination chosen elsewhere (the Network tab, a link) is scrolled into the window: when the
+  // choice, the session, the order or the size changes. Never on live data (every delta is a new
+  // layout) nor a scroll, or a selected row would pull the column back while the user browses.
+  const revealed = useRef('');
   useEffect(() => {
+    const key = `${netDest}|${data.token}|${sort}|${w}|${h}`;
+    if (key === revealed.current) return;
+    revealed.current = key;
     reveal(netDest ? t.nodes.find((n) => n.kind === 'dest' && n.hosts.includes(netDest))?.id : undefined);
   }, [netDest, t]); // eslint-disable-line react-hooks/exhaustive-deps
   const column = useRef<SVGGElement>(null);
@@ -303,7 +317,7 @@ export function TopologyDiagram({ data }: { data: NetSessionData }) {
   return (
     // Focusing a row scrolled away would scroll this box (hidden overflow still scrolls); the column scrolls instead.
     <div ref={ref} style={{ position: 'relative', flex: 1, minHeight: 0, overflow: 'hidden' }} onScroll={(e) => { e.currentTarget.scrollTop = 0; }}>
-      <svg width="100%" height="100%" viewBox={`0 0 ${t.width} ${t.height}`} preserveAspectRatio="xMinYMin meet" role="img"
+      <svg width="100%" height="100%" viewBox={`0 0 ${t.width} ${t.height}`} preserveAspectRatio="xMinYMin meet" role="group"
         aria-label={`Routes from ${data.token} through glove's services, policy and tunnel to ${t.nodes.filter((n) => n.kind === 'dest').length} destinations`}
         style={{ display: 'block' }}>
         {t.columns.map((c) => (
@@ -353,7 +367,8 @@ export function TopologyDiagram({ data }: { data: NetSessionData }) {
             {/* Every row, once: scrolling moves the group (and the clip hides what is out). */}
             <g ref={rowsEl} transform={`translate(0,${-view.scrollTop})`}>
               {t.nodes.filter((n) => n.kind === 'dest').map((n) => (
-                <Node key={n.id} n={n} selected={on(n.hosts)} onSelect={(x) => select(x.hosts)} />
+                // Only rows in the window are Tab stops: hundreds of hidden ones would trap the keyboard.
+                <Node key={n.id} n={n} selected={on(n.hosts)} onSelect={(x) => select(x.hosts)} tabbable={view.visible.has(n.id)} />
               ))}
             </g>
           </g>
@@ -369,7 +384,8 @@ export function TopologyDiagram({ data }: { data: NetSessionData }) {
                   drag.current = { y: e.clientY, from: pos.current, perPx: ctm && ctm.d ? 1 / ctm.d : 1 };
                 }}
                 onPointerMove={(e) => { const d = drag.current; if (d) scrollTo(thumbDrag(t, d.from, (e.clientY - d.y) * d.perPx), 'live'); }}
-                onPointerUp={() => { drag.current = null; scrollTo(pos.current, 'now'); }} onPointerCancel={() => { drag.current = null; scrollTo(pos.current, 'now'); }} />
+                // Released, cancelled or lost, the capture ends: one place ends the drag.
+                onLostPointerCapture={() => { if (drag.current) { drag.current = null; scrollTo(pos.current, 'now'); } }} />
             </g>
           )}
         </g>
