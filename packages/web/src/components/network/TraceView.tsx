@@ -7,7 +7,7 @@
  *
  * Only Layman's own API is asked for anything.
  */
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { create } from 'zustand';
 import { useNetStore } from '../../stores/netStore.js';
 import { useSessionStore } from '../../stores/sessionStore.js';
@@ -16,7 +16,7 @@ import { rangeKey, type NetSessionData } from '../../lib/net-state.js';
 import { controlDisabledReason, siblingIds, toggleFor } from '../../lib/net-rules.js';
 import { clockTime, destinationRow, guardReason } from '../../lib/net-table.js';
 import { buildPath } from '../../lib/layman-url.js';
-import { axisRange, callForFlow, defaultSelection, fileName, tickLabel, traceAxis, traceRows, type Tone, type TraceIcon, type TraceRow } from '../../lib/net-trace.js';
+import { axisRange, callForFlow, defaultSelection, fileName, tickLabel, traceAxis, traceRows, type Tone, type TraceAxis, type TraceIcon, type TraceRow } from '../../lib/net-trace.js';
 import { isLanOnlyRule, type FlowView, type NetRange, type RulesOp, type TraceDownload, type TraceView } from '../../lib/netobs-types.js';
 import { useNow } from '../../hooks/useNow.js';
 import { fetchTrace, pollSettled, useNetDownloads } from '../../hooks/useNetTrace.js';
@@ -41,11 +41,17 @@ interface TraceState {
   selected: string | null;
   toggled: Set<string>;
   onlyTraffic: boolean;
+  /**
+   * A turn to keep showing when the range next changes, set when Trace itself sets the range
+   * (a drag across the axis, "Network for this turn"): otherwise a new range opens on its
+   * latest turn, and the turn the reader was looking at could fall out of it.
+   */
+  keep: string | null;
   set: (p: Partial<TraceState>) => void;
 }
 
 const useTrace = create<TraceState>((set) => ({
-  token: null, turnId: null, view: null, error: null, selected: null, toggled: new Set(), onlyTraffic: false,
+  token: null, turnId: null, view: null, error: null, selected: null, toggled: new Set(), onlyTraffic: false, keep: null,
   set: (p) => set(p),
 }));
 
@@ -63,8 +69,11 @@ function useTraceData(token: string, range: NetRange | null) {
   useEffect(() => {
     const key = from === null ? null : rangeKey({ from, to });
     const prev = useTrace.getState().rangeKey;
-    // A new range (not the first one seen) goes to its latest turn.
-    if (prev !== key) set({ rangeKey: key, ...(prev !== undefined && { turnId: null, view: null, selected: null, toggled: new Set<string>() }) });
+    // A new range (not the first one seen) goes to its latest turn, unless Trace set it for the turn it shows.
+    if (prev === key) return;
+    const keep = useTrace.getState().keep;
+    if (keep !== null) set({ rangeKey: key, turnId: keep, keep: null });
+    else set({ rangeKey: key, ...(prev !== undefined && { turnId: null, view: null, selected: null, toggled: new Set<string>() }) });
   }, [from, to, set]);
   useEffect(() => pollSettled((live) => fetchTrace(token, turnId ? { turn: turnId } : null, from === null ? null : { from, to })
     .then((v) => { if (live()) set({ view: v, error: null }); })
@@ -126,7 +135,8 @@ export function TurnBar({ data }: { data: NetSessionData }) {
         </div>
         <div data-tip={t.promptText} style={{ fontSize: 13, color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>“{t.promptText}”</div>
       </div>
-      <NetworkForTurn token={data.token} span={{ startedAt: t.startedAt, endedAt: t.endedAt, exact: t.exact }} size={13} />
+      <NetworkForTurn token={data.token} span={() => ({ startedAt: t.startedAt, endedAt: t.endedAt, exact: t.exact })} size={13}
+        onOpen={() => set({ keep: t.promptEventId })} />
       <div style={{ display: 'flex', gap: 6, flexShrink: 0, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
         <Chip tone="neutral">{c.calls} tool call{c.calls === 1 ? '' : 's'}</Chip>
         <Chip tone="neutral">{c.flows} flow{c.flows === 1 ? '' : 's'}</Chip>
@@ -233,6 +243,7 @@ export function TraceWaterfall({ data }: { data: NetSessionData }) {
   const now = useNow(1000);
   const [popover, setPopover] = useState<{ flow: FlowView; anchor: DOMRect } | null>(null);
   const [brush, setBrush] = useState<{ f0: number; f1: number } | null>(null);
+  const drag = useRef<{ axis: TraceAxis; f0: number; f1: number } | null>(null);
   const setNetRange = useSessionStore((s) => s.setNetRange);
   const sessionName = useSessionStore((s) => s.sessions.some((x) => x.sessionName === data.token));
   const axis = useMemo(() => (view ? traceAxis(view, now) : null), [view, now]);
@@ -270,14 +281,30 @@ export function TraceWaterfall({ data }: { data: NetSessionData }) {
         <span data-trace-axis="" style={{ position: 'relative', height: 22, display: 'flex', alignItems: 'center', cursor: 'col-resize', touchAction: 'none' }}
           {...tipProps({ heading: 'Range from selection', body: 'Drag across the time axis to show every tab for just that stretch of time.' })}
           onPointerDown={(e) => {
+            if (e.button !== 0 || !axis) return;
             const r = e.currentTarget.getBoundingClientRect();
             e.currentTarget.setPointerCapture(e.pointerId);
             const f = (e.clientX - r.left) / r.width;
+            // The axis as it was when the drag began: a live turn's axis grows every second.
+            drag.current = { axis, f0: f, f1: f };
             setBrush({ f0: f, f1: f });
           }}
-          onPointerMove={(e) => { if (!brush) return; const r = e.currentTarget.getBoundingClientRect(); setBrush({ ...brush, f1: (e.clientX - r.left) / r.width }); }}
-          onPointerUp={() => { const range = brush && axis ? axisRange(axis, brush.f0, brush.f1) : null; setBrush(null); if (range) setNetRange(range); }}
-          onPointerCancel={() => setBrush(null)}>
+          onPointerMove={(e) => {
+            const d = drag.current;
+            if (!d) return;
+            const r = e.currentTarget.getBoundingClientRect();
+            d.f1 = (e.clientX - r.left) / r.width;
+            setBrush({ f0: d.f0, f1: d.f1 });
+          }}
+          onPointerUp={() => {
+            const d = drag.current;
+            drag.current = null;
+            setBrush(null);
+            const range = d ? axisRange(d.axis, d.f0, d.f1) : null;
+            if (range && view.turn) { set({ keep: view.turn.promptEventId }); setNetRange(range); }
+          }}
+          onPointerCancel={() => { drag.current = null; setBrush(null); }}
+          onLostPointerCapture={() => { drag.current = null; setBrush(null); }}>
           {axis?.ticks.map((t) => (
             <span key={t} style={{ position: 'absolute', left: `${(t / axis.span) * 100}%`, fontFamily: 'var(--font-mono)', fontWeight: 400, letterSpacing: 0, pointerEvents: 'none' }}>{tickLabel(t)}</span>
           ))}

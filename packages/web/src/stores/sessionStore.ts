@@ -909,7 +909,8 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   setNetToken: (netToken) => set((s) => netTokenChange(s, netToken)),
   showNetworkRange: (token, range) => set((s) => ({
     viewMode: 'topology', ...viewModeFlags('topology'), returnToDashboard: false,
-    ...netTokenChange(s, token), netRange: range,
+    // A destination chosen earlier belongs to another question, not this range.
+    ...netTokenChange(s, token), netDest: null, netRange: range,
   })),
   setNetDest: (netDest) => set({ netDest }),
   setDashboardSortMode: (dashboardSortMode) => set({ dashboardSortMode }),

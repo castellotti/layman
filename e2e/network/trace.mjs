@@ -95,10 +95,18 @@ check('…which opens Topology for its glove session over a range', await waitFo
 const [tf, tt] = [Date.parse(turnUrl().get('from')), turnUrl().get('to')];
 check('…a closed range of minutes, not hours (an earlier turn ended)', tt !== 'now' && Date.parse(tt) > tf && Date.parse(tt) - tf < 3600_000, `${turnUrl().get('from')} → ${tt}`);
 check('…and the range bar names it', await waitFor(async () => (await page.$('button[aria-label="Show All records"]')) !== null));
+// A highlight in Prompts (the Bookmark above saved one) has it too, over the whole turn from the server.
+const hl = (await (await page.request.get(`${BASE}/api/highlights`)).json()).highlights[0];
+await page.goto(`${BASE}/h/${hl.id}`);
+check('a gloved highlight in Prompts offers "Network for this turn"', await waitFor(async () => (await page.$('[data-network-for-turn]')) !== null, 8000));
+await page.click('[data-network-for-turn]');
+check('…which opens Topology over the turn', await waitFor(async () => turnUrl().get('view') === 'topology' && turnUrl().get('glove') === PI && !!turnUrl().get('from')), page.url());
 // The Trace tab's turn bar has it too, and a drag across the waterfall's axis sets a range.
 await page.goto(`${BASE}/?view=trace&glove=${PI}`);
 await page.waitForSelector('[role=region][aria-label="Turn"] [data-network-for-turn]', { timeout: 10000 });
 check('the Trace turn bar offers "Network for this turn"', true);
+const promptShown = () => page.$eval('[role=region][aria-label="Turn"]', (r) => r.textContent.match(/“[^”]*”/)?.[0] ?? '');
+const dragged = await promptShown();
 const axisBox = await (await page.$('[data-trace-axis]')).boundingBox();
 await page.mouse.move(axisBox.x + axisBox.width * 0.2, axisBox.y + axisBox.height / 2);
 await page.mouse.down();
@@ -106,6 +114,8 @@ await page.mouse.move(axisBox.x + axisBox.width * 0.6, axisBox.y + axisBox.heigh
 check('dragging across the axis draws the selection', await page.$('[data-trace-brush]') !== null);
 await page.mouse.up();
 check('…and releasing makes it the range', await waitFor(async () => !!new URL(page.url()).searchParams.get('from') && new URL(page.url()).searchParams.get('to') !== 'now'), page.url());
+await page.waitForTimeout(1500);
+check('…and Trace still shows the turn dragged across', await promptShown() === dragged, `${dragged} → ${await promptShown()}`);
 // The detail card's "Agent asked for", and Open in Trace.
 await page.goto(`${BASE}/?view=map&glove=${PI}&dest=en.wikipedia.org`);
 const asked = async () => page.evaluate(() => {

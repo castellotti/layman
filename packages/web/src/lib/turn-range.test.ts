@@ -15,28 +15,32 @@ describe('turnSpan and turnRange', () => {
       ev('tool_call_completed', 12_500, { transcriptAt: 11_000, transcriptCompletedAt: 15_000 }),
       ev('agent_response', 13_000, { prompt: 'done', transcriptAt: 14_000 }),
     ];
-    const span = turnSpan(owned, done);
+    const span = turnSpan(owned, done)!;
     expect(span).toEqual({ startedAt: 10_000, endedAt: 15_000, exact: true });
     expect(turnRange(span)).toEqual({ from: 10_000 - TURN_LEAD_MS, to: 15_000 + TURN_TAIL_MS });
     expect(turnRangeTip(span)).not.toMatch(/Approximate/);
   });
 
   it('falls back to the events’ times, and says the range is approximate', () => {
-    const span = turnSpan([ev('user_prompt', 1000, { prompt: 'go' }), ev('agent_response', 4000, { prompt: 'ok' })], done);
+    const span = turnSpan([ev('user_prompt', 1000, { prompt: 'go' }), ev('agent_response', 4000, { prompt: 'ok' })], done)!;
     expect(span).toEqual({ startedAt: 1000, endedAt: 4000, exact: false });
     expect(turnRangeTip(span)).toMatch(/Approximate/);
   });
 
   it('gives an open range for the last turn of a live session that has not answered yet', () => {
     const owned = [ev('user_prompt', 1000, { prompt: 'go' }), ev('tool_call_pending', 2000), ev('agent_response', 3000, { prompt: '', thinking: 'hmm' })];
-    expect(turnRange(turnSpan(owned, { last: true, live: true }))).toEqual({ from: 0, to: null });
+    expect(turnRange(turnSpan(owned, { last: true, live: true })!)).toEqual({ from: 0, to: null });
     // Not the last turn, or the session is not running: it ended.
-    expect(turnSpan(owned, { last: false, live: true }).endedAt).toBe(3000);
-    expect(turnSpan(owned, { last: true, live: false }).endedAt).toBe(3000);
+    expect(turnSpan(owned, { last: false, live: true })!.endedAt).toBe(3000);
+    expect(turnSpan(owned, { last: true, live: false })!.endedAt).toBe(3000);
     // An answer, or a stop, closes it.
-    expect(turnSpan([...owned, ev('agent_response', 4000, { prompt: 'here' })], { last: true, live: true }).endedAt).toBe(4000);
-    expect(turnSpan([...owned, ev('agent_stop', 5000)], { last: true, live: true }).endedAt).toBe(5000);
-    expect(turnRangeTip(turnSpan(owned, { last: true, live: true }))).toMatch(/until now/);
+    expect(turnSpan([...owned, ev('agent_response', 4000, { prompt: 'here' })], { last: true, live: true })!.endedAt).toBe(4000);
+    expect(turnSpan([...owned, ev('agent_stop', 5000)], { last: true, live: true })!.endedAt).toBe(5000);
+    expect(turnRangeTip(turnSpan(owned, { last: true, live: true })!)).toMatch(/until now/);
+  });
+
+  it('has no span for a turn with no events', () => {
+    expect(turnSpan([], done)).toBeNull();
   });
 
   it('a prompt recorded twice is one turn, and its range starts at the first copy', () => {
@@ -46,6 +50,6 @@ describe('turnSpan and turnRange', () => {
     ];
     const [turn] = extractTurns(events);
     const owned = turn.eventIds.map((id) => events.find((e) => e.id === id)!);
-    expect(turnRange(turnSpan(owned, done))).toEqual({ from: 0, to: 8000 });
+    expect(turnRange(turnSpan(owned, done)!)).toEqual({ from: 0, to: 8000 });
   });
 });

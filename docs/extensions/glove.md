@@ -659,14 +659,25 @@ nothing for finished sessions (their history is not an alarm).
   bytes trail. The tooltip says so. Times are the transcript's (`transcriptAt`,
   `transcriptCompletedAt`) when the harness kept them, because a passive watcher's `timestamp` is
   when it read the event; without them the range is the events' times and the tooltip calls it
-  approximate. The last turn of a live session whose last event is neither an answer that said
-  something nor a stop is still running, and gives an open range (`to: null`, until now). The rule
+  approximate. The last turn of its Layman session, while the glove gate runs, whose last event is
+  neither an answer that said something nor a stop is still running, and gives an open range
+  (`to: null`, until now). "Live" is the gate's on both sides, never the Layman session's, so the
+  transcript and Trace agree about the same turn. The span is worked out when the button is clicked
+  (a long live session would otherwise recompute every turn's on every event), and for a highlight
+  it comes from the server (`GET /api/turns/:sid/:pid?events=1`: the turn's events and whether it is
+  the last), because a highlight holds only its prompt and response and the turn's tool calls can
+  end later. It also clears a destination picked earlier, which belongs to another question. A
+  recorded session no longer in the live list still gets the button: its name comes from the
+  recorded sessions. When Trace sets the range (this button, or a drag), it keeps showing the turn
+  it showed (`keep`): a new range otherwise opens on its latest turn, and a drag that starts after
+  the turn's prompt left that turn out of it. The rule
   is `turnSpan` in `lib/turn-range.ts` for the transcript and Prompts, and `turnEnd` in
   `netobs/trace.ts` for Trace's turns (`TraceTurn.endedAt`, `exact`, from the same events); the two
   are kept in step by hand, like the turn rule itself. The URL is the network tab's
   (`/?view=topology&glove=…&from=…&to=…`), not the turn's: the range in it reproduces what is
   shown. **Range from selection:** dragging across the Trace waterfall's time axis makes that
-  stretch the range (`axisRange` in `lib/net-trace.ts`; a drag shorter than 200 ms is a click).
+  stretch the range (`axisRange` in `lib/net-trace.ts`; a drag shorter than 200 ms is a click; only
+  the main button, on the axis as it was when the drag began).
 - **Time range.** `netRange` in `sessionStore`, hydrated from `&from=<iso>&to=<iso|now>` (ISO, not ms, so
   a shared link says what it shows; a missing `to` is "now"). A range is dropped when it has no start,
   starts before 1970 (the server's rule, so the two never disagree), ends before it starts, or has an

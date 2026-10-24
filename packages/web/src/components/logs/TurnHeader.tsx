@@ -19,8 +19,10 @@ interface TurnHeaderProps {
   addressed: boolean;
   onToggle: () => void;
   onSelect: () => void;
-  /** For a turn in a glove-sandboxed session: its glove session and time span. */
-  network?: { token: string; span: TurnSpan };
+  /** For a turn in a glove-sandboxed session: its glove session. */
+  gloveToken?: string | null;
+  /** The span of a turn by its prompt id, worked out on click. Stable, so headers do not re-render per event. */
+  spanOf?: (promptEventId: string) => TurnSpan | null;
 }
 
 /**
@@ -29,7 +31,7 @@ interface TurnHeaderProps {
  * it groups the existing flat event list without changing its density.
  */
 export const TurnHeader = React.memo(function TurnHeader({
-  turn, collapsed, addressed, onToggle, onSelect, network,
+  turn, collapsed, addressed, onToggle, onSelect, gloveToken, spanOf,
 }: TurnHeaderProps) {
   const duration = turn.endedAt === null ? null : formatDuration(turn.endedAt - turn.startedAt);
 
@@ -89,7 +91,7 @@ export const TurnHeader = React.memo(function TurnHeader({
         />
       )}
 
-      {network && <NetworkForTurn token={network.token} span={network.span} />}
+      {gloveToken && spanOf && <NetworkForTurn token={gloveToken} span={() => spanOf(turn.promptEventId)} />}
 
       <CopyLinkButton
         route={{ kind: 'turn', sessionId: turn.sessionId, promptEventId: turn.promptEventId }}

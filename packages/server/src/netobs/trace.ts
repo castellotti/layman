@@ -40,7 +40,8 @@ const closes = (e: TimelineEvent) => e.type === 'agent_stop' || e.type === 'sess
 /**
  * When a turn's last event finished, or null while it runs (the last turn of a live session whose
  * last event is no answer or stop). The end of "Network for this turn": mirrors `turnSpan` in
- * packages/web/src/lib/turn-range.ts, which the Logs and Prompts views use; change both or neither.
+ * packages/web/src/lib/turn-range.ts, which the transcript and Prompts use; change both or neither.
+ * `live` is the glove gate's on both sides, and `last` the last turn of its Layman session.
  */
 export function turnEnd(owned: readonly TimelineEvent[], { last, live }: { last: boolean; live: boolean }): number | null {
   if (!owned.length) return null;
