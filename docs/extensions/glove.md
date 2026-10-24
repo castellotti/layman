@@ -654,9 +654,12 @@ nothing for finished sessions (their history is not an alarm).
 - **A turn as a range ("Network for this turn").** A globe button on a gloved session's turn
   headers (the session transcript), on a highlight in Prompts, and on Trace's turn bar opens Topology
   for the turn's glove session over the turn's time (`showNetworkRange`: one update, one history
-  entry). The range runs from 1 s before the prompt to 2 s after the turn's last event finished
-  (`TURN_LEAD_MS`, `TURN_TAIL_MS`): the gate batches its records, and a pooled connection's last
-  bytes trail. The tooltip says so. Times are the transcript's (`transcriptAt`,
+  entry). The range runs from 1 s before the prompt (3 s, as Trace's `READ_LAG_MS`, when the prompt
+  is known only by when it was read) to 2 s after the turn's last event finished (`TURN_LEAD_MS`,
+  `TURN_READ_LEAD_MS`, `TURN_TAIL_MS`): the gate batches its records, and a pooled connection's last
+  bytes trail. The tooltip says so. A session's end does not count, as it can come hours later, and
+  a turn is closed by an answer or stop after its last tool call, not only by its very last event (a
+  note can follow the answer). Only a session Layman may read gets the button. Times are the transcript's (`transcriptAt`,
   `transcriptCompletedAt`) when the harness kept them, because a passive watcher's `timestamp` is
   when it read the event; without them the range is the events' times and the tooltip calls it
   approximate. The last turn of its Layman session, while the glove gate runs, whose last event is

@@ -62,7 +62,7 @@ function useTraceData(token: string, range: NetRange | null) {
   const turnId = useTrace((s) => s.turnId);
   const set = useTrace((s) => s.set);
   useEffect(() => {
-    if (useTrace.getState().token !== token) set({ token, turnId: null, view: null, selected: null, toggled: new Set(), error: null });
+    if (useTrace.getState().token !== token) set({ token, turnId: null, view: null, selected: null, toggled: new Set(), error: null, keep: null });
   }, [token, set]);
   const from = range?.from ?? null;
   const to = range?.to ?? null;
@@ -244,6 +244,12 @@ const axisFraction = (e: React.PointerEvent<HTMLElement>) => {
   return (e.clientX - r.left) / r.width;
 };
 
+/** The brush's box: the stretch `axisRange` sets, both ends clamped to the axis. */
+function brushBox(b: { f0: number; f1: number }): { left: string; width: string } {
+  const [lo, hi] = [b.f0, b.f1].map((f) => Math.max(0, Math.min(1, f))).sort((x, y) => x - y);
+  return { left: `${lo * 100}%`, width: `${(hi - lo) * 100}%` };
+}
+
 export function TraceWaterfall({ data }: { data: NetSessionData }) {
   const { view, selected, toggled, onlyTraffic, set } = useTrace();
   const now = useNow(1000);
@@ -313,7 +319,7 @@ export function TraceWaterfall({ data }: { data: NetSessionData }) {
             <span key={t} style={{ position: 'absolute', left: `${(t / axis.span) * 100}%`, fontFamily: 'var(--font-mono)', fontWeight: 400, letterSpacing: 0, pointerEvents: 'none' }}>{tickLabel(t)}</span>
           ))}
           {brush && (
-            <span data-trace-brush="" style={{ position: 'absolute', top: 2, bottom: 2, left: `${Math.max(0, Math.min(brush.f0, brush.f1)) * 100}%`, width: `${Math.min(1, Math.abs(brush.f1 - brush.f0)) * 100}%`, background: 'color-mix(in srgb, var(--info) 25%, transparent)', borderRadius: 2, pointerEvents: 'none' }} />
+            <span data-trace-brush="" style={{ position: 'absolute', top: 2, bottom: 2, ...brushBox(brush), background: 'color-mix(in srgb, var(--info) 25%, transparent)', borderRadius: 2, pointerEvents: 'none' }} />
           )}
         </span>
         <span />

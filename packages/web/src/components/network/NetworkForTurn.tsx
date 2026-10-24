@@ -19,7 +19,8 @@ import { tipProps } from './NetTip.js';
 export function useGloveToken(sessionId: string | null | undefined, name?: string | null): string | null {
   const live = useSessionStore((s) => (sessionId ? s.sessions.find((x) => x.sessionId === sessionId)?.sessionName ?? null : null));
   const n = live ?? name ?? null;
-  return useNetStore((s) => (n && (s.sessions.some((x) => x.token === n) || s.notObservable.some((x) => x.token === n)) ? n : null));
+  // Only a session Layman may read: a not-observable one has no traffic to show.
+  return useNetStore((s) => (n && s.sessions.some((x) => x.token === n) ? n : null));
 }
 
 /** Whether a glove session's gate is running: what decides that a turn without an answer still runs. */

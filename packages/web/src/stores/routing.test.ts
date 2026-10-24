@@ -491,6 +491,16 @@ describe('network views (glove)', () => {
       expect(useSessionStore.getState().netToken).toBe('pi-search-c0ffee');
     });
 
+    it('in Logs uses the session Logs shows, not a transcript opened earlier', () => {
+      useSessionStore.setState({ viewMode: 'stream', netToken: null, viewingSessionId: 's2', activeSessionId: 's1',
+        sessions: [gloved('s1', 'pi-search-c0ffee'), gloved('s2', 'direct-c0ffee')] });
+      useSessionStore.getState().setViewMode('network');
+      expect(useSessionStore.getState().netToken).toBe('pi-search-c0ffee');
+      useSessionStore.setState({ viewMode: 'sessions' });
+      useSessionStore.getState().setViewMode('network');
+      expect(useSessionStore.getState().netToken).toBe('direct-c0ffee');
+    });
+
     it('leaves the choice alone for a session that is not gloved, or before the glove sessions are known', () => {
       useSessionStore.setState({ viewMode: 'stream', netToken: 'direct-c0ffee', activeSessionId: 's1', sessions: [gloved('s1', 'renamed')] });
       useSessionStore.getState().setViewMode('network');

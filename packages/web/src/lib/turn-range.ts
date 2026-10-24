@@ -16,6 +16,8 @@ import { getEffectiveAgentContent } from './reasoning.js';
 
 /** Before the prompt: the gate batches records, so a flow the prompt caused can be stamped a little early. */
 export const TURN_LEAD_MS = 1000;
+/** Before a prompt known only by when it was read (no transcript time): as Trace's `READ_LAG_MS`. */
+export const TURN_READ_LEAD_MS = 3000;
 /** After the end: a pooled connection's last bytes and the gate's batching. */
 export const TURN_TAIL_MS = 2000;
 
@@ -35,6 +37,18 @@ function closes(e: TimelineEvent): boolean {
   if (e.type === 'agent_stop' || e.type === 'session_end' || e.type === 'stop_failure') return true;
   return e.type === 'agent_response' && getEffectiveAgentContent(e).response.trim() !== '';
 }
+const TOOL = /^tool_call_/;
+/**
+ * Whether the turn is closed: something closes it after its last tool call. Not merely its last
+ * event, which can be a note recorded after the answer (a drift alert).
+ */
+const closed = (owned: readonly TimelineEvent[]) => {
+  let i = owned.length - 1;
+  while (i > 0 && !TOOL.test(owned[i].type)) { if (closes(owned[i])) return true; i--; }
+  return false;
+};
+/** The events whose finishing ends a turn: not a session's end, which can come hours later. */
+const ending = (owned: readonly TimelineEvent[]) => owned.filter((e, i) => i === 0 || e.type !== 'session_end');
 
 /**
  * The span of a turn from the events it owns (its prompt first), or null for none. `last`: it is
@@ -46,17 +60,17 @@ export function turnSpan(owned: readonly TimelineEvent[], { last, live }: { last
   if (!owned.length) return null;
   const prompt = owned[0];
   const at = num(prompt.data.transcriptAt);
-  const running = last && live && !closes(owned[owned.length - 1]);
+  const running = last && live && !closed(owned);
   return {
     startedAt: at ?? prompt.timestamp,
-    endedAt: running ? null : Math.max(...owned.map(doneAt)),
+    endedAt: running ? null : Math.max(...ending(owned).map(doneAt)),
     exact: at !== null,
   };
 }
 
 export function turnRange(span: TurnSpan): NetRange {
-  return { from: span.startedAt - TURN_LEAD_MS, to: span.endedAt === null ? null : span.endedAt + TURN_TAIL_MS };
+  return { from: span.startedAt - (span.exact ? TURN_LEAD_MS : TURN_READ_LEAD_MS), to: span.endedAt === null ? null : span.endedAt + TURN_TAIL_MS };
 }
 
 /** What the button's tooltip says about the range it sets. */
-export const TURN_RANGE_TIP = `From ${TURN_LEAD_MS / 1000} s before the prompt to ${TURN_TAIL_MS / 1000} s after the turn ended (the gate batches records, and a pooled connection's last bytes trail), or until now while it runs. From the transcript's times when the harness kept them; otherwise approximate.`;
+export const TURN_RANGE_TIP = `From ${TURN_LEAD_MS / 1000} s (${TURN_READ_LEAD_MS / 1000} s without transcript times) before the prompt to ${TURN_TAIL_MS / 1000} s after the turn ended (the gate batches records, and a pooled connection's last bytes trail), or until now while it runs. From the transcript's times when the harness kept them; otherwise approximate.`;

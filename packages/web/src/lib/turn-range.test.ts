@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { TURN_LEAD_MS, TURN_TAIL_MS, turnRange, turnSpan } from './turn-range.js';
+import { TURN_LEAD_MS, TURN_READ_LEAD_MS, TURN_TAIL_MS, turnRange, turnSpan } from './turn-range.js';
 import { extractTurns } from './turns.js';
 import type { TimelineEvent, EventType } from './types.js';
 
@@ -27,13 +27,23 @@ describe('turnSpan and turnRange', () => {
 
   it('gives an open range for the last turn of a live session that has not answered yet', () => {
     const owned = [ev('user_prompt', 1000, { prompt: 'go' }), ev('tool_call_pending', 2000), ev('agent_response', 3000, { prompt: '', thinking: 'hmm' })];
-    expect(turnRange(turnSpan(owned, { last: true, live: true })!)).toEqual({ from: 0, to: null });
+    expect(turnRange(turnSpan(owned, { last: true, live: true })!)).toEqual({ from: 1000 - TURN_READ_LEAD_MS, to: null });
     // Not the last turn, or the session is not running: it ended.
     expect(turnSpan(owned, { last: false, live: true })!.endedAt).toBe(3000);
     expect(turnSpan(owned, { last: true, live: false })!.endedAt).toBe(3000);
     // An answer, or a stop, closes it.
     expect(turnSpan([...owned, ev('agent_response', 4000, { prompt: 'here' })], { last: true, live: true })!.endedAt).toBe(4000);
     expect(turnSpan([...owned, ev('agent_stop', 5000)], { last: true, live: true })!.endedAt).toBe(5000);
+  });
+
+  it('a note after the answer does not reopen it, and a late session end does not stretch it', () => {
+    const owned = [ev('user_prompt', 1000, { prompt: 'go' }), ev('tool_call_completed', 2000), ev('agent_response', 3000, { prompt: 'done' }), ev('notification', 3500)];
+    expect(turnSpan(owned, { last: true, live: true })!.endedAt).toBe(3500);
+    expect(turnSpan([...owned, ev('session_end', 9_000_000)], done)!.endedAt).toBe(3500);
+  });
+
+  it('gives a prompt known only by its read time the longer lead Trace gives it', () => {
+    expect(turnRange({ startedAt: 10_000, endedAt: 20_000, exact: false }).from).toBe(10_000 - TURN_READ_LEAD_MS);
   });
 
   it('has no span for a turn with no events', () => {
@@ -47,6 +57,6 @@ describe('turnSpan and turnRange', () => {
     ];
     const [turn] = extractTurns(events);
     const owned = turn.eventIds.map((id) => events.find((e) => e.id === id)!);
-    expect(turnRange(turnSpan(owned, done)!)).toEqual({ from: 0, to: 8000 });
+    expect(turnRange(turnSpan(owned, done)!)).toEqual({ from: 1000 - TURN_READ_LEAD_MS, to: 8000 });
   });
 });

@@ -45,7 +45,13 @@ const closes = (e: TimelineEvent) => e.type === 'agent_stop' || e.type === 'sess
  */
 export function turnEnd(owned: readonly TimelineEvent[], { last, live }: { last: boolean; live: boolean }): number | null {
   if (!owned.length) return null;
-  return last && live && !closes(owned[owned.length - 1]) ? null : Math.max(...owned.map(doneAt));
+  // Closed by something after its last tool call (its last event can be a note after the answer).
+  let i = owned.length - 1;
+  let closed = false;
+  while (i > 0 && !/^tool_call_/.test(owned[i].type)) { if (closes(owned[i])) { closed = true; break; } i--; }
+  if (last && live && !closed) return null;
+  // A session's end can come hours after the turn: it does not end the turn.
+  return Math.max(...owned.filter((e, j) => j === 0 || e.type !== 'session_end').map(doneAt));
 }
 
 /** Which turn: by a prompt (or any) event id, the one in progress at a moment, or the latest. */
