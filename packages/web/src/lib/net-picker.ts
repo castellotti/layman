@@ -5,6 +5,7 @@
  *
  * Times are local, like every range shown (`net-range.ts`).
  */
+import { sameRange } from './net-state.js';
 import type { BurstSegment, HourActivity, NetRange, NetSegments, RunSegment } from './netobs-types.js';
 
 const HOUR = 3_600_000;
@@ -37,11 +38,6 @@ export function dayStart(t: number): number {
 export function nextDay(t: number): number {
   const d = new Date(dayStart(t));
   return new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1).getTime();
-}
-
-/** Whether two ranges are the same: the picker marks the segment or preset that is set. */
-export function sameRange(a: NetRange | null, b: NetRange | null): boolean {
-  return a === b || (!!a && !!b && a.from === b.from && a.to === b.to);
 }
 
 /** A segment as a range: a run still going is open (it grows), the rest are closed. */

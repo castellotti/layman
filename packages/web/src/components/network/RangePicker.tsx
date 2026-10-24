@@ -7,13 +7,14 @@
  */
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import type { NetRange, NetSegments } from '../../lib/netobs-types.js';
+import type { HourActivity, NetRange, NetSegments } from '../../lib/netobs-types.js';
 import { formatBytes } from '../../lib/net-format.js';
 import { formatRange, formatSpan, formatStamp, rangeTitle } from '../../lib/net-range.js';
 import {
-  brushRange, burstRun, dayStart, fromLocalInput, initialMonth, monthGrid, newestFirst, nextDay, presets, runEnd, runNumber, sameRange,
+  brushRange, burstRun, dayStart, fromLocalInput, initialMonth, monthGrid, newestFirst, nextDay, presets, runEnd, runNumber,
   segmentRange, snap, timeAt, timelineMarks, timelineSpan, toLocalInput, xAt,
 } from '../../lib/net-picker.js';
+import { sameRange } from '../../lib/net-state.js';
 import { useNow } from '../../hooks/useNow.js';
 import { buttonStyle } from './ControlPopover.js';
 import { NetIcon } from './netui.js';
@@ -30,6 +31,13 @@ const tabStyle = (on: boolean): React.CSSProperties => ({
   border: `1px solid ${on ? 'var(--border-strong)' : 'transparent'}`, background: on ? 'var(--bg-selected)' : 'transparent',
   color: on ? 'var(--text)' : 'var(--text-muted)',
 });
+
+const EMPTY_STYLE: React.CSSProperties = { padding: 12, fontSize: 11.5, color: 'var(--text-muted)' };
+const Empty = ({ children }: { children: React.ReactNode }) => <div style={EMPTY_STYLE}>{children}</div>;
+const NO_HOURS: HourActivity[] = [];
+
+/** The Calendar's start and end fields for a range: an open end is left empty ("now"). */
+const fieldsFor = (r: NetRange | null) => ({ from: r ? toLocalInput(r.from) : '', to: r?.to != null ? toLocalInput(r.to) : '' });
 
 const traffic = (s: { flows: number; bytesUp: number; bytesDown: number }) =>
   `${s.flows.toLocaleString()} flow${s.flows === 1 ? '' : 's'} · ${formatBytes(s.bytesUp + s.bytesDown)}`;
@@ -58,10 +66,10 @@ function SegmentsTab({ segments, range, onPick, gapHours, setGapHours, now }: {
   segments: NetSegments; range: NetRange | null; onPick: (r: NetRange) => void; gapHours: number; setGapHours: (h: number) => void; now: number;
 }) {
   const [kind, setKind] = useState<Kind>('runs');
-  const runs = newestFirst(segments.runs);
-  const bursts = newestFirst(segments.bursts);
-  const agents = newestFirst(segments.agentSessions);
-  const empty = (what: string) => <div style={{ padding: 12, fontSize: 11.5, color: 'var(--text-muted)' }}>{what}</div>;
+  // Not re-sorted on every tick of `now`.
+  const { runs, bursts, agents } = useMemo(() => ({
+    runs: newestFirst(segments.runs), bursts: newestFirst(segments.bursts), agents: newestFirst(segments.agentSessions),
+  }), [segments]);
   return (
     <>
       <div role="group" aria-label="Kind" style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 8 }}>
@@ -87,7 +95,7 @@ function SegmentsTab({ segments, range, onPick, gapHours, setGapHours, now }: {
             <SegmentRow title={`Run ${runNumber(segments, r)}`} range={segmentRange(r)} set={range} onPick={onPick} now={now}
               detail={[runEnd(r) ?? 'running', traffic(r)].join(' · ')} />
           </div>
-        )) : empty('No runs recorded: glove writes one at each glove up.'))}
+        )) : <Empty>No runs recorded: glove writes one at each glove up.</Empty>)}
         {kind === 'bursts' && (bursts.length ? bursts.map((b) => {
           const n = burstRun(segments, b);
           return (
@@ -96,13 +104,13 @@ function SegmentsTab({ segments, range, onPick, gapHours, setGapHours, now }: {
                 detail={traffic(b)} />
             </div>
           );
-        }) : empty('No bursts of activity.'))}
+        }) : <Empty>No bursts of activity.</Empty>)}
         {kind === 'agents' && (agents.length ? agents.map((a) => (
           <div role="listitem" key={a.sessionId}>
             <SegmentRow title={`${a.turns} turn${a.turns === 1 ? '' : 's'}`} range={segmentRange(a)} set={range} onPick={onPick} now={now}
               detail={`Layman session ${a.sessionId.slice(0, 8)}${a.exact ? '' : ' · times as read, may lag'}`} />
           </div>
-        )) : empty('No Layman session is named after this glove session.'))}
+        )) : <Empty>No Layman session is named after this glove session.</Empty>)}
       </div>
       {kind === 'bursts' && segments.burstBasis === 'traffic' && (
         <div style={{ fontSize: 10.5, color: 'var(--text-faint)', marginTop: 6 }}>No model calls were seen, so bursts are split on all traffic.</div>
@@ -116,14 +124,15 @@ function CalendarTab({ segments, range, onPick, now, openedAt }: {
   /** When the picker opened: presets are relative to it, so the one picked stays marked and a second click sets the same range. */
   openedAt: number;
 }) {
-  const hours = segments?.hours ?? [];
+  const hours = segments?.hours ?? NO_HOURS;
   const [month, setMonth] = useState(() => initialMonth(range, hours, now));
-  const [from, setFrom] = useState(range ? toLocalInput(range.from) : '');
-  const [to, setTo] = useState(range?.to != null ? toLocalInput(range.to) : '');
+  const [from, setFrom] = useState(() => fieldsFor(range).from);
+  const [to, setTo] = useState(() => fieldsFor(range).to);
   // The fields follow the range however it was set (a preset, All records, another tab), so Apply never restores an old one.
   useEffect(() => {
-    setFrom(range ? toLocalInput(range.from) : '');
-    setTo(range?.to != null ? toLocalInput(range.to) : '');
+    const v = fieldsFor(range);
+    setFrom(v.from);
+    setTo(v.to);
   }, [range?.from, range?.to]);
   const weeks = useMemo(() => monthGrid(month.year, month.month, hours), [month, hours]);
   const step = (d: number) => setMonth((m) => {
@@ -136,8 +145,9 @@ function CalendarTab({ segments, range, onPick, now, openedAt }: {
     const start = extend && range ? Math.min(range.from, day) : day;
     const end = nextDay(Math.max(day, extend && range ? dayStart(range.from) : day));
     const r = { from: start, to: end > now ? null : end };
-    setFrom(toLocalInput(r.from));
-    setTo(r.to === null ? '' : toLocalInput(r.to));
+    const v = fieldsFor(r);
+    setFrom(v.from);
+    setTo(v.to);
     onPick(r);
   };
   const f = fromLocalInput(from);
@@ -205,12 +215,39 @@ function TimelineTab({ segments, range, onPick, now }: { segments: NetSegments; 
   const svg = useRef<SVGSVGElement>(null);
   const [drag, setDrag] = useState<{ a: number; b: number } | null>(null);
   const [hover, setHover] = useState<number | null>(null);
-  if (!span) return <div style={{ padding: 12, fontSize: 11.5, color: 'var(--text-muted)' }}>No activity recorded yet.</div>;
+  // The hours, runs and agent sessions, drawn once per span: a pointer move redraws only the brush and hover line.
+  const chart = useMemo(() => {
+    if (!span) return null;
+    const x = (t: number) => xAt(t, TL_W, span);
+    const max = Math.max(1, ...segments.hours.map((h) => h.flows));
+    return (
+      <>
+        {segments.hours.map((h) => {
+          const bh = Math.max(1, (Math.log1p(h.flows) / Math.log1p(max)) * (TL_H - 24));
+          // From the hour's first record to its last: a whole hour would swamp a session minutes long.
+          return <rect key={h.hour} x={x(h.first)} y={TL_H - 12 - bh} width={Math.max(2, x(h.last) - x(h.first))} height={bh}
+            fill={h.inference ? 'var(--net-tunnel)' : 'var(--text-faint)'} opacity={0.75} />;
+        })}
+        {segments.runs.map((r) => (
+          <g key={r.run}>
+            <line x1={x(r.from)} x2={x(r.from)} y1={0} y2={TL_H - 12} stroke="var(--info)" strokeWidth={1} />
+            {r.to !== null && <line x1={x(r.to)} x2={x(r.to)} y1={0} y2={TL_H - 12} stroke="var(--info)" strokeWidth={1} strokeDasharray="2 2" />}
+          </g>
+        ))}
+        {segments.agentSessions.map((a) => (
+          <g key={a.sessionId} fill="var(--net-up)">
+            <circle cx={x(a.from)} cy={6} r={2.5} />
+            <circle cx={x(a.to)} cy={6} r={2.5} />
+          </g>
+        ))}
+      </>
+    );
+  }, [segments, span]);
+  if (!span) return <Empty>No activity recorded yet.</Empty>;
   const live = segments.runs.some((r) => r.to === null);
   const tol = (SNAP_PX / TL_W) * (span.to - span.from);
   const at = (e: React.PointerEvent) => snap(timeAt(e.clientX - svg.current!.getBoundingClientRect().left, TL_W, span), marks, tol);
   const x = (t: number) => xAt(t, TL_W, span);
-  const max = Math.max(1, ...segments.hours.map((h) => h.flows));
   const shown = drag ? { from: Math.min(drag.a, drag.b), to: Math.max(drag.a, drag.b) } : range ? { from: range.from, to: range.to ?? now } : null;
   return (
     <>
@@ -232,24 +269,7 @@ function TimelineTab({ segments, range, onPick, now }: { segments: NetSegments; 
           setDrag(null);
           if (r) onPick(r);
         }}>
-        {segments.hours.map((h) => {
-          const bh = Math.max(1, (Math.log1p(h.flows) / Math.log1p(max)) * (TL_H - 24));
-          // From the hour's first record to its last: a whole hour would swamp a session minutes long.
-          return <rect key={h.hour} x={x(h.first)} y={TL_H - 12 - bh} width={Math.max(2, x(h.last) - x(h.first))} height={bh}
-            fill={h.inference ? 'var(--net-tunnel)' : 'var(--text-faint)'} opacity={0.75} />;
-        })}
-        {segments.runs.map((r) => (
-          <g key={r.run}>
-            <line x1={x(r.from)} x2={x(r.from)} y1={0} y2={TL_H - 12} stroke="var(--info)" strokeWidth={1} />
-            {r.to !== null && <line x1={x(r.to)} x2={x(r.to)} y1={0} y2={TL_H - 12} stroke="var(--info)" strokeWidth={1} strokeDasharray="2 2" />}
-          </g>
-        ))}
-        {segments.agentSessions.map((a) => (
-          <g key={a.sessionId} fill="var(--net-up)">
-            <circle cx={x(a.from)} cy={6} r={2.5} />
-            <circle cx={x(a.to)} cy={6} r={2.5} />
-          </g>
-        ))}
+        {chart}
         {shown && <rect data-brush="" x={x(shown.from)} y={0} width={Math.max(1, x(shown.to) - x(shown.from))} height={TL_H - 12}
           fill="rgba(90,156,248,0.18)" stroke="var(--info)" />}
         <line x1={0} x2={TL_W} y1={TL_H - 12} y2={TL_H - 12} stroke="var(--border-strong)" />
@@ -292,8 +312,7 @@ export function RangePicker({ anchor, range, segments, segmentsError, gapHours, 
     window.addEventListener('mousedown', onDown);
     return () => { window.removeEventListener('keydown', onKey); window.removeEventListener('mousedown', onDown); };
   }, [onClose]);
-  // Picking keeps the picker open: the reader often compares a few ranges in a row.
-  const pick = (r: NetRange | null) => onPick(r);
+  // Picking (`onPick`) keeps the picker open: the reader often compares a few ranges in a row.
   return createPortal(
     <div ref={ref} role="dialog" aria-label="Time range" data-print-hide="" style={{
       position: 'fixed', left: pos.left, top: pos.top, width: WIDTH, zIndex: 60, padding: 12, borderRadius: 8,
@@ -306,14 +325,14 @@ export function RangePicker({ anchor, range, segments, segmentsError, gapHours, 
             <button key={k} type="button" role="tab" aria-selected={tab === k} onClick={() => setTab(k)} style={tabStyle(tab === k)}>{label}</button>
           ))}
         </div>
-        <button type="button" aria-pressed={range === null} onClick={() => pick(null)} style={{ ...tabStyle(range === null), marginLeft: 'auto' }}>All records</button>
+        <button type="button" aria-pressed={range === null} onClick={() => onPick(null)} style={{ ...tabStyle(range === null), marginLeft: 'auto' }}>All records</button>
         <button type="button" aria-label="Close" onClick={onClose} style={{ ...buttonStyle('ghost'), width: 26, padding: 0 }}><NetIcon name="close" size={11} /></button>
       </div>
       {segmentsError && !segments && <div role="alert" style={{ fontSize: 11.5, color: 'var(--warn)', marginBottom: 8 }}>Could not read this session’s runs: {segmentsError}</div>}
-      {tab === 'calendar' ? <CalendarTab segments={segments} range={range} onPick={pick} now={now} openedAt={openedAt} />
-        : !segments ? <div style={{ padding: 12, fontSize: 11.5, color: 'var(--text-muted)' }}>{segmentsError ? '' : 'Loading…'}</div>
-          : tab === 'segments' ? <SegmentsTab segments={segments} range={range} onPick={pick} gapHours={gapHours} setGapHours={setGapHours} now={now} />
-            : <TimelineTab segments={segments} range={range} onPick={pick} now={now} />}
+      {tab === 'calendar' ? <CalendarTab segments={segments} range={range} onPick={onPick} now={now} openedAt={openedAt} />
+        : !segments ? <Empty>{segmentsError ? '' : 'Loading…'}</Empty>
+          : tab === 'segments' ? <SegmentsTab segments={segments} range={range} onPick={onPick} gapHours={gapHours} setGapHours={setGapHours} now={now} />
+            : <TimelineTab segments={segments} range={range} onPick={onPick} now={now} />}
     </div>,
     document.body,
   );

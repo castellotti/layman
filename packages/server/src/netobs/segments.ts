@@ -24,8 +24,6 @@ import type { TimelineEvent } from '../events/types.js';
 import type { HistoryHour, HistoryRun } from './history.js';
 import type { AgentSegment, BurstSegment, HourActivity, NetSegments, RunSegment } from './types.js';
 
-export type { AgentSegment, BurstSegment, HourActivity, NetSegments, RunSegment };
-
 export const DEFAULT_BURST_GAP_MS = 6 * 60 * 60_000;
 
 /** One run's traffic in one hour, its destinations together. */

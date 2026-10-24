@@ -12,7 +12,7 @@ import { create } from 'zustand';
 import { useNetStore } from '../../stores/netStore.js';
 import { useSessionStore } from '../../stores/sessionStore.js';
 import { formatBytes, NET_STATE_INFO } from '../../lib/net-format.js';
-import type { NetSessionData } from '../../lib/net-state.js';
+import { rangeKey, type NetSessionData } from '../../lib/net-state.js';
 import { controlDisabledReason, siblingIds, toggleFor } from '../../lib/net-rules.js';
 import { clockTime, destinationRow, guardReason } from '../../lib/net-table.js';
 import { buildPath } from '../../lib/layman-url.js';
@@ -60,10 +60,10 @@ function useTraceData(token: string, range: NetRange | null) {
   const from = range?.from ?? null;
   const to = range?.to ?? null;
   useEffect(() => {
-    const key = from === null ? null : `${from}-${to ?? 'now'}`;
+    const key = from === null ? null : rangeKey({ from, to });
     const prev = useTrace.getState().rangeKey;
-    if (prev !== undefined && prev !== key) set({ rangeKey: key, turnId: null, view: null, selected: null, toggled: new Set() });
-    else if (prev !== key) set({ rangeKey: key });
+    // A new range (not the first one seen) goes to its latest turn.
+    if (prev !== key) set({ rangeKey: key, ...(prev !== undefined && { turnId: null, view: null, selected: null, toggled: new Set<string>() }) });
   }, [from, to, set]);
   useEffect(() => pollSettled((live) => fetchTrace(token, turnId ? { turn: turnId } : null, from === null ? null : { from, to })
     .then((v) => { if (live()) set({ view: v, error: null }); })
@@ -88,6 +88,8 @@ function Chip({ tone, icon, children }: { tone: 'neutral' | 'warn' | 'error' | '
   );
 }
 
+const TURN_NOTE: React.CSSProperties = { margin: '8px 8px 0', padding: '10px 14px', fontSize: 11.5, color: 'var(--text-muted)' };
+
 export function TurnBar({ data }: { data: NetSessionData }) {
   useTraceData(data.token, data.range);
   const { view, error, set } = useTrace();
@@ -95,11 +97,11 @@ export function TurnBar({ data }: { data: NetSessionData }) {
   const go = (turnId: string | null | undefined) => { if (turnId) set({ turnId, selected: null, toggled: new Set() }); };
   const navStyle: React.CSSProperties = { width: 26, height: 26, borderRadius: 6, border: '1px solid var(--border-strong)', background: 'var(--bg-pill)', color: 'var(--text)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' };
   if (!view) {
-    return <div style={{ margin: '8px 8px 0', padding: '10px 14px', fontSize: 11.5, color: 'var(--text-muted)' }}>{error ? `Trace unavailable: ${error}` : 'Loading the trace…'}</div>;
+    return <div style={TURN_NOTE}>{error ? `Trace unavailable: ${error}` : 'Loading the trace…'}</div>;
   }
   if (!view.turn) {
     // A range with no turn in it says so, rather than leave the trace looking empty for no reason.
-    return data.range ? <div style={{ margin: '8px 8px 0', padding: '10px 14px', fontSize: 11.5, color: 'var(--text-muted)' }}>No turn began in this time range.</div> : null;
+    return data.range ? <div style={TURN_NOTE}>No turn began in this time range.</div> : null;
   }
   const t = view.turn;
   const c = view.counts;

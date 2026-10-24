@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   brushRange, burstRun, dayStart, endedRun, fromLocalInput, initialMonth, monthGrid, newestFirst, nextDay, presets, rangeName, runEnd,
-  sameRange, snap, timeAt, timelineMarks, timelineSpan, toLocalInput, xAt,
+  snap, timeAt, timelineMarks, timelineSpan, toLocalInput, xAt,
 } from './net-picker.js';
+import { sameRange } from './net-state.js';
 import type { HourActivity, NetSegments, RunSegment } from './netobs-types.js';
 
 // Local-time output depends on the machine's zone, so times are built from local parts.
