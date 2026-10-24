@@ -159,6 +159,11 @@ linked above.
    The part glove's files no longer hold is answered from `net_hours`, fed into that same store as kept
    history, up to a hand-over hour that is never in the future; move the hand-over only with the
    `range.test.ts` cases that fail when it is an hour off either way.
+   A turn as a range ("Network for this turn") is one rule in two copies, like the turn rule: `turnSpan`
+   (`lib/turn-range.ts`, the transcript and Prompts) and `turnEnd` (`netobs/trace.ts`, Trace's
+   `TraceTurn.endedAt`). Change both or neither; on both sides "still running" means the glove gate is
+   live, never the Layman session. The glove picker's order (`netPickerOrder`) must never depend on a
+   session's latest record: a live gate writes records while idle, and the list reordered under the pointer.
    Design and rules: `docs/extensions/glove.md` → Network.
 
 5. **OpenCode plugin** (`docs/harnesses/opencode.md`): a bidirectional plugin (`packages/opencode-plugin`)
