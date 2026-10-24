@@ -13,6 +13,9 @@ import { JumpToLatest } from '../primitives/index.js';
 import { saveAndBookmarkSession } from '../../lib/bookmarks-api.js';
 import { pairFor, hasLogDetail } from '../../lib/event-pairing.js';
 import { extractTurns } from '../../lib/turns.js';
+import { turnSpan } from '../../lib/turn-range.js';
+import { isSessionLive } from '../../lib/session-state.js';
+import { useGloveToken } from '../network/NetworkForTurn.js';
 import { sessionDisplayName } from '../../lib/session-state.js';
 import type { ClientMessage } from '../../lib/ws-protocol.js';
 
@@ -107,6 +110,18 @@ export function EventStream({ onSend, archived = false, archivedDate, turnRuler 
     [turnRuler, sessionEvents]
   );
   const turnByPromptId = useMemo(() => new Map(turns.map((t) => [t.promptEventId, t])), [turns]);
+  // A gloved session's turns can open the network tabs over their own time ("Network for this turn").
+  const turnSession = turns[0]?.sessionId ?? null;
+  const gloveToken = useGloveToken(turnSession);
+  const sessionLive = useSessionStore((s) => { const x = s.sessions.find((y) => y.sessionId === turnSession); return !!x && isSessionLive(x); });
+  const turnNetwork = useMemo(() => {
+    if (!gloveToken) return null;
+    const byId = new Map(sessionEvents.map((e) => [e.id, e]));
+    return new Map(turns.map((t, i) => [t.promptEventId, {
+      token: gloveToken,
+      span: turnSpan(t.eventIds.map((id) => byId.get(id)!).filter(Boolean), { last: i === turns.length - 1, live: sessionLive }),
+    }]));
+  }, [gloveToken, turns, sessionEvents, sessionLive]);
   /** Events hidden because the turn owning them is collapsed. */
   const hiddenByCollapse = useMemo(() => {
     if (collapsedTurns.size === 0) return new Set<string>();
@@ -512,6 +527,7 @@ export function EventStream({ onSend, archived = false, archivedDate, turnRuler 
                       addressed={selectedTurnPromptEventId === turn.promptEventId}
                       onToggle={() => toggleTurnCollapsed(turn.promptEventId)}
                       onSelect={() => selectTurn(turn.sessionId, turn.promptEventId)}
+                      network={turnNetwork?.get(turn.promptEventId)}
                     />
                   )}
                   {!hidden && (

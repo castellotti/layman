@@ -171,7 +171,7 @@ describe('Trace rows', () => {
   };
   const view: TraceView = {
     token: ID, sessionIds: ['s1'], nav: { index: 0, count: 1, prev: null, next: null },
-    turn: { sessionId: 's1', promptEventId: 'p1', responseEventId: null, index: 0, startedAt: T, promptText: 'x', toolCallCount: 1 },
+    turn: { sessionId: 's1', promptEventId: 'p1', responseEventId: null, index: 0, startedAt: T, promptText: 'x', toolCallCount: 1, endedAt: null, exact: true },
     window: { from: T, to: T + 60_000 },
     items: [
       { kind: 'llm', flowId: 'leg', hopIds: ['hop'] },

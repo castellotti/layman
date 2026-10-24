@@ -4,6 +4,8 @@ import { useSessionStore } from '../../stores/sessionStore.js';
 import type { Highlight, HighlightFolder, TimelineEvent, RecordedSession } from '../../lib/types.js';
 import { HostChip } from '../shared/HostChip.js';
 import { isEditableCuration } from '../../lib/host.js';
+import { turnSpan } from '../../lib/turn-range.js';
+import { NetworkForTurn, useGloveToken } from '../network/NetworkForTurn.js';
 import { SearchInput, FilterChip, SECTION_LABEL_STYLE, CollapsibleFolderHeader, FolderSectionHeader, InlineRenameInput, RenameButton, ConfirmDialog, CopyLinkButton } from '../primitives/index.js';
 import { getEffectiveAgentContent } from '../../lib/reasoning.js';
 import { isMarkdown, MARKDOWN_PROSE_COMPACT, REMARK_PLUGINS } from '../../lib/markdown.js';
@@ -284,6 +286,7 @@ export function PromptsView() {
   }, [recordedSessions]);
 
   const selectedHighlight = highlights.find((h) => h.id === selectedHighlightId) ?? null;
+  const gloveToken = useGloveToken(selectedHighlight?.sessionId);
 
   const sortedFolders = useMemo(
     () => [...highlightFolders].sort((a, b) => a.sortOrder - b.sortOrder),
@@ -597,6 +600,10 @@ export function PromptsView() {
                   title="Speak this highlight's response"
                   size={13}
                 />
+              )}
+              {gloveToken && eventPair.promptEvent && (
+                <NetworkForTurn token={gloveToken} size={13}
+                  span={turnSpan([eventPair.promptEvent, ...(eventPair.responseEvent ? [eventPair.responseEvent] : [])], { last: false, live: false })} />
               )}
               <CopyLinkButton
                 route={{ kind: 'highlight', highlightId: selectedHighlight.id }}

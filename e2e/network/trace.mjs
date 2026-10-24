@@ -85,6 +85,27 @@ const optionOrder = () => page.$$eval('select[aria-label="Glove session"] option
 const orders = new Set();
 for (let i = 0; i < 6; i++) { orders.add(await optionOrder()); await page.waitForTimeout(500); }
 check('the session picker keeps its order as records arrive', orders.size === 1, [...orders].join(' | '));
+// "Network for this turn" from the session's transcript: Topology over the turn's time.
+await page.goto(`${BASE}${href}`);
+const turnButton = `[data-turn-header][data-prompt-event-id="${href.split('/t/')[1].split('?')[0]}"] [data-network-for-turn]`;
+check('a gloved turn’s header offers "Network for this turn"', await waitFor(async () => (await page.$(turnButton)) !== null, 8000));
+await page.click(turnButton);
+const turnUrl = () => new URL(page.url()).searchParams;
+check('…which opens Topology for its glove session over a range', await waitFor(async () => turnUrl().get('view') === 'topology' && turnUrl().get('glove') === PI && !!turnUrl().get('from')), page.url());
+const [tf, tt] = [Date.parse(turnUrl().get('from')), turnUrl().get('to')];
+check('…a closed range of minutes, not hours (an earlier turn ended)', tt !== 'now' && Date.parse(tt) > tf && Date.parse(tt) - tf < 3600_000, `${turnUrl().get('from')} → ${tt}`);
+check('…and the range bar names it', await waitFor(async () => (await page.$('button[aria-label="Show All records"]')) !== null));
+// The Trace tab's turn bar has it too, and a drag across the waterfall's axis sets a range.
+await page.goto(`${BASE}/?view=trace&glove=${PI}`);
+await page.waitForSelector('[role=region][aria-label="Turn"] [data-network-for-turn]', { timeout: 10000 });
+check('the Trace turn bar offers "Network for this turn"', true);
+const axisBox = await (await page.$('[data-trace-axis]')).boundingBox();
+await page.mouse.move(axisBox.x + axisBox.width * 0.2, axisBox.y + axisBox.height / 2);
+await page.mouse.down();
+await page.mouse.move(axisBox.x + axisBox.width * 0.6, axisBox.y + axisBox.height / 2, { steps: 5 });
+check('dragging across the axis draws the selection', await page.$('[data-trace-brush]') !== null);
+await page.mouse.up();
+check('…and releasing makes it the range', await waitFor(async () => !!new URL(page.url()).searchParams.get('from') && new URL(page.url()).searchParams.get('to') !== 'now'), page.url());
 // The detail card's "Agent asked for", and Open in Trace.
 await page.goto(`${BASE}/?view=map&glove=${PI}&dest=en.wikipedia.org`);
 const asked = async () => page.evaluate(() => {

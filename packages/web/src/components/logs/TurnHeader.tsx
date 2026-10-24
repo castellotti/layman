@@ -3,6 +3,8 @@ import { CopyLinkButton } from '../primitives/index.js';
 import { SpeakButton } from '../tts/SpeakButton.js';
 import { formatTime, formatDuration } from '../../lib/format.js';
 import type { Turn } from '../../lib/types.js';
+import type { TurnSpan } from '../../lib/turn-range.js';
+import { NetworkForTurn } from '../network/NetworkForTurn.js';
 
 /** First non-empty line, length-capped — a turn's heading is its prompt's opening. */
 function firstLine(text: string, max = 96): string {
@@ -17,6 +19,8 @@ interface TurnHeaderProps {
   addressed: boolean;
   onToggle: () => void;
   onSelect: () => void;
+  /** For a turn in a glove-sandboxed session: its glove session and time span. */
+  network?: { token: string; span: TurnSpan };
 }
 
 /**
@@ -25,7 +29,7 @@ interface TurnHeaderProps {
  * it groups the existing flat event list without changing its density.
  */
 export const TurnHeader = React.memo(function TurnHeader({
-  turn, collapsed, addressed, onToggle, onSelect,
+  turn, collapsed, addressed, onToggle, onSelect, network,
 }: TurnHeaderProps) {
   const duration = turn.endedAt === null ? null : formatDuration(turn.endedAt - turn.startedAt);
 
@@ -84,6 +88,8 @@ export const TurnHeader = React.memo(function TurnHeader({
           title="Speak this turn's response"
         />
       )}
+
+      {network && <NetworkForTurn token={network.token} span={network.span} />}
 
       <CopyLinkButton
         route={{ kind: 'turn', sessionId: turn.sessionId, promptEventId: turn.promptEventId }}

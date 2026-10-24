@@ -651,6 +651,22 @@ nothing for finished sessions (their history is not an alarm).
   skips. Before the glove sessions are known nothing is chosen, and the default prefers the active
   session anyway. Moving between the four tabs never changes the session. A deep link with `glove=`
   is hydrated without `setViewMode`, so the link wins.
+- **A turn as a range ("Network for this turn").** A globe button on a gloved session's turn
+  headers (the session transcript), on a highlight in Prompts, and on Trace's turn bar opens Topology
+  for the turn's glove session over the turn's time (`showNetworkRange`: one update, one history
+  entry). The range runs from 1 s before the prompt to 2 s after the turn's last event finished
+  (`TURN_LEAD_MS`, `TURN_TAIL_MS`): the gate batches its records, and a pooled connection's last
+  bytes trail. The tooltip says so. Times are the transcript's (`transcriptAt`,
+  `transcriptCompletedAt`) when the harness kept them, because a passive watcher's `timestamp` is
+  when it read the event; without them the range is the events' times and the tooltip calls it
+  approximate. The last turn of a live session whose last event is neither an answer that said
+  something nor a stop is still running, and gives an open range (`to: null`, until now). The rule
+  is `turnSpan` in `lib/turn-range.ts` for the transcript and Prompts, and `turnEnd` in
+  `netobs/trace.ts` for Trace's turns (`TraceTurn.endedAt`, `exact`, from the same events); the two
+  are kept in step by hand, like the turn rule itself. The URL is the network tab's
+  (`/?view=topology&glove=…&from=…&to=…`), not the turn's: the range in it reproduces what is
+  shown. **Range from selection:** dragging across the Trace waterfall's time axis makes that
+  stretch the range (`axisRange` in `lib/net-trace.ts`; a drag shorter than 200 ms is a click).
 - **Time range.** `netRange` in `sessionStore`, hydrated from `&from=<iso>&to=<iso|now>` (ISO, not ms, so
   a shared link says what it shows; a missing `to` is "now"). A range is dropped when it has no start,
   starts before 1970 (the server's rule, so the two never disagree), ends before it starts, or has an

@@ -16,7 +16,7 @@ import { rangeKey, type NetSessionData } from '../../lib/net-state.js';
 import { controlDisabledReason, siblingIds, toggleFor } from '../../lib/net-rules.js';
 import { clockTime, destinationRow, guardReason } from '../../lib/net-table.js';
 import { buildPath } from '../../lib/layman-url.js';
-import { callForFlow, defaultSelection, fileName, tickLabel, traceAxis, traceRows, type Tone, type TraceIcon, type TraceRow } from '../../lib/net-trace.js';
+import { axisRange, callForFlow, defaultSelection, fileName, tickLabel, traceAxis, traceRows, type Tone, type TraceIcon, type TraceRow } from '../../lib/net-trace.js';
 import { isLanOnlyRule, type FlowView, type NetRange, type RulesOp, type TraceDownload, type TraceView } from '../../lib/netobs-types.js';
 import { useNow } from '../../hooks/useNow.js';
 import { fetchTrace, pollSettled, useNetDownloads } from '../../hooks/useNetTrace.js';
@@ -24,7 +24,8 @@ import { buttonStyle, ControlPopover } from './ControlPopover.js';
 import { NetToggle } from './cells.js';
 import { Row, SectionHead } from './DetailCard.js';
 import { EmptyState, NetIcon, type NetIconName } from './netui.js';
-import { TipWrap } from './NetTip.js';
+import { TipWrap, tipProps } from './NetTip.js';
+import { NetworkForTurn } from './NetworkForTurn.js';
 
 // ─── Shared state ─────────────────────────────────────────────────────────────
 
@@ -125,6 +126,7 @@ export function TurnBar({ data }: { data: NetSessionData }) {
         </div>
         <div data-tip={t.promptText} style={{ fontSize: 13, color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>“{t.promptText}”</div>
       </div>
+      <NetworkForTurn token={data.token} span={{ startedAt: t.startedAt, endedAt: t.endedAt, exact: t.exact }} size={13} />
       <div style={{ display: 'flex', gap: 6, flexShrink: 0, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
         <Chip tone="neutral">{c.calls} tool call{c.calls === 1 ? '' : 's'}</Chip>
         <Chip tone="neutral">{c.flows} flow{c.flows === 1 ? '' : 's'}</Chip>
@@ -230,6 +232,8 @@ export function TraceWaterfall({ data }: { data: NetSessionData }) {
   const { view, selected, toggled, onlyTraffic, set } = useTrace();
   const now = useNow(1000);
   const [popover, setPopover] = useState<{ flow: FlowView; anchor: DOMRect } | null>(null);
+  const [brush, setBrush] = useState<{ f0: number; f1: number } | null>(null);
+  const setNetRange = useSessionStore((s) => s.setNetRange);
   const sessionName = useSessionStore((s) => s.sessions.some((x) => x.sessionName === data.token));
   const axis = useMemo(() => (view ? traceAxis(view, now) : null), [view, now]);
   const rows = useMemo(() => (view && axis ? traceRows(view, axis, {
@@ -262,10 +266,24 @@ export function TraceWaterfall({ data }: { data: NetSessionData }) {
         <span style={{ paddingLeft: 10 }}>TOOL CALL → FLOWS</span>
         <span>OUTCOME</span>
         <span style={{ textAlign: 'right', paddingRight: 10 }}>BYTES</span>
-        <span style={{ position: 'relative', height: 12 }}>
+        {/* Drag across the axis to make that stretch the range: "Range from selection". */}
+        <span data-trace-axis="" style={{ position: 'relative', height: 22, display: 'flex', alignItems: 'center', cursor: 'col-resize', touchAction: 'none' }}
+          {...tipProps({ heading: 'Range from selection', body: 'Drag across the time axis to show every tab for just that stretch of time.' })}
+          onPointerDown={(e) => {
+            const r = e.currentTarget.getBoundingClientRect();
+            e.currentTarget.setPointerCapture(e.pointerId);
+            const f = (e.clientX - r.left) / r.width;
+            setBrush({ f0: f, f1: f });
+          }}
+          onPointerMove={(e) => { if (!brush) return; const r = e.currentTarget.getBoundingClientRect(); setBrush({ ...brush, f1: (e.clientX - r.left) / r.width }); }}
+          onPointerUp={() => { const range = brush && axis ? axisRange(axis, brush.f0, brush.f1) : null; setBrush(null); if (range) setNetRange(range); }}
+          onPointerCancel={() => setBrush(null)}>
           {axis?.ticks.map((t) => (
-            <span key={t} style={{ position: 'absolute', left: `${(t / axis.span) * 100}%`, fontFamily: 'var(--font-mono)', fontWeight: 400, letterSpacing: 0 }}>{tickLabel(t)}</span>
+            <span key={t} style={{ position: 'absolute', left: `${(t / axis.span) * 100}%`, fontFamily: 'var(--font-mono)', fontWeight: 400, letterSpacing: 0, pointerEvents: 'none' }}>{tickLabel(t)}</span>
           ))}
+          {brush && (
+            <span data-trace-brush="" style={{ position: 'absolute', top: 2, bottom: 2, left: `${Math.max(0, Math.min(brush.f0, brush.f1)) * 100}%`, width: `${Math.min(1, Math.abs(brush.f1 - brush.f0)) * 100}%`, background: 'color-mix(in srgb, var(--info) 25%, transparent)', borderRadius: 2, pointerEvents: 'none' }} />
+          )}
         </span>
         <span />
       </div>

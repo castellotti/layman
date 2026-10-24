@@ -414,6 +414,8 @@ export interface SessionState {
   setNetDest: (host: string | null) => void;
   /** Show one time range of the glove session, or All records (null). */
   setNetRange: (range: NetRange | null) => void;
+  /** Open the Topology tab on a glove session over a range ("Network for this turn"): one update, one history entry. */
+  showNetworkRange: (token: string, range: NetRange) => void;
   selectTurn: (sessionId: string, promptEventId: string | null) => void;
   hydrateFromRoute: (route: LaymanRoute, opts: RouteOptions) => Promise<void>;
   clearRouteError: () => void;
@@ -905,6 +907,10 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   // Filling in the default session (from none) keeps what a deep link named alongside it; only
   // switching from one session to another clears the destination and the range chosen in the old one.
   setNetToken: (netToken) => set((s) => netTokenChange(s, netToken)),
+  showNetworkRange: (token, range) => set((s) => ({
+    viewMode: 'topology', ...viewModeFlags('topology'), returnToDashboard: false,
+    ...netTokenChange(s, token), netRange: range,
+  })),
   setNetDest: (netDest) => set({ netDest }),
   setDashboardSortMode: (dashboardSortMode) => set({ dashboardSortMode }),
   setNetRange: (netRange) => set((s) => (sameRange(s.netRange, netRange) ? {} : { netRange })),

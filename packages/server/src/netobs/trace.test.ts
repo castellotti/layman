@@ -85,6 +85,14 @@ describe('buildTrace', () => {
     expect(t.items).toEqual([]);
   });
 
+  it('says when a turn ended, from the transcript, or that it is still running, for "Network for this turn"', () => {
+    const turn = (i: number) => buildTrace(netObs.store, TOKEN, deps, { turn: deps.session('run1').turns[i].promptEventId }, at('14:55.000'))!.turn!;
+    // An earlier turn ended when its last event finished: the fetch, done at 10:01.8 by the transcript (read at 10:02.5).
+    expect([turn(0).endedAt, turn(0).exact]).toEqual([at('10:01.800'), true]);
+    // The run's last turn, with the gate running and no answer yet: still running.
+    expect(turn(1).endedAt).toBeNull();
+  });
+
   it('names connections still open from before the turn, shows them, and counts only the turn\'s own', () => {
     // A turn that starts while the fixture's fan-out and en.wikipedia.org connections (14:43.4 → 14:46.4) are still open.
     const run3 = [

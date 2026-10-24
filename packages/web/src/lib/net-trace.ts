@@ -6,7 +6,7 @@
  * text and the default selection live here; `TraceView.tsx` only draws.
  */
 import { formatBytes } from './net-format.js';
-import { isOffTunnelScope, type FlowView, type Rule, type TraceCall, type TraceView } from './netobs-types.js';
+import { isOffTunnelScope, type FlowView, type NetRange, type Rule, type TraceCall, type TraceView } from './netobs-types.js';
 
 export type Tone = 'muted' | 'ok' | 'tunnel' | 'warn' | 'error' | 'fanout' | 'local';
 export type TraceIcon = 'search' | 'fetch' | 'tool' | 'llm' | 'globe' | 'lock' | 'blocked' | 'broken' | 'cut' | 'home' | 'fanout' | 'alert' | 'check' | 'pulse' | 'fold';
@@ -52,6 +52,20 @@ export function traceAxis(view: Pick<TraceView, 'turn' | 'items' | 'flows'>, now
   const step = TICK_STEPS.find((s) => raw / s <= 4) ?? TICK_STEPS[TICK_STEPS.length - 1];
   const span = Math.ceil(raw / step) * step;
   return { t0, span, ticks: Array.from({ length: Math.round(span / step) }, (_, i) => i * step) };
+}
+
+/** Shorter than this, a drag across the axis is a click, not a range. */
+export const MIN_AXIS_RANGE_MS = 200;
+
+/**
+ * The range a drag across the axis selects, from two fractions of its width (either order,
+ * clamped to it), or null for one too short to mean anything.
+ */
+export function axisRange(axis: TraceAxis, f0: number, f1: number): NetRange | null {
+  const [a, b] = [f0, f1].map((f) => Math.max(0, Math.min(1, f))).sort((x, y) => x - y);
+  const from = Math.round(axis.t0 + a * axis.span);
+  const to = Math.round(axis.t0 + b * axis.span);
+  return to - from < MIN_AXIS_RANGE_MS ? null : { from, to };
 }
 
 /** `9 s`, `1.5 min`: a tick label. */

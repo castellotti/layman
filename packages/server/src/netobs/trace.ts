@@ -9,6 +9,7 @@
  * back to the live store, so long sessions work. Dependencies are injected so
  * this is tested without a database.
  */
+import { getEffectiveAgentContent } from '../events/agent-content.js';
 import type { TimelineEvent } from '../events/types.js';
 import type { Turn } from '../turns/types.js';
 import { callsFrom, correlate, JOIN_BEFORE_MS } from './correlate.js';
@@ -29,7 +30,22 @@ const SPAN_MARGIN_MS = 5 * 60_000;
 const READ_LAG_MS = 3000;
 const PROMPT_PREVIEW = 400;
 
-interface TurnAt { turn: Turn; start: number; exact: boolean }
+interface TurnAt { turn: Turn; start: number; exact: boolean; last: boolean }
+
+const num = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+const doneAt = (e: TimelineEvent) => num(e.data.transcriptCompletedAt) ?? num(e.data.transcriptAt) ?? e.timestamp;
+const closes = (e: TimelineEvent) => e.type === 'agent_stop' || e.type === 'session_end' || e.type === 'stop_failure'
+  || (e.type === 'agent_response' && getEffectiveAgentContent(e).response.trim() !== '');
+
+/**
+ * When a turn's last event finished, or null while it runs (the last turn of a live session whose
+ * last event is no answer or stop). The end of "Network for this turn": mirrors `turnSpan` in
+ * packages/web/src/lib/turn-range.ts, which the Logs and Prompts views use; change both or neither.
+ */
+export function turnEnd(owned: readonly TimelineEvent[], { last, live }: { last: boolean; live: boolean }): number | null {
+  if (!owned.length) return null;
+  return last && live && !closes(owned[owned.length - 1]) ? null : Math.max(...owned.map(doneAt));
+}
 
 /** Which turn: by a prompt (or any) event id, the one in progress at a moment, or the latest. */
 export type TraceSelect = { turn: string } | { at: number } | null;
@@ -50,19 +66,22 @@ export function buildTrace(store: NetStore, token: string, deps: TraceDeps, sele
     const session = deps.session(sid);
     const byId = new Map(session.events.map((e) => [e.id, e]));
     events.set(sid, byId);
-    for (const turn of session.turns) {
+    session.turns.forEach((turn, i) => {
       const prompt = byId.get(turn.promptEventId);
       const at = prompt?.data.transcriptAt;
       const start = typeof at === 'number' ? at : turn.startedAt;
-      if (span && (start < span.first - SPAN_MARGIN_MS || start > span.last + SPAN_MARGIN_MS)) continue;
-      all.push({ turn, start, exact: typeof at === 'number' });
-    }
+      if (span && (start < span.first - SPAN_MARGIN_MS || start > span.last + SPAN_MARGIN_MS)) return;
+      all.push({ turn, start, exact: typeof at === 'number', last: i === session.turns.length - 1 });
+    });
   }
   all.sort((a, b) => a.start - b.start);
+  const live = store.live(token);
   const view = (t: TurnAt): TraceTurn => ({
     sessionId: t.turn.sessionId, promptEventId: t.turn.promptEventId, responseEventId: t.turn.responseEventId, index: t.turn.index,
     startedAt: t.start, promptText: t.turn.promptText.slice(0, PROMPT_PREVIEW), toolCallCount: t.turn.toolCallCount,
+    endedAt: turnEnd(ownedBy(t), { last: t.last, live }), exact: t.exact,
   });
+  const ownedBy = (t: TurnAt) => t.turn.eventIds.map((id) => events.get(t.turn.sessionId)?.get(id)).filter((e): e is TimelineEvent => !!e);
   const empty: TraceCounts = { calls: 0, flows: 0, refused: 0, blocked: 0, bytesUp: 0, bytesDown: 0 };
   const listed = range ? all.filter((t) => t.start >= range.from && (range.to === null || t.start <= range.to)) : all;
   // Only the neighbours, not the list: the tab polls, and a long session has thousands of turns.

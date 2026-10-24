@@ -508,6 +508,15 @@ describe('network views (glove)', () => {
     });
   });
 
+  it('"Network for this turn" opens Topology on the session and range in one history step', () => {
+    useSessionStore.setState({ viewMode: 'stream', netToken: 'other-c0ffee', netDest: 'x.org', activeSessionId: null });
+    const states: string[] = [];
+    const off = useSessionStore.subscribe(() => states.push(readBack()));
+    useSessionStore.getState().showNetworkRange('pi-search-c0ffee', { from: Date.parse('2026-10-21T08:00:00.000Z'), to: Date.parse('2026-10-21T08:05:00.000Z') });
+    off();
+    expect(states).toEqual(['/?view=topology&glove=pi-search-c0ffee&from=2026-10-21T08:00:00.000Z&to=2026-10-21T08:05:00.000Z']);
+  });
+
   it('leaving the network views keeps the choice for next time but drops it from the URL', () => {
     useSessionStore.setState({ viewMode: 'map', netToken: 'pi-search', netDest: 'arxiv.org' });
     useSessionStore.getState().setViewMode('dashboard');

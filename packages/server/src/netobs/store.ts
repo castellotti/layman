@@ -278,6 +278,12 @@ export class NetStore extends EventEmitter {
     return this.sessions.has(token);
   }
 
+  /** Whether the session's gate is running now (its heartbeat fresh), as `summaries()` says `live`. */
+  live(token: string): boolean {
+    const s = this.sessions.get(token);
+    return !!s && !s.historyOnly && s.gate.freshness === 'running';
+  }
+
   tokens(): string[] {
     return [...this.sessions.keys()];
   }
@@ -1416,7 +1422,7 @@ export class NetStore extends EventEmitter {
           token: s.loc.token,
           harness: s.session?.harness ?? null,
           glove: { ...(s.historyOnly ? UNKNOWN_GLOVE : s.glove) },
-          live: !s.historyOnly && s.gate.freshness === 'running',
+          live: this.live(s.loc.token),
           firstSeen: this.firstSeenOf(s),
           lastSeen: s.lastT === null ? h?.lastSeen ?? null : Math.max(s.lastT, h?.lastSeen ?? 0),
           bytesUp: t.bytesUp,
