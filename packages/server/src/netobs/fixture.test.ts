@@ -11,14 +11,12 @@ import { NetObs } from './index.js';
 import { TEST_ID, addGloveSession, asId } from './testing/glove-home.js';
 import type { DestinationAggregate, FlowView, NetSnapshot } from './types.js';
 import { GLOVE_CHECKOUT } from './testing/glove-checkout.js';
-import { FIXTURE, fixtureFlowOpen } from './testing/glove-fixture.js';
+import { FIXTURE, FIXTURE_LINES as FLOW_LINES, fixtureFlowOpen } from './testing/glove-fixture.js';
 
 const GLOVE_FIXTURE = join(GLOVE_CHECKOUT, 'tests/fixtures/netobs');
 const TOKEN = TEST_ID;
 const STATUS = JSON.parse(readFileSync(join(FIXTURE, 'status.json'), 'utf8')) as { t: string; telemetry: { written: number } };
 const STATUS_T = Date.parse(STATUS.t);
-
-const FLOW_LINES = readFileSync(join(FIXTURE, 'flows.ndjson'), 'utf8').split('\n').filter(Boolean);
 
 let home: string;
 

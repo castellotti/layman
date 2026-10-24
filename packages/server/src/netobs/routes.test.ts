@@ -9,7 +9,6 @@ import { registerNetRoutes } from './routes.js';
 import type { NetSnapshot } from './types.js';
 import { FIXTURE, FIXTURE_FLOWS, fixtureAt } from './testing/glove-fixture.js';
 
-
 let home: string;
 let app: FastifyInstance;
 
@@ -38,11 +37,11 @@ describe('net REST routes', () => {
     expect(res.json().sessions).toMatchObject([{ token: TEST_ID, harness: 'pi', flows: FIXTURE_FLOWS, glove: { filter: 'granted', orphaned: false } }]);
   });
 
-  it('GET /api/net/sessions/:token returns 15 flows with their states', async () => {
+  it('GET /api/net/sessions/:token returns every flow with its state', async () => {
     const res = await app.inject(`/api/net/sessions/${TEST_ID}`);
     expect(res.statusCode).toBe(200);
     const snap = res.json() as NetSnapshot;
-    expect(snap.flows).toHaveLength(15);
+    expect(snap.flows).toHaveLength(FIXTURE_FLOWS);
     const counts: Record<string, number> = {};
     for (const f of snap.flows) counts[f.state] = (counts[f.state] ?? 0) + 1;
     expect(counts).toEqual({ finished: 9, gate_shutdown: 1, broken: 1, guard: 3, user_rule: 1 });

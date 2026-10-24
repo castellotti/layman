@@ -12,8 +12,9 @@ export const FIXTURE = join(dirname(fileURLToPath(import.meta.url)), '..', '__fi
 
 type FixtureRecord = { type?: string; phase?: string; id?: string; t_open?: string; dest?: { host?: string | null } };
 
-const RECORDS = readFileSync(join(FIXTURE, 'flows.ndjson'), 'utf8')
-  .split('\n').filter(Boolean).map((l) => JSON.parse(l) as FixtureRecord);
+/** The copy's `flows.ndjson`, one record per line. */
+export const FIXTURE_LINES = readFileSync(join(FIXTURE, 'flows.ndjson'), 'utf8').split('\n').filter(Boolean);
+const RECORDS = FIXTURE_LINES.map((l) => JSON.parse(l) as FixtureRecord);
 const OPENS = RECORDS.filter((r) => r.type === 'flow' && r.phase === 'open' && r.t_open)
   .sort((a, b) => Date.parse(a.t_open!) - Date.parse(b.t_open!));
 

@@ -6,7 +6,7 @@ import { callsFrom, callTiming, correlate, flowRole, isFetchTool, joinDistance, 
 import { parseLine, parseSessionFile } from './parse.js';
 import { NetStore } from './store.js';
 import type { FlowView, NetService, TraceCall } from './types.js';
-import { FIXTURE, fixtureAt } from './testing/glove-fixture.js';
+import { FIXTURE, FIXTURE_LINES, fixtureAt } from './testing/glove-fixture.js';
 
 const SERVICES: NetService[] = parseSessionFile(JSON.parse(readFileSync(join(FIXTURE, 'session.json'), 'utf8')))!.services;
 
@@ -274,10 +274,11 @@ describe('the glove fixture', () => {
   // Every flow in the fixture, as NetStore sees it.
   const store = new NetStore();
   store.ensure({ token: 'pi-search', netDir: '/n', controlDir: '/c', rulesPath: '/c/rules.json' });
-  for (const line of readFileSync(join(FIXTURE, 'flows.ndjson'), 'utf8').split('\n').filter(Boolean)) {
+  const now = fixtureAt('2026-09-23T14:14:48Z');
+  for (const line of FIXTURE_LINES) {
     const p = parseLine(line);
-    if (p.kind === 'flow') store.ingestFlow('pi-search', p.record, fixtureAt('2026-09-23T14:14:48Z'));
-    else if (p.kind === 'gate') store.ingestGate('pi-search', p.record, fixtureAt('2026-09-23T14:14:48Z'));
+    if (p.kind === 'flow') store.ingestFlow('pi-search', p.record, now);
+    else if (p.kind === 'gate') store.ingestGate('pi-search', p.record, now);
   }
   const flows = store.flows('pi-search', 0, 5000)!;
   const at = (s: string) => fixtureAt(`2026-09-23T14:14:${s}Z`);
