@@ -13,7 +13,7 @@ import type { TimelineEvent } from '../events/types.js';
 import type { Turn } from '../turns/types.js';
 import { callsFrom, correlate, JOIN_BEFORE_MS } from './correlate.js';
 import type { NetStore } from './store.js';
-import type { SessionDownload, TraceCall, TraceCounts, TraceNav, TraceTurn, TraceView } from './types.js';
+import type { NetRange, SessionDownload, TraceCall, TraceCounts, TraceNav, TraceTurn, TraceView } from './types.js';
 
 export interface TraceDeps {
   /** Layman session ids whose `sessionName` is this token. */
@@ -34,7 +34,13 @@ interface TurnAt { turn: Turn; start: number; exact: boolean }
 /** Which turn: by a prompt (or any) event id, the one in progress at a moment, or the latest. */
 export type TraceSelect = { turn: string } | { at: number } | null;
 
-export function buildTrace(store: NetStore, token: string, deps: TraceDeps, select: TraceSelect, now = Date.now()): TraceView | null {
+/**
+ * With a `range`, the turns counted and stepped through are those that began in it, and the
+ * latest is the range's latest; a turn asked for by id is still shown when it began outside
+ * (`nav.outside`), its arrows leading to the range's nearest turns. Which flows a turn owns
+ * does not change: its window still ends at the next prompt, in the range or not.
+ */
+export function buildTrace(store: NetStore, token: string, deps: TraceDeps, select: TraceSelect, now = Date.now(), range: NetRange | null = null): TraceView | null {
   if (!store.has(token)) return null;
   const sessionIds = deps.sessionsNamed(token);
   const span = store.span(token);
@@ -58,15 +64,27 @@ export function buildTrace(store: NetStore, token: string, deps: TraceDeps, sele
     startedAt: t.start, promptText: t.turn.promptText.slice(0, PROMPT_PREVIEW), toolCallCount: t.turn.toolCallCount,
   });
   const empty: TraceCounts = { calls: 0, flows: 0, refused: 0, blocked: 0, bytesUp: 0, bytesDown: 0 };
+  const listed = range ? all.filter((t) => t.start >= range.from && (range.to === null || t.start <= range.to)) : all;
   // Only the neighbours, not the list: the tab polls, and a long session has thousands of turns.
-  const nav = (j: number): TraceNav => ({
-    index: j, count: all.length,
-    prev: j > 0 ? all[j - 1].turn.promptEventId : null,
-    next: j >= 0 && j < all.length - 1 ? all[j + 1].turn.promptEventId : null,
-  });
+  const nav = (i: number): TraceNav => {
+    const j = i < 0 ? -1 : listed.indexOf(all[i]);
+    if (j >= 0 || i < 0) {
+      return {
+        index: j, count: listed.length,
+        prev: j > 0 ? listed[j - 1].turn.promptEventId : null,
+        next: j >= 0 && j < listed.length - 1 ? listed[j + 1].turn.promptEventId : null,
+      };
+    }
+    const start = all[i].start;
+    return {
+      index: -1, count: listed.length, outside: true,
+      prev: listed.filter((t) => t.start < start).at(-1)?.turn.promptEventId ?? null,
+      next: listed.find((t) => t.start > start)?.turn.promptEventId ?? null,
+    };
+  };
   const windowStart = (t: TurnAt) => t.start - (t.exact ? JOIN_BEFORE_MS : READ_LAG_MS);
   let i: number;
-  if (select === null) i = all.length - 1;
+  if (select === null) i = listed.length ? all.indexOf(listed[listed.length - 1]) : -1;
   else if ('turn' in select) i = all.findIndex((t) => t.turn.promptEventId === select.turn || t.turn.eventIds.includes(select.turn));
   else {
     i = -1;

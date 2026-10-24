@@ -17,7 +17,7 @@ import { controlDisabledReason, siblingIds, toggleFor } from '../../lib/net-rule
 import { clockTime, destinationRow, guardReason } from '../../lib/net-table.js';
 import { buildPath } from '../../lib/layman-url.js';
 import { callForFlow, defaultSelection, fileName, tickLabel, traceAxis, traceRows, type Tone, type TraceIcon, type TraceRow } from '../../lib/net-trace.js';
-import { isLanOnlyRule, type FlowView, type RulesOp, type TraceDownload, type TraceView } from '../../lib/netobs-types.js';
+import { isLanOnlyRule, type FlowView, type NetRange, type RulesOp, type TraceDownload, type TraceView } from '../../lib/netobs-types.js';
 import { useNow } from '../../hooks/useNow.js';
 import { fetchTrace, pollSettled, useNetDownloads } from '../../hooks/useNetTrace.js';
 import { buttonStyle, ControlPopover } from './ControlPopover.js';
@@ -49,15 +49,17 @@ const useTrace = create<TraceState>((set) => ({
 /** Refreshes while the tab is open: new flows arrive over the socket, new turns only through the API. */
 const REFRESH_MS = 3000;
 
-function useTraceData(token: string) {
+function useTraceData(token: string, range: NetRange | null) {
   const turnId = useTrace((s) => s.turnId);
   const set = useTrace((s) => s.set);
   useEffect(() => {
     if (useTrace.getState().token !== token) set({ token, turnId: null, view: null, selected: null, toggled: new Set(), error: null });
   }, [token, set]);
-  useEffect(() => pollSettled((live) => fetchTrace(token, turnId ? { turn: turnId } : null)
+  const from = range?.from ?? null;
+  const to = range?.to ?? null;
+  useEffect(() => pollSettled((live) => fetchTrace(token, turnId ? { turn: turnId } : null, from === null ? null : { from, to })
     .then((v) => { if (live()) set({ view: v, error: null }); })
-    .catch((e: Error) => { if (live()) set({ error: e.message }); }), REFRESH_MS), [token, turnId, set]);
+    .catch((e: Error) => { if (live()) set({ error: e.message }); }), REFRESH_MS), [token, turnId, from, to, set]);
 }
 
 /** Show one turn in the Trace tab with one flow selected: the detail card's "Open in Trace". */
@@ -79,7 +81,7 @@ function Chip({ tone, icon, children }: { tone: 'neutral' | 'warn' | 'error' | '
 }
 
 export function TurnBar({ data }: { data: NetSessionData }) {
-  useTraceData(data.token);
+  useTraceData(data.token, data.range);
   const { view, error, set } = useTrace();
   const nav = view?.nav;
   const go = (turnId: string | null | undefined) => { if (turnId) set({ turnId, selected: null, toggled: new Set() }); };
@@ -87,7 +89,10 @@ export function TurnBar({ data }: { data: NetSessionData }) {
   if (!view) {
     return <div style={{ margin: '8px 8px 0', padding: '10px 14px', fontSize: 11.5, color: 'var(--text-muted)' }}>{error ? `Trace unavailable: ${error}` : 'Loading the trace…'}</div>;
   }
-  if (!view.turn) return null;
+  if (!view.turn) {
+    // A range with no turn in it says so, rather than leave the trace looking empty for no reason.
+    return data.range ? <div style={{ margin: '8px 8px 0', padding: '10px 14px', fontSize: 11.5, color: 'var(--text-muted)' }}>No turn began in this time range.</div> : null;
+  }
   const t = view.turn;
   const c = view.counts;
   return (
@@ -102,7 +107,9 @@ export function TurnBar({ data }: { data: NetSessionData }) {
       </div>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', fontSize: 10.5 }}>
-          <span style={{ color: 'var(--info)', fontWeight: 600, letterSpacing: '0.06em' }}>TURN {(nav?.index ?? -1) + 1} OF {nav?.count ?? 0}</span>
+          <span style={{ color: 'var(--info)', fontWeight: 600, letterSpacing: '0.06em' }}>
+            {nav?.outside ? `OUTSIDE THE RANGE · ${nav.count} IN IT` : `TURN ${(nav?.index ?? -1) + 1} OF ${nav?.count ?? 0}${data.range ? ' IN RANGE' : ''}`}
+          </span>
           <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-faint)' }}>{clockTime(t.startedAt)}</span>
           <span style={{ color: 'var(--text-faint)' }}>{data.session?.harness ?? 'harness'} · {data.token}</span>
         </div>

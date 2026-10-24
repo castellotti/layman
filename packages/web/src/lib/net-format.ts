@@ -50,6 +50,16 @@ export interface GateChip {
   tip: NetTip;
 }
 
+/**
+ * Whether a chip may shrink to its icon when the strip makes room for a range. Only the routine
+ * ones do: a chip in a warning or error tone is an alarm (traffic cut, untunnelled flows, rules
+ * rejected, a stale gate, a direct route) and is never collapsed, nor is History only, which
+ * says what every figure is.
+ */
+export function chipCollapses(c: GateChip): boolean {
+  return c.tone !== 'error' && c.tone !== 'warn' && c.key !== 'history';
+}
+
 const ROUTE_LABEL: Record<string, string> = { vpn: 'VPN', tor: 'Tor' };
 
 /** "Since Oct 21 00:27:03 (5 h ago)", or "at least since" when Layman did not see it change; nothing when nothing says. */

@@ -147,6 +147,23 @@ describe('buildTrace', () => {
     expect(callsBetween(netObs.store, 'nope', deps, 0, 1)).toBeNull();
   });
 
+  it('with a time range, counts and steps through only the turns begun in it', () => {
+    const range = { from: at('14:40.000'), to: at('14:45.000') };
+    const t = buildTrace(netObs.store, TOKEN, deps, null, at('14:55.000'), range)!;
+    expect([t.turn?.promptText, t.nav]).toEqual(['Research the history of onion routing', { index: 0, count: 1, prev: null, next: null }]);
+    // Which flows the turn owns does not change: its window still ends at the next prompt, outside the range.
+    expect(t.window).toEqual({ from: at('14:42.000'), to: at('14:49.000') });
+    // One asked for by id from outside is shown, and its arrows lead back into the range.
+    const later = deps.events('run2')[0].id;
+    const out = buildTrace(netObs.store, TOKEN, deps, { turn: later }, at('14:55.000'), range)!;
+    expect([out.turn?.promptText, out.nav.outside, out.nav.index, out.nav.prev, out.nav.next])
+      .toEqual(['a later run', true, -1, t.turn!.promptEventId, null]);
+    // An open range runs to now; one with no turn in it shows none.
+    expect(buildTrace(netObs.store, TOKEN, deps, null, at('14:55.000'), { from: at('14:40.000'), to: null })!.nav).toMatchObject({ index: 1, count: 2 });
+    const none = buildTrace(netObs.store, TOKEN, deps, null, at('14:55.000'), { from: at('12:00.000'), to: at('12:30.000') })!;
+    expect([none.turn, none.nav.count]).toEqual([null, 0]);
+  });
+
   it('is null for an unknown glove session, and empty when no Layman session is named after it', () => {
     expect(buildTrace(netObs.store, 'nope', deps, null)).toBeNull();
     const t = buildTrace(netObs.store, TOKEN, { ...deps, sessionsNamed: () => [] }, null)!;
@@ -167,6 +184,10 @@ describe('GET /api/net/sessions/:token/trace', () => {
     expect((res.json() as TraceView).nav).toMatchObject({ index: 2, count: 3, next: null });
     const byTime = await app.inject(`/api/net/sessions/${TOKEN}/trace?at=${at('10:30.000')}`);
     expect((byTime.json() as TraceView).turn?.promptText).toBe('an earlier turn');
+    const ranged = await app.inject(`/api/net/sessions/${TOKEN}/trace?from=${at('14:40.000')}&to=${at('14:45.000')}`);
+    expect((ranged.json() as TraceView).nav).toMatchObject({ index: 0, count: 1 });
+    expect((await app.inject(`/api/net/sessions/${TOKEN}/trace?from=${at('14:45.000')}&to=${at('14:40.000')}`)).statusCode).toBe(400);
+    expect((await app.inject(`/api/net/sessions/${TOKEN}/trace?from=soon`)).statusCode).toBe(400);
     const calls = await app.inject(`/api/net/sessions/${TOKEN}/calls?from=${at('14:43.000')}&to=${at('14:47.000')}`);
     expect(calls.json().calls).toHaveLength(4);
     expect((await app.inject(`/api/net/sessions/${TOKEN}/calls?from=0&to=99999999999`)).statusCode).toBe(400);

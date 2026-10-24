@@ -644,12 +644,39 @@ nothing for finished sessions (their history is not an alarm).
   rules apply to every range. Until the ranged snapshot arrives the view says it is reading glove's
   files, with the scan's progress; a `net:range:error` is shown with a way back to All records. Both
   carry the range they are for, so one range's progress or error never shows under another, even for
-  the frame before the new subscription clears them. While a range is shown, a banner under the strip
-  gives its span in local time (UTC on hover; an open range's length ticks), says the figures are only
-  the traffic in it, and names what it leaves out (`rangeGaps`): traffic glove deleted (its files start
-  after the session did), or a scan cut short by its budget, said as skipped, not deleted. A range
-  that merely starts before the session says when the session began, as information rather than a
-  warning. So a window is never read as All records.
+  the frame before the new subscription clears them. A banner under the strip names what a range
+  leaves out (`rangeGaps`): traffic glove deleted (its files start after the session did), or a scan
+  cut short by its budget, said as skipped, not deleted. It also says when the part from Layman's
+  hourly history begins. A range that merely starts before the session says when the session began, as
+  information rather than a warning. A range covered in full has no banner: its span is in the strip.
+- **Range bar** (`GateStrip.tsx` → `RangeControl`, picker in `RangePicker.tsx`, arithmetic in
+  `lib/net-picker.ts`, tested). A calendar icon follows the session picker. It shows or hides the range
+  display (kept per browser, `layman.net.rangeDisplay`, shown by default). With a range set it stays lit,
+  and its tip gives the range, so hiding the display never hides that the figures are filtered. The
+  display is the range in local time with seconds ("Run 18 · Oct 21 00:27:03 → …", named when it is
+  exactly a run; UTC in the tip; an open range's length ticks), or "All records", and ✕ back to All
+  records. While the display is shown the routine gate chips shrink to their icons (`chipCollapses`): the
+  label leads the tip's facts, so nothing is lost. A chip in a warning or error tone is an alarm (traffic
+  cut, untunnelled flows, rules rejected, a stale gate, a direct route) and never shrinks, nor does
+  History only. Each panel whose figures depend on the range is marked IN RANGE in its header, so a
+  panel read on its own is not taken for All records. The Rules and Trace panels are not marked: they
+  show the rules in force and one turn.
+  - **The picker** opens from the range display and stays open while one range after another is
+    tried. *Runs & sessions* lists the segments newest first, with flows and bytes: runs (numbered from
+    the first, with how each ended), bursts (the split gap chosen there, 1–24 h, kept per browser) and
+    agent sessions. *Calendar* draws a Monday-first month, each day shaded by its flows on a log scale (so
+    one busy day does not blank the rest), from the segments' hours. A click sets that day; shift-click
+    extends the range to the day clicked. Today's day, and any range reaching now, stays open. Presets
+    (last hour, last 24 h, today, this or the last run) and `datetime-local` start and end fields (to the
+    second; an empty end is now) complete it. *Timeline* is the session's hours as bars, model calls in
+    the tunnel colour, run edges as ticks and agent sessions as dots. A drag across it sets a range,
+    each edge snapping to the nearest run or agent-session edge within 8 px. A drag reaching now on a live
+    session stays open. *All records* is always one click away.
+  - **Trace** counts and steps through only the turns that began in the range ("TURN 2 OF 5 IN RANGE"),
+    and opens on the range's latest. The trace route takes `from`/`to` in ms. A turn opened by id from
+    outside (a detail card's "Open in Trace") is still shown, marked as outside the range, with arrows
+    back into it. Which flows a turn owns does not change: its window still ends at the next prompt.
+    A range with no turn says so.
 - **Subscription.** The view subscribes the socket to the shown session, re-subscribes after a
   reconnect (the server forgets subscriptions with the socket) and unsubscribes when the tabs close, so a
   dashboard that is not looking stops receiving deltas.

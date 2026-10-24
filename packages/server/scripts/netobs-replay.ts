@@ -41,7 +41,9 @@
  *   --gate               fake gate: validate control/<id>/rules.json with Layman's port of glove's
  *                        validator, report it in status.json as glove's collector does (sha256,
  *                        last_rejected, last good set kept on a rejection), and apply its verdicts to the
- *                        replayed flows (blocked opens; `terminate` rules cut open flows)
+ *                        replayed flows (blocked opens; `terminate` rules cut open flows). Each pass is
+ *                        also one collector run: a `gate` start record as it begins and a stop as it
+ *                        ends, as `glove up` and `glove down` write them, so the range picker has runs
  */
 import { createHash, randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync, appendFileSync } from 'node:fs';
@@ -503,6 +505,10 @@ async function replay(o: Options, src: Source, id: string, direct: boolean, tran
       s ? iso(passStart + (Date.parse(s) - t0) / o.speed) : (s ?? null);
     const renamed = (v: unknown) => (pass === 0 || typeof v !== 'string' ? v : `${v}L${pass}`);
     const directAt = Math.floor(src.records.length / 2);
+    const collector = (event: 'start' | 'stop') => write({
+      v: 1, type: 'gate', event, role: 'collect', run: `g_replay${pass}`, service: null, env, session: token, t: iso(Date.now()), inferred: false,
+    });
+    if (gate) collector('start');
     transcript?.prompt((s) => shift(s)!, pass);
     for (let i = 0; i < src.records.length; i++) {
       const { file, rec: r } = src.records[i];
@@ -534,6 +540,7 @@ async function replay(o: Options, src: Source, id: string, direct: boolean, tran
     // After the pass: the calls and their results, all at once. Simpler than interleaving them with
     // the flows, at the cost that the running turn shows no calls until the pass ends (see --transcript).
     transcript?.turn((s) => shift(s)!, pass);
+    if (gate) collector('stop');
     if (!o.loop) break;
     await sleep(o.loopGapS * 1000);
   }

@@ -8,6 +8,8 @@ import type { FastifyInstance } from 'fastify';
 import type { NetObs, RulesOp } from './index.js';
 import { buildTrace, callsBetween, downloadsIn, type TraceDeps } from './trace.js';
 import { DEFAULT_BURST_GAP_MS, agentSegment, buildSegments } from './segments.js';
+import { parseRange } from './range.js';
+import type { NetRange } from './types.js';
 
 const OP_KINDS = new Set([
   'blockHost', 'blockDomain', 'blockIp', 'blockGroup', 'allowHost', 'allowDomain', 'removeRule', 'setDefault',
@@ -63,12 +65,18 @@ export function registerNetRoutes(fastify: FastifyInstance, deps: { netObs: NetO
 
   // One turn's tool calls joined to its flows: `turn` (a prompt event id), or the turn in progress
   // `at` a moment (ms since the epoch: the detail card and the Map's ribbon), else the latest.
-  fastify.get<{ Params: { token: string }; Querystring: { turn?: string; at?: string } }>('/api/net/sessions/:token/trace', async (request, reply) => {
+  // `from` (and `to`, absent for now), in ms: count and step through only the turns begun in that range.
+  fastify.get<{ Params: { token: string }; Querystring: { turn?: string; at?: string; from?: string; to?: string } }>('/api/net/sessions/:token/trace', async (request, reply) => {
     const { token } = request.params;
     if (!deps.trace) return reply.status(501).send({ error: 'Trace is not available on this server' });
     const at = Number(request.query.at);
     const select = request.query.turn ? { turn: request.query.turn } : request.query.at && Number.isFinite(at) ? { at } : null;
-    const view = buildTrace(store, token, deps.trace, select);
+    let range: NetRange | null = null;
+    if (request.query.from !== undefined) {
+      range = parseRange({ from: Number(request.query.from), to: request.query.to === undefined ? null : Number(request.query.to) });
+      if (!range) return reply.status(400).send({ error: 'from and to must be ms since the epoch, from ≤ to' });
+    }
+    const view = buildTrace(store, token, deps.trace, select, Date.now(), range);
     return view ?? reply.status(404).send(notFound(token));
   });
 

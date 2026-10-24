@@ -5,20 +5,30 @@
  * Layman is ever asked.
  */
 import { useEffect, useState } from 'react';
-import type { SessionDownload, TraceCall, TraceView } from '../lib/netobs-types.js';
+import type { NetRange, SessionDownload, TraceCall, TraceView } from '../lib/netobs-types.js';
 
 export type TraceQuery = { turn: string } | { at: number } | null;
 
 /** GET a Layman API path, throwing its `error` (else the status) when it fails. */
-async function getJson<T>(url: string): Promise<T> {
+export async function getJson<T>(url: string): Promise<T> {
   const r = await fetch(url);
   if (!r.ok) throw new Error((await r.json().catch(() => null))?.error ?? `HTTP ${r.status}`);
   return r.json() as Promise<T>;
 }
 
-export function fetchTrace(token: string, query: TraceQuery): Promise<TraceView> {
-  const q = !query ? '' : 'turn' in query ? `?turn=${encodeURIComponent(query.turn)}` : `?at=${Math.round(query.at)}`;
-  return getJson<TraceView>(`/api/net/sessions/${encodeURIComponent(token)}/trace${q}`);
+/** One turn's trace; with a `range`, the turns counted and stepped through are those begun in it. */
+export function fetchTrace(token: string, query: TraceQuery, range: NetRange | null = null): Promise<TraceView> {
+  const q = new URLSearchParams();
+  if (query) {
+    if ('turn' in query) q.set('turn', query.turn);
+    else q.set('at', String(Math.round(query.at)));
+  }
+  if (range) {
+    q.set('from', String(range.from));
+    if (range.to !== null) q.set('to', String(range.to));
+  }
+  const qs = q.toString();
+  return getJson<TraceView>(`/api/net/sessions/${encodeURIComponent(token)}/trace${qs ? `?${qs}` : ''}`);
 }
 
 /**

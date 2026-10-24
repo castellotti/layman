@@ -11,7 +11,7 @@ export type NetIconName =
   | 'grip' | 'close' | 'table' | 'map' | 'rules' | 'activity' | 'details' | 'trace' | 'topology'
   | 'eye-off' | 'globe' | 'pin' | 'legend' | 'ribbon'
   | 'lock' | 'blocked' | 'broken' | 'cut' | 'home' | 'fold' | 'chevron' | 'search' | 'up' | 'down' | 'expand'
-  | 'gear' | 'fanout' | 'window';
+  | 'gear' | 'fanout' | 'window' | 'calendar';
 
 const PATHS: Record<NetIconName, React.ReactNode> = {
   pulse: <path d="M1.5 8h3l1.5-4 3 8 1.5-4h4" />,
@@ -50,6 +50,7 @@ const PATHS: Record<NetIconName, React.ReactNode> = {
   gear: <><circle cx="8" cy="8" r="2.2" /><path d="M8 1.8v2M8 12.2v2M1.8 8h2M12.2 8h2M3.6 3.6l1.4 1.4M11 11l1.4 1.4M3.6 12.4L5 11M11 5l1.4-1.4" /></>,
   fanout: <><circle cx="3.5" cy="8" r="1.5" /><circle cx="12.5" cy="3.5" r="1.5" /><circle cx="12.5" cy="12.5" r="1.5" /><path d="M5 8h3M8 8l3.2-3.4M8 8l3.2 3.4" /></>,
   window: <><rect x="2" y="3" width="12" height="10" rx="1.5" /><path d="M2 6h12" /></>,
+  calendar: <><rect x="2" y="3" width="12" height="11" rx="1.5" /><path d="M2 6.5h12M5 1.8v2.4M11 1.8v2.4" /></>,
 };
 
 export function NetIcon({ name, size = 12, color = 'currentColor', strokeWidth = 1.4 }: {
@@ -76,10 +77,23 @@ export const TONE: Record<ChipTone, { color: string; bg: string; border: string 
   muted: { color: 'var(--text-muted)', bg: 'rgba(255,255,255,0.02)', border: 'var(--border)' },
 };
 
-export function Chip({ tone, icon, label, tip, strong }: {
+export function Chip({ tone, icon, label, tip, strong, compact }: {
   tone: ChipTone; icon?: NetIconName; label: string; tip?: NetTip | string; strong?: boolean;
+  /** Only the icon, in the tone's colours: the label is then its accessible name and its tip's heading. */
+  compact?: boolean;
 }) {
   const t = TONE[tone];
+  if (compact && icon) {
+    return (
+      // What the label said leads the facts, so the tip says all the chip would have.
+      <span {...tipProps(typeof tip === 'object' ? { ...tip, facts: [label, ...(tip.facts ?? [])] } : { heading: label, body: tip ?? '' })} role="img" aria-label={label} tabIndex={0} data-chip-compact="" style={{
+        display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 20, height: 20, borderRadius: 10,
+        background: t.bg, border: `1px solid ${t.border}`, flexShrink: 0,
+      }}>
+        <NetIcon name={icon} size={11} color={t.color} />
+      </span>
+    );
+  }
   return (
     // Focusable, so a keyboard user can read its tip too.
     <span {...tipProps(tip)} tabIndex={tip ? 0 : undefined} style={{
@@ -98,9 +112,11 @@ export function Chip({ tone, icon, label, tip, strong }: {
  * button, then its body. Dragging is by the grip only, so text in the body
  * stays selectable.
  */
-export function PanelFrame({ title, count, actions, onHide, drag, dropTarget, children, bodyStyle, flex = '1 1 0' }: {
+export function PanelFrame({ title, count, inRange, actions, onHide, drag, dropTarget, children, bodyStyle, flex = '1 1 0' }: {
   title: string;
   count?: React.ReactNode;
+  /** The time range its figures are for, so a panel read on its own is not taken for All records. */
+  inRange?: NetTip | null;
   /** Links in the header, before the hide button ("Expand", "View file"). */
   actions?: React.ReactNode;
   onHide?: () => void;
@@ -137,6 +153,14 @@ export function PanelFrame({ title, count, actions, onHide, drag, dropTarget, ch
           {title}
         </h2>
         {count !== undefined && <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-faint)' }}>{count}</span>}
+        {inRange && (
+          <span data-in-range="" {...tipProps(inRange)} tabIndex={0} style={{
+            display: 'inline-flex', alignItems: 'center', gap: 3, height: 16, padding: '0 5px', borderRadius: 8, fontSize: 9.5,
+            letterSpacing: '0.06em', color: 'var(--info)', border: '1px solid color-mix(in srgb, var(--info) 50%, transparent)',
+          }}>
+            <NetIcon name="calendar" size={9} color="var(--info)" />IN RANGE
+          </span>
+        )}
         <div style={{ flex: 1 }} />
         {actions}
         {onHide && (

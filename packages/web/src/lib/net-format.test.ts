@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatAge, formatBytes, gateChips, type GateChip } from './net-format.js';
+import { chipCollapses, formatAge, formatBytes, gateChips, type GateChip } from './net-format.js';
 import type { NetSessionData } from './net-state.js';
 import { rulesView, sessionData } from './net-test-fixtures.js';
 
@@ -21,6 +21,13 @@ describe('formatBytes / formatAge', () => {
 const tipText = (c: GateChip) => [c.tip.heading, c.tip.body, ...(c.tip.facts ?? [])].filter(Boolean).join(' ');
 
 describe('gateChips', () => {
+  it('collapses only the routine chips: an alarm stays whole', () => {
+    expect(gateChips(data()).filter((c) => !chipCollapses(c))).toEqual([]);
+    const cut = data({ rules: { loaded_at: null, source_mtime: null, ok: false, error: 'bad', active_count: 0, sha256: null, last_rejected: null } });
+    expect(gateChips(cut).filter((c) => !chipCollapses(c)).map((c) => c.key)).toContain('rules');
+    expect(chipCollapses({ key: 'history', label: 'History only', tone: 'muted', icon: 'file', tip: { heading: '', body: '' } })).toBe(false);
+  });
+
   it('explains the chips a newcomer cannot read, in plain words', () => {
     const none = data({ rules: { loaded_at: null, source_mtime: null, ok: true, error: null, active_count: 0, sha256: null, last_rejected: null } });
     expect(chip(none, 'rules')!.label).toBe('No rules');
