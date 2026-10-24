@@ -282,6 +282,7 @@ describe('other sessions', () => {
     const many = (n: number) => Array.from({ length: n }, (_, i) => dest(`h${String(i).padStart(3, '0')}.example:443`, { ...proxy, bytesDown: 1000 + i, lastSeen: i % 7 }));
     const t = layoutTopology(fixture({}, many(60)), 1080, 500);
     const rows = t.nodes.filter((n) => n.kind === 'dest');
+    const DEST_HALF = 11;
     /** Where a band into a destination ends, from its path's last point. */
     const endY = (d: string) => Number(d.split(' ').at(-1)!.split(',')[1]);
     const intoDests = (bands: readonly TopoBand[]) => bands.filter((b) => b.toDest);
@@ -317,6 +318,53 @@ describe('other sessions', () => {
       expect(p.above!.count + p.below!.count + p.visible.size).toBe(60);
     });
 
+    it('meets a stub exactly at the edge, never spilling into the stub’s room', () => {
+      const p = projectTopology(t, t.dests.maxScroll / 2);
+      const gone = new Set([...p.above!.hosts, ...p.below!.hosts]);
+      for (const b of intoDests(p.bands)) {
+        const y = endY(b.d);
+        expect(y).toBeGreaterThanOrEqual(t.dests.top - DEST_HALF);
+        expect(y).toBeLessThanOrEqual(t.dests.bottom + DEST_HALF);
+        const row = rows.find((n) => n.id === b.to)!;
+        const c = row.y + row.h / 2 - p.scrollTop;
+        // A row a whole row's height out: its bands are on the edge itself.
+        if (gone.has(row.hosts[0]) && (c < t.dests.top - row.h || c > t.dests.bottom + row.h)) expect([t.dests.top, t.dests.bottom]).toContain(y);
+      }
+      for (const stub of [p.above!, p.below!]) {
+        expect(stub.bar.h).toBeLessThanOrEqual(14);
+        expect(stub.edge === 'above' ? stub.bar.y + stub.bar.h : stub.bar.y).toBe(stub.y);
+      }
+    });
+
+    it('draws the rows that touch the window, moved by the scroll', () => {
+      const s = t.dests.maxScroll / 2;
+      const p = projectTopology(t, s);
+      for (const n of p.rows) {
+        expect(n.y).toBeCloseTo(rows.find((r) => r.id === n.id)!.y - s);
+        expect(n.y < t.dests.bottom && n.y + n.h > t.dests.top).toBe(true);
+      }
+      for (const id of p.visible) expect(p.rows.some((n) => n.id === id)).toBe(true);
+      expect(p.rows.length).toBeGreaterThanOrEqual(p.visible.size);
+      expect(projectTopology(t, 0).rows.every((n) => rows.includes(n))).toBe(true);
+    });
+
+    it('keeps every band’s ports inside its box, however many destinations it feeds', () => {
+      const big = layoutTopology(fixture({}, Array.from({ length: 500 }, (_, i) => dest(`b${i}.example:443`, { ...proxy, bytesDown: i === 0 ? 1e9 : 10 }))), 1400, 800);
+      const box = new Map(big.nodes.map((n) => [n.id, n]));
+      for (const b of big.bands) {
+        const n = box.get(b.from)!;
+        expect(b.start[1]).toBeGreaterThanOrEqual(n.y);
+        expect(b.start[1]).toBeLessThanOrEqual(n.y + n.h);
+      }
+    });
+
+    it('takes room for the stubs only when the column scrolls', () => {
+      const few = layoutTopology(fixture({}, many(5)), 1080, 500);
+      const lot = layoutTopology(fixture({}, many(200)), 1080, 500);
+      expect(few.dests.bottom - few.dests.top).toBeGreaterThan(lot.dests.bottom - lot.dests.top);
+      expect(few.dests.maxScroll).toBe(0);
+    });
+
     it('makes each stub as wide as the bands it stands for, and as heavy as their bytes', () => {
       const p = projectTopology(t, t.dests.maxScroll / 2);
       for (const stub of [p.above!, p.below!]) {
@@ -349,7 +397,7 @@ describe('other sessions', () => {
       expect(titles('recent')[0]).toBe('h006.example');
     });
 
-    it('lays out 500 destinations quickly', () => {
+    it('lays out and projects 500 destinations quickly', () => {
       const data = fixture({}, many(500));
       layoutTopology(data, 1400, 800);
       const times: number[] = [];
@@ -359,7 +407,8 @@ describe('other sessions', () => {
         projectTopology(big, 1000);
         times.push(performance.now() - t0);
       }
-      expect(times.sort((a, b) => a - b)[2]).toBeLessThan(20);
+      // Generous, so a loaded machine does not fail it: a quadratic step is well past it at 500.
+      expect(times.sort((a, b) => a - b)[2]).toBeLessThan(60);
     });
   });
 

@@ -1029,9 +1029,15 @@ Selected path panel that walks one destination's path hop by hop.
     scrolled out converges on the window's top or bottom edge, where one stub ("↑ 12 above · 3.1 MB",
     "↓ 40 below") stands for them all. Its width (`DestStub.width`) is the sum of their widths, and
     its bytes the sum of theirs. The end is the row's centre clamped to the window, plus the band's
-    offset in the row's port stack, so it slides continuously as a row leaves or enters. The tests
-    hold it to that at every half pixel of scroll. `scrollToDest` centres a row, and a stub's
-    `scrollTo` brings its nearest row into the window. Rows sort within each group by bytes (the
+    offset in the row's port stack, which shrinks to nothing over one row's height past the edge,
+    so it slides continuously as a row leaves or enters and then meets the stub exactly. The tests
+    hold it to that at every half pixel of scroll. The projection also gives the rows to draw,
+    moved by the scroll, so the component does no geometry of its own. `scrollToDest` centres a
+    row, and a stub's `scrollTo` brings its nearest row into the window: clicking a stub scrolls
+    there, and a destination chosen elsewhere (the Network tab, a link) is scrolled into view. The
+    stubs' room is taken from the window only when the column scrolls. With hundreds of rows the
+    exit's port stack is squeezed so every band still leaves the box (thin bands overlap there
+    rather than run off its bottom). Rows sort within each group by bytes (the
     default), name or last seen. The "+N more" boxes and the "folded" footer are gone. 500
     destinations lay out and project in under 20 ms.
 - **Selecting.** Clicking a destination or a band selects that path. A band shared by

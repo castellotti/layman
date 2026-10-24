@@ -563,8 +563,10 @@ export function layoutTopology(data: TopoInput, width: number, height: number, o
     reached.set(l.d.key, e);
   }
   // Every destination has a row: the column scrolls (`projectTopology`) rather than fold any away.
-  const viewTop = TOP + STUB_ROOM;
-  const viewBottom = bottom - STUB_ROOM;
+  // The stubs' room is taken from the window only when the rows do not all fit in it without.
+  const scrolls = reached.size * DEST_MIN_PITCH > bottom - (TOP + 4);
+  const viewTop = scrolls ? TOP + STUB_ROOM : TOP + 4;
+  const viewBottom = scrolls ? bottom - STUB_ROOM : bottom;
   const view = viewBottom - viewTop;
   const sort = opts.sort ?? 'bytes';
   const within = (a: { d: DestinationAggregate; bytes: number }, b: { d: DestinationAggregate; bytes: number }) =>
@@ -684,19 +686,28 @@ export function layoutTopology(data: TopoInput, width: number, height: number, o
     const gap = sorted.length > 1 ? Math.max(0, Math.min(4, (room - total) / (sorted.length - 1))) : 0;
     const used = Math.min(room, total + gap * (sorted.length - 1));
     const scale = total + gap * (sorted.length - 1) > room && total > 0 ? (room - gap * (sorted.length - 1)) / total : 1;
-    let y = centre(n) - used / 2;
+    // Below a fifth of their width bands are hard to tell apart, so they keep that and overlap
+    // instead: the stack is squeezed (`fit`) so it never leaves the box.
+    const kept = ws.map((w) => w * Math.max(0.2, scale));
+    const span = kept.reduce((a, w) => a + w, 0) + gap * (sorted.length - 1);
+    const fit = span > room && span > 0 ? room / span : 1;
+    let y = centre(n) - Math.min(used, span * fit) / 2;
     sorted.forEach((d, i) => {
-      const w = ws[i] * Math.max(0.2, scale);
-      into.set(d, y + w / 2);
-      y += w + gap;
+      into.set(d, y + (kept[i] * fit) / 2);
+      y += (kept[i] + gap) * fit;
     });
   };
   // Grouped once: with hundreds of destinations, filtering every draft per node is quadratic.
   const outOf = new Map<TopoNode, Draft[]>();
   const into = new Map<TopoNode, Draft[]>();
   for (const d of drafts) {
-    outOf.set(d.from, [...(outOf.get(d.from) ?? []), d]);
-    if (isNode(d.to)) into.set(d.to, [...(into.get(d.to) ?? []), d]);
+    const out = outOf.get(d.from);
+    if (out) out.push(d);
+    else outOf.set(d.from, [d]);
+    if (!isNode(d.to)) continue;
+    const inc = into.get(d.to);
+    if (inc) inc.push(d);
+    else into.set(d.to, [d]);
   }
   for (const n of nodes) {
     const out = outOf.get(n);
@@ -792,6 +803,10 @@ export interface DestStub {
   width: number;
   /** Where the bands meet it: the window's edge. */
   y: number;
+  /** The bar the bands meet, outside the window: as thick as they are, up to the stub's room. */
+  bar: { y: number; h: number };
+  /** The baseline of its "↓ 40 below · 3.1 MB" text. */
+  textY: number;
   hosts: string[];
   /** The scroll that brings its nearest destination into the window: what a click on it does. */
   scrollTo: number;
@@ -802,6 +817,12 @@ export interface TopoProjection {
   scrollTop: number;
   /** Every band, those into a destination redrawn for the scroll. */
   bands: TopoBand[];
+  /**
+   * The destination rows to draw, moved by the scroll: every one that touches the window (the
+   * window clips them). A row half out is drawn but still counted on its stub until its centre
+   * is in, as its bands meet the edge until then.
+   */
+  rows: TopoNode[];
   /** Destination row ids whose centre is in the window. */
   visible: Set<string>;
   above: DestStub | null;
@@ -810,51 +831,79 @@ export interface TopoProjection {
 
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 
+/** What a projection needs that does not depend on the scroll, worked out once per layout. */
+interface DestIndex {
+  rows: TopoNode[];
+  bytes: Map<string, number>;
+  width: Map<string, number>;
+}
+const destIndexes = new WeakMap<Topology, DestIndex>();
+function destIndex(t: Topology): DestIndex {
+  let ix = destIndexes.get(t);
+  if (ix) return ix;
+  const byId = new Map(t.nodes.filter((n) => n.kind === 'dest').map((n) => [n.id, n]));
+  ix = { rows: t.dests.rows.map((id) => byId.get(id)!), bytes: new Map(), width: new Map() };
+  for (const b of t.bands) {
+    if (!b.toDest) continue;
+    ix.bytes.set(b.to, (ix.bytes.get(b.to) ?? 0) + b.bytes);
+    ix.width.set(b.to, (ix.width.get(b.to) ?? 0) + b.width);
+  }
+  destIndexes.set(t, ix);
+  return ix;
+}
+
 /**
  * The diagram with its destination column scrolled to `scrollTop`. A band into a row in the
  * window ends at the row; one into a row scrolled out converges on the window's top or bottom
  * edge, where a stub stands for them all. The end is the row's centre clamped to the window, plus
- * the band's offset in the row's port stack, so it slides continuously as the row leaves or
- * enters: never a jump, and a band into a row in the window is never moved.
+ * the band's offset in the row's port stack, which shrinks to nothing over one row's height past
+ * the edge. So it slides continuously as the row leaves or enters, never a jump, and a band into
+ * a row in the window is never moved. Cheap enough to call every frame of a scroll.
  */
 export function projectTopology(t: Topology, scrollTop: number): TopoProjection {
   const { top, bottom, maxScroll } = t.dests;
   const s = clamp(scrollTop, 0, maxScroll);
-  const rows = new Map(t.nodes.filter((n) => n.kind === 'dest').map((n) => [n.id, n]));
+  const ix = destIndex(t);
+  const byId = new Map<string, TopoNode>();
+  const rows: TopoNode[] = [];
   const visible = new Set<string>();
   const above: TopoNode[] = [];
   const below: TopoNode[] = [];
-  for (const id of t.dests.rows) {
-    const n = rows.get(id)!;
-    const c = n.y + n.h / 2 - s;
+  for (const n of ix.rows) {
+    byId.set(n.id, n);
+    const y = n.y - s;
+    const c = y + n.h / 2;
+    if (y < bottom && y + n.h > top) rows.push(s === 0 ? n : { ...n, y });
     if (c < top) above.push(n);
     else if (c > bottom) below.push(n);
-    else visible.add(id);
+    else visible.add(n.id);
   }
-  const width = new Map<string, number>();
   const bands = t.bands.map((b) => {
     if (!b.toDest) return b;
-    const n = rows.get(b.to)!;
-    width.set(b.to, (width.get(b.to) ?? 0) + b.width);
-    const c = n.y + n.h / 2;
-    const y2 = clamp(c - s, top, bottom) + (b.toDest.y2 - c);
-    return { ...b, d: bandPath(b.toDest.x1, b.toDest.y1, b.toDest.x2, y2) };
+    const n = byId.get(b.to)!;
+    const c = n.y + n.h / 2 - s;
+    const edge = clamp(c, top, bottom);
+    const fade = Math.max(0, 1 - Math.abs(c - edge) / n.h);
+    const y2 = edge + (b.toDest.y2 - (n.y + n.h / 2)) * fade;
+    return y2 === b.toDest.y2 ? b : { ...b, d: bandPath(b.toDest.x1, b.toDest.y1, b.toDest.x2, y2) };
   });
   const stub = (edge: DestStub['edge'], ns: TopoNode[]): DestStub | null => {
     if (!ns.length) return null;
+    const up = edge === 'above';
     // The nearest hidden row, brought just inside the window.
-    const near = edge === 'above' ? ns[ns.length - 1] : ns[0];
-    const scrollTo = clamp(edge === 'above' ? near.y - top - 4 : near.y + near.h - bottom + 4, 0, maxScroll);
+    const near = up ? ns[ns.length - 1] : ns[0];
+    const scrollTo = clamp(up ? near.y - top - 4 : near.y + near.h - bottom + 4, 0, maxScroll);
+    const width = ns.reduce((a, n) => a + (ix.width.get(n.id) ?? 0), 0);
+    const y = up ? top : bottom;
+    const h = Math.max(2, Math.min(STUB_ROOM - 4, width));
     return {
-      edge, count: ns.length, y: edge === 'above' ? top : bottom, scrollTo,
-      bytes: ns.reduce((a, n) => a + (destBytes.get(n.id) ?? 0), 0),
-      width: ns.reduce((a, n) => a + (width.get(n.id) ?? 0), 0),
+      edge, count: ns.length, y, scrollTo, width,
+      bar: { y: up ? y - h : y, h }, textY: up ? y - 6 : y + 13,
+      bytes: ns.reduce((a, n) => a + (ix.bytes.get(n.id) ?? 0), 0),
       hosts: ns.flatMap((n) => n.hosts),
     };
   };
-  const destBytes = new Map<string, number>();
-  for (const b of t.bands) if (b.toDest) destBytes.set(b.to, (destBytes.get(b.to) ?? 0) + b.bytes);
-  return { scrollTop: s, bands, visible, above: stub('above', above), below: stub('below', below) };
+  return { scrollTop: s, bands, rows, visible, above: stub('above', above), below: stub('below', below) };
 }
 
 /** The scroll that centres a destination row in the window (clamped), or null for one with no row. */

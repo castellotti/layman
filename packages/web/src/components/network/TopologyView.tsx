@@ -12,7 +12,7 @@ import type { NetSessionData } from '../../lib/net-state.js';
 import { controlDisabledReason, siblingIds } from '../../lib/net-rules.js';
 import { toolLabel } from '../../lib/net-table.js';
 import {
-  layoutTopology, pathHops, projectTopology, type BandKind, type DestStub, type HopEvidence, type LineTone, type Tone, type TopoBand, type TopoNode,
+  layoutTopology, pathHops, projectTopology, scrollToDest, type BandKind, type DestStub, type HopEvidence, type LineTone, type Tone, type TopoBand, type TopoNode,
 } from '../../lib/net-topology.js';
 import { buttonStyle } from './ControlPopover.js';
 import { Badge, Tile } from './DetailCard.js';
@@ -129,15 +129,15 @@ function Node({ n, selected, onSelect }: { n: TopoNode; selected: boolean; onSel
 }
 
 /** Destinations scrolled out of the window: the bands converge on it, and it says how many and how much. */
-function Stub({ stub, x }: { stub: DestStub; x: number }) {
-  const above = stub.edge === 'above';
-  // As thick as what converges on it, up to the room beside the window: hundreds of rows would run off the panel.
-  const bar = Math.max(2, Math.min(14, stub.width));
+function Stub({ stub, x, onScroll }: { stub: DestStub; x: number; onScroll: (top: number) => void }) {
+  const go = () => onScroll(stub.scrollTo);
   return (
-    <g data-stub={stub.edge} {...tipProps({ heading: `${stub.count} destination${stub.count === 1 ? '' : 's'} ${stub.edge}`, body: stub.hosts.slice(0, 12).join('\n') + (stub.hosts.length > 12 ? `\n+${stub.hosts.length - 12} more` : '') })}>
-      <rect x={x - 3} y={above ? stub.y - bar : stub.y} width={3} height={bar} fill="var(--text-faint)" opacity={0.6} />
-      <text x={x + 6} y={above ? stub.y - 6 : stub.y + 13} fontSize={10} fontFamily="var(--font-mono)" fill="var(--text-muted)">
-        {above ? '↑' : '↓'} {stub.count} {stub.edge}{stub.bytes ? ` · ${formatBytes(stub.bytes)}` : ''}
+    <g data-stub={stub.edge} role="button" tabIndex={0} style={{ cursor: 'pointer' }} aria-label={`Scroll to the ${stub.count} destinations ${stub.edge}`}
+      onClick={go} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } }}
+      {...tipProps({ heading: `${stub.count} destination${stub.count === 1 ? '' : 's'} ${stub.edge}`, body: stub.hosts.slice(0, 12).join('\n') + (stub.hosts.length > 12 ? `\n+${stub.hosts.length - 12} more` : '') })}>
+      <rect x={x - 3} y={stub.bar.y} width={3} height={stub.bar.h} fill="var(--text-faint)" opacity={0.6} />
+      <text x={x + 6} y={stub.textY} fontSize={10} fontFamily="var(--font-mono)" fill="var(--text-muted)">
+        {stub.edge === 'above' ? '↑' : '↓'} {stub.count} {stub.edge}{stub.bytes ? ` · ${formatBytes(stub.bytes)}` : ''}
       </text>
     </g>
   );
@@ -149,7 +149,15 @@ export function TopologyDiagram({ data }: { data: NetSessionData }) {
   const netDest = useSessionStore((s) => s.netDest);
   const setNetDest = useSessionStore((s) => s.setNetDest);
   const t = useMemo(() => layoutTopology(data, w, h), [data, w, h]);
-  const view = useMemo(() => projectTopology(t, 0), [t]);
+  const [scrollTop, setScrollTop] = useState(0);
+  const view = useMemo(() => projectTopology(t, scrollTop), [t, scrollTop]);
+  // A destination chosen elsewhere (the Network tab, a link) is scrolled into the window.
+  useEffect(() => {
+    const id = netDest ? t.nodes.find((n) => n.kind === 'dest' && n.hosts.includes(netDest))?.id : undefined;
+    const to = id ? scrollToDest(t, id) : null;
+    // Only when the choice or the layout changes, never on a scroll: a row scrolled away stays away.
+    if (to !== null && id && !projectTopology(t, scrollTop).visible.has(id)) setScrollTop(to);
+  }, [netDest, t]); // eslint-disable-line react-hooks/exhaustive-deps
   const bytesOf = useMemo(() => {
     const m = new Map<string, number>();
     for (const d of data.destinations.values()) if (d.host) m.set(d.host, (m.get(d.host) ?? 0) + d.bytesUp + d.bytesDown);
@@ -223,12 +231,12 @@ export function TopologyDiagram({ data }: { data: NetSessionData }) {
         ))}
         <clipPath id={clipId}><rect x={t.dests.x - 4} y={t.dests.top} width={t.dests.w + 8} height={t.dests.bottom - t.dests.top} /></clipPath>
         <g clipPath={`url(#${clipId})`}>
-          {t.nodes.filter((n) => n.kind === 'dest' && n.y < t.dests.bottom && n.y + n.h > t.dests.top).map((n) => (
+          {view.rows.map((n) => (
             <Node key={n.id} n={n} selected={on(n.hosts)} onSelect={(x) => select(x.hosts)} />
           ))}
         </g>
-        {view.above && <Stub stub={view.above} x={t.dests.x} />}
-        {view.below && <Stub stub={view.below} x={t.dests.x} />}
+        {view.above && <Stub stub={view.above} x={t.dests.x} onScroll={setScrollTop} />}
+        {view.below && <Stub stub={view.below} x={t.dests.x} onScroll={setScrollTop} />}
       </svg>
     </div>
   );

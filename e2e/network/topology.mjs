@@ -76,6 +76,9 @@ const below = await page.$eval(`${DIAG} g[data-stub="below"]`, (g) => g.textCont
 const shownRows = (await page.$$(`${DIAG} g[data-node^="dest:"]`)).length;
 check('big session: no folding, the rest counted below', !(await page.$(`${DIAG} g[data-node^="more:"]`)) && /↓ \d+ below/.test(below)
   && shownRows > 5 && Number(below.match(/\d+/)[0]) > 100, `${shownRows} shown · ${below}`);
+await page.click(`${DIAG} g[data-stub="below"]`);
+const above = await waitFor(async () => /↑ \d+ above/.test(await page.$eval(`${DIAG} g[data-stub="above"]`, (g) => g.textContent).catch(() => '')));
+check('big session: clicking the stub scrolls the next rows in', above);
 // Sizes.
 for (const [w, h] of [[1440, 900], [1280, 800]]) {
   await page.setViewportSize({ width: w, height: h });
