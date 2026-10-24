@@ -83,7 +83,7 @@ function useTraceData(token: string, range: NetRange | null) {
 /** Show one turn in the Trace tab with one flow selected: the detail card's "Open in Trace". */
 export function openInTrace(token: string, promptEventId: string, flowId: string | null): void {
   // The token too: the tab resets its state when it mounts for a different glove session.
-  useTrace.getState().set({ token, turnId: promptEventId, view: null, selected: flowId ? `flow:${flowId}` : null, toggled: new Set(), error: null });
+  useTrace.getState().set({ token, turnId: promptEventId, view: null, selected: flowId ? `flow:${flowId}` : null, toggled: new Set(), error: null, keep: null });
   useSessionStore.getState().setViewMode('trace');
 }
 

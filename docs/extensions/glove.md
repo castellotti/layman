@@ -654,17 +654,17 @@ nothing for finished sessions (their history is not an alarm).
 - **A turn as a range ("Network for this turn").** A globe button on a gloved session's turn
   headers (the session transcript), on a highlight in Prompts, and on Trace's turn bar opens Topology
   for the turn's glove session over the turn's time (`showNetworkRange`: one update, one history
-  entry). The range runs from 1 s before the prompt (3 s, as Trace's `READ_LAG_MS`, when the prompt
-  is known only by when it was read) to 2 s after the turn's last event finished (`TURN_LEAD_MS`,
-  `TURN_READ_LEAD_MS`, `TURN_TAIL_MS`): the gate batches its records, and a pooled connection's last
-  bytes trail. The tooltip says so. A session's end does not count, as it can come hours later, and
-  a turn is closed by an answer or stop after its last tool call, not only by its very last event (a
-  note can follow the answer). Only a session Layman may read gets the button. Times are the transcript's (`transcriptAt`,
-  `transcriptCompletedAt`) when the harness kept them, because a passive watcher's `timestamp` is
-  when it read the event; without them the range is the events' times and the tooltip calls it
-  approximate. The last turn of its Layman session, while the glove gate runs, whose last event is
-  neither an answer that said something nor a stop is still running, and gives an open range
-  (`to: null`, until now). "Live" is the gate's on both sides, never the Layman session's, so the
+  entry). The range runs from 1 s before the prompt (`TURN_LEAD_MS`; 3 s, `TURN_READ_LEAD_MS` as
+  Trace's `READ_LAG_MS`, when the prompt is known only by when it was read) to 2 s after the turn's
+  last event finished (`TURN_TAIL_MS`; a session's end, which can come hours later, does not
+  count): the gate batches its records, and a pooled connection's last bytes trail. The tooltip
+  says so. Only a session Layman may read gets the button. Times are the transcript's
+  (`transcriptAt`, `transcriptCompletedAt`) when the harness kept them, because a passive watcher's
+  `timestamp` is when it read the event; without them the range is the events' times and the
+  tooltip calls it approximate. The last turn of its Layman session, while the glove gate runs, is
+  still running unless an answer that said something, a stop or the session's end follows its last
+  tool call (not necessarily as its very last event: a note can follow the answer), and gives an
+  open range (`to: null`, until now). "Live" is the gate's on both sides, never the Layman session's, so the
   transcript and Trace agree about the same turn. The span is worked out when the button is clicked
   (a long live session would otherwise recompute every turn's on every event), and for a highlight
   it comes from the server (`GET /api/turns/:sid/:pid?events=1`: the turn's events and whether it is

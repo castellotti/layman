@@ -26,7 +26,7 @@ export interface TraceDeps {
 
 /** Turns this far outside the glove session's records are another run's, not this one's. */
 const SPAN_MARGIN_MS = 5 * 60_000;
-/** A prompt read by a passive watcher is stamped up to a poll late: start the turn's window this much earlier. */
+/** A prompt read by a passive watcher is stamped up to a poll late: start the turn's window this much earlier (web: `TURN_READ_LEAD_MS`). */
 const READ_LAG_MS = 3000;
 const PROMPT_PREVIEW = 400;
 
@@ -36,22 +36,25 @@ const num = (v: unknown): number | null => (typeof v === 'number' && Number.isFi
 const doneAt = (e: TimelineEvent) => num(e.data.transcriptCompletedAt) ?? num(e.data.transcriptAt) ?? e.timestamp;
 const closes = (e: TimelineEvent) => e.type === 'agent_stop' || e.type === 'session_end' || e.type === 'stop_failure'
   || (e.type === 'agent_response' && getEffectiveAgentContent(e).response.trim() !== '');
+const TOOL = /^tool_call_/;
+/** Whether something closes the turn after its last tool call: its last event can be a note after the answer. */
+const closed = (owned: readonly TimelineEvent[]) => {
+  let i = owned.length - 1;
+  while (i > 0 && !TOOL.test(owned[i].type)) { if (closes(owned[i])) return true; i--; }
+  return false;
+};
+/** The events whose finishing ends a turn: not a session's end, which can come hours later. */
+const ending = (owned: readonly TimelineEvent[]) => owned.filter((e, i) => i === 0 || e.type !== 'session_end');
 
 /**
- * When a turn's last event finished, or null while it runs (the last turn of a live session whose
- * last event is no answer or stop). The end of "Network for this turn": mirrors `turnSpan` in
- * packages/web/src/lib/turn-range.ts, which the transcript and Prompts use; change both or neither.
+ * When a turn's last event finished, or null while it runs (the last turn of a live session that
+ * nothing closed after its last tool call). The end of "Network for this turn": mirrors `turnSpan`
+ * in packages/web/src/lib/turn-range.ts, which the transcript and Prompts use; change both or neither.
  * `live` is the glove gate's on both sides, and `last` the last turn of its Layman session.
  */
 export function turnEnd(owned: readonly TimelineEvent[], { last, live }: { last: boolean; live: boolean }): number | null {
-  if (!owned.length) return null;
-  // Closed by something after its last tool call (its last event can be a note after the answer).
-  let i = owned.length - 1;
-  let closed = false;
-  while (i > 0 && !/^tool_call_/.test(owned[i].type)) { if (closes(owned[i])) { closed = true; break; } i--; }
-  if (last && live && !closed) return null;
-  // A session's end can come hours after the turn: it does not end the turn.
-  return Math.max(...owned.filter((e, j) => j === 0 || e.type !== 'session_end').map(doneAt));
+  if (!owned.length || (last && live && !closed(owned))) return null;
+  return Math.max(...ending(owned).map(doneAt));
 }
 
 /** Which turn: by a prompt (or any) event id, the one in progress at a moment, or the latest. */

@@ -39,8 +39,8 @@ function closes(e: TimelineEvent): boolean {
 }
 const TOOL = /^tool_call_/;
 /**
- * Whether the turn is closed: something closes it after its last tool call. Not merely its last
- * event, which can be a note recorded after the answer (a drift alert).
+ * Whether something closes the turn after its last tool call: not merely its last event, which can
+ * be a note recorded after the answer (a drift alert).
  */
 const closed = (owned: readonly TimelineEvent[]) => {
   let i = owned.length - 1;
@@ -53,8 +53,8 @@ const ending = (owned: readonly TimelineEvent[]) => owned.filter((e, i) => i ===
 /**
  * The span of a turn from the events it owns (its prompt first), or null for none. `last`: it is
  * its Layman session's last turn; `live`: the glove gate is running. Only the last turn of a live
- * session whose last event does not close it is running; any other turn ended when its last event
- * finished.
+ * session that nothing closed after its last tool call is running; any other turn ended when its
+ * last event (other than a session's end) finished.
  */
 export function turnSpan(owned: readonly TimelineEvent[], { last, live }: { last: boolean; live: boolean }): TurnSpan | null {
   if (!owned.length) return null;

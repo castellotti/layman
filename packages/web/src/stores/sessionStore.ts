@@ -454,11 +454,10 @@ export interface SessionState {
 
 /**
  * Entering the network tabs from another view while looking at a gloved session shows that
- * session, even if another was chosen on the tabs before. "Looking at" is the transcript's
- * session in the Sessions view, the Dashboard's focused one (its `activeSessionId` is whatever
- * Logs last showed), and otherwise the one Logs shows (`viewingSessionId` outlives the
- * transcript, so it is read only there). Resolved here, in the same update as the view, so the switch is one history entry
- * and one subscription. A `?glove=` link is hydrated without `setViewMode`, so the link wins.
+ * session, even if another was chosen on the tabs before. "Looking at" is the Dashboard's focused
+ * session, the Sessions view's open transcript (`viewingSessionId`, read only there because it
+ * outlives the transcript), and otherwise the one Logs shows (`activeSessionId`). Resolved here,
+ * in the same update as the view, so the switch is one history entry and one subscription. A `?glove=` link is hydrated without `setViewMode`, so the link wins.
  * Before the glove sessions are known nothing is chosen here; the default (`defaultNetToken`)
  * then prefers the active session anyway.
  */
