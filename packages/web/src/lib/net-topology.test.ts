@@ -7,7 +7,7 @@ import { dest, rulesView, sessionData } from './net-test-fixtures.js';
 import type { DestinationAggregate, NetSessionFile } from './netobs-types.js';
 import type { NetSessionData } from './net-state.js';
 
-/** glove's fixture session.json (packages/server/src/netobs/__fixtures__/session.json). */
+/** glove's fixture session.json as of its 2026-09-23 copy (packages/server/src/netobs/__fixtures__/session.json). */
 const SESSION: NetSessionFile = {
   v: 1, type: 'session', env: 'pi-search', session: 'pi-search', harness: 'pi', gate: '0.1.0', record: 'metadata', resolve: 'in-tunnel',
   resolver: 'dns://gluetun:53', exit_identity: 'via-proxy:https://am.i.mullvad.net/json', upstream_kind: 'vpn', rendered_at: null,

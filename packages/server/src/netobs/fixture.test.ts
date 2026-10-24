@@ -6,16 +6,16 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { copyFileSync, existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
-import { dirname, join } from 'path';
-import { fileURLToPath } from 'url';
+import { join } from 'path';
 import { NetObs } from './index.js';
 import { TEST_ID, addGloveSession, asId } from './testing/glove-home.js';
 import type { DestinationAggregate, FlowView, NetSnapshot } from './types.js';
+import { GLOVE_CHECKOUT } from './testing/glove-checkout.js';
+import { FIXTURE } from './testing/fixture-clock.js';
 
-const FIXTURE = join(dirname(fileURLToPath(import.meta.url)), '__fixtures__');
-const GLOVE_FIXTURE = join(dirname(fileURLToPath(import.meta.url)), '../../../../../glove/tests/fixtures/netobs');
+const GLOVE_FIXTURE = join(GLOVE_CHECKOUT, 'tests/fixtures/netobs');
 const TOKEN = TEST_ID;
-const STATUS_T = Date.parse('2026-09-23T14:14:47.625Z');
+const STATUS_T = Date.parse((JSON.parse(readFileSync(join(FIXTURE, 'status.json'), 'utf8')) as { t: string }).t);
 
 const FLOW_LINES = readFileSync(join(FIXTURE, 'flows.ndjson'), 'utf8').split('\n').filter(Boolean);
 
@@ -133,7 +133,9 @@ describe('glove netobs fixture', () => {
   });
 
   it('an open flow is live: stop the file before arxiv flow 2 closes', () => {
-    const id = 'f_01M379WXCQWJBBQKXQKNJS4JWE';
+    // glove's ids change with each copy: the second arxiv.org flow is the PDF's.
+    const arxiv = FLOW_LINES.map((l) => JSON.parse(l)).filter((r) => r.phase === 'open' && r.dest?.host === 'arxiv.org');
+    const id: string = arxiv[1].id;
     const closeAt = FLOW_LINES.findIndex((l) => l.includes(id) && l.includes('"phase":"close"'));
     expect(closeAt).toBeGreaterThan(0);
     const partial = FLOW_LINES.slice(0, closeAt);
@@ -158,8 +160,9 @@ describe('glove netobs fixture', () => {
     expect(snap.gate.record).toBe('metadata');
     expect(snap.gate.telemetry).toMatchObject({ written: 83, dropped: 0 });
     expect(snap.gate.unwatchedServices).toEqual(['browser']);
-    expect(snap.exit).toMatchObject({ country: 'Switzerland', city: null, ip: '195.177.93.17', healthy: true });
-    expect(snap.exit!.source).toBe('via-proxy:am.i.mullvad.net');
+    // glove's vpn default: the VPN server's endpoint, read from gluetun's kill switch (no lookup, no geo).
+    expect(snap.exit).toMatchObject({ country: null, city: null, ip: '198.51.100.17', healthy: true });
+    expect(snap.exit!.source).toBe('vpn-endpoint');
     expect(snap.session!.services.map((s) => s.service)).toEqual(['llm', 'search', 'proxy', 'fanout', 'browser']);
   });
 

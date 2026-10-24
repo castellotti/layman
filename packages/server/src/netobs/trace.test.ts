@@ -2,8 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { copyFileSync, mkdirSync, mkdtempSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
-import { dirname, join } from 'path';
-import { fileURLToPath } from 'url';
+import { join } from 'path';
 import type { TimelineEvent } from '../events/types.js';
 import { extractTurns } from '../turns/extract.js';
 import { NetObs } from './index.js';
@@ -11,9 +10,9 @@ import { TEST_ID, addGloveSession } from './testing/glove-home.js';
 import { registerNetRoutes } from './routes.js';
 import { buildTrace, callsBetween, type TraceDeps } from './trace.js';
 import type { TraceView } from './types.js';
+import { FIXTURE, fixtureAt } from './testing/fixture-clock.js';
 
-const FIXTURE = join(dirname(fileURLToPath(import.meta.url)), '__fixtures__');
-const at = (s: string) => Date.parse(`2026-09-23T14:${s}Z`);
+const at = (s: string) => fixtureAt(`2026-09-23T14:${s}Z`);
 
 let n = 0;
 const ev = (sessionId: string, type: TimelineEvent['type'], t: number, data: TimelineEvent['data']): TimelineEvent => ({

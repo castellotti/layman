@@ -10,11 +10,11 @@ import { describe, expect, it } from 'vitest';
 import { execFileSync } from 'child_process';
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
-import { dirname, join } from 'path';
-import { fileURLToPath } from 'url';
+import { join } from 'path';
 import { applyOp, emptyRules, evaluate, GUARD_RULE, guardRefuses, parseRulesBytes, predict, serializeRules, type FlowFacts } from './rules.js';
+import { GLOVE_CHECKOUT } from './testing/glove-checkout.js';
 
-const GLOVE = join(dirname(fileURLToPath(import.meta.url)), '../../../../../glove');
+const GLOVE = GLOVE_CHECKOUT;
 
 function available(): boolean {
   // glove v3 moved the gate into the `gate` extension; a v2 checkout (glove/netgate/) is not cross-checked.

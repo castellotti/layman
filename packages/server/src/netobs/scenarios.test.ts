@@ -15,10 +15,11 @@ import { fileURLToPath } from 'url';
 import { NetObs } from './index.js';
 import { TEST_ID, addGloveSession, asId } from './testing/glove-home.js';
 import type { FlowView, NetSnapshot, NetState } from './types.js';
+import { GLOVE_CHECKOUT } from './testing/glove-checkout.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCENARIOS = join(HERE, '__scenarios__');
-const GLOVE_SCENARIOS = join(HERE, '../../../../../glove/tests/fixtures/netobs-scenarios');
+const GLOVE_SCENARIOS = join(GLOVE_CHECKOUT, 'tests/fixtures/netobs-scenarios');
 const TOKEN = TEST_ID;
 
 let home: string;

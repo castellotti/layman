@@ -14,10 +14,11 @@ import { NetObs } from './index.js';
 import type { HistorySession, NetHistory } from './history.js';
 import type { NetSessionSummary, RulesOp } from './types.js';
 import { copyV3Scenario } from './testing/glove-home.js';
+import { GLOVE_CHECKOUT } from './testing/glove-checkout.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const V3 = join(HERE, '__scenarios_v3__');
-const GLOVE_V3 = join(HERE, '../../../../../glove/tests/fixtures/netobs-v3');
+const GLOVE_V3 = join(GLOVE_CHECKOUT, 'tests/fixtures/netobs-v3');
 const NOW = Date.parse('2026-10-01T12:00:01.000Z');
 
 let root: string;
@@ -55,7 +56,7 @@ describe('glove v3 grant states', () => {
     const obs = open(home('observe-only'));
     const id = 'observe-only-0f1a2b';
     expect(summary(obs, id)).toMatchObject({
-      harness: 'pi', flows: 2,
+      harness: 'pi', flows: 3, // glove round 17: Pi's fetch is a webfetch-mcp hop plus its webfetch-egress leg
       glove: { template: 'pi-search', filter: 'not-granted', transcripts: true, orphaned: false },
     });
     expect(obs.store.rules(id)!.control).toMatchObject({ state: 'not-granted', detail: expect.stringContaining('filter: {}') });
@@ -173,7 +174,7 @@ describe('glove v3 grant states', () => {
   it('orphaned: session deleted, export retained, read-only history', () => {
     const obs = open(home('orphaned'));
     const id = 'orphaned-0f1a2b';
-    expect(summary(obs, id)).toMatchObject({ flows: 2, glove: { orphaned: true } });
+    expect(summary(obs, id)).toMatchObject({ flows: 3, glove: { orphaned: true } });
     expect(obs.store.rules(id)!.control).toMatchObject({ state: 'orphaned', detail: expect.stringContaining('glove gc') });
   });
 
@@ -216,13 +217,13 @@ describe('corporate route', () => {
     const id = 'observe-filter-0f1a2b';
     const net = join(h, 'observe', id, 'net');
     const facts = JSON.parse(readFileSync(join(net, 'session.json'), 'utf8'));
-    const proxy = facts.services.find((sv: { service: string }) => sv.service === 'proxy');
+    const proxy = facts.services.find((sv: { service: string }) => sv.service === 'webfetch-egress');
     proxy.route = { kind: 'corporate', upstream: 'http://glove-x-corporate-proxy:8888' };
     facts.upstream_kind = 'corporate';
     writeFileSync(join(net, 'session.json'), JSON.stringify(facts));
     const flow = (fid: string, host: string) => JSON.stringify({
       v: 1, type: 'flow', phase: 'close', id: fid, env: id, session: id, t: '2026-10-01T12:00:00.000Z', t_open: '2026-10-01T12:00:00.000Z',
-      t_close: '2026-10-01T12:00:00.000Z', service: 'proxy', tool: 'web_fetch', client: 'harness', proto: 'http-connect',
+      t_close: '2026-10-01T12:00:00.000Z', service: 'webfetch-egress', tool: 'web_fetch', client: 'webfetch', proto: 'http-connect',
       dest: { host, port: 443, ip: null, resolution: 'unavailable' }, scope: 'direct', route: proxy.route,
       bytes: { up: 1, down: 1 }, verdict: 'allow', rule: null, close_reason: 'eof', request: null, run: 'g_1',
     });
