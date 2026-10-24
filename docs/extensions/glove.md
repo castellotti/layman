@@ -1020,11 +1020,46 @@ Selected path panel that walks one destination's path hop by hop.
     otherwise collapsed into a vertical strip). The wall sits in the gap before the route.
   - **Order.** Services keep glove's declared order rather than byte order, as the design draws them, so
     the column does not reshuffle while traffic flows. Destinations are ordered by bytes, as the plan
-    says. Each column then gets one overlap-avoidance pass.
+    says (or by name or last seen: see below). Each column then gets one overlap-avoidance pass.
   - **Size.** Below 1000 × 420 the diagram is laid out at that size and scaled down, never scrolled.
-  - **Folding.** Destinations that do not fit are folded into one "+N more" box per route, keeping the
-    busiest; the Network tab lists them all.
-- **Selecting.** Clicking a destination, a band or a "+N more" box selects that path. A band shared by
+  - **The destination column scrolls; nothing is folded.** Every reached destination has a row, at
+    a fixed pitch inside the column's window. When they do not all fit, the column scrolls on its own
+    (`DestColumn`, `maxScroll`). `projectTopology(t, scrollTop)` redraws only the bands into a
+    destination. A band into a row in the window ends at its row, never moved. A band into a row
+    scrolled out converges on the window's top or bottom edge, where one stub ("↑ 12 above · 3.1 MB",
+    "↓ 40 below") stands for them all. Its width (`DestStub.width`) is the sum of their widths, and
+    its bytes the sum of theirs. The end is the row's centre clamped to the window, plus the band's
+    offset in the row's port stack, which shrinks to nothing over one row's height past the edge,
+    so it slides continuously as a row leaves or enters and then meets the stub exactly. The tests
+    hold it to that at every half pixel of scroll. `scrollToDest` centres a
+    row, and a stub's `scrollTo` brings its nearest row into the window: clicking a stub scrolls
+    there, and a destination chosen elsewhere (the Network tab, a link) is scrolled into view. The
+    stubs' room is taken from the window only when the column scrolls. With hundreds of rows the
+    exit's port stack is squeezed so every band still leaves the box (thin bands overlap there
+    rather than run off its bottom). Rows sort within each group by bytes (the default), name or
+    last seen: "sorted by bytes" under the column's heading cycles them, and the choice is kept in
+    the browser. The "+N more" boxes and the "folded" footer are gone. 500 destinations lay out
+    and project quickly (a test holds them to it).
+  - **Scrolling it.** The wheel over the column scrolls it, not the page (a non-passive listener:
+    React's is passive and cannot prevent the page's scroll). So do the scrollbar beside it (drag
+    the thumb, click the track for a page), and, with the column focused, the arrow keys (a row),
+    Page Up and Page Down (a window less a row), Home and End. Only the rows in the window are Tab
+    stops (hundreds of hidden ones would trap the keyboard), and the diagram is a `group`, not an
+    `img`, so its buttons and the column's key hint reach assistive technology. A destination
+    chosen elsewhere is revealed when the choice, the session, the order or the size changes, never
+    on live data: every delta is a new layout, and revealing on it pulled a selected row back while
+    the user scrolled away from it. Every row is drawn once, in a group that is moved, and the window clips the rest.
+    The scroll eases a quarter of the way per 60 Hz frame (`easeScroll`, the same whatever the frame
+    rate), and lands at once when the user prefers reduced motion. During an animation, React does
+    not re-render: each frame moves the row group, the thumb and the bands into destinations through
+    the DOM, from `projectTopology`, and commits to React state when it lands or a stub's count
+    changes. Re-rendering every band and row 60 times a second is what that avoids. A render that
+    lands mid-scroll (live data during a drag or an animation) draws the bands at the committed
+    scroll, so a layout effect repaints them at the live one; a new layout that scrolls less clamps
+    the live and target scroll, or keys and the wheel would move nothing until they caught up. The key, wheel and
+    scrollbar arithmetic is pure (`keyScroll`, `wheelDelta`, `scrollThumb`, `thumbDrag`) and tested.
+    Another session or sort starts at the top.
+- **Selecting.** Clicking a destination or a band selects that path. A band shared by
   several destinations selects the busiest. The selection is the same `dest=` the Map and the Network
   tab use, and every band not on the path dims.
 - **Selected path panel.** The destination's hops, each with its status and whether glove **observed**

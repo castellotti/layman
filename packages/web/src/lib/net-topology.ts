@@ -40,10 +40,12 @@ const MAX_BAND = 30;
 const DEST_H = 22;
 const DEST_MIN_PITCH = 26;
 const DEST_MAX_PITCH = 50;
+/** Room above and below the destination window for the "↑ N above" / "↓ N below" stubs. */
+const STUB_ROOM = 18;
 
 /** A band's colour, by route; refusals by who refused. */
 export type BandKind = 'tunnel' | 'fanout' | 'local' | 'direct' | 'guard' | 'refused' | 'broken' | 'unwatched' | 'trigger';
-export type NodeKind = 'sandbox' | 'service' | 'route' | 'exit' | 'broken' | 'dest' | 'more';
+export type NodeKind = 'sandbox' | 'service' | 'route' | 'exit' | 'broken' | 'dest';
 export type Tone = 'plain' | 'tunnel' | 'fanout' | 'local' | 'direct' | 'warn' | 'muted';
 export type LineTone = 'faint' | 'mono' | 'ok' | 'tunnel' | 'warn' | 'error' | 'fanout';
 
@@ -85,6 +87,11 @@ export interface TopoBand {
   live: boolean;
   dashed: boolean;
   label: { text: string; x: number; y: number; anchor: 'start' | 'end' } | null;
+  /**
+   * A band into a destination: its far end with the column unscrolled (the near end is `start`).
+   * `projectTopology` redraws `d` from these as the column scrolls; the far end follows its row.
+   */
+  toDest?: { x2: number; y2: number };
 }
 
 export interface WallLabel { text: string; sub: string | null; y: number; kind: 'guard' | 'refused' }
@@ -109,9 +116,28 @@ export interface Topology {
   /** Free-standing text: the fan-out's bytes beside its service. */
   captions: Caption[];
   wall: TopoWall;
-  /** Destinations folded into "+N more" boxes to fit the height. */
-  folded: number;
+  /**
+   * The destination column, which scrolls on its own: every reached destination has a row
+   * (nothing is folded). Rows' `y` are as drawn unscrolled; the window is [`top`, `bottom`].
+   */
+  dests: DestColumn;
 }
+
+export interface DestColumn {
+  x: number;
+  w: number;
+  top: number;
+  bottom: number;
+  /** How far the column scrolls: 0 when every row fits. */
+  maxScroll: number;
+  /** From one row to the next: what an arrow key scrolls. */
+  pitch: number;
+  /** Row ids (`dest:<key>`), top to bottom. */
+  rows: string[];
+}
+
+/** How the rows in each group (local, the harness's, the fan-out's, direct) are ordered. */
+export type DestSort = 'bytes' | 'name' | 'recent';
 
 export type TopoInput = Pick<NetSessionData, 'token' | 'session' | 'gate' | 'exit' | 'destinations' | 'flows' | 'rules'>;
 
@@ -336,7 +362,7 @@ export function countLabel(n: number): string {
 
 // ─── The layout ───────────────────────────────────────────────────────────────
 
-export function layoutTopology(data: TopoInput, width: number, height: number): Topology {
+export function layoutTopology(data: TopoInput, width: number, height: number, opts: { sort?: DestSort } = {}): Topology {
   const W = Math.max(MIN_WIDTH, width);
   const H = Math.max(MIN_HEIGHT, height);
   const bottom = H - BOTTOM_PAD;
@@ -538,57 +564,35 @@ export function layoutTopology(data: TopoInput, width: number, height: number): 
     e.bytes += l.bytes;
     reached.set(l.d.key, e);
   }
-  const avail = bottom - (TOP + 4);
-  const cap = Math.max(4, Math.floor(avail / DEST_MIN_PITCH));
-  const ordered = [...reached.values()].sort((a, b) => a.group - b.group || b.bytes - a.bytes || a.d.key.localeCompare(b.d.key));
-  let shown = ordered;
-  const more = new Map<number, typeof ordered>();
-  if (ordered.length > cap) {
-    // Keep the busiest; each group that loses some gets one "+N more" box, which takes a row too.
-    for (let keep = cap - 1; keep >= 1; keep--) {
-      const top = new Set([...ordered].sort((a, b) => b.bytes - a.bytes).slice(0, keep).map((e) => e.d.key));
-      const groups = new Set(ordered.filter((e) => !top.has(e.d.key)).map((e) => e.group));
-      if (keep + groups.size <= cap) {
-        shown = ordered.filter((e) => top.has(e.d.key));
-        for (const e of ordered) if (!top.has(e.d.key)) more.set(e.group, [...(more.get(e.group) ?? []), e]);
-        break;
-      }
-    }
-  }
-  type Row = { kind: 'dest'; e: (typeof ordered)[number] } | { kind: 'more'; group: number; es: typeof ordered };
-  const rows: Row[] = [];
-  for (let g = 0; g <= 3; g++) {
-    for (const e of shown) if (e.group === g) rows.push({ kind: 'dest', e });
-    const m = more.get(g);
-    if (m?.length) rows.push({ kind: 'more', group: g, es: m });
-  }
-  const destPitch = Math.max(DEST_MIN_PITCH, Math.min(DEST_MAX_PITCH, avail / Math.max(1, rows.length)));
+  // Every destination has a row: the column scrolls (`projectTopology`) rather than fold any away.
+  // The stubs' room is taken from the window only when the rows do not all fit in it without.
+  const scrolls = reached.size * DEST_MIN_PITCH > bottom - (TOP + 4);
+  const viewTop = scrolls ? TOP + STUB_ROOM : TOP + 4;
+  const viewBottom = scrolls ? bottom - STUB_ROOM : bottom;
+  const view = viewBottom - viewTop;
+  const sort = opts.sort ?? 'bytes';
+  const within = (a: { d: DestinationAggregate; bytes: number }, b: { d: DestinationAggregate; bytes: number }) =>
+    sort === 'name' ? hostLabel(a.d).localeCompare(hostLabel(b.d)) : sort === 'recent' ? b.d.lastSeen - a.d.lastSeen : b.bytes - a.bytes;
+  const rows = [...reached.values()].sort((a, b) => a.group - b.group || within(a, b) || a.d.key.localeCompare(b.d.key));
+  const destPitch = Math.max(DEST_MIN_PITCH, Math.min(DEST_MAX_PITCH, view / Math.max(1, rows.length)));
   const stack = destPitch * rows.length;
-  const destTop = TOP + 4 + Math.max(0, (avail - stack) / 2);
+  const destTop = viewTop + Math.max(0, (view - stack) / 2);
   const destNodes: Array<{ n: TopoNode; legs: Leg[] }> = [];
+  const destOf = new Map<Leg, TopoNode>();
   rows.forEach((r, i) => {
-    const y = destTop + i * destPitch + (destPitch - DEST_H) / 2;
-    if (r.kind === 'dest') {
-      const d = r.e.d;
-      destNodes.push({
-        legs: r.e.legs,
-        n: node({
-          id: `dest:${d.key}`, kind: 'dest', column: 'dests', x: destX, y, w: NODE_W.dests, h: DEST_H, title: hostLabel(d), mono: true, lines: [],
-          tone: r.e.group === 0 ? 'local' : r.e.group === 3 ? 'direct' : r.e.group === 2 ? 'fanout' : 'tunnel',
-          dashed: r.e.group === 0, hosts: [d.host ?? hostLabel(d)], live: d.state === 'active',
-        }),
-      });
-    } else {
-      destNodes.push({
-        legs: r.es.flatMap((e) => e.legs),
-        n: node({
-          id: `more:${r.group}`, kind: 'more', column: 'dests', x: destX, y, w: NODE_W.dests, h: DEST_H, title: `+${r.es.length} more`, lines: [],
-          tone: 'muted', dashed: true, hosts: r.es.map((e) => e.d.host ?? hostLabel(e.d)), live: r.es.some((e) => e.d.state === 'active'),
-        }),
-      });
-    }
+    const d = r.d;
+    const n = node({
+      id: `dest:${d.key}`, kind: 'dest', column: 'dests', x: destX, y: destTop + i * destPitch + (destPitch - DEST_H) / 2, w: NODE_W.dests, h: DEST_H,
+      title: hostLabel(d), mono: true, lines: [],
+      tone: r.group === 0 ? 'local' : r.group === 3 ? 'direct' : r.group === 2 ? 'fanout' : 'tunnel',
+      dashed: r.group === 0, hosts: [d.host ?? hostLabel(d)], live: d.state === 'active',
+    });
+    destNodes.push({ n, legs: r.legs });
+    for (const l of r.legs) destOf.set(l, n);
   });
-  const folded = [...more.values()].reduce((a, es) => a + es.length, 0);
+  const dests: DestColumn = {
+    x: destX, w: NODE_W.dests, top: viewTop, bottom: viewBottom, maxScroll: Math.max(0, stack - view), pitch: destPitch, rows: destNodes.map((x) => x.n.id),
+  };
 
   // The policy wall, level with the services that refused something, above their pass-through bands.
   const refusedLegs = legs.filter((l) => l.outcome === 'refused');
@@ -623,10 +627,15 @@ export function layoutTopology(data: TopoInput, width: number, height: number): 
   type Draft = { id: string; kind: BandKind; from: TopoNode; to: TopoNode | { x: number; y: number }; legs: Leg[]; dashed?: boolean; label?: TopoBand['label'] };
   const drafts: Draft[] = [];
   const kindOf = (l: Leg): BandKind => (l.fanout ? 'fanout' : l.route === 'local' || l.route === 'llm' ? 'local' : l.route === 'direct' ? 'direct' : 'tunnel');
+  const byDraftId = new Map<string, Draft>();
   const bucket = (id: string, kind: BandKind, from: TopoNode, to: TopoNode, l: Leg) => {
-    const found = drafts.find((x) => x.id === id);
+    const found = byDraftId.get(id);
     if (found) found.legs.push(l);
-    else drafts.push({ id, kind, from, to, legs: [l] });
+    else {
+      const dr = { id, kind, from, to, legs: [l] };
+      byDraftId.set(id, dr);
+      drafts.push(dr);
+    }
   };
   for (const n of svcNodes) {
     const s = byName.get(n.title)!;
@@ -654,7 +663,7 @@ export function layoutTopology(data: TopoInput, width: number, height: number): 
       if (b) drafts.push({ id: `${r.id}>${b.id}`, kind: 'broken', from: r, to: b, legs: [l], dashed: true });
       continue;
     }
-    const dn = destNodes.find((x) => x.legs.includes(l))?.n;
+    const dn = destOf.get(l);
     if (!dn) continue;
     if (l.route === 'tunnel' && exitNode) {
       bucket(`${r.id}>${exitNode.id}:${kindOf(l)}`, kindOf(l), r, exitNode, l);
@@ -679,18 +688,30 @@ export function layoutTopology(data: TopoInput, width: number, height: number): 
     const gap = sorted.length > 1 ? Math.max(0, Math.min(4, (room - total) / (sorted.length - 1))) : 0;
     const used = Math.min(room, total + gap * (sorted.length - 1));
     const scale = total + gap * (sorted.length - 1) > room && total > 0 ? (room - gap * (sorted.length - 1)) / total : 1;
-    let y = centre(n) - used / 2;
+    // Below a fifth of their width bands are hard to tell apart, so they keep that and overlap
+    // instead: the stack is squeezed (`fit`) so it never leaves the box.
+    const kept = ws.map((w) => w * Math.max(0.2, scale));
+    const span = kept.reduce((a, w) => a + w, 0) + gap * (sorted.length - 1);
+    const fit = span > room && span > 0 ? room / span : 1;
+    let y = centre(n) - Math.min(used, span * fit) / 2;
     sorted.forEach((d, i) => {
-      const w = ws[i] * Math.max(0.2, scale);
-      into.set(d, y + w / 2);
-      y += w + gap;
+      into.set(d, y + (kept[i] * fit) / 2);
+      y += (kept[i] + gap) * fit;
     });
   };
+  // Grouped once: with hundreds of destinations, filtering every draft per node is quadratic.
+  const outOf = new Map<TopoNode, Draft[]>();
+  const inTo = new Map<TopoNode, Draft[]>();
+  const add = (m: Map<TopoNode, Draft[]>, n: TopoNode, d: Draft) => { const ds = m.get(n); if (ds) ds.push(d); else m.set(n, [d]); };
+  for (const d of drafts) {
+    add(outOf, d.from, d);
+    if (isNode(d.to)) add(inTo, d.to, d);
+  }
   for (const n of nodes) {
-    const out = drafts.filter((d) => d.from === n);
-    if (out.length) stackPorts(n, out, (d) => endY(d.to), outPort);
-    const inc = drafts.filter((d) => d.to === n);
-    if (inc.length) stackPorts(n, inc, (d) => centre(d.from), inPort);
+    const out = outOf.get(n);
+    if (out) stackPorts(n, out, (d) => endY(d.to), outPort);
+    const inc = inTo.get(n);
+    if (inc) stackPorts(n, inc, (d) => centre(d.from), inPort);
   }
 
   const bands: TopoBand[] = drafts.map((dr) => {
@@ -705,6 +726,7 @@ export function layoutTopology(data: TopoInput, width: number, height: number): 
     return {
       id: dr.id, kind: dr.kind, from: dr.from.id, to: isNode(dr.to) ? dr.to.id : 'wall', d: bandPath(x1, y1, x2, y2), start: [x1, y1], width, bytes,
       hosts: uniq(dr.legs.map((l) => l.host)), live: dr.legs.some((l) => l.live), dashed: !!dr.dashed, label,
+      ...(isNode(dr.to) && dr.to.kind === 'dest' ? { toDest: { x2, y2 } } : {}),
     };
   });
 
@@ -765,7 +787,163 @@ export function layoutTopology(data: TopoInput, width: number, height: number): 
     }
   }
 
-  return { width: W, height: H, columns, nodes, bands, captions, wall, folded };
+  return { width: W, height: H, columns, nodes, bands, captions, wall, dests };
+}
+
+// ─── Scrolling the destination column ─────────────────────────────────────────
+
+/** Destinations scrolled out of the window on one side, as one stub the bands converge on. */
+export interface DestStub {
+  edge: 'above' | 'below';
+  count: number;
+  bytes: number;
+  /** The sum of the widths of the bands it stands for. */
+  width: number;
+  /** Where the bands meet it: the window's edge. */
+  y: number;
+  /** The bar the bands meet, outside the window: as thick as they are, up to the stub's room. */
+  bar: { y: number; h: number };
+  /** The baseline of its "↓ 40 below · 3.1 MB" text. */
+  textY: number;
+  hosts: string[];
+  /** The scroll that brings its nearest destination into the window: what a click on it does. */
+  scrollTo: number;
+}
+
+export interface TopoProjection {
+  /** The scroll applied, clamped to the column's. */
+  scrollTop: number;
+  /** Every band, those into a destination redrawn for the scroll. */
+  bands: TopoBand[];
+  /**
+   * Destination row ids whose centre is in the window. A row half out is drawn (the window clips
+   * it) but still counted on its stub until its centre is in, as its bands meet the edge until then.
+   */
+  visible: Set<string>;
+  above: DestStub | null;
+  below: DestStub | null;
+}
+
+const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
+
+/** What a projection needs that does not depend on the scroll, worked out once per layout. */
+interface DestIndex {
+  rows: TopoNode[];
+  byId: Map<string, TopoNode>;
+  bytes: Map<string, number>;
+  width: Map<string, number>;
+}
+const destIndexes = new WeakMap<Topology, DestIndex>();
+function destIndex(t: Topology): DestIndex {
+  let ix = destIndexes.get(t);
+  if (ix) return ix;
+  const byId = new Map(t.nodes.filter((n) => n.kind === 'dest').map((n) => [n.id, n]));
+  ix = { rows: t.dests.rows.map((id) => byId.get(id)!), byId, bytes: new Map(), width: new Map() };
+  for (const b of t.bands) {
+    if (!b.toDest) continue;
+    ix.bytes.set(b.to, (ix.bytes.get(b.to) ?? 0) + b.bytes);
+    ix.width.set(b.to, (ix.width.get(b.to) ?? 0) + b.width);
+  }
+  destIndexes.set(t, ix);
+  return ix;
+}
+
+/**
+ * The diagram with its destination column scrolled to `scrollTop`. A band into a row in the
+ * window ends at the row; one into a row scrolled out converges on the window's top or bottom
+ * edge, where a stub stands for them all. The end is the row's centre clamped to the window, plus
+ * the band's offset in the row's port stack, which shrinks to nothing over one row's height past
+ * the edge. So it slides continuously as the row leaves or enters, never a jump, and a band into
+ * a row in the window is never moved. Cheap enough to call every frame of a scroll.
+ */
+export function projectTopology(t: Topology, scrollTop: number): TopoProjection {
+  const { top, bottom, maxScroll } = t.dests;
+  const s = clamp(scrollTop, 0, maxScroll);
+  const ix = destIndex(t);
+  const visible = new Set<string>();
+  const above: TopoNode[] = [];
+  const below: TopoNode[] = [];
+  for (const n of ix.rows) {
+    const c = n.y + n.h / 2 - s;
+    if (c < top) above.push(n);
+    else if (c > bottom) below.push(n);
+    else visible.add(n.id);
+  }
+  const bands = t.bands.map((b) => {
+    if (!b.toDest) return b;
+    const n = ix.byId.get(b.to)!;
+    const c = n.y + n.h / 2 - s;
+    const edge = clamp(c, top, bottom);
+    const fade = Math.max(0, 1 - Math.abs(c - edge) / n.h);
+    const y2 = edge + (b.toDest.y2 - (n.y + n.h / 2)) * fade;
+    return y2 === b.toDest.y2 ? b : { ...b, d: bandPath(b.start[0], b.start[1], b.toDest.x2, y2) };
+  });
+  const stub = (edge: DestStub['edge'], ns: TopoNode[]): DestStub | null => {
+    if (!ns.length) return null;
+    const up = edge === 'above';
+    // The nearest hidden row, brought just inside the window.
+    const near = up ? ns[ns.length - 1] : ns[0];
+    const scrollTo = clamp(up ? near.y - top - 4 : near.y + near.h - bottom + 4, 0, maxScroll);
+    const width = ns.reduce((a, n) => a + (ix.width.get(n.id) ?? 0), 0);
+    const y = up ? top : bottom;
+    const h = Math.max(2, Math.min(STUB_ROOM - 4, width));
+    return {
+      edge, count: ns.length, y, scrollTo, width,
+      bar: { y: up ? y - h : y, h }, textY: up ? y - 6 : y + 13,
+      bytes: ns.reduce((a, n) => a + (ix.bytes.get(n.id) ?? 0), 0),
+      hosts: ns.flatMap((n) => n.hosts),
+    };
+  };
+  return { scrollTop: s, bands, visible, above: stub('above', above), below: stub('below', below) };
+}
+
+/** The scroll that centres a destination row in the window (clamped), or null for one with no row. */
+export function scrollToDest(t: Topology, id: string): number | null {
+  const n = destIndex(t).byId.get(id);
+  if (!n) return null;
+  return clamp(n.y + n.h / 2 - (t.dests.top + t.dests.bottom) / 2, 0, t.dests.maxScroll);
+}
+
+/** The scrollbar beside the destination column, for a scroll: null when nothing scrolls. */
+export function scrollThumb(t: Topology, scrollTop: number): { x: number; w: number; track: { y: number; h: number }; y: number; h: number } | null {
+  const { top, bottom, maxScroll } = t.dests;
+  if (maxScroll <= 0) return null;
+  const view = bottom - top;
+  const h = Math.max(16, (view * view) / (view + maxScroll));
+  return { x: t.dests.x + t.dests.w + 2, w: 3, track: { y: top, h: view }, y: top + ((view - h) * clamp(scrollTop, 0, maxScroll)) / maxScroll, h };
+}
+
+/** The scroll after dragging the thumb by `dy` (diagram units) from where it was at scroll `from`. */
+export function thumbDrag(t: Topology, from: number, dy: number): number {
+  const thumb = scrollThumb(t, from);
+  if (!thumb) return 0;
+  return clamp(from + (dy * t.dests.maxScroll) / Math.max(1, thumb.track.h - thumb.h), 0, t.dests.maxScroll);
+}
+
+/** The scroll a key moves the column to from `from`, or null for a key that does not scroll it. */
+export function keyScroll(t: Topology, from: number, key: string): number | null {
+  const { pitch, maxScroll, top, bottom } = t.dests;
+  const page = Math.max(pitch, bottom - top - pitch);
+  const to = key === 'ArrowDown' ? from + pitch : key === 'ArrowUp' ? from - pitch : key === 'PageDown' ? from + page : key === 'PageUp' ? from - page
+    : key === 'Home' ? 0 : key === 'End' ? maxScroll : null;
+  return to === null || maxScroll <= 0 ? null : clamp(to, 0, maxScroll);
+}
+
+/**
+ * How far a wheel event scrolls, in diagram units: pixels scaled by `unitsPerPx`, lines as rows,
+ * pages as the window (`deltaMode` 0, 1 and 2).
+ */
+export function wheelDelta(t: Topology, deltaY: number, deltaMode: number, unitsPerPx: number): number {
+  return deltaY * (deltaMode === 1 ? t.dests.pitch : deltaMode === 2 ? t.dests.bottom - t.dests.top : unitsPerPx);
+}
+
+/**
+ * One frame of an animated scroll from `from` towards `to`, `ms` after the last: a quarter of the
+ * way per 60 Hz frame, whatever the frame rate, landing exactly once within half a unit.
+ */
+export function easeScroll(from: number, to: number, ms: number): number {
+  const next = from + (to - from) * (1 - Math.pow(0.75, Math.max(0, ms) / (1000 / 60)));
+  return Math.abs(to - next) < 0.5 ? to : next;
 }
 
 // ─── The Selected path panel ──────────────────────────────────────────────────
