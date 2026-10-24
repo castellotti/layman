@@ -30,6 +30,8 @@ import { TipWrap } from './NetTip.js';
 
 interface TraceState {
   token: string | null;
+  /** The range the turn was chosen under (`from-to`), or undefined before any: a new range opens on its latest turn. */
+  rangeKey?: string | null;
   /** The turn asked for; null follows the latest. */
   turnId: string | null;
   view: TraceView | null;
@@ -57,6 +59,12 @@ function useTraceData(token: string, range: NetRange | null) {
   }, [token, set]);
   const from = range?.from ?? null;
   const to = range?.to ?? null;
+  useEffect(() => {
+    const key = from === null ? null : `${from}-${to ?? 'now'}`;
+    const prev = useTrace.getState().rangeKey;
+    if (prev !== undefined && prev !== key) set({ rangeKey: key, turnId: null, view: null, selected: null, toggled: new Set() });
+    else if (prev !== key) set({ rangeKey: key });
+  }, [from, to, set]);
   useEffect(() => pollSettled((live) => fetchTrace(token, turnId ? { turn: turnId } : null, from === null ? null : { from, to })
     .then((v) => { if (live()) set({ view: v, error: null }); })
     .catch((e: Error) => { if (live()) set({ error: e.message }); }), REFRESH_MS), [token, turnId, from, to, set]);

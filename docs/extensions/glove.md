@@ -671,12 +671,19 @@ nothing for finished sessions (their history is not an alarm).
     second; an empty end is now) complete it. *Timeline* is the session's hours as bars, model calls in
     the tunnel colour, run edges as ticks and agent sessions as dots. A drag across it sets a range,
     each edge snapping to the nearest run or agent-session edge within 8 px. A drag reaching now on a live
-    session stays open. *All records* is always one click away.
+    session stays open. *All records* is always one click away. Presets are relative to when the picker
+    opened, so the one picked stays marked, and the start and end fields follow the range however it was
+    set, so Apply never restores an old one. A range picked while its run was up (`{ from: run start,
+    to: now }`) is closed to the run's end once the run ends (`endedRun`). Left open, it would grow into
+    the next run while the strip still read it as that run's figures. The segments are fetched only while
+    they are used: the picker is open, or a range is set (to name it and to close a run's).
   - **Trace** counts and steps through only the turns that began in the range ("TURN 2 OF 5 IN RANGE"),
     and opens on the range's latest. The trace route takes `from`/`to` in ms. A turn opened by id from
     outside (a detail card's "Open in Trace") is still shown, marked as outside the range, with arrows
     back into it. Which flows a turn owns does not change: its window still ends at the next prompt.
-    A range with no turn says so.
+    A range with no turn says so. A new range opens on its own latest turn rather than keep one picked
+    under the last. The route refuses an empty `from`, which `Number` would read as the epoch, and a
+    `to` without a `from`.
 - **Subscription.** The view subscribes the socket to the shown session, re-subscribes after a
   reconnect (the server forgets subscriptions with the socket) and unsubscribes when the tabs close, so a
   dashboard that is not looking stops receiving deltas.

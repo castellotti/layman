@@ -56,9 +56,19 @@ export function runNumber(segments: NetSegments, run: RunSegment): number {
 
 /** What a set range is called, when it is exactly a run: "Run 18". Otherwise null. */
 export function rangeName(range: NetRange, segments: NetSegments | null): string | null {
-  if (!segments) return null;
-  const i = segments.runs.findIndex((r) => sameRange(segmentRange(r), range));
-  return i < 0 ? null : `Run ${i + 1}`;
+  const run = segments?.runs.find((r) => sameRange(segmentRange(r), range));
+  return run ? `Run ${runNumber(segments!, run)}` : null;
+}
+
+/**
+ * A range picked while its run was up (`{ from: run start, to: null }`) once that run has ended:
+ * the run as it ended, or null. Left open, it would grow into the next run while still read as
+ * that run's figures.
+ */
+export function endedRun(range: NetRange, segments: NetSegments | null): NetRange | null {
+  if (range.to !== null || !segments) return null;
+  const run = segments.runs.find((r) => r.from === range.from);
+  return run && run.to !== null ? segmentRange(run) : null;
 }
 
 /** How a run ended, in words, or null while it runs. */
@@ -78,8 +88,8 @@ export function newestFirst<T extends { from: number }>(xs: readonly T[]): T[] {
 
 /** The run a burst is in, by number, for its label; null for one before any run. */
 export function burstRun(segments: NetSegments, b: BurstSegment): number | null {
-  const i = b.run === null ? -1 : segments.runs.findIndex((r) => r.run === b.run);
-  return i < 0 ? null : i + 1;
+  const run = b.run === null ? undefined : segments.runs.find((r) => r.run === b.run);
+  return run ? runNumber(segments, run) : null;
 }
 
 export interface Preset {

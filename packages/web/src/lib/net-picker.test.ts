@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  brushRange, burstRun, dayStart, fromLocalInput, initialMonth, monthGrid, newestFirst, nextDay, presets, rangeName, runEnd,
+  brushRange, burstRun, dayStart, endedRun, fromLocalInput, initialMonth, monthGrid, newestFirst, nextDay, presets, rangeName, runEnd,
   sameRange, snap, timeAt, timelineMarks, timelineSpan, toLocalInput, xAt,
 } from './net-picker.js';
 import type { HourActivity, NetSegments, RunSegment } from './netobs-types.js';
@@ -37,6 +37,17 @@ describe('net-picker', () => {
     expect(rangeName({ from: at(9, 21), to: null }, null)).toBeNull();
     expect(burstRun(s, { from: 0, to: 1, run: 'g_1', bytesUp: 0, bytesDown: 0, flows: 0 })).toBe(1);
     expect(burstRun(s, { from: 0, to: 1, run: null, bytesUp: 0, bytesDown: 0, flows: 0 })).toBeNull();
+  });
+
+  it('closes a range picked while its run was up, once the run has ended', () => {
+    const up = segments({ runs: [run('g_1', at(9, 21), null)] });
+    const down = segments({ runs: [run('g_1', at(9, 21), at(9, 21, 5)), run('g_2', at(9, 21, 6), null)] });
+    expect(endedRun({ from: at(9, 21), to: null }, up)).toBeNull();
+    expect(endedRun({ from: at(9, 21), to: null }, down)).toEqual({ from: at(9, 21), to: at(9, 21, 5) });
+    // A closed range, or one that is no run's, is left alone.
+    expect(endedRun({ from: at(9, 21), to: at(9, 21, 2) }, down)).toBeNull();
+    expect(endedRun({ from: at(9, 21, 1), to: null }, down)).toBeNull();
+    expect(endedRun({ from: at(9, 21), to: null }, null)).toBeNull();
   });
 
   it('says how a run ended', () => {

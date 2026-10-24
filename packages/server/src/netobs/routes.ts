@@ -72,8 +72,11 @@ export function registerNetRoutes(fastify: FastifyInstance, deps: { netObs: NetO
     const at = Number(request.query.at);
     const select = request.query.turn ? { turn: request.query.turn } : request.query.at && Number.isFinite(at) ? { at } : null;
     let range: NetRange | null = null;
-    if (request.query.from !== undefined) {
-      range = parseRange({ from: Number(request.query.from), to: request.query.to === undefined ? null : Number(request.query.to) });
+    const { from, to } = request.query;
+    if (from !== undefined || to !== undefined) {
+      // `Number('')` is 0, the epoch: an empty value is refused, not read as a range from 1970.
+      const ms = (v: string) => (v.trim() === '' ? NaN : Number(v));
+      range = from === undefined ? null : parseRange({ from: ms(from), to: to === undefined ? null : ms(to) });
       if (!range) return reply.status(400).send({ error: 'from and to must be ms since the epoch, from ≤ to' });
     }
     const view = buildTrace(store, token, deps.trace, select, Date.now(), range);

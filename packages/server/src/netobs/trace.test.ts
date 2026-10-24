@@ -188,6 +188,9 @@ describe('GET /api/net/sessions/:token/trace', () => {
     expect((ranged.json() as TraceView).nav).toMatchObject({ index: 0, count: 1 });
     expect((await app.inject(`/api/net/sessions/${TOKEN}/trace?from=${at('14:45.000')}&to=${at('14:40.000')}`)).statusCode).toBe(400);
     expect((await app.inject(`/api/net/sessions/${TOKEN}/trace?from=soon`)).statusCode).toBe(400);
+    // An empty start is not the epoch, and an end alone is not a range: both refused, never the unranged trace.
+    expect((await app.inject(`/api/net/sessions/${TOKEN}/trace?from=&to=${at('14:45.000')}`)).statusCode).toBe(400);
+    expect((await app.inject(`/api/net/sessions/${TOKEN}/trace?to=${at('14:45.000')}`)).statusCode).toBe(400);
     const calls = await app.inject(`/api/net/sessions/${TOKEN}/calls?from=${at('14:43.000')}&to=${at('14:47.000')}`);
     expect(calls.json().calls).toHaveLength(4);
     expect((await app.inject(`/api/net/sessions/${TOKEN}/calls?from=0&to=99999999999`)).statusCode).toBe(400);

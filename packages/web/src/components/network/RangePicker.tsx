@@ -11,7 +11,7 @@ import type { NetRange, NetSegments } from '../../lib/netobs-types.js';
 import { formatBytes } from '../../lib/net-format.js';
 import { formatRange, formatSpan, formatStamp, rangeTitle } from '../../lib/net-range.js';
 import {
-  brushRange, burstRun, dayStart, fromLocalInput, initialMonth, monthGrid, newestFirst, nextDay, presets, runEnd, sameRange,
+  brushRange, burstRun, dayStart, fromLocalInput, initialMonth, monthGrid, newestFirst, nextDay, presets, runEnd, runNumber, sameRange,
   segmentRange, snap, timeAt, timelineMarks, timelineSpan, toLocalInput, xAt,
 } from '../../lib/net-picker.js';
 import { useNow } from '../../hooks/useNow.js';
@@ -84,7 +84,7 @@ function SegmentsTab({ segments, range, onPick, gapHours, setGapHours, now }: {
       <div role="list" aria-label={kind} style={{ maxHeight: 300, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 2 }}>
         {kind === 'runs' && (runs.length ? runs.map((r) => (
           <div role="listitem" key={r.run}>
-            <SegmentRow title={`Run ${segments.runs.indexOf(r) + 1}`} range={segmentRange(r)} set={range} onPick={onPick} now={now}
+            <SegmentRow title={`Run ${runNumber(segments, r)}`} range={segmentRange(r)} set={range} onPick={onPick} now={now}
               detail={[runEnd(r) ?? 'running', traffic(r)].join(' · ')} />
           </div>
         )) : empty('No runs recorded: glove writes one at each glove up.'))}
@@ -111,11 +111,20 @@ function SegmentsTab({ segments, range, onPick, gapHours, setGapHours, now }: {
   );
 }
 
-function CalendarTab({ segments, range, onPick, now }: { segments: NetSegments | null; range: NetRange | null; onPick: (r: NetRange) => void; now: number }) {
+function CalendarTab({ segments, range, onPick, now, openedAt }: {
+  segments: NetSegments | null; range: NetRange | null; onPick: (r: NetRange) => void; now: number;
+  /** When the picker opened: presets are relative to it, so the one picked stays marked and a second click sets the same range. */
+  openedAt: number;
+}) {
   const hours = segments?.hours ?? [];
   const [month, setMonth] = useState(() => initialMonth(range, hours, now));
   const [from, setFrom] = useState(range ? toLocalInput(range.from) : '');
   const [to, setTo] = useState(range?.to != null ? toLocalInput(range.to) : '');
+  // The fields follow the range however it was set (a preset, All records, another tab), so Apply never restores an old one.
+  useEffect(() => {
+    setFrom(range ? toLocalInput(range.from) : '');
+    setTo(range?.to != null ? toLocalInput(range.to) : '');
+  }, [range?.from, range?.to]);
   const weeks = useMemo(() => monthGrid(month.year, month.month, hours), [month, hours]);
   const step = (d: number) => setMonth((m) => {
     const x = new Date(m.year, m.month + d, 1);
@@ -141,7 +150,7 @@ function CalendarTab({ segments, range, onPick, now }: { segments: NetSegments |
   return (
     <>
       <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 10 }}>
-        {presets(now, segments).map((p) => (
+        {presets(openedAt, segments).map((p) => (
           <button key={p.key} type="button" aria-pressed={sameRange(p.range, range)} onClick={() => onPick(p.range)} style={tabStyle(sameRange(p.range, range))}>{p.label}</button>
         ))}
       </div>
@@ -214,6 +223,9 @@ function TimelineTab({ segments, range, onPick, now }: { segments: NetSegments; 
         onPointerDown={(e) => { (e.target as Element).setPointerCapture?.(e.pointerId); const t = at(e); setDrag({ a: t, b: t }); }}
         onPointerMove={(e) => { const t = at(e); setHover(t); if (drag) setDrag({ ...drag, b: t }); }}
         onPointerLeave={() => setHover(null)}
+        // A gesture the system took back (a touch scroll, a lost capture) sets nothing, and leaves no brush behind.
+        onPointerCancel={() => setDrag(null)}
+        onLostPointerCapture={() => setDrag(null)}
         onPointerUp={() => {
           if (!drag) return;
           const r = brushRange(drag.a, drag.b, span, live);
@@ -264,6 +276,7 @@ export function RangePicker({ anchor, range, segments, segmentsError, gapHours, 
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const now = useNow(1000);
+  const [openedAt] = useState(() => Date.now());
   const [tab, setTab] = useState<Tab>('segments');
   const [pos, setPos] = useState({ left: anchor.left, top: anchor.bottom + 6 });
   useLayoutEffect(() => {
@@ -297,7 +310,7 @@ export function RangePicker({ anchor, range, segments, segmentsError, gapHours, 
         <button type="button" aria-label="Close" onClick={onClose} style={{ ...buttonStyle('ghost'), width: 26, padding: 0 }}><NetIcon name="close" size={11} /></button>
       </div>
       {segmentsError && !segments && <div role="alert" style={{ fontSize: 11.5, color: 'var(--warn)', marginBottom: 8 }}>Could not read this session’s runs: {segmentsError}</div>}
-      {tab === 'calendar' ? <CalendarTab segments={segments} range={range} onPick={pick} now={now} />
+      {tab === 'calendar' ? <CalendarTab segments={segments} range={range} onPick={pick} now={now} openedAt={openedAt} />
         : !segments ? <div style={{ padding: 12, fontSize: 11.5, color: 'var(--text-muted)' }}>{segmentsError ? '' : 'Loading…'}</div>
           : tab === 'segments' ? <SegmentsTab segments={segments} range={range} onPick={pick} gapHours={gapHours} setGapHours={setGapHours} now={now} />
             : <TimelineTab segments={segments} range={range} onPick={pick} now={now} />}

@@ -14,7 +14,7 @@ export function useNetSegments(token: string | null, gapHours: number, refreshMs
     if (!token) return;
     return pollSettled((live) => getJson<NetSegments>(`/api/net/sessions/${encodeURIComponent(token)}/segments?gap=${gapHours}`)
       .then((segments) => { if (live()) setState({ key, segments, error: null }); })
-      .catch((e: Error) => { if (live()) setState((s) => ({ ...s, key, error: e.message })); }), refreshMs);
+      .catch((e: Error) => { if (live()) setState((s) => ({ key, segments: s.key === key ? s.segments : null, error: e.message })); }), refreshMs);
   }, [token, gapHours, key, refreshMs]);
   // Another session's (or gap's) segments are never shown under this one, even for a frame.
   return state.key === key ? { segments: state.segments, error: state.error } : { segments: null, error: null };

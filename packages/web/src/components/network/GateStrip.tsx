@@ -4,10 +4,10 @@
  * hides the range display, and the range, which opens the picker), the gate's state as
  * chips, and on the right the tab's Panels chips.
  */
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import type { NetNotObservable, NetRange, NetRangeInfo, NetSessionSummary } from '../../lib/netobs-types.js';
 import { formatRange, rangeGaps, rangeHourly, rangeLead, rangeTitle } from '../../lib/net-range.js';
-import { rangeName } from '../../lib/net-picker.js';
+import { endedRun, rangeName } from '../../lib/net-picker.js';
 import { useNow } from '../../hooks/useNow.js';
 import { useNetSegments } from '../../hooks/useNetSegments.js';
 import type { NetSessionData } from '../../lib/net-state.js';
@@ -42,7 +42,9 @@ const GAP_KEY = 'layman.net.burstGap';
 /** A setting kept per browser, like Panels visibility. */
 function useStored<T extends string | number>(key: string, initial: T, parse: (raw: string) => T | null): [T, (v: T) => void] {
   const [value, setValue] = useState<T>(() => {
-    const raw = typeof localStorage === 'undefined' ? null : localStorage.getItem(key);
+    let raw: string | null = null;
+    // Reading throws too where storage is blocked (Safari with storage off, a sandboxed frame).
+    try { raw = typeof localStorage === 'undefined' ? null : localStorage.getItem(key); } catch { /* the default, then */ }
     return (raw === null ? null : parse(raw)) ?? initial;
   });
   const set = useCallback((v: T) => {
@@ -68,8 +70,11 @@ function RangeControl({ token, range, onRange, display, setDisplay }: {
 }) {
   const [anchor, setAnchor] = useState<DOMRect | null>(null);
   const [gapHours, setGapHours] = useStored(GAP_KEY, 6, (raw) => (Number(raw) >= 1 && Number(raw) <= 24 ? Number(raw) : null));
-  const { segments, error } = useNetSegments(token, gapHours);
+  // Asked for only when they are used: by the picker, or to name a range and close a run's.
+  const { segments, error } = useNetSegments(anchor || range ? token : null, gapHours);
   const name = range ? rangeName(range, segments) : null;
+  const ended = range ? endedRun(range, segments) : null;
+  useEffect(() => { if (ended) onRange(ended); }, [ended?.from, ended?.to]); // eslint-disable-line react-hooks/exhaustive-deps
   const close = useCallback(() => setAnchor(null), []);
   const lit = range !== null;
   return (
