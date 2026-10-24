@@ -32,6 +32,13 @@ make typecheck   # tsc --noEmit across the workspace
 make e2e-network # browser checks of the glove network views (e2e/network/README.md)
 ```
 
+The glove cross-checks (`netobs/*.crosscheck.test.ts`, which run glove's own Python) and the
+fixture drift guards need a glove checkout. `netobs/testing/glove-checkout.ts` finds it as the
+nearest ancestor's `glove/`, so `../glove` beside this repository works from a git worktree too;
+set `GLOVE_DIR` to point elsewhere. Without one they are skipped, and vitest counts them as skipped.
+When a native dependency changes (as `better-sqlite3` did in #118), run `pnpm install` in every
+checkout you test from: a stale build fails the SQLite suites with `NODE_MODULE_VERSION`.
+
 To run the full suite where the SQLite binding always builds, in the image's build stage (the
 glove cross-checks are skipped there, since `../glove` is not in the build context):
 

@@ -1,6 +1,6 @@
 {
   "v": 1,
-  "gate": "0.1.0",
+  "gate": "0.2.0",
   "state": "running",
   "record": "metadata",
   "upstream": {
@@ -12,15 +12,15 @@
     "healthy": true
   },
   "rules": {
-    "loaded_at": "2026-09-25T11:37:13.713Z",
-    "source_mtime": "2026-09-25T11:37:13.383Z",
+    "loaded_at": "2026-10-16T19:07:51.898Z",
+    "source_mtime": "2026-10-16T19:07:51.563Z",
     "ok": true,
     "error": null,
     "active_count": 1,
-    "sha256": "370ed985625e6105f3dc3051c19148ce0748119b79f25f3ab5ec87e95355db94",
+    "sha256": "0db48fb653399759631f5a30f1be12148ace9620e96175374b8c50a49d4f6403",
     "last_rejected": null
   },
-  "t": "2026-09-25T11:37:13.713Z",
+  "t": "2026-10-16T19:07:51.898Z",
   "telemetry": {
     "written": 6,
     "dropped": 0,

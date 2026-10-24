@@ -2,14 +2,12 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
-import { dirname, join } from 'path';
-import { fileURLToPath } from 'url';
+import { join } from 'path';
 import { NetObs } from './index.js';
 import { TEST_ID, addGloveSession } from './testing/glove-home.js';
 import { registerNetRoutes } from './routes.js';
 import type { NetSnapshot } from './types.js';
-
-const FIXTURE = join(dirname(fileURLToPath(import.meta.url)), '__fixtures__');
+import { FIXTURE, FIXTURE_FLOWS, fixtureAt } from './testing/glove-fixture.js';
 
 let home: string;
 let app: FastifyInstance;
@@ -21,7 +19,7 @@ beforeEach(async () => {
   rmSync(control, { recursive: true });
   for (const f of ['flows.ndjson', 'exit.ndjson', 'session.json', 'status.json']) copyFileSync(join(FIXTURE, f), join(net, f));
   const netObs = new NetObs({ getGloveHome: () => home });
-  netObs.poll(Date.parse('2026-09-23T14:14:48.000Z'));
+  netObs.poll(fixtureAt('2026-09-23T14:14:48.000Z'));
   app = Fastify();
   registerNetRoutes(app, { netObs });
   await app.ready();
@@ -36,14 +34,14 @@ describe('net REST routes', () => {
     const res = await app.inject('/api/net/sessions');
     expect(res.statusCode).toBe(200);
     expect(res.json().registry).toEqual({ state: 'ok', detail: '' });
-    expect(res.json().sessions).toMatchObject([{ token: TEST_ID, harness: 'pi', flows: 15, glove: { filter: 'granted', orphaned: false } }]);
+    expect(res.json().sessions).toMatchObject([{ token: TEST_ID, harness: 'pi', flows: FIXTURE_FLOWS, glove: { filter: 'granted', orphaned: false } }]);
   });
 
-  it('GET /api/net/sessions/:token returns 15 flows with their states', async () => {
+  it('GET /api/net/sessions/:token returns every flow with its state', async () => {
     const res = await app.inject(`/api/net/sessions/${TEST_ID}`);
     expect(res.statusCode).toBe(200);
     const snap = res.json() as NetSnapshot;
-    expect(snap.flows).toHaveLength(15);
+    expect(snap.flows).toHaveLength(FIXTURE_FLOWS);
     const counts: Record<string, number> = {};
     for (const f of snap.flows) counts[f.state] = (counts[f.state] ?? 0) + 1;
     expect(counts).toEqual({ finished: 9, gate_shutdown: 1, broken: 1, guard: 3, user_rule: 1 });

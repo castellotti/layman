@@ -22,7 +22,7 @@
   },
   "t": "2026-10-01T12:00:00.000Z",
   "telemetry": {
-    "written": 2,
+    "written": 3,
     "dropped": 0,
     "invalid": 0,
     "rotations": 0,

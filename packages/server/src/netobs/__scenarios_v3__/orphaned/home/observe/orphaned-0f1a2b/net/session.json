@@ -36,10 +36,28 @@
       "client": "harness"
     },
     {
-      "service": "proxy",
-      "listen": "glove-orphaned-0f1a2b-proxy:8888",
+      "service": "webfetch-mcp",
+      "listen": "glove-orphaned-0f1a2b-webfetch-mcp:8000",
       "observed": true,
       "harness": true,
+      "next": [
+        "webfetch-egress"
+      ],
+      "mode": "tcp",
+      "tool": "web_fetch",
+      "scope": "local",
+      "upstream": "tcp:glove-orphaned-0f1a2b-fetcher:8000",
+      "route": {
+        "kind": "tcp",
+        "upstream": "tcp:glove-orphaned-0f1a2b-fetcher:8000"
+      },
+      "client": "harness"
+    },
+    {
+      "service": "webfetch-egress",
+      "listen": "glove-orphaned-0f1a2b-webfetch-egress:8888",
+      "observed": true,
+      "harness": false,
       "next": [],
       "mode": "http-proxy",
       "tool": "web_fetch",
@@ -49,7 +67,7 @@
         "kind": "direct",
         "upstream": "http://glove-orphaned-0f1a2b-direct-proxy:8888"
       },
-      "client": "harness"
+      "client": "webfetch"
     }
   ],
   "grants": {

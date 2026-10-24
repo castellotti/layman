@@ -1,14 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'fs';
-import { dirname, join } from 'path';
-import { fileURLToPath } from 'url';
+import { join } from 'path';
 import type { TimelineEvent } from '../events/types.js';
 import { callsFrom, callTiming, correlate, flowRole, isFetchTool, joinDistance, urlsOf, urlTarget } from './correlate.js';
 import { parseLine, parseSessionFile } from './parse.js';
 import { NetStore } from './store.js';
 import type { FlowView, NetService, TraceCall } from './types.js';
+import { FIXTURE, FIXTURE_LINES, fixtureAt } from './testing/glove-fixture.js';
 
-const FIXTURE = join(dirname(fileURLToPath(import.meta.url)), '__fixtures__');
 const SERVICES: NetService[] = parseSessionFile(JSON.parse(readFileSync(join(FIXTURE, 'session.json'), 'utf8')))!.services;
 
 let n = 0;
@@ -275,13 +274,14 @@ describe('the glove fixture', () => {
   // Every flow in the fixture, as NetStore sees it.
   const store = new NetStore();
   store.ensure({ token: 'pi-search', netDir: '/n', controlDir: '/c', rulesPath: '/c/rules.json' });
-  for (const line of readFileSync(join(FIXTURE, 'flows.ndjson'), 'utf8').split('\n').filter(Boolean)) {
+  const now = fixtureAt('2026-09-23T14:14:48Z');
+  for (const line of FIXTURE_LINES) {
     const p = parseLine(line);
-    if (p.kind === 'flow') store.ingestFlow('pi-search', p.record, Date.parse('2026-09-23T14:14:48Z'));
-    else if (p.kind === 'gate') store.ingestGate('pi-search', p.record, Date.parse('2026-09-23T14:14:48Z'));
+    if (p.kind === 'flow') store.ingestFlow('pi-search', p.record, now);
+    else if (p.kind === 'gate') store.ingestGate('pi-search', p.record, now);
   }
   const flows = store.flows('pi-search', 0, 5000)!;
-  const at = (s: string) => Date.parse(`2026-09-23T14:14:${s}Z`);
+  const at = (s: string) => fixtureAt(`2026-09-23T14:14:${s}Z`);
   // The design's turn: one search, then a fetch per host, the arxiv PDF three seconds later.
   const events = [
     call('web_search', { query: 'history of onion routing' }, at('43.300'), at('44.500')),

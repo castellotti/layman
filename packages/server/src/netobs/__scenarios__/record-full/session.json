@@ -4,12 +4,12 @@
   "env": "pi-search",
   "session": "pi-search",
   "harness": "pi",
-  "gate": "0.1.0",
-  "image": "glove/netgate:0.1.0-0000000000",
+  "gate": "0.2.0",
+  "image": "glove/netgate:0.2.0-0000000000",
   "record": "full",
   "resolve": "in-tunnel",
   "resolver": "dns://gluetun:53",
-  "exit_identity": "via-proxy:https://am.i.mullvad.net/json",
+  "exit_identity": "vpn-endpoint",
   "upstream_kind": "vpn",
   "rotate": {
     "max_bytes": 67108864,
@@ -17,7 +17,7 @@
     "retain_s": null
   },
   "record_headers": true,
-  "rendered_at": "2026-09-25T11:37:20.404Z",
+  "rendered_at": "2026-10-16T19:07:58.619Z",
   "services": [
     {
       "service": "llm",

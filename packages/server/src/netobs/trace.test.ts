@@ -2,8 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { copyFileSync, mkdirSync, mkdtempSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
-import { dirname, join } from 'path';
-import { fileURLToPath } from 'url';
+import { join } from 'path';
 import type { TimelineEvent } from '../events/types.js';
 import { extractTurns } from '../turns/extract.js';
 import { NetObs } from './index.js';
@@ -11,9 +10,9 @@ import { TEST_ID, addGloveSession } from './testing/glove-home.js';
 import { registerNetRoutes } from './routes.js';
 import { buildTrace, callsBetween, type TraceDeps } from './trace.js';
 import type { TraceView } from './types.js';
+import { FIXTURE, FIXTURE_FLOWS, fixtureAt, fixtureFlowOpen } from './testing/glove-fixture.js';
 
-const FIXTURE = join(dirname(fileURLToPath(import.meta.url)), '__fixtures__');
-const at = (s: string) => Date.parse(`2026-09-23T14:${s}Z`);
+const at = (s: string) => fixtureAt(`2026-09-23T14:${s}Z`);
 
 let n = 0;
 const ev = (sessionId: string, type: TimelineEvent['type'], t: number, data: TimelineEvent['data']): TimelineEvent => ({
@@ -127,7 +126,7 @@ describe('buildTrace', () => {
     expect(t.items.filter((i) => i.kind === 'llm')).toHaveLength(1);
     // Fetches the transcript does not have (wikipedia, nature, …) are unattributed, never guessed.
     expect(hosts(t.unattributed)).toContain('en.wikipedia.org');
-    expect(t.counts).toMatchObject({ calls: 4, flows: 15, refused: 3, blocked: 1 });
+    expect(t.counts).toMatchObject({ calls: 4, flows: FIXTURE_FLOWS, refused: 3, blocked: 1 });
   });
 
   it('accepts any event id in the turn, and says so when the turn is not this session\'s', () => {
@@ -140,7 +139,8 @@ describe('buildTrace', () => {
 
   it('finds the turn in progress at a moment, for the detail card and the ribbon', () => {
     const pick = (t: number) => buildTrace(netObs.store, TOKEN, deps, { at: t }, at('14:55.000'))!.turn?.promptText;
-    expect(pick(at('14:46.423'))).toBe('Research the history of onion routing');
+    // The moment the PDF's flow (arxiv's second) opened, read from the copy: its jitter moves it.
+    expect(pick(fixtureFlowOpen('arxiv.org', 1).t)).toBe('Research the history of onion routing');
     expect(pick(at('10:30.000'))).toBe('an earlier turn');
     expect(pick(at('14:52.000'))).toBe('a later run');
     // Before the first turn's window: none.

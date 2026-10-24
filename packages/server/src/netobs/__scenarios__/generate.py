@@ -9,14 +9,15 @@ real connections, and their records go into a real ``Collector`` — the same
 PolicyWatcher) path as in a deployment. Only two things differ, and neither
 changes a record's shape: the collector is fed by a direct call instead of the
 unix datagram socket, and upstream dials go to loopback stubs (an origin, an
-upstream proxy standing in for gluetun's, SearXNG, an IP-echo service) while
+upstream proxy standing in for gluetun's, SearXNG), and vpn's shared exit
+file is a file in the scenario directory, removed when the scenario ends while
 the forwarder is configured with the deployment's names (``host.docker.internal``,
 ``egress-proxy``, ``searxng``), so records read like a glove-pi-search session.
 No DNS is performed; the in-tunnel resolver is a table.
 
 Anything forced rather than organic is listed in README.md ("synthetic"). The
-original fixture in ``tests/fixtures/netobs/`` is separate and must stay
-byte-identical; nothing here touches it.
+original fixture in ``tests/fixtures/netobs/`` is separate (pinned by hash);
+nothing here touches it.
 """
 
 from __future__ import annotations
@@ -35,14 +36,14 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT))
 
-from glove.netgate import GATE_VERSION, RUN_LOST_AFTER  # noqa: E402
-from glove.netgate import writer as writer_mod  # noqa: E402
-from glove.netgate.collector import Collector  # noqa: E402
-from glove.netgate.exitid import ExitPoller  # noqa: E402
-from glove.netgate.forward import EventSink, Forwarder, ForwardSpec  # noqa: E402
-from glove.netgate.policy import PolicyWatcher  # noqa: E402
-from glove.netgate.records import iso_utc  # noqa: E402
-from glove.netgate.resolver import InTunnel  # noqa: E402
+from extensions.gate.netgate import GATE_VERSION, RUN_LOST_AFTER  # noqa: E402
+from extensions.gate.netgate import writer as writer_mod  # noqa: E402
+from extensions.gate.netgate.collector import Collector  # noqa: E402
+from extensions.gate.netgate.exitid import FileExit  # noqa: E402
+from extensions.gate.netgate.forward import EventSink, Forwarder, ForwardSpec  # noqa: E402
+from extensions.gate.netgate.policy import PolicyWatcher  # noqa: E402
+from extensions.gate.netgate.records import iso_utc  # noqa: E402
+from extensions.gate.netgate.resolver import InTunnel  # noqa: E402
 
 OUT = Path(__file__).parent
 ENV = SESSION = "pi-search"
@@ -51,8 +52,7 @@ IN_TUNNEL = {"en.wikipedia.org": "185.15.59.224", "arxiv.org": "151.101.3.42", "
              "html.duckduckgo.com": "40.114.177.156", "search.brave.com": "143.204.55.93",
              "www.mojeek.com": "5.102.173.68", "api.qwant.com": "51.91.211.16"}
 ENGINES = ["html.duckduckgo.com", "search.brave.com", "www.mojeek.com", "api.qwant.com"]
-EXIT_ECHO = b'{"ip":"195.177.93.17","country":"Switzerland","city":null,"latitude":47.3643,"longitude":8.5437}'
-EXIT_URL = "https://am.i.mullvad.net/json"
+EXIT_IP = "198.51.100.17"  # RFC 5737: the VPN server endpoint vpn publishes (no lookup, no geo)
 
 
 # --- stubs (loopback only) ---------------------------------------------------------
@@ -129,16 +129,6 @@ def upstream_proxy(table: dict[str, int], refuse: set[str] = frozenset()):
     return h
 
 
-def echo():
-    async def h(r, w):
-        await r.readuntil(b"\r\n\r\n")
-        w.write(b"HTTP/1.0 200 OK\r\n\r\n" + EXIT_ECHO)
-        await w.drain()
-        w.close()
-
-    return h
-
-
 class TableResolver:
     """Stands in for gluetun's DNS: answers from IN_TUNNEL (no network)."""
 
@@ -209,13 +199,14 @@ class Scenario:
             "v": 1, "type": "session", "env": ENV, "session": SESSION, "harness": "pi", "gate": GATE_VERSION,
             "image": f"glove/netgate:{GATE_VERSION}-0000000000", "record": record, "resolve": "in-tunnel",
             "resolver": "dns://gluetun:53",
-            "exit_identity": f"via-proxy:{EXIT_URL}" if exit_identity else "none",
+            "exit_identity": "vpn-endpoint" if exit_identity else "none",
             "upstream_kind": route,
             "rotate": {"max_bytes": 67108864, "keep": 8, "retain_s": None, **(rotate or {})},
             "record_headers": record_headers, "rendered_at": iso_utc(), "services": services,
         }
         (self.dir / "session.json").write_text(json.dumps(self.facts, indent=2) + "\n")
         self.rules_path = self.dir / "rules.json"
+        self.exit_file = self.dir / "exit-ip.gen.tmp"  # stands in for vpn's shared exit volume
         if rules is not None:
             self.write_rules(rules)
         self.col = Collector(self.dir, "/nonexistent", rules_path=self.rules_path)
@@ -264,10 +255,10 @@ class Scenario:
         self.fwds.append(fwd)
         return fwd
 
-    async def exit_poll(self, proxy_port: int) -> ExitPoller:
-        poller = ExitPoller(url=EXIT_URL, kind=self.route, tls=False,
-                            dial=lambda: asyncio.open_connection("127.0.0.1", proxy_port),
-                            emit=self._send, env=ENV, session=SESSION)
+    async def exit_poll(self) -> FileExit:
+        self.exit_file.write_text(EXIT_IP)
+        poller = FileExit(str(self.exit_file), source="vpn-endpoint", kind=self.route, emit=self._send, env=ENV,
+                          session=SESSION)
         await poller.poll_once()
         return poller
 
@@ -293,6 +284,7 @@ class Scenario:
         self.col.write_status("stopped")
 
     async def _teardown(self) -> None:
+        self.exit_file.unlink(missing_ok=True)
         for f in self.fwds:
             await f.stop()
         for s in self.servers:
@@ -345,17 +337,17 @@ def rules_doc(*rules, default: str = "allow") -> dict:
 async def web(sc: Scenario, *, refuse: set[str] = frozenset(), total: int = 64 * 1024, **fkw):
     """An origin behind a stub egress proxy, and the proxy gate in front of it."""
     o = await sc.stub(origin(total))
-    table = {**dict.fromkeys(IN_TUNNEL, o), "am.i.mullvad.net": await sc.stub(echo())}
+    table = dict.fromkeys(IN_TUNNEL, o)
     proxy_port = await sc.stub(upstream_proxy(table, set(refuse)))
     fwd = await sc.forwarder("proxy", proxy_port, **fkw)
-    return fwd, proxy_port
+    return fwd
 
 
 async def default_block():
     sc = Scenario("default-block", rules=rules_doc(
         {"id": "r_01M3SCENALLOWWIKI000000000", "action": "allow", "match": {"host": "en.wikipedia.org"},
          "note": "the one allowed destination"}, default="block"))
-    fwd, _ = await web(sc, policy=True)
+    fwd = await web(sc, policy=True)
     await connect(fwd.port, "en.wikipedia.org")  # allowed by the rule
     await connect(fwd.port, "arxiv.org")  # no rule matched: the default blocks it (rule: null)
     await sc.snapshot()
@@ -363,7 +355,7 @@ async def default_block():
 
 async def direct():
     sc = Scenario("direct", route="direct", exit_identity=False)
-    fwd, _ = await web(sc)
+    fwd = await web(sc)
     await connect(fwd.port, "en.wikipedia.org")  # leaves with no tunnel: scope "direct"
     await send(fwd.port, b"CONNECT 169.254.169.254:80 HTTP/1.1\r\n\r\n")  # refused before leaving: "local"
     await sc.snapshot()
@@ -373,7 +365,7 @@ async def rules_rejected():
     good = rules_doc({"id": "r_01M3SCENTRACKERS0000000000", "action": "block",
                       "match": {"host": "*.tracker.example"}, "note": "ads"})
     sc = Scenario("rules-rejected", rules=good)
-    fwd, _ = await web(sc, policy=True, policy_poll=0.05)
+    fwd = await web(sc, policy=True, policy_poll=0.05)
     sc.col.write_status("running")  # the collector accepts (and reports) the good file
     bad = {**rules_doc({"id": "r_01M3SCENTRACKERS0000000000", "action": "block",
                         "match": {"host": "*.tracker.example"}}), "exec": "rm -rf /"}
@@ -399,7 +391,7 @@ async def terminate():
 
 async def resolver_down():
     sc = Scenario("resolver-down")
-    fwd, _ = await web(sc, resolver=DownResolver())
+    fwd = await web(sc, resolver=DownResolver())
     await connect(fwd.port, "en.wikipedia.org")  # still works: the upstream proxy resolves in-tunnel itself
     await connect(fwd.port, "www.nature.com")
     await sc.snapshot()
@@ -407,7 +399,7 @@ async def resolver_down():
 
 async def telemetry_dropped():
     sc = Scenario("telemetry-dropped")
-    fwd, _ = await web(sc)
+    fwd = await web(sc)
     await connect(fwd.port, "en.wikipedia.org")
     real_write = os.write
     target = {"fd": None}
@@ -430,7 +422,7 @@ async def telemetry_dropped():
 
 async def record_full():
     sc = Scenario("record-full", record="full", record_headers=True)
-    fwd, _ = await web(sc)
+    fwd = await web(sc)
     await send(fwd.port, b"GET http://example.org/robots.txt?lang=en HTTP/1.1\r\nHost: example.org\r\n"
                          b"User-Agent: pi-web-fetch/0.1\r\nAccept: text/plain\r\n"
                          b"Authorization: Bearer sk-live-SECRET\r\nCookie: session=SECRET\r\n\r\n")
@@ -440,18 +432,17 @@ async def record_full():
 
 async def exit_none():
     sc = Scenario("exit-none", exit_identity=False)
-    fwd, _ = await web(sc)
+    fwd = await web(sc)
     await connect(fwd.port, "en.wikipedia.org")
     await sc.snapshot()
 
 
 async def exit_unhealthy():
     sc = Scenario("exit-unhealthy")
-    fwd, proxy_port = await web(sc)
-    poller = await sc.exit_poll(proxy_port)  # healthy first
+    fwd = await web(sc)
+    poller = await sc.exit_poll()  # healthy first
     await connect(fwd.port, "en.wikipedia.org")
-    down = await sc.stub(upstream_proxy({}, set()))  # then the tunnel stops answering
-    poller.dial = lambda: asyncio.open_connection("127.0.0.1", down)
+    sc.exit_file.write_text("")  # then the tunnel drops: vpn publishes no endpoint
     await poller.poll_once()
     await sc.snapshot()
 
@@ -460,7 +451,7 @@ async def pooled():
     sc = Scenario("pooled")
     o_llm = await sc.stub(origin(32 * 1024, pace=0.2, linger=60))  # replies, then idles: kept alive
     llm = await sc.forwarder("llm", o_llm)
-    fwd, _ = await web(sc, total=200 * 1024)
+    fwd = await web(sc, total=200 * 1024)
     held = asyncio.create_task(send(llm.port, client_hello("llm.operator.lan")))
     await asyncio.sleep(1.0)  # its bytes stop changing here, so the gate emits no more updates
     await connect(fwd.port, "arxiv.org")  # meanwhile other traffic runs for > 3 s
@@ -500,7 +491,7 @@ async def rotation():
 
 async def empty():
     sc = Scenario("empty")
-    fwd, _ = await web(sc, head_timeout=0.5)
+    fwd = await web(sc, head_timeout=0.5)
     _, w = await asyncio.open_connection("127.0.0.1", fwd.port)  # connect, send nothing, close: eof
     w.close()
     await w.wait_closed()
@@ -533,8 +524,8 @@ async def stopped():
     sc = Scenario("stopped")
     o_llm = await sc.stub(origin(64 * 1024, pace=0.3))
     llm = await sc.forwarder("llm", o_llm)
-    fwd, proxy_port = await web(sc, total=4 * 1024 * 1024)
-    await sc.exit_poll(proxy_port)
+    fwd = await web(sc, total=4 * 1024 * 1024)
+    await sc.exit_poll()
     await send(llm.port, client_hello("llm.operator.lan"))
     job = asyncio.create_task(connect(fwd.port, "arxiv.org"))  # still running at `glove down`
     await asyncio.sleep(1.2)
