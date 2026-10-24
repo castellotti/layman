@@ -28,7 +28,7 @@ function Kpi({ icon, iconColour, label, value, valueColour = 'var(--text)', sub,
         <NetIcon name={icon} size={13} color={iconColour} />{label}
       </div>
       <div style={{ fontFamily: 'var(--font-mono)', fontSize: 20, fontWeight: 600, color: valueColour, marginTop: 3 }}>{value}</div>
-      <div style={{ fontSize: 10.5, color: alert ? '#F3C6C1' : 'var(--text-faint)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={sub}>{sub}</div>
+      <div style={{ fontSize: 10.5, color: alert ? '#F3C6C1' : 'var(--text-faint)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} data-tip={sub}>{sub}</div>
     </div>
   );
 }
@@ -119,7 +119,7 @@ export function RulesFileLink({ data }: { data: NetSessionData }) {
           background: 'var(--bg-card)', border: '1px solid var(--border-strong)', borderRadius: 8, boxShadow: '0 12px 32px rgba(0,0,0,0.5)',
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
-            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10.5, color: 'var(--text-muted)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={data.rules.displayPath}>
+            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10.5, color: 'var(--text-muted)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} data-tip={data.rules.displayPath}>
               {data.rules.displayPath}
             </span>
             <button type="button" aria-label="Close" onClick={() => setOpen(false)} style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: 2 }}>

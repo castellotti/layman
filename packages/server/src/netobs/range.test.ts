@@ -92,6 +92,16 @@ describe('RangeView: the clip', () => {
     const snap = v.store.snapshot('e')!;
     expect(snap.exit?.ip).toBe('2.2.2.2');
     expect(snap.exits.map((x) => x.ip)).toEqual(['1.1.1.1', '2.2.2.2']);
+
+    // The live gate dates the live exit (3.3.3.3), not the range's: its "since" is left out.
+    const live = new NetStore();
+    live.ensure({ token: 'e', netDir: '', controlDir: '', rulesPath: '' });
+    live.ingestExit('e', exit(to + MIN, '3.3.3.3'), to + MIN);
+    const gate = live.gate('e')!;
+    const info = { from, to, truncated: false } as unknown as Parameters<RangeView['snapshot']>[1];
+    expect(gate.since.exit).not.toBeNull();
+    expect(v.snapshot({ session: null, gate, rules: null, exitIp: '3.3.3.3' }, info).gate.since.exit).toBeNull();
+    expect(v.snapshot({ session: null, gate, rules: null, exitIp: '2.2.2.2' }, info).gate.since.exit).toEqual(gate.since.exit);
   });
 
   it('classifies a closed range as things stood at its end', () => {

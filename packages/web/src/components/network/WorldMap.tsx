@@ -17,6 +17,7 @@ import {
   arcPath, clusterDestinations, fitBounds, labelBox, makeProjection, placeLabels, screenCurve, strokeWidth, trunkFor, type Insets, type LonLat,
 } from '../../lib/net-geo.js';
 import { NetIcon } from './netui.js';
+import { tipProps } from './NetTip.js';
 
 type Land = FeatureCollection<Geometry>;
 let landCache: Promise<Land> | null = null;
@@ -194,8 +195,8 @@ export function WorldMap({ data, selected, onSelect, compact = false, sandboxAnc
           const colour = c.direct ? 'var(--error)' : c.tunnelled ? 'var(--net-tunnel)' : 'var(--text-muted)';
           return (
             <g key={`pin-${c.key}`} data-pin="1" style={{ cursor: onSelect ? 'pointer' : 'default' }}
+              {...tipProps({ heading: c.label, body: c.dests.map((d) => d.host).join('\n') })}
               onClick={(e) => { e.stopPropagation(); onSelect?.(isSel ? null : c.dests[0].host); }}>
-              <title>{`${c.label}: ${c.dests.map((d) => d.host).join(', ')}`}</title>
               <circle cx={x} cy={y} r={compact ? 3 : 5} fill="var(--bg)" stroke={colour} strokeWidth={2} />
               {isSel && <circle cx={x} cy={y} r={11} fill="none" stroke="var(--accent)" strokeWidth={1.5} />}
             </g>

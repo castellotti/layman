@@ -16,6 +16,7 @@ import { columnPanels, type PanelDef } from '../../lib/net-panels.js';
 import type { ClientMessage } from '../../lib/ws-protocol.js';
 import type { NetRange } from '../../lib/netobs-types.js';
 import { GateStrip, RangeBanner, RulesRejectedBanner } from './GateStrip.js';
+import { NetTipHost } from './NetTip.js';
 import { DestinationTable } from './DestinationTable.js';
 import { KpiRow, MiniMap, MiniMapExpand, RulesFileLink } from './NetworkPanels.js';
 import { RulesPanel } from './RulesPanel.js';
@@ -38,6 +39,8 @@ interface PanelContent {
   ownScroll?: boolean;
   /** The panel's share of its column (CSS `flex`); by default panels share it equally. */
   flex?: string;
+  /** What it shows does not depend on the time range (the rules in force, one turn's trace): no "in range" marker. */
+  current?: boolean;
 }
 
 /** A range being read: its span (an open one's length ticks) and how far the server has got. */
@@ -78,6 +81,7 @@ function panelContent(tab: NetTab, id: string, data: NetSessionData, now: number
     case 'network/rules':
       return {
         body: <RulesPanel data={data} now={now} />,
+        current: true,
         count: data.gate.rules ? `${data.gate.rules.active_count} enforced` : undefined,
         actions: <RulesFileLink data={data} />,
       };
@@ -86,11 +90,11 @@ function panelContent(tab: NetTab, id: string, data: NetSessionData, now: number
     case 'topology/path':
       return { body: <SelectedPath data={data} /> };
     case 'trace/trace':
-      return { body: <TraceWaterfall data={data} />, actions: <TraceActions />, ownScroll: true };
+      return { body: <TraceWaterfall data={data} />, actions: <TraceActions />, ownScroll: true, current: true };
     case 'trace/details':
-      return { body: <TraceDetails data={data} /> };
+      return { body: <TraceDetails data={data} />, current: true };
     case 'trace/downloads':
-      return { body: <DownloadsList data={data} />, flex: '0 0 auto' };
+      return { body: <DownloadsList data={data} />, flex: '0 0 auto', current: true };
     default:
       return null;
   }
@@ -108,6 +112,7 @@ function Board({ tab, panels, data }: { tab: NetTab; panels: ReturnType<typeof u
       key={p.id}
       title={p.title}
       count={content?.count}
+      inRange={data.range && !content?.current ? { heading: 'For the time range only', body: 'This panel counts only the traffic in the range set above: bytes are what moved during it.', facts: [formatRange(data.range, now)] } : null}
       actions={content?.actions}
       flex={content?.flex}
       bodyStyle={content?.ownScroll ? { overflow: 'hidden', display: 'flex', flexDirection: 'column' } : undefined}
@@ -265,18 +270,21 @@ export default function NetworkView({ tab, onSend }: { tab: NetTab; onSend: (msg
   const shown = data && data.token === token && (data.range?.key ?? null) === rangeKeyed ? data : null;
   return (
     <div className="net-view" style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, overflow: 'hidden', background: 'var(--bg)' }}>
+      <NetTipHost />
       <GateStrip
         sessions={sessions}
         notObservable={notObservable}
         token={token}
         onPick={setNetToken}
+        range={listed ? netRange : null}
+        onRange={setNetRange}
         data={shown}
         panels={TAB_PANELS[tab]}
         isVisible={panels.isVisible}
         onToggle={panels.toggle}
       />
       {shown && <RulesRejectedBanner data={shown} />}
-      {shown?.range && <RangeBanner range={shown.range} onClear={() => setNetRange(null)} />}
+      {shown?.range && <RangeBanner range={shown.range} />}
       <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>{body}</div>
       <NetNotices data={shown} />
     </div>

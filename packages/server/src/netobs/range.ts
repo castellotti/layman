@@ -73,6 +73,8 @@ export interface RangeContext {
   session: NetSessionFile | null;
   gate: NetGateView | null;
   rules: RulesView | null;
+  /** The live exit's IP: the gate's "this exit since" dates it, not a range's own last exit. */
+  exitIp: string | null;
 }
 
 /** One session's records for one range, clipped, in a store of its own. */
@@ -221,10 +223,12 @@ export class RangeView {
    */
   snapshot(ctx: RangeContext, info: NetRangeInfo): NetSnapshot {
     const s = this.store.snapshot(this.token)!;
+    // A range ending before the exit changed shows its own exit, which the live date is not for.
+    const gate = ctx.gate && s.exit && s.exit.ip !== ctx.exitIp ? { ...ctx.gate, since: { ...ctx.gate.since, exit: null } } : ctx.gate;
     return {
       ...s,
       session: ctx.session ?? s.session,
-      gate: ctx.gate ?? s.gate,
+      gate: gate ?? s.gate,
       rules: ctx.rules ?? s.rules,
       historyTruncated: info.truncated,
       range: info,

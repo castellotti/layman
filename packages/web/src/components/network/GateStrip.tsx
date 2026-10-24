@@ -1,17 +1,22 @@
 /**
  * The 34 px strip under the header on all four network tabs:
- * "GLOVE ·" and the glove session picker, the gate's state as chips, and on the
- * right the tab's Panels chips.
+ * "GLOVE ·" and the glove session picker, the time range (a calendar icon that shows or
+ * hides the range display, and the range, which opens the picker), the gate's state as
+ * chips, and on the right the tab's Panels chips.
  */
-import React from 'react';
-import type { NetNotObservable, NetRangeInfo, NetSessionSummary } from '../../lib/netobs-types.js';
+import React, { useCallback, useEffect, useState } from 'react';
+import type { NetNotObservable, NetRange, NetRangeInfo, NetSessionSummary } from '../../lib/netobs-types.js';
 import { formatRange, rangeGaps, rangeHourly, rangeLead, rangeTitle } from '../../lib/net-range.js';
+import { endedRun, rangeName } from '../../lib/net-picker.js';
 import { useNow } from '../../hooks/useNow.js';
+import { useNetSegments } from '../../hooks/useNetSegments.js';
 import type { NetSessionData } from '../../lib/net-state.js';
 import type { PanelDef } from '../../lib/net-panels.js';
-import { gateChips } from '../../lib/net-format.js';
+import { chipCollapses, gateChips } from '../../lib/net-format.js';
+import { RangePicker } from './RangePicker.js';
 import { REJECTED_TITLE, rejectedAuthor } from '../../lib/net-rules.js';
 import { Chip, NetIcon, type NetIconName } from './netui.js';
+import { TipWrap, tipProps } from './NetTip.js';
 import { useNetStore } from '../../stores/netStore.js';
 
 const bannerButton: React.CSSProperties = {
@@ -31,17 +36,110 @@ function sessionOption(s: NetSessionSummary): string {
   return `${s.live ? '● ' : ''}${parts.join(' · ')}`;
 }
 
-export function GateStrip({ sessions, notObservable, token, onPick, data, panels, isVisible, onToggle }: {
+const DISPLAY_KEY = 'layman.net.rangeDisplay';
+const GAP_KEY = 'layman.net.burstGap';
+
+/** A setting kept per browser, like Panels visibility. */
+function useStored<T extends string | number>(key: string, initial: T, parse: (raw: string) => T | null): [T, (v: T) => void] {
+  const [value, setValue] = useState<T>(() => {
+    let raw: string | null = null;
+    // Reading throws too where storage is blocked (Safari with storage off, a sandboxed frame).
+    try { raw = typeof localStorage === 'undefined' ? null : localStorage.getItem(key); } catch { /* the default, then */ }
+    return (raw === null ? null : parse(raw)) ?? initial;
+  });
+  const set = useCallback((v: T) => {
+    setValue(v);
+    try { localStorage.setItem(key, String(v)); } catch { /* private mode: kept for this page only */ }
+  }, [key]);
+  return [value, set];
+}
+
+/** A range running until now: its length grows, so only this ticks. */
+function RangeText({ range }: { range: NetRange }) {
+  const now = useNow(range.to === null ? 1000 : 3_600_000);
+  return <>{formatRange(range, now)}</>;
+}
+
+/**
+ * The calendar icon, and with the display on, the range (or "All records") as the button that
+ * opens the picker, and ✕ back to All records. With a range set the icon stays lit and its tip
+ * gives the range, so hiding the display never hides that the figures are filtered.
+ */
+function RangeControl({ token, range, onRange, display, setDisplay }: {
+  token: string | null; range: NetRange | null; onRange: (r: NetRange | null) => void; display: boolean; setDisplay: (on: boolean) => void;
+}) {
+  const [anchor, setAnchor] = useState<DOMRect | null>(null);
+  const [gapHours, setGapHours] = useStored(GAP_KEY, 6, (raw) => (Number(raw) >= 1 && Number(raw) <= 24 ? Number(raw) : null));
+  // Asked for only when they are used: by the picker, or to name a range and close a run's.
+  const { segments, error } = useNetSegments(anchor || range ? token : null, gapHours);
+  const name = range ? rangeName(range, segments) : null;
+  const ended = range ? endedRun(range, segments) : null;
+  useEffect(() => { if (ended) onRange(ended); }, [ended?.from, ended?.to]); // eslint-disable-line react-hooks/exhaustive-deps
+  const close = useCallback(() => setAnchor(null), []);
+  const lit = range !== null;
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+      <button type="button" data-range-button="" aria-label={display ? 'Hide the time range' : 'Show the time range'} aria-pressed={display}
+        onClick={() => { setDisplay(!display); setAnchor(null); }}
+        {...tipProps(range
+          ? { heading: 'A time range is set', body: 'Every figure on these tabs is for this range only: bytes are what moved during it.', facts: [`${name ? `${name} · ` : ''}${formatRange(range)}`, rangeTitle(range)] }
+          : { heading: 'All records', body: display ? 'Hide the time range, to make room for the gate’s state.' : 'Show the time range, to choose a run, a day or a span of this session.' })}
+        style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'center', width: 24, height: 24, borderRadius: 5, cursor: 'pointer',
+          border: `1px solid ${lit ? 'var(--info)' : 'var(--border)'}`,
+          background: lit ? 'color-mix(in srgb, var(--info) 22%, transparent)' : 'transparent',
+        }}>
+        <NetIcon name="calendar" color={lit ? 'var(--info)' : 'var(--text-muted)'} strokeWidth={lit ? 1.8 : 1.4} />
+      </button>
+      {display && (
+        <>
+          <button type="button" data-range-button="" aria-haspopup="dialog" aria-expanded={anchor !== null} aria-label="Time range"
+            disabled={token === null}
+            onClick={(e) => setAnchor(anchor ? null : e.currentTarget.getBoundingClientRect())}
+            {...tipProps(range ? { heading: name ?? 'Time range', body: 'Only the traffic in this range: bytes are what moved during it. Click to choose another.', facts: [rangeTitle(range)] } : 'Choose a run, a day or a span of this session')}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 5, height: 24, padding: '0 8px', borderRadius: 5, cursor: 'pointer',
+              fontSize: 10.5, fontFamily: range ? 'var(--font-mono)' : 'var(--font-ui)', whiteSpace: 'nowrap',
+              color: range ? 'var(--text)' : 'var(--text-muted)', background: anchor ? 'var(--bg-selected)' : 'transparent',
+              border: `1px solid ${range ? 'color-mix(in srgb, var(--info) 55%, transparent)' : 'var(--border)'}`,
+            }}>
+            {range ? <>{name && <span style={{ fontFamily: 'var(--font-ui)', fontWeight: 600 }}>{name} ·</span>}<RangeText range={range} /></> : 'All records'}
+            <NetIcon name="chevron" size={10} color="var(--text-faint)" />
+          </button>
+          {range && (
+            <button type="button" aria-label="Show All records" onClick={() => onRange(null)} {...tipProps('Back to All records')} style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'center', width: 20, height: 20, borderRadius: 4, cursor: 'pointer',
+              background: 'transparent', border: 'none',
+            }}>
+              <NetIcon name="close" size={10} color="var(--text-muted)" />
+            </button>
+          )}
+        </>
+      )}
+      {anchor && (
+        <RangePicker anchor={anchor} range={range} segments={segments} segmentsError={error} gapHours={gapHours} setGapHours={setGapHours}
+          onPick={onRange} onClose={close} />
+      )}
+    </div>
+  );
+}
+
+export function GateStrip({ sessions, notObservable, token, onPick, range, onRange, data, panels, isVisible, onToggle }: {
   sessions: NetSessionSummary[];
   notObservable: NetNotObservable[];
   token: string | null;
   onPick: (token: string) => void;
+  /** The range asked for (`netRange`), shown while it loads too. */
+  range: NetRange | null;
+  onRange: (range: NetRange | null) => void;
   data: NetSessionData | null;
   panels: readonly PanelDef[];
   isVisible: (id: string) => boolean;
   onToggle: (id: string) => void;
 }) {
   const known = token !== null && (sessions.some((s) => s.token === token) || notObservable.some((s) => s.token === token));
+  const [display, setDisplay] = useStored<'on' | 'off'>(DISPLAY_KEY, 'on', (raw) => (raw === 'off' || raw === 'on' ? raw : null));
+  const shown = display === 'on';
   return (
     <div style={{
       display: 'flex', alignItems: 'center', gap: 6, height: 34, padding: '0 12px', background: 'var(--bg)',
@@ -70,6 +168,8 @@ export function GateStrip({ sessions, notObservable, token, onPick, data, panels
         )}
       </label>
 
+      <RangeControl token={known ? token : null} range={range} onRange={onRange} display={shown} setDisplay={(on) => setDisplay(on ? 'on' : 'off')} />
+
       {/* The chips give way before the controls do: they shrink and scroll
           sideways (trackpad or shift-wheel) while the Panels chips stay whole.
           The loud chips come first, so they are the last to be clipped. */}
@@ -85,13 +185,13 @@ export function GateStrip({ sessions, notObservable, token, onPick, data, panels
         {data && gateChips(data).map((c) => (
           c.key === 'cut' ? (
             <span key={c.key} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
-              <Chip tone={c.tone} icon={c.icon} label={c.label} title={c.title} strong />
+              <Chip tone={c.tone} icon={c.icon} label={c.label} tip={c.tip} strong />
               <button type="button" disabled={data.rules.control.state !== 'ok'} onClick={() => useNetStore.getState().applyRules({ kind: 'restoreAll' })}
                 style={{ height: 20, padding: '0 8px', borderRadius: 10, fontSize: 10.5, cursor: 'pointer', fontFamily: 'var(--font-ui)', color: 'var(--net-tunnel)', background: 'rgba(53,201,180,0.12)', border: '1px solid rgba(53,201,180,0.45)' }}>
                 Restore
               </button>
             </span>
-          ) : <Chip key={c.key} tone={c.tone} icon={c.icon} label={c.label} title={c.title} strong={c.key === 'direct'} />
+          ) : <Chip key={c.key} tone={c.tone} icon={c.icon} label={c.label} tip={c.tip} strong={c.key === 'direct'} compact={shown && chipCollapses(c)} />
         ))}
       </div>
 
@@ -104,7 +204,7 @@ export function GateStrip({ sessions, notObservable, token, onPick, data, panels
               key={p.id}
               type="button"
               aria-pressed={on}
-              title={`Show or hide the ${p.chip} panel`}
+              data-tip={`Show or hide the ${p.chip} panel`}
               onClick={() => onToggle(p.id)}
               style={{
                 display: 'flex', alignItems: 'center', gap: 4, height: 24, padding: '0 7px', fontSize: 10.5,
@@ -123,37 +223,28 @@ export function GateStrip({ sessions, notObservable, token, onPick, data, panels
   );
 }
 
-/** A range running until now: its length grows, so only this ticks. */
-function OpenSpan({ range }: { range: NetRangeInfo }) {
-  const now = useNow(1000);
-  return <>{formatRange(range, now)}</>;
-}
-
 /**
- * A time range is shown: pinned under the strip on every network tab, so figures
- * for one window are never read as All records. Says what the range could not
- * cover (`rangeGaps`), and goes back to All records.
+ * What a time range could not cover, pinned under the strip on every network tab: what glove
+ * deleted or a scan skipped (`rangeGaps`), the part from Layman's hourly history, and a start
+ * before the session's. Nothing when the range is whole: the span itself is in the strip.
  */
-export function RangeBanner({ range, onClear }: { range: NetRangeInfo; onClear: () => void }) {
+export function RangeBanner({ range }: { range: NetRangeInfo }) {
   const gaps = rangeGaps(range);
   const notes = [rangeLead(range), rangeHourly(range)].filter(Boolean).join(' ');
+  if (!gaps.length && !notes) return null;
   return (
-    <div role="status" style={{
+    <div role="status" aria-label="Range coverage" style={{
       display: 'flex', alignItems: 'center', gap: 10, padding: '6px 12px', flexShrink: 0, fontFamily: 'var(--font-ui)',
       fontSize: 11.5, borderBottom: '1px solid var(--border)',
       background: 'color-mix(in srgb, var(--info) 8%, transparent)', color: 'var(--text-body)',
     }}>
-      <NetIcon name="clock" color="var(--info)" />
-      <span title={rangeTitle(range)} style={{ fontFamily: 'var(--font-mono)', color: 'var(--text)' }}>
-        {range.to === null ? <OpenSpan range={range} /> : formatRange(range)}
-      </span>
-      <span style={{ color: 'var(--text-faint)' }}>Only the traffic in this range: bytes are what moved during it.{notes ? ` ${notes}` : ''}</span>
+      <NetIcon name="calendar" color="var(--info)" />
+      {notes && <span style={{ color: 'var(--text-faint)' }}>{notes}</span>}
       {gaps.length > 0 && (
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: 'var(--warn)' }}>
           <NetIcon name="alert" color="var(--warn)" />{gaps.join(' ')}
         </span>
       )}
-      <button type="button" onClick={onClear} style={{ ...bannerButton, height: 22, marginLeft: 'auto' }}>All records</button>
     </div>
   );
 }
@@ -199,14 +290,18 @@ export function RulesRejectedBanner({ data }: { data: NetSessionData }) {
             status.json · rules.ok false{rules.loaded_at ? ` · last good load ${rules.loaded_at}` : ''}
           </div>
         </div>
-        <button type="button" disabled={!canRevert} title={canRevert ? 'Write back the rules the gate is enforcing' : 'Layman has not seen the file the gate is enforcing'}
-          onClick={() => useNetStore.getState().applyRules({ kind: 'revert' })} style={bannerButton}>
-          <NetIcon name="direct" />Revert to enforced rules
-        </button>
-        <button type="button" disabled={!canRetry} title={canRetry ? 'Write rules.json again, handed to the gate’s user' : control ?? 'The file on disk is invalid'}
-          onClick={() => useNetStore.getState().applyRules({ kind: 'rewrite' })} style={{ ...bannerButton, color: '#FF8A80', border: '1px solid rgba(240,86,74,0.6)', background: 'transparent' }}>
-          Try again
-        </button>
+        <TipWrap tip={canRevert ? 'Write back the rules the gate is enforcing' : 'Layman has not seen the file the gate is enforcing'} disabled={!canRevert}>
+          <button type="button" disabled={!canRevert}
+            onClick={() => useNetStore.getState().applyRules({ kind: 'revert' })} style={bannerButton}>
+            <NetIcon name="direct" />Revert to enforced rules
+          </button>
+        </TipWrap>
+        <TipWrap tip={canRetry ? 'Write rules.json again, handed to the gate’s user' : control ?? 'The file on disk is invalid'} disabled={!canRetry}>
+          <button type="button" disabled={!canRetry}
+            onClick={() => useNetStore.getState().applyRules({ kind: 'rewrite' })} style={{ ...bannerButton, color: '#FF8A80', border: '1px solid rgba(240,86,74,0.6)', background: 'transparent' }}>
+            Try again
+          </button>
+        </TipWrap>
         <button type="button" aria-expanded={open} onClick={() => setOpen((o) => !o)} style={{
           display: 'inline-flex', alignItems: 'center', gap: 6, height: 26, padding: '0 10px', borderRadius: 6,
           fontSize: 11.5, fontWeight: 500, whiteSpace: 'nowrap', background: 'var(--bg-pill)',

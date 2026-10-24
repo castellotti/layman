@@ -18,7 +18,7 @@ check('legend credits the database', await waitFor(async () => /IP geolocation: 
 check('sandbox card: local links and unwatched', /LLM · local/.test(await page.$eval('section[aria-label="This sandbox"]', (s) => s.innerText)) && /browser · not watched/.test(await page.$eval('section[aria-label="This sandbox"]', (s) => s.innerText)));
 
 // Select from a pin
-await page.click('g[data-pin]:has(title:text-matches("Amsterdam"))');
+await page.click('g[data-pin][data-tip-heading*="Amsterdam"]');
 check('clicking a pin selects it (URL dest=)', await waitFor(async () => page.url().includes('dest=en.wikipedia.org')), page.url());
 const detail = await page.$eval('section[aria-label="Details"]', (s) => s.innerText);
 check('detail card: totals, asked-for, connection', /SENT/.test(detail) && /AGENT ASKED FOR/.test(detail) && /CONNECTION/.test(detail) && /resolved inside the tunnel/.test(detail) && /Amsterdam, NL/.test(detail), detail.replace(/\n/g, ' | ').slice(0, 200));

@@ -323,6 +323,27 @@ old, falling back to `status.json`'s mtime for a gate that writes no `t`), route
 (verified only while the latest exit is healthy; with `exit_identity: "none"` "declared" is expected,
 not an error), resolver, rules load result, telemetry, and unobserved services.
 
+**Since when** (`gateSince()`, `NetGateView.since`). The strip's tooltips say when the gate, the route,
+the exit IP and the resolver became what they are. Each is dated by the glove record that says so,
+whether Layman saw the change live or reads it back after a restart, so the two give the same date and
+neither says "since Layman started":
+- a running gate since its collector run's start record. A new `glove up` is a new run id, so it is
+  running since its own start, not the previous run's;
+- a stale gate since its last heartbeat (the clock, not a record, turns it stale), and a stopped one
+  since its run's stop;
+- a verified exit since the first record of its unbroken healthy streak, and the exit IP since its
+  first record in a row. The upstream's own health is not part of "verified since": glove reports it
+  with no time, and a blip would re-date it.
+
+A streak that runs back to the oldest exit record Layman holds is shown as "at least since", because
+older records may have expired. A change no record dates (the resolver's health) is dated when Layman
+saw it, and is left out after a restart. A time range shows its own last exit, so the live "this exit
+since" is left out of a range whose exit is not the live one.
+
+Where nothing says (the resolver's health has no record), there is no "since": a tip leaves it out
+rather than guess. `exact: false` reads "at least since" and is reserved for a date that is only a lower
+bound. It is pure and tested at each transition and after a restart (`gate-since.test.ts`).
+
 `gate_lost` is the tenth state, from glove's follow-up: an unclosed flow whose forwarder has gone (next
 section). It is not "open" in any sense the UI means, so `totals.openFlows` and a destination's
 `openFlows` leave it out and `totals.gateLost` counts it. `status.json`'s `rules` also carries glove's
@@ -576,6 +597,28 @@ elsewhere) active only while the group is shown. The Network label carries a dot
 *running* gate reports rejected rules or has carried untunnelled traffic, teal while any gate runs,
 nothing for finished sessions (their history is not an alarm).
 
+- **Tooltips** (`components/network/NetTip.tsx`). One host, mounted by `NetworkView`, shows a tip for
+  any element with `data-tip` (and `data-tip-heading`, `data-tip-facts`, written by `tipProps`), SVG
+  elements included. It replaced the browser's `title` everywhere in these tabs, because a native
+  title appears after about a second, cannot be styled, and never appears on keyboard focus: the
+  strip's chips read as unexplained labels. A tip appears 120 ms after hover (long enough not to
+  flicker across a row of chips), at once on keyboard focus, and goes on Escape or a click; the
+  element gets `aria-describedby` while it shows. Details that bit:
+  - **Keyboard focus only** (`:focus-visible`). A click focuses what it hits; showing on that focus
+    brought back the tip the click had just dismissed, over the popover the click opened.
+  - **It follows its element.** It re-reads the element four times a second and on scroll, so a chip
+    that relabels itself is not described by its old words, a tip whose element is gone goes with it,
+    and a chip scrolled into view by focus keeps its tip.
+  - **Disabled controls** (`TipWrap`). A disabled button takes no focus and, in some browsers, no
+    pointer events, so its reason sits on a wrapper that is focusable while the control is disabled.
+  - **It fits.** On whichever side has more room, no taller than that room, with long text and facts
+    cut short.
+
+  The words live with the data, not in components: each gate chip's `tip` (a heading, a plain
+  sentence, then its facts) in `gateChips()`, and the Topology legend's in `TOPOLOGY_LEGEND`, both in
+  `lib/net-format.ts` beside `NET_LEGEND`. The rules chip states only the default the gate *enforces*
+  (`rules.enforced`), never Layman's write or a guess. The legend names the diagram's band kinds and
+  takes its colours from the diagram's own table (`BAND`), so the two cannot drift.
 - **Data and selection live apart.** The network data is in `stores/netStore.ts`, fed by
   `lib/net-state.ts` (a pure reducer, so it is tested in node), because deltas arrive up to twice a
   second and nothing outside these tabs should re-render on them. *Which* glove session and *which*
@@ -601,12 +644,46 @@ nothing for finished sessions (their history is not an alarm).
   rules apply to every range. Until the ranged snapshot arrives the view says it is reading glove's
   files, with the scan's progress; a `net:range:error` is shown with a way back to All records. Both
   carry the range they are for, so one range's progress or error never shows under another, even for
-  the frame before the new subscription clears them. While a range is shown, a banner under the strip
-  gives its span in local time (UTC on hover; an open range's length ticks), says the figures are only
-  the traffic in it, and names what it leaves out (`rangeGaps`): traffic glove deleted (its files start
-  after the session did), or a scan cut short by its budget, said as skipped, not deleted. A range
-  that merely starts before the session says when the session began, as information rather than a
-  warning. So a window is never read as All records.
+  the frame before the new subscription clears them. A banner under the strip names what a range
+  leaves out (`rangeGaps`): traffic glove deleted (its files start after the session did), or a scan
+  cut short by its budget, said as skipped, not deleted. It also says when the part from Layman's
+  hourly history begins. A range that merely starts before the session says when the session began, as
+  information rather than a warning. A range covered in full has no banner: its span is in the strip.
+- **Range bar** (`GateStrip.tsx` → `RangeControl`, picker in `RangePicker.tsx`, arithmetic in
+  `lib/net-picker.ts`, tested). A calendar icon follows the session picker. It shows or hides the range
+  display (kept per browser, `layman.net.rangeDisplay`, shown by default). With a range set it stays lit,
+  and its tip gives the range, so hiding the display never hides that the figures are filtered. The
+  display is the range in local time with seconds ("Run 18 · Oct 21 00:27:03 → …", named when it is
+  exactly a run; UTC in the tip; an open range's length ticks), or "All records", and ✕ back to All
+  records. While the display is shown the routine gate chips shrink to their icons (`chipCollapses`): the
+  label leads the tip's facts, so nothing is lost. A chip in a warning or error tone is an alarm (traffic
+  cut, untunnelled flows, rules rejected, a stale gate, a direct route) and never shrinks, nor does
+  History only. Each panel whose figures depend on the range is marked IN RANGE in its header, so a
+  panel read on its own is not taken for All records. The Rules and Trace panels are not marked: they
+  show the rules in force and one turn.
+  - **The picker** opens from the range display and stays open while one range after another is
+    tried. *Runs & sessions* lists the segments newest first, with flows and bytes: runs (numbered from
+    the first, with how each ended), bursts (the split gap chosen there, 1–24 h, kept per browser) and
+    agent sessions. *Calendar* draws a Monday-first month, each day shaded by its flows on a log scale (so
+    one busy day does not blank the rest), from the segments' hours. A click sets that day; shift-click
+    extends the range to the day clicked. Today's day, and any range reaching now, stays open. Presets
+    (last hour, last 24 h, today, this or the last run) and `datetime-local` start and end fields (to the
+    second; an empty end is now) complete it. *Timeline* is the session's hours as bars, model calls in
+    the tunnel colour, run edges as ticks and agent sessions as dots. A drag across it sets a range,
+    each edge snapping to the nearest run or agent-session edge within 8 px. A drag reaching now on a live
+    session stays open. *All records* is always one click away. Presets are relative to when the picker
+    opened, so the one picked stays marked, and the start and end fields follow the range however it was
+    set, so Apply never restores an old one. A range picked while its run was up (`{ from: run start,
+    to: now }`) is closed to the run's end once the run ends (`endedRun`). Left open, it would grow into
+    the next run while the strip still read it as that run's figures. The segments are fetched only while
+    they are used: the picker is open, or a range is set (to name it and to close a run's).
+  - **Trace** counts and steps through only the turns that began in the range ("TURN 2 OF 5 IN RANGE"),
+    and opens on the range's latest. The trace route takes `from`/`to` in ms. A turn opened by id from
+    outside (a detail card's "Open in Trace") is still shown, marked as outside the range, with arrows
+    back into it. Which flows a turn owns does not change: its window still ends at the next prompt.
+    A range with no turn says so. A new range opens on its own latest turn rather than keep one picked
+    under the last. The route refuses an empty `from`, which `Number` would read as the epoch, and a
+    `to` without a `from`.
 - **Subscription.** The view subscribes the socket to the shown session, re-subscribes after a
   reconnect (the server forgets subscriptions with the socket) and unsubscribes when the tabs close, so a
   dashboard that is not looking stops receiving deltas.

@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import type { TimelineEvent, PendingApprovalDTO, LaymanConfig, SessionStatus, SetupStatus, BookmarkFolder, Bookmark, HighlightFolder, Highlight, SessionTimeMetrics, SessionAccessLog, SessionMetrics, DriftState, LiveStream, ResolvedId, SyncStatus, HostStats } from '../lib/types.js';
 import type { SessionInfo } from '../lib/ws-protocol.js';
 import type { NetRange } from '../lib/netobs-types.js';
-import { rangeKey } from '../lib/net-state.js';
+import { rangeKey, sameRange } from '../lib/net-state.js';
 import type { LaymanRoute, RouteOptions, ViewName } from '../lib/layman-url.js';
 import { extractTurn } from '../lib/turns.js';
 import { pairFor } from '../lib/event-pairing.js';
@@ -25,11 +25,6 @@ export const NETWORK_VIEW_MODES: readonly ViewMode[] = ['network', 'map', 'topol
 
 export function isNetworkView(mode: ViewMode): boolean {
   return (NETWORK_VIEW_MODES as readonly string[]).includes(mode);
-}
-
-/** Whether two time ranges (or All records, null) are the same: the same `rangeKey`, as the server tells them apart. */
-function sameRange(a: NetRange | null, b: NetRange | null): boolean {
-  return (a ? rangeKey(a) : null) === (b ? rangeKey(b) : null);
 }
 
 // ─── Expanding-interface layout state ──────────────────────────────────────

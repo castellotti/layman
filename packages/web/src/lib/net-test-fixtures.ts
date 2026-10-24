@@ -8,7 +8,8 @@ export const gate = (over: Partial<NetGateView> = {}): NetGateView => ({
   route: { kind: 'vpn', verified: true, exitIdentityOff: false, upstreamHealthy: true },
   resolver: { mode: 'in-tunnel', healthy: true, name: 'dns://gluetun:53' },
   rules: { loaded_at: '2026-09-23T14:14:47.630Z', source_mtime: null, ok: true, error: null, active_count: 1, sha256: null, last_rejected: null },
-  telemetry: { written: 83, dropped: 0, invalid: 0, rotations: 0 }, unwatchedServices: [], ...over,
+  telemetry: { written: 83, dropped: 0, invalid: 0, rotations: 0 }, unwatchedServices: [],
+  since: { gate: null, route: null, exit: null, resolver: null }, ...over,
 });
 
 export const totals = (over: Partial<NetTotals> = {}): NetTotals => ({

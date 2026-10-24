@@ -134,7 +134,7 @@ function Policy({ data, d }: { data: NetSessionData; d: DestinationAggregate }) 
         <span style={{ fontSize: 10.5, color: 'var(--text-faint)' }}>{pending ? 'waiting for the gate' : badge.sub}</span>
       </div>
       {d.state !== 'guard' && host && v && (
-        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }} title={disabled ?? undefined}>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }} data-tip={disabled ?? undefined}>
           {v.action === 'allow' && (
             <>
               <button type="button" disabled={!!disabled} onClick={() => apply({ kind: 'blockHost', host, terminate: false })} style={buttonStyle('danger')}>

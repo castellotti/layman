@@ -7,7 +7,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNetStore } from '../../stores/netStore.js';
 import { useSessionStore } from '../../stores/sessionStore.js';
-import { formatBytes } from '../../lib/net-format.js';
+import { TOPOLOGY_BAND_WIDTH_TIP, TOPOLOGY_LEGEND, formatBytes } from '../../lib/net-format.js';
 import type { NetSessionData } from '../../lib/net-state.js';
 import { controlDisabledReason, siblingIds } from '../../lib/net-rules.js';
 import { toolLabel } from '../../lib/net-table.js';
@@ -15,6 +15,7 @@ import { layoutTopology, pathHops, type BandKind, type HopEvidence, type LineTon
 import { buttonStyle } from './ControlPopover.js';
 import { Badge, Tile } from './DetailCard.js';
 import { NetIcon } from './netui.js';
+import { tipProps } from './NetTip.js';
 
 const BAND: Record<BandKind, { colour: string; opacity: number }> = {
   tunnel: { colour: 'var(--net-tunnel)', opacity: 0.55 },
@@ -64,18 +65,14 @@ function useSize(ref: React.RefObject<HTMLDivElement>): { w: number; h: number }
 }
 
 export function TopologyLegend() {
-  const item = (colour: string, label: string) => (
-    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, whiteSpace: 'nowrap' }}>
-      <span style={{ width: 14, height: 3, borderRadius: 2, background: colour }} />{label}
-    </span>
-  );
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 10.5, color: 'var(--text-body)', overflow: 'hidden', minWidth: 0 }}>
-      {item('var(--net-tunnel)', 'Tunnelled')}
-      {item('var(--net-fanout)', 'SearXNG fan-out')}
-      {item('var(--net-local)', 'Local')}
-      {item('var(--warn)', 'Refused / blocked')}
-      <span style={{ color: 'var(--text-faint)', whiteSpace: 'nowrap' }}>Band width: bytes (square root)</span>
+      {TOPOLOGY_LEGEND.map((l) => (
+        <span key={l.label} {...tipProps({ heading: l.label, body: l.tip })} tabIndex={0} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, whiteSpace: 'nowrap' }}>
+          <span style={{ width: 14, height: 3, borderRadius: 2, background: BAND[l.bands[0]].colour }} />{l.label}
+        </span>
+      ))}
+      <span {...tipProps(TOPOLOGY_BAND_WIDTH_TIP)} tabIndex={0} style={{ color: 'var(--text-faint)', whiteSpace: 'nowrap' }}>Band width: bytes (square root)</span>
     </div>
   );
 }
@@ -100,14 +97,13 @@ function Node({ n, selected, onSelect }: { n: TopoNode; selected: boolean; onSel
   const stroke = selected ? 'var(--info)' : STROKE[n.tone];
   if (n.kind === 'dest' || n.kind === 'more') {
     return (
-      <g {...common} data-node={n.id}>
+      <g {...common} {...tipProps(n.kind === 'more' ? { heading: n.title, body: n.hosts.join('\n') } : n.title)} data-node={n.id}>
         <rect x={n.x} y={n.y} width={n.w} height={n.h} rx={4} fill={selected ? 'rgba(90,156,248,0.10)' : 'var(--bg-card)'}
           stroke={stroke} strokeWidth={selected ? 1.5 : 1} strokeDasharray={n.dashed ? '3 3' : undefined} />
         <text x={n.x + 8} y={n.y + n.h / 2 + 4} fontSize={11} fontFamily="var(--font-mono)" fill={n.kind === 'more' ? 'var(--text-muted)' : n.tone === 'direct' ? '#FF8A80' : 'var(--text)'}>
           {clip(n.title, n.w - (n.live ? 22 : 14))}
         </text>
         {n.live && <circle cx={n.x + n.w - 7} cy={n.y + n.h / 2} r={2.5} fill="var(--net-tunnel)" />}
-        <title>{n.kind === 'more' ? n.hosts.join('\n') : n.title}</title>
       </g>
     );
   }
@@ -162,9 +158,8 @@ export function TopologyDiagram({ data }: { data: NetSessionData }) {
         {b.hosts.length > 0 && (
           // A wider invisible stroke so a thin band is still easy to click.
           <path d={b.d} fill="none" stroke="transparent" strokeWidth={Math.max(10, b.width)} style={{ cursor: 'pointer' }}
-            onClick={() => select(b.hosts)}>
-            <title>{`${b.hosts.slice(0, 6).join(', ')}${b.hosts.length > 6 ? ` +${b.hosts.length - 6}` : ''}${b.bytes ? ` · ${formatBytes(b.bytes)}` : ''}`}</title>
-          </path>
+            onClick={() => select(b.hosts)}
+            {...tipProps(`${b.hosts.slice(0, 6).join(', ')}${b.hosts.length > 6 ? ` +${b.hosts.length - 6}` : ''}${b.bytes ? ` · ${formatBytes(b.bytes)}` : ''}`)} />
         )}
         {b.label && (
           <text x={b.label.x} y={b.label.y} fontSize={10} fontFamily="var(--font-mono)" textAnchor={b.label.anchor}
@@ -266,7 +261,7 @@ export function SelectedPath({ data }: { data: NetSessionData }) {
         <Tile label="SENT" value={formatBytes(d.bytesUp)} colour="var(--net-up)" icon="up" />
         <Tile label="RECEIVED" value={formatBytes(d.bytesDown)} colour="var(--net-down)" icon="down" />
       </div>
-      <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }} title={disabled ?? undefined}>
+      <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }} data-tip={disabled ?? undefined}>
         {d.host && d.state !== 'guard' && v?.action === 'allow' && (
           <button type="button" disabled={!!disabled} onClick={() => apply({ kind: 'blockHost', host: d.host!, terminate: false })} style={buttonStyle('danger')}>
             <NetIcon name="blocked" color="#FF8A80" />Block {d.host}

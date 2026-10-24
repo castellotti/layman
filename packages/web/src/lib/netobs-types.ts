@@ -484,6 +484,28 @@ export interface NetGateView {
   telemetry: { written: number; dropped: number; invalid: number; rotations: number } | null;
   /** Declared services with `observed: false`: routes off the sandbox with no visibility. */
   unwatchedServices: string[];
+  /** When each part last changed (`gateSince`), for the strip's tooltips; null where nothing says. */
+  since: GateSince;
+}
+
+/**
+ * A moment something became what it is. `exact` false means "at least since": Layman did not see
+ * it change and no record says when it did (a restart, with the record that would tell rotated away).
+ */
+export interface SinceAt {
+  t: number;
+  exact: boolean;
+}
+
+export interface GateSince {
+  /** The gate's state (`freshness`): running since its run started, stale since its last heartbeat. */
+  gate: SinceAt | null;
+  /** The route as shown: its kind and whether its exit is verified (not its upstream's health, which glove does not date). */
+  route: SinceAt | null;
+  /** The current exit IP. */
+  exit: SinceAt | null;
+  /** The resolver's mode and health. */
+  resolver: SinceAt | null;
 }
 
 /**
@@ -834,6 +856,11 @@ export interface TraceNav {
   /** Prompt event ids of the turns either side, for the arrows. */
   prev: string | null;
   next: string | null;
+  /**
+   * With a time range, the turns counted are those that began in it; true when the shown turn
+   * (asked for by id) began outside it, so `index` is -1 and the arrows lead back into it.
+   */
+  outside?: boolean;
 }
 
 export interface TraceView {
@@ -852,6 +879,63 @@ export interface TraceView {
   /** Every flow the items and `unattributed` name. */
   flows: FlowView[];
   counts: TraceCounts;
+}
+
+// ─── Segments: ready-made time ranges (`segments.ts`) ─────────────────────────
+
+export interface RunSegment {
+  run: string;
+  from: number;
+  /** Null while it runs. */
+  to: number | null;
+  /** How it ended: glove down, the collector's inferred stop, the next run starting, or not yet. */
+  end: 'stopped' | 'died' | 'replaced' | null;
+  bytesUp: number;
+  bytesDown: number;
+  flows: number;
+}
+
+export interface BurstSegment {
+  from: number;
+  to: number;
+  /** The run it is in, or null for records from before any collector run (an older gate). */
+  run: string | null;
+  bytesUp: number;
+  bytesDown: number;
+  flows: number;
+}
+
+export interface AgentSegment {
+  sessionId: string;
+  from: number;
+  to: number;
+  turns: number;
+  /** Times from the transcript; false when only read times were kept, which can lag. */
+  exact: boolean;
+}
+
+/** One hour of the session's activity, its hops' bytes left out (counted at the next leg). */
+export interface HourActivity {
+  hour: number;
+  bytesUp: number;
+  bytesDown: number;
+  flows: number;
+  blocked: number;
+  first: number;
+  last: number;
+  /** The agent called its model in this hour. */
+  inference: boolean;
+}
+
+export interface NetSegments {
+  token: string;
+  gapMs: number;
+  /** What bursts were found from: model calls, or (with none observed) all traffic. */
+  burstBasis: 'inference' | 'traffic';
+  runs: RunSegment[];
+  bursts: BurstSegment[];
+  agentSessions: AgentSegment[];
+  hours: HourActivity[];
 }
 
 // ─── WebSocket frames (mirror of NetServerMessage in netobs/index.ts) ────────

@@ -543,6 +543,7 @@ export class NetObs {
       session: this.store.sessionFile(token),
       gate: this.store.gate(token),
       rules: this.store.rules(token),
+      exitIp: this.store.exit(token)?.ip ?? null,
     }, entry.info!);
   }
 

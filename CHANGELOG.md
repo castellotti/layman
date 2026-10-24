@@ -2,6 +2,35 @@
 
 ## Unreleased
 
+- **Network views: the range bar.** A calendar icon in the glove strip shows or hides the time range. With a range set it stays lit, and its tip gives the range. The range shows in local time to the second ("Run 18 · Oct 21 00:27:03 → …", UTC in its tip), with ✕ back to All records. Clicking it opens a picker with three tabs. **Runs & sessions** lists runs, bursts (split gap 1–24 h) and agent sessions, newest first, with flows and bytes. **Calendar** shades days by activity and has presets and start/end fields. **Timeline** is a brush over the session's hours that snaps to run and agent-session edges. While the range shows, the routine gate chips shrink to icons with their full tips. Alarms (traffic cut, untunnelled flows, rules rejected, a stale gate, a direct route) always stay full chips. Panels whose figures depend on the range are marked IN RANGE. Trace steps only through the turns begun in the range (`/trace?from=&to=`). The range banner now appears only when a range leaves something out. Design: `docs/extensions/glove.md` → "The client shell".
+  - **Browser check.** `e2e/network/range.mjs` now drives the picker (a run, a preset, the fields, a timeline drag, All records), the display toggle and its persistence, and Trace in a range. With `--gate`, `netobs-replay.ts` now writes a collector start and stop record around each pass, as `glove up`/`glove down` do, so the fixture has runs to pick.
+  - **Review fixes.**
+    - A failed segments request no longer shows the previous session's runs, and storage that refuses reads no longer crashes the tabs.
+    - A range picked during a run closes when the run ends, so it never grows into the next one.
+    - The picked preset stays marked, and the calendar's fields follow the range.
+    - A cancelled timeline drag leaves no brush behind.
+    - Segments are fetched only while the picker is open or a range is set.
+    - A new range opens Trace on its latest turn.
+    - `/trace` refuses an empty `from` or a lone `to`.
+    - Runs are numbered by one helper.
+
+- **Network views: when the gate and the route last changed.** The gate chip's tooltip says how long it has been running ("Running since Oct 21 00:27:03 (5 h ago)"), and the VPN chip says since when its exit is verified and since when the exit IP is the current one. A change Layman sees is dated as it happens. After a restart the dates come from glove's own records: the run's start, the exit records, the last heartbeat. They are never "since Layman started". Where no record says, the tip leaves the date out rather than guess. Review fixes: a change seen live is dated by its record too, so a date no longer shifts when Layman restarts. A new `glove up` re-dates the gate, and a stale gate is dated by its last heartbeat. An upstream blip no longer re-dates "verified since". A streak reaching the oldest record held reads "at least since". A history-only session is dated from its kept run, and a range whose exit is not the live one leaves out the live exit's date. An age is never negative. Design: `docs/extensions/glove.md` → "States".
+
+- **Network views: tooltips that say what things mean.** Every glove widget's tooltip is now Layman's own, not the browser's `title`. A tip shows almost at once on hover and at once on keyboard focus, and Escape dismisses it. The native one took about a second, could not be styled, and never showed on focus. Design: `docs/extensions/glove.md` → "The client shell".
+  - **Gate chips in plain words.** Each chip's tip has a heading, a sentence for someone who has never read glove's docs, then its facts. "No rules" explains that glove's guard still refuses private addresses and cloud metadata, and what the default does. "Record: metadata" says glove records who connected where, when and how much, not URLs. "Resolver in-tunnel" says your DNS provider never sees what the sandbox visits.
+  - **Topology explains itself.** The legend's colours and band width have tips, as do destinations, "+N more" boxes, bands and Map pins. The words live in `lib/net-format.ts` beside the state legend.
+  - **Review fixes.**
+    - A click dismisses a tip, and the focus it gives no longer brings the tip back.
+    - A shown tip follows its element: a relabelled chip updates, and a tip whose element is gone goes too.
+    - A disabled control's reason is on a focusable wrapper, so keyboard users get it.
+    - Tall tips fit the window.
+    - The rules tip states only the default the gate enforces.
+    - The resolver tip no longer says "VPN" on other routes.
+    - "Not running" is no longer described as an orderly glove down.
+    - An unknown record mode is not called metadata-only.
+    - The Topology legend takes its colours from the diagram and names what each one is: direct, refused, and guard or broken.
+  - **Browser checks.** A new `tips` check covers hover, keyboard focus, Escape and the legend. `trace` now runs before `control`. Its "Cut all traffic" step left a replayed turn with 10 blocked calls, and `trace` failed on `main` too.
+
 - **Network views: time ranges on the server** (first part; no UI yet). A glove session's network data can now be asked for over one time window: `net:subscribe { token, range: { from, to } }`, with `to: null` for "until now". Without a range nothing changes. Design: `docs/extensions/glove.md` → "Time ranges".
   - **Why on the server.** Topology and the other tabs add up a session's whole history, across every `glove up`. Narrowing that to one run or one exchange cannot be a filter on what Layman holds. Memory keeps only the newest 64 MB of glove's files, and what Layman keeps of older traffic is per hour, with no flows. A range is therefore read from glove's files into a fresh store, so it is counted by the same code as All records.
   - **Bytes in a range are what moved during it.** A connection opened before the range and reused during it counts only its traffic in the range. The scan starts an hour early to find each open connection's bytes at the start.

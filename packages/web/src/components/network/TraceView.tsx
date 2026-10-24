@@ -12,23 +12,26 @@ import { create } from 'zustand';
 import { useNetStore } from '../../stores/netStore.js';
 import { useSessionStore } from '../../stores/sessionStore.js';
 import { formatBytes, NET_STATE_INFO } from '../../lib/net-format.js';
-import type { NetSessionData } from '../../lib/net-state.js';
+import { rangeKey, type NetSessionData } from '../../lib/net-state.js';
 import { controlDisabledReason, siblingIds, toggleFor } from '../../lib/net-rules.js';
 import { clockTime, destinationRow, guardReason } from '../../lib/net-table.js';
 import { buildPath } from '../../lib/layman-url.js';
 import { callForFlow, defaultSelection, fileName, tickLabel, traceAxis, traceRows, type Tone, type TraceIcon, type TraceRow } from '../../lib/net-trace.js';
-import { isLanOnlyRule, type FlowView, type RulesOp, type TraceDownload, type TraceView } from '../../lib/netobs-types.js';
+import { isLanOnlyRule, type FlowView, type NetRange, type RulesOp, type TraceDownload, type TraceView } from '../../lib/netobs-types.js';
 import { useNow } from '../../hooks/useNow.js';
 import { fetchTrace, pollSettled, useNetDownloads } from '../../hooks/useNetTrace.js';
 import { buttonStyle, ControlPopover } from './ControlPopover.js';
 import { NetToggle } from './cells.js';
 import { Row, SectionHead } from './DetailCard.js';
 import { EmptyState, NetIcon, type NetIconName } from './netui.js';
+import { TipWrap } from './NetTip.js';
 
 // ─── Shared state ─────────────────────────────────────────────────────────────
 
 interface TraceState {
   token: string | null;
+  /** The range the turn was chosen under (`from-to`), or undefined before any: a new range opens on its latest turn. */
+  rangeKey?: string | null;
   /** The turn asked for; null follows the latest. */
   turnId: string | null;
   view: TraceView | null;
@@ -48,15 +51,23 @@ const useTrace = create<TraceState>((set) => ({
 /** Refreshes while the tab is open: new flows arrive over the socket, new turns only through the API. */
 const REFRESH_MS = 3000;
 
-function useTraceData(token: string) {
+function useTraceData(token: string, range: NetRange | null) {
   const turnId = useTrace((s) => s.turnId);
   const set = useTrace((s) => s.set);
   useEffect(() => {
     if (useTrace.getState().token !== token) set({ token, turnId: null, view: null, selected: null, toggled: new Set(), error: null });
   }, [token, set]);
-  useEffect(() => pollSettled((live) => fetchTrace(token, turnId ? { turn: turnId } : null)
+  const from = range?.from ?? null;
+  const to = range?.to ?? null;
+  useEffect(() => {
+    const key = from === null ? null : rangeKey({ from, to });
+    const prev = useTrace.getState().rangeKey;
+    // A new range (not the first one seen) goes to its latest turn.
+    if (prev !== key) set({ rangeKey: key, ...(prev !== undefined && { turnId: null, view: null, selected: null, toggled: new Set<string>() }) });
+  }, [from, to, set]);
+  useEffect(() => pollSettled((live) => fetchTrace(token, turnId ? { turn: turnId } : null, from === null ? null : { from, to })
     .then((v) => { if (live()) set({ view: v, error: null }); })
-    .catch((e: Error) => { if (live()) set({ error: e.message }); }), REFRESH_MS), [token, turnId, set]);
+    .catch((e: Error) => { if (live()) set({ error: e.message }); }), REFRESH_MS), [token, turnId, from, to, set]);
 }
 
 /** Show one turn in the Trace tab with one flow selected: the detail card's "Open in Trace". */
@@ -77,16 +88,21 @@ function Chip({ tone, icon, children }: { tone: 'neutral' | 'warn' | 'error' | '
   );
 }
 
+const TURN_NOTE: React.CSSProperties = { margin: '8px 8px 0', padding: '10px 14px', fontSize: 11.5, color: 'var(--text-muted)' };
+
 export function TurnBar({ data }: { data: NetSessionData }) {
-  useTraceData(data.token);
+  useTraceData(data.token, data.range);
   const { view, error, set } = useTrace();
   const nav = view?.nav;
   const go = (turnId: string | null | undefined) => { if (turnId) set({ turnId, selected: null, toggled: new Set() }); };
   const navStyle: React.CSSProperties = { width: 26, height: 26, borderRadius: 6, border: '1px solid var(--border-strong)', background: 'var(--bg-pill)', color: 'var(--text)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' };
   if (!view) {
-    return <div style={{ margin: '8px 8px 0', padding: '10px 14px', fontSize: 11.5, color: 'var(--text-muted)' }}>{error ? `Trace unavailable: ${error}` : 'Loading the trace…'}</div>;
+    return <div style={TURN_NOTE}>{error ? `Trace unavailable: ${error}` : 'Loading the trace…'}</div>;
   }
-  if (!view.turn) return null;
+  if (!view.turn) {
+    // A range with no turn in it says so, rather than leave the trace looking empty for no reason.
+    return data.range ? <div style={TURN_NOTE}>No turn began in this time range.</div> : null;
+  }
   const t = view.turn;
   const c = view.counts;
   return (
@@ -101,11 +117,13 @@ export function TurnBar({ data }: { data: NetSessionData }) {
       </div>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', fontSize: 10.5 }}>
-          <span style={{ color: 'var(--info)', fontWeight: 600, letterSpacing: '0.06em' }}>TURN {(nav?.index ?? -1) + 1} OF {nav?.count ?? 0}</span>
+          <span style={{ color: 'var(--info)', fontWeight: 600, letterSpacing: '0.06em' }}>
+            {nav?.outside ? `OUTSIDE THE RANGE · ${nav.count} IN IT` : `TURN ${(nav?.index ?? -1) + 1} OF ${nav?.count ?? 0}${data.range ? ' IN RANGE' : ''}`}
+          </span>
           <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-faint)' }}>{clockTime(t.startedAt)}</span>
           <span style={{ color: 'var(--text-faint)' }}>{data.session?.harness ?? 'harness'} · {data.token}</span>
         </div>
-        <div title={t.promptText} style={{ fontSize: 13, color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>“{t.promptText}”</div>
+        <div data-tip={t.promptText} style={{ fontSize: 13, color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>“{t.promptText}”</div>
       </div>
       <div style={{ display: 'flex', gap: 6, flexShrink: 0, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
         <Chip tone="neutral">{c.calls} tool call{c.calls === 1 ? '' : 's'}</Chip>
@@ -171,16 +189,16 @@ function RowView({ row, data, selected, onSelect, onToggleRow, onPolicy, axisWid
         <NetIcon name={ICON[row.icon]} size={12} color={isCall ? titleColour : row.outcome && refusal ? TONE[row.outcome.tone] : 'var(--text-muted)'} />
         <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11.5, color: titleColour, whiteSpace: 'nowrap' }}>{row.title}</span>
         {row.detail && (
-          <span title={row.detail} style={{ fontFamily: isCall ? 'var(--font-mono)' : 'var(--font-ui)', fontSize: isCall ? 11.5 : 10.5, color: isCall ? 'var(--text-body)' : 'var(--text-faint)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>
+          <span data-tip={row.detail} style={{ fontFamily: isCall ? 'var(--font-mono)' : 'var(--font-ui)', fontSize: isCall ? 11.5 : 10.5, color: isCall ? 'var(--text-body)' : 'var(--text-faint)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>
             {row.detail}
           </span>
         )}
         {row.call?.redacted && (
-          <span title="The PII filter redacted this URL's host when Layman recorded the call, so no flow can be joined to it; its traffic is under Unattributed. To keep IP addresses in glove sessions, turn on Settings → glove → Show IP addresses in sandboxed sessions (calls recorded from then on)."
+          <span data-tip="The PII filter redacted this URL's host when Layman recorded the call, so no flow can be joined to it; its traffic is under Unattributed. To keep IP addresses in glove sessions, turn on Settings → glove → Show IP addresses in sandboxed sessions (calls recorded from then on)."
             style={{ fontSize: 9.5, color: 'var(--warn)', border: '1px solid rgba(229,168,59,0.5)', borderRadius: 4, padding: '0 4px', flexShrink: 0 }}>redacted</span>
         )}
         {row.call?.timing === 'approximate' && (
-          <span title="Layman read this call after it ran and did not keep the transcript's own times, so its flows were joined by host alone."
+          <span data-tip="Layman read this call after it ran and did not keep the transcript's own times, so its flows were joined by host alone."
             style={{ fontSize: 9.5, color: 'var(--warn)', border: '1px solid rgba(229,168,59,0.5)', borderRadius: 4, padding: '0 4px', flexShrink: 0 }}>≈ time</span>
         )}
       </div>
@@ -326,7 +344,7 @@ function CanIAllow({ data, flow }: { data: NetSessionData; flow: FlowView }) {
       <div style={{ display: 'flex', gap: 7, fontSize: 11.5, color: 'var(--text-body)', lineHeight: 1.5 }}>
         {(flow.state === 'guard' || !host) && <NetIcon name="lock" size={12} color="var(--warn)" />}<span>{text}</span>
       </div>
-      {action && <div style={{ marginTop: 8 }} title={disabled ?? undefined}>{action}</div>}
+      {action && <div style={{ marginTop: 8 }} data-tip={disabled ?? undefined}>{action}</div>}
     </>
   );
 }
@@ -335,6 +353,7 @@ function TurnButtons({ view, label }: { view: TraceView; label: string }) {
   const selectTurn = useSessionStore((s) => s.selectTurn);
   const [saved, setSaved] = useState<'idle' | 'saving' | 'saved' | 'failed'>('idle');
   const t = view.turn!;
+  const bookmarkDisabled = !t.responseEventId || saved === 'saving' || saved === 'saved';
   const href = buildPath({ kind: 'turn', sessionId: t.sessionId, promptEventId: t.promptEventId });
   const bookmark = async () => {
     setSaved('saving');
@@ -352,10 +371,11 @@ function TurnButtons({ view, label }: { view: TraceView; label: string }) {
     <div style={{ display: 'flex', gap: 8, marginTop: 16, alignItems: 'center' }}>
       <a href={href} onClick={(e) => { if (e.button === 0 && !e.metaKey && !e.ctrlKey) { e.preventDefault(); selectTurn(t.sessionId, t.promptEventId); } }}
         style={{ ...buttonStyle('plain'), textDecoration: 'none' }}>Open turn</a>
-      <button type="button" disabled={!t.responseEventId || saved === 'saving' || saved === 'saved'} onClick={bookmark} style={buttonStyle('ghost')}
-        title={t.responseEventId ? 'Save this turn as a highlight' : 'The turn has no response yet'}>
-        {saved === 'saved' ? 'Bookmarked' : saved === 'failed' ? 'Bookmark failed: try again' : 'Bookmark'}
-      </button>
+      <TipWrap tip={t.responseEventId ? 'Save this turn as a highlight' : 'The turn has no response yet'} disabled={bookmarkDisabled}>
+        <button type="button" disabled={bookmarkDisabled} onClick={bookmark} style={buttonStyle('ghost')}>
+          {saved === 'saved' ? 'Bookmarked' : saved === 'failed' ? 'Bookmark failed: try again' : 'Bookmark'}
+        </button>
+      </TipWrap>
     </div>
   );
 }

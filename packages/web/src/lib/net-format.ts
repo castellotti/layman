@@ -3,7 +3,9 @@
  * the state legend every view draws from. Pure, so it is tested in node.
  */
 import type { NetSessionData } from './net-state.js';
-import type { NetState } from './netobs-types.js';
+import type { NetState, SinceAt } from './netobs-types.js';
+import { formatStamp } from './net-range.js';
+import type { BandKind } from './net-topology.js';
 
 export function formatBytes(n: number): string {
   if (!Number.isFinite(n) || n < 1000) return `${Math.max(0, Math.round(n || 0))} B`;
@@ -32,132 +34,222 @@ const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? o
 export type ChipTone = 'ok' | 'tunnel' | 'warn' | 'error' | 'violet' | 'neutral' | 'muted';
 export type ChipIcon = 'pulse' | 'tunnel' | 'check' | 'shield' | 'file' | 'alert' | 'clock' | 'direct';
 
+/** A tooltip (`NetTipHost`): a sentence, or a heading, a sentence and a few facts. */
+export interface NetTip {
+  heading?: string;
+  body: string;
+  facts?: string[];
+}
+
 export interface GateChip {
   key: string;
   label: string;
   tone: ChipTone;
   icon: ChipIcon;
-  /** Detail for the tooltip: heartbeat age, versions, exit IP and its source. */
-  title: string;
+  /** What the chip means in plain words, and its particulars: heartbeat, versions, exit and its source. */
+  tip: NetTip;
+}
+
+/**
+ * Whether a chip may shrink to its icon when the strip makes room for a range. Only the routine
+ * ones do: a chip in a warning or error tone is an alarm (traffic cut, untunnelled flows, rules
+ * rejected, a stale gate, a direct route) and is never collapsed, nor is History only, which
+ * says what every figure is.
+ */
+export function chipCollapses(c: GateChip): boolean {
+  return c.tone !== 'error' && c.tone !== 'warn' && c.key !== 'history';
 }
 
 const ROUTE_LABEL: Record<string, string> = { vpn: 'VPN', tor: 'Tor' };
+
+/** "Since Oct 21 00:27:03 (5 h ago)", or "at least since" when Layman did not see it change; nothing when nothing says. */
+function sinceFact(what: string, since: SinceAt | null, now: number): string[] {
+  if (!since) return [];
+  return [`${what} ${since.exact ? 'since' : 'at least since'} ${formatStamp(since.t)} (${formatAge(Math.max(0, now - since.t))} ago)`];
+}
 
 /**
  * The gate strip, left to right :
  * gate state; the untunnelled alarm when there is one, straight after it so it
  * cannot be missed; route and exit; resolver; rules; record mode; and "view
- * incomplete" when the data itself has holes.
+ * incomplete" when the data itself has holes. Each chip's tip says what it means
+ * to someone who has never read glove's docs, then the facts behind it.
  */
-export function gateChips(data: NetSessionData): GateChip[] {
+export function gateChips(data: NetSessionData, now = Date.now()): GateChip[] {
   const { gate, exit, totals, counters } = data;
   const chips: GateChip[] = [];
-  const version = gate.gateVersion ? ` · gate ${gate.gateVersion}` : '';
+  const version = gate.gateVersion ? [`gate ${gate.gateVersion}`] : [];
   // Nothing is being read: its gate, route and rules are as they were, not as they are.
   if (data.historyOnly) {
-    return [{ key: 'history', label: 'History only', tone: 'muted', icon: 'file',
-      title: 'glove’s files for this session are gone. Layman kept its totals and destinations while session recording was on; flows, the map and the trace are not kept.' }];
+    return [{ key: 'history', label: 'History only', tone: 'muted', icon: 'file', tip: {
+      heading: 'History only',
+      body: 'glove’s files for this session are gone. Layman kept its totals and destinations while session recording was on; flows, the map and the trace are not kept.',
+    } }];
   }
 
+  const heartbeat = `Heartbeat ${formatAge(gate.heartbeatAgeMs)} ago`;
+  const gateSince = sinceFact(gate.freshness === 'running' ? 'Running' : gate.freshness === 'stale' ? 'Quiet' : 'Stopped', gate.since.gate, now);
   switch (gate.freshness) {
     case 'running':
-      chips.push({ key: 'gate', label: 'Gate running', tone: 'ok', icon: 'pulse',
-        title: `Heartbeat ${formatAge(gate.heartbeatAgeMs)} ago${version}` });
+      chips.push({ key: 'gate', label: 'Gate running', tone: 'ok', icon: 'pulse', tip: {
+        heading: 'The gate is running',
+        body: 'glove’s gate is the sandbox’s only way out to the network: it records every connection and enforces your rules. It reports a heartbeat every few seconds, and this one is current.',
+        facts: [...gateSince, heartbeat, ...version],
+      } });
       break;
     case 'stale':
-      chips.push({ key: 'gate', label: 'Gate stale · data stopped updating', tone: 'warn', icon: 'clock',
-        title: `No heartbeat for ${formatAge(gate.heartbeatAgeMs)}. The data has stopped updating — that is not the same as the traffic stopping.${version}` });
+      chips.push({ key: 'gate', label: 'Gate stale · data stopped updating', tone: 'warn', icon: 'clock', tip: {
+        heading: 'The gate has gone quiet',
+        body: 'Its heartbeat stopped, so the data has stopped updating. That is not the same as the traffic stopping.',
+        facts: [...gateSince, heartbeat, ...version],
+      } });
       break;
     case 'stopped':
-      chips.push({ key: 'gate', label: 'Gate stopped', tone: 'muted', icon: 'clock',
-        title: `The gate reported "${gate.state}". What is shown is the record up to then.${version}` });
+      chips.push({ key: 'gate', label: 'Gate stopped', tone: 'muted', icon: 'clock', tip: {
+        heading: 'The gate is not running',
+        body: 'Its last status says it is not running: shut down, starting, or failed (glove’s own word is below). What is shown is the record up to then.',
+        facts: [...gateSince, `glove reported “${gate.state}”`, ...version],
+      } });
       break;
     default:
-      chips.push({ key: 'gate', label: 'Gate status unknown', tone: 'muted', icon: 'clock',
-        title: 'No status.json has been read for this session.' });
+      chips.push({ key: 'gate', label: 'Gate status unknown', tone: 'muted', icon: 'clock', tip: {
+        heading: 'Gate status unknown',
+        body: 'No status.json has been read for this session, so Layman cannot tell whether its gate is running.',
+      } });
   }
 
   // The kill switch is on: said straight after the gate state, like the alarms, until restored.
   if (data.rules.file?.rules.some((r) => r.id.startsWith('r_layman_cut_'))) {
     const keep = data.rules.file.rules.some((r) => r.id.startsWith('r_layman_cut_') && r.action === 'allow');
-    chips.push({ key: 'cut', label: 'ALL TRAFFIC CUT', tone: 'error', icon: 'alert',
-      title: `Every connection is blocked by “Cut all traffic”${keep ? ', except the LLM link' : ''}. Restore puts back the previous rules.` });
+    chips.push({ key: 'cut', label: 'ALL TRAFFIC CUT', tone: 'error', icon: 'alert', tip: {
+      heading: 'All traffic is cut',
+      body: `Every connection is blocked by “Cut all traffic”${keep ? ', except the agent’s model (LLM) link' : ''}. Restore puts back the rules from before.`,
+    } });
   }
 
   if (totals.directFlows > 0) {
-    chips.push({ key: 'direct', label: `${plural(totals.directFlows, 'untunnelled flow').toUpperCase()}`, tone: 'error', icon: 'alert',
-      title: 'Traffic left the sandbox on a direct route, without the tunnel, and carried the operator’s real IP.' });
+    chips.push({ key: 'direct', label: `${plural(totals.directFlows, 'untunnelled flow').toUpperCase()}`, tone: 'error', icon: 'alert', tip: {
+      heading: 'Traffic went out untunnelled',
+      body: 'Some connections left the sandbox on a direct route, without the tunnel, so they carried your real IP address.',
+      facts: [plural(totals.directFlows, 'connection')],
+    } });
   }
 
   const kind = gate.route.kind;
   if (kind === 'direct') {
-    chips.push({ key: 'route', label: 'Direct route · no tunnel', tone: 'error', icon: 'direct',
-      title: 'The operator declared this session’s proxy route as direct: web traffic does not go through a VPN or Tor.' });
+    chips.push({ key: 'route', label: 'Direct route · no tunnel', tone: 'error', icon: 'direct', tip: {
+      heading: 'No tunnel',
+      body: 'This session’s web traffic is set to go out directly, not through a VPN or Tor, so sites see your real IP address.',
+    } });
   } else if (kind === 'vpn' || kind === 'tor') {
     const name = ROUTE_LABEL[kind];
     const unhealthy = gate.route.upstreamHealthy === false ? ' · upstream failing' : '';
-    const exitDetail = exit
-      ? `Exit ${exit.ip ?? 'unknown IP'}${exit.city ? `, ${exit.city}` : ''}${exit.country ? `, ${exit.country}` : ''}. Reported by ${exit.source ?? 'an unnamed source'}, not looked up by Layman.`
-      : 'No exit has been observed.';
+    const exitFacts = exit
+      ? [`Exit ${exit.ip ?? 'unknown IP'}${exit.city ? `, ${exit.city}` : ''}${exit.country ? `, ${exit.country}` : ''}`,
+        `Reported by ${exit.source ?? 'an unnamed source'}, not looked up by Layman`]
+      : ['No exit has been observed'];
+    const exitSince = exit ? sinceFact('This exit', gate.since.exit, now) : [];
+    const failing = unhealthy ? ` The ${name} reports it is failing, so connections may not get through.` : '';
     if (gate.route.verified && exit) {
       chips.push({ key: 'route', label: `${name} · exit verified${exit.country ? ` · ${exit.country}` : ''}${unhealthy}`,
-        tone: unhealthy ? 'warn' : 'tunnel', icon: 'tunnel', title: exitDetail });
+        tone: unhealthy ? 'warn' : 'tunnel', icon: 'tunnel', tip: {
+          heading: `${name}: exit verified`,
+          body: `Web traffic leaves through the ${name}. glove checked where it comes out (the exit), so this is observed, not just declared.${failing}`,
+          facts: [...sinceFact('Verified', gate.since.route, now), ...exitFacts, ...exitSince],
+        } });
     } else if (gate.route.exitIdentityOff) {
-      chips.push({ key: 'route', label: `${name} · declared${unhealthy}`, tone: unhealthy ? 'warn' : 'neutral', icon: 'tunnel',
-        title: 'Exit identity is off for this session, so the route is as the operator declared it; nothing has verified it.' });
+      chips.push({ key: 'route', label: `${name} · declared${unhealthy}`, tone: unhealthy ? 'warn' : 'neutral', icon: 'tunnel', tip: {
+        heading: `${name}: declared`,
+        body: `Web traffic is set to leave through the ${name}. Exit identity is off for this session, so nothing has checked where it comes out.${failing}`,
+      } });
     } else {
-      chips.push({ key: 'route', label: `${name} · declared, not verified${unhealthy}`, tone: 'warn', icon: 'tunnel',
-        title: `${exitDetail} Trust the label less than an observed exit.` });
+      chips.push({ key: 'route', label: `${name} · declared, not verified${unhealthy}`, tone: 'warn', icon: 'tunnel', tip: {
+        heading: `${name}: not verified`,
+        body: `Web traffic is set to leave through the ${name}, but glove has not confirmed where it comes out. Trust the label less than an observed exit.${failing}`,
+        facts: [...sinceFact('As now', gate.since.route, now), ...exitFacts, ...exitSince],
+      } });
     }
   } else if (kind === 'corporate') {
     const unhealthy = gate.route.upstreamHealthy === false ? ' · upstream failing' : '';
-    chips.push({ key: 'route', label: `Corporate route · allowlist only${unhealthy}`, tone: unhealthy ? 'warn' : 'neutral', icon: 'shield',
-      title: `${LEGEND_BY_KEY.route_corporate.explanation} Its exit is your corporate network, so there is no exit to verify.` });
+    chips.push({ key: 'route', label: `Corporate route · allowlist only${unhealthy}`, tone: unhealthy ? 'warn' : 'neutral', icon: 'shield', tip: {
+      heading: 'Corporate route',
+      body: `${LEGEND_BY_KEY.route_corporate.explanation} Its exit is your corporate network, so there is no exit to verify.`,
+    } });
   } else if (kind === 'tcp') {
-    chips.push({ key: 'route', label: 'Local services only', tone: 'neutral', icon: 'tunnel',
-      title: 'This session has no proxy service: only point-to-point links to configured endpoints.' });
+    chips.push({ key: 'route', label: 'Local services only', tone: 'neutral', icon: 'tunnel', tip: {
+      heading: 'Local services only',
+      body: 'This session has no web proxy: only direct links to the services it was configured with.',
+    } });
   }
 
   const r = gate.resolver;
   if (r.mode === 'in-tunnel') {
-    const name = r.name ? ` (${r.name})` : '';
+    const name = r.name ? [`Resolver ${r.name}`] : [];
     if (r.healthy === false) {
-      chips.push({ key: 'resolver', label: 'Resolver down', tone: 'warn', icon: 'alert',
-        title: `The in-tunnel resolver${name} is failing: new destinations go to "Unknown location". Traffic is not affected.` });
+      chips.push({ key: 'resolver', label: 'Resolver down', tone: 'warn', icon: 'alert', tip: {
+        heading: 'The resolver is failing',
+        body: 'The service that looks up hostnames inside the tunnel is failing, so new destinations go to “Unknown location” on the Map. Traffic itself is not affected.',
+        facts: [...sinceFact('Failing', gate.since.resolver, now), ...name],
+      } });
     } else {
-      chips.push({ key: 'resolver', label: 'Resolver in-tunnel', tone: r.healthy ? 'ok' : 'neutral', icon: 'check',
-        title: r.healthy === null
-          ? `Hostnames are resolved inside the tunnel${name}; not used yet this session.`
-          : `Hostnames are resolved inside the tunnel${name}, never by the operator’s resolver.` });
+      chips.push({ key: 'resolver', label: 'Resolver in-tunnel', tone: r.healthy ? 'ok' : 'neutral', icon: 'check', tip: {
+        heading: 'Hostnames looked up in the tunnel',
+        body: 'Names like example.com are turned into addresses inside the tunnel, so your own DNS provider never sees what the sandbox visits.',
+        facts: [...sinceFact('As now', gate.since.resolver, now), ...name, ...(r.healthy === null ? ['Not used yet this session'] : [])],
+      } });
     }
   }
 
   const rules = gate.rules;
   if (rules) {
     if (!rules.ok) {
-      chips.push({ key: 'rules', label: 'Rules rejected', tone: 'error', icon: 'alert',
-        title: `glove rejected rules.json: ${rules.error ?? 'no reason given'}. It is still enforcing the previous ${plural(rules.active_count, 'rule')}.` });
+      chips.push({ key: 'rules', label: 'Rules rejected', tone: 'error', icon: 'alert', tip: {
+        heading: 'glove rejected your rules',
+        body: `The gate could not use rules.json, so it is still enforcing the previous ${plural(rules.active_count, 'rule')}.`,
+        facts: [rules.error ?? 'No reason given'],
+      } });
     } else {
-      const def = data.rules.file?.default;
+      // What the gate enforces, never what Layman wrote or a guess: without it, the default goes unsaid.
+      const def = data.rules.enforced?.default;
+      const otherwise = def === 'block' ? '; everything else is blocked (the session’s default)'
+        : def === 'allow' ? '; everything else is allowed (the session’s default)' : '';
       chips.push({ key: 'rules', label: rules.active_count ? `${plural(rules.active_count, 'rule')} enforced` : 'No rules',
-        tone: 'neutral', icon: 'shield',
-        title: `${rules.loaded_at ? `Loaded ${rules.loaded_at}` : 'Never loaded'}${def ? ` · when nothing matches: ${def}` : ''}` });
+        tone: 'neutral', icon: 'shield', tip: rules.active_count
+          ? {
+            heading: `${plural(rules.active_count, 'rule')} in force`,
+            body: `Your rules decide which destinations the sandbox may reach. glove’s built-in guard still refuses private addresses and cloud metadata first${otherwise}.`,
+            facts: [rules.loaded_at ? `Loaded ${rules.loaded_at}` : 'Never loaded'],
+          }
+          : {
+            heading: 'No rules',
+            body: `You haven’t added any rules. glove’s built-in guard still refuses private addresses and cloud metadata${otherwise}.`,
+          } });
     }
   }
 
   chips.push(gate.record === 'full'
-    ? { key: 'record', label: 'Record: full', tone: 'violet', icon: 'file',
-      title: 'Full record mode: request URLs (and headers, if enabled) are recorded. The operator traded privacy for visibility.' }
-    : { key: 'record', label: `Record: ${gate.record}`, tone: 'neutral', icon: 'file',
-      title: 'Metadata only: destinations, timing and byte counts; no request content.' });
+    ? { key: 'record', label: 'Record: full', tone: 'violet', icon: 'file', tip: {
+      heading: 'Recording: full',
+      body: 'glove records request URLs (and headers, if enabled) as well as who connected where. More visible, less private.',
+    } }
+    : { key: 'record', label: `Record: ${gate.record}`, tone: 'neutral', icon: 'file', tip: gate.record === 'metadata'
+      ? {
+        heading: 'Recording: metadata only',
+        body: 'glove records who connected to what, when, and how many bytes: not URLs or what was sent. A session set to “full” would also record request URLs.',
+      }
+      // A mode this Layman does not know: say what glove reports, not what metadata mode records.
+      : { heading: `Recording: ${gate.record}`, body: `glove reports its record mode as “${gate.record}”, which this version of Layman does not describe.` } });
 
   const reasons: string[] = [];
-  if (gate.telemetry && gate.telemetry.dropped > 0) reasons.push(`the gate dropped ${plural(gate.telemetry.dropped, 'record')}`);
+  if (gate.telemetry && gate.telemetry.dropped > 0) reasons.push(`The gate dropped ${plural(gate.telemetry.dropped, 'record')}`);
   if (counters.gaps > 0) reasons.push(`${plural(counters.gaps, 'rotated file')} disappeared before Layman read ${counters.gaps === 1 ? 'it' : 'them'}`);
-  if (data.historyTruncated) reasons.push('older history was beyond the read budget');
+  if (data.historyTruncated) reasons.push('Older history was beyond the read budget');
   if (reasons.length) {
-    chips.push({ key: 'incomplete', label: 'View incomplete', tone: 'warn', icon: 'alert',
-      title: `Some records are missing: ${reasons.join('; ')}. Traffic was not affected.` });
+    chips.push({ key: 'incomplete', label: 'View incomplete', tone: 'warn', icon: 'alert', tip: {
+      heading: 'Some records are missing',
+      body: 'What is shown leaves some connections out. Traffic itself was not affected.',
+      facts: reasons,
+    } });
   }
   return chips;
 }
@@ -280,6 +372,29 @@ export const NET_LEGEND: readonly StateInfo[] = [
 export const BLOCK_STATES: ReadonlySet<NetState> = new Set(['guard', 'user_rule', 'default_block']);
 
 export const LEGEND_BY_KEY: Readonly<Record<string, StateInfo>> = Object.fromEntries(NET_LEGEND.map((s) => [s.key, s]));
+
+/**
+ * The Topology diagram's legend: the band kinds (`BandKind`) each entry stands for, its words and
+ * its tip. Its colour is the diagram's own for its first kind (`BAND` in `TopologyView.tsx`), so the
+ * legend cannot drift from what is drawn.
+ */
+export const TOPOLOGY_LEGEND: ReadonlyArray<{ bands: readonly BandKind[]; label: string; tip: string }> = [
+  { bands: ['tunnel'], label: 'Tunnelled',
+    tip: 'Traffic that left through the tunnel (a VPN, Tor, or your corporate proxy), so sites saw its address, not yours.' },
+  { bands: ['fanout'], label: 'SearXNG fan-out',
+    tip: 'One web search becomes many: glove’s search service (SearXNG) asks several search engines at once on the agent’s behalf.' },
+  { bands: ['local', 'unwatched'], label: 'Not tunnelled',
+    tip: 'Links that do not go through the tunnel: glove’s own services, a host on your network, and the agent’s model, which can still reach a cloud provider.' },
+  { bands: ['direct'], label: 'Direct',
+    tip: 'Traffic that left without the tunnel, carrying your real IP address.' },
+  { bands: ['refused'], label: 'Refused',
+    tip: 'Stopped at the policy wall by one of your rules, or by the default when no rule allowed it.' },
+  { bands: ['guard', 'broken'], label: 'Guard / broken',
+    tip: 'Refused by glove’s built-in guard (private addresses, cloud metadata), or a path that failed upstream: not a policy decision.' },
+];
+
+/** What a Topology band's width means. */
+export const TOPOLOGY_BAND_WIDTH_TIP = 'A band is as wide as the square root of the bytes it carried, so a busy path stands out without hiding the quiet ones.';
 
 /** The legend entry for each primary flow state. */
 export const NET_STATE_INFO: Readonly<Record<NetState, StateInfo>> = {

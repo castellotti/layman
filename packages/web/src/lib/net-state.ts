@@ -104,6 +104,11 @@ export function rangeKey(r: NetRange): string {
   return `${r.from}-${r.to ?? 'now'}`;
 }
 
+/** Whether two time ranges (or All records, null) are the same: the same `rangeKey`, as the server tells them apart. */
+export function sameRange(a: NetRange | null, b: NetRange | null): boolean {
+  return (a ? rangeKey(a) : null) === (b ? rangeKey(b) : null);
+}
+
 /** Subscribe to another session or range: what was shown is for the old one, so it goes. */
 export function subscribeTo(state: NetClientState, token: string | null, range: string | null): NetClientState {
   if (state.subscribed === token && state.subscribedRange === range) return state;

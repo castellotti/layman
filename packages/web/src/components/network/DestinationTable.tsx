@@ -136,7 +136,7 @@ function Row({ row, anchor, selected, onSelect, onExpand, disabledReason, onTogg
       <div role="cell" style={cellStyle(COL.route)}>{row.route && <CellLabel cell={row.route} />}</div>
       <div role="cell" style={cellStyle(COL.tool)}>
         {row.tools.length > 0 && (
-          <span title={row.tools.join(', ')} style={{ ...mono, fontSize: 10.5, color: muted ? 'var(--text-muted)' : 'var(--net-down)' }}>
+          <span data-tip={row.tools.join(', ')} style={{ ...mono, fontSize: 10.5, color: muted ? 'var(--text-muted)' : 'var(--net-down)' }}>
             {toolLabel(row.tools[0])}{row.tools.length > 1 ? ` +${row.tools.length - 1}` : ''}
           </span>
         )}

@@ -22,63 +22,9 @@
  */
 import type { TimelineEvent } from '../events/types.js';
 import type { HistoryHour, HistoryRun } from './history.js';
+import type { AgentSegment, BurstSegment, HourActivity, NetSegments, RunSegment } from './types.js';
 
 export const DEFAULT_BURST_GAP_MS = 6 * 60 * 60_000;
-
-export interface RunSegment {
-  run: string;
-  from: number;
-  /** Null while it runs. */
-  to: number | null;
-  /** How it ended: glove down, the collector's inferred stop, the next run starting, or not yet. */
-  end: 'stopped' | 'died' | 'replaced' | null;
-  bytesUp: number;
-  bytesDown: number;
-  flows: number;
-}
-
-export interface BurstSegment {
-  from: number;
-  to: number;
-  /** The run it is in, or null for records from before any collector run (an older gate). */
-  run: string | null;
-  bytesUp: number;
-  bytesDown: number;
-  flows: number;
-}
-
-export interface AgentSegment {
-  sessionId: string;
-  from: number;
-  to: number;
-  turns: number;
-  /** Times from the transcript; false when only read times were kept, which can lag. */
-  exact: boolean;
-}
-
-/** One hour of the session's activity, its hops' bytes left out (counted at the next leg). */
-export interface HourActivity {
-  hour: number;
-  bytesUp: number;
-  bytesDown: number;
-  flows: number;
-  blocked: number;
-  first: number;
-  last: number;
-  /** The agent called its model in this hour. */
-  inference: boolean;
-}
-
-export interface NetSegments {
-  token: string;
-  gapMs: number;
-  /** What bursts were found from: model calls, or (with none observed) all traffic. */
-  burstBasis: 'inference' | 'traffic';
-  runs: RunSegment[];
-  bursts: BurstSegment[];
-  agentSessions: AgentSegment[];
-  hours: HourActivity[];
-}
 
 /** One run's traffic in one hour, its destinations together. */
 interface RunHour extends Tally {
