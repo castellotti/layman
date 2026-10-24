@@ -1022,9 +1022,19 @@ Selected path panel that walks one destination's path hop by hop.
     the column does not reshuffle while traffic flows. Destinations are ordered by bytes, as the plan
     says. Each column then gets one overlap-avoidance pass.
   - **Size.** Below 1000 × 420 the diagram is laid out at that size and scaled down, never scrolled.
-  - **Folding.** Destinations that do not fit are folded into one "+N more" box per route, keeping the
-    busiest; the Network tab lists them all.
-- **Selecting.** Clicking a destination, a band or a "+N more" box selects that path. A band shared by
+  - **The destination column scrolls; nothing is folded.** Every reached destination has a row, at
+    a fixed pitch inside the column's window. When they do not all fit, the column scrolls on its own
+    (`DestColumn`, `maxScroll`). `projectTopology(t, scrollTop)` redraws only the bands into a
+    destination. A band into a row in the window ends at its row, never moved. A band into a row
+    scrolled out converges on the window's top or bottom edge, where one stub ("↑ 12 above · 3.1 MB",
+    "↓ 40 below") stands for them all. Its width (`DestStub.width`) is the sum of their widths, and
+    its bytes the sum of theirs. The end is the row's centre clamped to the window, plus the band's
+    offset in the row's port stack, so it slides continuously as a row leaves or enters. The tests
+    hold it to that at every half pixel of scroll. `scrollToDest` centres a row, and a stub's
+    `scrollTo` brings its nearest row into the window. Rows sort within each group by bytes (the
+    default), name or last seen. The "+N more" boxes and the "folded" footer are gone. 500
+    destinations lay out and project in under 20 ms.
+- **Selecting.** Clicking a destination or a band selects that path. A band shared by
   several destinations selects the busiest. The selection is the same `dest=` the Map and the Network
   tab use, and every band not on the path dims.
 - **Selected path panel.** The destination's hops, each with its status and whether glove **observed**

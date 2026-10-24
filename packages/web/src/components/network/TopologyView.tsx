@@ -11,7 +11,9 @@ import { TOPOLOGY_BAND_WIDTH_TIP, TOPOLOGY_LEGEND, formatBytes } from '../../lib
 import type { NetSessionData } from '../../lib/net-state.js';
 import { controlDisabledReason, siblingIds } from '../../lib/net-rules.js';
 import { toolLabel } from '../../lib/net-table.js';
-import { layoutTopology, pathHops, type BandKind, type HopEvidence, type LineTone, type Tone, type TopoBand, type TopoNode } from '../../lib/net-topology.js';
+import {
+  layoutTopology, pathHops, projectTopology, type BandKind, type DestStub, type HopEvidence, type LineTone, type Tone, type TopoBand, type TopoNode,
+} from '../../lib/net-topology.js';
 import { buttonStyle } from './ControlPopover.js';
 import { Badge, Tile } from './DetailCard.js';
 import { NetIcon } from './netui.js';
@@ -78,10 +80,10 @@ export function TopologyLegend() {
 }
 
 function Node({ n, selected, onSelect }: { n: TopoNode; selected: boolean; onSelect: (n: TopoNode) => void }) {
-  const clickable = n.hosts.length > 0 && (n.kind === 'dest' || n.kind === 'broken' || n.kind === 'more');
+  const clickable = n.hosts.length > 0 && (n.kind === 'dest' || n.kind === 'broken');
   const common = clickable ? {
     role: 'button', tabIndex: 0, style: { cursor: 'pointer' },
-    'aria-label': n.kind === 'more' ? `${n.title} destinations` : `Follow the path to ${n.title}`,
+    'aria-label': `Follow the path to ${n.title}`,
     onClick: () => onSelect(n),
     onKeyDown: (e: React.KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSelect(n); } },
   } : {};
@@ -95,12 +97,12 @@ function Node({ n, selected, onSelect }: { n: TopoNode; selected: boolean; onSel
     );
   }
   const stroke = selected ? 'var(--info)' : STROKE[n.tone];
-  if (n.kind === 'dest' || n.kind === 'more') {
+  if (n.kind === 'dest') {
     return (
-      <g {...common} {...tipProps(n.kind === 'more' ? { heading: n.title, body: n.hosts.join('\n') } : n.title)} data-node={n.id}>
+      <g {...common} {...tipProps(n.title)} data-node={n.id}>
         <rect x={n.x} y={n.y} width={n.w} height={n.h} rx={4} fill={selected ? 'rgba(90,156,248,0.10)' : 'var(--bg-card)'}
           stroke={stroke} strokeWidth={selected ? 1.5 : 1} strokeDasharray={n.dashed ? '3 3' : undefined} />
-        <text x={n.x + 8} y={n.y + n.h / 2 + 4} fontSize={11} fontFamily="var(--font-mono)" fill={n.kind === 'more' ? 'var(--text-muted)' : n.tone === 'direct' ? '#FF8A80' : 'var(--text)'}>
+        <text x={n.x + 8} y={n.y + n.h / 2 + 4} fontSize={11} fontFamily="var(--font-mono)" fill={n.tone === 'direct' ? '#FF8A80' : 'var(--text)'}>
           {clip(n.title, n.w - (n.live ? 22 : 14))}
         </text>
         {n.live && <circle cx={n.x + n.w - 7} cy={n.y + n.h / 2} r={2.5} fill="var(--net-tunnel)" />}
@@ -126,18 +128,34 @@ function Node({ n, selected, onSelect }: { n: TopoNode; selected: boolean; onSel
   );
 }
 
+/** Destinations scrolled out of the window: the bands converge on it, and it says how many and how much. */
+function Stub({ stub, x }: { stub: DestStub; x: number }) {
+  const above = stub.edge === 'above';
+  // As thick as what converges on it, up to the room beside the window: hundreds of rows would run off the panel.
+  const bar = Math.max(2, Math.min(14, stub.width));
+  return (
+    <g data-stub={stub.edge} {...tipProps({ heading: `${stub.count} destination${stub.count === 1 ? '' : 's'} ${stub.edge}`, body: stub.hosts.slice(0, 12).join('\n') + (stub.hosts.length > 12 ? `\n+${stub.hosts.length - 12} more` : '') })}>
+      <rect x={x - 3} y={above ? stub.y - bar : stub.y} width={3} height={bar} fill="var(--text-faint)" opacity={0.6} />
+      <text x={x + 6} y={above ? stub.y - 6 : stub.y + 13} fontSize={10} fontFamily="var(--font-mono)" fill="var(--text-muted)">
+        {above ? '↑' : '↓'} {stub.count} {stub.edge}{stub.bytes ? ` · ${formatBytes(stub.bytes)}` : ''}
+      </text>
+    </g>
+  );
+}
+
 export function TopologyDiagram({ data }: { data: NetSessionData }) {
   const ref = useRef<HTMLDivElement>(null);
   const { w, h } = useSize(ref);
   const netDest = useSessionStore((s) => s.netDest);
   const setNetDest = useSessionStore((s) => s.setNetDest);
   const t = useMemo(() => layoutTopology(data, w, h), [data, w, h]);
+  const view = useMemo(() => projectTopology(t, 0), [t]);
   const bytesOf = useMemo(() => {
     const m = new Map<string, number>();
     for (const d of data.destinations.values()) if (d.host) m.set(d.host, (m.get(d.host) ?? 0) + d.bytesUp + d.bytesDown);
     return m;
   }, [data.destinations]);
-  // The busiest destination a click on a shared band or a "+N more" box stands for.
+  // The busiest destination a click on a shared band stands for.
   const pick = (hosts: string[]) => [...hosts].sort((a, b) => (bytesOf.get(b) ?? 0) - (bytesOf.get(a) ?? 0))[0] ?? null;
   const select = (hosts: string[]) => { const h = pick(hosts); if (h) setNetDest(h === netDest ? null : h); };
   const on = (hosts: string[]) => netDest !== null && hosts.includes(netDest);
@@ -170,7 +188,8 @@ export function TopologyDiagram({ data }: { data: NetSessionData }) {
   };
   // Refusals and broken paths on top: thin, and the point of the diagram.
   const order = (k: BandKind) => (k === 'guard' || k === 'refused' || k === 'broken' || k === 'trigger' ? 1 : 0);
-  const bands = [...t.bands].sort((a, b) => order(a.kind) - order(b.kind));
+  const bands = [...view.bands].sort((a, b) => order(a.kind) - order(b.kind));
+  const clipId = `dests-${data.token}`;
 
   return (
     <div ref={ref} style={{ position: 'relative', flex: 1, minHeight: 0, overflow: 'hidden' }}>
@@ -199,15 +218,18 @@ export function TopologyDiagram({ data }: { data: NetSessionData }) {
         {t.captions.map((c) => (
           <text key={c.text} x={c.x} y={c.y} fontSize={10} fontFamily="var(--font-mono)" textAnchor={c.anchor} fill={BAND[c.kind].colour}>{c.text}</text>
         ))}
-        {t.nodes.map((n) => (
-          <Node key={n.id} n={n} selected={n.kind === 'dest' && on(n.hosts)} onSelect={(x) => select(x.hosts)} />
+        {t.nodes.filter((n) => n.kind !== 'dest').map((n) => (
+          <Node key={n.id} n={n} selected={false} onSelect={(x) => select(x.hosts)} />
         ))}
+        <clipPath id={clipId}><rect x={t.dests.x - 4} y={t.dests.top} width={t.dests.w + 8} height={t.dests.bottom - t.dests.top} /></clipPath>
+        <g clipPath={`url(#${clipId})`}>
+          {t.nodes.filter((n) => n.kind === 'dest' && n.y < t.dests.bottom && n.y + n.h > t.dests.top).map((n) => (
+            <Node key={n.id} n={n} selected={on(n.hosts)} onSelect={(x) => select(x.hosts)} />
+          ))}
+        </g>
+        {view.above && <Stub stub={view.above} x={t.dests.x} />}
+        {view.below && <Stub stub={view.below} x={t.dests.x} />}
       </svg>
-      {t.folded > 0 && (
-        <div style={{ position: 'absolute', right: 10, bottom: 6, fontSize: 10.5, color: 'var(--text-faint)' }}>
-          {t.folded} quieter destination{t.folded === 1 ? '' : 's'} folded to fit; the Network tab lists them all.
-        </div>
-      )}
     </div>
   );
 }

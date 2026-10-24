@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
-  bandPath, bandWidth, countLabel, exitSourceHost, layoutTopology, outcomeOf, pathHops, spread, topologyServices, upstreamHost, MIN_WIDTH,
-  type Topology,
+  bandPath, bandWidth, countLabel, exitSourceHost, layoutTopology, outcomeOf, pathHops, projectTopology, scrollToDest, spread, topologyServices,
+  upstreamHost, MIN_WIDTH, type Topology, type TopoBand,
 } from './net-topology.js';
 import { dest, rulesView, sessionData } from './net-test-fixtures.js';
 import type { DestinationAggregate, NetSessionFile } from './netobs-types.js';
@@ -123,7 +123,7 @@ describe('the fixture topology', () => {
       'html.duckduckgo.com', 'search.brave.com', 'www.mojeek.com', 'api.qwant.com',
     ]);
     expect(byId(t, 'dest:llm.operator.lan:8080').dashed).toBe(true);
-    expect(t.folded).toBe(0);
+    expect(t.dests.maxScroll).toBe(0);
   });
 
   it('ends refusals at the policy wall, one label per reason', () => {
@@ -278,20 +278,89 @@ describe('other sessions', () => {
     expect(pathHops(data, 'www.mojeek.com')!.hops[0]).toMatchObject({ title: 'SearXNG (not the harness)', detail: 'search engine fan-out' });
   });
 
-  it('folds what does not fit into one "+N more" per route, keeping the busiest', () => {
-    const many = Array.from({ length: 60 }, (_, i) => dest(`h${String(i).padStart(2, '0')}.example:443`, { ...proxy, bytesDown: 1000 + i }));
-    const t = layoutTopology(fixture({}, many), 1080, 500);
-    const shown = t.nodes.filter((n) => n.kind === 'dest');
-    const more = t.nodes.filter((n) => n.kind === 'more');
-    expect(more.map((n) => n.title)).toEqual([`+${t.folded} more`]);
-    expect(shown.length + t.folded).toBe(60);
-    expect(shown[0].title).toBe('h59.example');
-    expect(more[0].hosts).toContain('h00.example');
-    for (let i = 1; i < shown.length + more.length; i++) {
-      const col = [...shown, ...more];
-      expect(col[i].y).toBeGreaterThanOrEqual(col[i - 1].y + col[i - 1].h);
-    }
-    expect(more[0].y + more[0].h).toBeLessThanOrEqual(t.height);
+  describe('a destination column that scrolls', () => {
+    const many = (n: number) => Array.from({ length: n }, (_, i) => dest(`h${String(i).padStart(3, '0')}.example:443`, { ...proxy, bytesDown: 1000 + i, lastSeen: i % 7 }));
+    const t = layoutTopology(fixture({}, many(60)), 1080, 500);
+    const rows = t.nodes.filter((n) => n.kind === 'dest');
+    /** Where a band into a destination ends, from its path's last point. */
+    const endY = (d: string) => Number(d.split(' ').at(-1)!.split(',')[1]);
+    const intoDests = (bands: readonly TopoBand[]) => bands.filter((b) => b.toDest);
+
+    it('gives every destination a row, nothing folded, busiest first, at a fixed pitch', () => {
+      expect(rows).toHaveLength(60);
+      expect(t.dests.rows).toEqual(rows.map((n) => n.id));
+      expect(rows[0].title).toBe('h059.example');
+      const pitch = rows[1].y - rows[0].y;
+      for (let i = 1; i < rows.length; i++) expect(rows[i].y - rows[i - 1].y).toBeCloseTo(pitch);
+      expect(t.dests.maxScroll).toBeCloseTo(pitch * 60 - (t.dests.bottom - t.dests.top));
+    });
+
+    it('moves every band end continuously as the column scrolls: no jumps', () => {
+      let prev = projectTopology(t, 0);
+      for (let s = 0.5; s <= t.dests.maxScroll; s += 0.5) {
+        const next = projectTopology(t, s);
+        intoDests(next.bands).forEach((b, i) => {
+          expect(Math.abs(endY(b.d) - endY(intoDests(prev.bands)[i].d))).toBeLessThanOrEqual(0.6 + 1e-6);
+        });
+        prev = next;
+      }
+    });
+
+    it('leaves a band into a row in the window exactly at its row, and converges the rest on the edges', () => {
+      const s = t.dests.maxScroll / 2;
+      const p = projectTopology(t, s);
+      for (const b of intoDests(p.bands)) {
+        const y = endY(b.d);
+        if (p.visible.has(b.to)) expect(y).toBeCloseTo(b.toDest!.y2 - s, 5);
+        else expect(y < t.dests.top + 12 || y > t.dests.bottom - 12).toBe(true);
+      }
+      expect(p.above!.count + p.below!.count + p.visible.size).toBe(60);
+    });
+
+    it('makes each stub as wide as the bands it stands for, and as heavy as their bytes', () => {
+      const p = projectTopology(t, t.dests.maxScroll / 2);
+      for (const stub of [p.above!, p.below!]) {
+        const mine = intoDests(t.bands).filter((b) => stub.hosts.includes(rows.find((n) => n.id === b.to)!.hosts[0]));
+        expect(stub.width).toBeCloseTo(mine.reduce((a, b) => a + b.width, 0));
+        expect(stub.bytes).toBe(mine.reduce((a, b) => a + b.bytes, 0));
+      }
+      expect([p.above!.y, p.below!.y]).toEqual([t.dests.top, t.dests.bottom]);
+      expect(projectTopology(t, 0).above).toBeNull();
+      expect(projectTopology(t, t.dests.maxScroll).below).toBeNull();
+    });
+
+    it('scrolls a stub’s nearest row, or a chosen destination, into the window', () => {
+      const p = projectTopology(t, t.dests.maxScroll / 2);
+      const nearestAbove = t.dests.rows.filter((id) => !p.visible.has(id))[p.above!.count - 1];
+      expect(projectTopology(t, p.above!.scrollTo).visible.has(nearestAbove)).toBe(true);
+      const last = t.dests.rows.at(-1)!;
+      expect(scrollToDest(t, last)).toBe(t.dests.maxScroll);
+      expect(projectTopology(t, scrollToDest(t, t.dests.rows[30])!).visible.has(t.dests.rows[30])).toBe(true);
+      expect(scrollToDest(t, 'dest:nope')).toBeNull();
+      // Out of range is clamped, never past the ends.
+      expect([projectTopology(t, -50).scrollTop, projectTopology(t, 1e9).scrollTop]).toEqual([0, t.dests.maxScroll]);
+    });
+
+    it('sorts within each group by bytes, name or last seen', () => {
+      const titles = (sort: 'bytes' | 'name' | 'recent') => layoutTopology(fixture({}, many(10)), 1080, 500, { sort }).nodes.filter((n) => n.kind === 'dest').map((n) => n.title);
+      expect(titles('bytes').slice(0, 2)).toEqual(['h009.example', 'h008.example']);
+      expect(titles('name').slice(0, 2)).toEqual(['h000.example', 'h001.example']);
+      // lastSeen is i % 7: 6 is the latest (h006), then 5 (h005, then h012… only up to 9 here: h005).
+      expect(titles('recent')[0]).toBe('h006.example');
+    });
+
+    it('lays out 500 destinations quickly', () => {
+      const data = fixture({}, many(500));
+      layoutTopology(data, 1400, 800);
+      const times: number[] = [];
+      for (let i = 0; i < 5; i++) {
+        const t0 = performance.now();
+        const big = layoutTopology(data, 1400, 800);
+        projectTopology(big, 1000);
+        times.push(performance.now() - t0);
+      }
+      expect(times.sort((a, b) => a - b)[2]).toBeLessThan(20);
+    });
   });
 
   it('shows services seen in traffic that the gate did not declare, and works with no session.json', () => {

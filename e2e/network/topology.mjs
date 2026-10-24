@@ -71,8 +71,11 @@ for (const s of ['direct', 'gate-lost', 'stopped', 'exit-none', 'default-block',
   const ok = await waitFor(async () => (await page.$$(`${DIAG} g[data-node]`)).length > 3, 8000);
   check(`session ${s} draws`, ok);
 }
-const bigFold = await page.$$eval(`${DIAG} g[data-node^="more:"]`, (gs) => gs.map((g) => g.textContent));
-check('big session folds quiet destinations into "+N more"', bigFold.length > 0, bigFold.join(','));
+// Nothing is folded: rows past the window are counted by the stub the bands converge on.
+const below = await page.$eval(`${DIAG} g[data-stub="below"]`, (g) => g.textContent).catch(() => '');
+const shownRows = (await page.$$(`${DIAG} g[data-node^="dest:"]`)).length;
+check('big session: no folding, the rest counted below', !(await page.$(`${DIAG} g[data-node^="more:"]`)) && /↓ \d+ below/.test(below)
+  && shownRows > 5 && Number(below.match(/\d+/)[0]) > 100, `${shownRows} shown · ${below}`);
 // Sizes.
 for (const [w, h] of [[1440, 900], [1280, 800]]) {
   await page.setViewportSize({ width: w, height: h });
