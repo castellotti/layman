@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { TURN_LEAD_MS, TURN_TAIL_MS, turnRange, turnRangeTip, turnSpan } from './turn-range.js';
+import { TURN_LEAD_MS, TURN_TAIL_MS, turnRange, turnSpan } from './turn-range.js';
 import { extractTurns } from './turns.js';
 import type { TimelineEvent, EventType } from './types.js';
 
@@ -18,13 +18,11 @@ describe('turnSpan and turnRange', () => {
     const span = turnSpan(owned, done)!;
     expect(span).toEqual({ startedAt: 10_000, endedAt: 15_000, exact: true });
     expect(turnRange(span)).toEqual({ from: 10_000 - TURN_LEAD_MS, to: 15_000 + TURN_TAIL_MS });
-    expect(turnRangeTip(span)).not.toMatch(/Approximate/);
   });
 
-  it('falls back to the events’ times, and says the range is approximate', () => {
+  it('falls back to the events’ times, and marks the range approximate', () => {
     const span = turnSpan([ev('user_prompt', 1000, { prompt: 'go' }), ev('agent_response', 4000, { prompt: 'ok' })], done)!;
     expect(span).toEqual({ startedAt: 1000, endedAt: 4000, exact: false });
-    expect(turnRangeTip(span)).toMatch(/Approximate/);
   });
 
   it('gives an open range for the last turn of a live session that has not answered yet', () => {
@@ -36,7 +34,6 @@ describe('turnSpan and turnRange', () => {
     // An answer, or a stop, closes it.
     expect(turnSpan([...owned, ev('agent_response', 4000, { prompt: 'here' })], { last: true, live: true })!.endedAt).toBe(4000);
     expect(turnSpan([...owned, ev('agent_stop', 5000)], { last: true, live: true })!.endedAt).toBe(5000);
-    expect(turnRangeTip(turnSpan(owned, { last: true, live: true })!)).toMatch(/until now/);
   });
 
   it('has no span for a turn with no events', () => {

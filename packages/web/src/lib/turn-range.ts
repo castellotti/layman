@@ -58,14 +58,5 @@ export function turnRange(span: TurnSpan): NetRange {
   return { from: span.startedAt - TURN_LEAD_MS, to: span.endedAt === null ? null : span.endedAt + TURN_TAIL_MS };
 }
 
-/** What the button's tooltip says before the turn's events are looked at. */
-export const TURN_RANGE_TIP = `From ${TURN_LEAD_MS / 1000} s before the prompt to ${TURN_TAIL_MS / 1000} s after the turn ended (the gate batches records, and a pooled connection's last bytes trail), or until now while it runs. From the transcript's times when the harness kept them; otherwise approximate.`;
-
 /** What the button's tooltip says about the range it sets. */
-export function turnRangeTip(span: TurnSpan): string {
-  const grace = `${TURN_LEAD_MS / 1000} s before the prompt to ${TURN_TAIL_MS / 1000} s after the turn ended (the gate batches records, and a pooled connection's last bytes trail)`;
-  return [
-    span.endedAt === null ? 'From just before the prompt until now: the turn is still running.' : `From ${grace}.`,
-    span.exact ? null : 'Approximate: the harness kept no transcript times, so these are when Layman read the events.',
-  ].filter(Boolean).join(' ');
-}
+export const TURN_RANGE_TIP = `From ${TURN_LEAD_MS / 1000} s before the prompt to ${TURN_TAIL_MS / 1000} s after the turn ended (the gate batches records, and a pooled connection's last bytes trail), or until now while it runs. From the transcript's times when the harness kept them; otherwise approximate.`;

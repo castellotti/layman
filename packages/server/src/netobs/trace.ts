@@ -77,12 +77,12 @@ export function buildTrace(store: NetStore, token: string, deps: TraceDeps, sele
   }
   all.sort((a, b) => a.start - b.start);
   const live = store.live(token);
+  const ownedBy = (t: TurnAt) => t.turn.eventIds.map((id) => events.get(t.turn.sessionId)?.get(id)).filter((e): e is TimelineEvent => !!e);
   const view = (t: TurnAt): TraceTurn => ({
     sessionId: t.turn.sessionId, promptEventId: t.turn.promptEventId, responseEventId: t.turn.responseEventId, index: t.turn.index,
     startedAt: t.start, promptText: t.turn.promptText.slice(0, PROMPT_PREVIEW), toolCallCount: t.turn.toolCallCount,
     endedAt: turnEnd(ownedBy(t), { last: t.last, live }), exact: t.exact,
   });
-  const ownedBy = (t: TurnAt) => t.turn.eventIds.map((id) => events.get(t.turn.sessionId)?.get(id)).filter((e): e is TimelineEvent => !!e);
   const empty: TraceCounts = { calls: 0, flows: 0, refused: 0, blocked: 0, bytesUp: 0, bytesDown: 0 };
   const listed = range ? all.filter((t) => t.start >= range.from && (range.to === null || t.start <= range.to)) : all;
   // Only the neighbours, not the list: the tab polls, and a long session has thousands of turns.

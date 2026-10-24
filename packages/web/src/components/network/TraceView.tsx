@@ -135,7 +135,7 @@ export function TurnBar({ data }: { data: NetSessionData }) {
         </div>
         <div data-tip={t.promptText} style={{ fontSize: 13, color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>“{t.promptText}”</div>
       </div>
-      <NetworkForTurn token={data.token} span={() => ({ startedAt: t.startedAt, endedAt: t.endedAt, exact: t.exact })} size={13}
+      <NetworkForTurn token={data.token} span={() => t} size={13}
         onOpen={() => set({ keep: t.promptEventId })} />
       <div style={{ display: 'flex', gap: 6, flexShrink: 0, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
         <Chip tone="neutral">{c.calls} tool call{c.calls === 1 ? '' : 's'}</Chip>
@@ -238,12 +238,19 @@ function RowView({ row, data, selected, onSelect, onToggleRow, onPolicy, axisWid
   );
 }
 
+/** Where a pointer is across an element, as a fraction of its width. */
+const axisFraction = (e: React.PointerEvent<HTMLElement>) => {
+  const r = e.currentTarget.getBoundingClientRect();
+  return (e.clientX - r.left) / r.width;
+};
+
 export function TraceWaterfall({ data }: { data: NetSessionData }) {
   const { view, selected, toggled, onlyTraffic, set } = useTrace();
   const now = useNow(1000);
   const [popover, setPopover] = useState<{ flow: FlowView; anchor: DOMRect } | null>(null);
   const [brush, setBrush] = useState<{ f0: number; f1: number } | null>(null);
   const drag = useRef<{ axis: TraceAxis; f0: number; f1: number } | null>(null);
+  const endDrag = () => { drag.current = null; setBrush(null); };
   const setNetRange = useSessionStore((s) => s.setNetRange);
   const sessionName = useSessionStore((s) => s.sessions.some((x) => x.sessionName === data.token));
   const axis = useMemo(() => (view ? traceAxis(view, now) : null), [view, now]);
@@ -282,9 +289,8 @@ export function TraceWaterfall({ data }: { data: NetSessionData }) {
           {...tipProps({ heading: 'Range from selection', body: 'Drag across the time axis to show every tab for just that stretch of time.' })}
           onPointerDown={(e) => {
             if (e.button !== 0 || !axis) return;
-            const r = e.currentTarget.getBoundingClientRect();
             e.currentTarget.setPointerCapture(e.pointerId);
-            const f = (e.clientX - r.left) / r.width;
+            const f = axisFraction(e);
             // The axis as it was when the drag began: a live turn's axis grows every second.
             drag.current = { axis, f0: f, f1: f };
             setBrush({ f0: f, f1: f });
@@ -292,19 +298,17 @@ export function TraceWaterfall({ data }: { data: NetSessionData }) {
           onPointerMove={(e) => {
             const d = drag.current;
             if (!d) return;
-            const r = e.currentTarget.getBoundingClientRect();
-            d.f1 = (e.clientX - r.left) / r.width;
+            d.f1 = axisFraction(e);
             setBrush({ f0: d.f0, f1: d.f1 });
           }}
           onPointerUp={() => {
             const d = drag.current;
-            drag.current = null;
-            setBrush(null);
+            endDrag();
             const range = d ? axisRange(d.axis, d.f0, d.f1) : null;
             if (range && view.turn) { set({ keep: view.turn.promptEventId }); setNetRange(range); }
           }}
-          onPointerCancel={() => { drag.current = null; setBrush(null); }}
-          onLostPointerCapture={() => { drag.current = null; setBrush(null); }}>
+          onPointerCancel={endDrag}
+          onLostPointerCapture={endDrag}>
           {axis?.ticks.map((t) => (
             <span key={t} style={{ position: 'absolute', left: `${(t / axis.span) * 100}%`, fontFamily: 'var(--font-mono)', fontWeight: 400, letterSpacing: 0, pointerEvents: 'none' }}>{tickLabel(t)}</span>
           ))}
