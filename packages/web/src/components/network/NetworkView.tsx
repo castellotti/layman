@@ -134,6 +134,8 @@ function Board({ tab, panels, data }: { tab: NetTab; panels: ReturnType<typeof u
     </PanelFrame>
     );
   };
+  // A panel shares its column when the column holds another panel too.
+  const column = (ps: PanelDef[]) => ps.map((p) => render(p, ps.length > 1));
   const main = columnPanels(defs, panels.state, 'main');
   const side = columnPanels(defs, panels.state, 'side');
   if (!main.length && !side.length) {
@@ -142,11 +144,11 @@ function Board({ tab, panels, data }: { tab: NetTab; panels: ReturnType<typeof u
   return (
     <div style={{ display: 'flex', gap: 8, padding: 8, flex: 1, minHeight: 0 }}>
       {main.length > 0 && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, flex: 1, minWidth: 0, minHeight: 0 }}>{main.map((p) => render(p, main.length > 1))}</div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, flex: 1, minWidth: 0, minHeight: 0 }}>{column(main)}</div>
       )}
       {side.length > 0 && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8, width: main.length ? 'clamp(300px, 26vw, 380px)' : undefined, flex: main.length ? undefined : 1, minWidth: 0, minHeight: 0 }}>
-          {side.map((p) => render(p, side.length > 1))}
+          {column(side)}
         </div>
       )}
     </div>
