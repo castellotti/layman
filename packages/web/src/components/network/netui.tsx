@@ -112,7 +112,7 @@ export function Chip({ tone, icon, label, tip, strong, compact }: {
  * button, then its body. Dragging is by the grip only, so text in the body
  * stays selectable.
  */
-export function PanelFrame({ title, count, inRange, actions, onHide, drag, dropTarget, children, bodyStyle, flex = '1 1 0' }: {
+export function PanelFrame({ title, count, inRange, actions, onHide, drag, dropTarget, children, bodyStyle, flex = '1 1 0', maxHeight }: {
   title: string;
   count?: React.ReactNode;
   /** The time range its figures are for, so a panel read on its own is not taken for All records. */
@@ -126,6 +126,8 @@ export function PanelFrame({ title, count, inRange, actions, onHide, drag, dropT
   bodyStyle?: React.CSSProperties;
   /** Share of the column (CSS `flex`). */
   flex?: string;
+  /** The most of the column it may take (CSS `max-height`). */
+  maxHeight?: string;
 }) {
   return (
     <section
@@ -134,7 +136,7 @@ export function PanelFrame({ title, count, inRange, actions, onHide, drag, dropT
       style={{
         display: 'flex', flexDirection: 'column', background: 'var(--bg-card)',
         border: `1px solid ${dropTarget ? 'var(--accent)' : 'var(--border)'}`, borderRadius: 8,
-        overflow: 'hidden', minHeight: 0, minWidth: 0, flex,
+        overflow: 'hidden', minHeight: 0, minWidth: 0, flex, maxHeight,
       }}
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: 7, height: 32, padding: '0 8px', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
