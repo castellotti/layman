@@ -40,6 +40,8 @@ interface PanelContent {
   ownScroll?: boolean;
   /** The panel's share of its column (CSS `flex`); by default panels share it equally. */
   flex?: string;
+  /** The most of a column it may take while it shares that column with another panel (CSS `max-height`). */
+  maxShare?: string;
   /** What it shows does not depend on the time range (the rules in force, one turn's trace): no "in range" marker. */
   current?: boolean;
 }
@@ -95,7 +97,8 @@ function panelContent(tab: NetTab, id: string, data: NetSessionData, now: number
     case 'trace/details':
       return { body: <TraceDetails data={data} />, current: true };
     case 'trace/downloads':
-      return { body: <DownloadsList data={data} />, flex: '0 0 auto', current: true };
+      // Its height is its list's, but it shrinks (and scrolls) rather than run off the column.
+      return { body: <DownloadsList data={data} />, flex: '0 1 auto', maxShare: '50%', current: true };
     default:
       return null;
   }
@@ -106,7 +109,7 @@ function Board({ tab, panels, data }: { tab: NetTab; panels: ReturnType<typeof u
   const { drag } = panels;
   const now = useNow(1000);
   const netDest = useSessionStore((s) => s.netDest);
-  const render = (p: PanelDef) => {
+  const render = (p: PanelDef, _i: number, column: PanelDef[]) => {
     const content = panelContent(tab, p.id, data, now, netDest);
     return (
     <PanelFrame
@@ -116,6 +119,7 @@ function Board({ tab, panels, data }: { tab: NetTab; panels: ReturnType<typeof u
       inRange={data.range && !content?.current ? { heading: 'For the time range only', body: 'This panel counts only the traffic in the range set above: bytes are what moved during it.', facts: [formatRange(data.range, now)] } : null}
       actions={content?.actions}
       flex={content?.flex}
+      maxHeight={column.length > 1 ? content?.maxShare : undefined}
       bodyStyle={content?.ownScroll ? { overflow: 'hidden', display: 'flex', flexDirection: 'column' } : undefined}
       onHide={() => panels.toggle(p.id)}
       dropTarget={drag.dragId !== null && drag.dragOverId === p.id && drag.dragId !== p.id}
