@@ -3,8 +3,9 @@
  * the state legend every view draws from. Pure, so it is tested in node.
  */
 import type { NetSessionData } from './net-state.js';
-import type { NetState, SinceAt } from './netobs-types.js';
+import type { DestinationAggregate, NetState, SinceAt } from './netobs-types.js';
 import { formatStamp } from './net-range.js';
+import { isUntunnelled, isVpnRoute, untunnelledFlows } from './net-vpn.js';
 import type { BandKind } from './net-topology.js';
 
 export function formatBytes(n: number): string {
@@ -127,11 +128,12 @@ export function gateChips(data: NetSessionData, now = Date.now()): GateChip[] {
     } });
   }
 
-  if (totals.directFlows > 0) {
-    chips.push({ key: 'direct', label: `${plural(totals.directFlows, 'untunnelled flow').toUpperCase()}`, tone: 'error', icon: 'alert', tip: {
+  const untunnelled = untunnelledFlows(totals);
+  if (untunnelled > 0) {
+    chips.push({ key: 'direct', label: `${plural(untunnelled, 'untunnelled flow').toUpperCase()}`, tone: 'error', icon: 'alert', tip: {
       heading: 'Traffic went out untunnelled',
-      body: 'Some connections left the sandbox on a direct route, without the tunnel, so they carried your real IP address.',
-      facts: [plural(totals.directFlows, 'connection')],
+      body: 'Some connections left the sandbox on a direct route, without the tunnel, so they carried your real IP address. If a host is reached over your own VPN, mark it in its details (or in Settings → Glove) and it is no longer counted here.',
+      facts: [plural(untunnelled, 'connection')],
     } });
   }
 
@@ -321,6 +323,9 @@ export const NET_LEGEND: readonly StateInfo[] = [
   { key: 'direct', level: 'flag', loud: true, label: 'Untunnelled', dataRule: 'scope: direct', icon: 'alert', colourVar: 'var(--error)',
     badge: 'DIRECT', toggleKind: 'allow', mapTreatment: 'red dashed, skips the exit',
     explanation: 'The anonymity failure. Red banner, red strip chip, red tab dot.' },
+  { key: 'vpn_route', level: 'flag', label: 'VPN route', dataRule: 'scope: direct + corporate egress or a listed VPN host', icon: 'shield',
+    colourVar: 'var(--text-body)', badge: 'VPN', toggleKind: 'allow', mapTreatment: 'never red: drawn as a route',
+    explanation: 'Left directly, as glove reports it, but to your corporate network over your own VPN: through glove’s corporate egress, or to a host you listed in Settings → Glove. Expected, not an alert.' },
   { key: 'lan', level: 'flag', label: 'LAN link', dataRule: 'scope: lan', icon: 'home', colourVar: 'var(--text-body)',
     badge: null, toggleKind: 'allow', mapTreatment: 'in the sandbox card only',
     explanation: 'A host on your local network, never tunnelled: the inference server (glove’s llm extension, “LAN · LLM”) or an ssh relay host (“LAN · SSH”). Expected, not an alert. Never on the map.' },
@@ -372,6 +377,11 @@ export const NET_LEGEND: readonly StateInfo[] = [
 export const BLOCK_STATES: ReadonlySet<NetState> = new Set(['guard', 'user_rule', 'default_block']);
 
 export const LEGEND_BY_KEY: Readonly<Record<string, StateInfo>> = Object.fromEntries(NET_LEGEND.map((s) => [s.key, s]));
+
+/** The legend entry of a `direct` destination: a known VPN route, or untunnelled. Null when it is not `direct`. */
+export function directLegend(d: Pick<DestinationAggregate, 'scope' | 'flags'>): StateInfo | null {
+  return isVpnRoute(d.scope, d.flags) ? LEGEND_BY_KEY.vpn_route : isUntunnelled(d.scope, d.flags) ? LEGEND_BY_KEY.direct : null;
+}
 
 /**
  * The Topology diagram's legend: the band kinds (`BandKind`) each entry stands for, its words and

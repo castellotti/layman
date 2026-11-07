@@ -260,6 +260,7 @@ export function PromptsView() {
   const [loadingPair, setLoadingPair] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [deleteConfirmFolderId, setDeleteConfirmFolderId] = useState<string | null>(null);
+  const [deleteConfirmHighlightId, setDeleteConfirmHighlightId] = useState<string | null>(null);
 
   // Recorded sessions give labels (and host attribution) to highlights whose
   // session is not live — the previous live-only map left those unlabelled.
@@ -355,6 +356,13 @@ export function PromptsView() {
     }).catch(() => {});
   }, []);
 
+  // The `highlights:deleted` broadcast removes it from the store and clears the selection.
+  const handleDeleteHighlight = useCallback((id: string) => {
+    void fetch(`/api/highlights/${id}`, { method: 'DELETE' })
+      .catch(() => {})
+      .finally(() => setDeleteConfirmHighlightId(null));
+  }, []);
+
   const handleMoveToFolder = useCallback((folderId: string | null) => {
     if (!selectedHighlight) return;
     void fetch(`/api/highlights/${selectedHighlight.id}`, {
@@ -414,6 +422,14 @@ export function PromptsView() {
           body="Highlights inside this folder move to History — they aren't deleted."
           onCancel={() => setDeleteConfirmFolderId(null)}
           onConfirm={() => handleDeleteFolder(deleteConfirmFolderId, () => setDeleteConfirmFolderId(null))}
+        />
+      )}
+      {deleteConfirmHighlightId && (
+        <ConfirmDialog
+          title="Delete highlight?"
+          body="The prompt and response stay in their session; only this saved highlight is removed."
+          onCancel={() => setDeleteConfirmHighlightId(null)}
+          onConfirm={() => handleDeleteHighlight(deleteConfirmHighlightId)}
         />
       )}
 
@@ -693,6 +709,19 @@ export function PromptsView() {
                           ))}
                         </select>
                       </label>
+                    )}
+                    {/* A highlight from another host is read-only here (the server answers 403). */}
+                    {isEditableCuration(selectedHighlight, localHostId) && (
+                      <span
+                        role="button"
+                        onClick={() => setDeleteConfirmHighlightId(selectedHighlight.id)}
+                        title="Delete this highlight"
+                        style={{ fontSize: 10, color: 'var(--text-faint)', cursor: 'pointer', marginLeft: 'auto' }}
+                        onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--error)')}
+                        onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--text-faint)')}
+                      >
+                        ✕ delete
+                      </span>
                     )}
                   </div>
                 </>

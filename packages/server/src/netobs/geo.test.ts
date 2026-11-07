@@ -138,7 +138,7 @@ describe('what the store looks up', () => {
     store.ensure({ token: 'e', netDir: dir, controlDir: join(dir, 'c', 'e', 'e'), rulesPath: join(dir, 'c', 'e', 'e', 'rules.json') });
     store.ingestFlow('e', rec('f1', 'arxiv.org', '151.101.3.42', 'in-tunnel', 'tunnelled'), T);
     store.takeDelta('e');
-    store.refreshGeo();
+    store.redrawAll();
     expect(store.takeDelta('e')!.destinations.map((d) => d.host)).toEqual(['arxiv.org']);
   });
 });

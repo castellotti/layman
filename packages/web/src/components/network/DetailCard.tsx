@@ -9,7 +9,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useExpandedSections } from '../../hooks/useExpandedSections.js';
 import { useNetStore } from '../../stores/netStore.js';
 import { useSessionStore } from '../../stores/sessionStore.js';
-import { formatBytes, formatAge } from '../../lib/net-format.js';
+import { directLegend, formatBytes, formatAge, LEGEND_BY_KEY } from '../../lib/net-format.js';
 import type { NetSessionData } from '../../lib/net-state.js';
 import { clockTime, flowLabel, toolLabel } from '../../lib/net-table.js';
 import { controlDisabledReason, siblingIds } from '../../lib/net-rules.js';
@@ -18,6 +18,8 @@ import { buttonStyle } from './ControlPopover.js';
 import { NetIcon } from './netui.js';
 import { useNetTrace } from '../../hooks/useNetTrace.js';
 import { openInTrace } from './TraceView.js';
+import { useVpnDomains } from '../../hooks/useVpnDomains.js';
+import { isVpnRoute, vpnEntryFor, vpnParentDomain } from '../../lib/net-vpn.js';
 
 type SectionId = 'totals' | 'asked' | 'connection' | 'flows';
 const SECTIONS: Array<{ id: SectionId; label: string; on: boolean }> = [
@@ -79,6 +81,10 @@ export function Tile({ label, value, colour, icon }: { label: string; value: str
 function routeText(data: NetSessionData, d: DestinationAggregate): { text: string; colour: string } {
   if (d.state === 'guard') return { text: 'never left: refused by glove’s guard', colour: 'var(--warn)' };
   if (d.scope === 'local') return { text: 'local link, never on the map', colour: 'var(--text-muted)' };
+  if (isVpnRoute(d.scope, d.flags)) {
+    const via = d.flags.vpn === 'corporate' ? 'glove’s corporate egress' : 'a host you listed';
+    return { text: `direct, over your VPN: ${via}`, colour: LEGEND_BY_KEY.vpn_route.colourVar };
+  }
   if (d.scope === 'direct') return { text: 'direct: no tunnel, the operator’s real IP', colour: 'var(--error)' };
   const kind = data.gate.route.kind;
   const name = kind === 'vpn' ? 'VPN' : kind === 'tor' ? 'Tor' : kind ?? 'tunnel';
@@ -245,15 +251,16 @@ export function DetailCard({ data, host, onClose, docked = false }: {
   const route = routeText(data, d);
   const loc = locationText(d, geo);
   const live = d.state === 'active';
+  const leg = directLegend(d);
   return (
     <div style={{ padding: docked ? 12 : 14, position: 'relative' }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
-        <NetIcon name="globe" size={14} color={d.scope === 'direct' ? 'var(--error)' : 'var(--net-tunnel)'} />
+        <NetIcon name="globe" size={14} color={leg?.colourVar ?? 'var(--net-tunnel)'} />
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
             <span style={{ fontFamily: 'var(--font-mono)', fontSize: 13, fontWeight: 600, color: 'var(--text)', wordBreak: 'break-all' }}>{d.host}</span>
             {live && <Badge colour="var(--net-tunnel)">LIVE</Badge>}
-            {d.scope === 'direct' && <Badge colour="var(--error)">DIRECT</Badge>}
+            {leg && <Badge colour={leg.colourVar}>{leg.badge}</Badge>}
           </div>
           <div style={{ fontSize: 10.5, color: 'var(--text-faint)', marginTop: 2 }}>
             {[d.ips[0], d.geo?.city, d.tools.map(toolLabel).join(', '), `${d.flows} flow${d.flows === 1 ? '' : 's'}`].filter(Boolean).join(' · ')}
@@ -274,6 +281,8 @@ export function DetailCard({ data, host, onClose, docked = false }: {
           <div style={{ fontSize: 10, color: 'var(--text-faint)', padding: '3px 6px' }}>Policy is always shown.</div>
         </div>
       )}
+
+      {d.scope === 'direct' && d.host && <VpnMark host={d.host} vpn={d.flags.vpn} />}
 
       {shown('totals') && (
         <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
@@ -315,6 +324,53 @@ export function DetailCard({ data, host, onClose, docked = false }: {
       )}
 
       <Policy data={data} d={d} />
+    </div>
+  );
+}
+
+/**
+ * Mark a direct destination as reached over the user's own VPN (`glove.network.vpnDomains`),
+ * or unmark it. A view setting only: rules and glove's counts are unchanged. A corporate
+ * egress flow is a VPN route already and needs no entry.
+ */
+function VpnMark({ host, vpn }: { host: string; vpn: DestinationAggregate['flags']['vpn'] }) {
+  const { list, writable, mark, unmark } = useVpnDomains();
+  if (vpn === 'corporate') return null;
+  const entry = vpnEntryFor(host, list);
+  const domain = vpnParentDomain(host);
+  const off = writable ? undefined : 'Open the network views with a live connection to change this';
+  const note = <div style={{ fontSize: 10.5, color: 'var(--text-faint)', lineHeight: 1.5, marginTop: 4 }}>
+    A view setting: the gate and its rules are unchanged. The list is in Settings → Glove.
+  </div>;
+  if (vpn === 'listed' || entry) {
+    return (
+      <div style={{ marginTop: 10, padding: '7px 9px', borderRadius: 6, border: '1px solid var(--border-strong)', background: 'var(--bg)' }}>
+        <div style={{ fontSize: 11, color: 'var(--text-body)' }}>
+          On your VPN: listed as <span style={{ fontFamily: 'var(--font-mono)' }}>{entry ?? host}</span>.
+        </div>
+        <button type="button" disabled={!writable} title={off} onClick={() => unmark(host)} style={{ ...buttonStyle('ghost'), marginTop: 6 }}>
+          Not on my VPN
+        </button>
+        {note}
+      </div>
+    );
+  }
+  return (
+    <div style={{ marginTop: 10, padding: '7px 9px', borderRadius: 6, border: '1px solid color-mix(in srgb, var(--error) 40%, transparent)', background: 'var(--bg)' }}>
+      <div style={{ fontSize: 11, color: 'var(--text-body)', lineHeight: 1.5 }}>
+        Is this host on your corporate network? Traffic that reaches it over your own VPN is expected, not a leak.
+      </div>
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 6 }}>
+        <button type="button" disabled={!writable} title={off} onClick={() => mark([host])} style={buttonStyle('ghost')}>
+          Mark {host} as VPN
+        </button>
+        {domain && (
+          <button type="button" disabled={!writable} title={off} onClick={() => mark([domain])} style={buttonStyle('ghost')}>
+            All of {domain}
+          </button>
+        )}
+      </div>
+      {note}
     </div>
   );
 }

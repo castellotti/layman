@@ -739,6 +739,32 @@ export function JumpToLatest({ count, onClick }: JumpToLatestProps) {
   );
 }
 
+// ─── CopyButton ─────────────────────────────────────────────────────────────
+// Copies text, saying "✓ Copied" for a moment. `text` may be a function, read on click,
+// so a row does not build text it may never copy on every render.
+
+export function CopyButton({ text, title, className = 'text-[10px] text-[var(--text-muted)] hover:text-[var(--text)] transition-colors shrink-0' }: {
+  text: string | (() => string);
+  title?: string;
+  className?: string;
+}) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      onClick={(e) => {
+        e.stopPropagation();
+        navigator.clipboard.writeText(typeof text === 'function' ? text() : text).catch(() => {});
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1500);
+      }}
+      className={className}
+      title={title}
+    >
+      {copied ? '✓ Copied' : 'Copy'}
+    </button>
+  );
+}
+
 // ─── CopyLinkButton ─────────────────────────────────────────────────────────
 // Copies an addressable Layman URL (see lib/layman-url.ts). The feature is
 // worthless if the user cannot get the URL out of the UI, so this sits on every

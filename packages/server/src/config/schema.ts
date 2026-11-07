@@ -113,6 +113,12 @@ export const GloveConfigSchema = z.object({
       controlEnabled: z.boolean().default(true),
       /** A local .mmdb (e.g. DB-IP IP to City Lite). Empty = no geolocation. Never fetched. */
       geoipDbPath: z.string().default(''),
+      /**
+       * Hosts and domain suffixes reached over the user's own VPN (`corp.example` covers
+       * every subdomain). glove calls their flows `direct`; listed, the views show them as
+       * a VPN route instead of untunnelled traffic. View only: rules and counts are unchanged.
+       */
+      vpnDomains: z.array(z.string()).default([]),
     })
     .default({}),
 });

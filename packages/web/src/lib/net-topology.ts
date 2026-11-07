@@ -495,11 +495,19 @@ export function layoutTopology(data: TopoInput, width: number, height: number, o
       : health === false ? { text: 'upstream unhealthy', tone: 'error' } : { text: 'upstream health unknown', tone: 'faint' });
     specs.push({ id: 'tunnel', title: tunnelName, lines, tone: 'tunnel', dashed: false, icon: null, want: want('tunnel') ?? (TOP + bottom) / 2 });
   }
-  const directFlows = directLegs.reduce((a, l) => a + l.d.flows, 0);
+  // Direct legs that are a known VPN route (FlowFlags.vpn) are expected: said apart, never red.
+  const leakLegs = directLegs.filter((l) => !l.d.flags.vpn);
+  const vpnLegs = directLegs.filter((l) => l.d.flags.vpn);
+  const flowsOf = (ls: Leg[]) => ls.reduce((a, l) => a + l.d.flows, 0);
+  const flowText = (n: number) => `${countLabel(n)} flow${n === 1 ? '' : 's'}`;
+  const directLines: TopoLine[] = [];
+  if (leakLegs.length) directLines.push({ text: `${flowText(flowsOf(leakLegs))} · real IP`, tone: 'error' });
+  if (vpnLegs.length) directLines.push({ text: `${flowText(flowsOf(vpnLegs))} · your VPN`, tone: 'faint' });
+  if (!directLegs.length) directLines.push({ text: 'no traffic', tone: 'faint' });
   specs.push({
-    id: 'direct', title: 'Direct',
-    lines: directLegs.length ? [{ text: `${countLabel(directFlows)} flow${directFlows === 1 ? '' : 's'} · real IP`, tone: 'error' }] : [{ text: 'no traffic', tone: 'faint' }],
-    tone: directLegs.length ? 'direct' : 'muted', dashed: !directLegs.length, icon: directLegs.length ? null : 'check', want: bottom,
+    id: 'direct', title: directLegs.length && !leakLegs.length ? 'Direct · VPN' : 'Direct',
+    lines: directLines,
+    tone: leakLegs.length ? 'direct' : vpnLegs.length ? 'local' : 'muted', dashed: !directLegs.length, icon: directLegs.length ? null : 'check', want: bottom,
   });
   const routeYs = spread(specs.map((s) => ({ want: s.want, h: nodeH(s.lines.length) })), TOP + 10, bottom, 20);
   const routeNode = new Map<RouteId, TopoNode>();
@@ -584,7 +592,7 @@ export function layoutTopology(data: TopoInput, width: number, height: number, o
     const n = node({
       id: `dest:${d.key}`, kind: 'dest', column: 'dests', x: destX, y: destTop + i * destPitch + (destPitch - DEST_H) / 2, w: NODE_W.dests, h: DEST_H,
       title: hostLabel(d), mono: true, lines: [],
-      tone: r.group === 0 ? 'local' : r.group === 3 ? 'direct' : r.group === 2 ? 'fanout' : 'tunnel',
+      tone: r.group === 0 ? 'local' : r.group === 3 ? (d.flags.vpn ? 'local' : 'direct') : r.group === 2 ? 'fanout' : 'tunnel',
       dashed: r.group === 0, hosts: [d.host ?? hostLabel(d)], live: d.state === 'active',
     });
     destNodes.push({ n, legs: r.legs });
@@ -626,7 +634,7 @@ export function layoutTopology(data: TopoInput, width: number, height: number, o
   // Bands. Widths are relative to the busiest band anywhere in the diagram.
   type Draft = { id: string; kind: BandKind; from: TopoNode; to: TopoNode | { x: number; y: number }; legs: Leg[]; dashed?: boolean; label?: TopoBand['label'] };
   const drafts: Draft[] = [];
-  const kindOf = (l: Leg): BandKind => (l.fanout ? 'fanout' : l.route === 'local' || l.route === 'llm' ? 'local' : l.route === 'direct' ? 'direct' : 'tunnel');
+  const kindOf = (l: Leg): BandKind => (l.fanout ? 'fanout' : l.route === 'local' || l.route === 'llm' ? 'local' : l.route === 'direct' ? (l.d.flags.vpn ? 'local' : 'direct') : 'tunnel');
   const byDraftId = new Map<string, Draft>();
   const bucket = (id: string, kind: BandKind, from: TopoNode, to: TopoNode, l: Leg) => {
     const found = byDraftId.get(id);
@@ -1042,6 +1050,11 @@ export function pathHops(data: TopoInput, host: string): { dest: DestinationAggr
     hops.push({
       id: 'route', title: lan ? 'LAN link (LLM)' : 'LLM link', detail: upstreamHost(svc?.upstream ?? svc?.route?.upstream, true),
       status: lan ? 'glove’s llm link · your local network · never mapped' : 'glove’s llm link · not the tunnel', evidence: 'declared',
+    });
+  } else if (route === 'direct' && d.flags.vpn) {
+    hops.push({
+      id: 'route', title: 'Direct · VPN', detail: d.flags.vpn === 'corporate' ? 'glove’s corporate egress' : 'a host you listed',
+      status: 'your corporate network, over your own VPN', evidence: d.flags.vpn === 'corporate' ? 'declared' : 'observed',
     });
   } else if (route === 'direct') {
     hops.push({ id: 'route', title: 'Direct', detail: 'no tunnel', status: 'the operator’s real IP', evidence: 'observed' });

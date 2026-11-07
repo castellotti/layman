@@ -12,6 +12,7 @@
 import { geoInterpolate, geoMercator, type GeoProjection } from 'd3-geo';
 import { isOffTunnelScope, offMap, type DestinationAggregate, type ExitRecord, type FlowView, type NetGateView } from './netobs-types.js';
 import { BLOCK_STATES } from './net-format.js';
+import { isUntunnelled } from './net-vpn.js';
 
 /** Mercator is useless near the poles: clip to about 84°N–58°S. */
 export const LAT_MAX = 84;
@@ -137,7 +138,8 @@ export function clusterDestinations(dests: Iterable<DestinationAggregate>): Clus
     c.dests.push(d);
     c.bytes += d.bytesUp + d.bytesDown;
     c.live ||= d.state === 'active';
-    c.direct ||= d.scope === 'direct';
+    // A known VPN route is not the alarm, and not glove's tunnel either: neither flag.
+    c.direct ||= isUntunnelled(d.scope, d.flags);
     c.tunnelled ||= d.scope !== 'direct' && !isOffTunnelScope(d.scope);
     m.set(key, c);
   }
@@ -244,7 +246,7 @@ export function ribbonLanes(flows: Iterable<FlowView>, anchor: number, max = 24)
     open: f.phase !== 'close',
     state: f.state,
     label: f.dest.host ?? f.service,
-    direct: f.flags.scope === 'direct',
+    direct: isUntunnelled(f.flags.scope, f.flags),
   }));
   return { lanes, more: Math.max(0, inWindow.length - max) };
 }

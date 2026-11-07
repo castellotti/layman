@@ -7,6 +7,7 @@
  * server's `NetStore.takeDelta`), so applying one is replace-by-key, never
  * add — which also makes a delta that overlaps the snapshot harmless.
  */
+import { untunnelledFlows } from './net-vpn.js';
 import type {
   DestinationAggregate,
   ExitRecord,
@@ -270,6 +271,6 @@ export type NetTabSignal = 'alert' | 'live' | null;
  */
 export function networkTabSignal(sessions: NetSessionSummary[]): NetTabSignal {
   const live = sessions.filter((s) => s.live);
-  if (live.some((s) => s.rulesOk === false || s.directFlows > 0)) return 'alert';
+  if (live.some((s) => s.rulesOk === false || untunnelledFlows(s) > 0)) return 'alert';
   return live.length ? 'live' : null;
 }

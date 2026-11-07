@@ -6,7 +6,7 @@ import { AnalysisCard } from '../analysis/AnalysisCard.js';
 import { AskQuestion } from '../analysis/AskQuestion.js';
 import { RiskBadge } from '../shared/RiskBadge.js';
 import { CodeBlock } from '../shared/CodeBlock.js';
-import { DepthButton } from '../primitives/index.js';
+import { CopyButton, DepthButton } from '../primitives/index.js';
 import { isMarkdown, MARKDOWN_PROSE, REMARK_PLUGINS } from '../../lib/markdown.js';
 import { getEffectiveAgentContent } from '../../lib/reasoning.js';
 import type { ClientMessage } from '../../lib/ws-protocol.js';
@@ -39,23 +39,6 @@ function MarkdownOrText({ text, className }: { text: string; className?: string 
     return <div className={className ?? MARKDOWN_PROSE}><ReactMarkdown remarkPlugins={REMARK_PLUGINS}>{text}</ReactMarkdown></div>;
   }
   return <p className={className ?? 'text-xs text-[var(--text)] leading-relaxed whitespace-pre-wrap'}>{text}</p>;
-}
-
-function CopyButton({ text }: { text: string }) {
-  const [copied, setCopied] = useState(false);
-  return (
-    <button
-      onClick={(e) => {
-        e.stopPropagation();
-        navigator.clipboard.writeText(text).catch(() => {});
-        setCopied(true);
-        setTimeout(() => setCopied(false), 1500);
-      }}
-      className="text-[10px] text-[var(--text-muted)] hover:text-[var(--text)] transition-colors shrink-0"
-    >
-      {copied ? '✓ Copied' : 'Copy'}
-    </button>
-  );
 }
 
 interface InvestigationPanelProps {

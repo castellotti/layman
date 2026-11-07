@@ -2,9 +2,10 @@ import React, { useEffect, useState } from 'react';
 import type { ClientMessage } from '../../../lib/ws-protocol.js';
 import type { LaymanConfig } from '../../../lib/types.js';
 import { SectionTitle, ToggleRow, CustomRow } from './primitives.js';
+import { normaliseVpnDomain, withVpnEntry } from '../../../lib/net-vpn.js';
 
 const DEFAULT_HOME = '~/.glove';
-const DEFAULT_NETWORK = { enabled: true, controlEnabled: true, geoipDbPath: '' };
+const DEFAULT_NETWORK = { enabled: true, controlEnabled: true, geoipDbPath: '', vpnDomains: [] as string[] };
 
 /**
  * glove (v3) — passive monitoring of sandboxed harnesses. Enabling it points the
@@ -72,6 +73,7 @@ export function GloveSection({
       />
       )}
       {glove.enabled && network.enabled && <GeoDatabaseRow path={network.geoipDbPath} onChange={(geoipDbPath) => setNetwork({ geoipDbPath })} />}
+      {glove.enabled && network.enabled && <VpnDomainsRow list={network.vpnDomains ?? []} onChange={(vpnDomains) => setNetwork({ vpnDomains })} />}
       {glove.enabled && (
       <ToggleRow
         label="Show IP addresses in sandboxed sessions"
@@ -83,6 +85,60 @@ export function GloveSection({
       />
       )}
     </>
+  );
+}
+
+/**
+ * Hosts reached over the user's own VPN (`glove.network.vpnDomains`, net-vpn.ts). glove
+ * calls their traffic `direct`; listed, the network views show it as a VPN route rather
+ * than untunnelled. A domain covers every subdomain. View only: rules are unchanged.
+ */
+function VpnDomainsRow({ list, onChange }: { list: string[]; onChange: (next: string[]) => void }) {
+  const [draft, setDraft] = useState('');
+  const entry = normaliseVpnDomain(draft);
+  const add = () => {
+    if (!entry) return;
+    onChange(withVpnEntry(list, entry));
+    setDraft('');
+  };
+  return (
+    <CustomRow>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <span style={{ fontSize: 12, color: 'var(--text)', flex: 1 }}>VPN domains</span>
+        <input
+          type="text"
+          value={draft}
+          placeholder="corp.example"
+          aria-label="Add a VPN domain"
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') add(); }}
+          spellCheck={false}
+          style={{ width: 200, padding: '4px 6px', fontSize: 11, fontFamily: 'var(--font-mono)', background: 'var(--bg-card)', border: '1px solid var(--border-strong)', borderRadius: 5, color: 'var(--text)', outline: 'none' }}
+        />
+        <button type="button" onClick={add} disabled={!entry}
+          style={{ padding: '4px 10px', fontSize: 11, borderRadius: 5, border: '1px solid var(--border-strong)', background: 'var(--bg-card)', color: entry ? 'var(--text)' : 'var(--text-faint)', cursor: entry ? 'pointer' : 'default' }}>
+          Add
+        </button>
+      </div>
+      {list.length > 0 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+          {list.map((d) => (
+            <span key={d} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '1px 4px 1px 8px', fontSize: 11, fontFamily: 'var(--font-mono)', borderRadius: 10, border: '1px solid var(--border-strong)', color: 'var(--text-body)' }}>
+              {d}
+              <button type="button" aria-label={`Remove ${d}`} onClick={() => onChange(list.filter((x) => x !== d))}
+                style={{ background: 'none', border: 'none', padding: '0 3px', cursor: 'pointer', color: 'var(--text-faint)', fontSize: 12, lineHeight: 1 }}>
+                ×
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+      <span style={{ fontSize: 10.5, color: 'var(--text-faint)', lineHeight: 1.5 }}>
+        Hosts on your corporate network, reached over your own VPN. glove reports their traffic as direct (it left without a tunnel glove set up);
+        listed here, the network views show it as a VPN route instead of untunnelled traffic. <code style={{ fontFamily: 'var(--font-mono)' }}>corp.example</code> covers
+        every subdomain; a host or IP matches only itself. Traffic through a corporate session's own egress needs no entry. Rules are unchanged.
+      </span>
+    </CustomRow>
   );
 }
 

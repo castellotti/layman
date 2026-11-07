@@ -18,6 +18,7 @@ import {
 } from '../../lib/net-geo.js';
 import { NetIcon } from './netui.js';
 import { tipProps } from './NetTip.js';
+import { isUntunnelled, isVpnRoute } from '../../lib/net-vpn.js';
 
 type Land = FeatureCollection<Geometry>;
 let landCache: Promise<Land> | null = null;
@@ -128,8 +129,9 @@ export function WorldMap({ data, selected, onSelect, compact = false, sandboxAnc
     return { k, x: cx - ((cx - v.x) * k) / v.k, y: cy - ((cy - v.y) * k) / v.k };
   });
 
-  const direct = dests.filter((d) => d.scope === 'direct' && d.geo);
-  const cloud = dests.filter((d) => d.scope === 'cloud' && d.geo);
+  // A known VPN route (FlowFlags.vpn) is not the alarm: drawn like the llm link, plain and solid.
+  const direct = dests.filter((d) => isUntunnelled(d.scope, d.flags) && d.geo);
+  const cloud = dests.filter((d) => (d.scope === 'cloud' || isVpnRoute(d.scope, d.flags)) && d.geo);
   // A drag never starts on a pin or a control: its pointer capture would steal their click.
   const g = `translate(${view.x},${view.y}) scale(${view.k})`;
 
@@ -174,7 +176,7 @@ export function WorldMap({ data, selected, onSelect, compact = false, sandboxAnc
             strokeWidth={2.2} strokeDasharray="6 5" opacity={0.95} /> : null;
         })}
 
-        {/* glove's llm link to a cloud provider: expected, so plain and solid, and it skips the exit too. */}
+        {/* glove's llm link to a cloud provider, or a known VPN route: expected, so plain and solid, and it skips the exit too. */}
         {cloud.map((d) => {
           const b = base([d.geo!.lon, d.geo!.lat]);
           return b ? <path key={`l-${d.key}`} d={screenCurve(sandbox, toScreen(b), 0.2)} fill="none" stroke="var(--text-muted)"

@@ -29,6 +29,8 @@ export interface AnalysisRequest {
   recentEvents?: Array<{ type: string; summary: string }>;
   /** Rolling summary of session events older than the recentEvents window */
   sessionSummary?: string;
+  /** The session's user prompts and agent responses before the event (see context.ts). */
+  conversation?: Array<{ type: 'user_prompt' | 'agent_response'; text: string }>;
   modelOverride?: string;
 }
 
@@ -57,6 +59,8 @@ export interface InvestigationContext {
   recentSessionEvents?: Array<{ type: string; summary: string }>;
   /** Rolling summary of session events older than the recentSessionEvents window */
   sessionSummary?: string;
+  /** The session's user prompts and agent responses before the event (see context.ts). */
+  conversation?: Array<{ type: 'user_prompt' | 'agent_response'; text: string }>;
   cwd: string;
   modelOverride?: string;
 }

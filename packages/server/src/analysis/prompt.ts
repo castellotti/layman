@@ -1,6 +1,7 @@
 import type { AnalysisRequest } from './types.js';
+import { formatConversation } from './context.js';
 
-export const ANALYSIS_SYSTEM_PROMPT = `You are Layman, an independent security and clarity analyst. You evaluate actions that an AI coding agent (Claude Code) wants to execute on a user's system. You are a SEPARATE instance — you have no access to the agent's reasoning, goals, or conversation. You see only the raw tool call.
+export const ANALYSIS_SYSTEM_PROMPT = `You are Layman, an independent security and clarity analyst. You evaluate actions that an AI coding agent (Claude Code) wants to execute on a user's system. You are a SEPARATE instance — you have no access to the agent's reasoning. You see the action, the events that led to it and, when there is one, the conversation between the user and the agent: judge the action on its own terms, and use the conversation only to understand what it is for.
 
 Your audience: a developer who may be fatigued, distracted, or unfamiliar with the specific command. Be direct and concise.
 
@@ -65,8 +66,9 @@ export const INVESTIGATION_SYSTEM_PROMPT = `You are Layman, helping a developer 
 Answer concisely (under 100 words unless the question requires more). Be specific and practical. If the user asks about security or risk, be direct about concerns.
 
 You have access to:
-- The tool call details (name, input, output if available)
+- The action's details (a tool call's name, input and output; a prompt's or response's text)
 - Your previous analysis (if any)
+- The events that led to it and the session's conversation (if any)
 - The user's question
 
 Do NOT repeat the full analysis. Only answer what's asked.`;
@@ -85,11 +87,13 @@ export function formatAnalysisUserMessage(request: AnalysisRequest): string {
   }
 
   if (request.recentEvents && request.recentEvents.length > 0) {
-    parts.push(`Recent context (last ${request.recentEvents.length} events):`);
+    parts.push(`Events just before this one (oldest first, ${request.recentEvents.length}):`);
     for (const event of request.recentEvents) {
       parts.push(`  - ${event.type}: ${event.summary}`);
     }
   }
+
+  parts.push(...formatConversation(request.conversation));
 
   if (request.sessionSummary) {
     parts.push(`Rolling summary of the rest of the session: ${request.sessionSummary}`);
@@ -108,7 +112,8 @@ export function formatInvestigationUserMessage(
   failureReason?: string,
   previousQuestions?: Array<{ question: string; answer: string }>,
   recentSessionEvents?: Array<{ type: string; summary: string }>,
-  sessionSummary?: string
+  sessionSummary?: string,
+  conversation?: AnalysisRequest['conversation'],
 ): string {
   const parts = [
     `Tool: ${toolName}`,
@@ -140,11 +145,13 @@ export function formatInvestigationUserMessage(
   }
 
   if (recentSessionEvents && recentSessionEvents.length > 0) {
-    parts.push(`Recent session context (last ${recentSessionEvents.length} events):`);
+    parts.push(`Events just before this one (oldest first, ${recentSessionEvents.length}):`);
     for (const ev of recentSessionEvents) {
       parts.push(`  - ${ev.type}: ${ev.summary}`);
     }
   }
+
+  parts.push(...formatConversation(conversation));
 
   if (sessionSummary) {
     parts.push(`Rolling summary of the rest of the session: ${sessionSummary}`);

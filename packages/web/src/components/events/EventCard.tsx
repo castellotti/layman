@@ -9,7 +9,10 @@ import { DiffBlock } from '../shared/DiffBlock.js';
 import { usePendingApprovals } from '../../hooks/usePendingApprovals.js';
 import { usePrintExpandable } from '../../hooks/usePrinting.js';
 import { useSessionStore } from '../../stores/sessionStore.js';
-import { DRIFT_COLORS } from '../../lib/event-styles.js';
+import { DRIFT_COLORS, baseEventId, eventDetail } from '../../lib/event-styles.js';
+import { MagnifierIcon, CopyButton, CopyLinkButton } from '../primitives/index.js';
+import { RiskBadge } from '../shared/RiskBadge.js';
+import { SpeakButton } from '../tts/SpeakButton.js';
 import { toolFilePath, toolLineRange } from '../../lib/tool-input.js';
 import { MARKDOWN_PROSE, REMARK_PLUGINS } from '../../lib/markdown.js';
 import { getEffectiveAgentContent } from '../../lib/reasoning.js';
@@ -52,6 +55,75 @@ function formatToolInput(toolInput: Record<string, unknown>, toolName?: string):
   return JSON.stringify(toolInput, null, 2).slice(0, 500);
 }
 
+/** Copies the raw source text for an event's detail — never the rendered DOM. */
+function sourceTextFor(event: TimelineEvent): string {
+  if (event.type === 'agent_response') return getEffectiveAgentContent(event).response;
+  // The derived reasoning row carries its text in `prompt` (see thinkingRowFor).
+  if (event.type === 'agent_thinking') return event.data.prompt ?? '';
+  if (event.data.prompt) return event.data.prompt;
+  if (event.data.toolInput) {
+    const input = event.data.toolInput;
+    if ('command' in input) return String(input.command);
+    return JSON.stringify(input, null, 2);
+  }
+  if (event.data.error) return event.data.error;
+  return eventDetail(event);
+}
+
+const ACTION_CLASS = 'text-[10px] text-[var(--text-muted)] hover:text-[var(--text)] transition-colors';
+
+/**
+ * The one action bar of an expanded row: Copy and Link everywhere, Speak on a
+ * response, Highlight on a prompt or response (the pair Prompts keeps), and
+ * Investigate. It used to be split over two bars, the row's and the prose
+ * block's, each with its own Highlight and Copy, and the row's Highlight was
+ * a minimap-only mark that looked like the real one and did nothing else.
+ */
+function EventActions({ event, highlightable, isHighlighted, highlighting, onHighlight }: {
+  event: TimelineEvent;
+  highlightable: boolean;
+  isHighlighted: boolean;
+  highlighting: boolean;
+  onHighlight: (e: React.MouseEvent) => void;
+}) {
+  const setSelectedEvent = useSessionStore((s) => s.setSelectedEvent);
+  // A derived reasoning row has a suffixed id; the server knows its message by the real one.
+  const realId = baseEventId(event.id);
+
+  return (
+    <div className="flex items-center gap-2.5" data-print-hide>
+      {highlightable && (
+        <button
+          onClick={onHighlight}
+          disabled={highlighting}
+          className={`text-[10px] transition-colors ${isHighlighted ? 'text-[var(--warn)]' : 'text-[var(--text-muted)] hover:text-[var(--warn)]'}`}
+          title={isHighlighted ? 'Remove highlight' : 'Highlight this prompt–response pair (kept in Prompts, marked on the minimap)'}
+        >
+          {highlighting ? '…' : isHighlighted ? 'Highlighted' : 'Highlight'}
+        </button>
+      )}
+      <CopyButton text={() => sourceTextFor(event)} className={ACTION_CLASS} title="Copy the text" />
+      {event.type === 'agent_response' && (
+        <SpeakButton id={event.id} text={getEffectiveAgentContent(event).response} title="Speak this response aloud" />
+      )}
+      <CopyLinkButton
+        route={{ kind: 'event', sessionId: event.sessionId, eventId: realId }}
+        title="Copy link to this event"
+        label="Link"
+      />
+      {event.riskLevel && event.riskLevel !== 'low' && <RiskBadge level={event.riskLevel} compact />}
+      <button
+        onClick={(e) => { e.stopPropagation(); setSelectedEvent(realId); }}
+        title="Investigate this event, with the session's context"
+        className="flex items-center gap-1 text-[10px] text-[var(--accent)] rounded px-2 py-px border border-[color-mix(in_srgb,var(--accent)_25%,transparent)] bg-[color-mix(in_srgb,var(--accent)_10%,transparent)] hover:bg-[color-mix(in_srgb,var(--accent)_18%,transparent)]"
+      >
+        <MagnifierIcon strokeWidth={1.6} />
+        Investigate
+      </button>
+    </div>
+  );
+}
+
 interface EventDetailBodyProps {
   event: TimelineEvent;
   onSend: (msg: ClientMessage) => void;
@@ -91,6 +163,18 @@ export function EventDetailBody({ event, onSend }: EventDetailBodyProps) {
         (a) => a.toolName === event.data.toolName && Math.abs(a.timestamp - event.timestamp) < 5000
       )
     : undefined;
+
+  // Actions sit in the prose block's header when there is one, else in a strip of their own.
+  const proseBlock = !!effectivePrompt;
+  const actions = (
+    <EventActions
+      event={event}
+      highlightable={isUserPrompt || isAgentResponse}
+      isHighlighted={isHighlighted}
+      highlighting={highlighting}
+      onHighlight={(e) => void handleHighlight(e)}
+    />
+  );
 
   const handleHighlight = async (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -140,6 +224,8 @@ export function EventDetailBody({ event, onSend }: EventDetailBodyProps) {
 
   return (
         <div className="px-3 py-3 space-y-2">
+          {!proseBlock && <div className="flex justify-end">{actions}</div>}
+
           {/* Tool input — diff view for Edit/Write, code (or CommandBlock for shell) otherwise */}
           {event.data.toolInput && (() => {
             const input = event.data.toolInput;
@@ -217,22 +303,7 @@ export function EventDetailBody({ event, onSend }: EventDetailBodyProps) {
               <div className={`rounded-md border border-[var(--border-strong)] overflow-hidden`}>
                 <div className="flex items-center justify-between px-3 py-1 bg-[var(--bg-card)] border-b border-[var(--border-strong)]">
                   <span className="text-[10px] text-[var(--text-faint)] font-mono uppercase">{isUserPrompt ? 'Prompt' : isAgentThinking ? 'Thinking' : 'Response'}</span>
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={handleHighlight}
-                      disabled={highlighting}
-                      className={`text-xs transition-colors ${isHighlighted ? 'text-[var(--agent)] opacity-80' : 'text-[var(--text-muted)] hover:text-[var(--agent)]'}`}
-                      title={isHighlighted ? 'Remove highlight' : 'Highlight this prompt–response pair'}
-                    >
-                      {highlighting ? '…' : isHighlighted ? 'Highlighted' : 'Highlight'}
-                    </button>
-                    <button
-                      onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(effectivePrompt!).catch(() => {}); }}
-                      className="text-xs text-[var(--text-muted)] hover:text-[var(--text)] transition-colors"
-                    >
-                      Copy
-                    </button>
-                  </div>
+                  {actions}
                 </div>
                 <div className={`p-3 border-l-2 ${isUserPrompt ? 'border-[var(--accent)]' : isAgentThinking ? 'border-[color-mix(in_srgb,var(--thinking)_50%,transparent)]' : 'border-[color-mix(in_srgb,var(--ok)_50%,transparent)]'} ${MARKDOWN_PROSE}`}>
                   <ReactMarkdown remarkPlugins={REMARK_PLUGINS}>{effectivePrompt!}</ReactMarkdown>
@@ -242,12 +313,7 @@ export function EventDetailBody({ event, onSend }: EventDetailBodyProps) {
               <div className="rounded-md border border-[var(--border-strong)] overflow-hidden">
                 <div className="flex items-center justify-between px-3 py-1 bg-[var(--bg-card)] border-b border-[var(--border-strong)]">
                   <span className="text-[10px] text-[var(--text-faint)] font-mono uppercase">Prompt</span>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(effectivePrompt!).catch(() => {}); }}
-                    className="text-xs text-[var(--text-muted)] hover:text-[var(--text)] transition-colors"
-                  >
-                    Copy
-                  </button>
+                  {actions}
                 </div>
                 <pre className="p-3 text-xs text-[var(--text)] leading-relaxed whitespace-pre-wrap break-words font-sans border-l-2 border-[var(--accent)]">
                   {effectivePrompt!}

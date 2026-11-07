@@ -324,6 +324,14 @@ export interface FlowFlags {
    * bytes are counted once, at the leg that reaches the destination.
    */
   hop: boolean;
+  /**
+   * A `direct` flow that is an expected route to the corporate network, not a leak:
+   * `corporate` when it left through glove's corporate egress (the host's VPN), `listed`
+   * when its host is in `glove.network.vpnDomains` (server `vpn.ts`, web `net-vpn.ts`).
+   * Set when a view is built, never stored or counted: `scope` stays what glove wrote,
+   * which is what rules match. The web reads it through `isUntunnelled`.
+   */
+  vpn?: 'corporate' | 'listed';
 }
 
 /** One flow's latest state, as sent to the browser. */
@@ -642,6 +650,8 @@ export interface NetTotals {
   destinations: number;
   blocked: { guard: number; userRule: number; default: number };
   directFlows: number;
+  /** What of `directFlows` is a known VPN route (`FlowFlags.vpn`): the web's `untunnelledFlows` subtracts it. */
+  vpnFlows?: number;
   broken: number;
 }
 
@@ -658,6 +668,8 @@ export interface NetSessionSummary {
   bytesDown: number;
   flows: number;
   directFlows: number;
+  /** What of `directFlows` is a known VPN route (`FlowFlags.vpn`): the web's `untunnelledFlows` subtracts it. */
+  vpnFlows?: number;
   rulesOk: boolean | null;
   /** glove's files for it are gone: what is shown is what Layman kept. */
   historyOnly: boolean;

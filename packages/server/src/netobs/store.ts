@@ -117,6 +117,11 @@ interface AggEntry {
   spark: Map<number, RateBucket>;
   /** Source of `DestinationAggregate.geoIp`, with its flow's `t_open` (earliest wins). */
   geoIp: { ip: string; tOpen: number } | null;
+  /**
+   * Of `agg.flows`, those glove called `direct` (`agg.scope` is only the latest flow's), so a
+   * VPN route subtracts its own direct flows from the untunnelled count and no more.
+   */
+  direct: number;
 }
 
 /** A gate process, keyed by its `run` id (glove's record contract). */
@@ -192,6 +197,8 @@ export interface NetStoreOptions {
   stringFilter?: (text: string) => string;
   /** Offline geolocation of an IP (`geo.ts`), or null when there is no database. */
   geolocate?: (ip: string) => GeoPoint | null;
+  /** A host the user listed as reached over their VPN (`vpn.ts`); read when a view is built. */
+  isVpnHost?: (host: string | null) => boolean;
   maxClosedFlows?: number;
 }
 
@@ -263,12 +270,14 @@ export class NetStore extends EventEmitter {
   private sessions = new Map<string, SessionData>();
   private readonly stringFilter?: (text: string) => string;
   private readonly geolocate?: (ip: string) => GeoPoint | null;
+  private readonly isVpnHost?: (host: string | null) => boolean;
   private readonly maxClosedFlows: number;
 
   constructor(opts: NetStoreOptions = {}) {
     super();
     this.stringFilter = opts.stringFilter;
     this.geolocate = opts.geolocate;
+    this.isVpnHost = opts.isVpnHost;
     this.maxClosedFlows = opts.maxClosedFlows ?? DEFAULT_MAX_CLOSED_FLOWS;
   }
 
@@ -776,6 +785,7 @@ export class NetStore extends EventEmitter {
     e.agg.bytesUp -= prev.rec.bytes.up;
     e.agg.bytesDown -= prev.rec.bytes.down;
     e.agg.flows--;
+    if (prev.flags.scope === 'direct') e.direct--;
     if (BLOCK_STATES.has(prev.state)) {
       e.agg.blocked--;
       const k = prev.rec.rule ?? '';
@@ -827,6 +837,7 @@ export class NetStore extends EventEmitter {
         latest: null,
         spark: new Map(),
         geoIp: null,
+        direct: 0,
       };
       s.aggs.set(key, e);
       s.removedAggs.delete(key);
@@ -835,6 +846,7 @@ export class NetStore extends EventEmitter {
     a.bytesUp += r.bytes.up;
     a.bytesDown += r.bytes.down;
     a.flows++;
+    if (next.flags.scope === 'direct') e.direct++;
 
     if (BLOCK_STATES.has(next.state)) {
       a.blocked++;
@@ -903,8 +915,11 @@ export class NetStore extends EventEmitter {
     this.emit('rules', token);
   }
 
-  /** The geolocation database changed: every destination's location may have, so all are re-sent. */
-  refreshGeo(): void {
+  /**
+   * Re-send every destination: the geolocation database changed (every location may have)
+   * or the VPN list did (every `flags.vpn` may have).
+   */
+  redrawAll(): void {
     for (const [token, s] of this.sessions) {
       for (const k of s.aggs.keys()) s.dirtyAggs.add(k);
       this.emit('changed', token);
@@ -1026,7 +1041,7 @@ export class NetStore extends EventEmitter {
       closeReason: r.close_reason,
       request,
       state: e.state,
-      flags: e.flags,
+      flags: this.withVpn(s, e.flags, r.scope, r.dest.host, r.service),
       destKey: e.destKey,
       groupKey: e.groupKey,
       spark: sparkWindow(e.spark, s.lastT),
@@ -1043,6 +1058,7 @@ export class NetStore extends EventEmitter {
     const gate = { proxy: this.viaProxy(s, a.services[0] ?? null, a.resolution), resolution: a.resolution, corporate: this.corporate(s, a.services[0] ?? null) };
     return {
       ...a,
+      flags: this.withVpn(s, a.flags, a.scope, a.host, a.services[0] ?? null),
       policy: policyFor(s.policy, facts, gate, Object.keys(a.blockedBy).some(isLanOnlyRule) || isLanOnlyRule(a.rule)),
       // Only an IP glove resolved inside the tunnel (or a literal), never a local link or a hop.
       geoIp: e.geoIp?.ip ?? null,
@@ -1078,6 +1094,52 @@ export class NetStore extends EventEmitter {
     const declared = this.declared(s, service);
     if (declared?.route) return declared.route.kind === 'corporate';
     return s.session?.upstream_kind === 'corporate';
+  }
+
+  /**
+   * `flags` with `vpn` set when a `direct` destination is a known VPN route: it went out
+   * through glove's corporate egress, or the user listed its host. A copy, never stored:
+   * the list can change, and what is counted and persisted stays glove's `scope`.
+   */
+  private withVpn(s: SessionData, flags: FlowFlags, scope: string | null, host: string | null, service: string | null): FlowFlags {
+    const vpn = this.vpnKind(s, scope, host, service);
+    return vpn ? { ...flags, vpn } : flags;
+  }
+
+  /** Which VPN route a `direct` destination took, if any: glove's corporate egress, or a listed host. */
+  private vpnKind(s: SessionData, scope: string | null, host: string | null, service: string | null): FlowFlags['vpn'] | null {
+    if (scope !== 'direct') return null;
+    return this.corporate(s, service) ? 'corporate' : this.isVpnHost?.(host) ? 'listed' : null;
+  }
+
+  /**
+   * Of the session's `direct` flows, those to a destination that is a known VPN route. Live
+   * destinations count their own direct flows exactly (`AggEntry.direct`). What only the kept
+   * history holds has no per-destination direct count, so it is estimated from the destination's
+   * last scope and capped at the history's own direct flows: it can never hide a live leak.
+   */
+  private vpnFlows(s: SessionData, totals: NetTotals, historyOnly: string[]): number {
+    // From the aggregates, not destViews(): this runs with every delta, and a full view
+    // evaluates the rules for each destination.
+    let live = 0;
+    let kept = 0;
+    for (const e of s.aggs.values()) {
+      const a = e.agg;
+      if (!this.vpnKind(s, 'direct', a.host, a.services[0] ?? null)) continue;
+      live += e.direct;
+      if (a.scope === 'direct') kept += this.kept(s, a.key)?.c.flows ?? 0;
+    }
+    for (const k of historyOnly) {
+      const { h, c } = this.kept(s, k)!;
+      if (this.vpnKind(s, h.scope, h.host, null)) kept += c.flows;
+    }
+    return live + Math.min(kept, Math.max(0, totals.directFlows - s.directFlows));
+  }
+
+  /** The totals as the views show them: glove's counts, plus what of `direct` is a VPN route. */
+  private shownTotals(s: SessionData, historyOnly = this.historyOnlyKeys(s)): NetTotals {
+    const t = this.totals(s, historyOnly);
+    return t.directFlows > 0 ? { ...t, vpnFlows: this.vpnFlows(s, t, historyOnly) } : t;
   }
 
   /** What the kept history holds for a destination beyond what the files re-read: kept − seen. Null when nothing. */
@@ -1121,10 +1183,10 @@ export class NetStore extends EventEmitter {
       scope: h.scope ?? 'unknown', resolution: h.resolution ?? 'unavailable',
       bytesUp: c.up, bytesDown: c.down, flows: c.flows, openFlows: 0, blocked: c.blocked,
       firstSeen: h.firstSeen, lastSeen: h.lastSeen, state: h.lastState ?? 'finished', rule: null, blockedBy: {},
-      flags: flowFlags({
+      flags: this.withVpn(s, flowFlags({
         dest: { host: h.host, ip: h.lastIp, port: h.port, resolution: h.resolution ?? 'unavailable' },
         scope: h.scope ?? 'unknown', proto: null, client: null, tool: h.tool,
-      }, h.hop === true),
+      }, h.hop === true), h.scope ?? 'unknown', h.host, null),
       spark: [], policy: policyFor(s.policy, facts, gate), geoIp: null, geo: null,
     };
   }
@@ -1136,9 +1198,9 @@ export class NetStore extends EventEmitter {
   }
 
   /** Every destination: live ones with their history, then those only the history has. */
-  private destViews(s: SessionData): DestinationAggregate[] {
+  private destViews(s: SessionData, historyOnly = this.historyOnlyKeys(s)): DestinationAggregate[] {
     const out = [...s.aggs.values()].map((e) => this.aggView(s, e));
-    for (const k of this.historyOnlyKeys(s)) {
+    for (const k of historyOnly) {
       const kept = this.kept(s, k)!;
       out.push(this.historyView(s, kept.h, kept.c));
     }
@@ -1151,13 +1213,13 @@ export class NetStore extends EventEmitter {
     return [...s.history.dests.keys()].filter((k) => !s.aggs.has(k) && this.kept(s, k) !== null);
   }
 
-  private totals(s: SessionData): NetTotals {
+  private totals(s: SessionData, historyOnly = this.historyOnlyKeys(s)): NetTotals {
     const n = (st: NetState) => s.stateCounts.get(st) ?? 0;
     let open = 0;
     for (const e of s.flows.values()) if (e.rec.phase !== 'close' && e.state !== 'gate_lost') open++;
     const h = s.history?.s;
     const kept = (v: number | undefined, seen: number) => Math.max(0, (v ?? 0) - seen);
-    const destinations = s.aggs.size + this.historyOnlyKeys(s).length;
+    const destinations = s.aggs.size + historyOnly.length;
     return {
       bytesUp: s.bytesUp + kept(h?.bytesUp, s.seen.up),
       bytesDown: s.bytesDown + kept(h?.bytesDown, s.seen.down),
@@ -1197,9 +1259,10 @@ export class NetStore extends EventEmitter {
   rollup(token: string, changedHours = false): HistorySession | null {
     const s = this.sessions.get(token);
     if (!s || (s.lastT === null && !s.history)) return null;
-    const t = this.totals(s);
+    const historyOnly = this.historyOnlyKeys(s);
+    const t = this.totals(s, historyOnly);
     const h = s.history?.s;
-    const dests = this.destViews(s);
+    const dests = this.destViews(s, historyOnly);
     const first = Math.min(s.firstSeen ?? Infinity, h?.firstSeen ?? Infinity, ...dests.map((d) => d.firstSeen));
     return {
       token, filterSince: s.filterSince, filterSawDir: s.filterSawDir,
@@ -1273,6 +1336,7 @@ export class NetStore extends EventEmitter {
     const picked = [...open, ...closed.slice(0, Math.max(0, flowLimit - open.length))].sort(
       (a, b) => a[1].tOpen - b[1].tOpen,
     );
+    const historyOnly = this.historyOnlyKeys(s);
     return {
       token,
       session: s.session,
@@ -1280,10 +1344,10 @@ export class NetStore extends EventEmitter {
       exit: s.exits[s.exits.length - 1] ?? null,
       exits: [...s.exits],
       rules: s.rules,
-      destinations: this.destViews(s),
+      destinations: this.destViews(s, historyOnly),
       flows: picked.map(([id, e]) => this.flowView(s, id, e)),
       buckets: [...s.seconds.values()].sort((a, b) => a.t - b.t).map((b) => ({ ...b })),
-      totals: this.totals(s),
+      totals: this.shownTotals(s, historyOnly),
       counters: { ...s.counters },
       emptyFolded: s.stateCounts.get('empty') ?? 0,
       historyTruncated: s.historyTruncated,
@@ -1320,7 +1384,7 @@ export class NetStore extends EventEmitter {
         const b = s.seconds.get(t);
         return b ? [{ ...b }] : [];
       }),
-      totals: this.totals(s),
+      totals: this.shownTotals(s),
       counters: { ...s.counters },
       emptyFolded: s.stateCounts.get('empty') ?? 0,
     };
@@ -1416,7 +1480,7 @@ export class NetStore extends EventEmitter {
   summaries(): NetSessionSummary[] {
     return [...this.sessions.values()]
       .map((s) => {
-        const t = this.totals(s);
+        const t = this.shownTotals(s);
         const h = s.history?.s;
         return {
           token: s.loc.token,
@@ -1429,6 +1493,7 @@ export class NetStore extends EventEmitter {
           bytesDown: t.bytesDown,
           flows: t.flows,
           directFlows: t.directFlows,
+          ...(t.vpnFlows ? { vpnFlows: t.vpnFlows } : {}),
           rulesOk: s.historyOnly ? null : s.status?.rules?.ok ?? null,
           historyOnly: s.historyOnly,
         };

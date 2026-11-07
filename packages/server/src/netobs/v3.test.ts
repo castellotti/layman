@@ -234,6 +234,73 @@ describe('corporate route', () => {
   });
 });
 
+describe('known VPN routes (flags.vpn)', () => {
+  /** observe-filter with two direct flows on the proxy, its route optionally corporate. */
+  function directSession(corporate: boolean, flows?: Array<{ host: string; scope: string }>): { h: string; id: string } {
+    const h = home('observe-filter');
+    const id = 'observe-filter-0f1a2b';
+    const net = join(h, 'observe', id, 'net');
+    const facts = JSON.parse(readFileSync(join(net, 'session.json'), 'utf8'));
+    const proxy = facts.services.find((sv: { service: string }) => sv.service === 'proxy');
+    if (corporate) {
+      proxy.route = { kind: 'corporate', upstream: 'http://glove-x-corporate-proxy:8888' };
+      facts.upstream_kind = 'corporate';
+    }
+    writeFileSync(join(net, 'session.json'), JSON.stringify(facts));
+    const flow = (fid: string, host: string, scope: string) => JSON.stringify({
+      v: 1, type: 'flow', phase: 'close', id: fid, env: id, session: id, t: '2026-10-01T12:00:00.000Z', t_open: '2026-10-01T12:00:00.000Z',
+      t_close: '2026-10-01T12:00:00.000Z', service: 'proxy', tool: 'web_fetch', client: 'harness', proto: 'http-connect',
+      dest: { host, port: 443, ip: null, resolution: 'unavailable' }, scope, route: proxy.route ?? null,
+      bytes: { up: 1, down: 1 }, verdict: 'allow', rule: null, close_reason: 'eof', request: null, run: 'g_1',
+    });
+    const list = flows ?? [{ host: 'wiki.corp.example', scope: 'direct' }, { host: 'docs.example.com', scope: 'direct' }];
+    writeFileSync(join(net, 'flows.ndjson'), list.map((f, i) => flow(`f_${i + 1}`, f.host, f.scope)).join('\n') + '\n');
+    return { h, id };
+  }
+  const vpnOf = (obs: NetObs, id: string, host: string) => obs.store.snapshot(id)!.destinations.find((d) => d.host === host)!.flags.vpn;
+
+  it("a direct flow through glove's corporate egress is a VPN route, with no list", () => {
+    const { h, id } = directSession(true);
+    const obs = open(h);
+    expect(vpnOf(obs, id, 'wiki.corp.example')).toBe('corporate');
+    expect(vpnOf(obs, id, 'docs.example.com')).toBe('corporate');
+    expect(obs.store.snapshot(id)!.totals).toMatchObject({ directFlows: 2, vpnFlows: 2 });
+  });
+
+  it('elsewhere, only a listed host is, and a list change re-sends the views', () => {
+    const { h, id } = directSession(false);
+    let list: string[] = [];
+    const obs = new NetObs({ getGloveHome: () => h, getVpnDomains: () => list });
+    obs.poll(NOW);
+    expect(vpnOf(obs, id, 'wiki.corp.example')).toBeUndefined();
+    expect(obs.store.snapshot(id)!.totals.vpnFlows ?? 0).toBe(0);
+
+    list = ['*.corp.example'];
+    let changed = 0;
+    obs.store.on('changed', () => changed++);
+    obs.poll(NOW + 1000);
+    expect(changed).toBeGreaterThan(0);
+    expect(vpnOf(obs, id, 'wiki.corp.example')).toBe('listed');
+    expect(vpnOf(obs, id, 'docs.example.com')).toBeUndefined();
+    const s = obs.store.snapshot(id)!;
+    expect(s.totals).toMatchObject({ directFlows: 2, vpnFlows: 1 });
+    // glove's scope is untouched: it is what rules match and what is counted and kept.
+    expect(s.destinations.every((d) => d.scope === 'direct' && d.flags.scope === 'direct')).toBe(true);
+    expect(s.flows.find((f) => f.dest.host === 'wiki.corp.example')!.flags.vpn).toBe('listed');
+  });
+
+  it("a listed host subtracts only its own direct flows, never another host's leak", () => {
+    // The listed host's latest flow is direct, its earlier ones were tunnelled: the destination's
+    // scope is the latest, but only one of its flows is direct. A second, unlisted host leaked.
+    const tunnelled = Array.from({ length: 5 }, () => ({ host: 'wiki.corp.example', scope: 'tunnelled' }));
+    const { h, id } = directSession(false, [...tunnelled, { host: 'wiki.corp.example', scope: 'direct' },
+      { host: 'leak.example.com', scope: 'direct' }, { host: 'leak.example.com', scope: 'direct' }]);
+    const obs = new NetObs({ getGloveHome: () => h, getVpnDomains: () => ['corp.example'] });
+    obs.poll(NOW);
+    expect(obs.store.snapshot(id)!.totals).toMatchObject({ directFlows: 3, vpnFlows: 1 });
+  });
+});
+
 describe('v3 fixture drift guard', () => {
   const files = (dir: string): string[] => {
     const out: string[] = [];

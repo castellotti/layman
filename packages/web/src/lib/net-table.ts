@@ -11,7 +11,11 @@
 import { BLOCK_STATES, LEGEND_BY_KEY, NET_STATE_INFO, formatAge, type StateIcon, type ToggleKind } from './net-format.js';
 import type { NetSessionData } from './net-state.js';
 import { CUT_PREFIX, toggleFor } from './net-rules.js';
-import { isLanOnlyRule, type DestinationAggregate, type FlowView, type NetService, type NetState, type RateBucket, type Rule } from './netobs-types.js';
+import { isLanOnlyRule, type DestinationAggregate, type FlowFlags, type FlowView, type NetService, type NetState, type RateBucket, type Rule } from './netobs-types.js';
+import { isUntunnelled, isVpnRoute } from './net-vpn.js';
+
+/** The Route column's text for a known VPN route (`FlowFlags.vpn`), and its Group by route group. */
+export const VPN_ROUTE_LABEL = 'Direct · VPN';
 
 export type GroupBy = 'domain' | 'route' | 'tool';
 export type SortBy = 'recent' | 'bytes';
@@ -215,7 +219,7 @@ function ruleNote(ctx: Ctx, id: string | null): string | null {
 /** The State column for one flow, or for a destination through its latest flow. */
 function stateCell(
   ctx: Ctx,
-  s: { state: NetState; rule: string | null; scope: string; cleartext: boolean; closeReason: string | null },
+  s: { state: NetState; rule: string | null; scope: string; vpn?: FlowFlags['vpn']; cleartext: boolean; closeReason: string | null },
   live: { text: string } | null,
 ): CellText {
   const info = NET_STATE_INFO[s.state];
@@ -261,14 +265,14 @@ function stateCell(
       break;
   }
   // Untunnelled traffic keeps its state but is always said, in red, first.
-  if (s.scope === 'direct' && !BLOCK_STATES.has(s.state)) {
+  if (isUntunnelled(s.scope, s) && !BLOCK_STATES.has(s.state)) {
     return { text: `untunnelled · ${cell.text}`, colourVar: LEGEND_BY_KEY.direct.colourVar, icon: LEGEND_BY_KEY.direct.icon };
   }
   return cell;
 }
 
 /** The Route column: how the traffic left, or that it never did. */
-function routeCell(ctx: Ctx, d: { state: NetState; scope: string; flags: { hop: boolean }; tool?: string | null; tools?: string[] }): CellText {
+function routeCell(ctx: Ctx, d: { state: NetState; scope: string; flags: Pick<FlowFlags, 'hop' | 'vpn'>; tool?: string | null; tools?: string[] }): CellText {
   if (d.state === 'guard' || (BLOCK_STATES.has(d.state) && (d.scope === 'local' || d.flags.hop))) {
     return { text: 'never left', colourVar: 'var(--text-faint)', icon: 'shield' };
   }
@@ -281,6 +285,9 @@ function routeCell(ctx: Ctx, d: { state: NetState; scope: string; flags: { hop: 
     return { text: name ? `LAN · ${name}` : 'LAN', colourVar: 'var(--text-muted)', icon: LEGEND_BY_KEY.lan.icon };
   }
   if (d.scope === 'cloud') return { text: 'cloud · LLM', colourVar: 'var(--text-muted)', icon: LEGEND_BY_KEY.cloud.icon };
+  // A known route to the corporate network (its egress, or a host the user listed): direct, and expected.
+  // Its own label, so Group by route never puts it under "Direct", whose group block is `scope: direct`.
+  if (isVpnRoute(d.scope, d.flags)) return { text: VPN_ROUTE_LABEL, colourVar: LEGEND_BY_KEY.vpn_route.colourVar, icon: LEGEND_BY_KEY.vpn_route.icon };
   if (d.scope === 'direct') return { text: 'Direct', colourVar: 'var(--error)', icon: 'direct' };
   const kind = ctx.data.gate.route.kind;
   const name = kind ? ROUTE_NAME[kind] ?? kind : 'tunnel';
@@ -305,14 +312,14 @@ function destState(ctx: Ctx, d: DestinationAggregate): CellText {
         ? (() => { const r = rateOf(d.spark, ctx.anchor); return r > 0 ? `live · ${formatRate(r)}` : 'live'; })()
         : `pooled · idle ${formatAge(ctx.anchor - d.lastSeen)}` }
     : null;
-  return stateCell(ctx, { state: d.state, rule: d.rule, scope: d.scope, cleartext: d.flags.cleartext, closeReason: f?.closeReason ?? null }, live);
+  return stateCell(ctx, { state: d.state, rule: d.rule, scope: d.scope, vpn: d.flags.vpn, cleartext: d.flags.cleartext, closeReason: f?.closeReason ?? null }, live);
 }
 
 function flowState(ctx: Ctx, f: FlowView): CellText {
   const live = f.state === 'active'
     ? { text: `open ${formatAge(ctx.now - f.tOpen)}` }
     : f.state === 'pooled' ? { text: `pooled · idle ${formatAge(ctx.now - f.lastActivityAt)}` } : null;
-  return stateCell(ctx, { state: f.state, rule: f.rule, scope: f.scope, cleartext: f.flags.cleartext, closeReason: f.closeReason }, live);
+  return stateCell(ctx, { state: f.state, rule: f.rule, scope: f.scope, vpn: f.flags.vpn, cleartext: f.flags.cleartext, closeReason: f.closeReason }, live);
 }
 
 function hostSublabel(ctx: Ctx, d: DestinationAggregate): string | null {
@@ -385,7 +392,7 @@ interface Group {
 function summaryState(ctx: Ctx, dests: DestinationAggregate[]): CellText {
   const live = dests.filter((d) => d.state === 'active').length;
   const pooled = dests.some((d) => d.state === 'pooled');
-  const loud = dests.find((d) => d.scope === 'direct' && !BLOCK_STATES.has(d.state));
+  const loud = dests.find((d) => isUntunnelled(d.scope, d.flags) && !BLOCK_STATES.has(d.state));
   if (live || pooled) {
     const text = live ? `${live} live${pooled ? ' · pooled' : ''}` : 'pooled';
     if (loud) return { text: `untunnelled · ${text}`, colourVar: 'var(--error)', icon: 'alert' };
@@ -441,7 +448,7 @@ function flowRows(ctx: Ctx, d: DestinationAggregate, depth: 1 | 2): TableRow[] {
     route: routeCell(ctx, f), tools: f.tool ? [f.tool] : [], spark: sparkWindow(f.spark, ctx.anchor),
     sent: f.bytes.up, received: f.bytes.down, flows: 1,
     last: lastCell(ctx, f.lastT, f.state === 'active'), state: flowState(ctx, f),
-    loud: f.flags.scope === 'direct',
+    loud: isUntunnelled(f.flags.scope, f.flags),
   }));
   const missing = d.flows - flows.length;
   if (missing > 0) {
@@ -487,7 +494,7 @@ function hostRow(ctx: Ctx, d: DestinationAggregate, depth: 0 | 1, opts: TableOpt
     route: routeCell(ctx, d), tools: d.tools, spark: sparkWindow(d.spark, ctx.anchor),
     sent: d.bytesUp, received: d.bytesDown, flows: d.flows,
     last: lastCell(ctx, d.lastSeen, d.state === 'active'), state: destState(ctx, d),
-    loud: d.scope === 'direct' && !BLOCK_STATES.has(d.state),
+    loud: isUntunnelled(d.scope, d.flags) && !BLOCK_STATES.has(d.state),
   };
 }
 
@@ -568,7 +575,7 @@ export function buildTable(data: NetSessionData, opts: TableOptions): TableModel
       flows: g.dests.reduce((a, d) => a + d.flows, 0),
       last: lastCell(ctx, g.lastSeen, g.dests.some((d) => d.state === 'active')),
       state: summaryState(ctx, g.dests),
-      loud: g.dests.some((d) => d.scope === 'direct' && !BLOCK_STATES.has(d.state)),
+      loud: g.dests.some((d) => isUntunnelled(d.scope, d.flags) && !BLOCK_STATES.has(d.state)),
     });
     if (!expanded) continue;
     for (const d of g.dests) {

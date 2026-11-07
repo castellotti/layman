@@ -71,7 +71,9 @@ const row = (rows: TableRow[], label: string) => {
 
 describe('the state legend', () => {
   it("has every row of glove's state table plus cleartext HTTP and glove v3's labels, each fully described", () => {
-    expect(NET_LEGEND).toHaveLength(28);
+    expect(NET_LEGEND).toHaveLength(29);
+    // Layman's own: a direct flow that is a known route to the corporate network, never loud.
+    expect(NET_LEGEND.find((s) => s.key === 'vpn_route')?.loud).toBeFalsy();
     // glove v3: the llm link's scopes and the corporate route.
     expect(NET_LEGEND.filter((s) => ['lan', 'cloud', 'route_corporate'].includes(s.key)).map((s) => s.dataRule))
       .toEqual(['scope: lan', 'scope: cloud', 'route.kind: corporate']);

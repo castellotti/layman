@@ -129,6 +129,11 @@ linked above.
    llm-auth call) and `tool: ssh`, never by scope, which no rule may name. A hop to a sidecar that goes
    on through another gate (`FlowFlags.hop`, the `llm` hop to llm-auth) is a local link whose bytes
    count once, at the next leg (design: glove.md → "llm-auth, the relays and downloads").
+   glove's `scope: direct` is not always a leak: a flow through a corporate egress, or to a host in
+   `glove.network.vpnDomains`, is a known VPN route (`FlowFlags.vpn`, set when a view is built, never
+   stored or counted; `scope` stays glove's, so rules still match it). The web raises the untunnelled
+   alarm only through `isUntunnelled` / `untunnelledFlows` (`lib/net-vpn.ts`), never `scope === 'direct'`
+   (design: glove.md → "Known VPN routes").
    Rules: `netobs/rules.ts` is a port of glove's `policy.py` validator/evaluator (v3: `extensions/gate/netgate/`) and of its built-in
    `guard.check` (which refuses non-public proxy destinations by host shape and by in-tunnel IP before
    any rule, so a prediction must go through `predict()`, never `evaluate()` alone), held to both by a
