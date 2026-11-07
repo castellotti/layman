@@ -8,6 +8,7 @@ import { useSessionStore } from '../../stores/sessionStore.js';
 import { BLOCK_STATES, formatBytes } from '../../lib/net-format.js';
 import type { NetSessionData } from '../../lib/net-state.js';
 import { offMap } from '../../lib/netobs-types.js';
+import { untunnelledFlows } from '../../lib/net-vpn.js';
 import { NetIcon, type NetIconName } from './netui.js';
 import { WorldMap } from './WorldMap.js';
 
@@ -55,9 +56,9 @@ export function KpiRow({ data }: { data: NetSessionData }) {
         sub={`${reachable.length - unknown} to map · ${unknown} unknown location`} />
       <Kpi icon="blocked" iconColour="var(--error)" label="BLOCKED" value={String(blocked)} valueColour={blocked ? 'var(--error)' : 'var(--text)'}
         sub={blockedParts.length ? blockedParts.join(' · ') : 'nothing blocked'} />
-      {t.directFlows > 0 ? (
-        <Kpi alert icon="alert" iconColour="var(--error)" label="UNTUNNELLED" value={String(t.directFlows)} valueColour="#FF8A80"
-          sub={`${plural(t.directFlows, 'flow')} skipped the tunnel`} />
+      {untunnelledFlows(t) > 0 ? (
+        <Kpi alert icon="alert" iconColour="var(--error)" label="UNTUNNELLED" value={String(untunnelledFlows(t))} valueColour="#FF8A80"
+          sub={`${plural(untunnelledFlows(t), 'flow')} skipped the tunnel${t.vpnFlows ? ` · ${plural(t.vpnFlows, 'VPN flow')} not counted` : ''}`} />
       ) : (
         <Kpi icon="check" iconColour="var(--ok)" label="UNTUNNELLED" value="0" valueColour="var(--ok)"
           sub={route === 'tcp' ? 'no proxied egress in this session' : `every egress flow used ${ROUTE_NAME[route ?? ''] ?? 'the tunnel'}`} />

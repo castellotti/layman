@@ -54,6 +54,7 @@ import { PiSessionWatcher, recordedCursorFrom } from './pi/watcher.js';
 import { ClaudeCodeSessionWatcher } from './claude/watcher.js';
 import { NativeVibeSource, NativePiSource, GloveSource } from './monitor/sources.js';
 import { recoverSessionGaps, importHistoricalSessions } from './hooks/recovery.js';
+import { assembleContext, eventSubject, summarizeEventForContext, type ConversationItem } from './analysis/context.js';
 import type { ServerMessage, ClientMessage, SessionStatus, SetupStatus } from './types/index.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -217,6 +218,7 @@ export function createServer(config: LaymanConfig): LaymanServer {
       const p = getConfig().glove.network.geoipDbPath.trim();
       return p ? expandHome(p) : '';
     },
+    getVpnDomains: () => getConfig().glove.network.vpnDomains ?? [],
     // Rollups kept across restarts (netobs/persist.ts), only while recording is on,
     // never synced. `db` is opened below; the history is first used when polling starts.
     history: {
@@ -488,41 +490,34 @@ export function createServer(config: LaymanConfig): LaymanServer {
   // everything older than that window. The summary is cached per session and refreshed
   // in the background — it never blocks the caller, so the first investigation in a long
   // session simply lacks it until the background summarization completes.
-  const RECENT_EVENTS_WINDOW = 20;
+  // The split itself (what comes before the event, the conversation, the window) is
+  // pure and tested in analysis/context.ts.
   const sessionSummaryCache = new Map<string, { summary: string; eventCount: number }>();
-
-  function summarizeEventForContext(e: import('./events/types.js').TimelineEvent): { type: string; summary: string } {
-    return {
-      type: e.type,
-      summary: e.data.toolName
-        ? `${e.data.toolName}: ${JSON.stringify(e.data.toolInput ?? {}).slice(0, 120)}`
-        : (e.data.prompt as string | undefined)?.slice(0, 120) ?? e.type,
-    };
-  }
 
   function getSessionEventsForContext(sessionId: string): import('./events/types.js').TimelineEvent[] {
     const live = eventStore.getAll().filter((e) => e.sessionId === sessionId);
     return live.length > 0 ? live : bookmarkStore.getEventsForSession(sessionId);
   }
 
-  function buildSessionContext(sessionId: string, excludeEventId: string, modelOverride?: string): {
+  function buildSessionContext(sessionId: string, eventId: string, modelOverride?: string): {
     recentEvents: Array<{ type: string; summary: string }>;
+    conversation: ConversationItem[];
     sessionSummary?: string;
   } {
-    const others = getSessionEventsForContext(sessionId).filter((e) => e.id !== excludeEventId);
-    const recentEvents = others.slice(-RECENT_EVENTS_WINDOW).map(summarizeEventForContext);
-    const older = others.slice(0, -RECENT_EVENTS_WINDOW);
+    const { recentEvents, conversation, older } = assembleContext(getSessionEventsForContext(sessionId), eventId);
+    if (older.length === 0) return { recentEvents, conversation };
 
-    if (older.length === 0) return { recentEvents };
-
-    const cached = sessionSummaryCache.get(sessionId);
-    if (!cached || cached.eventCount !== older.length) {
+    // Keyed by session and the last summarised event, so an earlier event's window is not
+    // answered with a later one's summary (or the reverse).
+    const key = `${sessionId}:${older[older.length - 1].id}`;
+    const cached = sessionSummaryCache.get(key);
+    if (!cached) {
       void analysisEngine.summarizeSession(older.map(summarizeEventForContext), process.cwd(), modelOverride)
-        .then((result) => sessionSummaryCache.set(sessionId, { summary: result.summary, eventCount: older.length }))
+        .then((result) => sessionSummaryCache.set(key, { summary: result.summary, eventCount: older.length }))
         .catch(() => {});
     }
 
-    return { recentEvents, sessionSummary: cached?.summary };
+    return { recentEvents, conversation, sessionSummary: cached?.summary };
   }
 
   // Forward store events to WebSocket
@@ -819,12 +814,14 @@ export function createServer(config: LaymanConfig): LaymanServer {
       const depth = request.body.depth ?? 'quick';
       try {
         broadcast({ type: 'analysis:start', eventId: event.id });
+        const ctx = buildSessionContext(event.sessionId, event.id);
         const result = await analysisEngine.analyze({
-          toolName: event.data.toolName ?? 'Unknown',
-          toolInput: event.data.toolInput ?? {},
-          toolOutput: event.data.toolOutput,
+          ...eventSubject(event),
           cwd: process.cwd(),
           depth,
+          recentEvents: ctx.recentEvents,
+          conversation: ctx.conversation,
+          sessionSummary: ctx.sessionSummary,
         });
         eventStore.attachAnalysis(event.id, result);
         broadcast({ type: 'analysis:result', eventId: event.id, result });
@@ -853,14 +850,13 @@ export function createServer(config: LaymanConfig): LaymanServer {
 
       try {
         const result = await analysisEngine.ask(request.body.question, {
-          toolName: event.data.toolName ?? 'Unknown',
-          toolInput: event.data.toolInput ?? {},
-          toolOutput: event.data.toolOutput,
+          ...eventSubject(event),
           previousAnalysis: event.analysis,
           laymansTerms: request.body.laymansTerms ?? event.laymans?.explanation,
           failureReason: request.body.failureReason ?? (event.data.error as string | undefined),
           previousQuestions: request.body.previousQuestions,
           recentSessionEvents: ctx.recentEvents,
+          conversation: ctx.conversation,
           sessionSummary: ctx.sessionSummary,
           cwd: process.cwd(),
           modelOverride: request.body.model,
@@ -1817,12 +1813,11 @@ export function createServer(config: LaymanConfig): LaymanServer {
           try {
             broadcast({ type: 'analysis:start', eventId: message.eventId });
             const result = await analysisEngine.analyze({
-              toolName: event.data.toolName ?? 'Unknown',
-              toolInput: event.data.toolInput ?? {},
-              toolOutput: event.data.toolOutput,
+              ...eventSubject(event),
               cwd: process.cwd(),
               depth: message.depth,
               recentEvents: ctx.recentEvents,
+              conversation: ctx.conversation,
               sessionSummary: ctx.sessionSummary,
               modelOverride: message.model,
             }, 'high');
@@ -1845,12 +1840,11 @@ export function createServer(config: LaymanConfig): LaymanServer {
             broadcast({ type: 'laymans:start', eventId: message.eventId });
             const result = await analysisEngine.laymans(
               {
-                toolName: event.data.toolName ?? 'Unknown',
-                toolInput: event.data.toolInput ?? {},
-                toolOutput: event.data.toolOutput,
+                ...eventSubject(event),
                 cwd: process.cwd(),
                 depth: message.depth,
                 recentEvents: ctx.recentEvents,
+                conversation: ctx.conversation,
                 sessionSummary: ctx.sessionSummary,
                 modelOverride: message.model,
               },
@@ -1872,12 +1866,11 @@ export function createServer(config: LaymanConfig): LaymanServer {
 
         const ctx = buildSessionContext(event.sessionId, event.id, message.model);
         const req = {
-          toolName: event.data.toolName ?? 'Unknown',
-          toolInput: event.data.toolInput ?? {},
-          toolOutput: event.data.toolOutput,
+          ...eventSubject(event),
           cwd: process.cwd(),
           depth: message.depth,
           recentEvents: ctx.recentEvents,
+          conversation: ctx.conversation,
           sessionSummary: ctx.sessionSummary,
           modelOverride: message.model,
         };
@@ -1912,12 +1905,14 @@ export function createServer(config: LaymanConfig): LaymanServer {
         const event = eventStore.get(message.eventId);
         if (!event) break;
 
+        const ctx = buildSessionContext(event.sessionId, event.id);
         void (async () => {
           try {
             const result = await analysisEngine.ask(message.question, {
-              toolName: event.data.toolName ?? 'Unknown',
-              toolInput: event.data.toolInput ?? {},
-              toolOutput: event.data.toolOutput,
+              ...eventSubject(event),
+              recentSessionEvents: ctx.recentEvents,
+              conversation: ctx.conversation,
+              sessionSummary: ctx.sessionSummary,
               previousAnalysis: event.analysis,
               cwd: process.cwd(),
             }, 'high');

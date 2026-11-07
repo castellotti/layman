@@ -1333,11 +1333,39 @@ installed partway through a long run) starts at the earliest collector record La
 traffic before that stop belongs to no run, so it shows as bursts of no run, and the run itself as
 having moved nothing. Once Layman has seen a run start, its row keeps it.
 
+### Known VPN routes (`netobs/vpn.ts`, `lib/net-vpn.ts`)
+
+glove's `scope: direct` means only that a flow left without a vpn/tor route glove declared
+(`ForwardSpec.flow_scope`): it says nothing about the host's own VPN. On a corporate session
+(`templates/corporate`) the corporate egress is an `http-proxy` with `--upstream direct`, so *every*
+flow through it is `direct`, and the views used to paint the whole session as an anonymity failure.
+
+- **`FlowFlags.vpn`** marks a `direct` flow or destination that is an expected route to the corporate
+  network: `corporate` when its service's declared route (or, without one, the session's
+  `upstream_kind`) is `corporate`, the same test `rules.ts` uses for "up to the allowlist"; `listed`
+  when its host is in `glove.network.vpnDomains`. It is set when `NetStore` builds a view
+  (`withVpn`), **never stored, counted or persisted**: `scope` stays what glove wrote, which is what a
+  rule matches (`scope: direct` still blocks these flows), what `directFlows` counts and what the
+  rollups keep. A list change re-sends every destination, as a new geo database does.
+- **`vpnFlows`** in the totals and the session summaries is what of `directFlows` is a VPN route, from
+  the destinations shown. The web never compares `scope === 'direct'` to raise the alarm: it asks
+  `isUntunnelled(scope, flags)` and `untunnelledFlows(totals)` (`lib/net-vpn.ts`), which every red
+  thing reads: the strip chip, the KPI, the tab dot, the table's loud rows and Route column, the Map's
+  clusters, ribbon and banner, Topology's Direct node and bands, Trace's outcomes.
+- **The Route column says "Direct · VPN"**, its own group under Group by route. `groupTarget` maps
+  only `route:Direct` to `scope: direct`; a group named "VPN" would have mapped to `scope: tunnelled`
+  and blocked the wrong traffic.
+- **The list** is a domain suffix per entry (`corp.example`, `*.corp.example` and `.corp.example` are
+  the same entry and cover the domain and every subdomain), or a whole host or IP literal, matched
+  exactly. The matcher exists twice, server and web, with the same test cases in both; the web uses it
+  only to find the entries to remove when a host is unmarked.
+
 ### Configuration
 
 `glove.network` in `GloveConfigSchema`: `enabled` (default true, meaningful only with `glove.enabled`),
 `controlEnabled` (default true; false makes every toggle read-only, and is the Settings toggle "Allow
-blocking from Layman") and `geoipDbPath` (the Map's offline geolocation database; empty means none). `glove` and `glove.network` are deep-merged in
+blocking from Layman"), `geoipDbPath` (the Map's offline geolocation database; empty means none) and
+`vpnDomains` (hosts reached over the user's own VPN; above). `glove` and `glove.network` are deep-merged in
 both `loadConfig()` and `updateConfig()` — before this, `glove` was not, so a Settings update carrying
 only `glove.enabled` would have blanked the glove path (`sessionsDir` then, `home` now), and one carrying a single network toggle would
 have reset the others. With glove (or its network views) off, the store is emptied and the session list

@@ -23,6 +23,9 @@ import { DetailCard, useGeoStatus } from './DetailCard.js';
 import { WorldMap } from './WorldMap.js';
 import { NetIcon, type NetIconName } from './netui.js';
 import { TipWrap, tipProps } from './NetTip.js';
+import { isUntunnelled } from '../../lib/net-vpn.js';
+import { useVpnDomains } from '../../hooks/useVpnDomains.js';
+import { bannerHosts, useDismissedBanner } from '../../lib/net-banner.js';
 
 type Corner = 'tl' | 'tc' | 'tr' | 'bl' | 'br';
 const DEFAULT_CORNER: Record<string, Corner> = { talking: 'tl', unknown: 'tc', detail: 'tr', sandbox: 'bl', legend: 'br' };
@@ -301,13 +304,18 @@ export function MapView({ data, panels }: { data: NetSessionData; panels: Return
   const cornerOf = (id: string) => corners[id] ?? DEFAULT_CORNER[id] ?? 'tr';
 
   const select = (h: string | null) => setNetDest(h);
-  const direct = [...data.destinations.values()].filter((d) => d.scope === 'direct');
+  // A known VPN route (FlowFlags.vpn: the corporate egress, or a host the user listed) is no alarm.
+  const direct = [...data.destinations.values()].filter((d) => isUntunnelled(d.scope, d.flags));
+  const directHosts = bannerHosts(direct);
+  const banner = useDismissedBanner(data.token, directHosts);
+  const vpn = useVpnDomains();
   const unknown = unknownLocation(data.destinations.values());
   const live = [...data.destinations.values()].filter((d) => d.openFlows > 0).length;
   const disabled = controlDisabledReason(data.rules);
 
-  // Not dismissable while such a flow exists; stacked in the top-centre column so it covers no card.
-  const directBanner = direct.length > 0 ? (
+  // Dismissed, it stays away for this glove session until a host it has not seen goes out
+  // untunnelled (the strip chip and the KPI still count them). Stacked in the top-centre column so it covers no card.
+  const directBanner = direct.length > 0 && !banner.dismissed ? (
     <div role="alert" style={{ pointerEvents: 'auto', display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', borderRadius: 8, background: '#2A0F0E', border: '1px solid var(--error)', maxWidth: 620 }}>
             <NetIcon name="alert" size={18} color="var(--error)" strokeWidth={1.8} />
             <div style={{ fontSize: 11.5, color: '#F3C6C1' }}>
@@ -321,6 +329,18 @@ export function MapView({ data, panels }: { data: NetSessionData; panels: Return
                 <NetIcon name="blocked" color="#FF8A80" />Block direct egress
               </button>
             </TipWrap>
+            <TipWrap tip={vpn.writable ? 'These hosts are on my corporate network: list them as VPN routes (Settings → Glove)' : 'Needs a live connection'} disabled={!vpn.writable}>
+              <button type="button" disabled={!vpn.writable || directHosts.length === 0}
+                onClick={() => vpn.mark(directHosts)}
+                style={buttonStyle('ghost')}>
+                <NetIcon name="shield" />On my VPN
+              </button>
+            </TipWrap>
+            <button type="button" aria-label="Dismiss" title="Dismiss for this session (it comes back for a new untunnelled host)"
+              onClick={banner.dismiss}
+              style={{ pointerEvents: 'auto', display: 'flex', alignItems: 'center', justifyContent: 'center', width: 22, height: 22, background: 'transparent', border: 'none', borderRadius: 4, cursor: 'pointer', flexShrink: 0 }}>
+              <NetIcon name="close" size={11} color="#F3C6C1" />
+            </button>
           </div>
   ) : null;
 

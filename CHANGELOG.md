@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+- **Network views: VPN routes are not untunnelled traffic.** glove calls a flow `direct` whenever it left without a tunnel glove set up, so a corporate session (`glove new corporate`), whose only egress rides the host's corporate VPN by design, showed every connection as a red anonymity failure. A direct flow through a session's corporate egress is now a VPN route, and so is any host the user lists in Settings → Glove → **VPN domains** (`corp.example` covers every subdomain), marks from its details, or marks with **On my VPN** on the Map's banner. They show as "Direct · VPN", never red, and are not counted as untunnelled (the strip chip, the KPI, the tab dot, Map, Topology and Trace all ask one helper, `isUntunnelled`). Only the views change: `scope` stays what glove recorded, rules still match `scope: direct`, and the counts and rollups are glove's. Design: `docs/extensions/glove.md` → "Known VPN routes".
+
+- **Map: the "Untunnelled traffic" banner can be dismissed.** Dismissed, it stays away for that glove session (remembered in the browser) until a host it did not cover goes out untunnelled. The strip chip and the KPI keep counting either way.
+
+- **Prompts: delete a highlight.** The reading pane has a delete action, with a confirmation; the highlight's prompt and response stay in their session. A highlight from another host stays read-only. A deleted highlight that was selected is deselected wherever it was deleted.
+
+- **Logs and transcripts: one action bar per expanded row.** An expanded prompt or response had two bars, each with its own Highlight and Copy, and a label repeating the row's kind. The outer Highlight was a separate, minimap-only mark kept in the browser that looked like the real one and did nothing else. Now the bar inside the row is the only one: Copy and Link on every event, Highlight on a prompt or response (it now also marks the minimap), Investigate, and the speaker on a response. Rows with no prose (a tool call) get the same bar on its own. The old minimap-only marks are dropped.
+
+- **Investigate has the session's context, whatever the event.** An investigation (Explain, analysis, Chat) of a tool call had only the 20 events before the end of the session, summarised to 120 characters, and a prompt or response was sent as tool `Unknown` with no input, so the model was asked about nothing, and the analysis cache, keyed on those two, answered every response with the first one's result. Context is now built around the investigated event (`analysis/context.ts`): the event itself (a prompt or response by its text), the 20 events just before it, the session's prompts and responses up to it (newest first, within a budget), then the rolling summary of the rest. Events after it are left out: the question is why the agent did this. The summary cache is keyed by where the window starts, so an earlier event is not given a later event's summary.
+
 ## 0.9.0
 
 - **Network views: Trace's Downloads panel scrolls.** The panel was as tall as its list and could not shrink (`flex: 0 0 auto`), so with many downloads its lower rows ran past the column's clipped edge, out of reach. It is still as tall as its list, but it shrinks to fit the column and scrolls. While Details shares the column, Downloads takes at most half of it, so a long list cannot squeeze Details to nothing. `PanelFrame` takes a `maxHeight` for this, and the Board applies a panel's `maxShare` only when the panel shares its column.

@@ -43,7 +43,7 @@ export function EventStream({ onSend, archived = false, archivedDate, turnRuler 
   const scrollRef = useRef<HTMLDivElement>(null);
   const {
     sessions, activeSessionId, config, fetchAccessLog, scrollToEventId, clearScrollToEvent, bookmarks,
-    logHighlightedEventIds, expandedLogEventIds, setExpandedLogEventIds, toggleExpandAllLogs,
+    highlightedEventIds, expandedLogEventIds, setExpandedLogEventIds, toggleExpandAllLogs,
     bookmarksScrollToEventId, setBookmarksScrollToEventId,
   } = useSessionStore();
   const historicalEventsFromStore = useSessionStore((s) => s.historicalEvents);
@@ -456,7 +456,7 @@ export function EventStream({ onSend, archived = false, archivedDate, turnRuler 
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden', position: 'relative' }}>
         {/* Minimap */}
         {hasEvents && (
-          <Minimap events={displaySessionEvents} scrollRef={scrollRef} highlightedEventIds={logHighlightedEventIds} />
+          <Minimap events={displaySessionEvents} scrollRef={scrollRef} highlightedEventIds={highlightedEventIds} />
         )}
 
         {/* Scroll area */}

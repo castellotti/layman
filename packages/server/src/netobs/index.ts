@@ -9,6 +9,7 @@
 import { NetSessionSource, type GloveSessionInfo, type NetSessionLocation } from './discovery.js';
 import { RulesControl, type ApplyResult } from './control.js';
 import { GeoLocator } from './geo.js';
+import { vpnMatcher } from './vpn.js';
 import { parseLine, parseSessionFile, parseStatus, type ParsedLine } from './parse.js';
 import type { NetHistory } from './history.js';
 import { NetStore } from './store.js';
@@ -71,6 +72,8 @@ export interface NetObsOptions {
   controlEnabled?: () => boolean;
   /** Expanded `glove.network.geoipDbPath`, or '' for none. */
   getGeoPath?: () => string;
+  /** `glove.network.vpnDomains`: hosts and domain suffixes reached over the user's VPN (`vpn.ts`). */
+  getVpnDomains?: () => readonly string[];
   pollMs?: number;
   coalesceMs?: number;
   budgetBytes?: number;
@@ -183,6 +186,8 @@ export class NetObs {
   private notObservable: NetNotObservable[] = [];
   private readonly control: RulesControl;
   readonly geo: GeoLocator;
+  private readonly vpn: ReturnType<typeof vpnMatcher>;
+  private vpnSig = '';
 
   constructor(opts: NetObsOptions) {
     this.getGloveHome = opts.getGloveHome;
@@ -190,7 +195,9 @@ export class NetObs {
     this.source = new NetSessionSource(opts.getGloveHome);
     this.geo = new GeoLocator(opts.getGeoPath ?? (() => ''));
     this.geo.refresh();
-    this.storeOpts = { stringFilter: opts.stringFilter, geolocate: (ip) => this.geo.lookup(ip) };
+    this.vpn = vpnMatcher(opts.getVpnDomains ?? (() => []));
+    this.vpnSig = this.vpn.signature();
+    this.storeOpts = { stringFilter: opts.stringFilter, geolocate: (ip) => this.geo.lookup(ip), isVpnHost: (h) => this.vpn.matches(h) };
     this.store = new NetStore(this.storeOpts);
     this.rangeBudgetBytes = opts.rangeBudgetBytes ?? DEFAULT_RANGE_SCAN_BYTES;
     this.pollMs = opts.pollMs ?? POLL_MS;
@@ -268,6 +275,13 @@ export class NetObs {
     if (this.geo.refresh()) {
       this.store.refreshGeo();
       for (const e of this.ranges.values()) e.view.store.refreshGeo();
+    }
+    // A changed VPN list re-sends every destination, as a new geo database does.
+    const vpnSig = this.vpn.signature();
+    if (vpnSig !== this.vpnSig) {
+      this.vpnSig = vpnSig;
+      this.store.refreshVpn();
+      for (const e of this.ranges.values()) e.view.store.refreshVpn();
     }
 
     const seen = new Set<string>();
@@ -611,7 +625,7 @@ export class NetObs {
   private maybeBroadcastSessions(): void {
     const sessions = this.sessions();
     const notObservable = this.notObservableSessions();
-    const sig = JSON.stringify([this.registry, notObservable, sessions.map((s) => [s.token, s.live, s.rulesOk, s.directFlows > 0, s.harness, s.glove])]);
+    const sig = JSON.stringify([this.registry, notObservable, sessions.map((s) => [s.token, s.live, s.rulesOk, s.directFlows - (s.vpnFlows ?? 0) > 0, s.harness, s.glove])]);
     if (sig === this.listSig) return;
     this.listSig = sig;
     for (const socket of this.subs.keys()) this.send(socket, { type: 'net:sessions', sessions, notObservable, registry: this.registry });

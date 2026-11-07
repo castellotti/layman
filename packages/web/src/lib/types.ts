@@ -338,7 +338,7 @@ export interface LaymanConfig {
     /** Keep IP addresses unredacted in gloved sessions' events. */
     showIpAddresses: boolean;
     /** Network views of gloved sessions. Mirrors the server's `glove.network` block. */
-    network: { enabled: boolean; controlEnabled: boolean; geoipDbPath: string };
+    network: { enabled: boolean; controlEnabled: boolean; geoipDbPath: string; vpnDomains?: string[] };
   };
   /** Multi-host sync. Mirrors SyncConfigSchema on the server. */
   sync: SyncConfig;

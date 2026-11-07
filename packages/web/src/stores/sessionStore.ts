@@ -61,28 +61,9 @@ const DEFAULT_PANEL_LAYOUT: PanelLayout = {
   viewportWidth: 0,
 };
 
-const LOG_HIGHLIGHTS_STORAGE_KEY = 'layman.logHighlightedEventIds';
-
-function loadLogHighlights(): Set<string> {
-  if (typeof localStorage === 'undefined') return new Set();
-  try {
-    const raw = localStorage.getItem(LOG_HIGHLIGHTS_STORAGE_KEY);
-    if (!raw) return new Set();
-    const parsed = JSON.parse(raw) as unknown;
-    return Array.isArray(parsed) ? new Set(parsed.filter((x): x is string => typeof x === 'string')) : new Set();
-  } catch {
-    return new Set();
-  }
-}
-
-function saveLogHighlights(ids: Set<string>): void {
-  if (typeof localStorage === 'undefined') return;
-  try {
-    localStorage.setItem(LOG_HIGHLIGHTS_STORAGE_KEY, JSON.stringify([...ids]));
-  } catch {
-    // Storage may be unavailable (private browsing quota, etc.) — non-fatal.
-  }
-}
+// The Logs rows once had a second, minimap-only "Highlight" kept here. The real
+// highlight (server-backed, shown in Prompts) now drives the minimap; drop the old key.
+try { if (typeof localStorage !== 'undefined') localStorage.removeItem('layman.logHighlightedEventIds'); } catch { /* non-fatal */ }
 
 // flowchartOpen/bookmarksOpen/promptsOpen are derived from viewMode and kept in
 // sync on every state change that touches it, so existing boolean-reading consumers keep working
@@ -350,10 +331,6 @@ export interface SessionState {
   splitOverrides: SplitOverrides;
   panelLayout: PanelLayout;
 
-  // Logs detail-card highlight (local, persisted to localStorage — distinct from the
-  // server-backed Highlights/Prompts folder feature above)
-  logHighlightedEventIds: Set<string>;
-
   // Logs expand/collapse state — 'all' means every row with a detail payload is expanded
   expandedLogEventIds: Set<string> | 'all';
 
@@ -447,7 +424,6 @@ export interface SessionState {
   setSplitOverride: (key: keyof SplitOverrides, value: number) => void;
   resetSplitOverrides: () => void;
   setPanelLayout: (layout: PanelLayout) => void;
-  toggleLogHighlight: (eventId: string) => void;
   setExpandedLogEventIds: (ids: Set<string> | 'all') => void;
   toggleExpandAllLogs: (detailEventIds: string[]) => void;
 }
@@ -556,8 +532,6 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   logsOverride: null,
   splitOverrides: {},
   panelLayout: DEFAULT_PANEL_LAYOUT,
-
-  logHighlightedEventIds: loadLogHighlights(),
 
   expandedLogEventIds: 'all',
 
@@ -889,7 +863,11 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   removeHighlight: (highlightId) =>
     set((state) => {
       const newHighlights = state.highlights.filter((h) => h.id !== highlightId);
-      return { highlights: newHighlights, highlightedEventIds: computeHighlightedEventIds(newHighlights) };
+      return {
+        highlights: newHighlights,
+        highlightedEventIds: computeHighlightedEventIds(newHighlights),
+        ...(state.selectedHighlightId === highlightId ? { selectedHighlightId: null } : {}),
+      };
     }),
 
   navigateFromPromptsToSession: (sessionId, promptEventId) => set({
@@ -1305,15 +1283,6 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   resetSplitOverrides: () => set({ splitOverrides: {} }),
 
   setPanelLayout: (panelLayout) => set({ panelLayout }),
-
-  toggleLogHighlight: (eventId) =>
-    set((state) => {
-      const next = new Set(state.logHighlightedEventIds);
-      if (next.has(eventId)) next.delete(eventId);
-      else next.add(eventId);
-      saveLogHighlights(next);
-      return { logHighlightedEventIds: next };
-    }),
 
   setExpandedLogEventIds: (expandedLogEventIds) => set({ expandedLogEventIds }),
 

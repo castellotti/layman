@@ -6,6 +6,7 @@
  * text and the default selection live here; `TraceView.tsx` only draws.
  */
 import { formatBytes } from './net-format.js';
+import { isUntunnelled } from './net-vpn.js';
 import { isOffTunnelScope, type FlowView, type NetRange, type Rule, type TraceCall, type TraceView } from './netobs-types.js';
 
 export type Tone = 'muted' | 'ok' | 'tunnel' | 'warn' | 'error' | 'fanout' | 'local';
@@ -95,7 +96,7 @@ export function flowOutcome(f: FlowView, rules: readonly Rule[] = []): Outcome {
     case 'empty': return { text: 'empty · folded', tone: 'muted', icon: 'fold' };
     default:
       if (f.flags.scope === 'local') return { text: `local · ${f.closeReason ?? 'closed'}`, tone: 'local', icon: 'home' };
-      if (f.flags.scope === 'direct') return { text: 'finished · untunnelled', tone: 'error', icon: 'alert' };
+      if (isUntunnelled(f.flags.scope, f.flags)) return { text: 'finished · untunnelled', tone: 'error', icon: 'alert' };
       if (f.flags.cleartext) return { text: 'finished · cleartext', tone: 'warn', icon: 'alert' };
       return { text: `finished · ${f.closeReason ?? 'closed'}`, tone: 'ok', icon: 'check' };
   }
@@ -125,7 +126,7 @@ function alreadyOpen(call: TraceCall, open: FlowView[]): Outcome {
 // The llm link and LAN hosts (`lan`, `cloud`) are not the tunnel, and a hop ends at a sidecar:
 // drawn like a local link, never as a leak.
 const flowTone = (f: FlowView): Tone => (f.flags.fanout ? 'fanout'
-  : f.flags.scope === 'local' || f.flags.hop || isOffTunnelScope(f.flags.scope) ? 'local' : f.flags.scope === 'direct' ? 'error' : 'tunnel');
+  : f.flags.scope === 'local' || f.flags.hop || isOffTunnelScope(f.flags.scope) ? 'local' : isUntunnelled(f.flags.scope, f.flags) ? 'error' : f.flags.scope === 'direct' ? 'local' : 'tunnel');
 const hasTraffic = (flowIds: string[], fanoutIds: string[]) => flowIds.length + fanoutIds.length > 0;
 
 /** Rows open by default: every call and Unattributed; the fan-out group and an LLM request's legs start folded. */

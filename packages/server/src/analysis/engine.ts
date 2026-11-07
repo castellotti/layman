@@ -119,7 +119,8 @@ export class AnalysisEngine {
       context.failureReason,
       context.previousQuestions,
       context.recentSessionEvents,
-      context.sessionSummary
+      context.sessionSummary,
+      context.conversation,
     );
 
     return this.callRaw(INVESTIGATION_SYSTEM_PROMPT, userMessage, {

@@ -58,7 +58,7 @@ const MOCK_CONFIG: LaymanConfig = {
     remindOnOrange: true,
   },
   liveTokens: { enabled: true, showThinking: true },
-  glove: { enabled: false, home: '~/.glove', showIpAddresses: false, network: { enabled: true, controlEnabled: true, geoipDbPath: '' } },
+  glove: { enabled: false, home: '~/.glove', showIpAddresses: false, network: { enabled: true, controlEnabled: true, geoipDbPath: '', vpnDomains: [] } },
   sync: {
     role: 'standalone',
     hostId: '',
