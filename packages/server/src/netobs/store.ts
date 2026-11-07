@@ -915,17 +915,11 @@ export class NetStore extends EventEmitter {
     this.emit('rules', token);
   }
 
-  /** The geolocation database changed: every destination's location may have, so all are re-sent. */
-  refreshGeo(): void {
-    this.redrawAll();
-  }
-
-  /** The VPN list changed: every destination's `flags.vpn` may have. */
-  refreshVpn(): void {
-    this.redrawAll();
-  }
-
-  private redrawAll(): void {
+  /**
+   * Re-send every destination: the geolocation database changed (every location may have)
+   * or the VPN list did (every `flags.vpn` may have).
+   */
+  redrawAll(): void {
     for (const [token, s] of this.sessions) {
       for (const k of s.aggs.keys()) s.dirtyAggs.add(k);
       this.emit('changed', token);
@@ -1107,10 +1101,15 @@ export class NetStore extends EventEmitter {
    * through glove's corporate egress, or the user listed its host. A copy, never stored:
    * the list can change, and what is counted and persisted stays glove's `scope`.
    */
-  private withVpn(s: SessionData, flags: FlowFlags, scope: string, host: string | null, service: string | null): FlowFlags {
-    if (scope !== 'direct') return flags;
-    const vpn = this.corporate(s, service) ? 'corporate' : this.isVpnHost?.(host) ? 'listed' : null;
+  private withVpn(s: SessionData, flags: FlowFlags, scope: string | null, host: string | null, service: string | null): FlowFlags {
+    const vpn = this.vpnKind(s, scope, host, service);
     return vpn ? { ...flags, vpn } : flags;
+  }
+
+  /** Which VPN route a `direct` destination took, if any: glove's corporate egress, or a listed host. */
+  private vpnKind(s: SessionData, scope: string | null, host: string | null, service: string | null): FlowFlags['vpn'] | null {
+    if (scope !== 'direct') return null;
+    return this.corporate(s, service) ? 'corporate' : this.isVpnHost?.(host) ? 'listed' : null;
   }
 
   /**
@@ -1119,30 +1118,28 @@ export class NetStore extends EventEmitter {
    * history holds has no per-destination direct count, so it is estimated from the destination's
    * last scope and capped at the history's own direct flows: it can never hide a live leak.
    */
-  private vpnFlows(s: SessionData, totals: NetTotals): number {
+  private vpnFlows(s: SessionData, totals: NetTotals, historyOnly: string[]): number {
     // From the aggregates, not destViews(): this runs with every delta, and a full view
     // evaluates the rules for each destination.
     let live = 0;
     let kept = 0;
-    const isVpn = (scope: string | null, host: string | null, service: string | null) =>
-      scope === 'direct' && (this.corporate(s, service) || this.isVpnHost?.(host) === true);
     for (const e of s.aggs.values()) {
       const a = e.agg;
-      if (e.direct > 0 && isVpn('direct', a.host, a.services[0] ?? null)) live += e.direct;
-      const k = a.scope === 'direct' ? this.kept(s, a.key) : null;
-      if (k && isVpn(a.scope, a.host, a.services[0] ?? null)) kept += k.c.flows;
+      if (!this.vpnKind(s, 'direct', a.host, a.services[0] ?? null)) continue;
+      live += e.direct;
+      if (a.scope === 'direct') kept += this.kept(s, a.key)?.c.flows ?? 0;
     }
-    for (const k of this.historyOnlyKeys(s)) {
+    for (const k of historyOnly) {
       const { h, c } = this.kept(s, k)!;
-      if (isVpn(h.scope, h.host, null)) kept += c.flows;
+      if (this.vpnKind(s, h.scope, h.host, null)) kept += c.flows;
     }
     return live + Math.min(kept, Math.max(0, totals.directFlows - s.directFlows));
   }
 
   /** The totals as the views show them: glove's counts, plus what of `direct` is a VPN route. */
-  private shownTotals(s: SessionData): NetTotals {
-    const t = this.totals(s);
-    return t.directFlows > 0 ? { ...t, vpnFlows: Math.min(t.directFlows, this.vpnFlows(s, t)) } : t;
+  private shownTotals(s: SessionData, historyOnly = this.historyOnlyKeys(s)): NetTotals {
+    const t = this.totals(s, historyOnly);
+    return t.directFlows > 0 ? { ...t, vpnFlows: this.vpnFlows(s, t, historyOnly) } : t;
   }
 
   /** What the kept history holds for a destination beyond what the files re-read: kept − seen. Null when nothing. */
@@ -1201,9 +1198,9 @@ export class NetStore extends EventEmitter {
   }
 
   /** Every destination: live ones with their history, then those only the history has. */
-  private destViews(s: SessionData): DestinationAggregate[] {
+  private destViews(s: SessionData, historyOnly = this.historyOnlyKeys(s)): DestinationAggregate[] {
     const out = [...s.aggs.values()].map((e) => this.aggView(s, e));
-    for (const k of this.historyOnlyKeys(s)) {
+    for (const k of historyOnly) {
       const kept = this.kept(s, k)!;
       out.push(this.historyView(s, kept.h, kept.c));
     }
@@ -1216,13 +1213,13 @@ export class NetStore extends EventEmitter {
     return [...s.history.dests.keys()].filter((k) => !s.aggs.has(k) && this.kept(s, k) !== null);
   }
 
-  private totals(s: SessionData): NetTotals {
+  private totals(s: SessionData, historyOnly = this.historyOnlyKeys(s)): NetTotals {
     const n = (st: NetState) => s.stateCounts.get(st) ?? 0;
     let open = 0;
     for (const e of s.flows.values()) if (e.rec.phase !== 'close' && e.state !== 'gate_lost') open++;
     const h = s.history?.s;
     const kept = (v: number | undefined, seen: number) => Math.max(0, (v ?? 0) - seen);
-    const destinations = s.aggs.size + this.historyOnlyKeys(s).length;
+    const destinations = s.aggs.size + historyOnly.length;
     return {
       bytesUp: s.bytesUp + kept(h?.bytesUp, s.seen.up),
       bytesDown: s.bytesDown + kept(h?.bytesDown, s.seen.down),
@@ -1262,9 +1259,10 @@ export class NetStore extends EventEmitter {
   rollup(token: string, changedHours = false): HistorySession | null {
     const s = this.sessions.get(token);
     if (!s || (s.lastT === null && !s.history)) return null;
-    const t = this.totals(s);
+    const historyOnly = this.historyOnlyKeys(s);
+    const t = this.totals(s, historyOnly);
     const h = s.history?.s;
-    const dests = this.destViews(s);
+    const dests = this.destViews(s, historyOnly);
     const first = Math.min(s.firstSeen ?? Infinity, h?.firstSeen ?? Infinity, ...dests.map((d) => d.firstSeen));
     return {
       token, filterSince: s.filterSince, filterSawDir: s.filterSawDir,
@@ -1338,6 +1336,7 @@ export class NetStore extends EventEmitter {
     const picked = [...open, ...closed.slice(0, Math.max(0, flowLimit - open.length))].sort(
       (a, b) => a[1].tOpen - b[1].tOpen,
     );
+    const historyOnly = this.historyOnlyKeys(s);
     return {
       token,
       session: s.session,
@@ -1345,10 +1344,10 @@ export class NetStore extends EventEmitter {
       exit: s.exits[s.exits.length - 1] ?? null,
       exits: [...s.exits],
       rules: s.rules,
-      destinations: this.destViews(s),
+      destinations: this.destViews(s, historyOnly),
       flows: picked.map(([id, e]) => this.flowView(s, id, e)),
       buckets: [...s.seconds.values()].sort((a, b) => a.t - b.t).map((b) => ({ ...b })),
-      totals: this.shownTotals(s),
+      totals: this.shownTotals(s, historyOnly),
       counters: { ...s.counters },
       emptyFolded: s.stateCounts.get('empty') ?? 0,
       historyTruncated: s.historyTruncated,

@@ -20,7 +20,6 @@ export function useVpnDomains(): {
   list: readonly string[];
   /** Whether the views can write it (the network socket is open and the config loaded). */
   writable: boolean;
-  set: (next: string[]) => void;
   mark: (entries: string[]) => void;
   /** Remove every entry that covers `host`, so it is no longer a VPN route. */
   unmark: (host: string) => void;
@@ -49,5 +48,5 @@ export function useVpnDomains(): {
     set(now.filter((e) => !drop.has(e)));
   }, [set]);
 
-  return { list, writable: !!sender && !!config?.glove, set, mark, unmark };
+  return { list, writable: !!sender && !!config?.glove, mark, unmark };
 }

@@ -9,7 +9,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useExpandedSections } from '../../hooks/useExpandedSections.js';
 import { useNetStore } from '../../stores/netStore.js';
 import { useSessionStore } from '../../stores/sessionStore.js';
-import { formatBytes, formatAge, LEGEND_BY_KEY } from '../../lib/net-format.js';
+import { directLegend, formatBytes, formatAge, LEGEND_BY_KEY } from '../../lib/net-format.js';
 import type { NetSessionData } from '../../lib/net-state.js';
 import { clockTime, flowLabel, toolLabel } from '../../lib/net-table.js';
 import { controlDisabledReason, siblingIds } from '../../lib/net-rules.js';
@@ -19,7 +19,7 @@ import { NetIcon } from './netui.js';
 import { useNetTrace } from '../../hooks/useNetTrace.js';
 import { openInTrace } from './TraceView.js';
 import { useVpnDomains } from '../../hooks/useVpnDomains.js';
-import { vpnEntryFor, vpnParentDomain } from '../../lib/net-vpn.js';
+import { isVpnRoute, vpnEntryFor, vpnParentDomain } from '../../lib/net-vpn.js';
 
 type SectionId = 'totals' | 'asked' | 'connection' | 'flows';
 const SECTIONS: Array<{ id: SectionId; label: string; on: boolean }> = [
@@ -81,8 +81,10 @@ export function Tile({ label, value, colour, icon }: { label: string; value: str
 function routeText(data: NetSessionData, d: DestinationAggregate): { text: string; colour: string } {
   if (d.state === 'guard') return { text: 'never left: refused by glove’s guard', colour: 'var(--warn)' };
   if (d.scope === 'local') return { text: 'local link, never on the map', colour: 'var(--text-muted)' };
-  if (d.scope === 'direct' && d.flags.vpn === 'corporate') return { text: 'direct, over your VPN: glove’s corporate egress', colour: LEGEND_BY_KEY.vpn_route.colourVar };
-  if (d.scope === 'direct' && d.flags.vpn) return { text: 'direct, over your VPN: a host you listed', colour: LEGEND_BY_KEY.vpn_route.colourVar };
+  if (isVpnRoute(d.scope, d.flags)) {
+    const via = d.flags.vpn === 'corporate' ? 'glove’s corporate egress' : 'a host you listed';
+    return { text: `direct, over your VPN: ${via}`, colour: LEGEND_BY_KEY.vpn_route.colourVar };
+  }
   if (d.scope === 'direct') return { text: 'direct: no tunnel, the operator’s real IP', colour: 'var(--error)' };
   const kind = data.gate.route.kind;
   const name = kind === 'vpn' ? 'VPN' : kind === 'tor' ? 'Tor' : kind ?? 'tunnel';
@@ -249,17 +251,16 @@ export function DetailCard({ data, host, onClose, docked = false }: {
   const route = routeText(data, d);
   const loc = locationText(d, geo);
   const live = d.state === 'active';
+  const leg = directLegend(d);
   return (
     <div style={{ padding: docked ? 12 : 14, position: 'relative' }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
-        <NetIcon name="globe" size={14} color={d.scope === 'direct' ? (d.flags.vpn ? LEGEND_BY_KEY.vpn_route.colourVar : LEGEND_BY_KEY.direct.colourVar) : 'var(--net-tunnel)'} />
+        <NetIcon name="globe" size={14} color={leg?.colourVar ?? 'var(--net-tunnel)'} />
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
             <span style={{ fontFamily: 'var(--font-mono)', fontSize: 13, fontWeight: 600, color: 'var(--text)', wordBreak: 'break-all' }}>{d.host}</span>
             {live && <Badge colour="var(--net-tunnel)">LIVE</Badge>}
-            {d.scope === 'direct' && (d.flags.vpn
-              ? <Badge colour={LEGEND_BY_KEY.vpn_route.colourVar}>{LEGEND_BY_KEY.vpn_route.badge}</Badge>
-              : <Badge colour={LEGEND_BY_KEY.direct.colourVar}>{LEGEND_BY_KEY.direct.badge}</Badge>)}
+            {leg && <Badge colour={leg.colourVar}>{leg.badge}</Badge>}
           </div>
           <div style={{ fontSize: 10.5, color: 'var(--text-faint)', marginTop: 2 }}>
             {[d.ips[0], d.geo?.city, d.tools.map(toolLabel).join(', '), `${d.flows} flow${d.flows === 1 ? '' : 's'}`].filter(Boolean).join(' · ')}

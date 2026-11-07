@@ -305,9 +305,12 @@ export function MapView({ data, panels }: { data: NetSessionData; panels: Return
 
   const select = (h: string | null) => setNetDest(h);
   // A known VPN route (FlowFlags.vpn: the corporate egress, or a host the user listed) is no alarm.
-  const direct = [...data.destinations.values()].filter((d) => isUntunnelled(d.scope, d.flags));
-  const directHosts = bannerHosts(direct);
-  const vpnRoutes = [...data.destinations.values()].filter((d) => isVpnRoute(d.scope, d.flags)).length;
+  // Memoised so the banner hook's memo sees the same host list until the destinations change.
+  const { direct, directHosts, vpnRoutes } = useMemo(() => {
+    const dests = [...data.destinations.values()];
+    const direct = dests.filter((d) => isUntunnelled(d.scope, d.flags));
+    return { direct, directHosts: bannerHosts(direct), vpnRoutes: dests.filter((d) => isVpnRoute(d.scope, d.flags)).length };
+  }, [data.destinations]);
   const banner = useDismissedBanner(data.token, directHosts);
   const vpn = useVpnDomains();
   const unknown = unknownLocation(data.destinations.values());

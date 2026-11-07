@@ -272,16 +272,13 @@ export class NetObs {
     const found = this.source.discover();
     this.registry = found.registry;
     this.notObservable = found.notObservable;
-    if (this.geo.refresh()) {
-      this.store.refreshGeo();
-      for (const e of this.ranges.values()) e.view.store.refreshGeo();
-    }
-    // A changed VPN list re-sends every destination, as a new geo database does.
+    // A new geo database or a changed VPN list re-sends every destination.
+    const geoChanged = this.geo.refresh();
     const vpnSig = this.vpn.signature();
-    if (vpnSig !== this.vpnSig) {
+    if (geoChanged || vpnSig !== this.vpnSig) {
       this.vpnSig = vpnSig;
-      this.store.refreshVpn();
-      for (const e of this.ranges.values()) e.view.store.refreshVpn();
+      this.store.redrawAll();
+      for (const e of this.ranges.values()) e.view.store.redrawAll();
     }
 
     const seen = new Set<string>();
@@ -434,7 +431,7 @@ export class NetObs {
 
   /** The registered sessions Layman may not read, for the picker to list disabled. Never among `sessions()`. */
   notObservableSessions(): NetNotObservable[] {
-    const known = new Set(this.store.summaries().map((s) => s.token));
+    const known = new Set(this.store.tokens());
     return this.notObservable.filter((n) => !known.has(n.token));
   }
 

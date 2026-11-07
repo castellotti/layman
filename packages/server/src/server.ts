@@ -492,7 +492,7 @@ export function createServer(config: LaymanConfig): LaymanServer {
   // session simply lacks it until the background summarization completes.
   // The split itself (what comes before the event, the conversation, the window) is
   // pure and tested in analysis/context.ts.
-  const sessionSummaryCache = new Map<string, { summary: string; eventCount: number }>();
+  const sessionSummaryCache = new Map<string, string>();
   // Keyed per window (below), so one long session adds an entry for every window it is
   // investigated at: bounded, oldest first, and one summarisation per window at a time.
   const SESSION_SUMMARY_CACHE_MAX = 200;
@@ -506,7 +506,7 @@ export function createServer(config: LaymanConfig): LaymanServer {
    */
   function getSessionEventsForContext(sessionId: string, eventId: string): import('./events/types.js').TimelineEvent[] {
     const live = eventStore.getAll().filter((e) => e.sessionId === sessionId);
-    if (live.length > 0 && live.some((e) => e.id === eventId)) return live;
+    if (live.some((e) => e.id === eventId)) return live;
     const recorded = bookmarkStore.getEventsForSession(sessionId);
     return recorded.length > 0 ? recorded : live;
   }
@@ -527,7 +527,7 @@ export function createServer(config: LaymanConfig): LaymanServer {
       sessionSummaryInFlight.add(key);
       void analysisEngine.summarizeSession(older.map(summarizeEventForContext), process.cwd(), modelOverride)
         .then((result) => {
-          sessionSummaryCache.set(key, { summary: result.summary, eventCount: older.length });
+          sessionSummaryCache.set(key, result.summary);
           while (sessionSummaryCache.size > SESSION_SUMMARY_CACHE_MAX) {
             sessionSummaryCache.delete(sessionSummaryCache.keys().next().value!);
           }
@@ -536,7 +536,7 @@ export function createServer(config: LaymanConfig): LaymanServer {
         .finally(() => sessionSummaryInFlight.delete(key));
     }
 
-    return { recentEvents, conversation, sessionSummary: cached?.summary };
+    return { recentEvents, conversation, sessionSummary: cached };
   }
 
   // Forward store events to WebSocket

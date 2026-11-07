@@ -10,7 +10,7 @@ import { usePendingApprovals } from '../../hooks/usePendingApprovals.js';
 import { usePrintExpandable } from '../../hooks/usePrinting.js';
 import { useSessionStore } from '../../stores/sessionStore.js';
 import { DRIFT_COLORS, baseEventId, eventDetail } from '../../lib/event-styles.js';
-import { MagnifierIcon, CopyLinkButton } from '../primitives/index.js';
+import { MagnifierIcon, CopyButton, CopyLinkButton } from '../primitives/index.js';
 import { RiskBadge } from '../shared/RiskBadge.js';
 import { SpeakButton } from '../tts/SpeakButton.js';
 import { toolFilePath, toolLineRange } from '../../lib/tool-input.js';
@@ -86,17 +86,9 @@ function EventActions({ event, highlightable, isHighlighted, highlighting, onHig
   highlighting: boolean;
   onHighlight: (e: React.MouseEvent) => void;
 }) {
-  const [copied, setCopied] = useState(false);
   const setSelectedEvent = useSessionStore((s) => s.setSelectedEvent);
   // A derived reasoning row has a suffixed id; the server knows its message by the real one.
   const realId = baseEventId(event.id);
-
-  const handleCopy = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    navigator.clipboard.writeText(sourceTextFor(event)).catch(() => {});
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
-  };
 
   return (
     <div className="flex items-center gap-2.5" data-print-hide>
@@ -110,9 +102,7 @@ function EventActions({ event, highlightable, isHighlighted, highlighting, onHig
           {highlighting ? '…' : isHighlighted ? 'Highlighted' : 'Highlight'}
         </button>
       )}
-      <button onClick={handleCopy} className={ACTION_CLASS} title="Copy the text">
-        {copied ? '✓ Copied' : 'Copy'}
-      </button>
+      <CopyButton text={() => sourceTextFor(event)} className={ACTION_CLASS} title="Copy the text" />
       {event.type === 'agent_response' && (
         <SpeakButton id={event.id} text={getEffectiveAgentContent(event).response} title="Speak this response aloud" />
       )}

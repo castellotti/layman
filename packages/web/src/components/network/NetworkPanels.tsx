@@ -40,6 +40,7 @@ export function KpiRow({ data }: { data: NetSessionData }) {
   const reachable = dests.filter((d) => d.scope !== 'local' && !BLOCK_STATES.has(d.state));
   const unknown = reachable.filter((d) => d.flags.unresolved).length;
   const blocked = t.blocked.guard + t.blocked.userRule + t.blocked.default;
+  const untunnelled = untunnelledFlows(t);
   const blockedParts = [
     t.blocked.guard && `${t.blocked.guard} by glove guard`,
     t.blocked.userRule && `${t.blocked.userRule} by your rule${t.blocked.userRule === 1 ? '' : 's'}`,
@@ -56,9 +57,9 @@ export function KpiRow({ data }: { data: NetSessionData }) {
         sub={`${reachable.length - unknown} to map · ${unknown} unknown location`} />
       <Kpi icon="blocked" iconColour="var(--error)" label="BLOCKED" value={String(blocked)} valueColour={blocked ? 'var(--error)' : 'var(--text)'}
         sub={blockedParts.length ? blockedParts.join(' · ') : 'nothing blocked'} />
-      {untunnelledFlows(t) > 0 ? (
-        <Kpi alert icon="alert" iconColour="var(--error)" label="UNTUNNELLED" value={String(untunnelledFlows(t))} valueColour="#FF8A80"
-          sub={`${plural(untunnelledFlows(t), 'flow')} skipped the tunnel${t.vpnFlows ? ` · ${plural(t.vpnFlows, 'VPN flow')} not counted` : ''}`} />
+      {untunnelled > 0 ? (
+        <Kpi alert icon="alert" iconColour="var(--error)" label="UNTUNNELLED" value={String(untunnelled)} valueColour="#FF8A80"
+          sub={`${plural(untunnelled, 'flow')} skipped the tunnel${t.vpnFlows ? ` · ${plural(t.vpnFlows, 'VPN flow')} not counted` : ''}`} />
       ) : (
         <Kpi icon="check" iconColour="var(--ok)" label="UNTUNNELLED" value="0" valueColour="var(--ok)"
           sub={t.vpnFlows ? `${plural(t.vpnFlows, 'flow')} over your VPN, none untunnelled` : route === 'tcp' ? 'no proxied egress in this session' : `every egress flow used ${ROUTE_NAME[route ?? ''] ?? 'the tunnel'}`} />

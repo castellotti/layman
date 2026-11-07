@@ -3,9 +3,9 @@
  * the state legend every view draws from. Pure, so it is tested in node.
  */
 import type { NetSessionData } from './net-state.js';
-import type { NetState, SinceAt } from './netobs-types.js';
+import type { DestinationAggregate, NetState, SinceAt } from './netobs-types.js';
 import { formatStamp } from './net-range.js';
-import { untunnelledFlows } from './net-vpn.js';
+import { isUntunnelled, isVpnRoute, untunnelledFlows } from './net-vpn.js';
 import type { BandKind } from './net-topology.js';
 
 export function formatBytes(n: number): string {
@@ -377,6 +377,11 @@ export const NET_LEGEND: readonly StateInfo[] = [
 export const BLOCK_STATES: ReadonlySet<NetState> = new Set(['guard', 'user_rule', 'default_block']);
 
 export const LEGEND_BY_KEY: Readonly<Record<string, StateInfo>> = Object.fromEntries(NET_LEGEND.map((s) => [s.key, s]));
+
+/** The legend entry of a `direct` destination: a known VPN route, or untunnelled. Null when it is not `direct`. */
+export function directLegend(d: Pick<DestinationAggregate, 'scope' | 'flags'>): StateInfo | null {
+  return isVpnRoute(d.scope, d.flags) ? LEGEND_BY_KEY.vpn_route : isUntunnelled(d.scope, d.flags) ? LEGEND_BY_KEY.direct : null;
+}
 
 /**
  * The Topology diagram's legend: the band kinds (`BandKind`) each entry stands for, its words and
