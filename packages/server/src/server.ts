@@ -493,10 +493,22 @@ export function createServer(config: LaymanConfig): LaymanServer {
   // The split itself (what comes before the event, the conversation, the window) is
   // pure and tested in analysis/context.ts.
   const sessionSummaryCache = new Map<string, { summary: string; eventCount: number }>();
+  // Keyed per window (below), so one long session adds an entry for every window it is
+  // investigated at: bounded, oldest first, and one summarisation per window at a time.
+  const SESSION_SUMMARY_CACHE_MAX = 200;
+  const sessionSummaryInFlight = new Set<string>();
 
-  function getSessionEventsForContext(sessionId: string): import('./events/types.js').TimelineEvent[] {
+  /**
+   * The session's events around `eventId`. The live store when it holds the event; else the
+   * recorded session, so an event evicted from the ring is read among its own neighbours,
+   * never against a live tail that came after it (assembleContext treats an id it cannot
+   * find as the latest).
+   */
+  function getSessionEventsForContext(sessionId: string, eventId: string): import('./events/types.js').TimelineEvent[] {
     const live = eventStore.getAll().filter((e) => e.sessionId === sessionId);
-    return live.length > 0 ? live : bookmarkStore.getEventsForSession(sessionId);
+    if (live.length > 0 && live.some((e) => e.id === eventId)) return live;
+    const recorded = bookmarkStore.getEventsForSession(sessionId);
+    return recorded.length > 0 ? recorded : live;
   }
 
   function buildSessionContext(sessionId: string, eventId: string, modelOverride?: string): {
@@ -504,17 +516,24 @@ export function createServer(config: LaymanConfig): LaymanServer {
     conversation: ConversationItem[];
     sessionSummary?: string;
   } {
-    const { recentEvents, conversation, older } = assembleContext(getSessionEventsForContext(sessionId), eventId);
+    const { recentEvents, conversation, older } = assembleContext(getSessionEventsForContext(sessionId, eventId), eventId);
     if (older.length === 0) return { recentEvents, conversation };
 
     // Keyed by session and the last summarised event, so an earlier event's window is not
     // answered with a later one's summary (or the reverse).
     const key = `${sessionId}:${older[older.length - 1].id}`;
     const cached = sessionSummaryCache.get(key);
-    if (!cached) {
+    if (!cached && !sessionSummaryInFlight.has(key)) {
+      sessionSummaryInFlight.add(key);
       void analysisEngine.summarizeSession(older.map(summarizeEventForContext), process.cwd(), modelOverride)
-        .then((result) => sessionSummaryCache.set(key, { summary: result.summary, eventCount: older.length }))
-        .catch(() => {});
+        .then((result) => {
+          sessionSummaryCache.set(key, { summary: result.summary, eventCount: older.length });
+          while (sessionSummaryCache.size > SESSION_SUMMARY_CACHE_MAX) {
+            sessionSummaryCache.delete(sessionSummaryCache.keys().next().value!);
+          }
+        })
+        .catch(() => {})
+        .finally(() => sessionSummaryInFlight.delete(key));
     }
 
     return { recentEvents, conversation, sessionSummary: cached?.summary };

@@ -23,7 +23,7 @@ import { DetailCard, useGeoStatus } from './DetailCard.js';
 import { WorldMap } from './WorldMap.js';
 import { NetIcon, type NetIconName } from './netui.js';
 import { TipWrap, tipProps } from './NetTip.js';
-import { isUntunnelled } from '../../lib/net-vpn.js';
+import { isUntunnelled, isVpnRoute } from '../../lib/net-vpn.js';
 import { useVpnDomains } from '../../hooks/useVpnDomains.js';
 import { bannerHosts, useDismissedBanner } from '../../lib/net-banner.js';
 
@@ -112,7 +112,7 @@ function TalkingNow({ data, now, select, selected }: { data: NetSessionData; now
           }}>
             <span style={{ width: 7, height: 7, borderRadius: 4, flexShrink: 0, background: d.state === 'active' ? 'var(--net-tunnel)' : 'var(--text-faint)' }} />
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11.5, color: d.scope === 'direct' ? '#FF8A80' : 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{d.host ?? d.endpoint}</div>
+              <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11.5, color: isUntunnelled(d.scope, d.flags) ? '#FF8A80' : 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{d.host ?? d.endpoint}</div>
               <div style={{ fontSize: 10, color: 'var(--text-faint)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                 {toolLabel(d.tools[0] ?? '')} · {d.state === 'active' ? 'live' : row.state.text} · {formatBytes(d.bytesDown)}
               </div>
@@ -307,6 +307,7 @@ export function MapView({ data, panels }: { data: NetSessionData; panels: Return
   // A known VPN route (FlowFlags.vpn: the corporate egress, or a host the user listed) is no alarm.
   const direct = [...data.destinations.values()].filter((d) => isUntunnelled(d.scope, d.flags));
   const directHosts = bannerHosts(direct);
+  const vpnRoutes = [...data.destinations.values()].filter((d) => isVpnRoute(d.scope, d.flags)).length;
   const banner = useDismissedBanner(data.token, directHosts);
   const vpn = useVpnDomains();
   const unknown = unknownLocation(data.destinations.values());
@@ -322,7 +323,10 @@ export function MapView({ data, panels }: { data: NetSessionData; panels: Return
               <div style={{ fontSize: 12.5, fontWeight: 700, color: '#FFB4AD' }}>Untunnelled traffic</div>
               {plural(direct.reduce((a, d) => a + d.flows, 0), 'flow')} to <span style={{ fontFamily: 'var(--font-mono)' }}>{direct.map((d) => d.host).slice(0, 3).join(', ')}{direct.length > 3 ? '…' : ''}</span> left through a <b>direct</b> route and carried the operator’s real IP.
             </div>
-            <TipWrap tip={disabled ?? 'One rule: block scope direct, and cut what is open'} disabled={!!disabled}>
+            {/* A rule matches glove's scope, not Layman's VPN view: it cuts the VPN routes too, so say so. */}
+            <TipWrap tip={disabled ?? (vpnRoutes > 0
+              ? `One rule: block scope direct, and cut what is open. It also cuts ${plural(vpnRoutes, 'VPN route')} (the gate cannot tell them apart)`
+              : 'One rule: block scope direct, and cut what is open')} disabled={!!disabled}>
               <button type="button" disabled={!!disabled}
                 onClick={() => useNetStore.getState().applyRules({ kind: 'blockGroup', key: 'scope', value: 'direct', terminate: true, note: 'Blocked direct egress from the Map' })}
                 style={buttonStyle('danger')}>

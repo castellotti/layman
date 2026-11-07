@@ -23,6 +23,8 @@ export const RECENT_EVENTS_WINDOW = 20;
 export const CONVERSATION_BUDGET = 12_000;
 const CONVERSATION_ITEM_MAX = 1_500;
 const SUBJECT_TEXT_MAX = 8_000;
+/** A recent event's summary when its text is in the conversation already. */
+export const IN_CONVERSATION = '(text in the conversation below)';
 
 export interface ContextEvent { type: string; summary: string }
 export interface ConversationItem { type: 'user_prompt' | 'agent_response'; text: string }
@@ -91,6 +93,7 @@ export function assembleContext(events: TimelineEvent[], eventId: string): Assem
 
   // Newest first until the budget runs out, then back into reading order.
   const conversation: ConversationItem[] = [];
+  const inConversation = new Set<string>();
   let used = 0;
   for (let i = before.length - 1; i >= 0; i--) {
     const e = before[i];
@@ -102,10 +105,16 @@ export function assembleContext(events: TimelineEvent[], eventId: string): Assem
     const item = clip(text, Math.min(CONVERSATION_ITEM_MAX, room));
     used += item.length;
     conversation.push({ type: e.type, text: item });
+    inConversation.add(e.id);
   }
   conversation.reverse();
 
-  return { recentEvents: recent.map(summarizeEventForContext), conversation, older };
+  // A prompt or response the conversation carries is only marked in the recent events, so
+  // its text is not sent twice.
+  const recentEvents = recent.map((e) => (inConversation.has(e.id)
+    ? { type: e.type, summary: IN_CONVERSATION }
+    : summarizeEventForContext(e)));
+  return { recentEvents, conversation, older };
 }
 
 /** The conversation as prompt lines, oldest first; empty when there is none. */

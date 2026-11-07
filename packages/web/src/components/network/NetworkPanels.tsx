@@ -61,7 +61,7 @@ export function KpiRow({ data }: { data: NetSessionData }) {
           sub={`${plural(untunnelledFlows(t), 'flow')} skipped the tunnel${t.vpnFlows ? ` · ${plural(t.vpnFlows, 'VPN flow')} not counted` : ''}`} />
       ) : (
         <Kpi icon="check" iconColour="var(--ok)" label="UNTUNNELLED" value="0" valueColour="var(--ok)"
-          sub={route === 'tcp' ? 'no proxied egress in this session' : `every egress flow used ${ROUTE_NAME[route ?? ''] ?? 'the tunnel'}`} />
+          sub={t.vpnFlows ? `${plural(t.vpnFlows, 'flow')} over your VPN, none untunnelled` : route === 'tcp' ? 'no proxied egress in this session' : `every egress flow used ${ROUTE_NAME[route ?? ''] ?? 'the tunnel'}`} />
       )}
     </div>
   );

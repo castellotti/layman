@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { TimelineEvent } from '../events/types.js';
-import { assembleContext, eventSubject, CONVERSATION_BUDGET, RECENT_EVENTS_WINDOW } from './context.js';
+import { assembleContext, eventSubject, CONVERSATION_BUDGET, IN_CONVERSATION, RECENT_EVENTS_WINDOW } from './context.js';
 
 let n = 0;
 function ev(type: TimelineEvent['type'], data: TimelineEvent['data'] = {}): TimelineEvent {
@@ -34,6 +34,8 @@ describe('assembleContext', () => {
     const ctx = assembleContext([p, t, later], t.id);
     expect(ctx.recentEvents.map((r) => r.type)).toEqual(['user_prompt']);
     expect(ctx.conversation).toEqual([{ type: 'user_prompt', text: 'please list files' }]);
+    // Its text is sent once, in the conversation; the recent events only mark where it was.
+    expect(ctx.recentEvents[0].summary).toBe(IN_CONVERSATION);
     expect(ctx.older).toEqual([]);
   });
 

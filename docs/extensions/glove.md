@@ -1347,17 +1347,25 @@ flow through it is `direct`, and the views used to paint the whole session as an
   (`withVpn`), **never stored, counted or persisted**: `scope` stays what glove wrote, which is what a
   rule matches (`scope: direct` still blocks these flows), what `directFlows` counts and what the
   rollups keep. A list change re-sends every destination, as a new geo database does.
-- **`vpnFlows`** in the totals and the session summaries is what of `directFlows` is a VPN route, from
-  the destinations shown. The web never compares `scope === 'direct'` to raise the alarm: it asks
+- **`vpnFlows`** in the totals and the session summaries is what of `directFlows` is a VPN route.
+  A live destination counts its own direct flows (`AggEntry.direct`), never all its flows: its `scope`
+  is only its latest flow's, so a listed host that went direct once must not subtract another host's
+  leak. What only the kept history holds has no per-destination direct count; it is estimated from
+  the destination's last scope and capped at the history's own direct flows. The web never compares `scope === 'direct'` to raise the alarm: it asks
   `isUntunnelled(scope, flags)` and `untunnelledFlows(totals)` (`lib/net-vpn.ts`), which every red
   thing reads: the strip chip, the KPI, the tab dot, the table's loud rows and Route column, the Map's
   clusters, ribbon and banner, Topology's Direct node and bands, Trace's outcomes.
 - **The Route column says "Direct · VPN"**, its own group under Group by route. `groupTarget` maps
   only `route:Direct` to `scope: direct`; a group named "VPN" would have mapped to `scope: tunnelled`
-  and blocked the wrong traffic.
+  and blocked the wrong traffic. A rule still matches glove's scope, so "Block direct egress" cuts
+  the VPN routes too; the Map banner's tip says how many when there are any.
 - **The list** is a domain suffix per entry (`corp.example`, `*.corp.example` and `.corp.example` are
   the same entry and cover the domain and every subdomain), or a whole host or IP literal, matched
-  exactly. The matcher exists twice, server and web, with the same test cases in both; the web uses it
+  exactly. An IP is never a suffix (`10.20.0.5` does not cover `1.10.20.0.5`), and a partial address
+  (`10.0.0`) is not an entry at all: as a suffix it covered unrelated addresses (`5.10.0.0`). A
+  destination's "All of …" offers its parent domain (`jira.corp.example.com` → `corp.example.com`),
+  not its registrable domain, which is the whole public `example.com` there and the host itself for
+  an internal name. The matcher exists twice, server and web, with the same test cases in both; the web uses it
   only to find the entries to remove when a host is unmarked.
 
 ### Configuration

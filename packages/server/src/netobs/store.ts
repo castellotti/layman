@@ -117,6 +117,11 @@ interface AggEntry {
   spark: Map<number, RateBucket>;
   /** Source of `DestinationAggregate.geoIp`, with its flow's `t_open` (earliest wins). */
   geoIp: { ip: string; tOpen: number } | null;
+  /**
+   * Of `agg.flows`, those glove called `direct` (`agg.scope` is only the latest flow's), so a
+   * VPN route subtracts its own direct flows from the untunnelled count and no more.
+   */
+  direct: number;
 }
 
 /** A gate process, keyed by its `run` id (glove's record contract). */
@@ -780,6 +785,7 @@ export class NetStore extends EventEmitter {
     e.agg.bytesUp -= prev.rec.bytes.up;
     e.agg.bytesDown -= prev.rec.bytes.down;
     e.agg.flows--;
+    if (prev.flags.scope === 'direct') e.direct--;
     if (BLOCK_STATES.has(prev.state)) {
       e.agg.blocked--;
       const k = prev.rec.rule ?? '';
@@ -831,6 +837,7 @@ export class NetStore extends EventEmitter {
         latest: null,
         spark: new Map(),
         geoIp: null,
+        direct: 0,
       };
       s.aggs.set(key, e);
       s.removedAggs.delete(key);
@@ -839,6 +846,7 @@ export class NetStore extends EventEmitter {
     a.bytesUp += r.bytes.up;
     a.bytesDown += r.bytes.down;
     a.flows++;
+    if (next.flags.scope === 'direct') e.direct++;
 
     if (BLOCK_STATES.has(next.state)) {
       a.blocked++;
@@ -1105,28 +1113,36 @@ export class NetStore extends EventEmitter {
     return vpn ? { ...flags, vpn } : flags;
   }
 
-  /** Of the destinations shown, the flows of those whose `direct` is a known VPN route. */
-  private vpnFlows(s: SessionData): number {
+  /**
+   * Of the session's `direct` flows, those to a destination that is a known VPN route. Live
+   * destinations count their own direct flows exactly (`AggEntry.direct`). What only the kept
+   * history holds has no per-destination direct count, so it is estimated from the destination's
+   * last scope and capped at the history's own direct flows: it can never hide a live leak.
+   */
+  private vpnFlows(s: SessionData, totals: NetTotals): number {
     // From the aggregates, not destViews(): this runs with every delta, and a full view
     // evaluates the rules for each destination.
-    let n = 0;
+    let live = 0;
+    let kept = 0;
+    const isVpn = (scope: string | null, host: string | null, service: string | null) =>
+      scope === 'direct' && (this.corporate(s, service) || this.isVpnHost?.(host) === true);
     for (const e of s.aggs.values()) {
       const a = e.agg;
-      if (a.scope === 'direct' && this.withVpn(s, a.flags, a.scope, a.host, a.services[0] ?? null).vpn) {
-        n += a.flows + (this.kept(s, a.key)?.c.flows ?? 0);
-      }
+      if (e.direct > 0 && isVpn('direct', a.host, a.services[0] ?? null)) live += e.direct;
+      const k = a.scope === 'direct' ? this.kept(s, a.key) : null;
+      if (k && isVpn(a.scope, a.host, a.services[0] ?? null)) kept += k.c.flows;
     }
     for (const k of this.historyOnlyKeys(s)) {
       const { h, c } = this.kept(s, k)!;
-      if (h.scope === 'direct' && (this.corporate(s, null) || this.isVpnHost?.(h.host))) n += c.flows;
+      if (isVpn(h.scope, h.host, null)) kept += c.flows;
     }
-    return n;
+    return live + Math.min(kept, Math.max(0, totals.directFlows - s.directFlows));
   }
 
   /** The totals as the views show them: glove's counts, plus what of `direct` is a VPN route. */
   private shownTotals(s: SessionData): NetTotals {
     const t = this.totals(s);
-    return t.directFlows > 0 ? { ...t, vpnFlows: Math.min(t.directFlows, this.vpnFlows(s)) } : t;
+    return t.directFlows > 0 ? { ...t, vpnFlows: Math.min(t.directFlows, this.vpnFlows(s, t)) } : t;
   }
 
   /** What the kept history holds for a destination beyond what the files re-read: kept − seen. Null when nothing. */

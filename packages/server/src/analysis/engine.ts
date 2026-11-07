@@ -26,6 +26,13 @@ const MAX_CONCURRENT = 2;
 // Minimum gap between proxy requests (ms) to stagger concurrent requests slightly
 const MIN_REQUEST_GAP_MS = 1000;
 
+/** What an analysis is cached on: the action, plus the context it was judged in when there is any. */
+function cacheInputFor(request: AnalysisRequest): unknown {
+  const { recentEvents, conversation, sessionSummary } = request;
+  if (!recentEvents?.length && !conversation?.length && !sessionSummary) return request.toolInput;
+  return { input: request.toolInput, recentEvents, conversation, sessionSummary };
+}
+
 export class AnalysisEngine {
   private config: AnalysisConfig;
   private cache = new AnalysisCache();
@@ -76,8 +83,11 @@ export class AnalysisEngine {
 
   async analyze(request: AnalysisRequest, priority: 'high' | 'normal' = 'normal'): Promise<AnalysisResult> {
     // Check cache first (model overrides bypass the cache — they're explicit user choices)
+    // The answer depends on the context sent with the action (context.ts), not only the
+    // action: the same "yes" or `npm test` means something else in another conversation.
+    const cacheInput = cacheInputFor(request);
     if (!request.modelOverride) {
-      const cached = this.cache.get(request.toolName, request.toolInput, request.depth);
+      const cached = this.cache.get(request.toolName, cacheInput, request.depth);
       if (cached) return cached;
     }
 
@@ -99,7 +109,7 @@ export class AnalysisEngine {
     }, priority);
 
     if (!request.modelOverride) {
-      this.cache.set(request.toolName, request.toolInput, request.depth, result);
+      this.cache.set(request.toolName, cacheInput, request.depth, result);
     }
     return result;
   }

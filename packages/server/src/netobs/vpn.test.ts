@@ -30,4 +30,13 @@ describe('vpnEntryFor', () => {
     expect(normaliseVpnDomain('a..b')).toBe('');
     expect(vpnEntryFor('x', ['*'])).toBeNull();
   });
+  it('matches an IP only exactly, never as a suffix or a partial address', () => {
+    expect(normaliseVpnDomain('10.0.0')).toBe('');
+    expect(normaliseVpnDomain('0.1')).toBe('');
+    expect(normaliseVpnDomain('10.20.0.5')).toBe('10.20.0.5');
+    expect(vpnEntryFor('5.10.0.0', ['10.0.0', '0.0'])).toBeNull();
+    expect(vpnEntryFor('1.10.20.0.5', ['10.20.0.5'])).toBeNull();
+    expect(vpnEntryFor('fd00::1', ['::1'])).toBeNull();
+    expect(vpnEntryFor('fd00::1', ['fd00::1'])).toBe('fd00::1');
+  });
 });
