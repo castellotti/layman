@@ -11,7 +11,7 @@ export type NetIconName =
   | 'grip' | 'close' | 'table' | 'map' | 'rules' | 'activity' | 'details' | 'trace' | 'topology'
   | 'eye-off' | 'globe' | 'pin' | 'legend' | 'ribbon'
   | 'lock' | 'blocked' | 'broken' | 'cut' | 'home' | 'fold' | 'chevron' | 'search' | 'up' | 'down' | 'expand'
-  | 'gear' | 'fanout' | 'window' | 'calendar';
+  | 'gear' | 'fanout' | 'window' | 'calendar' | 'tokens' | 'thinking';
 
 const PATHS: Record<NetIconName, React.ReactNode> = {
   pulse: <path d="M1.5 8h3l1.5-4 3 8 1.5-4h4" />,
@@ -51,6 +51,8 @@ const PATHS: Record<NetIconName, React.ReactNode> = {
   fanout: <><circle cx="3.5" cy="8" r="1.5" /><circle cx="12.5" cy="3.5" r="1.5" /><circle cx="12.5" cy="12.5" r="1.5" /><path d="M5 8h3M8 8l3.2-3.4M8 8l3.2 3.4" /></>,
   window: <><rect x="2" y="3" width="12" height="10" rx="1.5" /><path d="M2 6h12" /></>,
   calendar: <><rect x="2" y="3" width="12" height="11" rx="1.5" /><path d="M2 6.5h12M5 1.8v2.4M11 1.8v2.4" /></>,
+  tokens: <><ellipse cx="8" cy="4.5" rx="5" ry="2" /><path d="M3 4.5v3.5c0 1.1 2.2 2 5 2s5-.9 5-2V4.5M3 8v3.5c0 1.1 2.2 2 5 2s5-.9 5-2V8" /></>,
+  thinking: <><path d="M5.5 11.5C3.6 11 2.5 9.6 2.5 8a4 4 0 014-4 4.5 4.5 0 018.5 1.5c0 2-1.6 3.5-3.5 3.5H9" /><circle cx="5" cy="13.6" r=".9" /></>,
 };
 
 export function NetIcon({ name, size = 12, color = 'currentColor', strokeWidth = 1.4 }: {

@@ -10,6 +10,7 @@ import { buildTrace, callsBetween, downloadsIn, type TraceDeps } from './trace.j
 import { DEFAULT_BURST_GAP_MS, agentSegment, buildSegments } from './segments.js';
 import { parseRange } from './range.js';
 import type { NetRange } from './types.js';
+import type { TokenSums } from '../pi/usage.js';
 
 const OP_KINDS = new Set([
   'blockHost', 'blockDomain', 'blockIp', 'blockGroup', 'allowHost', 'allowDomain', 'removeRule', 'setDefault',
@@ -23,7 +24,18 @@ const WINDOWS: Record<string, number | 'session'> = {
   session: 'session',
 };
 
-export function registerNetRoutes(fastify: FastifyInstance, deps: { netObs: NetObs; trace?: TraceDeps }): void {
+/** A glove session's LLM tokens in a range (`pi/usage.ts`), or null when it has no pi transcripts. */
+export type TokenDeps = (token: string, range: NetRange | null) => TokenSums | null;
+
+/** `from`/`to` query values (ms) as a range: null for none, undefined when malformed. */
+function queryRange(from: string | undefined, to: string | undefined): NetRange | null | undefined {
+  if (from === undefined && to === undefined) return null;
+  // `Number('')` is 0, the epoch: an empty value is refused, not read as a range from 1970.
+  const ms = (v: string) => (v.trim() === '' ? NaN : Number(v));
+  return (from === undefined ? null : parseRange({ from: ms(from), to: to === undefined ? null : ms(to) })) ?? undefined;
+}
+
+export function registerNetRoutes(fastify: FastifyInstance, deps: { netObs: NetObs; trace?: TraceDeps; tokens?: TokenDeps }): void {
   const { netObs } = deps;
   const store = netObs.store;
   const notFound = (token: string) => ({ error: `No glove network session '${token}'` });
@@ -71,16 +83,22 @@ export function registerNetRoutes(fastify: FastifyInstance, deps: { netObs: NetO
     if (!deps.trace) return reply.status(501).send({ error: 'Trace is not available on this server' });
     const at = Number(request.query.at);
     const select = request.query.turn ? { turn: request.query.turn } : request.query.at && Number.isFinite(at) ? { at } : null;
-    let range: NetRange | null = null;
-    const { from, to } = request.query;
-    if (from !== undefined || to !== undefined) {
-      // `Number('')` is 0, the epoch: an empty value is refused, not read as a range from 1970.
-      const ms = (v: string) => (v.trim() === '' ? NaN : Number(v));
-      range = from === undefined ? null : parseRange({ from: ms(from), to: to === undefined ? null : ms(to) });
-      if (!range) return reply.status(400).send({ error: 'from and to must be ms since the epoch, from ≤ to' });
-    }
+    const range = queryRange(request.query.from, request.query.to);
+    if (range === undefined) return reply.status(400).send({ error: 'from and to must be ms since the epoch, from ≤ to' });
     const view = buildTrace(store, token, deps.trace, select, Date.now(), range);
     return view ?? reply.status(404).send(notFound(token));
+  });
+
+  // The session's LLM tokens by kind, summed over the billed calls that finished in [from, to]
+  // (ms; no `to`: until now; neither: All records). `tokens: null` when there is no usage to show:
+  // not a pi session, no transcripts grant, or no call yet. Topology's Selected path reads it.
+  fastify.get<{ Params: { token: string }; Querystring: { from?: string; to?: string } }>('/api/net/sessions/:token/tokens', async (request, reply) => {
+    const { token } = request.params;
+    if (!store.has(token)) return reply.status(404).send(notFound(token));
+    const range = queryRange(request.query.from, request.query.to);
+    if (range === undefined) return reply.status(400).send({ error: 'from and to must be ms since the epoch, from ≤ to' });
+    const sums = deps.tokens?.(token, range) ?? null;
+    return sums && sums.calls > 0 ? sums : { tokens: null, calls: 0 };
   });
 
   // Tool calls that started in [from, to] (ms), across turns: the Map ribbon's markers. At most an hour.

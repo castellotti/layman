@@ -18,6 +18,9 @@ import {
 import { buttonStyle } from './ControlPopover.js';
 import { Badge, Tile } from './DetailCard.js';
 import { NetIcon, useStored } from './netui.js';
+import { isLlmDestination, tokenTiles } from '../../lib/net-tokens.js';
+import type { NetRange } from '../../lib/netobs-types.js';
+import { useNetTokens } from '../../hooks/useNetTrace.js';
 import { tipProps } from './NetTip.js';
 
 const BAND: Record<BandKind, { colour: string; opacity: number }> = {
@@ -412,6 +415,25 @@ const EVIDENCE: Record<HopEvidence, string> = {
   observed: 'var(--net-tunnel)', verified: 'var(--net-tunnel)', declared: 'var(--text-muted)', refused: 'var(--error)', broken: 'var(--warn)', none: 'var(--text-faint)',
 };
 
+/** How often an open range (or All records) asks again while shown: new calls land in the transcript. */
+const TOKENS_REFRESH_MS = 5_000;
+
+/**
+ * The session's LLM tokens, one tile per kind, under SENT/RECEIVED on the LLM path. Same range
+ * as the bytes; nothing at all when the session has no usage to show (not pi, no transcripts).
+ */
+function TokenTiles({ token, range }: { token: string; range: NetRange | null }) {
+  const tokens = useNetTokens(token, range, TOKENS_REFRESH_MS);
+  if (!tokens) return null;
+  return (
+    <div aria-label="LLM tokens" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(92px, 1fr))', gap: 8, marginTop: 8 }}>
+      {tokenTiles(tokens).map((t) => (
+        <Tile key={t.label} label={t.label} value={t.value} sub={t.sub} tip={`${t.exact}, from the agent's transcript`} colour={t.colour} icon={t.icon} />
+      ))}
+    </div>
+  );
+}
+
 export function SelectedPath({ data }: { data: NetSessionData }) {
   const netDest = useSessionStore((s) => s.netDest);
   const setViewMode = useSessionStore((s) => s.setViewMode);
@@ -457,6 +479,7 @@ export function SelectedPath({ data }: { data: NetSessionData }) {
         <Tile label="SENT" value={formatBytes(d.bytesUp)} colour="var(--net-up)" icon="up" />
         <Tile label="RECEIVED" value={formatBytes(d.bytesDown)} colour="var(--net-down)" icon="down" />
       </div>
+      {isLlmDestination(d) && <TokenTiles token={data.token} range={data.range} />}
       <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }} data-tip={disabled ?? undefined}>
         {d.host && d.state !== 'guard' && v?.action === 'allow' && (
           <button type="button" disabled={!!disabled} onClick={() => apply({ kind: 'blockHost', host: d.host!, terminate: false })} style={buttonStyle('danger')}>

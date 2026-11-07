@@ -35,6 +35,12 @@ export interface WatchRoot {
    * for native roots (they carry no extra label).
    */
   label?: string;
+  /**
+   * The context window of a model, by id, when the root knows it: a glove root reads
+   * `session.json` `models` (glove/registry.ts). Undefined, or a null answer, means
+   * unknown, and no context % is shown.
+   */
+  contextWindow?: (modelId: string) => number | null;
 }
 
 /** Supplies watch roots for the passive file watcher. Queried on every scan tick. */
@@ -202,9 +208,13 @@ export class GloveSource implements MonitorSource {
     for (const { id, dir, row } of gloveExports(home).exports) {
       const path = join(dir, 'transcripts');
       if (!isDir(path)) continue;
-      const harness = row?.harness ?? readSessionFacts(join(dir, 'net'))?.harness ?? null;
+      const netDir = join(dir, 'net');
+      const harness = row?.harness ?? readSessionFacts(netDir)?.harness ?? null;
       const agentType = harness ? GLOVE_HARNESS_AGENT[harness] : undefined;
-      if (agentType) roots.push({ path, agentType, label: id });
+      // Read when asked (once per batch of new usage), so a re-rendered session.json is seen.
+      const contextWindow = (modelId: string) =>
+        readSessionFacts(netDir)?.models.find((m) => m.id === modelId)?.contextWindow ?? null;
+      if (agentType) roots.push({ path, agentType, label: id, contextWindow });
     }
     return roots;
   }

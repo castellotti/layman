@@ -111,7 +111,9 @@ linked above.
    no live extension. Events go through the live path (read-time `timestamp`), so it also keeps the
    transcript's own times as `data.transcriptAt` / `data.transcriptCompletedAt`, and the parser's id as
    `data.transcriptEventId`, which is how a restart's replay skips what is already recorded (live ids are
-   random, so without it every restart recorded a young session again). Design and reliability notes (why it never emits a trailing `tool_call_pending`,
+   random, so without it every restart recorded a young session again). It also turns each message's
+   `usage` into `session_metrics` (tokens by kind, and `ctx %` from glove's `session.json` `models`),
+   once per batch that changed them. Design and reliability notes (why it never emits a trailing `tool_call_pending`,
    dedupe by committed id, tombstone resurrection) are in `docs/harnesses/pi.md`.
 
 4d. **Network observability (glove)** (`packages/server/src/netobs/`, design

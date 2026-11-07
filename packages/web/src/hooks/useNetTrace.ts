@@ -5,7 +5,7 @@
  * Layman is ever asked.
  */
 import { useEffect, useState } from 'react';
-import type { NetRange, SessionDownload, TraceCall, TraceView } from '../lib/netobs-types.js';
+import type { NetRange, NetTokens, NetTokenSums, SessionDownload, TraceCall, TraceView } from '../lib/netobs-types.js';
 
 export type TraceQuery = { turn: string } | { at: number } | null;
 
@@ -23,12 +23,47 @@ export function fetchTrace(token: string, query: TraceQuery, range: NetRange | n
     if ('turn' in query) q.set('turn', query.turn);
     else q.set('at', String(Math.round(query.at)));
   }
-  if (range) {
-    q.set('from', String(range.from));
-    if (range.to !== null) q.set('to', String(range.to));
-  }
+  setRange(q, range);
   const qs = q.toString();
   return getJson<TraceView>(`/api/net/sessions/${encodeURIComponent(token)}/trace${qs ? `?${qs}` : ''}`);
+}
+
+/** A range's `from`/`to` (ms) query values; none for All records. */
+function setRange(q: URLSearchParams, range: NetRange | null): void {
+  if (!range) return;
+  q.set('from', String(range.from));
+  if (range.to !== null) q.set('to', String(range.to));
+}
+
+/** The session's LLM tokens in a range (server `pi/usage.ts`), the same `from`/`to` as the trace. */
+export function fetchTokens(token: string, range: NetRange | null): Promise<NetTokenSums> {
+  const q = new URLSearchParams();
+  setRange(q, range);
+  const qs = q.toString();
+  return getJson<NetTokenSums>(`/api/net/sessions/${encodeURIComponent(token)}/tokens${qs ? `?${qs}` : ''}`);
+}
+
+/**
+ * The session's LLM tokens in `range`, null when there are none to show. An open range (or All
+ * records) is re-read every `refreshMs` while the tab is visible: new calls land in the transcript.
+ */
+export function useNetTokens(token: string, range: NetRange | null, refreshMs: number): NetTokens | null {
+  const [state, setState] = useState<{ key: string; tokens: NetTokens | null }>({ key: '', tokens: null });
+  const from = range?.from ?? null;
+  const to = range?.to ?? null;
+  const key = `${token} ${from} ${to}`;
+  useEffect(() => {
+    const r = from === null ? null : { from, to };
+    let loaded = false;
+    return pollSettled((live) => (loaded && document.hidden ? Promise.resolve() : fetchTokens(token, r)
+      .then((j) => { if (live()) setState({ key, tokens: j.tokens }); })
+      .catch(() => { if (live()) setState({ key, tokens: null }); })
+      .finally(() => { loaded = true; })), to === null ? refreshMs : 0);
+    // `key` describes token and range.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key, refreshMs]);
+  // Another session or range: never the last one's figures while this one loads.
+  return state.key === key ? state.tokens : null;
 }
 
 /**

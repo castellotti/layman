@@ -2,17 +2,12 @@ import React from 'react';
 import { useSessionStore } from '../../stores/sessionStore.js';
 import { isSessionLive } from '../../lib/session-state.js';
 import type { SessionMetrics } from '../../lib/types.js';
+import { formatTokens, tokenBreakdown } from '../../lib/format.js';
 
 function formatCost(usd: number): string {
   if (usd < 0.01) return `$${usd.toFixed(4)}`;
   if (usd < 1) return `$${usd.toFixed(3)}`;
   return `$${usd.toFixed(2)}`;
-}
-
-function formatTokens(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
-  return String(n);
 }
 
 function ContextBar({ pct }: { pct: number }) {
@@ -65,12 +60,21 @@ export function SessionMetricsBar() {
   // Single session: show that session's metrics directly
   // All sessions: aggregate summable fields across only currently-open sessions
   let metrics: SessionMetrics | undefined;
+  // Aggregate only: the output thinking's share is taken of (undefined: the metrics' own output).
+  let thinkingOf: number | undefined;
   if (activeSessionId) {
     metrics = sessionMetrics.get(activeSessionId);
   } else if (sessionMetrics.size > 0) {
     let totalCost = 0;
     let totalIn = 0;
     let totalOut = 0;
+    // Only pi reports these: summed over the sessions that do, undefined when none does.
+    let cacheRead: number | undefined;
+    let cacheWrite: number | undefined;
+    let reasoning: number | undefined;
+    // The output of those sessions only: thinking's share is of the output that reports it.
+    let reasoningOutput = 0;
+    const plus = (sum: number | undefined, v: number | undefined) => (v === undefined ? sum : (sum ?? 0) + v);
     let totalLinesAdded = 0;
     let totalLinesRemoved = 0;
     let latestTimestamp = 0;
@@ -87,6 +91,10 @@ export function SessionMetricsBar() {
       if ((m.totalInputTokens ?? 0) > 0 || (m.totalOutputTokens ?? 0) > 0) {
         totalIn += m.totalInputTokens ?? 0;
         totalOut += m.totalOutputTokens ?? 0;
+        cacheRead = plus(cacheRead, m.totalCacheReadTokens);
+        cacheWrite = plus(cacheWrite, m.totalCacheWriteTokens);
+        reasoning = plus(reasoning, m.totalReasoningTokens);
+        if (m.totalReasoningTokens !== undefined) reasoningOutput += m.totalOutputTokens ?? 0;
         hasTokens = true;
       }
       if ((m.linesAdded ?? 0) > 0 || (m.linesRemoved ?? 0) > 0) {
@@ -98,11 +106,15 @@ export function SessionMetricsBar() {
     }
 
     if (activeCount === 0) return null;
+    thinkingOf = reasoningOutput;
 
     metrics = {
       costUsd: hasCost ? totalCost : undefined,
       totalInputTokens: hasTokens ? totalIn : undefined,
       totalOutputTokens: hasTokens ? totalOut : undefined,
+      totalCacheReadTokens: cacheRead,
+      totalCacheWriteTokens: cacheWrite,
+      totalReasoningTokens: reasoning,
       linesAdded: hasLines ? totalLinesAdded : undefined,
       linesRemoved: hasLines ? totalLinesRemoved : undefined,
       timestamp: latestTimestamp,
@@ -161,7 +173,7 @@ export function SessionMetricsBar() {
 
       {/* Tokens */}
       {hasTokens && (
-        <span className="tabular-nums" title={`Input: ${metrics.totalInputTokens?.toLocaleString() ?? 0} / Output: ${metrics.totalOutputTokens?.toLocaleString() ?? 0}`}>
+        <span className="tabular-nums cursor-help" title={tokenBreakdown(metrics, thinkingOf)}>
           {formatTokens(metrics.totalInputTokens ?? 0)}in / {formatTokens(metrics.totalOutputTokens ?? 0)}out
         </span>
       )}

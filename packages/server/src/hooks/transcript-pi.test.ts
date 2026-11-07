@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
-import { parsePiTranscript } from './transcript-pi.js';
+import { parsePiTranscript, piUsageSamples } from './transcript-pi.js';
 
 const FIXTURES_DIR = join(dirname(fileURLToPath(import.meta.url)), '__fixtures__', 'pi');
 
@@ -121,5 +121,62 @@ describe('parsePiTranscript', () => {
     ];
     const { events } = parsePiTranscript(lines, 'sess-cycle');
     expect(events.map((e) => e.type)).toEqual(['agent_response', 'user_prompt']);
+  });
+});
+
+describe('parsePiTranscript metrics', () => {
+  it('sums every billed call on every branch, and reads context from the active branch', () => {
+    const { metrics } = parsePiTranscript(loadLines('usage'), 'sess-usage');
+    expect(metrics).not.toBeNull();
+    // a1 + a2 + the abandoned a2b + the aborted a3: all were billed.
+    expect(metrics!.totals).toEqual({ input: 8120, output: 243, cacheRead: 22000, cacheWrite: 10, reasoning: 75 });
+    expect(metrics!.costUsd).toBeCloseTo(0.03);
+    // a3 was aborted, so pi's rule falls back to a2, the last valid call on the active branch.
+    expect(metrics!.current).toEqual({ input: 600, output: 90, cacheRead: 7100, cacheWrite: 10, reasoning: 30 });
+    expect(metrics!.contextTokens).toBe(7800);
+    expect(metrics!.modelId).toBe('local-27b');
+    expect(metrics!.thinkingLevel).toBe('off');
+  });
+
+  it('counts a compaction\'s summarising call, and knows no context until the next answer', () => {
+    const lines = loadLines('usage-compacted');
+    const { metrics } = parsePiTranscript(lines, 'sess-compacted');
+    expect(metrics!.totals).toEqual({ input: 236000, output: 11500, cacheRead: 0, cacheWrite: 0, reasoning: 4200 });
+    expect(metrics!.contextTokens).toBeNull();
+    expect(metrics!.current).toEqual({ input: 180000, output: 500, cacheRead: 0, cacheWrite: 0, reasoning: 200 });
+
+    const after = parsePiTranscript([...lines,
+      '{"type":"message","id":"a2","parentId":"k1","timestamp":"2026-11-06T14:18:05.000Z","message":{"role":"assistant","content":[{"type":"text","text":"ok"}],"usage":{"input":12000,"output":30,"cacheRead":0,"cacheWrite":0,"totalTokens":12030},"stopReason":"stop"}}',
+    ], 'sess-compacted').metrics!;
+    expect(after.contextTokens).toBe(12030);
+    // An older pi records no `reasoning`: it counts as none.
+    expect(after.current!.reasoning).toBe(0);
+  });
+
+  it('falls back to the last assistant message\'s model when there is no model_change', () => {
+    const lines = loadLines('usage').filter((l) => !l.includes('"model_change"'));
+    expect(parsePiTranscript(lines, 's').metrics!.modelId).toBe('local-27b');
+  });
+
+  it('is null when nothing reports usage', () => {
+    const noUsage = loadLines('linear').map((l) => {
+      const e = JSON.parse(l);
+      if (e.message) delete e.message.usage;
+      return JSON.stringify(e);
+    });
+    expect(parsePiTranscript(noUsage, 's').metrics).toBeNull();
+    expect(parsePiTranscript([], 's').metrics).toBeNull();
+  });
+});
+
+describe('piUsageSamples', () => {
+  it('lists each billed call with its entry time, on every branch, compactions included', () => {
+    const samples = piUsageSamples(loadLines('usage-compacted'));
+    expect(samples.map((s) => [s.at, s.tokens.input])).toEqual([
+      [Date.parse('2026-11-06T14:17:33.000Z'), 180000],
+      [Date.parse('2026-11-06T14:18:00.000Z'), 56000],
+    ]);
+    // A tool result that merely mentions "usage" is parsed and skipped.
+    expect(piUsageSamples(loadLines('usage'))).toHaveLength(4);
   });
 });

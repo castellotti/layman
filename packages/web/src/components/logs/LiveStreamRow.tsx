@@ -1,6 +1,7 @@
 import React from 'react';
 import { useSessionStore } from '../../stores/sessionStore.js';
 import type { LiveStream } from '../../lib/types.js';
+import { formatTokens } from '../../lib/format.js';
 
 /**
  * How much of each buffer to show. The store keeps 32 KB so a stream can be
@@ -11,12 +12,6 @@ const VISIBLE_TAIL_CHARS = 1200;
 
 function tail(text: string): string {
   return text.length <= VISIBLE_TAIL_CHARS ? text : `…${text.slice(-VISIBLE_TAIL_CHARS)}`;
-}
-
-function formatTokens(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
-  return String(n);
 }
 
 /** Blinking caret marking the live edge of generation. */

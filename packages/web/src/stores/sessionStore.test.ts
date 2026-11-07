@@ -89,3 +89,24 @@ describe('removeFolder', () => {
     expect(bookmarks.find((b) => b.id === 'b2')?.folderId).toBeNull();
   });
 });
+
+describe('session_metrics', () => {
+  it('keeps every token kind a pi session reports, replacing the entry wholesale', () => {
+    const event = (data: Record<string, unknown>, timestamp: number) => ({
+      id: `m${timestamp}`, type: 'session_metrics' as const, timestamp, sessionId: 'pi-1', agentType: 'pi', data,
+    });
+    const { addEvent } = useSessionStore.getState();
+    addEvent(event({
+      modelId: 'local-27b', totalInputTokens: 7600, totalOutputTokens: 190, totalCacheReadTokens: 7100,
+      totalCacheWriteTokens: 10, totalReasoningTokens: 70, currentReasoningTokens: 30, contextUsedPct: 11,
+    }, 1));
+    expect(useSessionStore.getState().sessionMetrics.get('pi-1')).toMatchObject({
+      totalCacheReadTokens: 7100, totalCacheWriteTokens: 10, totalReasoningTokens: 70, currentReasoningTokens: 30, contextUsedPct: 11,
+    });
+    // After a compaction the context is unknown: the next event has no %, and none is kept.
+    addEvent(event({ modelId: 'local-27b', totalInputTokens: 9000, totalOutputTokens: 300 }, 2));
+    const m = useSessionStore.getState().sessionMetrics.get('pi-1')!;
+    expect(m.contextUsedPct).toBeUndefined();
+    expect(m.totalInputTokens).toBe(9000);
+  });
+});

@@ -222,12 +222,18 @@ export interface StatusLineInput extends HookInputBase {
   context_window?: {
     total_input_tokens: number;
     total_output_tokens: number;
+    /** Session totals Claude Code does not send; pi's extension does. Reasoning is a part of output. */
+    total_cache_read_tokens?: number;
+    total_cache_write_tokens?: number;
+    total_reasoning_tokens?: number;
     context_window_size: number;
     current_usage?: {
       input_tokens: number;
       output_tokens: number;
       cache_creation_input_tokens?: number;
       cache_read_input_tokens?: number;
+      /** pi only; a part of `output_tokens`. */
+      reasoning_tokens?: number;
     } | null;
     used_percentage: number;
     remaining_percentage: number;

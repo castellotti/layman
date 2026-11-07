@@ -157,13 +157,154 @@ interface PiEntry {
   timestamp?: string;
   version?: number;
   cwd?: string;
+  /** `model_change`. */
+  modelId?: string;
+  /** `thinking_level_change`. */
+  thinkingLevel?: string;
+  /** `compaction`: the summarising call is billed like any other. */
+  usage?: unknown;
   message?: {
     role?: string;
     content?: unknown;
     toolCallId?: string;
     toolName?: string;
     isError?: boolean;
+    /** Assistant only. */
+    usage?: unknown;
+    stopReason?: string;
+    model?: string;
   };
+}
+
+// ---------------------------------------------------------------------------
+// Token usage
+// ---------------------------------------------------------------------------
+
+/**
+ * One call's tokens, as pi-ai records them (`Usage`). The kinds are disjoint except
+ * `reasoning`, which is a part of `output` (OpenAI's `completion_tokens` and
+ * Anthropic's `output_tokens` both include it; pi-ai copies them as they are), and
+ * `input` excludes both cache kinds, so `input + output + cacheRead + cacheWrite`
+ * is the call's `totalTokens`.
+ */
+export interface PiTokens {
+  input: number;
+  output: number;
+  cacheRead: number;
+  cacheWrite: number;
+  reasoning: number;
+}
+
+export const zeroTokens = (): PiTokens => ({ input: 0, output: 0, cacheRead: 0, cacheWrite: 0, reasoning: 0 });
+
+const count = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : 0);
+
+/** A `usage` object as tokens, or null when it is not one. */
+function piTokensOf(usage: unknown): PiTokens | null {
+  if (!usage || typeof usage !== 'object') return null;
+  const u = usage as Record<string, unknown>;
+  return {
+    input: count(u.input), output: count(u.output), cacheRead: count(u.cacheRead),
+    cacheWrite: count(u.cacheWrite), reasoning: count(u.reasoning),
+  };
+}
+
+/** Add `b` into `into`. */
+export function addTokens(into: PiTokens, b: PiTokens): void {
+  for (const k of Object.keys(into) as Array<keyof PiTokens>) into[k] += b[k];
+}
+
+/** What the call put in the model's context: pi's `calculateContextTokens()`. */
+function contextTokensOf(usage: unknown, t: PiTokens): number {
+  const total = count((usage as Record<string, unknown>).totalTokens);
+  return total || t.input + t.output + t.cacheRead + t.cacheWrite;
+}
+
+/** The billed usage an entry carries: an assistant message's, or a compaction's summarising call. */
+function billedUsage(entry: PiEntry): unknown {
+  if (entry.type === 'compaction') return entry.usage;
+  if (entry.type === 'message' && entry.message?.role === 'assistant') return entry.message.usage;
+  return undefined;
+}
+
+/**
+ * Token metrics of one pi session file. Null when nothing in it reports usage (an
+ * older pi, or a session that has not answered yet).
+ */
+export interface PiMetrics {
+  /** Every billed call in the file, on every branch (an abandoned branch was still paid for). */
+  totals: PiTokens;
+  /** Sum of `usage.cost.total` over the same calls (0 for a local model). */
+  costUsd: number;
+  /** The last valid assistant call on the active branch, or null. */
+  current: PiTokens | null;
+  /**
+   * Tokens in the model's context, by pi's own rule (`AgentSession.getContextUsage()`): the
+   * last valid assistant call's total on the active branch (not aborted, not an error, not
+   * zero). A `compaction` or `context_edit` after it makes it stale, so it is null until the
+   * next call answers: unknown rather than a wrong %. pi adds an estimate of the messages
+   * after that call; a transcript reader has no tokenizer, so this is the call's figure.
+   */
+  contextTokens: number | null;
+  /** The latest `model_change` on the active branch, else the last assistant message's model. */
+  modelId?: string;
+  /** The latest `thinking_level_change` on the active branch. */
+  thinkingLevel?: string;
+}
+
+/**
+ * Each billed call's tokens with the entry's time (epoch ms), across all branches, for
+ * summing over a time range. Only lines that mention `"usage"` are parsed, so a long
+ * transcript of tool output costs a substring search per line.
+ */
+export function piUsageSamples(lines: string[]): Array<{ at: number; tokens: PiTokens }> {
+  const out: Array<{ at: number; tokens: PiTokens }> = [];
+  for (const line of lines) {
+    if (!line.includes('"usage"')) continue;
+    const entry = tryParse(line);
+    if (!entry) continue;
+    const tokens = piTokensOf(billedUsage(entry));
+    const at = tsOf(entry);
+    if (tokens && at > 0) out.push({ at, tokens });
+  }
+  return out;
+}
+
+function piMetrics(order: PiEntry[], path: PiEntry[]): PiMetrics | null {
+  const totals = zeroTokens();
+  let costUsd = 0;
+  let billed = false;
+  for (const entry of order) {
+    const usage = billedUsage(entry);
+    const tokens = piTokensOf(usage);
+    if (!tokens) continue;
+    billed = true;
+    addTokens(totals, tokens);
+    costUsd += count(((usage as Record<string, unknown>).cost as Record<string, unknown> | undefined)?.total);
+  }
+  if (!billed) return null;
+
+  let current: PiTokens | null = null;
+  let contextTokens: number | null = null;
+  let modelId: string | undefined;
+  let lastModel: string | undefined;
+  let thinkingLevel: string | undefined;
+  for (const entry of path) {
+    if (entry.type === 'model_change' && typeof entry.modelId === 'string') modelId = entry.modelId;
+    else if (entry.type === 'thinking_level_change' && typeof entry.thinkingLevel === 'string') thinkingLevel = entry.thinkingLevel;
+    else if (entry.type === 'compaction' || entry.type === 'context_edit') contextTokens = null;
+    else if (entry.type === 'message' && entry.message?.role === 'assistant') {
+      const msg = entry.message;
+      if (typeof msg.model === 'string') lastModel = msg.model;
+      const tokens = piTokensOf(msg.usage);
+      if (!tokens || msg.stopReason === 'aborted' || msg.stopReason === 'error') continue;
+      const ctx = contextTokensOf(msg.usage, tokens);
+      if (ctx <= 0) continue;
+      current = tokens;
+      contextTokens = ctx;
+    }
+  }
+  return { totals, costUsd, current, contextTokens, modelId: modelId ?? lastModel, thinkingLevel };
 }
 
 function tryParse(line: string): PiEntry | null {
@@ -205,10 +346,10 @@ function textFromContent(content: unknown): string {
 export function parsePiTranscript(
   lines: string[],
   sessionId: string
-): { events: TimelineEvent[]; metadata: TranscriptMetadata } {
+): { events: TimelineEvent[]; metadata: TranscriptMetadata; metrics: PiMetrics | null } {
   const metadata: TranscriptMetadata = { cwd: '', gitBranch: '', version: '', firstTimestamp: 0, lastTimestamp: 0 };
   const events: TimelineEvent[] = [];
-  if (lines.length === 0) return { events, metadata };
+  if (lines.length === 0) return { events, metadata, metrics: null };
 
   // pi auto-migrates the file on load, so anything not version 3 on disk is
   // one pi has not opened since the upgrade. Refuse it rather than guessing
@@ -216,7 +357,7 @@ export function parsePiTranscript(
   // surfaces this without needing a separate signal.
   const header = tryParse(lines[0]);
   if (!header || header.type !== 'session' || header.version !== 3) {
-    return { events, metadata };
+    return { events, metadata, metrics: null };
   }
   metadata.version = String(header.version);
   if (typeof header.cwd === 'string') metadata.cwd = header.cwd;
@@ -232,14 +373,14 @@ export function parsePiTranscript(
     order.push(entry);
     if (typeof entry.parentId === 'string') isParent.add(entry.parentId);
   }
-  if (order.length === 0) return { events, metadata };
+  if (order.length === 0) return { events, metadata, metrics: null };
 
   let leaf: PiEntry | null = null;
   for (const entry of order) {
     if (isParent.has(entry.id!)) continue;
     if (!leaf || tsOf(entry) > tsOf(leaf)) leaf = entry;
   }
-  if (!leaf) return { events, metadata };
+  if (!leaf) return { events, metadata, metrics: null };
 
   const path: PiEntry[] = [];
   const visited = new Set<string>();
@@ -347,7 +488,7 @@ export function parsePiTranscript(
   // session's time range, so the array must be timestamp-ordered.
   events.sort((a, b) => a.timestamp - b.timestamp);
 
-  return { events, metadata };
+  return { events, metadata, metrics: piMetrics(order, path) };
 }
 
 export const piTranscriptSource: TranscriptSource = {

@@ -175,6 +175,10 @@ export interface EventData {
   currentOutputTokens?: number;
   cacheReadTokens?: number;
   cacheCreationTokens?: number;
+  totalCacheReadTokens?: number;
+  totalCacheWriteTokens?: number;
+  totalReasoningTokens?: number;
+  currentReasoningTokens?: number;
   contextUsedPct?: number;
   contextRemainingPct?: number;
   exceeds200kTokens?: boolean;
@@ -535,6 +539,11 @@ export interface SessionMetrics {
   currentOutputTokens?: number;
   cacheReadTokens?: number;
   cacheCreationTokens?: number;
+  /** Session totals; pi only (see the server's EventData). Reasoning is a part of output. */
+  totalCacheReadTokens?: number;
+  totalCacheWriteTokens?: number;
+  totalReasoningTokens?: number;
+  currentReasoningTokens?: number;
   contextUsedPct?: number;
   contextRemainingPct?: number;
   exceeds200kTokens?: boolean;

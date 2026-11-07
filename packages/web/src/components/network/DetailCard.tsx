@@ -15,7 +15,7 @@ import { clockTime, flowLabel, toolLabel } from '../../lib/net-table.js';
 import { controlDisabledReason, siblingIds } from '../../lib/net-rules.js';
 import { isLanOnlyRule, type DestinationAggregate, type FlowView, type GeoStatus, type RulesOp, type TraceView } from '../../lib/netobs-types.js';
 import { buttonStyle } from './ControlPopover.js';
-import { NetIcon } from './netui.js';
+import { NetIcon, type NetIconName } from './netui.js';
 import { useNetTrace } from '../../hooks/useNetTrace.js';
 import { openInTrace } from './TraceView.js';
 import { useVpnDomains } from '../../hooks/useVpnDomains.js';
@@ -67,13 +67,19 @@ export function SectionHead({ children }: { children: React.ReactNode }) {
   return <div style={{ fontSize: 10, letterSpacing: '0.08em', fontWeight: 600, color: 'var(--text-muted)', margin: '12px 0 6px', textTransform: 'uppercase' }}>{children}</div>;
 }
 
-export function Tile({ label, value, colour, icon }: { label: string; value: string; colour: string; icon: 'up' | 'down' }) {
+export function Tile({ label, value, colour, icon, sub, tip }: {
+  label: string; value: string; colour: string; icon: NetIconName;
+  /** A line under the value (THINKING's share of output). */
+  sub?: string;
+  tip?: string;
+}) {
   return (
-    <div style={{ flex: 1, padding: '8px 10px', borderRadius: 8, border: `1px solid ${colour}`, background: 'var(--bg)' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 9.5, letterSpacing: '0.08em', fontWeight: 600, color: colour }}>
+    <div data-tip={tip} style={{ flex: 1, minWidth: 0, padding: '8px 10px', borderRadius: 8, border: `1px solid ${colour}`, background: 'var(--bg)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 9.5, letterSpacing: '0.08em', fontWeight: 600, color: colour, whiteSpace: 'nowrap' }}>
         <NetIcon name={icon} color={colour} size={11} />{label}
       </div>
       <div style={{ fontFamily: 'var(--font-mono)', fontSize: 15, fontWeight: 600, color: 'var(--text)', marginTop: 2 }}>{value}</div>
+      {sub && <div style={{ fontSize: 10, color: 'var(--text-faint)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{sub}</div>}
     </div>
   );
 }

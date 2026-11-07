@@ -40,9 +40,12 @@ To skip the step entirely, turn on **Auto-activate sessions** on the pi row in
   Takes effect on the next tool call — no pi restart needed. Pressing Esc in pi cancels a pending
   approval cleanly.
 - **Prompt submission from the Layman UI**, delivered when pi is next idle.
-- **Session metrics**: model, cumulative tokens, context-window fill, and the current reasoning
-  level. Cost is shown only when it is non-zero, so a locally hosted model does not display a
-  permanent `$0.00`.
+- **Session metrics**: model, cumulative tokens of each kind (input, output, cache read, cache
+  write, and thinking, which is a part of output), context-window fill, and the current reasoning
+  level. Native pi gets them from the extension's StatusLine post; a gloved pi from its transcript
+  (below), with the context window from glove's `session.json` `models`. Both produce the same
+  `session_metrics` fields, and both count a compaction's summarising call. Cost is shown only when
+  it is non-zero, so a locally hosted model does not display a permanent `$0.00`.
 - **Compaction, model changes and reasoning-level changes** are all recorded.
 
 ## Limitations
@@ -204,6 +207,36 @@ session** — an idle-timed-out session left in the map with no poll timer is re
 `cleanupEndedSessions` (via `tryResumeSession`) the moment its transcript grows again, emitting a
 `resumed` session_start before catch-up. `scanExistingSessions` skips paths already in the map, so
 this is the *only* path back for a resumed session.
+
+**Token metrics come from the transcript too** (`parsePiTranscript()` → `metrics`, `piSessionMetricsData`).
+A gloved pi has no hooks, so nothing posted a StatusLine and its Dashboard row had no tokens and no
+`ctx N%`. Every assistant message pi writes carries pi-ai's `usage`: `input`, `output`, `cacheRead`,
+`cacheWrite`, `reasoning`, `totalTokens` and `cost`. `input` excludes both cache kinds and
+`reasoning` is a part of `output`, not extra: pi-ai copies OpenAI's `completion_tokens` (which
+includes `reasoning_tokens`) and Anthropic's `output_tokens` as they are, and `totalTokens` is
+`input + output + cacheRead + cacheWrite` (checked in pi-ai 1.4.0's `openai-completions`,
+`openai-responses-shared` and `anthropic-messages`, and against every message of a real gloved
+session). From that the parser computes:
+
+- **Spend totals**: the sum over every billed call in the file, on every branch (an abandoned branch
+  was still paid for), and a `compaction`'s own summarising call, which carries a `usage` too.
+- **Context used**, by pi's own rule (`AgentSession.getContextUsage()`): the total of the last
+  assistant message on the active branch that is not `aborted`, not an `error` and not zero. A
+  `compaction` or `context_edit` after it makes it stale, so context is unknown (no %) until the next
+  answer, rather than a stale figure. pi adds an estimate of the messages after that call; Layman has
+  no tokenizer and shows the call's figure.
+- **Model and reasoning level**: the latest `model_change` / `thinking_level_change` on the active
+  branch (the model falls back to the last assistant message's `model`).
+- **Context window**: not in the transcript. A glove root looks the model up in
+  `observe/<id>/net/session.json` `models` (`WatchRoot.contextWindow`, read through
+  `glove/registry.ts`); an older glove has no `models`, and then the tokens show without a %.
+
+The watcher turns them into one `session_metrics` event, in the shape native pi's StatusLine gives
+`handleStatusLine`, with `agentType: 'pi'` and every field each time (the client replaces a session's
+metrics wholesale). It emits **once per batch, and only when the figures changed**: when it starts
+tracking a file (one event with the file's current state, whether the history is replayed or not, so
+a restart adds one row per tracked session, never one per message), and after a poll or a resume
+that read new lines. History import does not emit any.
 
 - **`NativePiSource` yields no root when the pi extension is installed** (`monitor/sources.ts`).
   Native pi is the one passively-watched harness that *also* has a live integration — the pi
