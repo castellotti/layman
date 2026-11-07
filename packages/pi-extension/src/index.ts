@@ -149,6 +149,8 @@ interface SessionCompactEvent {
   reason: CompactReason;
   fromExtension: boolean;
   willRetry: boolean;
+  /** The entry written; `usage` is the summarising call's, when pi has it. */
+  compactionEntry?: { usage?: Usage };
 }
 
 interface InputEvent {
@@ -503,11 +505,23 @@ interface SessionTotals {
   output: number;
   cacheRead: number;
   cacheWrite: number;
+  /** A part of `output`, not extra (pi-ai copies the provider's output count as it is). */
+  reasoning: number;
   cost: number;
 }
 
 function zeroTotals(): SessionTotals {
-  return { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0 };
+  return { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, reasoning: 0, cost: 0 };
+}
+
+/** Add one billed call to the totals. The server's transcript reader sums the same calls. */
+function addUsage(totals: SessionTotals, usage: Usage): void {
+  totals.input += usage.input;
+  totals.output += usage.output;
+  totals.cacheRead += usage.cacheRead;
+  totals.cacheWrite += usage.cacheWrite;
+  totals.reasoning += usage.reasoning ?? 0;
+  totals.cost += usage.cost?.total ?? 0;
 }
 
 /**
@@ -644,6 +658,9 @@ export default function laymanExtension(pi: ExtensionAPI): void {
       context_window: {
         total_input_tokens: totals.input,
         total_output_tokens: totals.output,
+        total_cache_read_tokens: totals.cacheRead,
+        total_cache_write_tokens: totals.cacheWrite,
+        total_reasoning_tokens: totals.reasoning,
         context_window_size: contextWindow,
         current_usage: lastUsage
           ? {
@@ -651,6 +668,7 @@ export default function laymanExtension(pi: ExtensionAPI): void {
               output_tokens: lastUsage.output,
               cache_read_input_tokens: lastUsage.cacheRead,
               cache_creation_input_tokens: lastUsage.cacheWrite,
+              reasoning_tokens: lastUsage.reasoning ?? 0,
             }
           : null,
         used_percentage: usedPct,
@@ -722,13 +740,8 @@ export default function laymanExtension(pi: ExtensionAPI): void {
 
   pi.on('turn_end', (event, ctx) => {
     if (isAssistantMessage(event.message)) {
-      const usage = event.message.usage;
-      lastUsage = usage;
-      totals.input += usage.input;
-      totals.output += usage.output;
-      totals.cacheRead += usage.cacheRead;
-      totals.cacheWrite += usage.cacheWrite;
-      totals.cost += usage.cost.total;
+      lastUsage = event.message.usage;
+      addUsage(totals, lastUsage);
     }
     postStatusLine(ctx);
   });
@@ -886,6 +899,11 @@ export default function laymanExtension(pi: ExtensionAPI): void {
       ...basePayload(ctx, 'PostCompact'),
       trigger: event.reason === 'manual' ? 'manual' : 'auto',
     });
+    // The summary was an LLM call of its own, billed like a turn. The context % goes blank
+    // here too: pi knows no context size until the next answer.
+    const usage = event.compactionEntry?.usage;
+    if (usage) addUsage(totals, usage);
+    postStatusLine(ctx);
   });
 
   pi.registerCommand('layman', {

@@ -11,6 +11,7 @@ import { LaymanConfigSchema, type LaymanConfig } from '../config/schema.js';
 /** The schema's *input* type, so a test can override one nested field. */
 type ConfigOverrides = Partial<z.input<typeof LaymanConfigSchema>>;
 import { LiveStreamStore } from '../stream/live.js';
+import { piSessionMetricsData } from '../pi/watcher.js';
 
 /**
  * End-to-end coverage of the pi arm of the hook handler's agent-type allow-list.
@@ -399,6 +400,39 @@ describe('pi session metrics', () => {
     expect(event.data.totalOutputTokens).toBe(876);
     expect(event.data.contextWindowSize).toBe(262144);
     expect(event.data.contextUsedPct).toBe(2);
+  });
+
+  it('maps the cache and reasoning totals the extension sends, the same fields a gloved pi gets', async () => {
+    await h.app.inject({
+      method: 'POST', url: '/hooks/StatusLine', payload: metricsBody({
+        context_window: {
+          total_input_tokens: 7600, total_output_tokens: 190,
+          total_cache_read_tokens: 7100, total_cache_write_tokens: 10, total_reasoning_tokens: 70,
+          context_window_size: 71000,
+          current_usage: { input_tokens: 600, output_tokens: 90, cache_read_input_tokens: 7100, cache_creation_input_tokens: 10, reasoning_tokens: 30 },
+          used_percentage: 11, remaining_percentage: 89,
+        },
+      }),
+    });
+    const [event] = h.store.getAll().filter((e) => e.type === 'session_metrics');
+    const tokenFields = (d: Record<string, unknown>) => Object.fromEntries(Object.entries(d).filter(([k]) => /Tokens$/.test(k)));
+    // What the passive watcher emits for a transcript with the same usage (`pi/watcher.ts`).
+    const gloved = piSessionMetricsData({
+      totals: { input: 7600, output: 190, cacheRead: 7100, cacheWrite: 10, reasoning: 70 },
+      current: { input: 600, output: 90, cacheRead: 7100, cacheWrite: 10, reasoning: 30 },
+      costUsd: 0, contextTokens: 7800, modelId: 'qwen3.8-27b-5090', thinkingLevel: 'medium',
+    }, 71000);
+    expect(tokenFields(event.data as Record<string, unknown>)).toEqual(tokenFields(gloved as Record<string, unknown>));
+    expect(event.data.totalReasoningTokens).toBe(70);
+    expect(event.data.currentReasoningTokens).toBe(30);
+  });
+
+  it('leaves the new totals undefined for a payload without them (Claude Code, an older extension)', async () => {
+    await h.app.inject({ method: 'POST', url: '/hooks/StatusLine', payload: metricsBody() });
+    const [event] = h.store.getAll().filter((e) => e.type === 'session_metrics');
+    expect(event.data.totalCacheReadTokens).toBeUndefined();
+    expect(event.data.totalReasoningTokens).toBeUndefined();
+    expect(event.data.currentReasoningTokens).toBeUndefined();
   });
 
   it('carries the reasoning level through', async () => {

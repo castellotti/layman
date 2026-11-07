@@ -103,6 +103,20 @@ sandbox; see Network → Writing rules.)
 `transcripts/` is created by glove's first `glove up` with `transcripts: true`; pi writes into it on
 its first turn, which `GloveSource` picks up on the next scan tick.
 
+### A gloved pi's tokens and context % (`pi/watcher.ts`, `monitor/sources.ts`, `glove/registry.ts`)
+
+A gloved pi has no hooks, so its Dashboard row had no tokens and no `ctx N%`. The pi watcher now
+builds the same `session_metrics` native pi's StatusLine produces from the transcript's per-message
+`usage` (input, output, cache read, cache write, thinking; the rules are in
+`docs/harnesses/pi.md` → "Token metrics come from the transcript too"). The one figure the
+transcript lacks is the model's **context window**. glove knows it (its inference slot's
+`context_window`), and from `observe-model-facts` it writes it into `net/session.json` as an
+additive key, `models: [{id, context_window, max_tokens, reasoning}]` (the primary model first, then
+the extra models). `GloveSource` gives each root a `contextWindow(modelId)` lookup that reads it
+through `readSessionFacts` when a batch of new usage arrives, matched by the latest `model_change`'s
+`modelId`. An older glove has no `models` (or a model is not listed, or has no window): the tokens
+still show, with no %. Nothing new is read: `session.json` is already part of the observe export.
+
 ### Gloved Claude Code is watched passively (`claude/watcher.ts`)
 
 glove's `claude-code` harness exports Claude Code's own `~/.claude/projects`, and
@@ -186,7 +200,8 @@ so the guard needs no exemptions.
 
 Per session with the observe grant, `~/.glove/observe/<id>/net/`: `flows.ndjson` and its rotated
 `flows-<stamp>[-<n>].ndjson`, `exit.ndjson` (only with `exit_identity: via-proxy`; it rotates the same
-way), `status.json` and `session.json`; with the filter grant, `~/.glove/control/<id>/rules.json`; and
+way), `status.json` and `session.json` (its additive `models`, glove's `observe-model-facts`,
+`[{id, context_window, max_tokens, reasoning}]`, gives a gloved pi's context window: see "A gloved pi's tokens and context %"); with the filter grant, `~/.glove/control/<id>/rules.json`; and
 `~/.glove/registry.json`. All of it is inside the existing read-only `~/.glove` mount; only writing
 rules needs the extra `control/` mount (Docker, below).
 
@@ -1127,6 +1142,20 @@ Selected path panel that walks one destination's path hop by hop.
 
   A refused path stops at the policy hop, a broken one before the exit. Below the hops: sent and
   received tiles, Block (or Unblock), and Open in map.
+- **LLM tokens on the LLM path.** When the selected destination carries the `llm` tool (the `llm`
+  service's hop to llm-auth, or the `llm-upstream` leg), five more tiles sit under SENT and RECEIVED,
+  the same `Tile` (its icon is any `NetIcon`, and it takes a sub-line): **INPUT, OUTPUT, CACHE READ,
+  CACHE WRITE, THINKING**, THINKING with its share of output (thinking is a part of output; the cache
+  kinds are apart from input). They are the glove session's own tokens, not the destination's: the
+  same on either leg. They follow the **same time range** as the bytes: each billed call (assistant
+  messages and compactions, on every branch) counts when its transcript entry was written, inside
+  `[from, to]`; All records is every call. The server sums them
+  (`GET /api/net/sessions/:token/tokens?from=&to=`, `pi/usage.ts`) from the pi transcripts the
+  observe grant exports, found through `GloveSource`'s roots, so nothing new is read or mounted, and
+  the browser only ever asks `/api/`. pi appends, so each file is read once and then from where it
+  stopped, whole lines only. An open range (or All records) asks again every 5 s. The tiles are
+  hidden when there is nothing to show: another harness, `transcripts: false`, or no call yet. Only
+  pi is summed so far; a gloved Claude Code transcript has `usage` too and could join later.
 
 ### The Trace tab
 

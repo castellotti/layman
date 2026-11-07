@@ -157,14 +157,38 @@ export function isDir(p: string): boolean {
 }
 
 /**
- * The parts of `observe/<id>/net/session.json` discovery needs, or null when it is
+ * A model the session's harness may use, from `session.json` `models` (glove's
+ * `observe-model-facts`, additive): the inference slot's primary model first, then
+ * its extra models. `contextWindow` is null when glove gives none.
+ */
+export interface GloveModelFact {
+  id: string;
+  contextWindow: number | null;
+}
+
+/** `session.json` `models`, tolerantly: an older glove has none, and a malformed entry is skipped. */
+function parseModels(raw: unknown): GloveModelFact[] {
+  if (!Array.isArray(raw)) return [];
+  const out: GloveModelFact[] = [];
+  for (const m of raw) {
+    const o = obj(m);
+    const id = str(o?.id);
+    if (!o || !id) continue;
+    const w = o.context_window;
+    out.push({ id, contextWindow: typeof w === 'number' && Number.isFinite(w) && w > 0 ? w : null });
+  }
+  return out;
+}
+
+/**
+ * The parts of `observe/<id>/net/session.json` Layman uses, or null when it is
  * absent or unreadable. `grants` is null when the file has none (then the registry row decides).
  */
-export function readSessionFacts(netDir: string): { harness: string | null; grants: GloveGrants | null } | null {
+export function readSessionFacts(netDir: string): { harness: string | null; grants: GloveGrants | null; models: GloveModelFact[] } | null {
   try {
     const d = obj(JSON.parse(readFileSync(join(netDir, 'session.json'), 'utf8')));
     if (!d) return null;
-    return { harness: str(d.harness), grants: d.grants === undefined ? null : parseGrants(d.grants) };
+    return { harness: str(d.harness), grants: d.grants === undefined ? null : parseGrants(d.grants), models: parseModels(d.models) };
   } catch {
     return null;
   }

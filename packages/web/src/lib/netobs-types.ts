@@ -972,3 +972,20 @@ export type NetServerMessage =
   | { type: 'net:range:progress'; token: string; range: string; scannedBytes: number; totalBytes: number }
   /** A range that cannot be shown, and why: no snapshot will follow for it. */
   | { type: 'net:range:error'; token: string; range: string; error: string };
+
+// ─── LLM tokens (`GET /api/net/sessions/:token/tokens`, server `pi/usage.ts`) ──
+
+/** One kind per field; `reasoning` (thinking) is a part of `output`, cache kinds are apart from `input`. */
+export interface NetTokens {
+  input: number;
+  output: number;
+  cacheRead: number;
+  cacheWrite: number;
+  reasoning: number;
+}
+
+/** A glove session's LLM tokens in a range. `tokens: null`: nothing to show (not pi, no transcripts, no call yet). */
+export interface NetTokenSums {
+  tokens: NetTokens | null;
+  calls: number;
+}

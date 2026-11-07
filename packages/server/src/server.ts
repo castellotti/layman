@@ -51,6 +51,7 @@ import type { SearchRequest } from './db/search.js';
 import type { LaymanConfig } from './config/schema.js';
 import { VibeSessionWatcher } from './vibe/watcher.js';
 import { PiSessionWatcher, recordedCursorFrom } from './pi/watcher.js';
+import { PiUsageReader } from './pi/usage.js';
 import { ClaudeCodeSessionWatcher } from './claude/watcher.js';
 import { NativeVibeSource, NativePiSource, GloveSource } from './monitor/sources.js';
 import { recoverSessionGaps, importHistoricalSessions } from './hooks/recovery.js';
@@ -668,6 +669,8 @@ export function createServer(config: LaymanConfig): LaymanServer {
     // Network views of glove sessions. Trace joins them to the Layman sessions
     // GloveSource named after the glove session (sessionName = token).
     const sessionsNamedStmt = db.prepare('SELECT session_id FROM recorded_sessions WHERE session_name = ?');
+    // The glove pi transcripts GloveSource exports: the files the pi watcher tails.
+    const piUsage = new PiUsageReader(() => gloveSource.roots());
     registerNetRoutes(fastify, {
       netObs,
       trace: {
@@ -678,6 +681,7 @@ export function createServer(config: LaymanConfig): LaymanServer {
         session: (sessionId) => turnStore.listTurnsWithEvents(sessionId),
         events: (sessionId) => turnStore.eventsFor(sessionId),
       },
+      tokens: (token, range) => piUsage.sum(token, range),
     });
 
     // Text-to-speech pass-through to speaches (speaches has CORS off by default)

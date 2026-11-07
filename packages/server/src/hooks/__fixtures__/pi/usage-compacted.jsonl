@@ -1,0 +1,5 @@
+{"type":"session","version":3,"id":"eeeeeeee-0000-7000-8000-000000000000","timestamp":"2026-11-06T14:17:27.479Z","cwd":"/work"}
+{"type":"model_change","id":"m1","parentId":null,"timestamp":"2026-11-06T14:17:27.667Z","provider":"glove","modelId":"local-27b"}
+{"type":"message","id":"u1","parentId":"m1","timestamp":"2026-11-06T14:17:30.000Z","message":{"role":"user","content":[{"type":"text","text":"go"}],"timestamp":1793974650000}}
+{"type":"message","id":"a1","parentId":"u1","timestamp":"2026-11-06T14:17:33.000Z","message":{"role":"assistant","content":[{"type":"text","text":"done"}],"model":"local-27b","usage":{"input":180000,"output":500,"cacheRead":0,"cacheWrite":0,"reasoning":200,"totalTokens":180500,"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0,"total":0}},"stopReason":"stop","timestamp":1793974653000}}
+{"type":"compaction","id":"k1","parentId":"a1","timestamp":"2026-11-06T14:18:00.000Z","summary":"## Goal","firstKeptEntryId":"a1","tokensBefore":180500,"usage":{"input":56000,"output":11000,"cacheRead":0,"cacheWrite":0,"reasoning":4000,"totalTokens":67000,"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0,"total":0}},"fromHook":false}

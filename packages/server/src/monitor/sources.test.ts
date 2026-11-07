@@ -32,7 +32,7 @@ describe('GloveSource (glove v3)', () => {
   it('tails the observe export\'s transcripts/, labelled with the session id (observe-only)', () => {
     const home = scenario('observe-only');
     expect(new GloveSource(() => home).roots()).toEqual([
-      { path: join(home, 'observe', 'observe-only-0f1a2b', 'transcripts'), agentType: 'pi', label: 'observe-only-0f1a2b' },
+      { path: join(home, 'observe', 'observe-only-0f1a2b', 'transcripts'), agentType: 'pi', label: 'observe-only-0f1a2b', contextWindow: expect.any(Function) },
     ]);
   });
 
@@ -60,10 +60,30 @@ describe('GloveSource (glove v3)', () => {
     expect(roots.find((r) => r.label === 'cc-111111')!.path).toBe(cc.transcripts);
   });
 
+  it('looks a model\'s context window up in session.json `models`, when glove wrote them', () => {
+    const s = addGloveSession(root, 'pi-a-000000', { harness: 'pi', transcripts: true });
+    const window = () => new GloveSource(() => root).roots()[0].contextWindow!;
+    // An older glove: no `models`, so no window (and no context %).
+    writeFileSync(join(s.net, 'session.json'), JSON.stringify({ v: 1, harness: 'pi' }));
+    expect(window()('local-27b')).toBeNull();
+    writeFileSync(join(s.net, 'session.json'), JSON.stringify({
+      v: 1, harness: 'pi',
+      models: [
+        { id: 'local-27b', context_window: 131072, max_tokens: 16384, reasoning: true },
+        { id: 'small', context_window: null },
+        { context_window: 9 },
+      ],
+    }));
+    const lookup = window();
+    expect(lookup('local-27b')).toBe(131072);
+    expect(lookup('small')).toBeNull();
+    expect(lookup('other')).toBeNull();
+  });
+
   it('tails an exported claude-code transcripts/ (the claude-code scenario)', () => {
     const home = scenario('claude-code');
     expect(new GloveSource(() => home).roots()).toEqual([
-      { path: join(home, 'observe', 'claude-code-0f1a2b', 'transcripts'), agentType: 'claude-code', label: 'claude-code-0f1a2b' },
+      { path: join(home, 'observe', 'claude-code-0f1a2b', 'transcripts'), agentType: 'claude-code', label: 'claude-code-0f1a2b', contextWindow: expect.any(Function) },
     ]);
   });
 

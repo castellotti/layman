@@ -130,6 +130,15 @@ export interface EventData {
   currentOutputTokens?: number;
   cacheReadTokens?: number;
   cacheCreationTokens?: number;
+  /**
+   * Session totals of the kinds Claude Code's StatusLine does not report; pi only. Cache
+   * kinds are apart from `totalInputTokens`; reasoning is a part of `totalOutputTokens`.
+   */
+  totalCacheReadTokens?: number;
+  totalCacheWriteTokens?: number;
+  totalReasoningTokens?: number;
+  /** The last call's reasoning tokens (a part of `currentOutputTokens`); pi only. */
+  currentReasoningTokens?: number;
   contextUsedPct?: number;
   contextRemainingPct?: number;
   exceeds200kTokens?: boolean;

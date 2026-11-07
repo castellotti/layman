@@ -327,3 +327,102 @@ describe('PiSessionWatcher', () => {
     expect(inputs).toEqual(['a.md', 'b.md']);
   });
 });
+
+describe('PiSessionWatcher token metrics', () => {
+  const usage = (input: number, output: number, cacheRead: number, reasoning: number) =>
+    `{"input":${input},"output":${output},"cacheRead":${cacheRead},"cacheWrite":0,"reasoning":${reasoning},"totalTokens":${input + output + cacheRead},"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0,"total":0}}`;
+  /** A gloved pi's file, shaped like a real one (synthetic values): model, a call with usage, its result. */
+  const LINES = [
+    '{"type":"session","version":3,"id":"s1","timestamp":"2026-11-06T14:17:27.000Z","cwd":"/work"}',
+    '{"type":"model_change","id":"m1","parentId":null,"timestamp":"2026-11-06T14:17:27.500Z","provider":"glove","modelId":"local-27b"}',
+    '{"type":"thinking_level_change","id":"t1","parentId":"m1","timestamp":"2026-11-06T14:17:27.500Z","thinkingLevel":"off"}',
+    '{"type":"message","id":"u1","parentId":"t1","timestamp":"2026-11-06T14:17:30.000Z","message":{"role":"user","content":[{"type":"text","text":"go"}]}}',
+    `{"type":"message","id":"a1","parentId":"u1","timestamp":"2026-11-06T14:17:33.000Z","message":{"role":"assistant","content":[{"type":"toolCall","id":"c1","name":"read","arguments":{"path":"a.md"}}],"model":"local-27b","usage":${usage(7000, 100, 0, 40)},"stopReason":"toolUse"}}`,
+    '{"type":"message","id":"r1","parentId":"a1","timestamp":"2026-11-06T14:17:34.000Z","message":{"role":"toolResult","toolCallId":"c1","toolName":"read","content":[{"type":"text","text":"x"}],"isError":false}}',
+  ];
+  const ANSWER = `{"type":"message","id":"a2","parentId":"r1","timestamp":"2026-11-06T14:17:37.000Z","message":{"role":"assistant","content":[{"type":"text","text":"done"}],"model":"local-27b","usage":${usage(600, 90, 7100, 30)},"stopReason":"stop"}}`;
+  const PROMPT = '{"type":"message","id":"u2","parentId":"a2","timestamp":"2026-11-06T14:17:50.000Z","message":{"role":"user","content":[{"type":"text","text":"thanks"}]}}';
+
+  let tmp: string;
+  let root: string;
+  let file: string;
+  let store: EventStore;
+  const watchers: PiSessionWatcher[] = [];
+
+  const watch = (contextWindow?: (id: string) => number | null, into = store) => {
+    const w = new PiSessionWatcher(into, new SessionGate(), makeConfig(), [
+      new FixedSource({ path: root, agentType: 'pi', label: 'pi-mx5-abc123', contextWindow }),
+    ]);
+    watchers.push(w);
+    w.start();
+    return w;
+  };
+  const metrics = (s = store) => s.getAll().filter((e) => e.type === 'session_metrics');
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-11-06T14:17:40.000Z'));
+    tmp = mkdtempSync(join(tmpdir(), 'layman-pi-metrics-'));
+    root = join(tmp, 'transcripts');
+    mkdirSync(join(root, '--work--'), { recursive: true });
+    file = join(root, '--work--', `2026-11-06T14-17-27-000Z_${SESSION_ID}.jsonl`);
+    writeFileSync(file, LINES.join('\n') + '\n');
+    store = new EventStore();
+  });
+
+  afterEach(() => {
+    for (const w of watchers.splice(0)) w.stop();
+    vi.useRealTimers();
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it('emits one session_metrics with every token kind, and no context % without a window', () => {
+    watch();
+    const [m, ...rest] = metrics();
+    expect(rest).toEqual([]);
+    expect(m.agentType).toBe('pi');
+    expect(m.data).toMatchObject({
+      modelId: 'local-27b', modelDisplayName: 'local-27b', thinkingLevel: 'off',
+      totalInputTokens: 7000, totalOutputTokens: 100, totalCacheReadTokens: 0, totalCacheWriteTokens: 0, totalReasoningTokens: 40,
+      currentInputTokens: 7000, currentOutputTokens: 100, cacheReadTokens: 0, cacheCreationTokens: 0, currentReasoningTokens: 40,
+    });
+    expect(m.data.contextWindowSize).toBeUndefined();
+    expect(m.data.contextUsedPct).toBeUndefined();
+  });
+
+  it('shows the context % when glove names the model\'s window (session.json models)', () => {
+    watch((id) => (id === 'local-27b' ? 71_000 : null));
+    const [m] = metrics();
+    expect(m.data.contextWindowSize).toBe(71_000);
+    expect(m.data.contextUsedPct).toBeCloseTo(10);
+    expect(m.data.contextRemainingPct).toBeCloseTo(90);
+  });
+
+  it('emits again only when a batch changes the figures, with every field each time', () => {
+    watch();
+    appendFileSync(file, ANSWER + '\n');
+    vi.advanceTimersByTime(2000);
+    expect(metrics()).toHaveLength(2);
+    expect(metrics()[1].data).toMatchObject({
+      totalInputTokens: 7600, totalOutputTokens: 190, totalCacheReadTokens: 7100, totalReasoningTokens: 70,
+      currentInputTokens: 600, currentReasoningTokens: 30, modelId: 'local-27b', thinkingLevel: 'off',
+    });
+    // A prompt changes no figure: no third event.
+    appendFileSync(file, PROMPT + '\n');
+    vi.advanceTimersByTime(2000);
+    expect(metrics()).toHaveLength(2);
+  });
+
+  it('replays a restart as one event with the current state, not one per message', () => {
+    writeFileSync(file, [...LINES, ANSWER].join('\n') + '\n');
+    watch();
+    expect(metrics()).toHaveLength(1);
+    expect(metrics()[0].data.totalInputTokens).toBe(7600);
+  });
+
+  it('shows an older session\'s tokens too, though its history is not replayed', () => {
+    vi.setSystemTime(new Date('2026-11-06T14:40:00.000Z'));
+    watch();
+    expect(store.getAll().map((e) => e.type)).toEqual(['session_start', 'session_metrics']);
+  });
+});

@@ -34,9 +34,9 @@ import type { SessionGate } from '../hooks/gate.js';
 import type { LaymanConfig } from '../config/schema.js';
 import { shouldActivateWatchedSession } from '../monitor/sources.js';
 import type { MonitorSource, WatchRoot } from '../monitor/sources.js';
-import type { TimelineEvent } from '../events/types.js';
+import type { EventData, TimelineEvent } from '../events/types.js';
 import { extractAccess } from '../events/access-extractor.js';
-import { parsePiTranscript, decodeCwd, sessionIdFromPiFilename } from '../hooks/transcript-pi.js';
+import { parsePiTranscript, decodeCwd, sessionIdFromPiFilename, type PiMetrics } from '../hooks/transcript-pi.js';
 
 const AGENT_TYPE = 'pi';
 const SCAN_INTERVAL_MS = 2000;
@@ -73,6 +73,14 @@ interface TrackedSession {
   lastSize: number;
   agentType: string;
   label?: string;
+  /** The root's model-window lookup (`WatchRoot.contextWindow`). */
+  contextWindow?: (modelId: string) => number | null;
+  /**
+   * The last `session_metrics` data emitted, serialised: a batch whose metrics did
+   * not change emits nothing. Null until the first, so tracking a session (a start,
+   * a restart) emits its current state once.
+   */
+  metricsKey: string | null;
 }
 
 export class PiSessionWatcher {
@@ -208,7 +216,7 @@ export class PiSessionWatcher {
     const lines = readLines(filePath);
     if (!lines) return;
 
-    const { events, metadata } = parsePiTranscript(lines, sessionId);
+    const { events, metadata, metrics } = parsePiTranscript(lines, sessionId);
     // Not a parseable version-3 pi transcript yet (or empty) — try again next scan.
     if (metadata.version !== '3') return;
 
@@ -239,6 +247,8 @@ export class PiSessionWatcher {
       lastSize: size,
       agentType: root.agentType,
       label: root.label,
+      contextWindow: root.contextWindow,
+      metricsKey: null,
       pollTimer: null,
     };
     this.sessions.set(filePath, session);
@@ -254,6 +264,9 @@ export class PiSessionWatcher {
       // turns are recorded, without replaying the backlog.
       for (const ev of committed) session.emittedIds.add(ev.id);
     }
+    // Old or young, the session's tokens and context show from the start: one event with the
+    // file's current state, never one per replayed message.
+    this.emitMetrics(session, metrics);
 
     session.pollTimer = setInterval(() => this.pollSession(session), SCAN_INTERVAL_MS);
   }
@@ -268,13 +281,28 @@ export class PiSessionWatcher {
     if (!lines) return;
     session.lastSize = size;
 
-    const { events } = parsePiTranscript(lines, session.sessionId);
+    const { events, metrics } = parsePiTranscript(lines, session.sessionId);
     const committed = committedEvents(events);
     const before = session.emittedIds.size;
     this.emitNew(session, committed);
+    this.emitMetrics(session, metrics);
     if (session.emittedIds.size > before) {
       session.lastActivityMs = Date.now();
     }
+  }
+
+  /**
+   * One `session_metrics` for the batch just read, when its figures changed. The client
+   * replaces a session's metrics wholesale, so the event carries every field.
+   */
+  private emitMetrics(session: TrackedSession, metrics: PiMetrics | null): void {
+    if (!metrics) return;
+    const contextWindow = metrics.modelId ? session.contextWindow?.(metrics.modelId) ?? null : null;
+    const data = piSessionMetricsData(metrics, contextWindow);
+    const key = JSON.stringify(data);
+    if (key === session.metricsKey) return;
+    session.metricsKey = key;
+    this.eventStore.add('session_metrics', session.sessionId, data, undefined, session.agentType);
   }
 
   /**
@@ -347,7 +375,7 @@ export class PiSessionWatcher {
     if (!lines) return;
     session.lastSize = size;
 
-    const { events } = parsePiTranscript(lines, session.sessionId);
+    const { events, metrics } = parsePiTranscript(lines, session.sessionId);
     const committed = committedEvents(events);
     const hasNew = committed.some((ev) => !session.emittedIds.has(ev.id));
     if (!hasNew) return;
@@ -361,6 +389,7 @@ export class PiSessionWatcher {
     this.gate.resume(session.sessionId);
 
     this.emitNew(session, committed);
+    this.emitMetrics(session, metrics);
     session.lastActivityMs = resumedAt;
     session.pollTimer = setInterval(() => this.pollSession(session), SCAN_INTERVAL_MS);
     console.log(`[pi] Session ${session.sessionId.slice(0, 8)} resumed (gap ${gapMinutes}m)`);
@@ -415,6 +444,35 @@ export function emitTranscriptEvent(eventStore: EventStore, sessionId: string, a
   }
 
   eventStore.add(ev.type, sessionId, { ...ev.data, ...transcript }, ev.riskLevel, agentType);
+}
+
+/**
+ * A pi transcript's metrics in `session_metrics`' shape: the shape native pi's StatusLine
+ * gives `handleStatusLine` (`hooks/handler.ts`), so a gloved and a native pi show the same.
+ * `contextWindow` is the model's, or null when unknown (then no context %).
+ */
+export function piSessionMetricsData(m: PiMetrics, contextWindow: number | null): EventData {
+  const usedPct = contextWindow && m.contextTokens !== null ? (m.contextTokens / contextWindow) * 100 : undefined;
+  return {
+    modelId: m.modelId,
+    // glove's facts carry no display name; the id is what the user picked.
+    modelDisplayName: m.modelId,
+    thinkingLevel: m.thinkingLevel,
+    costUsd: m.costUsd,
+    totalInputTokens: m.totals.input,
+    totalOutputTokens: m.totals.output,
+    totalCacheReadTokens: m.totals.cacheRead,
+    totalCacheWriteTokens: m.totals.cacheWrite,
+    totalReasoningTokens: m.totals.reasoning,
+    currentInputTokens: m.current?.input,
+    currentOutputTokens: m.current?.output,
+    cacheReadTokens: m.current?.cacheRead,
+    cacheCreationTokens: m.current?.cacheWrite,
+    currentReasoningTokens: m.current?.reasoning,
+    contextWindowSize: contextWindow ?? undefined,
+    contextUsedPct: usedPct,
+    contextRemainingPct: usedPct === undefined ? undefined : 100 - usedPct,
+  };
 }
 
 /** What the database already holds of a session, for a replay after a restart to skip. */

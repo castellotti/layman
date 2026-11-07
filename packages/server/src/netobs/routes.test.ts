@@ -101,3 +101,34 @@ describe('net REST routes', () => {
     expect(res.json()).toMatchObject({ configured: false, loaded: false, attribution: null });
   });
 });
+
+describe('GET …/tokens', () => {
+  it('passes the range to the token reader and hides a session with no usage', async () => {
+    const seen: unknown[] = [];
+    const withTokens = Fastify();
+    const netObs = new NetObs({ getGloveHome: () => home });
+    netObs.poll(Date.parse('2026-09-23T14:14:48.000Z'));
+    registerNetRoutes(withTokens, {
+      netObs,
+      tokens: (token, range) => {
+        seen.push(range);
+        return token === TEST_ID ? { tokens: { input: 5, output: 4, cacheRead: 3, cacheWrite: 2, reasoning: 1 }, calls: 1 } : null;
+      },
+    });
+    await withTokens.ready();
+    try {
+      const all = await withTokens.inject(`/api/net/sessions/${TEST_ID}/tokens`);
+      expect(all.json()).toEqual({ tokens: { input: 5, output: 4, cacheRead: 3, cacheWrite: 2, reasoning: 1 }, calls: 1 });
+      await withTokens.inject(`/api/net/sessions/${TEST_ID}/tokens?from=1000&to=2000`);
+      await withTokens.inject(`/api/net/sessions/${TEST_ID}/tokens?from=1000`);
+      expect(seen).toEqual([null, { from: 1000, to: 2000 }, { from: 1000, to: null }]);
+      expect((await withTokens.inject(`/api/net/sessions/${TEST_ID}/tokens?to=2000`)).statusCode).toBe(400);
+      expect((await withTokens.inject(`/api/net/sessions/${TEST_ID}/tokens?from=`)).statusCode).toBe(400);
+      expect((await withTokens.inject('/api/net/sessions/nope-000000/tokens')).statusCode).toBe(404);
+    } finally {
+      await withTokens.close();
+    }
+    // Without a reader (or with no call yet) there is nothing to show.
+    expect((await app.inject(`/api/net/sessions/${TEST_ID}/tokens`)).json()).toEqual({ tokens: null, calls: 0 });
+  });
+});
