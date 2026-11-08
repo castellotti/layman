@@ -20,7 +20,13 @@ describe('tokenBreakdown', () => {
   it('lists each kind, thinking under output with its share', () => {
     expect(tokenBreakdown({
       totalInputTokens: 51070, totalOutputTokens: 2786, totalReasoningTokens: 1355, totalCacheReadTokens: 7100, totalCacheWriteTokens: 0,
-    })).toBe('Input: 51,070\nOutput: 2,786\n  of which thinking: 1,355 (49% of output)\nCache read: 7,100\nCache write: 0');
+    })).toBe('Input: 51,070\nOutput: 2,786\n  of which thinking: 1,355 (49% of output)\nCache read: 7,100');
+  });
+
+  it('leaves out a kind that is 0: the provider never sent it (cache write on openai-completions)', () => {
+    expect(tokenBreakdown({
+      totalInputTokens: 10, totalOutputTokens: 5, totalReasoningTokens: 0, totalCacheReadTokens: 0, totalCacheWriteTokens: 0,
+    })).toBe('Input: 10\nOutput: 5');
   });
 
   it('leaves out the kinds a harness does not report (Claude Code)', () => {

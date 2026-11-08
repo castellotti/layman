@@ -988,4 +988,11 @@ export interface NetTokens {
 export interface NetTokenSums {
   tokens: NetTokens | null;
   calls: number;
+  /**
+   * The optional kinds the session ever reported (non-zero, over all records). A kind the
+   * provider's API never sends is 0 on every call: unknown, so its tile is hidden.
+   */
+  reported?: NetOptionalKind[];
 }
+
+export type NetOptionalKind = 'cacheRead' | 'cacheWrite' | 'reasoning';

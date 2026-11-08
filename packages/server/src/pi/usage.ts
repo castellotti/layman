@@ -19,10 +19,21 @@ import type { NetRange } from '../netobs/types.js';
 import { splitLines } from '../netobs/tail.js';
 import { addTokens, discoverPiSessionsUnder, piUsageSamples, zeroTokens, type PiTokens } from '../hooks/transcript-pi.js';
 
+/** The token kinds a provider may leave out: 0 on every call means "not reported", not "none". */
+const OPTIONAL_KINDS = ['cacheRead', 'cacheWrite', 'reasoning'] as const;
+type OptionalKind = (typeof OPTIONAL_KINDS)[number];
+
 export interface TokenSums {
   tokens: PiTokens;
   /** Billed calls counted. Zero means nothing to show. */
   calls: number;
+  /**
+   * The optional kinds some call of the session reported (non-zero), over all records whatever the
+   * range: pi-ai records 0 for a kind the provider's API does not send (cache write on
+   * openai-completions without `cache_write_tokens`, on openai-responses and Mistral; thinking
+   * without `reasoning_tokens`), so a kind never seen is unknown and the client hides it.
+   */
+  reported: OptionalKind[];
 }
 
 interface FileState {
@@ -48,18 +59,20 @@ export class PiUsageReader {
     const to = range?.to ?? now;
     const tokens = zeroTokens();
     let calls = 0;
+    const seen = new Set<OptionalKind>();
     const files = discoverPiSessionsUnder(root.path).map((d) => d.path);
     // Forget files that are gone, so a long-running server does not keep their samples.
     const listed = new Set(files);
     for (const path of this.files.keys()) if (path.startsWith(root.path + sep) && !listed.has(path)) this.files.delete(path);
     for (const file of files) {
       for (const s of this.samples(file)) {
+        for (const k of OPTIONAL_KINDS) if (s.tokens[k] > 0) seen.add(k);
         if (range && (s.at < range.from || s.at > to)) continue;
         addTokens(tokens, s.tokens);
         calls++;
       }
     }
-    return { tokens, calls };
+    return { tokens, calls, reported: OPTIONAL_KINDS.filter((k) => seen.has(k)) };
   }
 
   private samples(path: string): FileState['samples'] {

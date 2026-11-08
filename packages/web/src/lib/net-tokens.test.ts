@@ -16,4 +16,12 @@ describe('net-tokens', () => {
     expect(tiles[0].exact).toBe('51,070 tokens');
     expect(tokenTiles({ input: 1, output: 0, cacheRead: 0, cacheWrite: 0, reasoning: 0 })[4].sub).toBeUndefined();
   });
+
+  it('leaves out the optional kinds the session never reported', () => {
+    const t = { input: 156, output: 100, cacheRead: 179603, cacheWrite: 0, reasoning: 67 };
+    expect(tokenTiles(t, ['cacheRead', 'reasoning']).map((x) => x.label)).toEqual(['INPUT', 'OUTPUT', 'CACHE READ', 'THINKING']);
+    expect(tokenTiles(t, []).map((x) => x.label)).toEqual(['INPUT', 'OUTPUT']);
+    // reported in the session but 0 in this range: still shown, as 0
+    expect(tokenTiles(t, ['cacheWrite']).find((x) => x.label === 'CACHE WRITE')?.exact).toBe('0 tokens');
+  });
 });

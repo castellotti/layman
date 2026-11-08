@@ -16,11 +16,14 @@ function getTimeSince(timestamp: number, now: number): string {
   return `${Math.floor(delta / 3_600_000)}h`;
 }
 
+/** One line, cut with an ellipsis (needs `minWidth: 0` in a flex row). */
+const ELLIPSIS = { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } as const;
+
 // Isolates the 5s ticking re-render to just this label instead of the whole row.
 function TimeSinceLabel({ timestamp }: { timestamp: number }) {
   const now = useNow(5000);
   return (
-    <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9.5, fontVariantNumeric: 'tabular-nums', color: 'var(--text-faint)' }}>
+    <span style={{ flexShrink: 0, whiteSpace: 'nowrap', fontFamily: 'var(--font-mono)', fontSize: 9.5, fontVariantNumeric: 'tabular-nums', color: 'var(--text-faint)' }}>
       {getTimeSince(timestamp, now)}
     </span>
   );
@@ -55,6 +58,7 @@ export const SessionListRow = React.memo(function SessionListRow({
   const model = metrics?.modelDisplayName;
   const hasMetrics = model !== undefined || ctxPct !== undefined;
   const cwdName = session.cwd ? cwdBasename(session.cwd) : undefined;
+  const displayName = getSessionDisplayName(session);
 
   return (
     <div
@@ -106,67 +110,67 @@ export const SessionListRow = React.memo(function SessionListRow({
       {/* Host chip (remote sessions surfaced by central; nothing for local) */}
       <HostChip hostId={session.hostId} hostName={session.hostName} />
 
-      {/* Name + cwd */}
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{
-          fontFamily: 'var(--font-ui)',
-          fontSize: 12.5,
-          fontWeight: 600,
-          color: 'var(--text)',
-          overflow: 'hidden',
-          textOverflow: 'ellipsis',
-          whiteSpace: 'nowrap',
-        }}>
-          {getSessionDisplayName(session)}
-        </div>
-        {cwdName && (
-          <div style={{
-            fontFamily: 'var(--font-mono)',
-            fontSize: 10,
-            color: 'var(--text-faint)',
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
-            marginTop: 1,
+      {/* Two rows. Top: the name across the row, then the link and ctx% (or the time since
+          the last event). Bottom: the cwd, the model and the meter; the cwd gives way first,
+          then the model, so a long model id never squeezes the name. */}
+      <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+          <span title={displayName} style={{
+            flex: 1,
+            minWidth: 0,
+            fontFamily: 'var(--font-ui)',
+            fontSize: 12.5,
+            fontWeight: 600,
+            color: 'var(--text)',
+            ...ELLIPSIS,
           }}>
-            {cwdName}
-          </div>
-        )}
-      </div>
-
-      <CopyLinkButton
-        route={{ kind: 'session', sessionId: session.sessionId }}
-        title="Copy link to this session"
-      />
-
-      {/* ctx% on top, model beside the meter below (falls back to relative time when no metrics are available yet) */}
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 3, flexShrink: 0 }}>
-        {hasMetrics ? (
-          <>
-            {ctxPct !== undefined && (
-              <span style={{
+            {displayName}
+          </span>
+          <CopyLinkButton
+            route={{ kind: 'session', sessionId: session.sessionId }}
+            title="Copy link to this session"
+          />
+          {ctxPct !== undefined ? (
+            <span style={{
+              flexShrink: 0,
+              fontFamily: 'var(--font-mono)',
+              fontSize: 11,
+              fontWeight: 600,
+              fontVariantNumeric: 'tabular-nums',
+              color: contextPctColor(ctxPct, 'var(--text-body)'),
+            }}>
+              ctx {Math.round(ctxPct)}%
+            </span>
+          ) : (
+            !hasMetrics && lastMeaningful && <TimeSinceLabel timestamp={lastMeaningful.timestamp} />
+          )}
+        </div>
+        {(cwdName || hasMetrics) && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+            <span style={{
+              flex: '1 1 0',
+              minWidth: 0,
+              fontFamily: 'var(--font-mono)',
+              fontSize: 10,
+              color: 'var(--text-faint)',
+              ...ELLIPSIS,
+            }}>
+              {cwdName}
+            </span>
+            {model && (
+              <span title={model} style={{
+                flex: '0 1 auto',
+                minWidth: 0,
                 fontFamily: 'var(--font-mono)',
-                fontSize: 11,
-                fontWeight: 600,
-                fontVariantNumeric: 'tabular-nums',
-                color: contextPctColor(ctxPct, 'var(--text-body)'),
+                fontSize: 9.5,
+                color: 'var(--text-faint)',
+                ...ELLIPSIS,
               }}>
-                ctx {Math.round(ctxPct)}%
+                {model}
               </span>
             )}
-            {(model || ctxPct !== undefined) && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                {model && (
-                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9.5, color: 'var(--text-faint)', whiteSpace: 'nowrap' }}>
-                    {model}
-                  </span>
-                )}
-                {ctxPct !== undefined && <Meter value={ctxPct} showTick height={5} width={64} />}
-              </div>
-            )}
-          </>
-        ) : (
-          lastMeaningful && <TimeSinceLabel timestamp={lastMeaningful.timestamp} />
+            {ctxPct !== undefined && <span style={{ flexShrink: 0, display: 'flex' }}><Meter value={ctxPct} showTick height={5} width={64} /></span>}
+          </div>
         )}
       </div>
     </div>
