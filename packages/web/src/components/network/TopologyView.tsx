@@ -423,11 +423,11 @@ const TOKENS_REFRESH_MS = 5_000;
  * as the bytes; nothing at all when the session has no usage to show (not pi, no transcripts).
  */
 function TokenTiles({ token, range }: { token: string; range: NetRange | null }) {
-  const tokens = useNetTokens(token, range, TOKENS_REFRESH_MS);
-  if (!tokens) return null;
+  const sums = useNetTokens(token, range, TOKENS_REFRESH_MS);
+  if (!sums) return null;
   return (
     <div aria-label="LLM tokens" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(92px, 1fr))', gap: 8, marginTop: 8 }}>
-      {tokenTiles(tokens).map((t) => (
+      {tokenTiles(sums.tokens, sums.reported).map((t) => (
         <Tile key={t.label} label={t.label} value={t.value} sub={t.sub} tip={`${t.exact}, from the agent's transcript`} colour={t.colour} icon={t.icon} />
       ))}
     </div>

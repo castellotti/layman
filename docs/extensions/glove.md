@@ -1143,10 +1143,13 @@ Selected path panel that walks one destination's path hop by hop.
   A refused path stops at the policy hop, a broken one before the exit. Below the hops: sent and
   received tiles, Block (or Unblock), and Open in map.
 - **LLM tokens on the LLM path.** When the selected destination carries the `llm` tool (the `llm`
-  service's hop to llm-auth, or the `llm-upstream` leg), five more tiles sit under SENT and RECEIVED,
+  service's hop to llm-auth, or the `llm-upstream` leg), up to five more tiles sit under SENT and RECEIVED,
   the same `Tile` (its icon is any `NetIcon`, and it takes a sub-line): **INPUT, OUTPUT, CACHE READ,
   CACHE WRITE, THINKING**, THINKING with its share of output (thinking is a part of output; the cache
-  kinds are apart from input). They are the glove session's own tokens, not the destination's: the
+  kinds are apart from input). An optional kind (cache read, cache write, thinking) that no call of
+  the session ever reported is hidden: pi-ai records 0 for a kind the provider's API never sends, so
+  that 0 is unknown, not none; the server returns the kinds seen (`reported`, over all records
+  whatever the range), and a reported kind that is 0 in the range still shows 0. They are the glove session's own tokens, not the destination's: the
   same on either leg. They follow the **same time range** as the bytes: each billed call (assistant
   messages and compactions, on every branch) counts when its transcript entry was written, inside
   `[from, to]`; All records is every call. The server sums them

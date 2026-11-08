@@ -33,10 +33,11 @@ export function thinkingShare(thinking: number, output: number): number | null {
 
 /**
  * The tokens behind "Xin / Yout", one kind per line: input, output (of which thinking, with its
- * share), cache read, cache write. A kind the harness does not report (Claude Code sends no cache
- * or thinking totals) is left out rather than shown as 0. `thinkingOf` is the output thinking's
- * share is taken of, when not all of `totalOutputTokens` reports thinking (an aggregate with
- * Claude Code sessions in it).
+ * share), cache read, cache write. A kind that is 0 or absent is left out: the harness does not
+ * report it (Claude Code sends no cache or thinking totals), or the provider's API never sends it
+ * (pi-ai records 0, e.g. cache write on openai-completions), so a 0 there means unknown.
+ * `thinkingOf` is the output thinking's share is taken of, when not all of `totalOutputTokens`
+ * reports thinking (an aggregate with Claude Code sessions in it).
  */
 export function tokenBreakdown(m: Pick<SessionMetrics,
   'totalInputTokens' | 'totalOutputTokens' | 'totalCacheReadTokens' | 'totalCacheWriteTokens' | 'totalReasoningTokens'
@@ -44,11 +45,11 @@ export function tokenBreakdown(m: Pick<SessionMetrics,
   const n = (v: number) => v.toLocaleString('en-US');
   const output = m.totalOutputTokens ?? 0;
   const lines = [`Input: ${n(m.totalInputTokens ?? 0)}`, `Output: ${n(output)}`];
-  if (m.totalReasoningTokens !== undefined) {
+  if (m.totalReasoningTokens) {
     const share = thinkingShare(m.totalReasoningTokens, thinkingOf ?? output);
     lines.push(`  of which thinking: ${n(m.totalReasoningTokens)}${share === null ? '' : ` (${share}% of output)`}`);
   }
-  if (m.totalCacheReadTokens !== undefined) lines.push(`Cache read: ${n(m.totalCacheReadTokens)}`);
-  if (m.totalCacheWriteTokens !== undefined) lines.push(`Cache write: ${n(m.totalCacheWriteTokens)}`);
+  if (m.totalCacheReadTokens) lines.push(`Cache read: ${n(m.totalCacheReadTokens)}`);
+  if (m.totalCacheWriteTokens) lines.push(`Cache write: ${n(m.totalCacheWriteTokens)}`);
   return lines.join('\n');
 }

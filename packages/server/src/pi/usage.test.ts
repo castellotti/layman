@@ -37,9 +37,18 @@ describe('PiUsageReader', () => {
   afterEach(() => rmSync(join(root, '..'), { recursive: true, force: true }));
 
   it('sums every kind over All records, and is null for a session with no pi transcripts', () => {
-    expect(reader.sum(TOKEN, null)).toEqual({ tokens: { input: 1200, output: 150, cacheRead: 1000, cacheWrite: 10, reasoning: 60 }, calls: 2 });
+    expect(reader.sum(TOKEN, null)).toEqual({ tokens: { input: 1200, output: 150, cacheRead: 1000, cacheWrite: 10, reasoning: 60 }, calls: 2,
+      reported: ['cacheRead', 'cacheWrite', 'reasoning'],
+    });
     expect(reader.sum('vibe-000000', null)).toBeNull();
     expect(reader.sum('other-000000', null)).toBeNull();
+  });
+
+  it('reports only the optional kinds some call of the session sent (0 everywhere: unknown)', () => {
+    writeFileSync(file, [HEADER, A, call('a2', '2026-11-06T14:05:00.000Z', usage(200, 50, 1000, 0, 0))].join('\n') + '\n');
+    expect(reader.sum(TOKEN, null)!.reported).toEqual(['cacheRead', 'reasoning']);
+    // a range without the cache read still says it was reported
+    expect(reader.sum(TOKEN, { from: at('2026-11-06T14:00:00.000Z'), to: at('2026-11-06T14:01:00.000Z') })!.reported).toEqual(['cacheRead', 'reasoning']);
   });
 
   it('counts the calls that finished in the range, an open range running until now', () => {
@@ -49,6 +58,7 @@ describe('PiUsageReader', () => {
     expect(reader.sum(TOKEN, { from: at('2026-11-06T14:00:00.000Z'), to: null }, now)!.calls).toBe(1);
     expect(reader.sum(TOKEN, { from: at('2026-11-06T16:00:00.000Z'), to: null }, at('2026-11-06T17:00:00.000Z'))).toEqual({
       tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, reasoning: 0 }, calls: 0,
+      reported: ['cacheRead', 'cacheWrite', 'reasoning'], // the session's, whatever the range
     });
   });
 

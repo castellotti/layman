@@ -112,13 +112,13 @@ describe('GET …/tokens', () => {
       netObs,
       tokens: (token, range) => {
         seen.push(range);
-        return token === TEST_ID ? { tokens: { input: 5, output: 4, cacheRead: 3, cacheWrite: 2, reasoning: 1 }, calls: 1 } : null;
+        return token === TEST_ID ? { tokens: { input: 5, output: 4, cacheRead: 3, cacheWrite: 2, reasoning: 1 }, calls: 1, reported: ['cacheWrite' as const] } : null;
       },
     });
     await withTokens.ready();
     try {
       const all = await withTokens.inject(`/api/net/sessions/${TEST_ID}/tokens`);
-      expect(all.json()).toEqual({ tokens: { input: 5, output: 4, cacheRead: 3, cacheWrite: 2, reasoning: 1 }, calls: 1 });
+      expect(all.json()).toEqual({ tokens: { input: 5, output: 4, cacheRead: 3, cacheWrite: 2, reasoning: 1 }, calls: 1, reported: ['cacheWrite'] });
       await withTokens.inject(`/api/net/sessions/${TEST_ID}/tokens?from=1000&to=2000`);
       await withTokens.inject(`/api/net/sessions/${TEST_ID}/tokens?from=1000`);
       expect(seen).toEqual([null, { from: 1000, to: 2000 }, { from: 1000, to: null }]);
