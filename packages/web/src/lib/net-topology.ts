@@ -721,12 +721,11 @@ export function layoutTopology(data: TopoInput, width: number, height: number, o
       lines.push({ text: 'not verified', tone: 'warn' }, { text: exitRec && !exitRec.healthy ? 'the exit check failed' : 'no exit record yet', tone: 'faint' });
     }
     const h = nodeH(lines.length) + 4;
-    // Room under it for a row or two of broken paths, unless that would lift it into the model's path.
-    // `pathFloor` wins: the height was sized so that it is never under `lowest`.
-    const lowest = bottom - h - (brokenLegs.length ? ORIGIN_GAP + brokenMin : 0);
-    const y = Math.max(pathFloor, Math.min(centre(tunnel) + 40 - h / 2, lowest));
+    // As high as it goes: right under the model's path (or at the top without one), so it sits above
+    // the tunnel route and its bands fan down into the destinations. The height was sized so the
+    // broken paths still fit under it (`originNeed`).
     exitNode = node({
-      id: 'origin:exit', kind: 'exit', column: 'origin', x: colX('origin'), y, w: NODE_W.origin, h, title, lines,
+      id: 'origin:exit', kind: 'exit', column: 'origin', x: colX('origin'), y: pathFloor, w: NODE_W.origin, h, title, lines,
       tone: placed && data.gate.route.verified ? 'tunnel' : 'warn', hosts: uniq(tunnelReached.map((l) => l.host)),
       live: tunnelReached.some((l) => l.live),
     });
@@ -740,7 +739,7 @@ export function layoutTopology(data: TopoInput, width: number, height: number, o
     Math.min(bottom - brokenMin, froms.length ? Math.min(...froms.map((n) => n.y)) : contentTop),
   );
   const brokenRoom = bottom - brokenTop;
-  const brokenScrolls = brokenFull > brokenRoom;
+  const brokenScrolls = brokenFull > brokenRoom + 0.5; // not by a rounding error
   const brokenBlockH = brokenScrolls ? brokenRoom : brokenFull;
   const brokenNode = new Map<string, TopoNode>();
   const brokenViewTop = brokenTop + (brokenScrolls ? STUB_ROOM : 0);
@@ -753,7 +752,7 @@ export function layoutTopology(data: TopoInput, width: number, height: number, o
   });
   const broken: ScrollColumn = {
     id: 'broken', x: colX('origin'), w: NODE_W.origin, top: brokenViewTop, bottom: brokenViewBottom,
-    overhang: BROKEN_OVERHANG, maxScroll: Math.max(0, brokenFull - (brokenViewBottom - brokenViewTop)), pitch: BROKEN_PITCH,
+    overhang: BROKEN_OVERHANG, maxScroll: brokenScrolls ? Math.max(0, brokenFull - (brokenViewBottom - brokenViewTop)) : 0, pitch: BROKEN_PITCH,
     rows: brokenLegs.map((l) => `origin:broken:${l.d.key}`),
   };
 

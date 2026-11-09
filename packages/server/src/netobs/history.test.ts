@@ -251,6 +251,16 @@ describe('kept network history', () => {
     write([]);
     const gone = run(h).snap.destinations.filter((d) => hops.includes(d.key));
     expect(gone.map((d) => [d.key, d.flags.hop])).toEqual(hops.map((k) => [k, true]));
+    // …and every kept destination keeps the gate it went through, so Topology draws it through that gate.
+    const gateOf = (ds: DestinationAggregate[]) => ds.map((d) => [d.key, d.services[0] ?? null]).sort();
+    const kept = run(h).snap.destinations;
+    expect(gateOf(kept)).toEqual(gateOf(ref.destinations));
+    // A row kept before Layman stored the gate (migration 7) gets it from its tool, where only one gate fits.
+    for (const r of h.rows.values()) for (const d of r.destinations) delete d.service;
+    const old = new Map(gateOf(run(h).snap.destinations) as [string, string | null][]);
+    expect(old.get('api.github.com:443')).toBe('github-egress');
+    // …and is left unknown, never guessed, where two gates fit (ssh-build and ssh-db).
+    expect(old.get('build.lan:22')).toBe(null);
   });
 
   it('never counts a refined destination twice', () => {

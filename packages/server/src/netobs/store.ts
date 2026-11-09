@@ -67,6 +67,17 @@ const byHour = (a: HistoryHour, b: HistoryHour) =>
 /** Copies of `hours`, in `net_hours` order. */
 const sortedHours = (hours: Iterable<HistoryHour>) => [...hours].sort(byHour).map((h) => ({ ...h }));
 /** How long after its collector's stop a record still belongs to that run. */
+/**
+ * The gate a kept destination went through, for a row kept before Layman stored it (migration 7):
+ * the one gate with its tool that is a hop when it was a hop, and not one when it was not
+ * (`browser` → `browser-egress`, `llm` → `llm-upstream`). Null when none or several fit: never guessed.
+ */
+function serviceForTool(tool: string | null, hop: boolean, services: readonly NetService[]): string | null {
+  if (!tool) return null;
+  const fits = services.filter((s) => s.tool === tool && isHopService(s, services) === hop);
+  return fits.length === 1 ? fits[0].service : null;
+}
+
 const RUN_STOP_GRACE_MS = 5 * SECOND;
 /** 1 s buckets are kept for this long, then folded into 1 min buckets for the session. */
 const SECOND_BUCKET_SPAN = 60 * MINUTE;
@@ -1175,18 +1186,19 @@ export class NetStore extends EventEmitter {
 
   /** A destination only the kept history knows: what is left of it once the files are re-read. */
   private historyView(s: SessionData, h: HistoryDest, c: Seen): DestinationAggregate {
-    const facts = { host: h.host, ip: h.lastIp, port: h.port, service: null, tool: h.tool, scope: h.scope };
-    const gate = { proxy: this.viaProxy(s, null, h.resolution ?? null), resolution: h.resolution ?? null, corporate: this.corporate(s, null) };
+    const service = h.service ?? serviceForTool(h.tool, h.hop === true, s.session?.services ?? []);
+    const facts = { host: h.host, ip: h.lastIp, port: h.port, service, tool: h.tool, scope: h.scope };
+    const gate = { proxy: this.viaProxy(s, service, h.resolution ?? null), resolution: h.resolution ?? null, corporate: this.corporate(s, service) };
     return {
       key: h.key, host: h.host, port: h.port, groupKey: h.groupKey, endpoint: h.host === null ? h.key.replace(/^@/, '') : null,
-      ips: h.lastIp ? [h.lastIp] : [], services: [], tools: h.tool ? [h.tool] : [], clients: [],
+      ips: h.lastIp ? [h.lastIp] : [], services: service ? [service] : [], tools: h.tool ? [h.tool] : [], clients: [],
       scope: h.scope ?? 'unknown', resolution: h.resolution ?? 'unavailable',
       bytesUp: c.up, bytesDown: c.down, flows: c.flows, openFlows: 0, blocked: c.blocked,
       firstSeen: h.firstSeen, lastSeen: h.lastSeen, state: h.lastState ?? 'finished', rule: null, blockedBy: {},
       flags: this.withVpn(s, flowFlags({
         dest: { host: h.host, ip: h.lastIp, port: h.port, resolution: h.resolution ?? 'unavailable' },
         scope: h.scope ?? 'unknown', proto: null, client: null, tool: h.tool,
-      }, h.hop === true), h.scope ?? 'unknown', h.host, null),
+      }, h.hop === true), h.scope ?? 'unknown', h.host, service),
       spark: [], policy: policyFor(s.policy, facts, gate), geoIp: null, geo: null,
     };
   }
@@ -1278,7 +1290,7 @@ export class NetStore extends EventEmitter {
       destinations: dests.map((d) => ({
         key: d.key, host: d.host, port: d.port, groupKey: d.groupKey, lastIp: d.ips[0] ?? null, scope: d.scope, resolution: d.resolution,
         tool: d.tools[0] ?? null, firstSeen: d.firstSeen, lastSeen: d.lastSeen, bytesUp: d.bytesUp, bytesDown: d.bytesDown,
-        flows: d.flows, blocked: d.blocked, lastState: d.state, hop: d.flags.hop,
+        flows: d.flows, blocked: d.blocked, lastState: d.state, hop: d.flags.hop, service: d.services[0] ?? null,
       })),
       hours: sortedHours(changedHours ? [...s.dirtyHours].map((k) => s.hours.get(k)!) : s.hours.values()),
       runs: this.runsByStart(s).map((r) => ({ ...r })),

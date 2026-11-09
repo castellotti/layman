@@ -141,7 +141,7 @@ describe('applyMigrations (multi-host sync migration)', () => {
     // filter_since, how a revoked glove filter grant is remembered; 5: a kept destination's hop flag;
     // 6: their time axis, net_hours and net_runs).
     const versions = (db.prepare('SELECT version FROM schema_migrations ORDER BY version').all() as Array<{ version: number }>).map((r) => r.version);
-    expect(versions).toEqual([1, 2, 3, 4, 5, 6]);
+    expect(versions).toEqual([1, 2, 3, 4, 5, 6, 7]);
     const netCols = (db.prepare('PRAGMA table_info(net_sessions)').all() as Array<{ name: string }>).map((c) => c.name);
     expect(netCols).toEqual(expect.arrayContaining(['filter_since', 'hours_kept']));
     const destCols = (db.prepare('PRAGMA table_info(net_destinations)').all() as Array<{ name: string }>).map((c) => c.name);

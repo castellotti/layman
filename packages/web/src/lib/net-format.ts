@@ -392,8 +392,8 @@ export function directLegend(d: Pick<DestinationAggregate, 'scope' | 'flags'>): 
 export const TOPOLOGY_LEGEND: ReadonlyArray<{ bands: readonly BandKind[]; label: string; tip: string }> = [
   { bands: ['tunnel'], label: 'Tunnelled',
     tip: 'Traffic that left through the tunnel (a VPN, Tor, or your corporate proxy), so sites saw its address, not yours.' },
-  { bands: ['fanout'], label: 'SearXNG fan-out',
-    tip: 'One web search becomes many: glove’s search service (SearXNG) asks several search engines at once on the agent’s behalf.' },
+  { bands: ['fanout'], label: 'Tool egress',
+    tip: 'Traffic a glove tool sent on the agent’s behalf through its own egress gate: the browser (Playwright), the web fetcher, or SearXNG asking several search engines for one web search. It is tunnelled too.' },
   { bands: ['local', 'unwatched'], label: 'Not tunnelled',
     tip: 'Links that do not go through the tunnel: glove’s own services, a host on your network, and the agent’s model, which can still reach a cloud provider.' },
   { bands: ['direct'], label: 'Direct',

@@ -83,6 +83,9 @@ describe('Topology: nothing overlaps', () => {
     }
     const exit = t.nodes.find((n) => n.id === 'origin:exit');
     if (exit && t.pinned.length && llm) expect(exit.y).toBeGreaterThan(Math.max(bottom(llm), ...pinnedRows.map(bottom)));
+    // …and as high as that allows: no lower than the tunnel route it is behind.
+    const tunnel = t.nodes.find((n) => n.id === 'route:tunnel');
+    if (exit && tunnel) expect(exit.y).toBeLessThanOrEqual(tunnel.y);
     if (t.broken.rows.length) {
       if (exit) expect(t.broken.top).toBeGreaterThan(bottom(exit));
       expect(t.broken.bottom - t.broken.top).toBeGreaterThan(20);
