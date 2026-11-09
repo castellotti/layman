@@ -106,12 +106,12 @@ describe('the fixture topology', () => {
     expect(byId(t, 'svc:llm').lines[0].text).toBe('tcp · local');
   });
 
-  it('has the three routes, the verified exit, and the broken path', () => {
+  it('has the routes that carried traffic, the verified exit, and the broken path', () => {
     expect(byId(t, 'route:local').lines.map((l) => l.text)).toEqual(['host.docker.internal', 'never mapped']);
     expect(byId(t, 'route:tunnel').title).toBe('VPN tunnel');
     expect(byId(t, 'route:tunnel').lines.map((l) => l.text)).toEqual(['declared: vpn', 'egress-proxy:8888', 'resolver in-tunnel', 'upstream healthy']);
-    const direct = byId(t, 'route:direct');
-    expect([direct.dashed, direct.icon, direct.lines[0].text]).toEqual([true, 'check', 'no traffic']);
+    // Nothing went direct: no Direct box.
+    expect(t.nodes.some((n) => n.id === 'route:direct')).toBe(false);
     const exit = byId(t, 'origin:exit');
     expect([exit.title, ...exit.lines.map((l) => l.text)]).toEqual(['Switzerland', 'exit verified', '195.177.93.17', 'via am.i.mullvad.net', 'not Layman’s lookup']);
     const broken = byId(t, 'origin:broken:duckduckgo.com:443');
@@ -444,11 +444,13 @@ describe('other sessions', () => {
       .toEqual(['llm', 'search', 'proxy', 'fanout', 'browser', 'mystery']);
   });
 
-  it('draws an empty session: the sandbox, its services, and the Direct route clear', () => {
+  it('draws an empty session: the sandbox, its services, and only the declared tunnel', () => {
     const t = layoutTopology(fixture({}, []), 1080, 780);
     expect(t.nodes.filter((n) => n.kind === 'dest')).toEqual([]);
     expect(t.wall.labels).toEqual([]);
-    expect(byId(t, 'route:direct').icon).toBe('check');
+    // Local and Direct are drawn only when something used them; the declared tunnel always is.
+    expect(t.nodes.filter((n) => n.kind === 'route').map((n) => n.id)).toEqual(['route:tunnel']);
+    expect(t.pinned).toEqual([]);
   });
 
   describe('broken paths that scroll', () => {
