@@ -43,8 +43,6 @@ interface PanelContent {
   /** The most of a column it may take while it shares that column with another panel (CSS `max-height`;
    *  half is `calc(50% - 4px)`, half the column less half the 8 px gap). */
   maxShare?: string;
-  /** What it shows does not depend on the time range (the rules in force, one turn's trace): no "in range" marker. */
-  current?: boolean;
 }
 
 /** A range being read: its span (an open one's length ticks) and how far the server has got. */
@@ -85,7 +83,6 @@ function panelContent(tab: NetTab, id: string, data: NetSessionData, now: number
     case 'network/rules':
       return {
         body: <RulesPanel data={data} now={now} />,
-        current: true,
         count: data.gate.rules ? `${data.gate.rules.active_count} enforced` : undefined,
         actions: <RulesFileLink data={data} />,
       };
@@ -94,12 +91,12 @@ function panelContent(tab: NetTab, id: string, data: NetSessionData, now: number
     case 'topology/path':
       return { body: <SelectedPath data={data} /> };
     case 'trace/trace':
-      return { body: <TraceWaterfall data={data} />, actions: <TraceActions />, ownScroll: true, current: true };
+      return { body: <TraceWaterfall data={data} />, actions: <TraceActions />, ownScroll: true };
     case 'trace/details':
-      return { body: <TraceDetails data={data} />, current: true };
+      return { body: <TraceDetails data={data} /> };
     case 'trace/downloads':
       // Its height is its list's, but it shrinks (and scrolls) rather than run off the column.
-      return { body: <DownloadsList data={data} />, flex: '0 1 auto', maxShare: 'calc(50% - 4px)', current: true };
+      return { body: <DownloadsList data={data} />, flex: '0 1 auto', maxShare: 'calc(50% - 4px)' };
     default:
       return null;
   }
@@ -117,7 +114,6 @@ function Board({ tab, panels, data }: { tab: NetTab; panels: ReturnType<typeof u
       key={p.id}
       title={p.title}
       count={content?.count}
-      inRange={data.range && !content?.current ? { heading: 'For the time range only', body: 'This panel counts only the traffic in the range set above: bytes are what moved during it.', facts: [formatRange(data.range, now)] } : null}
       actions={content?.actions}
       flex={content?.flex}
       maxHeight={shared ? content?.maxShare : undefined}

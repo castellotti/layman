@@ -56,6 +56,50 @@ await page.goto(`${BASE}/?view=topology&glove=${PI}&dest=arxiv.org`);
 await page.waitForSelector('button:has-text("Open in map")');
 await page.click('button:has-text("Open in map")');
 check('Open in map → Map tab, same destination', await waitFor(async () => { const u = new URL(page.url()); return u.searchParams.get('view') === 'map' && u.searchParams.get('dest') === 'arxiv.org'; }), page.url());
+// Every box opens in Details, with what it is for (dismissable) and its traffic.
+await page.goto(`${BASE}/?view=topology&glove=${PI}`);
+await waitFor(async () => (await page.$$(`${DIAG} g[data-node]`)).length > 10);
+await page.click(`${DIAG} g[data-node="svc:proxy"]`);
+check('a service opens in Details', await waitFor(async () => (await page.$('[data-box-details="svc:proxy"]')) !== null));
+check('…with what it is for', await page.$('[data-box-details="svc:proxy"] [data-box-explanation]') !== null);
+check('…its bytes by route and its busiest destinations', await page.$('[data-route-mix]') !== null && await page.$('[data-top-dests]') !== null);
+check('…and no destination selected', !new URL(page.url()).searchParams.get('dest'), page.url());
+const lit = await page.$$eval(`${DIAG} g[data-band] > path:first-child`, (ps) => ps.filter((p) => Number(p.getAttribute('stroke-opacity')) < 0.2).length);
+check('…dimming the paths not through it', lit > 3, lit);
+await page.click('button[aria-label="Dismiss this explanation"]');
+check('the explanation dismisses', await waitFor(async () => (await page.$('[data-box-explanation]')) === null));
+await page.click(`${DIAG} g[data-node="route:tunnel"]`);
+check('another box has its own explanation', await waitFor(async () => (await page.$('[data-box-details="route:tunnel"] [data-box-explanation]')) !== null));
+await page.click(`${DIAG} g[data-node="svc:proxy"]`);
+check('…and coming back brings the dismissed one back', await waitFor(async () => (await page.$('[data-box-details="svc:proxy"] [data-box-explanation]')) !== null));
+await page.click(`${DIAG} g[data-node="origin:exit"]`);
+check('the exit lists its checks', await waitFor(async () => (await page.$('[data-box-details="origin:exit"] [data-exit-history]')) !== null));
+await page.click(`${DIAG} g[data-wall-label="wall:guard"]`);
+check('a label on the policy wall opens in Details', await waitFor(async () => (await page.$('[data-box-details="wall:guard"]')) !== null));
+await page.click(`${DIAG} g[data-node="sandbox"]`);
+await waitFor(async () => (await page.$('[data-box-details="sandbox"]')) !== null);
+await page.screenshot({ path: `${SHOTS}/topology-box-sandbox.png` });
+await page.click(`${DIAG} g[data-node="sandbox"]`);
+check('a second click on the box clears it', await waitFor(async () => (await page.$('[data-box-details]')) === null));
+await page.click(`${DIAG} g[data-node="svc:proxy"]`);
+await page.click('[data-top-dests] button >> nth=0');
+check('a destination in its list follows that path', await waitFor(async () => (await page.$$('ol[aria-label="Hops"] > li')).length > 0) && !!new URL(page.url()).searchParams.get('dest'), page.url());
+check('…which has its explanation too', await page.$('[data-box-explanation]') !== null);
+await page.click('button[aria-label="Dismiss this explanation"]');
+await page.click('button[aria-label="Hide Selected path panel"]');
+await page.click('button[data-tip="Show or hide the Details panel"]');
+check('closing and reopening the panel brings a dismissed explanation back', await waitFor(async () => (await page.$('[data-box-explanation]')) !== null));
+// Every broken path has a row, in a column under the exit that scrolls like the destinations.
+await page.goto(`${BASE}/?view=topology&glove=${sid('big')}`);
+const BROKEN = `${DIAG} g[data-broken-scroll]`;
+check('big session: every broken path drawn', await waitFor(async () => (await page.$$(`${BROKEN} g[data-node^="origin:broken:"]`)).length === 40, 8000),
+  (await page.$$(`${BROKEN} g[data-node^="origin:broken:"]`)).length);
+check('big session: the broken paths past the window counted below', /↓ \d+ below/.test(await page.$eval(`${DIAG} g[data-broken-stub="below"]`, (g) => g.textContent).catch(() => '')));
+check('big session: a scrollbar beside the broken paths', await page.$(`${BROKEN} g[data-broken-scrollbar]`) !== null);
+await page.click(`${DIAG} g[data-broken-stub="below"]`);
+check('big session: its stub scrolls it, not the destinations', await waitFor(async () => (await page.$(`${DIAG} g[data-broken-stub="above"]`)) !== null)
+  && (await page.$(`${DIAG} g[data-stub="above"]`)) === null);
+await page.screenshot({ path: `${SHOTS}/topology-broken-scroll.png` });
 // Panels.
 await page.goto(`${BASE}/?view=topology&glove=${PI}`);
 await page.waitForSelector('button[aria-label="Hide Selected path panel"]');

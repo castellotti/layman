@@ -40,8 +40,13 @@ const MAX_BAND = 30;
 const DEST_H = 22;
 const DEST_MIN_PITCH = 26;
 const DEST_MAX_PITCH = 50;
-/** Room above and below the destination window for the "↑ N above" / "↓ N below" stubs. */
+/** Room above and below a scrolling window for the "↑ N above" / "↓ N below" stubs. */
 const STUB_ROOM = 18;
+/** An "upstream unreachable" row: its glyph, host and caption, and the room between rows. */
+const BROKEN_H = 34;
+const BROKEN_PITCH = 50;
+/** How far a broken path's host may run past its box (the component clips it there). */
+const BROKEN_OVERHANG = 30;
 
 /** A band's colour, by route; refusals by who refused. */
 export type BandKind = 'tunnel' | 'fanout' | 'local' | 'direct' | 'guard' | 'refused' | 'broken' | 'unwatched' | 'trigger';
@@ -88,13 +93,23 @@ export interface TopoBand {
   dashed: boolean;
   label: { text: string; x: number; y: number; anchor: 'start' | 'end' } | null;
   /**
-   * A band into a destination: its far end with the column unscrolled (the near end is `start`).
-   * `projectTopology` redraws `d` from these as the column scrolls; the far end follows its row.
+   * A band into a row of a scrolling column (a destination, or a broken path): its far end with
+   * the column unscrolled (the near end is `start`). `projectTopology` redraws `d` from these as
+   * that column scrolls; the far end follows its row.
    */
-  toDest?: { x2: number; y2: number };
+  toRow?: { col: ScrollColumnId; x2: number; y2: number };
 }
 
-export interface WallLabel { text: string; sub: string | null; y: number; kind: 'guard' | 'refused' }
+export interface WallLabel {
+  /** `wall:guard`, `wall:rule:<id>`, `wall:default`: what selecting the label selects. */
+  id: string;
+  text: string;
+  sub: string | null;
+  y: number;
+  kind: 'guard' | 'refused';
+  /** The hosts it refused. */
+  hosts: string[];
+}
 
 export interface TopoWall {
   x: number;
@@ -120,19 +135,30 @@ export interface Topology {
    * The destination column, which scrolls on its own: every reached destination has a row
    * (nothing is folded). Rows' `y` are as drawn unscrolled; the window is [`top`, `bottom`].
    */
-  dests: DestColumn;
+  dests: ScrollColumn;
+  /**
+   * The broken paths ("upstream unreachable") under the exit, which scroll the same way: every
+   * broken destination has a row. No rows (and no window) when nothing broke.
+   */
+  broken: ScrollColumn;
 }
 
-export interface DestColumn {
+/** The columns that scroll on their own. */
+export type ScrollColumnId = 'dests' | 'broken';
+
+export interface ScrollColumn {
+  id: ScrollColumnId;
   x: number;
   w: number;
   top: number;
   bottom: number;
+  /** How far its rows' text runs past `w` (a broken path's host): its clip and scrollbar clear it. */
+  overhang: number;
   /** How far the column scrolls: 0 when every row fits. */
   maxScroll: number;
   /** From one row to the next: what an arrow key scrolls. */
   pitch: number;
-  /** Row ids (`dest:<key>`), top to bottom. */
+  /** Row ids (`dest:<key>`, `origin:broken:<key>`), top to bottom. */
   rows: string[];
 }
 
@@ -197,11 +223,11 @@ export function exitSourceHost(source: string | null): string | null {
  * extension's `llm-upstream`, which is the second leg of the harness's own model call
  * (drawn from the `llm` service, through llm-auth).
  */
-const isFanoutService = (s: NetService | undefined) =>
+export const isFanoutService = (s: NetService | undefined) =>
   !!s && !isLlmUpstream(s) && (s.harness === false || s.client === 'searxng' || s.tool === 'search-engine-fanout');
 
 /** A service the sandbox connects to itself: not a consumer, not the upstream leg behind a sidecar. */
-const fromSandbox = (s: NetService | undefined) => !!s && !isFanoutService(s) && s.harness !== false;
+export const fromSandbox = (s: NetService | undefined) => !!s && !isFanoutService(s) && s.harness !== false;
 
 /** `glove-<token>-llm-auth:8080` → `llm-auth`: the sidecar a hop ends at. */
 function sidecarName(upstream: string | null | undefined, token: string): string | null {
@@ -215,7 +241,7 @@ function hopSidecarName(hop: NetService, hopHost: string | null | undefined, tok
 }
 
 /** The hops into a gate: the services whose `next` (`nextServices`) names it. */
-function hopsInto(name: string, services: readonly NetService[]): NetService[] {
+export function hopsInto(name: string, services: readonly NetService[]): NetService[] {
   return services.filter((s) => nextServices(s, services).some((n) => n.service === name));
 }
 
@@ -223,9 +249,9 @@ function hopsInto(name: string, services: readonly NetService[]): NetService[] {
  * `llm`: glove's llm link (`cloud`, or `lan` for the llm tool), which never rides the
  * tunnel and is expected. A `lan` host of a relay (ssh) is a LAN link: drawn local.
  */
-type RouteId = 'local' | 'llm' | 'tunnel' | 'direct';
+export type RouteId = 'local' | 'llm' | 'tunnel' | 'direct';
 
-function routeOf(d: DestinationAggregate, svc: NetService | undefined): RouteId {
+export function routeOf(d: DestinationAggregate, svc: NetService | undefined): RouteId {
   if (d.scope === 'local' || d.flags.hop) return 'local';
   if (isInferenceScope(d.scope, d.tools[0] ?? svc?.tool)) return 'llm';
   if (d.scope === 'lan') return 'local';
@@ -236,7 +262,7 @@ function routeOf(d: DestinationAggregate, svc: NetService | undefined): RouteId 
 }
 
 /** A service's own route, for the sandbox → service band. */
-function serviceRoute(s: NetService): RouteId {
+export function serviceRoute(s: NetService): RouteId {
   const kind = s.route?.kind ?? (s.mode === 'tcp' ? 'tcp' : null);
   if (kind === 'tcp' || s.scope === 'local' || s.scope === 'lan') return 'local';
   if (kind === 'direct') return 'direct';
@@ -254,7 +280,7 @@ function serviceRoute(s: NetService): RouteId {
  * command to the sidecar through files, not the network. `llm` is here for its
  * name only: `llm-upstream` is drawn as the model call's second leg, not a consumer.
  */
-const EGRESS_CLIENTS: Record<string, { name: string; what: string; why: string; trigger: string | null }> = {
+export const EGRESS_CLIENTS: Record<string, { name: string; what: string; why: string; trigger: string | null }> = {
   searxng: { name: 'SearXNG', what: 'search engine fan-out', why: 'triggered by a web search', trigger: 'web_search' },
   webfetch: { name: 'Web fetcher', what: 'page fetch or file download', why: 'triggered by a web fetch or download', trigger: 'web_fetch' },
   playwright: { name: 'Playwright', what: 'browser traffic', why: 'driven by a browser tool', trigger: null },
@@ -263,7 +289,7 @@ const EGRESS_CLIENTS: Record<string, { name: string; what: string; why: string; 
   llm: { name: 'llm-auth', what: 'the model call, with the API key added', why: 'the harness’s own model request', trigger: null },
 };
 
-function clientName(client: string | null | undefined): string {
+export function clientName(client: string | null | undefined): string {
   if (!client) return 'another client';
   return EGRESS_CLIENTS[client]?.name ?? client;
 }
@@ -273,7 +299,7 @@ function clientName(client: string | null | undefined): string {
  * by the consumer's own tool first (`webdownload-egress` → `webdownload-mcp`, never the
  * fetch hop), then by its client's usual trigger (SearXNG's fan-out → the search service).
  */
-function triggerOf(consumer: NetService, services: readonly NetService[]): NetService | null {
+export function triggerOf(consumer: NetService, services: readonly NetService[]): NetService | null {
   const client = consumer.client ?? (consumer.tool === 'search-engine-fanout' ? 'searxng' : null);
   for (const tool of [consumer.tool ?? null, client ? EGRESS_CLIENTS[client]?.trigger ?? null : null]) {
     if (!tool) continue;
@@ -317,8 +343,13 @@ interface Leg {
   live: boolean;
 }
 
-function legsOf(dests: Iterable<DestinationAggregate>, flows: Iterable<FlowView>, services: Map<string, NetService>): Leg[] {
-  // A destination reached through two services splits its bytes by what the flows still held show.
+/**
+ * The share of a destination's bytes each of its services carried: by what the flows still held
+ * show, else evenly. A destination reached through two services is drawn as two legs split so,
+ * and a service's box in Details counts the same share (`serviceShare`), never the whole.
+ */
+export type ServiceShares = (d: Pick<DestinationAggregate, 'key' | 'services'>, service: string) => number;
+export function serviceShares(flows: Iterable<FlowView>): ServiceShares {
   const split = new Map<string, Map<string, number>>();
   for (const f of flows) {
     if (!f.destKey) continue;
@@ -326,15 +357,24 @@ function legsOf(dests: Iterable<DestinationAggregate>, flows: Iterable<FlowView>
     m.set(f.service, (m.get(f.service) ?? 0) + f.bytes.up + f.bytes.down);
     split.set(f.destKey, m);
   }
+  return (d, service) => {
+    const svcs = d.services.length ? d.services : ['?'];
+    if (!svcs.includes(service)) return 0;
+    const m = split.get(d.key);
+    const known = m ? svcs.reduce((a, s) => a + (m.get(s) ?? 0), 0) : 0;
+    return known > 0 ? (m!.get(service) ?? 0) / known : 1 / svcs.length;
+  };
+}
+
+function legsOf(dests: Iterable<DestinationAggregate>, flows: Iterable<FlowView>, services: Map<string, NetService>): Leg[] {
+  const shareOf = serviceShares(flows);
   const legs: Leg[] = [];
   for (const d of dests) {
     if (d.state === 'empty') continue;
     const svcs = d.services.length ? d.services : ['?'];
-    const m = split.get(d.key);
-    const known = m ? svcs.reduce((a, s) => a + (m.get(s) ?? 0), 0) : 0;
     const total = d.bytesUp + d.bytesDown;
     for (const s of svcs) {
-      const share = known > 0 ? (m!.get(s) ?? 0) / known : 1 / svcs.length;
+      const share = shareOf(d, s);
       const svc = services.get(s);
       legs.push({
         d, host: d.host ?? hostLabel(d), service: s, bytes: total * share, outcome: outcomeOf(d),
@@ -345,7 +385,7 @@ function legsOf(dests: Iterable<DestinationAggregate>, flows: Iterable<FlowView>
   return legs;
 }
 
-function ruleLabel(id: string, rules: readonly Rule[]): string {
+export function ruleLabel(id: string, rules: readonly Rule[]): string {
   const r = rules.find((x) => x.id === id);
   if (r?.note) return `your rule “${r.note}”`;
   return `your rule ${id.length > 14 ? `${id.slice(0, 6)}…${id.slice(-4)}` : id}`;
@@ -542,18 +582,28 @@ export function layoutTopology(data: TopoInput, width: number, height: number, o
     }
     originSpecs.push({ id: 'exit', kind: 'exit', title, lines, tone: placed && data.gate.route.verified ? 'tunnel' : 'warn', want: centre(tunnel) + 40, hosts: uniq(tunnelReached.map((l) => l.host)), icon: null, mono: false, h: nodeH(lines.length) + 4 });
   }
-  const broken = legs.filter((l) => l.outcome === 'broken');
-  const brokenShown = broken.slice(0, 3);
-  for (const l of brokenShown) {
-    const from = routeNode.get(l.route);
+  // Every broken path has a row, in a window of its own under the exit that scrolls like the
+  // destinations do (nothing folded away). The window is one block in the column's spread.
+  const brokenByKey = new Map<string, Leg>();
+  for (const l of legs) if (l.outcome === 'broken' && !brokenByKey.has(l.d.key)) brokenByKey.set(l.d.key, l);
+  const brokenLegs = [...brokenByKey.values()].sort((a, b) => b.d.lastSeen - a.d.lastSeen || a.d.key.localeCompare(b.d.key));
+  const exitH = originSpecs[0]?.h ?? 0;
+  const brokenRoom = bottom - (TOP + 10) - (exitH ? exitH + 24 : 0);
+  const brokenFull = brokenLegs.length * BROKEN_PITCH;
+  const brokenScrolls = brokenFull > brokenRoom;
+  const brokenBlockH = brokenScrolls ? brokenRoom : brokenFull;
+  if (brokenLegs.length) {
+    const froms = [...new Set(brokenLegs.map((l) => l.route))].map((r) => routeNode.get(r)).filter((n): n is TopoNode => !!n);
+    const from = froms.length ? froms.reduce((a, n) => a + centre(n), 0) / froms.length : bottom;
     originSpecs.push({
-      id: `broken:${l.d.key}`, kind: 'broken', title: hostLabel(l.d), lines: [{ text: 'upstream unreachable', tone: 'faint' }],
-      tone: 'warn', want: (from ? centre(from) : bottom) + 150, hosts: [l.host], icon: 'broken', mono: true, h: 34,
+      id: 'broken', kind: 'broken', title: '', lines: [], tone: 'warn', want: from + 150, hosts: [], icon: 'broken', mono: true, h: brokenBlockH,
     });
   }
   const originYs = spread(originSpecs.map((s) => ({ want: s.want, h: s.h })), TOP + 10, bottom, 24);
   const originNode = new Map<string, TopoNode>();
+  let brokenTop = bottom;
   originSpecs.forEach((s, i) => {
+    if (s.id === 'broken') { brokenTop = originYs[i]; return; }
     originNode.set(s.id, node({
       id: `origin:${s.id}`, kind: s.kind, column: 'origin', x: colX('origin'), y: originYs[i], w: NODE_W.origin, h: s.h,
       title: s.title, lines: s.lines, tone: s.tone, hosts: s.hosts, icon: s.icon, mono: s.mono,
@@ -561,6 +611,19 @@ export function layoutTopology(data: TopoInput, width: number, height: number, o
     }));
   });
   const exitNode = originNode.get('exit') ?? null;
+  const brokenViewTop = brokenTop + (brokenScrolls ? STUB_ROOM : 0);
+  const brokenViewBottom = brokenTop + brokenBlockH - (brokenScrolls ? STUB_ROOM : 0);
+  brokenLegs.forEach((l, i) => {
+    originNode.set(`broken:${l.d.key}`, node({
+      id: `origin:broken:${l.d.key}`, kind: 'broken', column: 'origin', x: colX('origin'), y: brokenViewTop + i * BROKEN_PITCH + 4, w: NODE_W.origin, h: BROKEN_H,
+      title: hostLabel(l.d), lines: [{ text: 'upstream unreachable', tone: 'faint' }], tone: 'warn', hosts: [l.host], icon: 'broken', mono: true,
+    }));
+  });
+  const broken: ScrollColumn = {
+    id: 'broken', x: colX('origin'), w: NODE_W.origin, top: brokenViewTop, bottom: brokenViewBottom,
+    overhang: BROKEN_OVERHANG, maxScroll: Math.max(0, brokenFull - (brokenViewBottom - brokenViewTop)), pitch: BROKEN_PITCH,
+    rows: brokenLegs.map((l) => `origin:broken:${l.d.key}`),
+  };
 
   // Destinations: local, then the harness's tunnelled, then the fan-out's, then direct; bytes within each.
   const group = (l: Leg) => (l.route === 'local' || l.route === 'llm' ? 0 : l.route === 'direct' ? 3 : l.fanout ? 2 : 1);
@@ -598,13 +661,13 @@ export function layoutTopology(data: TopoInput, width: number, height: number, o
     destNodes.push({ n, legs: r.legs });
     for (const l of r.legs) destOf.set(l, n);
   });
-  const dests: DestColumn = {
-    x: destX, w: NODE_W.dests, top: viewTop, bottom: viewBottom, maxScroll: Math.max(0, stack - view), pitch: destPitch, rows: destNodes.map((x) => x.n.id),
+  const dests: ScrollColumn = {
+    id: 'dests', x: destX, w: NODE_W.dests, overhang: 0, top: viewTop, bottom: viewBottom, maxScroll: Math.max(0, stack - view), pitch: destPitch, rows: destNodes.map((x) => x.n.id),
   };
 
   // The policy wall, level with the services that refused something, above their pass-through bands.
   const refusedLegs = legs.filter((l) => l.outcome === 'refused');
-  const labels: Array<Omit<WallLabel, 'y'> & { key: string; legs: Leg[] }> = [];
+  const labels: Array<Omit<WallLabel, 'y' | 'id' | 'hosts'> & { key: string; legs: Leg[] }> = [];
   const guardLegs = refusedLegs.filter((l) => l.d.state === 'guard');
   if (guardLegs.length) {
     const reasons = uniq(guardLegs.map((l) => guardReason(l.d)).map((r) => (r === 'cloud metadata' ? 'metadata' : r === 'no destination' ? 'malformed' : r === 'internal name' || r === 'private address' ? 'internal' : r)));
@@ -621,7 +684,9 @@ export function layoutTopology(data: TopoInput, width: number, height: number, o
   const firstRefuser = refusers.length ? Math.min(...refusers.map((n) => n.y)) : TOP + 40;
   const labelsBottom = firstRefuser - 18;
   const labelsTop = Math.max(TOP + 14, labelsBottom - LABEL_PITCH * Math.max(0, labels.length - 1));
-  const wallLabels: WallLabel[] = labels.map((l, i) => ({ text: l.text, sub: l.sub, kind: l.kind, y: labelsTop + i * LABEL_PITCH }));
+  const wallLabels: WallLabel[] = labels.map((l, i) => ({
+    id: `wall:${l.key}`, text: l.text, sub: l.sub, kind: l.kind, y: labelsTop + i * LABEL_PITCH, hosts: uniq(l.legs.map((x) => x.host)),
+  }));
   const def = data.rules.enforced?.default ?? data.rules.file?.default ?? null;
   const wall: TopoWall = {
     x: wallX,
@@ -667,8 +732,16 @@ export function layoutTopology(data: TopoInput, width: number, height: number, o
     const r = routeNode.get(l.route)!;
     bucket(`${s.id}>${r.id}`, kindOf(l), s, r, l);
     if (l.outcome === 'broken') {
+      // One band per broken row, whichever services led there (one id, one band to scroll).
       const b = originNode.get(`broken:${l.d.key}`);
-      if (b) drafts.push({ id: `${r.id}>${b.id}`, kind: 'broken', from: r, to: b, legs: [l], dashed: true });
+      const id = `${r.id}>${b?.id}`;
+      const found = byDraftId.get(id);
+      if (found) found.legs.push(l);
+      else if (b) {
+        const dr: Draft = { id, kind: 'broken', from: r, to: b, legs: [l], dashed: true };
+        byDraftId.set(id, dr);
+        drafts.push(dr);
+      }
       continue;
     }
     const dn = destOf.get(l);
@@ -734,7 +807,8 @@ export function layoutTopology(data: TopoInput, width: number, height: number, o
     return {
       id: dr.id, kind: dr.kind, from: dr.from.id, to: isNode(dr.to) ? dr.to.id : 'wall', d: bandPath(x1, y1, x2, y2), start: [x1, y1], width, bytes,
       hosts: uniq(dr.legs.map((l) => l.host)), live: dr.legs.some((l) => l.live), dashed: !!dr.dashed, label,
-      ...(isNode(dr.to) && dr.to.kind === 'dest' ? { toDest: { x2, y2 } } : {}),
+      ...(isNode(dr.to) && dr.to.kind === 'dest' ? { toRow: { col: 'dests' as const, x2, y2 } }
+        : isNode(dr.to) && dr.to.kind === 'broken' ? { toRow: { col: 'broken' as const, x2, y2 } } : {}),
     };
   });
 
@@ -795,7 +869,7 @@ export function layoutTopology(data: TopoInput, width: number, height: number, o
     }
   }
 
-  return { width: W, height: H, columns, nodes, bands, captions, wall, dests };
+  return { width: W, height: H, columns, nodes, bands, captions, wall, dests, broken };
 }
 
 // ─── Scrolling the destination column ─────────────────────────────────────────
@@ -841,18 +915,21 @@ interface DestIndex {
   bytes: Map<string, number>;
   width: Map<string, number>;
 }
-const destIndexes = new WeakMap<Topology, DestIndex>();
-function destIndex(t: Topology): DestIndex {
-  let ix = destIndexes.get(t);
+const destIndexes = new WeakMap<Topology, Partial<Record<ScrollColumnId, DestIndex>>>();
+function destIndex(t: Topology, col: ScrollColumnId): DestIndex {
+  let per = destIndexes.get(t);
+  if (!per) destIndexes.set(t, (per = {}));
+  let ix = per[col];
   if (ix) return ix;
-  const byId = new Map(t.nodes.filter((n) => n.kind === 'dest').map((n) => [n.id, n]));
-  ix = { rows: t.dests.rows.map((id) => byId.get(id)!), byId, bytes: new Map(), width: new Map() };
+  const ids = new Set(t[col].rows);
+  const byId = new Map(t.nodes.filter((n) => ids.has(n.id)).map((n) => [n.id, n]));
+  ix = { rows: t[col].rows.map((id) => byId.get(id)!), byId, bytes: new Map(), width: new Map() };
+  per[col] = ix;
   for (const b of t.bands) {
-    if (!b.toDest) continue;
+    if (b.toRow?.col !== col) continue;
     ix.bytes.set(b.to, (ix.bytes.get(b.to) ?? 0) + b.bytes);
     ix.width.set(b.to, (ix.width.get(b.to) ?? 0) + b.width);
   }
-  destIndexes.set(t, ix);
   return ix;
 }
 
@@ -864,10 +941,10 @@ function destIndex(t: Topology): DestIndex {
  * the edge. So it slides continuously as the row leaves or enters, never a jump, and a band into
  * a row in the window is never moved. Cheap enough to call every frame of a scroll.
  */
-export function projectTopology(t: Topology, scrollTop: number): TopoProjection {
-  const { top, bottom, maxScroll } = t.dests;
+export function projectTopology(t: Topology, scrollTop: number, col: ScrollColumnId = 'dests', from: readonly TopoBand[] = t.bands): TopoProjection {
+  const { top, bottom, maxScroll } = t[col];
   const s = clamp(scrollTop, 0, maxScroll);
-  const ix = destIndex(t);
+  const ix = destIndex(t, col);
   const visible = new Set<string>();
   const above: TopoNode[] = [];
   const below: TopoNode[] = [];
@@ -877,14 +954,14 @@ export function projectTopology(t: Topology, scrollTop: number): TopoProjection 
     else if (c > bottom) below.push(n);
     else visible.add(n.id);
   }
-  const bands = t.bands.map((b) => {
-    if (!b.toDest) return b;
+  const bands = from.map((b) => {
+    if (b.toRow?.col !== col) return b;
     const n = ix.byId.get(b.to)!;
     const c = n.y + n.h / 2 - s;
     const edge = clamp(c, top, bottom);
     const fade = Math.max(0, 1 - Math.abs(c - edge) / n.h);
-    const y2 = edge + (b.toDest.y2 - (n.y + n.h / 2)) * fade;
-    return y2 === b.toDest.y2 ? b : { ...b, d: bandPath(b.start[0], b.start[1], b.toDest.x2, y2) };
+    const y2 = edge + (b.toRow.y2 - (n.y + n.h / 2)) * fade;
+    return y2 === b.toRow.y2 ? b : { ...b, d: bandPath(b.start[0], b.start[1], b.toRow.x2, y2) };
   });
   const stub = (edge: DestStub['edge'], ns: TopoNode[]): DestStub | null => {
     if (!ns.length) return null;
@@ -905,32 +982,32 @@ export function projectTopology(t: Topology, scrollTop: number): TopoProjection 
   return { scrollTop: s, bands, visible, above: stub('above', above), below: stub('below', below) };
 }
 
-/** The scroll that centres a destination row in the window (clamped), or null for one with no row. */
-export function scrollToDest(t: Topology, id: string): number | null {
-  const n = destIndex(t).byId.get(id);
+/** The scroll that centres a row in its column's window (clamped), or null for one with no row. */
+export function scrollToDest(t: Topology, id: string, col: ScrollColumnId = 'dests'): number | null {
+  const n = destIndex(t, col).byId.get(id);
   if (!n) return null;
-  return clamp(n.y + n.h / 2 - (t.dests.top + t.dests.bottom) / 2, 0, t.dests.maxScroll);
+  return clamp(n.y + n.h / 2 - (t[col].top + t[col].bottom) / 2, 0, t[col].maxScroll);
 }
 
-/** The scrollbar beside the destination column, for a scroll: null when nothing scrolls. */
-export function scrollThumb(t: Topology, scrollTop: number): { x: number; w: number; track: { y: number; h: number }; y: number; h: number } | null {
-  const { top, bottom, maxScroll } = t.dests;
+/** The scrollbar beside a scrolling column, for a scroll: null when nothing scrolls. */
+export function scrollThumb(t: Topology, scrollTop: number, col: ScrollColumnId = 'dests'): { x: number; w: number; track: { y: number; h: number }; y: number; h: number } | null {
+  const { top, bottom, maxScroll } = t[col];
   if (maxScroll <= 0) return null;
   const view = bottom - top;
   const h = Math.max(16, (view * view) / (view + maxScroll));
-  return { x: t.dests.x + t.dests.w + 2, w: 3, track: { y: top, h: view }, y: top + ((view - h) * clamp(scrollTop, 0, maxScroll)) / maxScroll, h };
+  return { x: t[col].x + t[col].w + t[col].overhang + 2, w: 3, track: { y: top, h: view }, y: top + ((view - h) * clamp(scrollTop, 0, maxScroll)) / maxScroll, h };
 }
 
 /** The scroll after dragging the thumb by `dy` (diagram units) from where it was at scroll `from`. */
-export function thumbDrag(t: Topology, from: number, dy: number): number {
-  const thumb = scrollThumb(t, from);
+export function thumbDrag(t: Topology, from: number, dy: number, col: ScrollColumnId = 'dests'): number {
+  const thumb = scrollThumb(t, from, col);
   if (!thumb) return 0;
-  return clamp(from + (dy * t.dests.maxScroll) / Math.max(1, thumb.track.h - thumb.h), 0, t.dests.maxScroll);
+  return clamp(from + (dy * t[col].maxScroll) / Math.max(1, thumb.track.h - thumb.h), 0, t[col].maxScroll);
 }
 
 /** The scroll a key moves the column to from `from`, or null for a key that does not scroll it. */
-export function keyScroll(t: Topology, from: number, key: string): number | null {
-  const { pitch, maxScroll, top, bottom } = t.dests;
+export function keyScroll(t: Topology, from: number, key: string, col: ScrollColumnId = 'dests'): number | null {
+  const { pitch, maxScroll, top, bottom } = t[col];
   const page = Math.max(pitch, bottom - top - pitch);
   const to = key === 'ArrowDown' ? from + pitch : key === 'ArrowUp' ? from - pitch : key === 'PageDown' ? from + page : key === 'PageUp' ? from - page
     : key === 'Home' ? 0 : key === 'End' ? maxScroll : null;
@@ -941,8 +1018,8 @@ export function keyScroll(t: Topology, from: number, key: string): number | null
  * How far a wheel event scrolls, in diagram units: pixels scaled by `unitsPerPx`, lines as rows,
  * pages as the window (`deltaMode` 0, 1 and 2).
  */
-export function wheelDelta(t: Topology, deltaY: number, deltaMode: number, unitsPerPx: number): number {
-  return deltaY * (deltaMode === 1 ? t.dests.pitch : deltaMode === 2 ? t.dests.bottom - t.dests.top : unitsPerPx);
+export function wheelDelta(t: Topology, deltaY: number, deltaMode: number, unitsPerPx: number, col: ScrollColumnId = 'dests'): number {
+  return deltaY * (deltaMode === 1 ? t[col].pitch : deltaMode === 2 ? t[col].bottom - t[col].top : unitsPerPx);
 }
 
 /**

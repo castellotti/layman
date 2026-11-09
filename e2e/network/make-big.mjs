@@ -1,5 +1,5 @@
-// A finished glove session with 300 destinations (`big`), so the Destinations table windows past
-// 200 rows. Written into the e2e work dir's fake glove home by scripts/netobs-e2e.sh.
+// A finished glove session with 300 destinations and 40 broken paths (`big`), so the Destinations table windows past
+// 200 rows and Topology's destination and broken-path columns both scroll. Written into the e2e work dir's fake glove home by scripts/netobs-e2e.sh.
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { GLOVE, sid } from './env.mjs';
@@ -20,6 +20,18 @@ for (let i = 0; i < 300; i++) {
   };
   lines.push({ ...base, phase: 'open', t: base.t_open, t_close: null, bytes: { up: 100, down: 0 }, close_reason: null });
   lines.push({ ...base, phase: 'close', t: iso(t0 + i * 1000 + 1000), t_close: iso(t0 + i * 1000 + 1000), bytes: { up: 900, down: 20000 }, close_reason: 'eof' });
+}
+// And 40 paths that broke (the upstream could not reach them), so Topology's broken-path column scrolls too.
+for (let i = 0; i < 40; i++) {
+  const at = t0 + 250_000 + i * 500;
+  const base = {
+    v: 1, type: 'flow', id: `f_BIGDEAD${String(i).padStart(4, '0')}`, env: ID, session: ID, t_open: iso(at),
+    service: 'proxy', tool: 'web_fetch', client: 'harness', proto: 'http-connect',
+    dest: { host: `dead${i}.unreachable.net`, port: 443, ip: null, resolution: 'unavailable' },
+    scope: 'tunnelled', route: { kind: 'vpn', upstream: null }, verdict: 'allow', rule: null, request: null,
+  };
+  lines.push({ ...base, phase: 'open', t: base.t_open, t_close: null, bytes: { up: 0, down: 0 }, close_reason: null });
+  lines.push({ ...base, phase: 'close', t: iso(at + 200), t_close: iso(at + 200), bytes: { up: 65, down: 47 }, close_reason: 'upstream_unreachable' });
 }
 writeFileSync(join(net, 'flows.ndjson'), lines.map((l) => JSON.stringify(l)).join('\n') + '\n');
 writeFileSync(join(net, 'session.json'), JSON.stringify({ v: 1, type: 'session', env: ID, session: ID, harness: 'pi', upstream_kind: 'vpn', exit_identity: 'none', services: [] }));
@@ -45,4 +57,4 @@ try {
 } finally {
   rmSync(lock, { recursive: true, force: true });
 }
-console.log(`big: 300 destinations in ${net}`);
+console.log(`big: 300 destinations and 40 broken paths in ${net}`);

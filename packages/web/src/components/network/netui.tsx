@@ -114,11 +114,9 @@ export function Chip({ tone, icon, label, tip, strong, compact }: {
  * button, then its body. Dragging is by the grip only, so text in the body
  * stays selectable.
  */
-export function PanelFrame({ title, count, inRange, actions, onHide, drag, dropTarget, children, bodyStyle, flex = '1 1 0', maxHeight }: {
+export function PanelFrame({ title, count, actions, onHide, drag, dropTarget, children, bodyStyle, flex = '1 1 0', maxHeight }: {
   title: string;
   count?: React.ReactNode;
-  /** The time range its figures are for, so a panel read on its own is not taken for All records. */
-  inRange?: NetTip | null;
   /** Links in the header, before the hide button ("Expand", "View file"). */
   actions?: React.ReactNode;
   onHide?: () => void;
@@ -157,14 +155,6 @@ export function PanelFrame({ title, count, inRange, actions, onHide, drag, dropT
           {title}
         </h2>
         {count !== undefined && <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-faint)' }}>{count}</span>}
-        {inRange && (
-          <span data-in-range="" {...tipProps(inRange)} tabIndex={0} style={{
-            display: 'inline-flex', alignItems: 'center', gap: 3, height: 16, padding: '0 5px', borderRadius: 8, fontSize: 9.5,
-            letterSpacing: '0.06em', color: 'var(--info)', border: '1px solid color-mix(in srgb, var(--info) 50%, transparent)',
-          }}>
-            <NetIcon name="calendar" size={9} color="var(--info)" />IN RANGE
-          </span>
-        )}
         <div style={{ flex: 1 }} />
         {actions}
         {onHide && (

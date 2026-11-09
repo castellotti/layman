@@ -24,15 +24,14 @@ const recent = `from=${iso(now - 60 * 60_000)}&to=now`;
 await page.goto(`${BASE}/?view=topology&glove=${PI}`);
 await page.evaluate(() => localStorage.clear());
 await page.reload();
-check('All records: the strip says so, and no panel is marked in range', await drawn()
-  && (await rangeText()).includes('All records') && !(await page.$('[data-in-range]')));
+check('All records: the strip says so', await drawn() && (await rangeText()).includes('All records'));
 check('…the routine chips are icons, the tips still say what they are', await waitFor(async () => (await page.$$('[data-chip-compact]')).length >= 3)
   && !!(await page.$('[data-chip-compact][data-tip-heading="Hostnames looked up in the tunnel"]')));
 
 await page.goto(`${BASE}/?view=topology&glove=${PI}&${recent}`);
 check('a range deep link draws the diagram from the server’s ranged snapshot', await drawn());
 check('the strip says the span, local time, ending now', await waitFor(async () => /→ now \(1 h\)/.test(await rangeText())), await rangeText());
-check('…and the panel is marked in range', await has('[data-in-range]')());
+check('…and no panel repeats it with a marker of its own', !(await page.$('[data-in-range]')));
 check('the URL keeps the range', url().searchParams.get('to') === 'now' && url().searchParams.get('from') === iso(now - 60 * 60_000), page.url());
 await page.screenshot({ path: `${SHOTS}/range-topology.png` });
 
