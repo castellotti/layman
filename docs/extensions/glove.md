@@ -393,6 +393,12 @@ Layman matches these by `tool`, `client` and `harness`, not by service names, ex
     hop's own destination keeps its bytes. `history.test.ts` restarts at every record of this case.
     The flag is kept with the destination (`net_destinations.hop`, migration 5, local only), so a
     hop whose files are gone is still a hop, not an unresolved cloud destination on the Map.
+    So is the gate it went through (`net_destinations.service`, migration 7), so a destination whose
+    files are gone is still drawn through its gate in Topology (violet from `browser-egress`) instead
+    of as the harness's own tunnelled traffic, which showed one session's older Playwright
+    destinations teal under the newer violet ones. A row kept before migration 7 (`service` NULL; one kept
+    since with no gate stores `''`, so it is never inferred) takes its gate from its tool, but only where exactly one gate fits (the one with that tool that is, or is not, a
+    hop, as the row was); with two (`ssh-build`, `ssh-db`) it stays unknown.
   - **Re-flagged when session.json changes.** The flag is set as each record is read, from the
     session.json of the moment, and session.json can be missing or unreadable at first, or be
     rewritten with another `next` or `observed`. `setSessionFile` therefore re-flags the stored flows
@@ -1096,11 +1102,15 @@ Selected path panel that walks one destination's path hop by hop.
     runs level, or nearly, into its route: `llm-upstream` into the route at the top, an egress gate
     into the tunnel or Direct higher up the column than under its hop. The hop's own link then points
     up. A gate nothing hops into keeps glove's declared order, and a `next` cycle loses nothing. The Exit
-    is placed below that path (`pathFloor`), so the model's band never runs under it. The broken
+    is placed right below that path (`pathFloor`; at the top without one) and below any other route
+    stacked above the tunnel (Local), whose bands run straight across the origin column to the
+    destinations: as high as it goes, so it sits no lower than the tunnel route and its bands fan down
+    into the destinations, and neither the model's band nor Local's runs under it. The broken
     paths' window starts below both the Exit and the route the paths broke on, so it never crosses
     the band either.
 - **Bands** are sized by the square root of bytes, relative to the busiest band, and coloured by route:
-  teal tunnelled, violet fan-out (it starts at the fan-out service, not the sandbox), grey local, red
+  teal tunnelled, violet tool egress (the browser, the web fetcher or SearXNG on the agent's behalf; it starts
+  at that tool's egress gate, not the sandbox, and is tunnelled too), grey local, red
   direct, amber/red thin lines into the wall for refusals. Live traffic is a thin moving line along its
   band, not a dashed band (dashing a 30 px band reads as stripes); reduced motion stops it.
 - **Layout** (`lib/net-topology.ts`) is a pure, tested function returning every box and band path; the

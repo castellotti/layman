@@ -260,7 +260,7 @@ export function hourlyHistory(
     const kept = byKey.get(h.key) ?? {
       key: h.key, host, port: d?.port ?? null, groupKey: d?.groupKey ?? host ?? h.key, lastIp: d?.ips[0] ?? null,
       scope: d?.scope ?? null, resolution: d?.resolution ?? null, tool: h.tool, firstSeen: h.first, lastSeen: h.last,
-      bytesUp: 0, bytesDown: 0, flows: 0, blocked: 0, lastState: d?.state ?? 'finished', hop: h.hop,
+      bytesUp: 0, bytesDown: 0, flows: 0, blocked: 0, lastState: d?.state ?? 'finished', hop: h.hop, service: d?.services[0] ?? null,
     };
     kept.bytesUp += h.bytesUp;
     kept.bytesDown += h.bytesDown;

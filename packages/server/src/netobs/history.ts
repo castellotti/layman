@@ -36,6 +36,8 @@ export interface HistoryDest {
    * history-only hop stays off the Map. Absent in rows kept before migration 5.
    */
   hop?: boolean;
+  /** The gate service its flows went through (the first, as Topology draws it); null for none. Absent in rows kept before migration 7, which the store may infer. */
+  service?: string | null;
 }
 
 /**

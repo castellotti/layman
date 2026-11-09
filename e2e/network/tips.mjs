@@ -41,7 +41,7 @@ await page.goto(`${BASE}/?view=topology&glove=${PI}`);
 await waitFor(async () => (await page.$$(`${DIAG} g[data-node]`)).length > 10);
 
 // The Topology legend and a band explain themselves.
-await page.hover('span[data-tip-heading="SearXNG fan-out"]');
+await page.hover('span[data-tip-heading="Tool egress"]');
 check('the Topology legend explains itself', await waitFor(async () => /several search engines/.test(await tipText()), 2000));
 await page.mouse.move(0, 0);
 await page.hover(`${DIAG} g[data-node^="dest:"]`);

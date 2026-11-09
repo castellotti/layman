@@ -237,6 +237,7 @@ check('llm-lan: …and with llm-upstream, so the path runs straight across', Mat
   `${centreY(boxes['svc:llm-upstream'])} vs ${centreY(boxes['route:llm'])}`);
 const exitBox = boxes['origin:exit'];
 check('llm-lan: the exit is under the model\'s path', exitBox.top > Math.max(pinnedRow.bottom, boxes['route:llm'].bottom), `${exitBox.top}`);
+check('llm-lan: the exit is no lower than the tunnel route', exitBox.top <= boxes['route:tunnel'].top + 1, `${exitBox.top} / ${boxes['route:tunnel'].top}`);
 const brokenTop = await page.$eval(`${DIAG} g[data-broken-scroll] > g[clip-path]`, (g) => g.getBoundingClientRect().top);
 check('llm-lan: the broken paths start under the exit and their route', brokenTop > exitBox.bottom && brokenTop >= boxes['route:tunnel'].top - 1, `${brokenTop}`);
 const wallBottom = Math.max(...Object.entries(boxes).filter(([id]) => id.startsWith('wall:')).map(([, b]) => b.bottom));

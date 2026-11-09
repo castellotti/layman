@@ -30,8 +30,16 @@ interface RunRow {
 interface DestRow {
   token: string; host: string; port: number; group_key: string; last_ip: string | null; scope: string | null; resolution: string | null;
   tool: string | null; first_seen: number; last_seen: number; bytes_up: number; bytes_down: number; flows: number; blocked: number;
-  last_state: string | null; hop: number;
+  last_state: string | null; hop: number; service: string | null;
 }
+
+/**
+ * `net_destinations.service` (migration 7): NULL is a row kept before Layman stored the gate (absent:
+ * the store may infer it), '' a row kept since that went through no gate (null: never inferred).
+ */
+const NO_GATE = '';
+const serviceOf = (v: string | null): string | null | undefined => (v === null ? undefined : v === NO_GATE ? null : v);
+const serviceColumn = (v: string | null | undefined): string | null => (v === undefined ? null : v ?? NO_GATE);
 
 /** Rows by token. */
 function byTokenOf<R extends { token: string }, T>(rows: R[], map: (r: R) => T): Map<string, T[]> {
@@ -69,7 +77,7 @@ export class SqliteNetHistory implements NetHistory {
         key: destKey(host, d.port, d.host.slice(1)), host, port: host === null ? null : d.port,
         groupKey: d.group_key, lastIp: d.last_ip, scope: d.scope, resolution: d.resolution, tool: d.tool,
         firstSeen: d.first_seen, lastSeen: d.last_seen, bytesUp: d.bytes_up, bytesDown: d.bytes_down, flows: d.flows, blocked: d.blocked,
-        lastState: d.last_state as NetState | null, hop: d.hop === 1,
+        lastState: d.last_state as NetState | null, hop: d.hop === 1, service: serviceOf(d.service),
       };
     });
     const hours = byTokenOf(this.db.prepare('SELECT * FROM net_hours ORDER BY hour, run, dest_key, tool').all() as HourRow[], (h) => ({
@@ -126,9 +134,9 @@ export class SqliteNetHistory implements NetHistory {
     const clear = this.db.prepare('DELETE FROM net_destinations WHERE token = ?');
     const insert = this.db.prepare(`
       INSERT INTO net_destinations (token, host, port, group_key, last_ip, scope, resolution, tool, first_seen, last_seen,
-        bytes_up, bytes_down, flows, blocked, last_state, hop)
+        bytes_up, bytes_down, flows, blocked, last_state, hop, service)
       VALUES (@token, @host, @port, @groupKey, @lastIp, @scope, @resolution, @tool, @firstSeen, @lastSeen,
-        @bytesUp, @bytesDown, @flows, @blocked, @lastState, @hop)`);
+        @bytesUp, @bytesDown, @flows, @blocked, @lastState, @hop, @service)`);
     this.db.transaction(() => {
       for (const s of sessions) {
         upsert.run({
@@ -161,7 +169,7 @@ export class SqliteNetHistory implements NetHistory {
           insert.run({
             token: s.token, host: noHost ? d.key : d.host, port: noHost ? 0 : d.port ?? 0, groupKey: d.groupKey, lastIp: d.lastIp,
             scope: d.scope, resolution: d.resolution, tool: d.tool, firstSeen: Math.round(d.firstSeen), lastSeen: Math.round(d.lastSeen),
-            bytesUp: d.bytesUp, bytesDown: d.bytesDown, flows: d.flows, blocked: d.blocked, lastState: d.lastState, hop: d.hop ? 1 : 0,
+            bytesUp: d.bytesUp, bytesDown: d.bytesDown, flows: d.flows, blocked: d.blocked, lastState: d.lastState, hop: d.hop ? 1 : 0, service: serviceColumn(d.service),
           });
         }
       }

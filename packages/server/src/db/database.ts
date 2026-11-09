@@ -168,6 +168,12 @@ export function applyMigrations(db: Database): void {
   applyNetTimeMigration(db);
   addColumn(db, 'net_sessions', 'hours_kept', 'hours_kept INTEGER NOT NULL DEFAULT 0');
   recordMigration(db, 6);
+
+  // Migration 7 — the gate service a kept destination was reached through (`browser-egress`, …), so a
+  // history-only one is drawn through its gate in Topology instead of as the harness's own traffic.
+  // Rows kept before this have none; the store infers it from the tool where only one gate fits.
+  addColumn(db, 'net_destinations', 'service', 'service TEXT');
+  recordMigration(db, 7);
 }
 
 /**

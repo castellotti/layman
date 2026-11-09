@@ -17,9 +17,9 @@ const session = (over: Partial<HistorySession> = {}): HistorySession => ({
   lastExit: null, lastStatus: null, sessionFile: null,
   destinations: [
     { key: 'arxiv.org:443', host: 'arxiv.org', port: 443, groupKey: 'arxiv.org', lastIp: '151.101.3.42', scope: 'tunnelled', resolution: 'in-tunnel',
-      tool: 'web_fetch', firstSeen: 1000, lastSeen: 9000, bytesUp: 90, bytesDown: 4800, flows: 2, blocked: 0, lastState: 'finished', hop: false },
+      tool: 'web_fetch', firstSeen: 1000, lastSeen: 9000, bytesUp: 90, bytesDown: 4800, flows: 2, blocked: 0, lastState: 'finished', hop: false, service: 'webfetch-egress' },
     { key: '@proxy', host: null, port: null, groupKey: '@proxy', lastIp: null, scope: 'local', resolution: 'disabled',
-      tool: 'web_fetch', firstSeen: 2000, lastSeen: 2000, bytesUp: 10, bytesDown: 200, flows: 1, blocked: 1, lastState: 'guard', hop: true },
+      tool: 'web_fetch', firstSeen: 2000, lastSeen: 2000, bytesUp: 10, bytesDown: 200, flows: 1, blocked: 1, lastState: 'guard', hop: true, service: null },
   ],
   ...over,
 });
@@ -47,6 +47,17 @@ describe('SqliteNetHistory', () => {
     const dest = { ...session().destinations[0], key: 'api.example.com:443', host: 'API.Example.com', groupKey: 'example.com' };
     h.save([session({ destinations: [dest] })]);
     expect(h.load()[0].destinations[0].key).toBe('api.example.com:443');
+  });
+
+  it('tells a destination kept before its gate was stored apart from one that went through no gate', () => {
+    const d = db();
+    const h = new SqliteNetHistory(d, () => true);
+    h.save([session()]);
+    // Saved with no gate: read back as null, never inferred.
+    expect(h.load()[0].destinations.map((x) => x.service)).toEqual(['webfetch-egress', null]);
+    // A row from before migration 7 (NULL): read back as absent, which the store may infer.
+    d.prepare('UPDATE net_destinations SET service = NULL').run();
+    expect(h.load()[0].destinations.map((x) => x.service)).toEqual([undefined, undefined]);
   });
 
   it('says whether it may write from the recording setting', () => {
@@ -80,9 +91,9 @@ describe('SqliteNetHistory', () => {
     expect(old.load()[0].hours).toBeUndefined();
   });
 
-  it('is migrations 3 to 6, and never synced: no journal triggers on its tables', () => {
+  it('is migrations 3 to 7, and never synced: no journal triggers on its tables', () => {
     const d = db();
-    expect(d.prepare('SELECT version FROM schema_migrations ORDER BY version').all()).toEqual([1, 2, 3, 4, 5, 6].map((version) => ({ version })));
+    expect(d.prepare('SELECT version FROM schema_migrations ORDER BY version').all()).toEqual([1, 2, 3, 4, 5, 6, 7].map((version) => ({ version })));
     const triggers = d.prepare("SELECT name FROM sqlite_master WHERE type = 'trigger' AND tbl_name LIKE 'net_%'").all();
     expect(triggers).toEqual([]);
   });
