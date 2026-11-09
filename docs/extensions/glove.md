@@ -1065,9 +1065,14 @@ Selected path panel that walks one destination's path hop by hop.
     from before it.
   - **Policy**: a wall where refusals end. One label per reason: glove's guard (with its reasons:
     metadata, internal, malformed), each of your rules by its note, and the default. The caption gives
-    the default and the rule count.
-  - **Route**: Local (its upstream, "never mapped"), the declared tunnel (kind, upstream, resolver,
-    upstream health) and Direct, which shows a check and "no traffic" when nothing went direct.
+    the default and the rule count. The labels and caption sit in a band of their own across the top,
+    and every column but Destinations starts under it (`contentTop`). A label's text runs right into
+    the route column, so a route box at its height sat under it. Placing the labels beside the first
+    refusing service, as before, put them wherever that service was.
+  - **Route**: Local (its upstream, "never mapped"), the LLM link, the declared tunnel (kind, upstream,
+    resolver, upstream health) and Direct. Local, the LLM link and Direct are drawn only when traffic
+    used them; the declared tunnel always is, as it is the gate's promise. The route the model's call
+    takes comes first, whatever it is (the LLM link, or Local for a corporate session).
   - **Apparent origin**: the exit, as glove verified it (country, IP, "via am.i.mullvad.net · not
     Layman's lookup"), or "not verified" with the reason (exit identity off, a failed check, no record
     yet). A broken path ends here in a broken-line glyph labelled with its host, under the exit.
@@ -1076,7 +1081,17 @@ Selected path panel that walks one destination's path hop by hop.
     the first three and drop the rest, so a tunnel that broke many paths at once looked like it broke
     three.
   - **Destinations** that were reached: local links first, then the harness's tunnelled traffic, then
-    the fan-out's, then direct, by bytes within each.
+    the fan-out's, then direct, by bytes within each. The model's destinations (tool `llm`, not through
+    the tunnel, at most three) are **pinned** above the scrolling window (`Topology.pinned`), level
+    with their route, so the inference path runs straight across the top and stays one click from
+    Details however the column is scrolled. Their bands have no `toRow`, so no scroll moves them.
+  - **The model's path along the top.** `serviceOrder` moves the llm extension's upstream leg
+    (`llm-upstream`) to just above the hop that dials it (`llm`). Its band then runs level into its
+    route at the top, and on into the pinned destination. Only that leg moves: the column otherwise
+    keeps glove's declared order, and an upstream nothing hops into stays where glove put it. The Exit
+    is placed below that path (`pathFloor`), so the model's band never runs under it. The broken
+    paths' window starts below both the Exit and the route the paths broke on, so it never crosses
+    the band either.
 - **Bands** are sized by the square root of bytes, relative to the busiest band, and coloured by route:
   teal tunnelled, violet fan-out (it starts at the fan-out service, not the sandbox), grey local, red
   direct, amber/red thin lines into the wall for refusals. Live traffic is a thin moving line along its
@@ -1145,11 +1160,13 @@ Selected path panel that walks one destination's path hop by hop.
   diagram not even mounted) replaces the box. The store also carries the diagram's latest layout, so
   Details reads a box's hosts from it instead of laying the diagram out a second time per update; it
   lays out on its own only while the Routes panel is hidden.
-  - **What it is for.** Every box, and every path, opens with a short note on what that box does in
+  - **What it is for.** Every box, and every path, ends with a short note on what that box does in
     glove's design (`explainBox`: a declared-but-unwatched service, an egress consumer that is not the
     harness, the llm link that is not a leak, the guard…). It can be dismissed. The note is keyed by the
     selection, so dismissing it lasts only while that box stays selected: choosing another box and
-    coming back, or closing and reopening the panel, shows it again.
+    coming back, or closing and reopening the panel, shows it again. It comes last, under everything
+    else the panel shows: at the top it pushed a path's hops and a box's facts below the fold, and a
+    note read once is the part least worth the space.
   - **What glove says about it, and its traffic** (`boxDetails`, `lib/net-topology-box.ts`, pure and
     tested): facts from `session.json`, `status.json` and the rules (a service's listener, mode, tool,
     upstream, route and its `next` hops and trigger; the tunnel's declared kind, upstream and resolver

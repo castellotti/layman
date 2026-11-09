@@ -135,7 +135,7 @@ function Node({ n, selected, onSelect, tabbable = true }: { n: TopoNode; selecte
         fill={n.tone === 'muted' ? 'var(--text-muted)' : 'var(--text)'}>{clip(n.title, n.w - (n.icon ? 34 : 18), 7.2)}</text>
       {n.icon && (
         <g transform={`translate(${n.x + n.w - 20},${n.y + 7})`}>
-          <NetIcon name={n.icon} size={12} color={n.icon === 'check' ? 'var(--ok)' : 'var(--text-faint)'} />
+          <NetIcon name={n.icon} size={12} color="var(--text-faint)" />
         </g>
       )}
       {n.lines.map((l, i) => (
@@ -361,6 +361,7 @@ export function TopologyDiagram({ data }: { data: NetSessionData }) {
   const [sort, setSort] = useStored<DestSort>(SORT_KEY, 'bytes', (raw) => (raw === 'bytes' || raw === 'name' || raw === 'recent' ? raw : null));
   const t = useMemo(() => layoutTopology(data, w, h, { sort }), [data, w, h, sort]);
   const dests = useColumnScroll(t, 'dests');
+  const pinned = useMemo(() => new Set(t.pinned), [t]);
   const broken = useColumnScroll(t, 'broken');
   // Another session or order starts at the top.
   useEffect(() => { dests.scrollTo(0, 'now'); broken.scrollTo(0, 'now'); }, [data.token, sort, dests.scrollTo, broken.scrollTo]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -435,13 +436,13 @@ export function TopologyDiagram({ data }: { data: NetSessionData }) {
     // Focusing a row scrolled away would scroll this box (hidden overflow still scrolls); the column scrolls instead.
     <div ref={ref} style={{ position: 'relative', flex: 1, minHeight: 0, overflow: 'hidden' }} onScroll={(e) => { e.currentTarget.scrollTop = 0; }}>
       <svg width="100%" height="100%" viewBox={`0 0 ${t.width} ${t.height}`} preserveAspectRatio="xMinYMin meet" role="group"
-        aria-label={`Routes from ${data.token} through glove's services, policy and tunnel to ${t.dests.rows.length} destinations`}
+        aria-label={`Routes from ${data.token} through glove's services, policy and tunnel to ${t.dests.rows.length + t.pinned.length} destinations`}
         style={{ display: 'block' }}>
         {t.columns.map((c) => (
           <text key={c.id} x={c.x} y={26} fontSize={10} letterSpacing="0.08em" fontWeight={600} fill="var(--text-muted)"
             textAnchor={c.id === 'policy' ? 'middle' : 'start'}>{c.label.toUpperCase()}</text>
         ))}
-        {t.dests.rows.length > 1 && (
+        {t.dests.rows.length + t.pinned.length > 1 && (
           <text x={t.dests.x} y={41} fontSize={9.5} fill="var(--text-faint)" data-dest-sort={sort}
             {...svgButton(`Sort destinations by ${SORTS[SORTS[sort].next].label} (now by ${SORTS[sort].label})`, () => setSort(SORTS[sort].next))}
             {...tipProps({ heading: 'Order of the destinations', body: 'Click to sort by bytes, by name or by when each was last seen. Local destinations stay first and direct ones last.' })}>
@@ -482,9 +483,13 @@ export function TopologyDiagram({ data }: { data: NetSessionData }) {
             <Node key={n.id} n={n} selected={on(n.hosts)} onSelect={activate} tabbable={broken.view.visible.has(n.id)} />
           ))}
         </ScrollWindow>
+        {/* The model's destinations, pinned above the scrolling column: always in view. */}
+        {t.nodes.filter((n) => pinned.has(n.id)).map((n) => (
+          <Node key={n.id} n={n} selected={on(n.hosts)} onSelect={activate} />
+        ))}
         <ScrollWindow t={t} col="dests" scroll={dests} clipId={`dests-${data.token}`} noun="destination"
           attrs={{ column: { 'data-dest-scroll': '' }, bar: { 'data-dest-scrollbar': '' }, stub: 'data-stub' }}>
-          {t.nodes.filter((n) => n.kind === 'dest').map((n) => (
+          {t.nodes.filter((n) => n.kind === 'dest' && !pinned.has(n.id)).map((n) => (
             // Only rows in the window are Tab stops: hundreds of hidden ones would trap the keyboard.
             <Node key={n.id} n={n} selected={on(n.hosts)} onSelect={activate} tabbable={dests.view.visible.has(n.id)} />
           ))}
@@ -518,7 +523,7 @@ function TokenTiles({ token, range }: { token: string; range: NetRange | null })
 }
 
 /**
- * What the selected box is for. Dismissed, it stays away only while that selection does: the
+ * What the selected box is for, drawn last: under everything else the panel says about it. Dismissed, it stays away only while that selection does: the
  * panel keys it by the selection, so choosing another box and coming back (or closing and
  * reopening the panel) brings it back.
  */
@@ -527,7 +532,7 @@ function Explanation({ explain }: { explain: BoxExplanation | null }) {
   if (!shown || !explain) return null;
   return (
     <div role="note" data-box-explanation="" style={{
-      display: 'flex', gap: 8, alignItems: 'flex-start', padding: '8px 8px 8px 10px', margin: '10px 0 12px', borderRadius: 6,
+      display: 'flex', gap: 8, alignItems: 'flex-start', padding: '8px 8px 8px 10px', margin: '14px 0 0', borderRadius: 6,
       border: '1px solid color-mix(in srgb, var(--info) 40%, transparent)', background: 'color-mix(in srgb, var(--info) 7%, transparent)',
     }}>
       <div style={{ flex: 1, minWidth: 0 }}>
@@ -674,8 +679,7 @@ function BoxPanel({ data, id }: { data: NetSessionData; id: string }) {
         <span style={{ fontFamily: b.mono ? 'var(--font-mono)' : undefined, fontSize: 13, fontWeight: 600, color: 'var(--text)', wordBreak: 'break-all' }}>{b.title}</span>
         {totals.live > 0 && <Badge colour="var(--net-tunnel)">LIVE</Badge>}
       </div>
-      <div style={{ fontSize: 10.5, color: 'var(--text-faint)', margin: '2px 0 0 22px' }}>{BOX_KIND[b.kind]}</div>
-      <Explanation explain={b.explain} />
+      <div style={{ fontSize: 10.5, color: 'var(--text-faint)', margin: '2px 0 10px 22px' }}>{BOX_KIND[b.kind]}</div>
       {b.facts.length > 0 && (
         <dl style={{ display: 'grid', gridTemplateColumns: 'max-content minmax(0, 1fr)', gap: '4px 10px', margin: 0, fontSize: 11 }}>
           {b.facts.map((f) => (
@@ -696,6 +700,7 @@ function BoxPanel({ data, id }: { data: NetSessionData; id: string }) {
       <RouteMix parts={b.mix} />
       <TopDestinations b={b} />
       <ExitHistory exits={b.exits} />
+      <Explanation explain={b.explain} />
     </div>
   );
 }
@@ -730,7 +735,6 @@ export function SelectedPath({ data }: { data: NetSessionData }) {
       <div style={{ fontSize: 10.5, color: 'var(--text-faint)', margin: '2px 0 10px 22px' }}>
         {[d.tools.map(toolLabel).join(', '), `${d.flows} flow${d.flows === 1 ? '' : 's'}`, formatBytes(d.bytesUp + d.bytesDown)].filter(Boolean).join(' · ')}
       </div>
-      <Explanation key={netDest} explain={DESTINATION_EXPLANATION[outcomeOf(d)]} />
       <ol aria-label="Hops" style={{ listStyle: 'none', margin: 0, padding: 0 }}>
         {hops.map((hop, i) => (
           <li key={hop.id} style={{ display: 'grid', gridTemplateColumns: '18px 1fr', gap: 8, position: 'relative', paddingBottom: i === hops.length - 1 ? 0 : 12 }}>
@@ -769,6 +773,7 @@ export function SelectedPath({ data }: { data: NetSessionData }) {
           </button>
         )}
       </div>
+      <Explanation key={netDest} explain={DESTINATION_EXPLANATION[outcomeOf(d)]} />
     </div>
   );
 }

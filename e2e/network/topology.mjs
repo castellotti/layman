@@ -213,6 +213,40 @@ await page.goto(`${BASE}/?view=topology&glove=${sid('big')}`);
 await waitFor(async () => (await page.$(`${DIAG} g[data-stub="below"]`)) !== null);
 const [eb, ea] = await clickNow();
 check('…and without it, the same click eases (nothing has moved yet in that task)', eb === ea, `${eb} → ${ea}`);
+// The model's path along the top, on a session shaped like the one whose diagram overlapped:
+// llm → llm-auth → llm-upstream to a LAN host, Playwright's egress, broken paths and guard refusals.
+await page.setViewportSize({ width: 1440, height: 900 });
+await page.goto(`${BASE}/?view=topology&glove=${sid('llm-lan')}`);
+check('llm-lan draws', await waitFor(async () => (await page.$$(`${DIAG} g[data-node]`)).length > 10, 8000));
+await page.waitForTimeout(500);
+/** Each box's on-screen rectangle, by node id (and the wall label boxes by theirs). */
+const boxes = await page.$$eval(`${DIAG} g[data-node], ${DIAG} g[data-wall-label]`, (gs) => Object.fromEntries(gs.map((g) => {
+  const r = (g.querySelector('rect') ?? g).getBoundingClientRect();
+  return [g.dataset.node ?? g.dataset.wallLabel, { top: r.top, bottom: r.bottom, left: r.left, right: r.right }];
+})));
+const svcOrder = Object.keys(boxes).filter((id) => id.startsWith('svc:')).sort((a, b) => boxes[a].top - boxes[b].top);
+check('llm-lan: llm-upstream sits above llm', svcOrder.slice(0, 2).join(',') === 'svc:llm-upstream,svc:llm', svcOrder.join(','));
+const routeIds = Object.keys(boxes).filter((id) => id.startsWith('route:')).sort((a, b) => boxes[a].top - boxes[b].top);
+check('llm-lan: the LLM link first, and no unused Local or Direct', routeIds.join(',') === 'route:llm,route:tunnel', routeIds.join(','));
+const pinnedRow = boxes['dest:gpu.lan:8080'];
+const inScroll = await page.$(`${DIAG} g[data-dest-scroll] g[data-node="dest:gpu.lan:8080"]`);
+check('llm-lan: the model\'s destination is pinned, outside the scrolling column', !!pinnedRow && !inScroll);
+const centreY = (b) => (b.top + b.bottom) / 2;
+check('llm-lan: …level with its route', !!pinnedRow && Math.abs(centreY(pinnedRow) - centreY(boxes['route:llm'])) < 2, pinnedRow && `${centreY(pinnedRow)} vs ${centreY(boxes['route:llm'])}`);
+const exitBox = boxes['origin:exit'];
+check('llm-lan: the exit is under the model\'s path', exitBox.top > Math.max(pinnedRow.bottom, boxes['route:llm'].bottom), `${exitBox.top}`);
+const brokenTop = await page.$eval(`${DIAG} g[data-broken-scroll] > g[clip-path]`, (g) => g.getBoundingClientRect().top);
+check('llm-lan: the broken paths start under the exit and their route', brokenTop > exitBox.bottom && brokenTop >= boxes['route:tunnel'].top - 1, `${brokenTop}`);
+const wallBottom = Math.max(...Object.entries(boxes).filter(([id]) => id.startsWith('wall:')).map(([, b]) => b.bottom));
+const under = Object.entries(boxes).filter(([id]) => /^(svc|route|origin|sandbox)/.test(id) && boxes[id].top < wallBottom).map(([id]) => id);
+check('llm-lan: no box sits beside the policy wall\'s labels', under.length === 0, under.join(','));
+await page.click(`${DIAG} g[data-node="dest:gpu.lan:8080"]`);
+const explainedLast = await waitFor(() => page.evaluate(() => {
+  const n = document.querySelector('[data-box-explanation]');
+  return !!n && !n.nextElementSibling;
+}));
+check('llm-lan: a path\'s note comes last in Details', explainedLast);
+await page.screenshot({ path: `${SHOTS}/topology-llm-lan.png` });
 // Sizes.
 for (const [w, h] of [[1440, 900], [1280, 800]]) {
   await page.setViewportSize({ width: w, height: h });

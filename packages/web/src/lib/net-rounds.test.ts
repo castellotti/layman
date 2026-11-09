@@ -7,7 +7,7 @@
 import { describe, expect, it } from 'vitest';
 import { isMappable, unknownLocation } from './net-geo.js';
 import { GROUP_GUARD, GROUP_LOCAL, buildTable, guardReason, type TableOptions, type TableRow } from './net-table.js';
-import { layoutTopology, pathHops, type Topology } from './net-topology.js';
+import { layoutTopology, pathHops, serviceOrder, type Topology } from './net-topology.js';
 import { traceAxis, traceRows } from './net-trace.js';
 import { dest, flow, rulesView, sessionData } from './net-test-fixtures.js';
 import type { DestinationAggregate, FlowFlags, NetService, NetSessionFile, TraceCall, TraceView } from './netobs-types.js';
@@ -57,6 +57,53 @@ const node = (t: Topology, id: string) => {
   expect(n, id).toBeDefined();
   return n!;
 };
+
+// The screenshot that prompted this: the wall's label under the Local box, the model's band
+// running under the exit, and the broken paths' window starting above the route they broke on.
+describe('Topology: nothing overlaps', () => {
+  const broken = Array.from({ length: 12 }, (_, i) => dest(`b${i}.example:443`, { ...via('webdownload-egress', 'web_download', 'webfetch'), state: 'broken', lastSeen: 100 - i }));
+  const many = Array.from({ length: 40 }, (_, i) => dest(`d${i}.example:443`, { ...via('webdownload-egress', 'web_download', 'webfetch'), bytesDown: 10_000 + i }));
+  const big = sessionData({ route: { kind: 'vpn', verified: false, exitIdentityOff: true, upstreamHealthy: true } }, {
+    token: ID, session: SESSION, rules: rulesView(), destinations: new Map([...dests(), ...broken, ...many].map((d) => [d.key, d])),
+  });
+  const bottom = (n: { y: number; h: number }) => n.y + n.h;
+  const centre = (n: { y: number; h: number }) => n.y + n.h / 2;
+
+  for (const [w, h] of [[1080, 780], [1400, 900], [1000, 420]]) {
+    const t = layoutTopology(big, w, h);
+    it(`puts llm-upstream over llm and runs the model's path level across the top (${w}×${h})`, () => {
+      expect(t.nodes.filter((n) => n.kind === 'service').map((n) => n.title).slice(0, 2)).toEqual(['llm-upstream', 'llm']);
+      const routes = t.nodes.filter((n) => n.kind === 'route').sort((a, b) => a.y - b.y);
+      expect(routes[0].id).toBe('route:llm');
+      expect(centre(node(t, 'route:llm'))).toBeCloseTo(centre(node(t, 'svc:llm-upstream')), 0);
+      // Pinned: level with its route, outside the scrolling window, its band never moved by a scroll.
+      expect(t.pinned).toEqual(['dest:api.anthropic.com:443']);
+      expect(t.dests.rows).not.toContain('dest:api.anthropic.com:443');
+      expect(centre(node(t, 'dest:api.anthropic.com:443'))).toBeCloseTo(centre(node(t, 'route:llm')), 0);
+      expect(t.bands.find((b) => b.id === 'route:llm>dest:api.anthropic.com:443')?.toRow).toBeUndefined();
+      expect(t.dests.top).toBeGreaterThanOrEqual(bottom(node(t, 'dest:api.anthropic.com:443')));
+    });
+    it(`keeps the exit under the model's path, and the broken paths under the exit and their route (${w}×${h})`, () => {
+      const exit = node(t, 'origin:exit');
+      expect(exit.y).toBeGreaterThan(Math.max(bottom(node(t, 'route:llm')), bottom(node(t, 'dest:api.anthropic.com:443'))));
+      expect(t.broken.rows).toHaveLength(12);
+      expect(t.broken.top).toBeGreaterThan(bottom(exit));
+      expect(t.broken.top).toBeGreaterThanOrEqual(node(t, 'route:tunnel').y);
+      expect(t.broken.bottom).toBeLessThanOrEqual(t.height);
+    });
+    it(`keeps every box but the destinations under the policy wall's labels and caption (${w}×${h})`, () => {
+      expect(t.wall.labels.length).toBeGreaterThan(0);
+      for (const n of t.nodes.filter((x) => x.column !== 'dests')) expect(n.y, n.id).toBeGreaterThanOrEqual(t.wall.y2 + 16);
+    });
+  }
+
+  it('moves only the llm extension\'s upstream leg, and leaves an unlinked one where glove put it', () => {
+    const names = (ss: NetService[]) => ss.map((s) => s.service);
+    expect(names(serviceOrder(SERVICES))).toEqual(['llm-upstream', 'llm', ...names(SERVICES.slice(2))]);
+    const unlinked = SERVICES.map((s) => (s.service === 'llm-upstream' ? { ...s, observed: false } : s));
+    expect(names(serviceOrder(unlinked))).toEqual(names(SERVICES));
+  });
+});
 
 describe('Topology', () => {
   const t = layoutTopology(data(), 1400, 780);
