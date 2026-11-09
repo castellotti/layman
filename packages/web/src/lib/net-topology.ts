@@ -328,18 +328,27 @@ export function triggerOf(consumer: NetService, services: readonly NetService[])
 }
 
 /**
- * glove's declared order, except that the llm extension's upstream leg moves to just above the hop
- * that dials it (`llm-upstream` over `llm`): its band then runs level into its route at the top of
- * the column, and on to the model's destination, pinned there.
+ * glove's declared order, except that a gate a hop goes on through (glove's `next`: `llm` →
+ * `llm-upstream`, `browser` → `browser-egress`, `webfetch-mcp` → `webfetch-egress`) moves to just
+ * above that hop. The gate carries the bytes out, so its band then runs level, or nearly, into its
+ * route (the LLM link at the top, the tunnel or Direct next), and the hop's own link points up.
+ * A gate nothing hops into stays where glove put it.
  */
 export function serviceOrder(services: readonly NetService[]): NetService[] {
   const above = new Map<NetService, NetService[]>();
-  for (const up of services.filter(isLlmUpstream)) {
-    const src = services.find((s) => !isLlmUpstream(s) && nextServices(s, services).some((n) => n.service === up.service));
-    if (src) above.set(src, [...(above.get(src) ?? []), up]);
+  const moved = new Set<NetService>();
+  for (const src of services) {
+    for (const next of nextServices(src, services)) {
+      if (next === src || moved.has(next)) continue;
+      moved.add(next);
+      above.set(src, [...(above.get(src) ?? []), next]);
+    }
   }
-  const moved = new Set([...above.values()].flat());
-  return services.flatMap((s) => (moved.has(s) ? [] : [...(above.get(s) ?? []), s]));
+  // A gate that is itself a hop source keeps its own followers above it.
+  const place = (s: NetService): NetService[] => [...(above.get(s) ?? []).flatMap(place), s];
+  const out = services.filter((s) => !moved.has(s)).flatMap(place);
+  // A `next` cycle would leave its gates unplaced: they keep glove's order at the end instead.
+  return out.length === services.length ? out : [...out, ...services.filter((s) => !out.includes(s))];
 }
 
 /** Everything the gate declared, plus any service seen in traffic that it did not. */

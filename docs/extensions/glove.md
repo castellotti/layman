@@ -1085,10 +1085,12 @@ Selected path panel that walks one destination's path hop by hop.
     the tunnel, at most three) are **pinned** above the scrolling window (`Topology.pinned`), level
     with their route, so the inference path runs straight across the top and stays one click from
     Details however the column is scrolled. Their bands have no `toRow`, so no scroll moves them.
-  - **The model's path along the top.** `serviceOrder` moves the llm extension's upstream leg
-    (`llm-upstream`) to just above the hop that dials it (`llm`). Its band then runs level into its
-    route at the top, and on into the pinned destination. Only that leg moves: the column otherwise
-    keeps glove's declared order, and an upstream nothing hops into stays where glove put it. The Exit
+  - **The model's path along the top.** `serviceOrder` moves every gate a hop goes on through
+    (glove's `next`: `llm` → `llm-upstream`, `browser` → `browser-egress`, `webfetch-mcp` →
+    `webfetch-egress`) to just above that hop. The gate is what carries the bytes out, so its band
+    runs level, or nearly, into its route: `llm-upstream` into the route at the top, an egress gate
+    into the tunnel or Direct higher up the column than under its hop. The hop's own link then points
+    up. A gate nothing hops into keeps glove's declared order, and a `next` cycle loses nothing. The Exit
     is placed below that path (`pathFloor`), so the model's band never runs under it. The broken
     paths' window starts below both the Exit and the route the paths broke on, so it never crosses
     the band either.
@@ -1102,7 +1104,8 @@ Selected path panel that walks one destination's path hop by hop.
     of the width unless that would leave their bands under 40 and 90 px to bend (at 1280 px wide they
     otherwise collapsed into a vertical strip). The wall sits in the gap before the route.
   - **Order.** Services keep glove's declared order rather than byte order, as the design draws them, so
-    the column does not reshuffle while traffic flows. Destinations are ordered by bytes, as the plan
+    the column does not reshuffle while traffic flows (a gate a hop goes on through moves just above
+    the hop: see "The model's path along the top"). Destinations are ordered by bytes, as the plan
     says (or by name or last seen: see below). Each column then gets one overlap-avoidance pass.
   - **Size.** Below 1000 × 420 the diagram is laid out at that size and scaled down, never scrolled.
   - **The destination column scrolls; nothing is folded.** Every reached destination has a row, at

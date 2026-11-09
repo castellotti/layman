@@ -97,11 +97,24 @@ describe('Topology: nothing overlaps', () => {
     });
   }
 
-  it('moves only the llm extension\'s upstream leg, and leaves an unlinked one where glove put it', () => {
+  it('moves each gate a hop goes on through to just above that hop, and nothing else', () => {
     const names = (ss: NetService[]) => ss.map((s) => s.service);
     expect(names(serviceOrder(SERVICES))).toEqual(['llm-upstream', 'llm', ...names(SERVICES.slice(2))]);
     const unlinked = SERVICES.map((s) => (s.service === 'llm-upstream' ? { ...s, observed: false } : s));
     expect(names(serviceOrder(unlinked))).toEqual(names(SERVICES));
+    // glove's `next`: browser → browser-egress, webdownload-mcp → webdownload-egress.
+    const withNext = SERVICES.map((s) => (s.service === 'webdownload-mcp' ? { ...s, next: ['webdownload-egress'] } : s));
+    const browser: NetService[] = [
+      { service: 'browser', listen: `${G}-browser:3001`, observed: true, mode: 'tcp', tool: 'browser', scope: 'local', client: 'harness', harness: true, next: ['browser-egress'] },
+      { service: 'browser-egress', listen: `${G}-browser-egress:8888`, observed: true, mode: 'http-proxy', tool: 'browser', client: 'playwright', harness: false, next: [] },
+    ];
+    expect(names(serviceOrder([...withNext, ...browser]))).toEqual([
+      'llm-upstream', 'llm', 'webdownload-egress', 'webdownload-mcp', 'github-egress', 'ssh-build', 'ssh-db', 'browser-egress', 'browser',
+    ]);
+    // A cycle loses nothing.
+    const a = { ...browser[0], next: ['browser-egress'] };
+    const b = { ...browser[1], next: ['browser'] };
+    expect(names(serviceOrder([a, b])).sort()).toEqual(['browser', 'browser-egress']);
   });
 });
 

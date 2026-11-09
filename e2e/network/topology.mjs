@@ -225,7 +225,7 @@ const boxes = await page.$$eval(`${DIAG} g[data-node], ${DIAG} g[data-wall-label
   return [g.dataset.node ?? g.dataset.wallLabel, { top: r.top, bottom: r.bottom, left: r.left, right: r.right }];
 })));
 const svcOrder = Object.keys(boxes).filter((id) => id.startsWith('svc:')).sort((a, b) => boxes[a].top - boxes[b].top);
-check('llm-lan: llm-upstream sits above llm', svcOrder.slice(0, 2).join(',') === 'svc:llm-upstream,svc:llm', svcOrder.join(','));
+check('llm-lan: each egress gate sits above the hop into it', svcOrder.join(',') === 'svc:llm-upstream,svc:llm,svc:browser-egress,svc:browser', svcOrder.join(','));
 const routeIds = Object.keys(boxes).filter((id) => id.startsWith('route:')).sort((a, b) => boxes[a].top - boxes[b].top);
 check('llm-lan: the LLM link first, and no unused Local or Direct', routeIds.join(',') === 'route:llm,route:tunnel', routeIds.join(','));
 const pinnedRow = boxes['dest:gpu.lan:8080'];
