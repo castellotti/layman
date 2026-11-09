@@ -723,9 +723,8 @@ nothing for finished sessions (their history is not an alarm).
   records. While the display is shown the routine gate chips shrink to their icons (`chipCollapses`): the
   label leads the tip's facts, so nothing is lost. A chip in a warning or error tone is an alarm (traffic
   cut, untunnelled flows, rules rejected, a stale gate, a direct route) and never shrinks, nor does
-  History only. Each panel whose figures depend on the range is marked IN RANGE in its header, so a
-  panel read on its own is not taken for All records. The Rules and Trace panels are not marked: they
-  show the rules in force and one turn.
+  History only. Panels are not marked with the range: every panel sits under the strip that shows the
+  range the user chose, so an IN RANGE chip in each header only repeated it (it was removed).
   - **The picker** opens from the range display and stays open while one range after another is
     tried. *Runs & sessions* lists the segments newest first, with flows and bytes: runs (numbered from
     the first, with how each ended), bursts (the split gap chosen there, 1–24 h, kept per browser) and
@@ -1071,7 +1070,11 @@ Selected path panel that walks one destination's path hop by hop.
     upstream health) and Direct, which shows a check and "no traffic" when nothing went direct.
   - **Apparent origin**: the exit, as glove verified it (country, IP, "via am.i.mullvad.net · not
     Layman's lookup"), or "not verified" with the reason (exit identity off, a failed check, no record
-    yet). A broken path ends here in a broken-line glyph labelled with its host, before the exit.
+    yet). A broken path ends here in a broken-line glyph labelled with its host, under the exit.
+    Every broken path has a row, newest first, in a window of its own that scrolls exactly like the
+    destinations (below): its own stubs ("↓ 31 below"), scrollbar, wheel and keys. It used to show
+    the first three and drop the rest, so a tunnel that broke many paths at once looked like it broke
+    three.
   - **Destinations** that were reached: local links first, then the harness's tunnelled traffic, then
     the fan-out's, then direct, by bytes within each.
 - **Bands** are sized by the square root of bytes, relative to the busiest band, and coloured by route:
@@ -1089,8 +1092,14 @@ Selected path panel that walks one destination's path hop by hop.
   - **Size.** Below 1000 × 420 the diagram is laid out at that size and scaled down, never scrolled.
   - **The destination column scrolls; nothing is folded.** Every reached destination has a row, at
     a fixed pitch inside the column's window. When they do not all fit, the column scrolls on its own
-    (`DestColumn`, `maxScroll`). `projectTopology(t, scrollTop)` redraws only the bands into a
-    destination. A band into a row in the window ends at its row, never moved. A band into a row
+    (`ScrollColumn`, `maxScroll`). `projectTopology(t, scrollTop)` redraws only the bands into a
+    destination. The broken paths are a second `ScrollColumn` (`t.broken`); every scroll function
+    takes the column (`'dests'` by default), a band into a row says which (`toRow.col`), and each
+    column's scroll moves only its own bands, so the two compose
+    (`projectTopology(t, s2, 'broken', projectTopology(t, s1).bands)`). The component has one
+    `useColumnScroll` and one `ScrollWindow` per column; the broken column's stubs and scrollbar
+    carry `data-broken-stub` / `data-broken-scrollbar` so they are never taken for the
+    destinations'. A band into a row in the window ends at its row, never moved. A band into a row
     scrolled out converges on the window's top or bottom edge, where one stub ("↑ 12 above · 3.1 MB",
     "↓ 40 below") stands for them all. Its width (`DestStub.width`) is the sum of their widths, and
     its bytes the sum of theirs. The end is the row's centre clamped to the window, plus the band's
@@ -1124,9 +1133,29 @@ Selected path panel that walks one destination's path hop by hop.
     the live and target scroll, or keys and the wheel would move nothing until they caught up. The key, wheel and
     scrollbar arithmetic is pure (`keyScroll`, `wheelDelta`, `scrollThumb`, `thumbDrag`) and tested.
     Another session or sort starts at the top.
-- **Selecting.** Clicking a destination or a band selects that path. A band shared by
+- **Selecting.** Clicking a destination, a broken path or a band selects that path. A band shared by
   several destinations selects the busiest. The selection is the same `dest=` the Map and the Network
   tab use, and every band not on the path dims.
+- **Every other box is clickable too**: the sandbox, each service, each route, the exit and each label
+  on the policy wall open in the same panel (Details) instead of a path. The bands into and out of the
+  box, and those carrying only its hosts on from there, stay lit; the rest dim. A second click clears
+  it. A box is not a destination: it is held in a small store of its own (`topologyFocus.ts`, scoped to
+  the glove session), not in the URL, and it and `netDest` are exclusive (choosing a destination
+  anywhere, including the Network tab or a link, replaces the box).
+  - **What it is for.** Every box, and every path, opens with a short note on what that box does in
+    glove's design (`explainBox`: a declared-but-unwatched service, an egress consumer that is not the
+    harness, the llm link that is not a leak, the guard…). It can be dismissed. The note is keyed by the
+    selection, so dismissing it lasts only while that box stays selected: choosing another box and
+    coming back, or closing and reopening the panel, shows it again.
+  - **What glove says about it, and its traffic** (`boxDetails`, `lib/net-topology-box.ts`, pure and
+    tested): facts from `session.json`, `status.json` and the rules (a service's listener, mode, tool,
+    upstream, route and its `next` hops and trigger; the tunnel's declared kind, upstream and resolver
+    health; the gate's state and telemetry; a rule's match and action), tiles for sent, received,
+    flows and refused, the bytes by route as one stacked bar in the diagram's band colours, and the
+    busiest destinations (the most refused, for a wall label) as bars, each a link to its path. The
+    exit also lists every exit check glove recorded, newest first, so a changed exit address or a
+    failed check shows. Every figure comes from the destinations the box's hosts reached, the same
+    aggregates the bands are drawn from, so a box never disagrees with them.
 - **Selected path panel.** The destination's hops, each with its status and whether glove **observed**
   it, only **declared** it (a dashed circle), or **verified** it:
   - the sandbox, with gate freshness and heartbeat age (a fan-out path starts at SearXNG instead,

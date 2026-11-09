@@ -7,17 +7,21 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useNetStore } from '../../stores/netStore.js';
 import { useSessionStore } from '../../stores/sessionStore.js';
-import { directLegend, TOPOLOGY_BAND_WIDTH_TIP, TOPOLOGY_LEGEND, formatBytes } from '../../lib/net-format.js';
+import { directLegend, LEGEND_BY_KEY, TOPOLOGY_BAND_WIDTH_TIP, TOPOLOGY_LEGEND, formatBytes } from '../../lib/net-format.js';
 import type { NetSessionData } from '../../lib/net-state.js';
 import { controlDisabledReason, siblingIds } from '../../lib/net-rules.js';
 import { toolLabel } from '../../lib/net-table.js';
 import {
   easeScroll, keyScroll, layoutTopology, pathHops, projectTopology, scrollThumb, scrollToDest, thumbDrag, wheelDelta,
-  type BandKind, type DestSort, type DestStub, type HopEvidence, type LineTone, type Tone, type TopoBand, type TopoNode, type TopoProjection, type Topology,
+  MIN_HEIGHT, MIN_WIDTH,
+  type BandKind, type DestSort, type DestStub, type HopEvidence, type LineTone, type ScrollColumnId, type Tone, type TopoBand, type TopoNode,
+  type TopoProjection, type Topology,
 } from '../../lib/net-topology.js';
+import { boxDetails, explainBox, type BoxDetails, type BoxExplanation, type BoxFact, type MixKey } from '../../lib/net-topology-box.js';
+import { useTopologyBox, useTopologyFocus } from './topologyFocus.js';
 import { buttonStyle } from './ControlPopover.js';
 import { Badge, Tile } from './DetailCard.js';
-import { NetIcon, useStored } from './netui.js';
+import { NetIcon, useStored, type NetIconName } from './netui.js';
 import { isLlmDestination, tokenTiles } from '../../lib/net-tokens.js';
 import type { NetRange } from '../../lib/netobs-types.js';
 import { useNetTokens } from '../../hooks/useNetTrace.js';
@@ -93,11 +97,15 @@ function svgButton(label: string, activate: () => void, tabIndex = 0) {
 }
 
 function Node({ n, selected, onSelect, tabbable = true }: { n: TopoNode; selected: boolean; onSelect: (n: TopoNode) => void; tabbable?: boolean }) {
-  const clickable = n.hosts.length > 0 && (n.kind === 'dest' || n.kind === 'broken');
-  const common = clickable ? svgButton(`Follow the path to ${n.title}`, () => onSelect(n), tabbable ? 0 : -1) : {};
+  const follows = n.kind === 'dest' || n.kind === 'broken';
+  const clickable = !follows || n.hosts.length > 0;
+  const common = clickable ? svgButton(follows ? `Follow the path to ${n.title}` : `Show ${n.title} in Details`, () => onSelect(n), tabbable ? 0 : -1) : {};
   if (n.kind === 'broken') {
     return (
-      <g {...common} data-node={n.id}>
+      <g {...common} {...tipProps(n.title)} data-node={n.id}>
+        {/* Its hit area, and its outline when selected. */}
+        <rect x={n.x - 4} y={n.y - 6} width={n.w + 8} height={n.h + 12} rx={4} fill={selected ? 'rgba(90,156,248,0.10)' : 'transparent'}
+          stroke={selected ? 'var(--info)' : 'none'} strokeWidth={1.5} />
         <g transform={`translate(${n.x},${n.y - 2})`}><NetIcon name="broken" color="var(--warn)" size={18} strokeWidth={1.8} /></g>
         <text x={n.x} y={n.y + 26} fontSize={11} fontFamily="var(--font-mono)" fill="var(--warn)">{clip(n.title, n.w + 30)}</text>
         <text x={n.x} y={n.y + 39} fontSize={10} fill="var(--text-faint)">{n.lines[0]?.text}</text>
@@ -118,9 +126,10 @@ function Node({ n, selected, onSelect, tabbable = true }: { n: TopoNode; selecte
     );
   }
   return (
-    <g data-node={n.id}>
-      <rect x={n.x} y={n.y} width={n.w} height={n.h} rx={5} fill={n.tone === 'muted' && n.dashed ? 'transparent' : 'var(--bg-card)'}
-        stroke={stroke} strokeWidth={n.kind === 'sandbox' ? 1.4 : 1} strokeDasharray={n.dashed ? '4 3' : undefined} />
+    <g {...common} data-node={n.id}>
+      <rect x={n.x} y={n.y} width={n.w} height={n.h} rx={5}
+        fill={selected ? 'rgba(90,156,248,0.10)' : n.tone === 'muted' && n.dashed ? 'transparent' : 'var(--bg-card)'}
+        stroke={stroke} strokeWidth={selected ? 1.6 : n.kind === 'sandbox' ? 1.4 : 1} strokeDasharray={n.dashed && !selected ? '4 3' : undefined} />
       <text x={n.x + 10} y={n.y + 17} fontSize={12} fontWeight={600} fontFamily={n.mono ? 'var(--font-mono)' : 'var(--font-ui)'}
         fill={n.tone === 'muted' ? 'var(--text-muted)' : 'var(--text)'}>{clip(n.title, n.w - (n.icon ? 34 : 18), 7.2)}</text>
       {n.icon && (
@@ -137,10 +146,17 @@ function Node({ n, selected, onSelect, tabbable = true }: { n: TopoNode; selecte
 }
 
 /** Destinations scrolled out of the window: the bands converge on it, and it says how many and how much. */
-function Stub({ stub, x, onScroll }: { stub: DestStub; x: number; onScroll: (top: number) => void }) {
+function Stub({ stub, x, onScroll, noun, attr }: {
+  stub: DestStub; x: number; onScroll: (top: number) => void;
+  /** What its rows are, one and many: `destination`, `broken path`. */
+  noun: string;
+  /** The data attribute that names it (`data-stub`, `data-broken-stub`): the browser checks find each column's by its own. */
+  attr: string;
+}) {
+  const what = `${noun}${stub.count === 1 ? '' : 's'}`;
   return (
-    <g data-stub={stub.edge} {...svgButton(`Scroll to the ${stub.count} destinations ${stub.edge}`, () => onScroll(stub.scrollTo))}
-      {...tipProps({ heading: `${stub.count} destination${stub.count === 1 ? '' : 's'} ${stub.edge}`, body: stub.hosts.slice(0, 12).join('\n') + (stub.hosts.length > 12 ? `\n+${stub.hosts.length - 12} more` : '') })}>
+    <g {...{ [attr]: stub.edge }} {...svgButton(`Scroll to the ${stub.count} ${what} ${stub.edge}`, () => onScroll(stub.scrollTo))}
+      {...tipProps({ heading: `${stub.count} ${what} ${stub.edge}`, body:stub.hosts.slice(0, 12).join('\n') + (stub.hosts.length > 12 ? `\n+${stub.hosts.length - 12} more` : '') })}>
       <rect x={x - 3} y={stub.bar.y} width={3} height={stub.bar.h} fill="var(--text-faint)" opacity={0.6} />
       <text x={x + 6} y={stub.textY} fontSize={10} fontFamily="var(--font-mono)" fill="var(--text-muted)">
         {stub.edge === 'above' ? '↑' : '↓'} {stub.count} {stub.edge}{stub.bytes ? ` · ${formatBytes(stub.bytes)}` : ''}
@@ -156,6 +172,9 @@ const SORT_KEY = 'layman.topology.destSort';
 
 const reducedMotion = () => typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 
+/** A policy-wall label's hit area: wide enough for `your rule “…” · 12`. */
+const WALL_LABEL_W = 180;
+
 /** The stubs' counts, as a key: a frame that changes it must commit. */
 const counts = (p: TopoProjection) => `${p.above?.count ?? 0}/${p.below?.count ?? 0}`;
 
@@ -166,12 +185,13 @@ function unitsPerPx(el: SVGElement | null): number {
 }
 
 /**
- * The destination column's scroll. React renders at the committed scroll; between commits an
- * animation frame moves the rows, the bands into them and the thumb directly through the DOM
- * (`projectTopology` is cheap; re-rendering every band each frame is not). It commits when it
- * lands, and whenever a stub's count changes, so the stubs and the visible set stay right.
+ * One scrolling column's scroll (the destinations, the broken paths). React renders at the
+ * committed scroll; between commits an animation frame moves the rows, the bands into them and the
+ * thumb directly through the DOM (`projectTopology` is cheap; re-rendering every band each frame
+ * is not). It commits when it lands, and whenever a stub's count changes, so the stubs and the
+ * visible set stay right.
  */
-function useDestScroll(t: Topology) {
+function useColumnScroll(t: Topology, col: ScrollColumnId) {
   const [scrollTop, setScrollTop] = useState(0);
   const tRef = useRef(t);
   tRef.current = t;
@@ -184,17 +204,17 @@ function useDestScroll(t: Topology) {
   const bandEls = useRef(new Map<string, SVGGElement>());
 
   const paint = useCallback((s: number) => {
-    const p = projectTopology(tRef.current, s);
+    const p = projectTopology(tRef.current, s, col);
     rowsEl.current?.setAttribute('transform', `translate(0,${-p.scrollTop})`);
-    const thumb = scrollThumb(tRef.current, p.scrollTop);
+    const thumb = scrollThumb(tRef.current, p.scrollTop, col);
     if (thumb) thumbEl.current?.setAttribute('y', String(thumb.y));
     for (const b of p.bands) {
-      if (!b.toDest) continue;
+      if (b.toRow?.col !== col) continue;
       const el = bandEls.current.get(b.id);
       if (el) for (const path of el.querySelectorAll('path')) path.setAttribute('d', b.d);
     }
     if (counts(p) !== shown.current) setScrollTop(p.scrollTop);
-  }, []);
+  }, [col]);
 
   const stop = () => { if (frame.current !== null) cancelAnimationFrame(frame.current); frame.current = null; };
   /**
@@ -202,7 +222,7 @@ function useDestScroll(t: Topology) {
    * moves at once without committing, for a drag of the thumb; its end scrolls `now`.
    */
   const scrollTo = useCallback((to: number, how: 'ease' | 'now' | 'live' = 'ease') => {
-    const { maxScroll } = tRef.current.dests;
+    const { maxScroll } = tRef.current[col];
     target.current = Math.max(0, Math.min(maxScroll, to));
     if (how !== 'ease' || reducedMotion()) {
       stop();
@@ -221,16 +241,16 @@ function useDestScroll(t: Topology) {
       else frame.current = requestAnimationFrame(step);
     };
     frame.current = requestAnimationFrame(step);
-  }, [paint]);
+  }, [paint, col]);
   useEffect(() => stop, []);
 
-  const view = useMemo(() => projectTopology(t, scrollTop), [t, scrollTop]);
+  const view = useMemo(() => projectTopology(t, scrollTop, col), [t, scrollTop, col]);
   shown.current = counts(view);
   useLayoutEffect(() => {
-    // A new layout can scroll less (a taller pane, destinations gone): the next key or wheel moves from there.
-    pos.current = Math.min(pos.current, t.dests.maxScroll);
-    target.current = Math.min(target.current, t.dests.maxScroll);
-  }, [t]);
+    // A new layout can scroll less (a taller pane, rows gone): the next key or wheel moves from there.
+    pos.current = Math.min(pos.current, t[col].maxScroll);
+    target.current = Math.min(target.current, t[col].maxScroll);
+  }, [t, col]);
   useLayoutEffect(() => {
     // A render mid-animation or mid-drag (live data) drew the bands at the committed scroll: put them back.
     if (pos.current !== view.scrollTop) paint(pos.current);
@@ -239,7 +259,90 @@ function useDestScroll(t: Topology) {
     if (el) bandEls.current.set(id, el);
     else bandEls.current.delete(id);
   }, []);
-  return { view, scrollTo, pos, target, rowsEl, thumbEl, band };
+  /** Scroll a row into the window, if it is not already. */
+  const reveal = useCallback((id: string | undefined) => {
+    if (!id || projectTopology(tRef.current, pos.current, col).visible.has(id)) return;
+    const to = scrollToDest(tRef.current, id, col);
+    if (to !== null) scrollTo(to);
+  }, [scrollTo, col]);
+  return { view, scrollTo, reveal, pos, target, rowsEl, thumbEl, band };
+}
+
+type ColumnScroll = ReturnType<typeof useColumnScroll>;
+
+/**
+ * A column that scrolls on its own: its rows clipped to the window, a wheel, the arrow keys and
+ * Page Up / Page Down over it, a scrollbar beside it, and the stubs for what is scrolled away.
+ */
+function ScrollWindow({ t, col, scroll, clipId, noun, children, attrs }: {
+  t: Topology; col: ScrollColumnId; scroll: ColumnScroll; clipId: string; children: React.ReactNode;
+  /** The column group's and the scrollbar's data attributes (the browser checks find them by these). */
+  attrs: { column: Record<string, string>; bar: Record<string, string>; stub: string };
+  /** What a row is: `destination`, `broken path`. */
+  noun: string;
+}) {
+  const c = t[col];
+  const { view, scrollTo, reveal, pos, target, rowsEl, thumbEl } = scroll;
+  const column = useRef<SVGGElement>(null);
+  // A wheel over the column scrolls it, not the page: React's wheel listener is passive and cannot say so.
+  useEffect(() => {
+    const el = column.current;
+    if (!el) return;
+    const wheel = (e: WheelEvent) => {
+      if (t[col].maxScroll <= 0) return;
+      e.preventDefault();
+      scrollTo(target.current + wheelDelta(t, e.deltaY, e.deltaMode, unitsPerPx(el), col));
+    };
+    el.addEventListener('wheel', wheel, { passive: false });
+    return () => el.removeEventListener('wheel', wheel);
+  }, [t, col, scrollTo, target]);
+  const drag = useRef<{ y: number; from: number; perPx: number } | null>(null);
+  const thumb = scrollThumb(t, view.scrollTop, col);
+  if (!c.rows.length) return null;
+  return (
+    <>
+      {/* Rows whose text runs past the box (a broken path's host) are clipped where the scrollbar begins. */}
+      <clipPath id={clipId}><rect x={c.x - 4} y={c.top} width={c.w + c.overhang + 8} height={c.bottom - c.top} /></clipPath>
+      <g ref={column} {...attrs.column} tabIndex={c.maxScroll > 0 ? 0 : undefined} style={{ outline: 'none' }}
+        aria-label={c.maxScroll > 0 ? `${c.rows.length} ${noun}s: scroll with the wheel, the arrow keys, Page Up and Page Down, Home and End` : undefined}
+        onKeyDown={(e) => {
+          if (e.target !== e.currentTarget) return;
+          const to = keyScroll(t, target.current, e.key, col);
+          if (to !== null) { e.preventDefault(); scrollTo(to); }
+        }}
+        // Tabbing onto a row scrolled away brings it into the window.
+        onFocus={(e) => reveal((e.target as Element).closest('[data-node]')?.getAttribute('data-node') ?? undefined)}>
+        <rect x={c.x - 4} y={c.top} width={c.w + 14} height={c.bottom - c.top} fill="transparent" />
+        <g clipPath={`url(#${clipId})`}>
+          {/* Every row, once: scrolling moves the group (and the clip hides what is out). */}
+          <g ref={rowsEl} transform={`translate(0,${-view.scrollTop})`}>{children}</g>
+        </g>
+        {thumb && (
+          <g {...attrs.bar}>
+            <rect x={thumb.x} y={thumb.track.y} width={thumb.w} height={thumb.track.h} rx={1.5} fill="var(--border)" opacity={0.5}
+              onPointerDown={(e) => {
+                // A click on the track pages towards it, as Page Up / Page Down would.
+                const ctm = column.current?.ownerSVGElement?.getScreenCTM();
+                const y = ctm ? (e.clientY - ctm.f) / ctm.d : e.clientY;
+                const to = keyScroll(t, target.current, y < (scrollThumb(t, target.current, col)?.y ?? 0) ? 'PageUp' : 'PageDown', col);
+                if (to !== null) scrollTo(to);
+              }} />
+            <rect ref={thumbEl} x={thumb.x} y={thumb.y} width={thumb.w} height={thumb.h} rx={1.5} fill="var(--text-faint)" style={{ cursor: 'grab' }}
+              onPointerDown={(e) => {
+                e.stopPropagation();
+                e.currentTarget.setPointerCapture(e.pointerId);
+                drag.current = { y: e.clientY, from: pos.current, perPx: unitsPerPx(column.current) };
+              }}
+              onPointerMove={(e) => { const d = drag.current; if (d) scrollTo(thumbDrag(t, d.from, (e.clientY - d.y) * d.perPx, col), 'live'); }}
+              // Released, cancelled or lost, the capture ends: one place ends the drag.
+              onLostPointerCapture={() => { if (drag.current) { drag.current = null; scrollTo(pos.current, 'now'); } }} />
+          </g>
+        )}
+      </g>
+      {view.above && <Stub stub={view.above} x={c.x} onScroll={scrollTo} noun={noun} attr={attrs.stub} />}
+      {view.below && <Stub stub={view.below} x={c.x} onScroll={scrollTo} noun={noun} attr={attrs.stub} />}
+    </>
+  );
 }
 
 export function TopologyDiagram({ data }: { data: NetSessionData }) {
@@ -247,17 +350,14 @@ export function TopologyDiagram({ data }: { data: NetSessionData }) {
   const { w, h } = useSize(ref);
   const netDest = useSessionStore((s) => s.netDest);
   const setNetDest = useSessionStore((s) => s.setNetDest);
+  const box = useTopologyBox(data.token);
+  const setBox = useTopologyFocus((s) => s.setBox);
   const [sort, setSort] = useStored<DestSort>(SORT_KEY, 'bytes', (raw) => (raw === 'bytes' || raw === 'name' || raw === 'recent' ? raw : null));
   const t = useMemo(() => layoutTopology(data, w, h, { sort }), [data, w, h, sort]);
-  const { view, scrollTo, pos, target, rowsEl, thumbEl, band: bandRef } = useDestScroll(t);
+  const dests = useColumnScroll(t, 'dests');
+  const broken = useColumnScroll(t, 'broken');
   // Another session or order starts at the top.
-  useEffect(() => scrollTo(0, 'now'), [data.token, sort, scrollTo]);
-  /** Scroll a destination row into the window, if it is not already. */
-  const reveal = useCallback((id: string | undefined) => {
-    if (!id || projectTopology(t, pos.current).visible.has(id)) return;
-    const to = scrollToDest(t, id);
-    if (to !== null) scrollTo(to);
-  }, [t, pos, scrollTo]);
+  useEffect(() => { dests.scrollTo(0, 'now'); broken.scrollTo(0, 'now'); }, [data.token, sort, dests.scrollTo, broken.scrollTo]); // eslint-disable-line react-hooks/exhaustive-deps
   // A destination chosen elsewhere (the Network tab, a link) is scrolled into the window: when the
   // choice, the session, the order or the size changes. Never on live data (every delta is a new
   // layout) nor a scroll, or a selected row would pull the column back while the user browses.
@@ -266,23 +366,11 @@ export function TopologyDiagram({ data }: { data: NetSessionData }) {
     const key = `${netDest}|${data.token}|${sort}|${w}|${h}`;
     if (key === revealed.current) return;
     revealed.current = key;
-    reveal(netDest ? t.nodes.find((n) => n.kind === 'dest' && n.hosts.includes(netDest))?.id : undefined);
+    const row = netDest ? t.nodes.find((n) => (n.kind === 'dest' || n.kind === 'broken') && n.hosts.includes(netDest)) : undefined;
+    (row?.kind === 'broken' ? broken : dests).reveal(row?.id);
   }, [netDest, t]); // eslint-disable-line react-hooks/exhaustive-deps
-  const column = useRef<SVGGElement>(null);
-  // A wheel over the column scrolls it, not the page: React's wheel listener is passive and cannot say so.
-  useEffect(() => {
-    const el = column.current;
-    if (!el) return;
-    const wheel = (e: WheelEvent) => {
-      if (t.dests.maxScroll <= 0) return;
-      e.preventDefault();
-      scrollTo(target.current + wheelDelta(t, e.deltaY, e.deltaMode, unitsPerPx(el)));
-    };
-    el.addEventListener('wheel', wheel, { passive: false });
-    return () => el.removeEventListener('wheel', wheel);
-  }, [t, scrollTo, target]);
-  const drag = useRef<{ y: number; from: number; perPx: number } | null>(null);
-  const thumb = scrollThumb(t, view.scrollTop);
+  // A destination chosen anywhere (here, the Network tab, a link) replaces the box in Details.
+  useEffect(() => { if (netDest) setBox(data.token, null); }, [netDest, data.token, setBox]);
   const bytesOf = useMemo(() => {
     const m = new Map<string, number>();
     for (const d of data.destinations.values()) if (d.host) m.set(d.host, (m.get(d.host) ?? 0) + d.bytesUp + d.bytesDown);
@@ -290,17 +378,30 @@ export function TopologyDiagram({ data }: { data: NetSessionData }) {
   }, [data.destinations]);
   // The busiest destination a click on a shared band stands for.
   const pick = (hosts: string[]) => [...hosts].sort((a, b) => (bytesOf.get(b) ?? 0) - (bytesOf.get(a) ?? 0))[0] ?? null;
-  const select = (hosts: string[]) => { const h = pick(hosts); if (h) setNetDest(h === netDest ? null : h); };
+  const select = (hosts: string[]) => { const h = pick(hosts); if (h) { setBox(data.token, null); setNetDest(h === netDest ? null : h); } };
+  /** A box (or a wall label) into Details, or out of it on a second click. */
+  const selectBox = (id: string) => { setNetDest(null); setBox(data.token, box === id ? null : id); };
+  const activate = (n: TopoNode) => (n.kind === 'dest' || n.kind === 'broken' ? select(n.hosts) : selectBox(n.id));
   const on = (hosts: string[]) => netDest !== null && hosts.includes(netDest);
+  // A selected box lights the bands into and out of it, and those carrying only its hosts on from there.
+  const boxHosts = useMemo(() => {
+    if (!box) return null;
+    return new Set(t.nodes.find((n) => n.id === box)?.hosts ?? t.wall.labels.find((l) => l.id === box)?.hosts ?? []);
+  }, [box, t]);
+  const lit = (b: TopoBand) => (boxHosts
+    ? b.from === box || b.to === box || (b.hosts.length > 0 && b.hosts.every((x) => boxHosts.has(x)))
+    : on(b.hosts));
+  const focused = netDest !== null || boxHosts !== null;
 
   const band = (b: TopoBand) => {
     const style = BAND[b.kind];
-    const lit = on(b.hosts);
-    const dim = netDest !== null && !lit && b.kind !== 'trigger';
+    const isLit = lit(b);
+    const dim = focused && !isLit && b.kind !== 'trigger';
+    const ref = b.toRow ? (b.toRow.col === 'dests' ? dests : broken).band(b.id) : undefined;
     return (
-      <g key={b.id} data-band={b.id} ref={b.toDest ? bandRef(b.id) : undefined}>
+      <g key={b.id} data-band={b.id} ref={ref}>
         <path d={b.d} fill="none" stroke={style.colour} strokeWidth={b.width} strokeLinecap="butt"
-          strokeOpacity={dim ? 0.14 : lit ? Math.min(1, style.opacity + 0.3) : style.opacity}
+          strokeOpacity={dim ? 0.14 : isLit ? Math.min(1, style.opacity + 0.3) : style.opacity}
           strokeDasharray={b.dashed ? (b.kind === 'broken' ? '3 3' : '4 4') : undefined} />
         {b.live && !b.dashed && !dim && (
           // Live traffic: a thin line moving along the band, not the band itself dashed.
@@ -321,14 +422,15 @@ export function TopologyDiagram({ data }: { data: NetSessionData }) {
   };
   // Refusals and broken paths on top: thin, and the point of the diagram.
   const order = (k: BandKind) => (k === 'guard' || k === 'refused' || k === 'broken' || k === 'trigger' ? 1 : 0);
-  const bands = [...view.bands].sort((a, b) => order(a.kind) - order(b.kind));
-  const clipId = `dests-${data.token}`;
+  // Each column's scroll moves only the bands into its own rows.
+  const projected = projectTopology(t, broken.view.scrollTop, 'broken', dests.view.bands).bands;
+  const bands = [...projected].sort((a, b) => order(a.kind) - order(b.kind));
 
   return (
     // Focusing a row scrolled away would scroll this box (hidden overflow still scrolls); the column scrolls instead.
     <div ref={ref} style={{ position: 'relative', flex: 1, minHeight: 0, overflow: 'hidden' }} onScroll={(e) => { e.currentTarget.scrollTop = 0; }}>
       <svg width="100%" height="100%" viewBox={`0 0 ${t.width} ${t.height}`} preserveAspectRatio="xMinYMin meet" role="group"
-        aria-label={`Routes from ${data.token} through glove's services, policy and tunnel to ${t.nodes.filter((n) => n.kind === 'dest').length} destinations`}
+        aria-label={`Routes from ${data.token} through glove's services, policy and tunnel to ${t.dests.rows.length} destinations`}
         style={{ display: 'block' }}>
         {t.columns.map((c) => (
           <text key={c.id} x={c.x} y={26} fontSize={10} letterSpacing="0.08em" fontWeight={600} fill="var(--text-muted)"
@@ -344,68 +446,44 @@ export function TopologyDiagram({ data }: { data: NetSessionData }) {
         {bands.filter((b) => order(b.kind) === 0).map(band)}
         <g data-wall>
           <line x1={t.wall.x} x2={t.wall.x} y1={t.wall.y1} y2={t.wall.y2} stroke="#3A4252" strokeWidth={3} strokeLinecap="round" />
-          {t.wall.labels.map((l) => (
-            <g key={l.text}>
-              <g transform={`translate(${t.wall.x + 12},${l.y - 7})`}>
-                <NetIcon name={l.kind === 'guard' ? 'lock' : 'blocked'} size={12} color={l.kind === 'guard' ? 'var(--warn)' : 'var(--error)'} />
+          {t.wall.labels.map((l) => {
+            const selected = box === l.id;
+            const colour = l.kind === 'guard' ? 'var(--warn)' : '#FF8A80';
+            return (
+              <g key={l.id} data-wall-label={l.id} {...svgButton(`Show ${l.text} in Details`, () => selectBox(l.id))}>
+                {/* Its hit area, and its outline when selected. */}
+                <rect x={t.wall.x + 6} y={l.y - 12} width={WALL_LABEL_W} height={l.sub ? 34 : 22} rx={4}
+                  fill={selected ? 'rgba(90,156,248,0.10)' : 'transparent'} stroke={selected ? 'var(--info)' : 'none'} strokeWidth={1.5} />
+                <g transform={`translate(${t.wall.x + 12},${l.y - 7})`}>
+                  <NetIcon name={l.kind === 'guard' ? 'lock' : 'blocked'} size={12} color={colour} />
+                </g>
+                <text x={t.wall.x + 30} y={l.y + 3} fontSize={10.5} fill={colour}>{l.text}</text>
+                {l.sub && <text x={t.wall.x + 30} y={l.y + 16} fontSize={10} fill="var(--text-faint)">{l.sub}</text>}
               </g>
-              <text x={t.wall.x + 30} y={l.y + 3} fontSize={10.5} fill={l.kind === 'guard' ? 'var(--warn)' : '#FF8A80'}>{l.text}</text>
-              {l.sub && <text x={t.wall.x + 30} y={l.y + 16} fontSize={10} fill="var(--text-faint)">{l.sub}</text>}
-            </g>
-          ))}
+            );
+          })}
           <text x={t.wall.x - 4} y={t.wall.y2 + 16} fontSize={10} fill="var(--text-faint)">{t.wall.caption}</text>
         </g>
         {bands.filter((b) => order(b.kind) === 1).map(band)}
         {t.captions.map((c) => (
           <text key={c.text} x={c.x} y={c.y} fontSize={10} fontFamily="var(--font-mono)" textAnchor={c.anchor} fill={BAND[c.kind].colour}>{c.text}</text>
         ))}
-        {t.nodes.filter((n) => n.kind !== 'dest').map((n) => (
-          <Node key={n.id} n={n} selected={false} onSelect={(x) => select(x.hosts)} />
+        {t.nodes.filter((n) => n.kind !== 'dest' && n.kind !== 'broken').map((n) => (
+          <Node key={n.id} n={n} selected={box === n.id} onSelect={activate} />
         ))}
-        <clipPath id={clipId}><rect x={t.dests.x - 4} y={t.dests.top} width={t.dests.w + 8} height={t.dests.bottom - t.dests.top} /></clipPath>
-        <g ref={column} data-dest-scroll="" tabIndex={t.dests.maxScroll > 0 ? 0 : undefined} style={{ outline: 'none' }}
-          aria-label={t.dests.maxScroll > 0 ? `${t.dests.rows.length} destinations: scroll with the wheel, the arrow keys, Page Up and Page Down, Home and End` : undefined}
-          onKeyDown={(e) => {
-            if (e.target !== e.currentTarget) return;
-            const to = keyScroll(t, target.current, e.key);
-            if (to !== null) { e.preventDefault(); scrollTo(to); }
-          }}
-          // Tabbing onto a row scrolled away brings it into the window.
-          onFocus={(e) => reveal((e.target as Element).closest('[data-node]')?.getAttribute('data-node') ?? undefined)}>
-          <rect x={t.dests.x - 4} y={t.dests.top} width={t.dests.w + 14} height={t.dests.bottom - t.dests.top} fill="transparent" />
-          <g clipPath={`url(#${clipId})`}>
-            {/* Every row, once: scrolling moves the group (and the clip hides what is out). */}
-            <g ref={rowsEl} transform={`translate(0,${-view.scrollTop})`}>
-              {t.nodes.filter((n) => n.kind === 'dest').map((n) => (
-                // Only rows in the window are Tab stops: hundreds of hidden ones would trap the keyboard.
-                <Node key={n.id} n={n} selected={on(n.hosts)} onSelect={(x) => select(x.hosts)} tabbable={view.visible.has(n.id)} />
-              ))}
-            </g>
-          </g>
-          {thumb && (
-            <g data-dest-scrollbar="">
-              <rect x={thumb.x} y={thumb.track.y} width={thumb.w} height={thumb.track.h} rx={1.5} fill="var(--border)" opacity={0.5}
-                onPointerDown={(e) => {
-                  // A click on the track pages towards it, as Page Up / Page Down would.
-                  const ctm = column.current?.ownerSVGElement?.getScreenCTM();
-                  const y = ctm ? (e.clientY - ctm.f) / ctm.d : e.clientY;
-                  const to = keyScroll(t, target.current, y < (scrollThumb(t, target.current)?.y ?? 0) ? 'PageUp' : 'PageDown');
-                  if (to !== null) scrollTo(to);
-                }} />
-              <rect ref={thumbEl} x={thumb.x} y={thumb.y} width={thumb.w} height={thumb.h} rx={1.5} fill="var(--text-faint)" style={{ cursor: 'grab' }}
-                onPointerDown={(e) => {
-                  e.stopPropagation();
-                  e.currentTarget.setPointerCapture(e.pointerId);
-                  drag.current = { y: e.clientY, from: pos.current, perPx: unitsPerPx(column.current) };
-                }}
-                onPointerMove={(e) => { const d = drag.current; if (d) scrollTo(thumbDrag(t, d.from, (e.clientY - d.y) * d.perPx), 'live'); }}
-                // Released, cancelled or lost, the capture ends: one place ends the drag.
-                onLostPointerCapture={() => { if (drag.current) { drag.current = null; scrollTo(pos.current, 'now'); } }} />
-            </g>
-          )}
-        </g>
-        {view.above && <Stub stub={view.above} x={t.dests.x} onScroll={scrollTo} />}
-        {view.below && <Stub stub={view.below} x={t.dests.x} onScroll={scrollTo} />}
+        <ScrollWindow t={t} col="broken" scroll={broken} clipId={`broken-${data.token}`} noun="broken path"
+          attrs={{ column: { 'data-broken-scroll': '' }, bar: { 'data-broken-scrollbar': '' }, stub: 'data-broken-stub' }}>
+          {t.nodes.filter((n) => n.kind === 'broken').map((n) => (
+            <Node key={n.id} n={n} selected={on(n.hosts)} onSelect={activate} tabbable={broken.view.visible.has(n.id)} />
+          ))}
+        </ScrollWindow>
+        <ScrollWindow t={t} col="dests" scroll={dests} clipId={`dests-${data.token}`} noun="destination"
+          attrs={{ column: { 'data-dest-scroll': '' }, bar: { 'data-dest-scrollbar': '' }, stub: 'data-stub' }}>
+          {t.nodes.filter((n) => n.kind === 'dest').map((n) => (
+            // Only rows in the window are Tab stops: hundreds of hidden ones would trap the keyboard.
+            <Node key={n.id} n={n} selected={on(n.hosts)} onSelect={activate} tabbable={dests.view.visible.has(n.id)} />
+          ))}
+        </ScrollWindow>
       </svg>
     </div>
   );
@@ -434,14 +512,207 @@ function TokenTiles({ token, range }: { token: string; range: NetRange | null })
   );
 }
 
+/**
+ * What the selected box is for. Dismissed, it stays away only while that selection does: the
+ * panel keys it by the selection, so choosing another box and coming back (or closing and
+ * reopening the panel) brings it back.
+ */
+function Explanation({ explain }: { explain: BoxExplanation | null }) {
+  const [shown, setShown] = useState(true);
+  if (!shown || !explain) return null;
+  return (
+    <div role="note" data-box-explanation="" style={{
+      display: 'flex', gap: 8, alignItems: 'flex-start', padding: '8px 8px 8px 10px', margin: '10px 0 12px', borderRadius: 6,
+      border: '1px solid color-mix(in srgb, var(--info) 40%, transparent)', background: 'color-mix(in srgb, var(--info) 7%, transparent)',
+    }}>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--text)' }}>{explain.heading}</div>
+        <div style={{ fontSize: 11, color: 'var(--text-body)', lineHeight: 1.45, marginTop: 2 }}>{explain.body}</div>
+      </div>
+      <button type="button" aria-label="Dismiss this explanation" onClick={() => setShown(false)} style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'center', width: 20, height: 20, flexShrink: 0,
+        background: 'transparent', border: 'none', borderRadius: 4, cursor: 'pointer',
+      }}>
+        <NetIcon name="close" size={10} color="var(--text-faint)" />
+      </button>
+    </div>
+  );
+}
+
+/** A box's traffic by route, in the diagram's band colours. */
+const MIX_COLOUR: Readonly<Record<MixKey | 'refused', string>> = {
+  local: BAND.local.colour, tunnel: BAND.tunnel.colour, fanout: BAND.fanout.colour, vpn: LEGEND_BY_KEY.vpn_route.colourVar,
+  direct: BAND.direct.colour, broken: BAND.broken.colour, refused: BAND.refused.colour,
+};
+
+const BOX_ICON: Readonly<Record<BoxDetails['kind'], NetIconName>> = {
+  sandbox: 'shield', service: 'pulse', route: 'tunnel', exit: 'pin', policy: 'blocked', dest: 'globe', broken: 'broken',
+};
+const BOX_KIND: Readonly<Record<BoxDetails['kind'], string>> = {
+  sandbox: 'Sandbox', service: 'Gate service', route: 'Route', exit: 'Apparent origin', policy: 'Policy', dest: 'Destination', broken: 'Broken path',
+};
+const FACT_TONE: Readonly<Record<NonNullable<BoxFact['tone']>, string>> = {
+  ok: 'var(--net-tunnel)', warn: 'var(--warn)', error: '#FF8A80', faint: 'var(--text-faint)',
+};
+
+function SectionHeading({ children }: { children: React.ReactNode }) {
+  return (
+    <div style={{ fontSize: 9.5, letterSpacing: '0.08em', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', margin: '14px 0 6px' }}>
+      {children}
+    </div>
+  );
+}
+
+const pct = (part: number, whole: number) => (whole > 0 ? `${Math.round((100 * part) / whole)}%` : '—');
+
+/** The bytes through a box, by route: one stacked bar, and a legend that names and sizes each part. */
+function RouteMix({ parts }: { parts: BoxDetails['mix'] }) {
+  if (!parts.length) return null;
+  const total = parts.reduce((a, p) => a + p.bytes, 0);
+  return (
+    <div data-route-mix="">
+      <SectionHeading>Bytes by route</SectionHeading>
+      <div role="img" aria-label={parts.map((p) => `${p.label} ${pct(p.bytes, total)}`).join(', ')}
+        style={{ display: 'flex', gap: 2, height: 8, borderRadius: 4, overflow: 'hidden' }}>
+        {parts.map((p) => (
+          <span key={p.key} {...tipProps({ heading: p.label, body: `${formatBytes(p.bytes)} · ${pct(p.bytes, total)} of the bytes, ${p.destinations} destination${p.destinations === 1 ? '' : 's'}` })}
+            style={{ flex: `${p.bytes} 0 0`, minWidth: 3, background: MIX_COLOUR[p.key] }} />
+        ))}
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: '10px 1fr auto auto', gap: '3px 8px', alignItems: 'center', marginTop: 6, fontSize: 10.5 }}>
+        {parts.map((p) => (
+          <React.Fragment key={p.key}>
+            <span style={{ width: 10, height: 3, borderRadius: 2, background: MIX_COLOUR[p.key] }} />
+            <span style={{ color: 'var(--text-body)' }}>{p.label} <span style={{ color: 'var(--text-faint)' }}>· {p.destinations}</span></span>
+            <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--text)', textAlign: 'right' }}>{formatBytes(p.bytes)}</span>
+            <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-faint)', textAlign: 'right', minWidth: 30 }}>{pct(p.bytes, total)}</span>
+          </React.Fragment>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** The busiest destinations through a box (the most refused, at a policy label): a bar each, a click follows its path. */
+function TopDestinations({ b }: { b: BoxDetails }) {
+  const setNetDest = useSessionStore((s) => s.setNetDest);
+  const byRefusals = b.kind === 'policy';
+  const value = (r: BoxDetails['top'][number]) => (byRefusals ? r.refused : r.bytes);
+  const max = Math.max(1, ...b.top.map(value));
+  if (!b.top.length) return null;
+  return (
+    <div data-top-dests="">
+      <SectionHeading>{byRefusals ? 'Most refused' : 'Busiest destinations'} <span style={{ color: 'var(--text-faint)', fontWeight: 400 }}>{b.totals.destinations}</span></SectionHeading>
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 72px', gap: '4px 8px', alignItems: 'center' }}>
+        {b.top.map((r) => (
+          <React.Fragment key={r.host}>
+            <button type="button" onClick={() => setNetDest(r.host)} {...tipProps(`Follow the path to ${r.host}`)} style={{
+              display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0, padding: 0, background: 'transparent', border: 'none', cursor: 'pointer', textAlign: 'left',
+            }}>
+              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '100%' }}>
+                {r.host}{r.state === 'active' && <span style={{ color: 'var(--net-tunnel)' }}> ●</span>}
+              </span>
+              <span style={{ display: 'block', height: 4, width: `${Math.max(2, (100 * value(r)) / max)}%`, borderRadius: 2, background: MIX_COLOUR[r.key] }} />
+            </button>
+            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10.5, color: 'var(--text-body)', textAlign: 'right' }}>
+              {byRefusals ? `${r.refused} refused` : formatBytes(r.bytes)}
+            </span>
+          </React.Fragment>
+        ))}
+      </div>
+      {b.more > 0 && <div style={{ fontSize: 10.5, color: 'var(--text-faint)', marginTop: 4 }}>+{b.more} more</div>}
+    </div>
+  );
+}
+
+/** Every exit glove recorded for the session, newest first: when the tunnel's exit changed, and checks that failed. */
+function ExitHistory({ exits }: { exits: BoxDetails['exits'] }) {
+  if (!exits.length) return null;
+  const ips = new Set(exits.map((e) => e.ip).filter(Boolean)).size;
+  const shown = exits.slice(0, 10);
+  return (
+    <div data-exit-history="">
+      <SectionHeading>Exit checks <span style={{ color: 'var(--text-faint)', fontWeight: 400 }}>{exits.length} · {ips} address{ips === 1 ? '' : 'es'}</span></SectionHeading>
+      <ol style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gap: 3 }}>
+        {shown.map((e, i) => (
+          <li key={`${e.t}-${i}`} style={{ display: 'grid', gridTemplateColumns: '12px minmax(0, 1fr) auto', gap: 6, alignItems: 'center', fontSize: 10.5 }}>
+            <NetIcon name={e.healthy ? 'check' : 'alert'} size={10} color={e.healthy ? 'var(--net-tunnel)' : 'var(--warn)'} />
+            <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--text)' }}>{e.ip ?? 'no address'}</span>
+              {e.where && <span style={{ color: 'var(--text-faint)' }}> · {e.where}</span>}
+            </span>
+            <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-faint)' }}>{clockOf(e.t)}</span>
+          </li>
+        ))}
+      </ol>
+      {exits.length > shown.length && <div style={{ fontSize: 10.5, color: 'var(--text-faint)', marginTop: 4 }}>+{exits.length - shown.length} earlier</div>}
+    </div>
+  );
+}
+
+/** An exit record's time, local, to the minute (the date too when it is not today). */
+function clockOf(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  const time = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  return d.toDateString() === new Date().toDateString() ? time : `${d.toLocaleDateString([], { month: 'short', day: 'numeric' })} ${time}`;
+}
+
+/** Details for a box that is not a destination: what it is for, what glove says about it, and its traffic. */
+function BoxPanel({ data, id }: { data: NetSessionData; id: string }) {
+  // Which hosts a box stands for does not depend on the size it is drawn at.
+  const t = useMemo(() => layoutTopology(data, MIN_WIDTH, MIN_HEIGHT), [data]);
+  const b = useMemo(() => boxDetails(data, t, id), [data, t, id]);
+  if (!b) {
+    return <div style={{ padding: 14, fontSize: 11.5, color: 'var(--text-muted)' }}>That box is no longer in the diagram.</div>;
+  }
+  const { totals } = b;
+  const policy = b.kind === 'policy';
+  return (
+    <div style={{ padding: 12 }} data-box-details={b.id}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <NetIcon name={BOX_ICON[b.kind]} size={14} color={policy ? 'var(--error)' : 'var(--text-muted)'} />
+        <span style={{ fontFamily: b.mono ? 'var(--font-mono)' : undefined, fontSize: 13, fontWeight: 600, color: 'var(--text)', wordBreak: 'break-all' }}>{b.title}</span>
+        {totals.live > 0 && <Badge colour="var(--net-tunnel)">LIVE</Badge>}
+      </div>
+      <div style={{ fontSize: 10.5, color: 'var(--text-faint)', margin: '2px 0 0 22px' }}>{BOX_KIND[b.kind]}</div>
+      <Explanation explain={b.explain} />
+      {b.facts.length > 0 && (
+        <dl style={{ display: 'grid', gridTemplateColumns: 'max-content minmax(0, 1fr)', gap: '4px 10px', margin: 0, fontSize: 11 }}>
+          {b.facts.map((f) => (
+            <React.Fragment key={f.label}>
+              <dt style={{ color: 'var(--text-faint)' }}>{f.label}</dt>
+              <dd style={{ margin: 0, color: f.tone ? FACT_TONE[f.tone] : 'var(--text-body)', fontFamily: f.mono ? 'var(--font-mono)' : undefined, wordBreak: 'break-word' }}>{f.value}</dd>
+            </React.Fragment>
+          ))}
+        </dl>
+      )}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(92px, 1fr))', gap: 8, marginTop: 14 }}>
+        {!policy && <Tile label="SENT" value={formatBytes(totals.up)} colour="var(--net-up)" icon="up" />}
+        {!policy && <Tile label="RECEIVED" value={formatBytes(totals.down)} colour="var(--net-down)" icon="down" />}
+        {!policy && <Tile label="FLOWS" value={totals.flows.toLocaleString()} colour="var(--text-muted)" icon="activity" />}
+        {(policy || totals.refused > 0) && <Tile label="REFUSED" value={totals.refused.toLocaleString()} colour="var(--error)" icon="blocked" />}
+        {policy && <Tile label="DESTINATIONS" value={totals.destinations.toLocaleString()} colour="var(--text-muted)" icon="globe" />}
+      </div>
+      <RouteMix parts={b.mix} />
+      <TopDestinations b={b} />
+      <ExitHistory exits={b.exits} />
+    </div>
+  );
+}
+
 export function SelectedPath({ data }: { data: NetSessionData }) {
   const netDest = useSessionStore((s) => s.netDest);
   const setViewMode = useSessionStore((s) => s.setViewMode);
+  const box = useTopologyBox(data.token);
   const path = useMemo(() => (netDest ? pathHops(data, netDest) : null), [data, netDest]);
+  // Keyed by the box: another box (or this one again later) starts with its explanation shown.
+  if (box && !netDest) return <BoxPanel key={box} data={data} id={box} />;
   if (!path) {
     return (
       <div style={{ padding: 14, fontSize: 11.5, color: 'var(--text-muted)', lineHeight: 1.5 }}>
-        Select a destination or a band in the diagram to follow its path hop by hop, and see which hops glove verified and which are only declared.
+        Select any box in the diagram. A destination or a band follows its path hop by hop, and shows which hops glove verified and which are only declared;
+        any other box says what it is for and shows the traffic through it.
       </div>
     );
   }
@@ -460,6 +731,7 @@ export function SelectedPath({ data }: { data: NetSessionData }) {
       <div style={{ fontSize: 10.5, color: 'var(--text-faint)', margin: '2px 0 10px 22px' }}>
         {[d.tools.map(toolLabel).join(', '), `${d.flows} flow${d.flows === 1 ? '' : 's'}`, formatBytes(d.bytesUp + d.bytesDown)].filter(Boolean).join(' · ')}
       </div>
+      <Explanation key={netDest} explain={explainBox(data, null, `${d.state === 'broken' ? 'origin:broken' : 'dest'}:${d.key}`)} />
       <ol aria-label="Hops" style={{ listStyle: 'none', margin: 0, padding: 0 }}>
         {hops.map((hop, i) => (
           <li key={hop.id} style={{ display: 'grid', gridTemplateColumns: '18px 1fr', gap: 8, position: 'relative', paddingBottom: i === hops.length - 1 ? 0 : 12 }}>

@@ -145,7 +145,8 @@ linked above.
    (lazy chunk) and geolocation only from a local MMDB file the user supplies (`netobs/geo.ts`), looking
    up only in-tunnel/literal destination IPs; the running-app check asserts every request goes to Layman.
    Geometry is pure and tested, components only draw: the Map's in `lib/net-geo.ts`, the Topology
-   diagram's (columns, bands, the policy wall, the selected path's hops) in `lib/net-topology.ts`.
+   diagram's (columns, bands, the policy wall, the selected path's hops) in `lib/net-topology.ts`, and
+   what Details says about any other box in `lib/net-topology-box.ts`.
    Trace joins a turn's tool calls to its flows in `netobs/correlate.ts` (pure; host + time, nearest
    start, search → fan-out, else Unattributed — never guessed; a kept-alive connection a later call
    rides is named in `openIds`, never claimed). Its Layman sessions are those whose

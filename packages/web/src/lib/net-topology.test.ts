@@ -3,6 +3,7 @@ import {
   bandPath, bandWidth, countLabel, exitSourceHost, layoutTopology, outcomeOf, pathHops, projectTopology, scrollThumb, scrollToDest, spread, thumbDrag, keyScroll, wheelDelta, easeScroll, topologyServices,
   upstreamHost, MIN_WIDTH, type Topology, type TopoBand,
 } from './net-topology.js';
+import { boxDetails, explainBox, TOP_N } from './net-topology-box.js';
 import { dest, rulesView, sessionData } from './net-test-fixtures.js';
 import type { DestinationAggregate, NetSessionFile } from './netobs-types.js';
 import type { NetSessionData } from './net-state.js';
@@ -285,7 +286,7 @@ describe('other sessions', () => {
     const DEST_HALF = 11;
     /** Where a band into a destination ends, from its path's last point. */
     const endY = (d: string) => Number(d.split(' ').at(-1)!.split(',')[1]);
-    const intoDests = (bands: readonly TopoBand[]) => bands.filter((b) => b.toDest);
+    const intoDests = (bands: readonly TopoBand[]) => bands.filter((b) => b.toRow?.col === 'dests');
 
     it('gives every destination a row, nothing folded, busiest first, at a fixed pitch', () => {
       expect(rows).toHaveLength(60);
@@ -312,7 +313,7 @@ describe('other sessions', () => {
       const p = projectTopology(t, s);
       for (const b of intoDests(p.bands)) {
         const y = endY(b.d);
-        if (p.visible.has(b.to)) expect(y).toBeCloseTo(b.toDest!.y2 - s, 5);
+        if (p.visible.has(b.to)) expect(y).toBeCloseTo(b.toRow!.y2 - s, 5);
         else expect(y < t.dests.top + 12 || y > t.dests.bottom - 12).toBe(true);
       }
       expect(p.above!.count + p.below!.count + p.visible.size).toBe(60);
@@ -449,6 +450,57 @@ describe('other sessions', () => {
     expect(t.wall.labels).toEqual([]);
     expect(byId(t, 'route:direct').icon).toBe('check');
   });
+
+  describe('broken paths that scroll', () => {
+    // Twenty broken paths: far more than fit under the exit. None is folded away.
+    const broken = Array.from({ length: 20 }, (_, i) => dest(`b${String(i).padStart(2, '0')}.example:443`, { ...proxy, state: 'broken', lastSeen: 100 - i }));
+    const t = layoutTopology(fixture({}, [...fixtureDests(), ...broken]), 1080, 600);
+    const rows = t.nodes.filter((n) => n.kind === 'broken');
+    const exit = byId(t, 'origin:exit');
+
+    it('gives every broken path a row, newest first, in a window under the exit that scrolls', () => {
+      expect(rows).toHaveLength(21);
+      expect(t.broken.rows).toEqual(rows.map((n) => n.id));
+      expect(rows[0].title).toBe('b00.example');
+      expect(t.broken.top).toBeGreaterThan(exit.y + exit.h);
+      expect(t.broken.bottom).toBeLessThanOrEqual(t.height);
+      expect(t.broken.maxScroll).toBeGreaterThan(0);
+      expect(t.broken.x).toBe(exit.x);
+    });
+
+    it('ends each broken band at its row, and only the broken column’s scroll moves them', () => {
+      const into = t.bands.filter((b) => b.toRow?.col === 'broken');
+      expect(into).toHaveLength(21);
+      expect(into.every((b) => b.kind === 'broken')).toBe(true);
+      const p = projectTopology(t, t.broken.maxScroll, 'broken');
+      expect(p.above?.count).toBeGreaterThan(0);
+      expect(p.below).toBeNull();
+      expect(p.visible.has(t.broken.rows.at(-1)!)).toBe(true);
+      // The destinations' bands are untouched by it, and its own untouched by theirs.
+      const before = new Map(t.bands.map((b) => [b.id, b.d]));
+      expect(p.bands.filter((b) => b.toRow?.col !== 'broken').every((b) => b.d === before.get(b.id))).toBe(true);
+      expect(projectTopology(t, 0, 'dests').bands.filter((b) => b.toRow?.col === 'broken').every((b) => b.d === before.get(b.id))).toBe(true);
+    });
+
+    it('scrolls, drags and keys within its own window', () => {
+      expect(scrollToDest(t, t.broken.rows.at(-1)!, 'broken')).toBe(t.broken.maxScroll);
+      expect(scrollToDest(t, t.broken.rows[0], 'dests')).toBeNull();
+      expect(keyScroll(t, 0, 'End', 'broken')).toBe(t.broken.maxScroll);
+      expect(keyScroll(t, 0, 'ArrowDown', 'broken')).toBe(t.broken.pitch);
+      const thumb = scrollThumb(t, 0, 'broken')!;
+      expect(thumb.x).toBeGreaterThanOrEqual(t.broken.x + t.broken.w);
+      expect(thumbDrag(t, 0, 1e6, 'broken')).toBe(t.broken.maxScroll);
+    });
+
+    it('does not scroll a few, and has no window with none', () => {
+      const few = layoutTopology(fixture(), 1080, 780);
+      expect([few.broken.rows.length, few.broken.maxScroll]).toEqual([1, 0]);
+      expect(scrollThumb(few, 0, 'broken')).toBeNull();
+      const none = layoutTopology(fixture({}, fixtureDests().filter((d) => d.state !== 'broken')), 1080, 780);
+      expect(none.broken.rows).toEqual([]);
+      expect(projectTopology(none, 0, 'broken').above).toBeNull();
+    });
+  });
 });
 
 describe('the selected path', () => {
@@ -487,5 +539,79 @@ describe('the selected path', () => {
 
   it('is null for a host this session never reached', () => {
     expect(pathHops(fixture(), 'nowhere.example')).toBeNull();
+  });
+});
+
+describe('a box in Details', () => {
+  const data = fixture({
+    exits: [
+      { v: 1, type: 'exit', t: '2026-11-08T10:00:00Z', env: 'e', session: 'e', kind: 'vpn', ip: '185.65.135.1', country: 'Sweden', city: 'Stockholm', lat: 0, lon: 0, source: null, healthy: true },
+      { v: 1, type: 'exit', t: '2026-11-08T11:00:00Z', env: 'e', session: 'e', kind: 'vpn', ip: '195.177.93.17', country: 'Switzerland', city: null, lat: 0, lon: 0, source: null, healthy: true },
+    ],
+  });
+  const t = layoutTopology(data, 1080, 780);
+  const details = (id: string) => boxDetails(data, t, id)!;
+  const factsOf = (id: string) => Object.fromEntries(details(id).facts.map((f) => [f.label, f.value]));
+
+  it('explains every box the diagram draws, and every label on the wall', () => {
+    for (const n of t.nodes) expect(explainBox(data, t, n.id), n.id).not.toBeNull();
+    for (const l of t.wall.labels) expect(explainBox(data, t, l.id), l.id).not.toBeNull();
+    expect(explainBox(data, t, 'svc:browser')!.heading).toMatch(/does not watch/);
+    expect(explainBox(data, t, 'svc:fanout')!.heading).toMatch(/SearXNG/);
+    expect(explainBox(data, t, 'nope')).toBeNull();
+    expect(boxDetails(data, t, 'nope')).toBeNull();
+  });
+
+  it('a service: what glove declared, and only the traffic through it', () => {
+    const b = details('svc:proxy');
+    expect(b.kind).toBe('service');
+    expect(factsOf('svc:proxy')).toMatchObject({
+      'Listens on': 'glove-pi-search-proxy:8888', Mode: 'http-proxy', 'Reached by': 'the harness', Upstream: 'egress-proxy:8888', Route: 'vpn', Watched: 'yes',
+    });
+    // 9 destinations through proxy (4 refused, 1 broken), none through another service.
+    expect([b.totals.destinations, b.totals.refused, b.totals.live, b.totals.flows]).toEqual([9, 4, 1, 10]);
+    expect(b.top[0]).toMatchObject({ host: 'arxiv.org', key: 'tunnel' });
+    expect(b.mix.map((p) => p.key)).toEqual(['tunnel', 'broken']);
+    expect(b.mix[0].destinations).toBe(4);
+  });
+
+  it('the fan-out: not the harness, and what triggers it', () => {
+    const f = factsOf('svc:fanout');
+    expect([f['Reached by'], f['Triggered by'], f.Client]).toEqual(['a sidecar, not the harness', 'search', 'SearXNG']);
+    expect(details('svc:fanout').mix.map((p) => [p.key, p.destinations])).toEqual([['fanout', 4]]);
+  });
+
+  it('the sandbox: the gate, and bytes by route across what it reached', () => {
+    const b = details('sandbox');
+    expect(factsOf('sandbox').Services).toBe('5 declared · 4 watched');
+    expect(b.mix.map((p) => p.key)).toEqual(['tunnel', 'local', 'broken']);
+    expect(b.top.every((r) => r.key !== 'fanout')).toBe(true);
+  });
+
+  it('the tunnel route and the exit, with every exit check newest first', () => {
+    expect(factsOf('route:tunnel')).toMatchObject({ Declared: 'vpn', 'Upstream health': 'healthy', Exit: 'verified' });
+    const exit = details('origin:exit');
+    expect(factsOf('origin:exit').Address).toBe('195.177.93.17');
+    expect(exit.exits.map((e) => [e.ip, e.where])).toEqual([['195.177.93.17', 'Switzerland'], ['185.65.135.1', 'Stockholm, Sweden']]);
+    expect(details('route:tunnel').exits).toEqual([]);
+  });
+
+  it('a policy label: the rule, what it matches, and the most refused', () => {
+    const rule = details('wall:rule:r_01M3FIXTUREADSBLOCK00000000');
+    expect(rule.kind).toBe('policy');
+    expect(factsOf('wall:rule:r_01M3FIXTUREADSBLOCK00000000')).toMatchObject({ Matches: 'host *.tracker.example', Action: 'block', Default: 'allow' });
+    expect(rule.top.map((r) => [r.host, r.refused, r.key])).toEqual([['ads.tracker.example', 1, 'refused']]);
+    const guard = details('wall:guard');
+    expect(guard.totals.refused).toBe(3);
+    expect(guard.mix).toEqual([]);
+  });
+
+  it('caps the busiest list and counts the rest', () => {
+    const many = Array.from({ length: 12 }, (_, i) => dest(`m${i}.example:443`, { ...proxy, bytesDown: 100 * (i + 1) }));
+    const d = fixture({}, many);
+    const b = boxDetails(d, layoutTopology(d, 1080, 780), 'svc:proxy')!;
+    expect(b.top).toHaveLength(TOP_N);
+    expect(b.top[0].host).toBe('m11.example');
+    expect(b.more).toBe(12 - TOP_N);
   });
 });
