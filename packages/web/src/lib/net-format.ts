@@ -30,7 +30,8 @@ export function formatAge(ms: number | null): string {
   return h < 48 ? `${h} h` : `${Math.round(h / 24)} d`;
 }
 
-const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+/** `1 rule`, `3 rules`. */
+export const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
 export type ChipTone = 'ok' | 'tunnel' | 'warn' | 'error' | 'violet' | 'neutral' | 'muted';
 export type ChipIcon = 'pulse' | 'tunnel' | 'check' | 'shield' | 'file' | 'alert' | 'clock' | 'direct';

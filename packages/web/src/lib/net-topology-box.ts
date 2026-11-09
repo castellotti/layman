@@ -11,9 +11,10 @@ import type { NetSessionData } from './net-state.js';
 import type { DestinationAggregate, NetService, NetState, RuleMatch } from './netobs-types.js';
 import {
   EGRESS_CLIENTS, clientName, exitSourceHost, fromSandbox, hopsInto, isFanoutService, outcomeOf, routeOf, ruleLabel, serviceRoute,
-  serviceShares, topologyServices, triggerOf, upstreamHost, type Topology, type TopoInput,
+  serviceShares, topologyServices, triggerOf, upstreamHost, type Outcome, type Topology, type TopoInput,
 } from './net-topology.js';
 import { formatStamp } from './net-range.js';
+import { plural } from './net-format.js';
 import { guardReason, hostLabel, toolLabel } from './net-table.js';
 import { isLlmUpstream, nextServices } from './netobs-types.js';
 
@@ -75,7 +76,6 @@ const MIX_LABEL: Readonly<Record<MixKey, string>> = {
 };
 const MIX_ORDER: readonly MixKey[] = ['tunnel', 'fanout', 'local', 'vpn', 'direct', 'broken'];
 
-const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 const destHost = (d: DestinationAggregate) => d.host ?? hostLabel(d);
 
 /** How one destination's bytes left, as the diagram colours its band. */
@@ -123,7 +123,6 @@ function traffic(dests: DestinationAggregate[], services: readonly NetService[],
     const part = mix.get(key) ?? { key, label: MIX_LABEL[key], bytes: 0, destinations: 0, hosts: new Set<string>() };
     part.bytes += up + down;
     part.hosts.add(label);
-    part.destinations = part.hosts.size;
     mix.set(key, part);
   }
   const list = [...rows.values()];
@@ -132,7 +131,7 @@ function traffic(dests: DestinationAggregate[], services: readonly NetService[],
   list.sort((a, b) => (byRefusals ? b.refused - a.refused : 0) || b.bytes - a.bytes || a.label.localeCompare(b.label));
   return {
     totals,
-    mix: [...mix.values()].filter((p) => p.bytes > 0).map(({ hosts: _, ...p }) => p)
+    mix: [...mix.values()].filter((p) => p.bytes > 0).map(({ hosts, ...p }) => ({ ...p, destinations: hosts.size }))
       .sort((a, b) => b.bytes - a.bytes || MIX_ORDER.indexOf(a.key) - MIX_ORDER.indexOf(b.key)),
     top: list.slice(0, TOP_N),
     more: Math.max(0, list.length - TOP_N),
@@ -188,6 +187,18 @@ const ROUTE_EXPLANATION: Readonly<Record<string, BoxExplanation>> = {
   direct: { heading: 'Direct: no tunnel', body: 'Traffic that left without the tunnel, from your real IP address. It should be empty unless a host is a known VPN route (your corporate network), which is shown apart and not as a leak.' },
 };
 
+/** What a destination's path is, by how it ended (`outcomeOf`): the note above its hops. */
+export const DESTINATION_EXPLANATION: Readonly<Record<Outcome, BoxExplanation>> = {
+  broken: { heading: 'A broken path', body: 'The gate allowed this connection, but the route’s upstream could not reach the destination (unreachable or timed out). It never got there; when many paths break at once, suspect the tunnel rather than the hosts.' },
+  refused: { heading: 'A refused destination', body: 'The sandbox asked for this host and the gate refused it at the policy wall, by glove’s guard, one of your rules or the default. Nothing left the sandbox, so the path below stops at the policy and the host has no row among the destinations.' },
+  reached: { heading: 'A destination', body: 'A host the sandbox reached. Its band’s colour says how it got there and its width how much moved. The hops below say which glove observed or verified, and which are only declared.' },
+};
+
+/** The hosts a box (a node, or a label on the policy wall) stands for; null for an id that is neither. */
+export function boxHosts(t: Pick<Topology, 'nodes' | 'wall'>, id: string): string[] | null {
+  return t.nodes.find((n) => n.id === id)?.hosts ?? t.wall.labels.find((l) => l.id === id)?.hosts ?? null;
+}
+
 /** What a box is for: the panel's dismissable note. Null for an id that is no box. */
 export function explainBox(data: TopoInput, t: Pick<Topology, 'wall'> | null, id: string): BoxExplanation | null {
   if (id === 'sandbox') {
@@ -195,21 +206,16 @@ export function explainBox(data: TopoInput, t: Pick<Topology, 'wall'> | null, id
   }
   if (id.startsWith('svc:')) {
     const name = id.slice(4);
-    return serviceExplanation(topologyServices(data).find((s) => s.service === name), topologyServices(data));
+    const services = topologyServices(data);
+    return serviceExplanation(services.find((s) => s.service === name), services);
   }
   if (id.startsWith('route:')) return ROUTE_EXPLANATION[id.slice(6)] ?? null;
   if (id === 'origin:exit') {
     return { heading: 'The apparent origin', body: 'The address destinations see the sandbox’s tunnelled traffic come from: the tunnel’s exit. glove checks it itself (exit identity) and Layman only shows what glove recorded. “Not verified” means the tunnel is declared but its exit has not been confirmed.' };
   }
-  if (id.startsWith('origin:broken:')) {
-    return { heading: 'A broken path', body: 'The gate allowed this connection, but the route’s upstream could not reach the destination (unreachable or timed out). It never got there; when many paths break at once, suspect the tunnel rather than the hosts.' };
-  }
-  if (id.startsWith('refused:')) {
-    return { heading: 'A refused destination', body: 'The sandbox asked for this host and the gate refused it at the policy wall, by glove’s guard, one of your rules or the default. Nothing left the sandbox, so the path below stops at the policy and the host has no row among the destinations.' };
-  }
-  if (id.startsWith('dest:')) {
-    return { heading: 'A destination', body: 'A host the sandbox reached. Its band’s colour says how it got there and its width how much moved. The hops below say which glove observed or verified, and which are only declared.' };
-  }
+  if (id.startsWith('origin:broken:')) return DESTINATION_EXPLANATION.broken;
+  if (id.startsWith('refused:')) return DESTINATION_EXPLANATION.refused;
+  if (id.startsWith('dest:')) return DESTINATION_EXPLANATION.reached;
   const label = t?.wall.labels.find((l) => l.id === id);
   if (label) {
     return label.kind === 'guard'

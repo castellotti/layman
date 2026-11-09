@@ -17,11 +17,11 @@ import {
   type BandKind, type DestSort, type DestStub, type HopEvidence, type LineTone, type ScrollColumnId, type Tone, type TopoBand, type TopoNode,
   type TopoProjection, type Topology,
 } from '../../lib/net-topology.js';
-import { boxDetails, explainBox, type BoxDetails, type BoxExplanation, type BoxFact, type MixKey } from '../../lib/net-topology-box.js';
+import { boxDetails, boxHosts as hostsOfBox, DESTINATION_EXPLANATION, type BoxDetails, type BoxExplanation, type BoxFact, type MixKey } from '../../lib/net-topology-box.js';
 import { useSharedLayout, useTopologyBox, useTopologyFocus } from './topologyFocus.js';
 import { formatStamp } from '../../lib/net-range.js';
 import { buttonStyle } from './ControlPopover.js';
-import { Badge, Tile } from './DetailCard.js';
+import { Badge, SectionHead, Tile } from './DetailCard.js';
 import { NetIcon, useStored, type NetIconName } from './netui.js';
 import { isLlmDestination, tokenTiles } from '../../lib/net-tokens.js';
 import type { NetRange } from '../../lib/netobs-types.js';
@@ -105,7 +105,7 @@ function Node({ n, selected, onSelect, tabbable = true }: { n: TopoNode; selecte
     return (
       <g {...common} {...tipProps(n.title)} data-node={n.id}>
         {/* Its hit area, and its outline when selected. */}
-        <rect x={n.x - 4} y={n.y - 6} width={n.w + 8} height={n.h + 12} rx={4} fill={selected ? 'rgba(90,156,248,0.10)' : 'transparent'}
+        <rect x={n.x - 4} y={n.y - 6} width={n.w + 8} height={n.h + 12} rx={4} fill={selected ? SELECTED_FILL : 'transparent'}
           stroke={selected ? 'var(--info)' : 'none'} strokeWidth={1.5} />
         <g transform={`translate(${n.x},${n.y - 2})`}><NetIcon name="broken" color="var(--warn)" size={18} strokeWidth={1.8} /></g>
         <text x={n.x} y={n.y + 26} fontSize={11} fontFamily="var(--font-mono)" fill="var(--warn)">{clip(n.title, n.w + 30)}</text>
@@ -117,7 +117,7 @@ function Node({ n, selected, onSelect, tabbable = true }: { n: TopoNode; selecte
   if (n.kind === 'dest') {
     return (
       <g {...common} {...tipProps(n.title)} data-node={n.id}>
-        <rect x={n.x} y={n.y} width={n.w} height={n.h} rx={4} fill={selected ? 'rgba(90,156,248,0.10)' : 'var(--bg-card)'}
+        <rect x={n.x} y={n.y} width={n.w} height={n.h} rx={4} fill={selected ? SELECTED_FILL : 'var(--bg-card)'}
           stroke={stroke} strokeWidth={selected ? 1.5 : 1} strokeDasharray={n.dashed ? '3 3' : undefined} />
         <text x={n.x + 8} y={n.y + n.h / 2 + 4} fontSize={11} fontFamily="var(--font-mono)" fill={n.tone === 'direct' ? '#FF8A80' : 'var(--text)'}>
           {clip(n.title, n.w - (n.live ? 22 : 14))}
@@ -129,7 +129,7 @@ function Node({ n, selected, onSelect, tabbable = true }: { n: TopoNode; selecte
   return (
     <g {...common} data-node={n.id}>
       <rect x={n.x} y={n.y} width={n.w} height={n.h} rx={5}
-        fill={selected ? 'rgba(90,156,248,0.10)' : n.tone === 'muted' && n.dashed ? 'transparent' : 'var(--bg-card)'}
+        fill={selected ? SELECTED_FILL : n.tone === 'muted' && n.dashed ? 'transparent' : 'var(--bg-card)'}
         stroke={stroke} strokeWidth={selected ? 1.6 : n.kind === 'sandbox' ? 1.4 : 1} strokeDasharray={n.dashed && !selected ? '4 3' : undefined} />
       <text x={n.x + 10} y={n.y + 17} fontSize={12} fontWeight={600} fontFamily={n.mono ? 'var(--font-mono)' : 'var(--font-ui)'}
         fill={n.tone === 'muted' ? 'var(--text-muted)' : 'var(--text)'}>{clip(n.title, n.w - (n.icon ? 34 : 18), 7.2)}</text>
@@ -157,7 +157,7 @@ function Stub({ stub, x, onScroll, noun, attr }: {
   const what = `${noun}${stub.count === 1 ? '' : 's'}`;
   return (
     <g {...{ [attr]: stub.edge }} {...svgButton(`Scroll to the ${stub.count} ${what} ${stub.edge}`, () => onScroll(stub.scrollTo))}
-      {...tipProps({ heading: `${stub.count} ${what} ${stub.edge}`, body:stub.hosts.slice(0, 12).join('\n') + (stub.hosts.length > 12 ? `\n+${stub.hosts.length - 12} more` : '') })}>
+      {...tipProps({ heading: `${stub.count} ${what} ${stub.edge}`, body: stub.hosts.slice(0, 12).join('\n') + (stub.hosts.length > 12 ? `\n+${stub.hosts.length - 12} more` : '') })}>
       <rect x={x - 3} y={stub.bar.y} width={3} height={stub.bar.h} fill="var(--text-faint)" opacity={0.6} />
       <text x={x + 6} y={stub.textY} fontSize={10} fontFamily="var(--font-mono)" fill="var(--text-muted)">
         {stub.edge === 'above' ? '↑' : '↓'} {stub.count} {stub.edge}{stub.bytes ? ` · ${formatBytes(stub.bytes)}` : ''}
@@ -172,6 +172,9 @@ const SORTS: Record<DestSort, { label: string; next: DestSort }> = {
 const SORT_KEY = 'layman.topology.destSort';
 
 const reducedMotion = () => typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+
+/** A selected box's (or wall label's) fill. */
+const SELECTED_FILL = 'rgba(90,156,248,0.10)';
 
 /** A policy-wall label's hit area: wide enough for `your rule “…” · 12`. */
 const WALL_LABEL_W = 180;
@@ -389,10 +392,7 @@ export function TopologyDiagram({ data }: { data: NetSessionData }) {
   const activate = (n: TopoNode) => (n.kind === 'dest' || n.kind === 'broken' ? select(n.hosts) : selectBox(n.id));
   const on = (hosts: string[]) => netDest !== null && hosts.includes(netDest);
   // A selected box lights the bands into and out of it, and those carrying only its hosts on from there.
-  const boxHosts = useMemo(() => {
-    if (!box) return null;
-    return new Set(t.nodes.find((n) => n.id === box)?.hosts ?? t.wall.labels.find((l) => l.id === box)?.hosts ?? []);
-  }, [box, t]);
+  const boxHosts = useMemo(() => (box ? new Set(hostsOfBox(t, box) ?? []) : null), [box, t]);
   const lit = (b: TopoBand) => (boxHosts
     ? b.from === box || b.to === box || (b.hosts.length > 0 && b.hosts.every((x) => boxHosts.has(x)))
     : on(b.hosts));
@@ -428,7 +428,7 @@ export function TopologyDiagram({ data }: { data: NetSessionData }) {
   // Refusals and broken paths on top: thin, and the point of the diagram.
   const order = (k: BandKind) => (k === 'guard' || k === 'refused' || k === 'broken' || k === 'trigger' ? 1 : 0);
   // Each column's scroll moves only the bands into its own rows.
-  const projected = projectTopology(t, broken.view.scrollTop, 'broken', dests.view.bands).bands;
+  const projected = useMemo(() => projectTopology(t, broken.view.scrollTop, 'broken', dests.view.bands).bands, [t, broken.view.scrollTop, dests.view.bands]);
   const bands = [...projected].sort((a, b) => order(a.kind) - order(b.kind));
 
   return (
@@ -458,7 +458,7 @@ export function TopologyDiagram({ data }: { data: NetSessionData }) {
               <g key={l.id} data-wall-label={l.id} {...svgButton(`Show ${l.text} in Details`, () => selectBox(l.id))}>
                 {/* Its hit area, and its outline when selected. */}
                 <rect x={t.wall.x + 6} y={l.y - 12} width={WALL_LABEL_W} height={l.sub ? 34 : 22} rx={4}
-                  fill={selected ? 'rgba(90,156,248,0.10)' : 'transparent'} stroke={selected ? 'var(--info)' : 'none'} strokeWidth={1.5} />
+                  fill={selected ? SELECTED_FILL : 'transparent'} stroke={selected ? 'var(--info)' : 'none'} strokeWidth={1.5} />
                 <g transform={`translate(${t.wall.x + 12},${l.y - 7})`}>
                   <NetIcon name={l.kind === 'guard' ? 'lock' : 'blocked'} size={12} color={colour} />
                 </g>
@@ -560,14 +560,6 @@ const FACT_TONE: Readonly<Record<NonNullable<BoxFact['tone']>, string>> = {
   ok: 'var(--net-tunnel)', warn: 'var(--warn)', error: '#FF8A80', faint: 'var(--text-faint)',
 };
 
-function SectionHeading({ children }: { children: React.ReactNode }) {
-  return (
-    <div style={{ fontSize: 9.5, letterSpacing: '0.08em', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', margin: '14px 0 6px' }}>
-      {children}
-    </div>
-  );
-}
-
 const pct = (part: number, whole: number) => (whole > 0 ? `${Math.round((100 * part) / whole)}%` : '—');
 
 /** The bytes through a box, by route: one stacked bar, and a legend that names and sizes each part. */
@@ -576,7 +568,7 @@ function RouteMix({ parts }: { parts: BoxDetails['mix'] }) {
   const total = parts.reduce((a, p) => a + p.bytes, 0);
   return (
     <div data-route-mix="">
-      <SectionHeading>Bytes by route</SectionHeading>
+      <SectionHead>Bytes by route</SectionHead>
       <div role="img" aria-label={parts.map((p) => `${p.label} ${pct(p.bytes, total)}`).join(', ')}
         style={{ display: 'flex', gap: 2, height: 8, borderRadius: 4, overflow: 'hidden' }}>
         {parts.map((p) => (
@@ -607,7 +599,7 @@ function TopDestinations({ b }: { b: BoxDetails }) {
   if (!b.top.length) return null;
   return (
     <div data-top-dests="">
-      <SectionHeading>{byRefusals ? 'Most refused' : 'Busiest destinations'} <span style={{ color: 'var(--text-faint)', fontWeight: 400 }}>{b.totals.destinations}</span></SectionHeading>
+      <SectionHead>{byRefusals ? 'Most refused' : 'Busiest destinations'} <span style={{ color: 'var(--text-faint)', fontWeight: 400 }}>{b.totals.destinations}</span></SectionHead>
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 72px', gap: '4px 8px', alignItems: 'center' }}>
         {b.top.map((r) => {
           const host = r.host;
@@ -645,7 +637,7 @@ function ExitHistory({ exits }: { exits: BoxDetails['exits'] }) {
   const shown = exits.slice(0, 10);
   return (
     <div data-exit-history="">
-      <SectionHeading>Exit checks <span style={{ color: 'var(--text-faint)', fontWeight: 400 }}>{exits.length} · {ips} address{ips === 1 ? '' : 'es'}</span></SectionHeading>
+      <SectionHead>Exit checks <span style={{ color: 'var(--text-faint)', fontWeight: 400 }}>{exits.length} · {ips} address{ips === 1 ? '' : 'es'}</span></SectionHead>
       <ol style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gap: 3 }}>
         {shown.map((e, i) => (
           <li key={`${e.t}-${i}`} style={{ display: 'grid', gridTemplateColumns: '12px minmax(0, 1fr) auto', gap: 6, alignItems: 'center', fontSize: 10.5 }}>
@@ -738,7 +730,7 @@ export function SelectedPath({ data }: { data: NetSessionData }) {
       <div style={{ fontSize: 10.5, color: 'var(--text-faint)', margin: '2px 0 10px 22px' }}>
         {[d.tools.map(toolLabel).join(', '), `${d.flows} flow${d.flows === 1 ? '' : 's'}`, formatBytes(d.bytesUp + d.bytesDown)].filter(Boolean).join(' · ')}
       </div>
-      <Explanation key={netDest} explain={explainBox(data, null, `${({ refused: 'refused', broken: 'origin:broken', reached: 'dest' } as const)[outcomeOf(d)]}:${d.key}`)} />
+      <Explanation key={netDest} explain={DESTINATION_EXPLANATION[outcomeOf(d)]} />
       <ol aria-label="Hops" style={{ listStyle: 'none', margin: 0, padding: 0 }}>
         {hops.map((hop, i) => (
           <li key={hop.id} style={{ display: 'grid', gridTemplateColumns: '18px 1fr', gap: 8, position: 'relative', paddingBottom: i === hops.length - 1 ? 0 : 12 }}>

@@ -917,8 +917,8 @@ interface DestIndex {
 }
 const destIndexes = new WeakMap<Topology, Partial<Record<ScrollColumnId, DestIndex>>>();
 function destIndex(t: Topology, col: ScrollColumnId): DestIndex {
-  const per = destIndexes.get(t) ?? {};
-  destIndexes.set(t, per);
+  let per = destIndexes.get(t);
+  if (!per) destIndexes.set(t, (per = {}));
   let ix = per[col];
   if (ix) return ix;
   const ids = new Set(t[col].rows);
