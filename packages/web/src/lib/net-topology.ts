@@ -56,6 +56,8 @@ const WALL_CAPTION_ROOM = 28;
 const MAX_PINNED = 3;
 /** Between the model's path and the exit under it. */
 const PATH_CLEARANCE = 20;
+/** The gap between two routes in their column (and under a route the exit sits below). */
+const ROUTE_GAP = 20;
 /** Between the exit and the broken paths' window. */
 const ORIGIN_GAP = 24;
 /** Between two service boxes. */
@@ -582,7 +584,10 @@ export function layoutTopology(data: TopoInput, width: number, height: number, o
   const hasTunnel = routeKind === 'vpn' || routeKind === 'tor' || reachedOrBroken.some((l) => l.route === 'tunnel');
   const pathNeed = llmRoute
     ? MODEL_ROUTE_REACH + Math.max(ROUTE_MAX_H / 2, pinnedRows.length * DEST_MIN_PITCH - DEST_H / 2) + PATH_CLEARANCE : 0;
-  const originNeed = pathNeed + (hasTunnel ? EXIT_MAX_H + (brokenLegs.length ? ORIGIN_GAP : 0) : 0) + brokenMin;
+  // A route glove stacks above the tunnel (Local, or the LLM link when it is not the model's route)
+  // pushes the exit down by its height: its bands cross the origin column there (see the exit below).
+  const routesOverTunnel = (['local', 'llm'] as const).filter((r) => r !== llmRoute && reachedOrBroken.some((l) => l.route === r)).length;
+  const originNeed = pathNeed + (hasTunnel ? routesOverTunnel * (ROUTE_MAX_H + ROUTE_GAP) + EXIT_MAX_H + (brokenLegs.length ? ORIGIN_GAP : 0) : 0) + brokenMin;
   const svcNeed = svcItems.reduce((a, it) => a + nodeH(it.lines.length) + SVC_GAP, -SVC_GAP);
   const H = Math.max(MIN_HEIGHT, height, Math.ceil(contentTop + Math.max(BASE_CONTENT, originNeed, svcNeed) + BOTTOM_PAD));
   const bottom = H - BOTTOM_PAD;
@@ -680,7 +685,7 @@ export function layoutTopology(data: TopoInput, width: number, height: number, o
     const [m] = specs.splice(first, 1);
     specs.unshift({ ...m, want: Math.min(want(m.id) ?? contentTop, contentTop + MODEL_ROUTE_REACH) });
   }
-  const routeYs = spread(specs.map((s) => ({ want: s.want, h: nodeH(s.lines.length) })), contentTop, bottom, 20);
+  const routeYs = spread(specs.map((s) => ({ want: s.want, h: nodeH(s.lines.length) })), contentTop, bottom, ROUTE_GAP);
   const routeNode = new Map<RouteId, TopoNode>();
   specs.forEach((s, i) => {
     routeNode.set(s.id, node({
@@ -722,10 +727,14 @@ export function layoutTopology(data: TopoInput, width: number, height: number, o
     }
     const h = nodeH(lines.length) + 4;
     // As high as it goes: right under the model's path (or at the top without one), so it sits above
-    // the tunnel route and its bands fan down into the destinations. The height was sized so the
-    // broken paths still fit under it (`originNeed`).
+    // the tunnel route and its bands fan down into the destinations. A route stacked above the tunnel
+    // other than the model's (Local) runs its bands straight to the destinations across this column, so
+    // the exit goes under that route too; `spread`'s gap keeps it no lower than the tunnel. The height
+    // was sized so the broken paths still fit under it (`originNeed`).
+    const over = [...routeNode.values()].filter((n) => n !== tunnel && n !== llmRouteNode && n.y < tunnel.y);
+    const exitY = Math.max(pathFloor, ...over.map((n) => n.y + n.h + ROUTE_GAP));
     exitNode = node({
-      id: 'origin:exit', kind: 'exit', column: 'origin', x: colX('origin'), y: pathFloor, w: NODE_W.origin, h, title, lines,
+      id: 'origin:exit', kind: 'exit', column: 'origin', x: colX('origin'), y: exitY, w: NODE_W.origin, h, title, lines,
       tone: placed && data.gate.route.verified ? 'tunnel' : 'warn', hosts: uniq(tunnelReached.map((l) => l.host)),
       live: tunnelReached.some((l) => l.live),
     });

@@ -83,9 +83,17 @@ describe('Topology: nothing overlaps', () => {
     }
     const exit = t.nodes.find((n) => n.id === 'origin:exit');
     if (exit && t.pinned.length && llm) expect(exit.y).toBeGreaterThan(Math.max(bottom(llm), ...pinnedRows.map(bottom)));
-    // …and as high as that allows: no lower than the tunnel route it is behind.
+    // …and as high as that allows: no lower than the tunnel route it is behind (unless the model's
+    // path reaches below that route), and under any other route stacked above the tunnel, whose
+    // bands cross the origin column on their way to the destinations.
     const tunnel = t.nodes.find((n) => n.id === 'route:tunnel');
-    if (exit && tunnel) expect(exit.y).toBeLessThanOrEqual(tunnel.y);
+    if (exit && tunnel) {
+      const floor = t.pinned.length && llm ? Math.max(bottom(llm), ...pinnedRows.map(bottom)) + 20 : -Infinity;
+      expect(exit.y).toBeLessThanOrEqual(Math.max(tunnel.y, floor));
+      for (const r of t.nodes.filter((x) => x.kind === 'route' && x !== tunnel && !(t.pinned.length && x === llm) && x.y < tunnel.y)) {
+        expect(bottom(r), r.id).toBeLessThan(exit.y);
+      }
+    }
     if (t.broken.rows.length) {
       if (exit) expect(t.broken.top).toBeGreaterThan(bottom(exit));
       expect(t.broken.bottom - t.broken.top).toBeGreaterThan(20);
@@ -125,6 +133,17 @@ describe('Topology: nothing overlaps', () => {
     expect(t.wall.labels.length).toBeGreaterThanOrEqual(9);
     expect(t.height).toBeGreaterThan(420);
     checkStacked(t);
+  });
+
+  it('puts the exit under a Local route stacked above the tunnel, whose bands cross its column', () => {
+    // Without a model path the exit would sit at the very top, under Local's bands to the destinations.
+    const noModel = dests().filter((x) => x.tools[0] !== 'llm');
+    for (const t of [layoutTopology(data([...noModel, ...broken.slice(0, 5)]), 1000, 420), layoutTopology(data([...dests(), ...broken.slice(0, 5)]), 1000, 420)]) {
+      const local = node(t, 'route:local');
+      expect(local.y).toBeLessThan(node(t, 'route:tunnel').y);
+      expect(node(t, 'origin:exit').y).toBeGreaterThan(local.y + local.h);
+      checkStacked(t);
+    }
   });
 
   it('keeps the model\'s path along the top when glove declares the model\'s services last', () => {

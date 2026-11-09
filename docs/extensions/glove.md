@@ -396,8 +396,8 @@ Layman matches these by `tool`, `client` and `harness`, not by service names, ex
     So is the gate it went through (`net_destinations.service`, migration 7), so a destination whose
     files are gone is still drawn through its gate in Topology (violet from `browser-egress`) instead
     of as the harness's own tunnelled traffic, which showed one session's older Playwright
-    destinations teal under the newer violet ones. A row kept before migration 7 takes its gate from
-    its tool, but only where exactly one gate fits (the one with that tool that is, or is not, a
+    destinations teal under the newer violet ones. A row kept before migration 7 (`service` NULL; one kept
+    since with no gate stores `''`, so it is never inferred) takes its gate from its tool, but only where exactly one gate fits (the one with that tool that is, or is not, a
     hop, as the row was); with two (`ssh-build`, `ssh-db`) it stays unknown.
   - **Re-flagged when session.json changes.** The flag is set as each record is read, from the
     session.json of the moment, and session.json can be missing or unreadable at first, or be
@@ -1102,9 +1102,10 @@ Selected path panel that walks one destination's path hop by hop.
     runs level, or nearly, into its route: `llm-upstream` into the route at the top, an egress gate
     into the tunnel or Direct higher up the column than under its hop. The hop's own link then points
     up. A gate nothing hops into keeps glove's declared order, and a `next` cycle loses nothing. The Exit
-    is placed right below that path (`pathFloor`; at the top without one): as high as it goes, so it
-    sits above the tunnel route and its bands fan down into the destinations, and the model's band
-    never runs under it. The broken
+    is placed right below that path (`pathFloor`; at the top without one) and below any other route
+    stacked above the tunnel (Local), whose bands run straight across the origin column to the
+    destinations: as high as it goes, so it sits no lower than the tunnel route and its bands fan down
+    into the destinations, and neither the model's band nor Local's runs under it. The broken
     paths' window starts below both the Exit and the route the paths broke on, so it never crosses
     the band either.
 - **Bands** are sized by the square root of bytes, relative to the busiest band, and coloured by route:

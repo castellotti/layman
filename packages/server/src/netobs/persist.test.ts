@@ -49,6 +49,17 @@ describe('SqliteNetHistory', () => {
     expect(h.load()[0].destinations[0].key).toBe('api.example.com:443');
   });
 
+  it('tells a destination kept before its gate was stored apart from one that went through no gate', () => {
+    const d = db();
+    const h = new SqliteNetHistory(d, () => true);
+    h.save([session()]);
+    // Saved with no gate: read back as null, never inferred.
+    expect(h.load()[0].destinations.map((x) => x.service)).toEqual(['webfetch-egress', null]);
+    // A row from before migration 7 (NULL): read back as absent, which the store may infer.
+    d.prepare('UPDATE net_destinations SET service = NULL').run();
+    expect(h.load()[0].destinations.map((x) => x.service)).toEqual([undefined, undefined]);
+  });
+
   it('says whether it may write from the recording setting', () => {
     let on = false;
     const h = new SqliteNetHistory(db(), () => on);

@@ -66,18 +66,19 @@ const byHour = (a: HistoryHour, b: HistoryHour) =>
   a.hour - b.hour || (a.run ?? '').localeCompare(b.run ?? '') || a.key.localeCompare(b.key) || (a.tool ?? '').localeCompare(b.tool ?? '');
 /** Copies of `hours`, in `net_hours` order. */
 const sortedHours = (hours: Iterable<HistoryHour>) => [...hours].sort(byHour).map((h) => ({ ...h }));
-/** How long after its collector's stop a record still belongs to that run. */
 /**
  * The gate a kept destination went through, for a row kept before Layman stored it (migration 7):
  * the one gate with its tool that is a hop when it was a hop, and not one when it was not
- * (`browser` → `browser-egress`, `llm` → `llm-upstream`). Null when none or several fit: never guessed.
+ * (`browser` → `browser-egress`, `llm` → `llm-upstream`), `hops` being the session's hop services.
+ * Null when none or several fit: never guessed.
  */
-function serviceForTool(tool: string | null, hop: boolean, services: readonly NetService[]): string | null {
+function serviceForTool(tool: string | null, hop: boolean, services: readonly NetService[], hops: ReadonlySet<string>): string | null {
   if (!tool) return null;
-  const fits = services.filter((s) => s.tool === tool && isHopService(s, services) === hop);
+  const fits = services.filter((s) => s.tool === tool && hops.has(s.service) === hop);
   return fits.length === 1 ? fits[0].service : null;
 }
 
+/** How long after its collector's stop a record still belongs to that run. */
 const RUN_STOP_GRACE_MS = 5 * SECOND;
 /** 1 s buckets are kept for this long, then folded into 1 min buckets for the session. */
 const SECOND_BUCKET_SPAN = 60 * MINUTE;
@@ -1186,7 +1187,7 @@ export class NetStore extends EventEmitter {
 
   /** A destination only the kept history knows: what is left of it once the files are re-read. */
   private historyView(s: SessionData, h: HistoryDest, c: Seen): DestinationAggregate {
-    const service = h.service ?? serviceForTool(h.tool, h.hop === true, s.session?.services ?? []);
+    const service = h.service !== undefined ? h.service : serviceForTool(h.tool, h.hop === true, s.session?.services ?? [], s.hopServices);
     const facts = { host: h.host, ip: h.lastIp, port: h.port, service, tool: h.tool, scope: h.scope };
     const gate = { proxy: this.viaProxy(s, service, h.resolution ?? null), resolution: h.resolution ?? null, corporate: this.corporate(s, service) };
     return {
