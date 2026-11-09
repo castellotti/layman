@@ -65,8 +65,10 @@ const MODEL_ROUTE_REACH = 60;
 /** The tallest a route box (two lines) and the exit (four lines) can be. */
 const ROUTE_MAX_H = 26 + 13 * 2;
 const EXIT_MAX_H = 26 + 13 * 4 + 4;
+/** How far under `TOP` an empty policy wall's foot is. */
+const EMPTY_WALL_FOOT = 20;
 /** What an empty policy wall leaves under it at the minimum height: the least any session gets. */
-const BASE_CONTENT = MIN_HEIGHT - BOTTOM_PAD - (TOP + 20 + WALL_CAPTION_ROOM);
+const BASE_CONTENT = MIN_HEIGHT - BOTTOM_PAD - (TOP + EMPTY_WALL_FOOT + WALL_CAPTION_ROOM);
 
 /** A band's colour, by route; refusals by who refused. */
 export type BandKind = 'tunnel' | 'fanout' | 'local' | 'direct' | 'guard' | 'refused' | 'broken' | 'unwatched' | 'trigger';
@@ -89,7 +91,7 @@ export interface TopoNode {
   mono: boolean;
   lines: TopoLine[];
   tone: Tone;
-  /** Declared but not watched, a local link, or a route with no traffic. */
+  /** Declared but not watched, or a local link. */
   dashed: boolean;
   icon: 'eye-off' | 'broken' | null;
   /** Destination hosts reached through this box: what selecting it selects. */
@@ -479,23 +481,30 @@ export function layoutTopology(data: TopoInput, width: number, height: number, o
     nodes.push(full);
     return full;
   };
-  const uniq = (xs: string[]) => [...new Set(xs)];
+  const uniq = <T>(xs: T[]) => [...new Set(xs)];
 
   // The policy wall: one label per reason, in a band of its own across the top. A label's text runs
   // right, into the route column, so no box may sit at its height: every column but the
   // destinations starts under the wall's caption (`contentTop`).
   const refusedLegs = legs.filter((l) => l.outcome === 'refused');
+  // A refused destination counts once at least, however few blocks it logged.
+  const refusedCount = (ls: Leg[]) => countLabel(ls.reduce((a, l) => a + Math.max(1, l.d.blocked), 0));
   const labels: Array<Omit<WallLabel, 'y' | 'id' | 'hosts'> & { key: string; legs: Leg[] }> = [];
   const guardLegs = refusedLegs.filter((l) => l.d.state === 'guard');
   if (guardLegs.length) {
     const reasons = uniq(guardLegs.map((l) => guardReason(l.d)).map((r) => (r === 'cloud metadata' ? 'metadata' : r === 'no destination' ? 'malformed' : r === 'internal name' || r === 'private address' ? 'internal' : r)));
-    labels.push({ key: 'guard', kind: 'guard', text: `glove guard · ${countLabel(guardLegs.reduce((a, l) => a + Math.max(1, l.d.blocked), 0))}`, sub: reasons.join(', '), legs: guardLegs });
+    labels.push({ key: 'guard', kind: 'guard', text: `glove guard · ${refusedCount(guardLegs)}`, sub: reasons.join(', '), legs: guardLegs });
   }
   const byRule = new Map<string, Leg[]>();
-  for (const l of refusedLegs) if (l.d.state === 'user_rule') byRule.set(l.d.rule ?? '?', [...(byRule.get(l.d.rule ?? '?') ?? []), l]);
-  for (const [id, ls] of byRule) labels.push({ key: `rule:${id}`, kind: 'refused', text: `${ruleLabel(id, rules)} · ${countLabel(ls.reduce((a, l) => a + Math.max(1, l.d.blocked), 0))}`, sub: null, legs: ls });
+  for (const l of refusedLegs) {
+    if (l.d.state !== 'user_rule') continue;
+    const k = l.d.rule ?? '?';
+    const ls = byRule.get(k);
+    if (ls) ls.push(l); else byRule.set(k, [l]);
+  }
+  for (const [id, ls] of byRule) labels.push({ key: `rule:${id}`, kind: 'refused', text: `${ruleLabel(id, rules)} · ${refusedCount(ls)}`, sub: null, legs: ls });
   const defLegs = refusedLegs.filter((l) => l.d.state === 'default_block');
-  if (defLegs.length) labels.push({ key: 'default', kind: 'refused', text: `default block · ${countLabel(defLegs.reduce((a, l) => a + Math.max(1, l.d.blocked), 0))}`, sub: 'no rule allowed it', legs: defLegs });
+  if (defLegs.length) labels.push({ key: 'default', kind: 'refused', text: `default block · ${refusedCount(defLegs)}`, sub: 'no rule allowed it', legs: defLegs });
   const wallX = colX('policy');
   const wallLabels: WallLabel[] = labels.map((l, i) => ({
     id: `wall:${l.key}`, text: l.text, sub: l.sub, kind: l.kind, y: TOP + 14 + i * WALL_LABEL_PITCH, hosts: uniq(l.legs.map((x) => x.host)),
@@ -505,7 +514,7 @@ export function layoutTopology(data: TopoInput, width: number, height: number, o
   const wall: TopoWall = {
     x: wallX,
     y1: TOP + (lastLabel ? 2 : 6),
-    y2: lastLabel ? lastLabel.y + (lastLabel.sub ? 20 : 12) : TOP + 20,
+    y2: lastLabel ? lastLabel.y + (lastLabel.sub ? 20 : 12) : TOP + EMPTY_WALL_FOOT,
     labels: wallLabels,
     caption: [def ? `default ${def}` : 'rules not read', `${rules.length} rule${rules.length === 1 ? '' : 's'}`].join(' · '),
   };
@@ -535,7 +544,6 @@ export function layoutTopology(data: TopoInput, width: number, height: number, o
   const brokenLegs = [...brokenByKey.values()].sort((a, b) => b.d.lastSeen - a.d.lastSeen || a.d.key.localeCompare(b.d.key));
   const brokenFull = brokenLegs.length * BROKEN_PITCH;
   const brokenMin = Math.min(brokenFull, 2 * BROKEN_PITCH);
-
 
   // Services.
   const svcNodes: TopoNode[] = [];
@@ -569,7 +577,9 @@ export function layoutTopology(data: TopoInput, width: number, height: number, o
   // The height: what was asked for, or more when the wall's band, the services' stack or the origin
   // column's (the model's path, the exit under it, the broken paths under that) needs it; the
   // component scales the diagram to fit. Every clamp below then has room, so none gives way to another.
-  const hasTunnel = data.gate.route.kind === 'vpn' || data.gate.route.kind === 'tor' || legs.some((l) => l.outcome !== 'refused' && l.route === 'tunnel');
+  const routeKind = data.gate.route.kind;
+  const reachedOrBroken = legs.filter((l) => l.outcome !== 'refused');
+  const hasTunnel = routeKind === 'vpn' || routeKind === 'tor' || reachedOrBroken.some((l) => l.route === 'tunnel');
   const pathNeed = llmRoute
     ? MODEL_ROUTE_REACH + Math.max(ROUTE_MAX_H / 2, pinnedRows.length * DEST_MIN_PITCH - DEST_H / 2) + PATH_CLEARANCE : 0;
   const originNeed = pathNeed + (hasTunnel ? EXIT_MAX_H + (brokenLegs.length ? ORIGIN_GAP : 0) : 0) + brokenMin;
@@ -577,14 +587,13 @@ export function layoutTopology(data: TopoInput, width: number, height: number, o
   const H = Math.max(MIN_HEIGHT, height, Math.ceil(contentTop + Math.max(BASE_CONTENT, originNeed, svcNeed) + BOTTOM_PAD));
   const bottom = H - BOTTOM_PAD;
 
-  const svcTop = contentTop;
-  const pitch = (bottom - svcTop) / Math.max(1, svcItems.length);
+  const pitch = (bottom - contentTop) / Math.max(1, svcItems.length);
   // The service carrying the model's pinned path, when glove's order (with `serviceOrder`) puts it
   // first, sits at the very top: its route is level with it there, within `MODEL_ROUTE_REACH`.
   const modelSvcs = new Set(pinnedRows.flatMap((r) => r.legs.map((l) => l.service)));
   const svcYs = spread(svcItems.map((it, i) => ({
-    want: i === 0 && modelSvcs.has(it.s.service) ? svcTop + nodeH(it.lines.length) / 2 : svcTop + pitch * (i + 0.5), h: nodeH(it.lines.length),
-  })), svcTop, bottom, SVC_GAP);
+    want: i === 0 && modelSvcs.has(it.s.service) ? contentTop + nodeH(it.lines.length) / 2 : contentTop + pitch * (i + 0.5), h: nodeH(it.lines.length),
+  })), contentTop, bottom, SVC_GAP);
   svcItems.forEach((it, i) => {
     const fan = isFanoutService(it.s);
     svcNodes.push(node({
@@ -615,9 +624,7 @@ export function layoutTopology(data: TopoInput, width: number, height: number, o
   // Route column: local, the llm link, the declared tunnel, direct — in that order, except that the
   // route the model's call takes goes first, level with `llm-upstream` (or the `llm` service).
   // A route nothing used is not drawn, the declared tunnel aside.
-  const routeKind = data.gate.route.kind;
   const tunnelName = routeKind === 'tor' ? 'Tor tunnel' : routeKind === 'vpn' ? 'VPN tunnel' : 'Tunnel';
-  const reachedOrBroken = legs.filter((l) => l.outcome !== 'refused');
   const want = (r: RouteId) => {
     const ls = reachedOrBroken.filter((l) => l.route === r);
     const srcs = ls.length ? ls.map((l) => svcNode.get(l.service)).filter((n): n is TopoNode => !!n)
@@ -726,7 +733,7 @@ export function layoutTopology(data: TopoInput, width: number, height: number, o
   }
   // Every broken path has a row, in a window of its own that scrolls like the destinations do
   // (nothing folded away).
-  const froms = uniq(brokenLegs.map((l) => l.route)).map((r) => routeNode.get(r as RouteId)).filter((n): n is TopoNode => !!n);
+  const froms = uniq(brokenLegs.map((l) => l.route)).map((r) => routeNode.get(r)).filter((n): n is TopoNode => !!n);
   // Never above the exit's foot (or the model's path): that floor wins over the route's height.
   const brokenTop = Math.max(
     exitNode ? exitNode.y + exitNode.h + ORIGIN_GAP : pathFloor,
@@ -735,11 +742,11 @@ export function layoutTopology(data: TopoInput, width: number, height: number, o
   const brokenRoom = bottom - brokenTop;
   const brokenScrolls = brokenFull > brokenRoom;
   const brokenBlockH = brokenScrolls ? brokenRoom : brokenFull;
-  const originNode = new Map<string, TopoNode>();
+  const brokenNode = new Map<string, TopoNode>();
   const brokenViewTop = brokenTop + (brokenScrolls ? STUB_ROOM : 0);
   const brokenViewBottom = brokenTop + brokenBlockH - (brokenScrolls ? STUB_ROOM : 0);
   brokenLegs.forEach((l, i) => {
-    originNode.set(`broken:${l.d.key}`, node({
+    brokenNode.set(l.d.key, node({
       id: `origin:broken:${l.d.key}`, kind: 'broken', column: 'origin', x: colX('origin'), y: brokenViewTop + i * BROKEN_PITCH + 4, w: NODE_W.origin, h: BROKEN_H,
       title: hostLabel(l.d), lines: [{ text: 'upstream unreachable', tone: 'faint' }], tone: 'warn', hosts: [l.host], icon: 'broken', mono: true,
     }));
@@ -752,29 +759,26 @@ export function layoutTopology(data: TopoInput, width: number, height: number, o
 
   // Destinations: the pinned ones, then, in the window under them, local, the harness's tunnelled,
   // the fan-out's, then direct; bytes within each (or the chosen order).
-  const destNode = (r: { d: DestinationAggregate; group: number }, y: number) => {
+  const destOf = new Map<Leg, TopoNode>();
+  const destNode = (r: { d: DestinationAggregate; group: number; legs: Leg[] }, y: number) => {
     const d = r.d;
-    return node({
+    const n = node({
       id: `dest:${d.key}`, kind: 'dest', column: 'dests', x: destX, y, w: NODE_W.dests, h: DEST_H,
       title: hostLabel(d), mono: true, lines: [],
       tone: r.group === 0 ? 'local' : r.group === 3 ? (d.flags.vpn ? 'local' : 'direct') : r.group === 2 ? 'fanout' : 'tunnel',
       dashed: r.group === 0, hosts: [d.host ?? hostLabel(d)], live: d.state === 'active',
     });
-  };
-  const destOf = new Map<Leg, TopoNode>();
-  const pinned = pinnedRows.map((r, i) => {
-    const n = destNode(r, pinnedTop + i * DEST_MIN_PITCH);
     for (const l of r.legs) destOf.set(l, n);
     return n.id;
-  });
-  const pinnedKeys = new Set(pinnedRows.map((r) => r.d.key));
+  };
+  const pinned = pinnedRows.map((r, i) => destNode(r, pinnedTop + i * DEST_MIN_PITCH));
   const pinnedIds = new Set(pinned);
   // Every other destination has a row: the column scrolls (`projectTopology`) rather than fold any away.
   // The stubs' room is taken from the window only when the rows do not all fit in it without.
-  const windowTop = pinned.length ? pinnedBottom : TOP;
-  const rest = [...reached.values()].filter((r) => !pinnedKeys.has(r.d.key));
-  const scrolls = rest.length * DEST_MIN_PITCH > bottom - (windowTop + 4);
-  const viewTop = scrolls ? windowTop + STUB_ROOM : windowTop + 4;
+  // With nothing pinned, `pinnedBottom` is `TOP`.
+  const rest = [...reached.values()].filter((r) => !pinnedRows.includes(r));
+  const scrolls = rest.length * DEST_MIN_PITCH > bottom - (pinnedBottom + 4);
+  const viewTop = scrolls ? pinnedBottom + STUB_ROOM : pinnedBottom + 4;
   const viewBottom = scrolls ? bottom - STUB_ROOM : bottom;
   const view = viewBottom - viewTop;
   const sort = opts.sort ?? 'bytes';
@@ -784,11 +788,7 @@ export function layoutTopology(data: TopoInput, width: number, height: number, o
   const destPitch = Math.max(DEST_MIN_PITCH, Math.min(DEST_MAX_PITCH, view / Math.max(1, rows.length)));
   const stack = destPitch * rows.length;
   const destTop = viewTop + Math.max(0, (view - stack) / 2);
-  const destRows = rows.map((r, i) => {
-    const n = destNode(r, destTop + i * destPitch + (destPitch - DEST_H) / 2);
-    for (const l of r.legs) destOf.set(l, n);
-    return n.id;
-  });
+  const destRows = rows.map((r, i) => destNode(r, destTop + i * destPitch + (destPitch - DEST_H) / 2));
   const dests: ScrollColumn = {
     id: 'dests', x: destX, w: NODE_W.dests, overhang: 0, top: viewTop, bottom: viewBottom, maxScroll: Math.max(0, stack - view), pitch: destPitch, rows: destRows,
   };
@@ -829,7 +829,7 @@ export function layoutTopology(data: TopoInput, width: number, height: number, o
     bucket(`${s.id}>${r.id}`, kindOf(l), s, r, l);
     if (l.outcome === 'broken') {
       // One band per broken row, whichever services led there (one id, one band to scroll).
-      const b = originNode.get(`broken:${l.d.key}`);
+      const b = brokenNode.get(l.d.key);
       const id = `${r.id}>${b?.id}`;
       const found = byDraftId.get(id);
       if (found) found.legs.push(l);

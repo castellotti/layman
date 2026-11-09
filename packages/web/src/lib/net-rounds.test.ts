@@ -46,9 +46,9 @@ function dests(): DestinationAggregate[] {
   ];
 }
 
-function data(): NetSessionData {
+function data(destinations: DestinationAggregate[] = dests(), session = SESSION): NetSessionData {
   return sessionData({ route: { kind: 'vpn', verified: false, exitIdentityOff: true, upstreamHealthy: true } }, {
-    token: ID, session: SESSION, rules: rulesView(), destinations: new Map(dests().map((d) => [d.key, d])),
+    token: ID, session, rules: rulesView(), destinations: new Map(destinations.map((d) => [d.key, d])),
   });
 }
 
@@ -63,11 +63,34 @@ const node = (t: Topology, id: string) => {
 describe('Topology: nothing overlaps', () => {
   const broken = Array.from({ length: 12 }, (_, i) => dest(`b${i}.example:443`, { ...via('webdownload-egress', 'web_download', 'webfetch'), state: 'broken', lastSeen: 100 - i }));
   const many = Array.from({ length: 40 }, (_, i) => dest(`d${i}.example:443`, { ...via('webdownload-egress', 'web_download', 'webfetch'), bytesDown: 10_000 + i }));
-  const big = sessionData({ route: { kind: 'vpn', verified: false, exitIdentityOff: true, upstreamHealthy: true } }, {
-    token: ID, session: SESSION, rules: rulesView(), destinations: new Map([...dests(), ...broken, ...many].map((d) => [d.key, d])),
-  });
+  const big = data([...dests(), ...broken, ...many]);
   const bottom = (n: { y: number; h: number }) => n.y + n.h;
   const centre = (n: { y: number; h: number }) => n.y + n.h / 2;
+
+  // The constraints that must all hold at once, the height growing if it has to.
+  const overlap = (a: { y: number; h: number }, b: { y: number; h: number }) => a.y < b.y + b.h && b.y < a.y + a.h;
+  const checkStacked = (t: Topology) => {
+    const pinnedRows = t.pinned.map((id) => node(t, id));
+    const llm = t.nodes.filter((x) => x.kind === 'route').sort((a, b) => a.y - b.y)[0];
+    for (const n of t.nodes.filter((x) => x.column !== 'dests')) {
+      expect(n.y, n.id).toBeGreaterThanOrEqual(t.wall.y2 + 16);
+      // Broken rows scroll: their window is checked below.
+      if (n.kind !== 'broken') expect(bottom(n), n.id).toBeLessThanOrEqual(t.height);
+    }
+    for (const col of ['services', 'route'] as const) {
+      const ns = t.nodes.filter((x) => x.column === col);
+      for (const a of ns) for (const b of ns) if (a !== b) expect(overlap(a, b), `${a.id} / ${b.id}`).toBe(false);
+    }
+    const exit = t.nodes.find((n) => n.id === 'origin:exit');
+    if (exit && t.pinned.length && llm) expect(exit.y).toBeGreaterThan(Math.max(bottom(llm), ...pinnedRows.map(bottom)));
+    if (t.broken.rows.length) {
+      if (exit) expect(t.broken.top).toBeGreaterThan(bottom(exit));
+      expect(t.broken.bottom - t.broken.top).toBeGreaterThan(20);
+      expect(t.broken.bottom).toBeLessThanOrEqual(t.height);
+    }
+    if (t.dests.rows.length) expect(t.dests.bottom - t.dests.top).toBeGreaterThan(40);
+    for (const r of pinnedRows) expect(bottom(r)).toBeLessThanOrEqual(t.dests.top);
+  };
 
   for (const [w, h] of [[1080, 780], [1400, 900], [1000, 420]]) {
     const t = layoutTopology(big, w, h);
@@ -83,51 +106,18 @@ describe('Topology: nothing overlaps', () => {
       expect(t.bands.find((b) => b.id === 'route:llm>dest:api.anthropic.com:443')?.toRow).toBeUndefined();
       expect(t.dests.top).toBeGreaterThanOrEqual(bottom(node(t, 'dest:api.anthropic.com:443')));
     });
-    it(`keeps the exit under the model's path, and the broken paths under the exit and their route (${w}×${h})`, () => {
-      const exit = node(t, 'origin:exit');
-      expect(exit.y).toBeGreaterThan(Math.max(bottom(node(t, 'route:llm')), bottom(node(t, 'dest:api.anthropic.com:443'))));
-      expect(t.broken.rows).toHaveLength(12);
-      expect(t.broken.top).toBeGreaterThan(bottom(exit));
-      expect(t.broken.top).toBeGreaterThanOrEqual(node(t, 'route:tunnel').y);
-      expect(t.broken.bottom).toBeLessThanOrEqual(t.height);
-    });
-    it(`keeps every box but the destinations under the policy wall's labels and caption (${w}×${h})`, () => {
+    it(`keeps every box apart: under the wall, the exit under the model's path, the broken paths under the exit and their route (${w}×${h})`, () => {
       expect(t.wall.labels.length).toBeGreaterThan(0);
-      for (const n of t.nodes.filter((x) => x.column !== 'dests')) expect(n.y, n.id).toBeGreaterThanOrEqual(t.wall.y2 + 16);
+      expect(node(t, 'origin:exit')).toBeDefined();
+      expect(t.broken.rows).toHaveLength(12);
+      expect(t.broken.top).toBeGreaterThanOrEqual(node(t, 'route:tunnel').y);
+      checkStacked(t);
     });
   }
 
-  // Under pressure: the constraints must all hold at once, the height growing if it has to.
-  const overlap = (a: { y: number; h: number }, b: { y: number; h: number }) => a.y < b.y + b.h && b.y < a.y + a.h;
-  const checkStacked = (t: Topology) => {
-    const pinnedRows = t.pinned.map((id) => node(t, id));
-    const llm = t.nodes.find((n) => n.id === t.nodes.filter((x) => x.kind === 'route').sort((a, b) => a.y - b.y)[0]?.id);
-    for (const n of t.nodes.filter((x) => x.column !== 'dests')) {
-      expect(n.y, n.id).toBeGreaterThanOrEqual(t.wall.y2 + 16);
-      // Broken rows scroll: their window is checked below.
-      if (n.kind !== 'broken') expect(n.y + n.h, n.id).toBeLessThanOrEqual(t.height);
-    }
-    for (const col of ['services', 'route'] as const) {
-      const ns = t.nodes.filter((x) => x.column === col);
-      for (const a of ns) for (const b of ns) if (a !== b) expect(overlap(a, b), `${a.id} / ${b.id}`).toBe(false);
-    }
-    const exit = t.nodes.find((n) => n.id === 'origin:exit');
-    if (exit && t.pinned.length && llm) expect(exit.y).toBeGreaterThan(Math.max(llm.y + llm.h, ...pinnedRows.map((r) => r.y + r.h)));
-    if (t.broken.rows.length) {
-      if (exit) expect(t.broken.top).toBeGreaterThan(exit.y + exit.h);
-      expect(t.broken.bottom - t.broken.top).toBeGreaterThan(BROKEN_MIN_VIEW);
-      expect(t.broken.bottom).toBeLessThanOrEqual(t.height);
-    }
-    if (t.dests.rows.length) expect(t.dests.bottom - t.dests.top).toBeGreaterThan(40);
-    for (const r of pinnedRows) expect(r.y + r.h).toBeLessThanOrEqual(t.dests.top);
-  };
-  const BROKEN_MIN_VIEW = 20;
-
   it('keeps everything apart with eight rules on the wall, growing the height rather than overlapping', () => {
     const refused = Array.from({ length: 8 }, (_, i) => dest(`r${i}.example:443`, { ...via('webdownload-egress', 'web_download', 'webfetch'), state: 'user_rule', rule: `rule-${i}`, blocked: 1, blockedBy: { [`rule-${i}`]: 1 } }));
-    const d = sessionData({ route: { kind: 'vpn', verified: false, exitIdentityOff: true, upstreamHealthy: true } }, {
-      token: ID, session: SESSION, rules: rulesView(), destinations: new Map([...dests(), ...broken, ...many, ...refused].map((x) => [x.key, x])),
-    });
+    const d = data([...dests(), ...broken, ...many, ...refused]);
     const t = layoutTopology(d, 1000, 420);
     expect(t.wall.labels.length).toBeGreaterThanOrEqual(9);
     expect(t.height).toBeGreaterThan(420);
@@ -137,10 +127,7 @@ describe('Topology: nothing overlaps', () => {
   it('keeps the model\'s path along the top when glove declares the model\'s services last', () => {
     const last = [...SERVICES.slice(2), ...SERVICES.slice(0, 2)];
     const extra = ['api.openai.com:443', 'api.mistral.ai:443'].map((k, i) => dest(k, { ...via('llm-upstream', 'llm', 'llm'), scope: 'cloud', flags: flags('cloud'), bytesUp: 100 + i, bytesDown: 1000 }));
-    const d = sessionData({ route: { kind: 'vpn', verified: false, exitIdentityOff: true, upstreamHealthy: true } }, {
-      token: ID, session: { ...SESSION, services: last }, rules: rulesView(),
-      destinations: new Map([...dests(), ...extra, ...broken.slice(0, 5), ...many.slice(0, 30)].map((x) => [x.key, x])),
-    });
+    const d = data([...dests(), ...extra, ...broken.slice(0, 5), ...many.slice(0, 30)], { ...SESSION, services: last });
     const t = layoutTopology(d, 1000, 420);
     expect(t.pinned).toHaveLength(3);
     checkStacked(t);
@@ -149,10 +136,7 @@ describe('Topology: nothing overlaps', () => {
   it('pins a model reached directly, at the top, and only rows its own route reaches', () => {
     const direct = dest('api.anthropic.com:443', { ...via('llm-upstream', 'llm', 'llm'), scope: 'direct', flags: flags('direct'), bytesUp: 5000, bytesDown: 21_000 });
     const lanModel = dest('gpu.lan:8080', { ...via('llm-upstream', 'llm', 'llm'), port: 8080, scope: 'local', flags: flags('local'), bytesUp: 10, bytesDown: 10 });
-    const d = sessionData({ route: { kind: 'vpn', verified: false, exitIdentityOff: true, upstreamHealthy: true } }, {
-      token: ID, session: SESSION, rules: rulesView(),
-      destinations: new Map([...dests().filter((x) => x.key !== direct.key), direct, lanModel, ...broken.slice(0, 5), ...many.slice(0, 30)].map((x) => [x.key, x])),
-    });
+    const d = data([...dests().filter((x) => x.key !== direct.key), direct, lanModel, ...broken.slice(0, 5), ...many.slice(0, 30)]);
     const t = layoutTopology(d, 1000, 420);
     const routes = t.nodes.filter((n) => n.kind === 'route').sort((a, b) => a.y - b.y);
     expect(routes[0].id).toBe('route:direct');
