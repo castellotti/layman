@@ -614,4 +614,50 @@ describe('a box in Details', () => {
     expect(b.top[0].host).toBe('m11.example');
     expect(b.more).toBe(12 - TOP_N);
   });
+
+  it('counts a service’s share of a destination it shares, as its bands do, never the whole', () => {
+    const shared = dest('shared.example:443', { ...proxy, services: ['proxy', 'search'], bytesUp: 0, bytesDown: 1000, flows: 2 });
+    const d = fixture({}, [shared]);
+    const t2 = layoutTopology(d, 1080, 780);
+    const proxyBox = boxDetails(d, t2, 'svc:proxy')!;
+    const searchBox = boxDetails(d, t2, 'svc:search')!;
+    // No flows held: split evenly, as `legsOf` splits the bands.
+    expect([proxyBox.totals.down, searchBox.totals.down, proxyBox.totals.flows]).toEqual([500, 500, 1]);
+    const band = t2.bands.find((b) => b.from === 'svc:proxy' && b.to === 'route:tunnel')!;
+    expect(band.bytes).toBe(proxyBox.totals.down);
+  });
+
+  it('one row per host, its ports summed; a row with no host is not a path to follow', () => {
+    const d = fixture({}, [
+      dest('two.example:443', { ...proxy, bytesDown: 100 }),
+      dest('two.example:8443', { ...proxy, port: 8443, bytesDown: 50 }),
+      dest('@endpoint:proxy', { ...proxy, host: null, port: null, state: 'guard', rule: 'builtin:malformed-request', blocked: 2 }),
+    ]);
+    const t2 = layoutTopology(d, 1080, 780);
+    const b = boxDetails(d, t2, 'svc:proxy')!;
+    expect(b.top.map((r) => [r.label, r.host, r.bytes])).toEqual([['two.example', 'two.example', 152], ['proxy endpoint', null, 2]]); // dest() defaults bytesUp to 1
+    expect(b.totals.destinations).toBe(2);
+    expect(boxDetails(d, t2, 'wall:guard')!.top.map((r) => r.host)).toEqual([null]);
+  });
+
+  it('the LLM link: the upstreams that carried it, and never “does not leave the machine” for a cloud call', () => {
+    const cloud = dest('api.provider.example:443', { services: ['llm'], tools: ['llm'], clients: ['harness'], scope: 'cloud', bytesDown: 5000 });
+    const d = fixture({}, [cloud, dest('en.wikipedia.org:443', { ...proxy, bytesDown: 10 })]);
+    const t2 = layoutTopology(d, 1080, 780);
+    const f = Object.fromEntries(boxDetails(d, t2, 'route:llm')!.facts.map((x) => [x.label, x.value]));
+    expect(f.Upstreams).toBe('host.docker.internal:8080');
+    expect(f.Reaches).toBe('the provider, over the internet');
+    expect(f.Mapped).not.toMatch(/never/);
+  });
+
+  it('a refused path is explained as refused, not reached', () => {
+    expect(explainBox(data, null, 'refused:ads.tracker.example:443')!.heading).toBe('A refused destination');
+  });
+
+  it('draws one band into a broken row reached through two services', () => {
+    const twice = dest('dead.example:443', { ...proxy, services: ['proxy', 'search'], state: 'broken' });
+    const t2 = layoutTopology(fixture({}, [twice]), 1080, 780);
+    const into = t2.bands.filter((b) => b.to === 'origin:broken:dead.example:443');
+    expect(new Set(into.map((b) => b.id)).size).toBe(into.length);
+  });
 });

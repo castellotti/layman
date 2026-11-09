@@ -343,8 +343,13 @@ interface Leg {
   live: boolean;
 }
 
-function legsOf(dests: Iterable<DestinationAggregate>, flows: Iterable<FlowView>, services: Map<string, NetService>): Leg[] {
-  // A destination reached through two services splits its bytes by what the flows still held show.
+/**
+ * The share of a destination's bytes each of its services carried: by what the flows still held
+ * show, else evenly. A destination reached through two services is drawn as two legs split so,
+ * and a service's box in Details counts the same share (`serviceShare`), never the whole.
+ */
+export type ServiceShares = (d: Pick<DestinationAggregate, 'key' | 'services'>, service: string) => number;
+export function serviceShares(flows: Iterable<FlowView>): ServiceShares {
   const split = new Map<string, Map<string, number>>();
   for (const f of flows) {
     if (!f.destKey) continue;
@@ -352,15 +357,24 @@ function legsOf(dests: Iterable<DestinationAggregate>, flows: Iterable<FlowView>
     m.set(f.service, (m.get(f.service) ?? 0) + f.bytes.up + f.bytes.down);
     split.set(f.destKey, m);
   }
+  return (d, service) => {
+    const svcs = d.services.length ? d.services : ['?'];
+    if (!svcs.includes(service)) return 0;
+    const m = split.get(d.key);
+    const known = m ? svcs.reduce((a, s) => a + (m.get(s) ?? 0), 0) : 0;
+    return known > 0 ? (m!.get(service) ?? 0) / known : 1 / svcs.length;
+  };
+}
+
+function legsOf(dests: Iterable<DestinationAggregate>, flows: Iterable<FlowView>, services: Map<string, NetService>): Leg[] {
+  const shareOf = serviceShares(flows);
   const legs: Leg[] = [];
   for (const d of dests) {
     if (d.state === 'empty') continue;
     const svcs = d.services.length ? d.services : ['?'];
-    const m = split.get(d.key);
-    const known = m ? svcs.reduce((a, s) => a + (m.get(s) ?? 0), 0) : 0;
     const total = d.bytesUp + d.bytesDown;
     for (const s of svcs) {
-      const share = known > 0 ? (m!.get(s) ?? 0) / known : 1 / svcs.length;
+      const share = shareOf(d, s);
       const svc = services.get(s);
       legs.push({
         d, host: d.host ?? hostLabel(d), service: s, bytes: total * share, outcome: outcomeOf(d),
@@ -718,8 +732,16 @@ export function layoutTopology(data: TopoInput, width: number, height: number, o
     const r = routeNode.get(l.route)!;
     bucket(`${s.id}>${r.id}`, kindOf(l), s, r, l);
     if (l.outcome === 'broken') {
+      // One band per broken row, whichever services led there (one id, one band to scroll).
       const b = originNode.get(`broken:${l.d.key}`);
-      if (b) drafts.push({ id: `${r.id}>${b.id}`, kind: 'broken', from: r, to: b, legs: [l], dashed: true });
+      const id = `${r.id}>${b?.id}`;
+      const found = byDraftId.get(id);
+      if (found) found.legs.push(l);
+      else if (b) {
+        const dr: Draft = { id, kind: 'broken', from: r, to: b, legs: [l], dashed: true };
+        byDraftId.set(id, dr);
+        drafts.push(dr);
+      }
       continue;
     }
     const dn = destOf.get(l);

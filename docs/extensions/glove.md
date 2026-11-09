@@ -1140,8 +1140,11 @@ Selected path panel that walks one destination's path hop by hop.
   on the policy wall open in the same panel (Details) instead of a path. The bands into and out of the
   box, and those carrying only its hosts on from there, stay lit; the rest dim. A second click clears
   it. A box is not a destination: it is held in a small store of its own (`topologyFocus.ts`, scoped to
-  the glove session), not in the URL, and it and `netDest` are exclusive (choosing a destination
-  anywhere, including the Network tab or a link, replaces the box).
+  the glove session), not in the URL, and it and `netDest` are exclusive: the store subscribes to
+  `sessionStore`, so choosing a destination anywhere (the Network tab, the Map, a link, with the
+  diagram not even mounted) replaces the box. The store also carries the diagram's latest layout, so
+  Details reads a box's hosts from it instead of laying the diagram out a second time per update; it
+  lays out on its own only while the Routes panel is hidden.
   - **What it is for.** Every box, and every path, opens with a short note on what that box does in
     glove's design (`explainBox`: a declared-but-unwatched service, an egress consumer that is not the
     harness, the llm link that is not a leak, the guard…). It can be dismissed. The note is keyed by the
@@ -1155,7 +1158,13 @@ Selected path panel that walks one destination's path hop by hop.
     busiest destinations (the most refused, for a wall label) as bars, each a link to its path. The
     exit also lists every exit check glove recorded, newest first, so a changed exit address or a
     failed check shows. Every figure comes from the destinations the box's hosts reached, the same
-    aggregates the bands are drawn from, so a box never disagrees with them.
+    aggregates the bands are drawn from, so a box never disagrees with them: a destination reached
+    through two services counts on each service's box only by that service's share
+    (`serviceShares`, the split `legsOf` draws the bands with), never whole on both. The lists are
+    one row per host, its ports and endpoints summed; a row with no host (a malformed request) is not
+    a link, having no path to follow. The LLM link names the upstreams that carried it and says it
+    reaches the provider without the tunnel by design; a refused path's note says it was refused, not
+    reached.
 - **Selected path panel.** The destination's hops, each with its status and whether glove **observed**
   it, only **declared** it (a dashed circle), or **verified** it:
   - the sandbox, with gate freshness and heartbeat age (a fan-out path starts at SearXNG instead,

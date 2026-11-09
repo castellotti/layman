@@ -11,8 +11,9 @@ import type { NetSessionData } from './net-state.js';
 import type { DestinationAggregate, NetService, NetState, RuleMatch } from './netobs-types.js';
 import {
   EGRESS_CLIENTS, clientName, exitSourceHost, fromSandbox, hopsInto, isFanoutService, outcomeOf, routeOf, ruleLabel, serviceRoute,
-  topologyServices, triggerOf, upstreamHost, type Topology, type TopoInput,
+  serviceShares, topologyServices, triggerOf, upstreamHost, type Topology, type TopoInput,
 } from './net-topology.js';
+import { formatStamp } from './net-range.js';
 import { guardReason, hostLabel, toolLabel } from './net-table.js';
 import { isLlmUpstream, nextServices } from './netobs-types.js';
 
@@ -31,8 +32,12 @@ export interface BoxFact {
 export type MixKey = 'local' | 'tunnel' | 'fanout' | 'vpn' | 'direct' | 'broken';
 export interface MixPart { key: MixKey; label: string; bytes: number; destinations: number }
 
+/** One host's traffic through a box (its ports and endpoints summed). */
 export interface TopDest {
-  host: string;
+  /** What it is called: the host, or `hostLabel` for one with no host (a malformed request). */
+  label: string;
+  /** The host to follow its path by, or null for one with no host (nothing to follow). */
+  host: string | null;
   bytes: number;
   flows: number;
   /** Refused flows (`blocked`, at least one for a refused destination). */
@@ -57,7 +62,7 @@ export interface BoxDetails {
   mix: MixPart[];
   /** The busiest destinations (most refused, for a policy label), at most `TOP_N`. */
   top: TopDest[];
-  /** Destinations not in `top`. */
+  /** Hosts not in `top`. */
   more: number;
   /** The exit box only: every exit record, newest first. */
   exits: ExitSeen[];
@@ -83,31 +88,54 @@ export function mixKey(d: DestinationAggregate, services: readonly NetService[])
   return d.flags.fanout || isFanoutService(svc) ? 'fanout' : 'tunnel';
 }
 
-function traffic(dests: DestinationAggregate[], services: readonly NetService[], byRefusals: boolean) {
-  const totals = { up: 0, down: 0, flows: 0, refused: 0, live: 0, destinations: dests.length };
-  const mix = new Map<MixKey, MixPart>();
+/**
+ * The traffic of the destinations through a box. `share` is the part of a destination's bytes and
+ * flows that went through the box (a service's share of a destination it shares, as the bands are
+ * split); 1 for any other box. Rows are one per host, its ports and endpoints summed.
+ */
+function traffic(dests: DestinationAggregate[], services: readonly NetService[], byRefusals: boolean, share: (d: DestinationAggregate) => number = () => 1) {
+  const totals = { up: 0, down: 0, flows: 0, refused: 0, live: 0, destinations: 0 };
+  const mix = new Map<MixKey, MixPart & { hosts: Set<string> }>();
+  const rows = new Map<string, TopDest>();
   for (const d of dests) {
-    totals.up += d.bytesUp;
-    totals.down += d.bytesDown;
-    totals.flows += d.flows;
-    if (d.state === 'active') totals.live += 1;
-    if (outcomeOf(d) === 'refused') { totals.refused += Math.max(1, d.blocked); continue; }
-    const key = mixKey(d, services);
-    const part = mix.get(key) ?? { key, label: MIX_LABEL[key], bytes: 0, destinations: 0 };
-    part.bytes += d.bytesUp + d.bytesDown;
-    part.destinations += 1;
+    const k = share(d);
+    const up = d.bytesUp * k;
+    const down = d.bytesDown * k;
+    const flows = Math.round(d.flows * k);
+    totals.up += up;
+    totals.down += down;
+    totals.flows += flows;
+    const refused = outcomeOf(d) === 'refused';
+    const refusals = refused ? Math.max(1, d.blocked) : d.blocked;
+    if (refused) totals.refused += refusals;
+    const key = refused ? 'refused' as const : mixKey(d, services);
+    const label = destHost(d);
+    const row = rows.get(label);
+    if (row) {
+      row.bytes += up + down;
+      row.flows += flows;
+      row.refused += refusals;
+      if (d.state === 'active') row.state = 'active';
+    } else {
+      rows.set(label, { label, host: d.host, bytes: up + down, flows, refused: refusals, state: d.state, key });
+    }
+    if (key === 'refused') continue;
+    const part = mix.get(key) ?? { key, label: MIX_LABEL[key], bytes: 0, destinations: 0, hosts: new Set<string>() };
+    part.bytes += up + down;
+    part.hosts.add(label);
+    part.destinations = part.hosts.size;
     mix.set(key, part);
   }
-  const rows: TopDest[] = dests.map((d) => ({
-    host: destHost(d), bytes: d.bytesUp + d.bytesDown, flows: d.flows, refused: outcomeOf(d) === 'refused' ? Math.max(1, d.blocked) : d.blocked, state: d.state,
-    key: outcomeOf(d) === 'refused' ? 'refused' as const : mixKey(d, services),
-  }));
-  rows.sort((a, b) => (byRefusals ? b.refused - a.refused : 0) || b.bytes - a.bytes || a.host.localeCompare(b.host));
+  const list = [...rows.values()];
+  totals.destinations = list.length;
+  totals.live = list.filter((r) => r.state === 'active').length;
+  list.sort((a, b) => (byRefusals ? b.refused - a.refused : 0) || b.bytes - a.bytes || a.label.localeCompare(b.label));
   return {
     totals,
-    mix: [...mix.values()].filter((p) => p.bytes > 0).sort((a, b) => b.bytes - a.bytes || MIX_ORDER.indexOf(a.key) - MIX_ORDER.indexOf(b.key)),
-    top: rows.slice(0, TOP_N),
-    more: Math.max(0, rows.length - TOP_N),
+    mix: [...mix.values()].filter((p) => p.bytes > 0).map(({ hosts: _, ...p }) => p)
+      .sort((a, b) => b.bytes - a.bytes || MIX_ORDER.indexOf(a.key) - MIX_ORDER.indexOf(b.key)),
+    top: list.slice(0, TOP_N),
+    more: Math.max(0, list.length - TOP_N),
   };
 }
 
@@ -176,6 +204,9 @@ export function explainBox(data: TopoInput, t: Pick<Topology, 'wall'> | null, id
   if (id.startsWith('origin:broken:')) {
     return { heading: 'A broken path', body: 'The gate allowed this connection, but the route’s upstream could not reach the destination (unreachable or timed out). It never got there; when many paths break at once, suspect the tunnel rather than the hosts.' };
   }
+  if (id.startsWith('refused:')) {
+    return { heading: 'A refused destination', body: 'The sandbox asked for this host and the gate refused it at the policy wall, by glove’s guard, one of your rules or the default. Nothing left the sandbox, so the path below stops at the policy and the host has no row among the destinations.' };
+  }
   if (id.startsWith('dest:')) {
     return { heading: 'A destination', body: 'A host the sandbox reached. Its band’s colour says how it got there and its width how much moved. The hops below say which glove observed or verified, and which are only declared.' };
   }
@@ -209,6 +240,7 @@ export function boxDetails(data: TopoInput & Pick<NetSessionData, 'exits'>, t: T
   const facts: BoxFact[] = [];
   let kind: BoxKind;
   let dests = all;
+  let share: ((d: DestinationAggregate) => number) | undefined;
   const g = data.gate;
 
   if (label) {
@@ -250,6 +282,9 @@ export function boxDetails(data: TopoInput & Pick<NetSessionData, 'exits'>, t: T
     kind = 'service';
     const s = services.find((x) => x.service === node!.title);
     dests = all.filter((d) => d.services.includes(node!.title));
+    // Its share of a destination it shares with another service, as the bands split it.
+    const shareOf = serviceShares(data.flows.values());
+    share = (d) => shareOf(d, node!.title);
     if (s?.listen) facts.push({ label: 'Listens on', value: s.listen, mono: true });
     if (s?.mode) facts.push({ label: 'Mode', value: s.mode });
     if (s?.tool) facts.push({ label: 'Tool', value: toolLabel(s.tool) });
@@ -285,9 +320,19 @@ export function boxDetails(data: TopoInput & Pick<NetSessionData, 'exits'>, t: T
       }
       facts.push({ label: 'Exit', value: g.route.verified ? 'verified' : g.route.exitIdentityOff ? 'not verified · exit identity is off' : 'not verified', tone: g.route.verified ? 'ok' : 'warn' });
     } else if (route === 'local' || route === 'llm') {
-      const ups = [...new Set(services.filter((s) => serviceRoute(s) === 'local').map((s) => upstreamHost(s.upstream ?? s.route?.upstream, true)).filter((x): x is string => !!x))];
+      // The upstreams of the services whose traffic took this route, not every local service's.
+      const used = new Set(all.flatMap((d) => d.services));
+      const ups = [...new Set(services.filter((s) => used.has(s.service)).map((s) => upstreamHost(s.upstream ?? s.route?.upstream, true)).filter((x): x is string => !!x))];
       if (ups.length) facts.push({ label: 'Upstreams', value: ups.join(', '), mono: true });
-      facts.push({ label: 'Mapped', value: 'never: it does not leave the machine or your network' });
+      if (route === 'local') {
+        facts.push({ label: 'Mapped', value: 'never: it does not leave the machine or your network' });
+      } else {
+        const lan = all.some((d) => d.scope === 'lan');
+        const cloud = all.some((d) => d.scope === 'cloud');
+        facts.push({ label: 'Reaches', value: [cloud ? 'the provider, over the internet' : null, lan ? 'a model on your network' : null].filter(Boolean).join(' · ') || 'nothing yet' });
+        facts.push({ label: 'Tunnel', value: 'no: glove’s llm link goes without it, by design' });
+        facts.push({ label: 'Mapped', value: cloud ? 'no: the provider is expected, not a leak' : 'never: it stays on your network' });
+      }
     } else {
       const leak = all.filter((d) => !d.flags.vpn);
       facts.push({ label: 'Real IP', value: leak.length ? plural(leak.reduce((a, d) => a + d.flows, 0), 'flow') : 'none', tone: leak.length ? 'error' : 'ok' });
@@ -302,12 +347,13 @@ export function boxDetails(data: TopoInput & Pick<NetSessionData, 'exits'>, t: T
     facts.push({ label: 'Verified', value: g.route.verified && e?.healthy ? 'yes, by glove’s exit identity' : g.route.exitIdentityOff ? 'no: exit identity is off' : 'no', tone: g.route.verified && e?.healthy ? 'ok' : 'warn' });
     const src = exitSourceHost(e?.source ?? null);
     if (src) facts.push({ label: 'Checked via', value: src, mono: true });
-    if (e?.t) facts.push({ label: 'Last check', value: e.t, mono: true });
+    const at = e?.t ? Date.parse(e.t) : NaN;
+    if (!Number.isNaN(at)) facts.push({ label: 'Last check', value: formatStamp(at) });
   } else {
     kind = node!.kind === 'dest' ? 'dest' : 'broken';
   }
 
-  const { totals, mix, top, more } = traffic(dests, services, kind === 'policy');
+  const { totals, mix, top, more } = traffic(dests, services, kind === 'policy', share);
   const exits: ExitSeen[] = kind === 'exit'
     ? [...data.exits].sort((a, b) => b.t.localeCompare(a.t)).map((e) => ({ ip: e.ip, where: [e.city, e.country].filter(Boolean).join(', ') || null, t: e.t, healthy: e.healthy }))
     : [];

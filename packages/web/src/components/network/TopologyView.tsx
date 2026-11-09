@@ -12,13 +12,14 @@ import type { NetSessionData } from '../../lib/net-state.js';
 import { controlDisabledReason, siblingIds } from '../../lib/net-rules.js';
 import { toolLabel } from '../../lib/net-table.js';
 import {
-  easeScroll, keyScroll, layoutTopology, pathHops, projectTopology, scrollThumb, scrollToDest, thumbDrag, wheelDelta,
+  easeScroll, keyScroll, layoutTopology, outcomeOf, pathHops, projectTopology, scrollThumb, scrollToDest, thumbDrag, wheelDelta,
   MIN_HEIGHT, MIN_WIDTH,
   type BandKind, type DestSort, type DestStub, type HopEvidence, type LineTone, type ScrollColumnId, type Tone, type TopoBand, type TopoNode,
   type TopoProjection, type Topology,
 } from '../../lib/net-topology.js';
 import { boxDetails, explainBox, type BoxDetails, type BoxExplanation, type BoxFact, type MixKey } from '../../lib/net-topology-box.js';
-import { useTopologyBox, useTopologyFocus } from './topologyFocus.js';
+import { useSharedLayout, useTopologyBox, useTopologyFocus } from './topologyFocus.js';
+import { formatStamp } from '../../lib/net-range.js';
 import { buttonStyle } from './ControlPopover.js';
 import { Badge, Tile } from './DetailCard.js';
 import { NetIcon, useStored, type NetIconName } from './netui.js';
@@ -312,7 +313,9 @@ function ScrollWindow({ t, col, scroll, clipId, noun, children, attrs }: {
         }}
         // Tabbing onto a row scrolled away brings it into the window.
         onFocus={(e) => reveal((e.target as Element).closest('[data-node]')?.getAttribute('data-node') ?? undefined)}>
-        <rect x={c.x - 4} y={c.top} width={c.w + 14} height={c.bottom - c.top} fill="transparent" />
+        {/* The wheel's target between rows. Only where the column's bands end: over the broken
+            paths it would sit on bands crossing on to the destinations and swallow their clicks. */}
+        {col === 'dests' && <rect x={c.x - 4} y={c.top} width={c.w + 14} height={c.bottom - c.top} fill="transparent" />}
         <g clipPath={`url(#${clipId})`}>
           {/* Every row, once: scrolling moves the group (and the clip hides what is out). */}
           <g ref={rowsEl} transform={`translate(0,${-view.scrollTop})`}>{children}</g>
@@ -369,8 +372,10 @@ export function TopologyDiagram({ data }: { data: NetSessionData }) {
     const row = netDest ? t.nodes.find((n) => (n.kind === 'dest' || n.kind === 'broken') && n.hosts.includes(netDest)) : undefined;
     (row?.kind === 'broken' ? broken : dests).reveal(row?.id);
   }, [netDest, t]); // eslint-disable-line react-hooks/exhaustive-deps
-  // A destination chosen anywhere (here, the Network tab, a link) replaces the box in Details.
-  useEffect(() => { if (netDest) setBox(data.token, null); }, [netDest, data.token, setBox]);
+  // Details reads a box's hosts from this layout rather than laying the diagram out again.
+  const setLayout = useTopologyFocus((s) => s.setLayout);
+  useEffect(() => { setLayout({ token: data.token, t }); }, [t, data.token, setLayout]);
+  useEffect(() => () => setLayout(null), [setLayout]);
   const bytesOf = useMemo(() => {
     const m = new Map<string, number>();
     for (const d of data.destinations.values()) if (d.host) m.set(d.host, (m.get(d.host) ?? 0) + d.bytesUp + d.bytesDown);
@@ -604,21 +609,29 @@ function TopDestinations({ b }: { b: BoxDetails }) {
     <div data-top-dests="">
       <SectionHeading>{byRefusals ? 'Most refused' : 'Busiest destinations'} <span style={{ color: 'var(--text-faint)', fontWeight: 400 }}>{b.totals.destinations}</span></SectionHeading>
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 72px', gap: '4px 8px', alignItems: 'center' }}>
-        {b.top.map((r) => (
-          <React.Fragment key={r.host}>
-            <button type="button" onClick={() => setNetDest(r.host)} {...tipProps(`Follow the path to ${r.host}`)} style={{
-              display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0, padding: 0, background: 'transparent', border: 'none', cursor: 'pointer', textAlign: 'left',
-            }}>
+        {b.top.map((r) => {
+          const host = r.host;
+          const inner = (
+            <>
               <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '100%' }}>
-                {r.host}{r.state === 'active' && <span style={{ color: 'var(--net-tunnel)' }}> ●</span>}
+                {r.label}{r.state === 'active' && <span style={{ color: 'var(--net-tunnel)' }}> ●</span>}
               </span>
               <span style={{ display: 'block', height: 4, width: `${Math.max(2, (100 * value(r)) / max)}%`, borderRadius: 2, background: MIX_COLOUR[r.key] }} />
-            </button>
+            </>
+          );
+          const cell: React.CSSProperties = { display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0, padding: 0, background: 'transparent', border: 'none', textAlign: 'left' };
+          return (
+          <React.Fragment key={r.label}>
+            {/* One with no host (a malformed request) has no path to follow: it is not a link. */}
+            {host
+              ? <button type="button" onClick={() => setNetDest(host)} {...tipProps(`Follow the path to ${host}`)} style={{ ...cell, cursor: 'pointer' }}>{inner}</button>
+              : <div {...tipProps('No host: no path to follow')} style={cell}>{inner}</div>}
             <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10.5, color: 'var(--text-body)', textAlign: 'right' }}>
               {byRefusals ? `${r.refused} refused` : formatBytes(r.bytes)}
             </span>
           </React.Fragment>
-        ))}
+          );
+        })}
       </div>
       {b.more > 0 && <div style={{ fontSize: 10.5, color: 'var(--text-faint)', marginTop: 4 }}>+{b.more} more</div>}
     </div>
@@ -641,7 +654,7 @@ function ExitHistory({ exits }: { exits: BoxDetails['exits'] }) {
               <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--text)' }}>{e.ip ?? 'no address'}</span>
               {e.where && <span style={{ color: 'var(--text-faint)' }}> · {e.where}</span>}
             </span>
-            <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-faint)' }}>{clockOf(e.t)}</span>
+            <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-faint)' }}>{Number.isNaN(Date.parse(e.t)) ? e.t : formatStamp(Date.parse(e.t))}</span>
           </li>
         ))}
       </ol>
@@ -650,18 +663,12 @@ function ExitHistory({ exits }: { exits: BoxDetails['exits'] }) {
   );
 }
 
-/** An exit record's time, local, to the minute (the date too when it is not today). */
-function clockOf(iso: string): string {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
-  const time = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  return d.toDateString() === new Date().toDateString() ? time : `${d.toLocaleDateString([], { month: 'short', day: 'numeric' })} ${time}`;
-}
-
 /** Details for a box that is not a destination: what it is for, what glove says about it, and its traffic. */
 function BoxPanel({ data, id }: { data: NetSessionData; id: string }) {
-  // Which hosts a box stands for does not depend on the size it is drawn at.
-  const t = useMemo(() => layoutTopology(data, MIN_WIDTH, MIN_HEIGHT), [data]);
+  // The diagram's own layout while it is drawn; laid out here only when the Routes panel is hidden
+  // (which hosts a box stands for does not depend on the size it is drawn at).
+  const shared = useSharedLayout(data.token);
+  const t = useMemo(() => shared ?? layoutTopology(data, MIN_WIDTH, MIN_HEIGHT), [shared, data]);
   const b = useMemo(() => boxDetails(data, t, id), [data, t, id]);
   if (!b) {
     return <div style={{ padding: 14, fontSize: 11.5, color: 'var(--text-muted)' }}>That box is no longer in the diagram.</div>;
@@ -731,7 +738,7 @@ export function SelectedPath({ data }: { data: NetSessionData }) {
       <div style={{ fontSize: 10.5, color: 'var(--text-faint)', margin: '2px 0 10px 22px' }}>
         {[d.tools.map(toolLabel).join(', '), `${d.flows} flow${d.flows === 1 ? '' : 's'}`, formatBytes(d.bytesUp + d.bytesDown)].filter(Boolean).join(' · ')}
       </div>
-      <Explanation key={netDest} explain={explainBox(data, null, `${d.state === 'broken' ? 'origin:broken' : 'dest'}:${d.key}`)} />
+      <Explanation key={netDest} explain={explainBox(data, null, `${({ refused: 'refused', broken: 'origin:broken', reached: 'dest' } as const)[outcomeOf(d)]}:${d.key}`)} />
       <ol aria-label="Hops" style={{ listStyle: 'none', margin: 0, padding: 0 }}>
         {hops.map((hop, i) => (
           <li key={hop.id} style={{ display: 'grid', gridTemplateColumns: '18px 1fr', gap: 8, position: 'relative', paddingBottom: i === hops.length - 1 ? 0 : 12 }}>
