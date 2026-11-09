@@ -82,15 +82,17 @@ describe('Topology: nothing overlaps', () => {
       for (const a of ns) for (const b of ns) if (a !== b) expect(overlap(a, b), `${a.id} / ${b.id}`).toBe(false);
     }
     const exit = t.nodes.find((n) => n.id === 'origin:exit');
-    if (exit && t.pinned.length && llm) expect(exit.y).toBeGreaterThan(Math.max(bottom(llm), ...pinnedRows.map(bottom)));
+    const model = t.pinned.length ? llm : undefined;
+    const pathBottom = model ? Math.max(bottom(model), ...pinnedRows.map(bottom)) : null;
+    if (exit && pathBottom !== null) expect(exit.y).toBeGreaterThan(pathBottom);
     // …and as high as that allows: no lower than the tunnel route it is behind (unless the model's
     // path reaches below that route), and under any other route stacked above the tunnel, whose
     // bands cross the origin column on their way to the destinations.
     const tunnel = t.nodes.find((n) => n.id === 'route:tunnel');
     if (exit && tunnel) {
-      const floor = t.pinned.length && llm ? Math.max(bottom(llm), ...pinnedRows.map(bottom)) + 20 : -Infinity;
+      const floor = pathBottom === null ? -Infinity : pathBottom + 20;
       expect(exit.y).toBeLessThanOrEqual(Math.max(tunnel.y, floor));
-      for (const r of t.nodes.filter((x) => x.kind === 'route' && x !== tunnel && !(t.pinned.length && x === llm) && x.y < tunnel.y)) {
+      for (const r of t.nodes.filter((x) => x.kind === 'route' && x !== tunnel && x !== model && x.y < tunnel.y)) {
         expect(bottom(r), r.id).toBeLessThan(exit.y);
       }
     }
