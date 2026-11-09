@@ -1085,6 +1085,11 @@ Selected path panel that walks one destination's path hop by hop.
     the tunnel, at most three) are **pinned** above the scrolling window (`Topology.pinned`), level
     with their route, so the inference path runs straight across the top and stays one click from
     Details however the column is scrolled. Their bands have no `toRow`, so no scroll moves them.
+    Only rows wholly reached by the busiest model destination's route are pinned (another, through
+    Local lower down, scrolls with the rest, or its band would climb across the exit), and that route
+    is placed first and no lower than 60 px under the wall, even Direct, which otherwise wants the
+    bottom. The sort toggle orders the scrolling rows only; the pinned ones stay by bytes, and the
+    toggle is shown only when more than one row scrolls.
   - **The model's path along the top.** `serviceOrder` moves every gate a hop goes on through
     (glove's `next`: `llm` → `llm-upstream`, `browser` → `browser-egress`, `webfetch-mcp` →
     `webfetch-egress`) to just above that hop. The gate is what carries the bytes out, so its band
@@ -1108,6 +1113,13 @@ Selected path panel that walks one destination's path hop by hop.
     the hop: see "The model's path along the top"). Destinations are ordered by bytes, as the plan
     says (or by name or last seen: see below). Each column then gets one overlap-avoidance pass.
   - **Size.** Below 1000 × 420 the diagram is laid out at that size and scaled down, never scrolled.
+    It is also laid out taller than its panel, and scaled down the same way, when the panel is too short
+    for what must be stacked: the wall's band (one label per refusing rule, unbounded), the gate
+    services, or the origin column's model path, exit and broken paths. Each column's placement is a
+    floor that wins over its other wishes (the exit never rises above the model's path, the broken
+    paths never above the exit), and the height is sized so those floors always fit. Clamping each
+    column to the bottom instead let the last clamp silently undo the others: with eight rules on the
+    wall at 1000 × 420, every service landed on one spot below the canvas.
   - **The destination column scrolls; nothing is folded.** Every reached destination has a row, at
     a fixed pitch inside the column's window. When they do not all fit, the column scrolls on its own
     (`ScrollColumn`, `maxScroll`). `projectTopology(t, scrollTop)` redraws only the bands into a

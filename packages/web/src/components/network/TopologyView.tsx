@@ -442,7 +442,8 @@ export function TopologyDiagram({ data }: { data: NetSessionData }) {
           <text key={c.id} x={c.x} y={26} fontSize={10} letterSpacing="0.08em" fontWeight={600} fill="var(--text-muted)"
             textAnchor={c.id === 'policy' ? 'middle' : 'start'}>{c.label.toUpperCase()}</text>
         ))}
-        {t.dests.rows.length + t.pinned.length > 1 && (
+        {/* The pinned rows keep their own order (by bytes), so the toggle is for the scrolling ones. */}
+        {t.dests.rows.length > 1 && (
           <text x={t.dests.x} y={41} fontSize={9.5} fill="var(--text-faint)" data-dest-sort={sort}
             {...svgButton(`Sort destinations by ${SORTS[SORTS[sort].next].label} (now by ${SORTS[sort].label})`, () => setSort(SORTS[sort].next))}
             {...tipProps({ heading: 'Order of the destinations', body: 'Click to sort by bytes, by name or by when each was last seen. Local destinations stay first and direct ones last.' })}>

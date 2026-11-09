@@ -58,6 +58,15 @@ const MAX_PINNED = 3;
 const PATH_CLEARANCE = 20;
 /** Between the exit and the broken paths' window. */
 const ORIGIN_GAP = 24;
+/** Between two service boxes. */
+const SVC_GAP = 14;
+/** The lowest the model's route may centre under `contentTop`, so its path stays along the top. */
+const MODEL_ROUTE_REACH = 60;
+/** The tallest a route box (two lines) and the exit (four lines) can be. */
+const ROUTE_MAX_H = 26 + 13 * 2;
+const EXIT_MAX_H = 26 + 13 * 4 + 4;
+/** What an empty policy wall leaves under it at the minimum height: the least any session gets. */
+const BASE_CONTENT = MIN_HEIGHT - BOTTOM_PAD - (TOP + 20 + WALL_CAPTION_ROOM);
 
 /** A band's colour, by route; refusals by who refused. */
 export type BandKind = 'tunnel' | 'fanout' | 'local' | 'direct' | 'guard' | 'refused' | 'broken' | 'unwatched' | 'trigger';
@@ -445,8 +454,6 @@ export function countLabel(n: number): string {
 
 export function layoutTopology(data: TopoInput, width: number, height: number, opts: { sort?: DestSort } = {}): Topology {
   const W = Math.max(MIN_WIDTH, width);
-  const H = Math.max(MIN_HEIGHT, height);
-  const bottom = H - BOTTOM_PAD;
   // Destinations sit against the right edge; the origin and route columns keep their share of the
   // width unless that would leave their bands no room to bend; the wall goes in the gap before the route.
   const destX = W - NODE_W.dests - 6;
@@ -504,6 +511,32 @@ export function layoutTopology(data: TopoInput, width: number, height: number, o
   };
   const contentTop = wall.y2 + WALL_CAPTION_ROOM;
 
+  // Destinations reached: by key, with the legs that reached each.
+  const group = (l: Leg) => (l.route === 'local' || l.route === 'llm' ? 0 : l.route === 'direct' ? 3 : l.fanout ? 2 : 1);
+  const reached = new Map<string, { d: DestinationAggregate; legs: Leg[]; group: number; bytes: number }>();
+  for (const l of legs) {
+    if (l.outcome !== 'reached') continue;
+    const e = reached.get(l.d.key) ?? { d: l.d, legs: [], group: group(l), bytes: 0 };
+    e.legs.push(l);
+    e.bytes += l.bytes;
+    reached.set(l.d.key, e);
+  }
+  // The model's destinations are pinned (never scrolled), level with their route at the top of the
+  // route column. Only those not through the tunnel (a band to one must not cross the exit), and
+  // only those reached wholly by the busiest one's route, the one moved to the top: a band from a
+  // route lower down would climb across the exit to reach a pinned row.
+  const llmCandidates = [...reached.values()]
+    .filter((r) => isLlmDestination(r.d) && r.legs.every((l) => l.route !== 'tunnel'))
+    .sort((a, b) => b.bytes - a.bytes || a.d.key.localeCompare(b.d.key));
+  const llmRoute = llmCandidates[0]?.legs[0].route ?? null;
+  const pinnedRows = llmCandidates.filter((r) => r.legs.every((l) => l.route === llmRoute)).slice(0, MAX_PINNED);
+  const brokenByKey = new Map<string, Leg>();
+  for (const l of legs) if (l.outcome === 'broken' && !brokenByKey.has(l.d.key)) brokenByKey.set(l.d.key, l);
+  const brokenLegs = [...brokenByKey.values()].sort((a, b) => b.d.lastSeen - a.d.lastSeen || a.d.key.localeCompare(b.d.key));
+  const brokenFull = brokenLegs.length * BROKEN_PITCH;
+  const brokenMin = Math.min(brokenFull, 2 * BROKEN_PITCH);
+
+
   // Services.
   const svcNodes: TopoNode[] = [];
   const svcItems = services.map((s) => {
@@ -533,9 +566,25 @@ export function layoutTopology(data: TopoInput, width: number, height: number, o
     }
     return { s, lines, hosts: uniq(mine.map((l) => l.host)), live: mine.some((l) => l.live) };
   });
+  // The height: what was asked for, or more when the wall's band, the services' stack or the origin
+  // column's (the model's path, the exit under it, the broken paths under that) needs it; the
+  // component scales the diagram to fit. Every clamp below then has room, so none gives way to another.
+  const hasTunnel = data.gate.route.kind === 'vpn' || data.gate.route.kind === 'tor' || legs.some((l) => l.outcome !== 'refused' && l.route === 'tunnel');
+  const pathNeed = llmRoute
+    ? MODEL_ROUTE_REACH + Math.max(ROUTE_MAX_H / 2, pinnedRows.length * DEST_MIN_PITCH - DEST_H / 2) + PATH_CLEARANCE : 0;
+  const originNeed = pathNeed + (hasTunnel ? EXIT_MAX_H + (brokenLegs.length ? ORIGIN_GAP : 0) : 0) + brokenMin;
+  const svcNeed = svcItems.reduce((a, it) => a + nodeH(it.lines.length) + SVC_GAP, -SVC_GAP);
+  const H = Math.max(MIN_HEIGHT, height, Math.ceil(contentTop + Math.max(BASE_CONTENT, originNeed, svcNeed) + BOTTOM_PAD));
+  const bottom = H - BOTTOM_PAD;
+
   const svcTop = contentTop;
   const pitch = (bottom - svcTop) / Math.max(1, svcItems.length);
-  const svcYs = spread(svcItems.map((it, i) => ({ want: svcTop + pitch * (i + 0.5), h: nodeH(it.lines.length) })), svcTop, bottom, 14);
+  // The service carrying the model's pinned path, when glove's order (with `serviceOrder`) puts it
+  // first, sits at the very top: its route is level with it there, within `MODEL_ROUTE_REACH`.
+  const modelSvcs = new Set(pinnedRows.flatMap((r) => r.legs.map((l) => l.service)));
+  const svcYs = spread(svcItems.map((it, i) => ({
+    want: i === 0 && modelSvcs.has(it.s.service) ? svcTop + nodeH(it.lines.length) / 2 : svcTop + pitch * (i + 0.5), h: nodeH(it.lines.length),
+  })), svcTop, bottom, SVC_GAP);
   svcItems.forEach((it, i) => {
     const fan = isFanoutService(it.s);
     svcNodes.push(node({
@@ -563,24 +612,6 @@ export function layoutTopology(data: TopoInput, width: number, height: number, o
     ], tone: 'tunnel', hosts: uniq(legs.filter((l) => !l.fanout).map((l) => l.host)), live: legs.some((l) => l.live && !l.fanout),
   });
 
-  // Destinations reached: by key, with the legs that reached each.
-  const group = (l: Leg) => (l.route === 'local' || l.route === 'llm' ? 0 : l.route === 'direct' ? 3 : l.fanout ? 2 : 1);
-  const reached = new Map<string, { d: DestinationAggregate; legs: Leg[]; group: number; bytes: number }>();
-  for (const l of legs) {
-    if (l.outcome !== 'reached') continue;
-    const e = reached.get(l.d.key) ?? { d: l.d, legs: [], group: group(l), bytes: 0 };
-    e.legs.push(l);
-    e.bytes += l.bytes;
-    reached.set(l.d.key, e);
-  }
-  // The model's destinations are pinned (never scrolled), level with their route at the top of the
-  // route column. Only those not through the tunnel: a band to one must not cross the exit.
-  const pinnedRows = [...reached.values()]
-    .filter((r) => isLlmDestination(r.d) && r.legs.every((l) => l.route !== 'tunnel'))
-    .sort((a, b) => b.bytes - a.bytes || a.d.key.localeCompare(b.d.key))
-    .slice(0, MAX_PINNED);
-  const llmRoute = pinnedRows[0]?.legs[0].route ?? null;
-
   // Route column: local, the llm link, the declared tunnel, direct — in that order, except that the
   // route the model's call takes goes first, level with `llm-upstream` (or the `llm` service).
   // A route nothing used is not drawn, the declared tunnel aside.
@@ -599,7 +630,6 @@ export function layoutTopology(data: TopoInput, width: number, height: number, o
   const tunnelSvc = services.find((s) => s.observed && serviceRoute(s) === 'tunnel');
   const tunnelUp = upstreamHost(tunnelSvc?.route?.upstream ?? tunnelSvc?.upstream, true);
   const hasLocal = reachedOrBroken.some((l) => l.route === 'local');
-  const hasTunnel = routeKind === 'vpn' || routeKind === 'tor' || reachedOrBroken.some((l) => l.route === 'tunnel');
   const directLegs = reachedOrBroken.filter((l) => l.route === 'direct');
   const health = data.gate.route.upstreamHealthy;
   type RouteSpec = { id: RouteId; title: string; lines: TopoLine[]; tone: Tone; want: number };
@@ -637,7 +667,12 @@ export function layoutTopology(data: TopoInput, width: number, height: number, o
     specs.push({ id: 'direct', title: leakLegs.length ? 'Direct' : 'Direct · VPN', lines, tone: leakLegs.length ? 'direct' : 'local', want: bottom });
   }
   const first = specs.findIndex((s) => s.id === llmRoute);
-  if (first > 0) specs.unshift(...specs.splice(first, 1));
+  if (first >= 0) {
+    // First, and never lower than `MODEL_ROUTE_REACH` (Direct wants the bottom; a model service
+    // glove declared last would put it there too): the height was sized on that.
+    const [m] = specs.splice(first, 1);
+    specs.unshift({ ...m, want: Math.min(want(m.id) ?? contentTop, contentTop + MODEL_ROUTE_REACH) });
+  }
   const routeYs = spread(specs.map((s) => ({ want: s.want, h: nodeH(s.lines.length) })), contentTop, bottom, 20);
   const routeNode = new Map<RouteId, TopoNode>();
   specs.forEach((s, i) => {
@@ -663,10 +698,6 @@ export function layoutTopology(data: TopoInput, width: number, height: number, o
   const exitRec = data.exit;
   const placed = !!exitRec?.healthy && !!exitRec.ip;
   const tunnelReached = legs.filter((l) => l.outcome === 'reached' && l.route === 'tunnel');
-  const brokenByKey = new Map<string, Leg>();
-  for (const l of legs) if (l.outcome === 'broken' && !brokenByKey.has(l.d.key)) brokenByKey.set(l.d.key, l);
-  const brokenLegs = [...brokenByKey.values()].sort((a, b) => b.d.lastSeen - a.d.lastSeen || a.d.key.localeCompare(b.d.key));
-  const brokenFull = brokenLegs.length * BROKEN_PITCH;
   let exitNode: TopoNode | null = null;
   if (tunnel) {
     const lines: TopoLine[] = [];
@@ -684,8 +715,9 @@ export function layoutTopology(data: TopoInput, width: number, height: number, o
     }
     const h = nodeH(lines.length) + 4;
     // Room under it for a row or two of broken paths, unless that would lift it into the model's path.
-    const lowest = bottom - h - (brokenLegs.length ? ORIGIN_GAP + Math.min(brokenFull, 2 * BROKEN_PITCH) : 0);
-    const y = Math.min(bottom - h, Math.max(pathFloor, Math.min(centre(tunnel) + 40 - h / 2, lowest)));
+    // `pathFloor` wins: the height was sized so that it is never under `lowest`.
+    const lowest = bottom - h - (brokenLegs.length ? ORIGIN_GAP + brokenMin : 0);
+    const y = Math.max(pathFloor, Math.min(centre(tunnel) + 40 - h / 2, lowest));
     exitNode = node({
       id: 'origin:exit', kind: 'exit', column: 'origin', x: colX('origin'), y, w: NODE_W.origin, h, title, lines,
       tone: placed && data.gate.route.verified ? 'tunnel' : 'warn', hosts: uniq(tunnelReached.map((l) => l.host)),
@@ -695,10 +727,11 @@ export function layoutTopology(data: TopoInput, width: number, height: number, o
   // Every broken path has a row, in a window of its own that scrolls like the destinations do
   // (nothing folded away).
   const froms = uniq(brokenLegs.map((l) => l.route)).map((r) => routeNode.get(r as RouteId)).filter((n): n is TopoNode => !!n);
-  const brokenTop = Math.min(bottom - BROKEN_PITCH, Math.max(
+  // Never above the exit's foot (or the model's path): that floor wins over the route's height.
+  const brokenTop = Math.max(
     exitNode ? exitNode.y + exitNode.h + ORIGIN_GAP : pathFloor,
-    froms.length ? Math.min(...froms.map((n) => n.y)) : contentTop,
-  ));
+    Math.min(bottom - brokenMin, froms.length ? Math.min(...froms.map((n) => n.y)) : contentTop),
+  );
   const brokenRoom = bottom - brokenTop;
   const brokenScrolls = brokenFull > brokenRoom;
   const brokenBlockH = brokenScrolls ? brokenRoom : brokenFull;
@@ -735,6 +768,7 @@ export function layoutTopology(data: TopoInput, width: number, height: number, o
     return n.id;
   });
   const pinnedKeys = new Set(pinnedRows.map((r) => r.d.key));
+  const pinnedIds = new Set(pinned);
   // Every other destination has a row: the column scrolls (`projectTopology`) rather than fold any away.
   // The stubs' room is taken from the window only when the rows do not all fit in it without.
   const windowTop = pinned.length ? pinnedBottom : TOP;
@@ -869,7 +903,7 @@ export function layoutTopology(data: TopoInput, width: number, height: number, o
     return {
       id: dr.id, kind: dr.kind, from: dr.from.id, to: isNode(dr.to) ? dr.to.id : 'wall', d: bandPath(x1, y1, x2, y2), start: [x1, y1], width, bytes,
       hosts: uniq(dr.legs.map((l) => l.host)), live: dr.legs.some((l) => l.live), dashed: !!dr.dashed, label,
-      ...(isNode(dr.to) && dr.to.kind === 'dest' && !pinned.includes(dr.to.id) ? { toRow: { col: 'dests' as const, x2, y2 } }
+      ...(isNode(dr.to) && dr.to.kind === 'dest' && !pinnedIds.has(dr.to.id) ? { toRow: { col: 'dests' as const, x2, y2 } }
         : isNode(dr.to) && dr.to.kind === 'broken' ? { toRow: { col: 'broken' as const, x2, y2 } } : {}),
     };
   });

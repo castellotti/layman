@@ -233,6 +233,8 @@ const inScroll = await page.$(`${DIAG} g[data-dest-scroll] g[data-node="dest:gpu
 check('llm-lan: the model\'s destination is pinned, outside the scrolling column', !!pinnedRow && !inScroll);
 const centreY = (b) => (b.top + b.bottom) / 2;
 check('llm-lan: …level with its route', !!pinnedRow && Math.abs(centreY(pinnedRow) - centreY(boxes['route:llm'])) < 2, pinnedRow && `${centreY(pinnedRow)} vs ${centreY(boxes['route:llm'])}`);
+check('llm-lan: …and with llm-upstream, so the path runs straight across', Math.abs(centreY(boxes['svc:llm-upstream']) - centreY(boxes['route:llm'])) < 2,
+  `${centreY(boxes['svc:llm-upstream'])} vs ${centreY(boxes['route:llm'])}`);
 const exitBox = boxes['origin:exit'];
 check('llm-lan: the exit is under the model\'s path', exitBox.top > Math.max(pinnedRow.bottom, boxes['route:llm'].bottom), `${exitBox.top}`);
 const brokenTop = await page.$eval(`${DIAG} g[data-broken-scroll] > g[clip-path]`, (g) => g.getBoundingClientRect().top);
