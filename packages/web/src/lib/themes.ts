@@ -103,7 +103,7 @@ export const THEMES: readonly Theme[] = [
       'border': '#2A241D', 'border-subtle': '#1F1A15', 'border-strong': '#3A3229',
       'text': '#EEE6D8', 'text-body': '#C8BDAC', 'text-muted': '#9A8F7F', 'text-faint': '#6B6255',
       'accent': '#CC8B6C', 'accent-hot': '#EBA190', 'ok': '#86C08F', 'warn': '#E8C84E', 'error': '#F0506E', 'info': '#9DB4D6', 'agent': '#B9A3D9', 'thinking': '#9C86C9',
-      'severity-major': '#F7E07A', 'severity-minor': '#E0BC3C',
+      'severity-major': '#E0BC3C', 'severity-minor': '#F7E07A',
       'code': '#D8C4A2', 'bg-code': '#0B0A08', 'diff-add-bg': '#142417', 'diff-add-text': '#B5E3B9', 'diff-remove-bg': '#2A1216', 'diff-remove-text': '#F6B8C2',
       'net-tunnel': '#6FC2B2', 'net-up': '#C3A6E0', 'net-down': '#9DB4D6', 'net-ocean': '#0B0A08', 'net-land': '#1C1813', 'net-landline': '#2E271F', 'net-fanout': '#A592CC', 'net-local': '#6B6255',
     },
@@ -290,12 +290,34 @@ export function resolveAppearance(input: unknown, env: Environment): ResolvedApp
 }
 
 /**
- * The stylesheet text for a resolved appearance. Screen only: print keeps its own light palette
- * in `index.css`, which a screen theme must not override (an inline style on `<html>` would).
+ * The theme print and Export to PDF use, whatever is on screen: a white page, so a PDF prints the
+ * same for everyone. Only its colours are used; the user's overrides are not (they are a screen
+ * choice). Fonts, radius and density print from `index.css`'s `:root` (Classic's defaults). The
+ * print palette is written by `applyTheme()`, so it needs the app's script; without it there is
+ * no transcript to print.
+ */
+export const PRINT_THEME: ThemeId = 'daylight';
+
+/** Custom properties (names with the leading `--`) as a `:root` block scoped to one media type. */
+function mediaRoot(media: 'screen' | 'print', vars: Record<string, string>): string {
+  const decls = Object.entries(vars).map(([k, v]) => `  ${k}: ${v};`).join('\n');
+  return `@media ${media} {\n:root {\n${decls}\n}\n}\n`;
+}
+
+/** Its colours as an `@media print` block, in `TOKENS` order. Constant, so built once. */
+const PRINT_CSS = (() => {
+  const { tokens } = themeById(PRINT_THEME);
+  return mediaRoot('print', Object.fromEntries(TOKENS.map((t) => [`--${t}`, tokens[t]])));
+})();
+
+/**
+ * The stylesheet text for a resolved appearance: its variables for the screen, and the print
+ * theme's colours for print. The screen block is media-scoped, never an inline style on `<html>`,
+ * which would beat the print block. `index.css` keeps only Classic in `:root`, the fallback before
+ * a theme is applied; print's palette comes from here.
  * `color-scheme` is not set yet: today native controls render light on the dark UI, and setting
  * it belongs with the Appearance settings that make a theme choice visible.
  */
 export function appearanceCss(r: ResolvedAppearance): string {
-  const decls = Object.entries(r.vars).map(([k, v]) => `  ${k}: ${v};`).join('\n');
-  return `@media screen {\n:root {\n${decls}\n}\n}\n`;
+  return mediaRoot('screen', r.vars) + PRINT_CSS;
 }

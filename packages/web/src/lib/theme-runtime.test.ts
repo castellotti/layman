@@ -14,7 +14,7 @@ function fakeDocument() {
 }
 
 describe('applyTheme', () => {
-  it('writes one screen-only style element and the data attributes, and bumps the version once per change', () => {
+  it('writes one style element (the screen theme and the print palette) and the data attributes, and bumps the version once per change', () => {
     const doc = fakeDocument();
     const d = doc as unknown as Document;
     let calls = 0;
@@ -24,6 +24,7 @@ describe('applyTheme', () => {
     applyTheme({ ...DEFAULT_APPEARANCE, theme: 'paper' }, d);
     expect(doc.documentElement.dataset).toEqual({ theme: 'paper', scheme: 'light', motion: 'full' });
     expect(doc.getElementById('layman-theme')?.textContent).toMatch(/^@media screen \{/);
+    expect(doc.getElementById('layman-theme')?.textContent).toMatch(/@media print \{\n:root \{\n  --bg: #FFFFFF;/);
     expect(getThemeVersion()).toBe(v0 + 1);
 
     applyTheme({ ...DEFAULT_APPEARANCE, theme: 'paper' }, d); // unchanged: no redraws

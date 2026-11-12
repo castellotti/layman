@@ -1,29 +1,32 @@
 /**
- * How a station looks: its name, its colour and what it covers. Each colour is an existing theme
- * token that the print palette also redefines (the `--net-*` tokens are not), so a glyph themes and
- * prints dark on white; `station-style.test.ts` holds that. Pure; the glyphs are in `components/activity/StationGlyph.tsx`.
+ * How a station looks: its name, its colour (a theme token, so it themes and prints with the rest)
+ * and what it covers. Pure; the glyphs are in `components/activity/StationGlyph.tsx`.
  */
 import { eventStation, NO_SETUP, STATION_IDS, type StationId, type StationSetup } from './station.js';
 import type { TimelineEvent } from './types.js';
+import { tokenColor, type Token } from './tokens.js';
 
 export interface StationStyle {
   label: string;
+  /** A theme token: every theme, and the print palette (`PRINT_THEME`), defines it. */
+  token: Token;
+  /** `var(--token)`, ready for a style. */
   color: string;
   /** One line on what lands here, for a tooltip or a legend. */
   about: string;
 }
 
 export const STATION_STYLE: Record<StationId, StationStyle> = {
-  you: { label: 'You', color: 'var(--info)', about: 'Your prompts, and what the agent asked or showed you' },
-  model: { label: 'Model', color: 'var(--thinking)', about: 'Responses, reasoning and the agent’s own planning' },
-  memory: { label: 'Memory', color: 'var(--accent)', about: 'Memory read or written, and instructions loaded into the context' },
-  files: { label: 'Files', color: 'var(--code)', about: 'Reading, searching, moving and editing files' },
-  shell: { label: 'Shell', color: 'var(--text-muted)', about: 'Commands that run programs' },
-  network: { label: 'Network', color: 'var(--ok)', about: 'Fetches, searches, downloads, remote tools and commands that reach the network' },
-  browser: { label: 'Browser', color: 'var(--accent-hot)', about: 'A browser driven by the agent' },
-  agents: { label: 'Agents', color: 'var(--agent)', about: 'Subagents, and work started to run on later' },
-  skills: { label: 'Skills', color: 'var(--severity-minor)', about: 'Skills and tools loaded on demand' },
-  guard: { label: 'Guard', color: 'var(--warn)', about: 'Layman’s own decisions: approvals, denials, permission requests, drift checks' },
+  you: { label: 'You', token: 'info', color: tokenColor('info'), about: 'Your prompts, and what the agent asked or showed you' },
+  model: { label: 'Model', token: 'thinking', color: tokenColor('thinking'), about: 'Responses, reasoning and the agent’s own planning' },
+  memory: { label: 'Memory', token: 'accent', color: tokenColor('accent'), about: 'Memory read or written, and instructions loaded into the context' },
+  files: { label: 'Files', token: 'code', color: tokenColor('code'), about: 'Reading, searching, moving and editing files' },
+  shell: { label: 'Shell', token: 'text-muted', color: tokenColor('text-muted'), about: 'Commands that run programs' },
+  network: { label: 'Network', token: 'net-tunnel', color: tokenColor('net-tunnel'), about: 'Fetches, searches, downloads, remote tools and commands that reach the network' },
+  browser: { label: 'Browser', token: 'net-fanout', color: tokenColor('net-fanout'), about: 'A browser driven by the agent' },
+  agents: { label: 'Agents', token: 'agent', color: tokenColor('agent'), about: 'Subagents, and work started to run on later' },
+  skills: { label: 'Skills', token: 'net-local', color: tokenColor('net-local'), about: 'Skills and tools loaded on demand' },
+  guard: { label: 'Guard', token: 'warn', color: tokenColor('warn'), about: 'Layman’s own decisions: approvals, denials, permission requests, drift checks' },
 };
 
 /**

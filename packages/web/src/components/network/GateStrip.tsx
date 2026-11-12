@@ -15,9 +15,10 @@ import type { PanelDef } from '../../lib/net-panels.js';
 import { chipCollapses, gateChips } from '../../lib/net-format.js';
 import { RangePicker } from './RangePicker.js';
 import { REJECTED_TITLE, rejectedAuthor } from '../../lib/net-rules.js';
-import { Chip, NetIcon, useStored, type NetIconName } from './netui.js';
+import { ALARM, Chip, NetIcon, useStored, type NetIconName } from './netui.js';
 import { TipWrap, tipProps } from './NetTip.js';
 import { useNetStore } from '../../stores/netStore.js';
+import { tokenColor } from '../../lib/tokens.js';
 
 const bannerButton: React.CSSProperties = {
   display: 'inline-flex', alignItems: 'center', gap: 6, height: 26, padding: '0 10px', borderRadius: 6,
@@ -74,7 +75,7 @@ function RangeControl({ token, range, onRange, display, setDisplay }: {
         style={{
           display: 'flex', alignItems: 'center', justifyContent: 'center', width: 24, height: 24, borderRadius: 5, cursor: 'pointer',
           border: `1px solid ${lit ? 'var(--info)' : 'var(--border)'}`,
-          background: lit ? 'color-mix(in srgb, var(--info) 22%, transparent)' : 'transparent',
+          background: lit ? tokenColor('info', '22%') : 'transparent',
         }}>
         <NetIcon name="calendar" color={lit ? 'var(--info)' : 'var(--text-muted)'} strokeWidth={lit ? 1.8 : 1.4} />
       </button>
@@ -88,7 +89,7 @@ function RangeControl({ token, range, onRange, display, setDisplay }: {
               display: 'flex', alignItems: 'center', gap: 5, height: 24, padding: '0 8px', borderRadius: 5, cursor: 'pointer',
               fontSize: 10.5, fontFamily: range ? 'var(--font-mono)' : 'var(--font-ui)', whiteSpace: 'nowrap',
               color: range ? 'var(--text)' : 'var(--text-muted)', background: anchor ? 'var(--bg-selected)' : 'transparent',
-              border: `1px solid ${range ? 'color-mix(in srgb, var(--info) 55%, transparent)' : 'var(--border)'}`,
+              border: `1px solid ${range ? tokenColor('info', '55%') : 'var(--border)'}`,
             }}>
             {range ? <>{name && <span style={{ fontFamily: 'var(--font-ui)', fontWeight: 600 }}>{name} ·</span>}<RangeText range={range} /></> : 'All records'}
             <NetIcon name="chevron" size={10} color="var(--text-faint)" />
@@ -179,7 +180,7 @@ export function GateStrip({ sessions, notObservable, token, onPick, range, onRan
             <span key={c.key} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
               <Chip tone={c.tone} icon={c.icon} label={c.label} tip={c.tip} strong />
               <button type="button" disabled={data.rules.control.state !== 'ok'} onClick={() => useNetStore.getState().applyRules({ kind: 'restoreAll' })}
-                style={{ height: 20, padding: '0 8px', borderRadius: 10, fontSize: 10.5, cursor: 'pointer', fontFamily: 'var(--font-ui)', color: 'var(--net-tunnel)', background: 'rgba(53,201,180,0.12)', border: '1px solid rgba(53,201,180,0.45)' }}>
+                style={{ height: 20, padding: '0 8px', borderRadius: 10, fontSize: 10.5, cursor: 'pointer', fontFamily: 'var(--font-ui)', color: 'var(--net-tunnel)', background: tokenColor('net-tunnel', '12%'), border: `1px solid ${tokenColor('net-tunnel', '45%')}` }}>
                 Restore
               </button>
             </span>
@@ -228,7 +229,7 @@ export function RangeBanner({ range }: { range: NetRangeInfo }) {
     <div role="status" aria-label="Range coverage" style={{
       display: 'flex', alignItems: 'center', gap: 10, padding: '6px 12px', flexShrink: 0, fontFamily: 'var(--font-ui)',
       fontSize: 11.5, borderBottom: '1px solid var(--border)',
-      background: 'color-mix(in srgb, var(--info) 8%, transparent)', color: 'var(--text-body)',
+      background: tokenColor('info', '8%'), color: 'var(--text-body)',
     }}>
       <NetIcon name="calendar" color="var(--info)" />
       {notes && <span style={{ color: 'var(--text-faint)' }}>{notes}</span>}
@@ -265,14 +266,14 @@ export function RulesRejectedBanner({ data }: { data: NetSessionData }) {
     <div style={{ padding: '8px 12px 0', flexShrink: 0 }}>
       <div role="alert" style={{
         display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px', borderRadius: 8,
-        background: '#2A0F0E', border: '1px solid var(--error)',
+        background: ALARM.ground, border: '1px solid var(--error)',
       }}>
         <NetIcon name="alert" size={20} color="var(--error)" strokeWidth={1.8} />
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: '#FFB4AD' }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: ALARM.title }}>
             {unreadable ? 'The gate cannot read your rules file' : REJECTED_TITLE[rejectedAuthor(data.rules)]}
           </div>
-          <div style={{ fontSize: 11.5, color: '#F3C6C1', marginTop: 2 }}>
+          <div style={{ fontSize: 11.5, color: ALARM.body, marginTop: 2 }}>
             {unreadable
               ? <>glove reports <span style={{ fontFamily: 'var(--font-mono)' }}>{rules.error}</span>. That is almost always ownership: the gate runs as your user, and rules.json must be readable by it.</>
               : <>glove rejected rules.json: <span style={{ fontFamily: 'var(--font-mono)' }}>{rules.error ?? 'no reason given'}</span>.</>}
@@ -290,7 +291,7 @@ export function RulesRejectedBanner({ data }: { data: NetSessionData }) {
         </TipWrap>
         <TipWrap tip={canRetry ? 'Write rules.json again, handed to the gate’s user' : control ?? 'The file on disk is invalid'} disabled={!canRetry}>
           <button type="button" disabled={!canRetry}
-            onClick={() => useNetStore.getState().applyRules({ kind: 'rewrite' })} style={{ ...bannerButton, color: '#FF8A80', border: '1px solid rgba(240,86,74,0.6)', background: 'transparent' }}>
+            onClick={() => useNetStore.getState().applyRules({ kind: 'rewrite' })} style={{ ...bannerButton, color: ALARM.text, border: `1px solid ${tokenColor('error', '60%')}`, background: 'transparent' }}>
             Try again
           </button>
         </TipWrap>

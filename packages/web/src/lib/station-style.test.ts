@@ -1,21 +1,13 @@
 import { describe, it, expect } from 'vitest';
-import { readFileSync } from 'fs';
-import { dirname, join } from 'path';
-import { fileURLToPath } from 'url';
+import { TOKENS } from './tokens';
 import { STATION_IDS } from './station';
 import { rowStation, stationCounts, STATION_STYLE } from './station-style';
 
 describe('station styles', () => {
-  it('styles every station with a theme token', () => {
-    for (const s of STATION_IDS) expect(STATION_STYLE[s].color).toMatch(/^var\(--[a-z-]+\)$/);
-  });
-
-  it('styles every station with a token the print palette redefines, so it prints dark on white', () => {
-    const css = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '../index.css'), 'utf8');
-    const print = css.slice(css.indexOf('@media print'));
+  it('colours every station with a theme token, which every theme and the print palette define', () => {
     for (const s of STATION_IDS) {
-      const token = /var\((--[a-z-]+)\)/.exec(STATION_STYLE[s].color)![1];
-      expect([s, print.includes(`${token}:`)]).toEqual([s, true]);
+      expect(TOKENS).toContain(STATION_STYLE[s].token);
+      expect(STATION_STYLE[s].color).toBe(`var(--${STATION_STYLE[s].token})`);
     }
   });
 

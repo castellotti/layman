@@ -1,34 +1,38 @@
 import React, { useRef, useCallback, useEffect } from 'react';
 import type { TimelineEvent } from '../../lib/types.js';
 import { EVENT_KIND_COLOR } from '../../lib/event-styles.js';
+import { getThemeVersion, readToken } from '../../lib/theme-runtime.js';
+import type { Token } from '../../lib/tokens.js';
+import { useThemeVersion } from '../../hooks/useThemeVersion.js';
 
 const CANVAS_W = 12;
 const TICK_H = 4;
 
-// Canvas 2D's fillStyle can't parse `var(--x)` — passing one is a silent no-op
-// that leaves fillStyle at whatever it was last set to, which is why every
-// tick used to render as the same stale fallback color. Resolve custom
-// properties to their computed literal value once and cache the result —
-// this app has a single static theme, so the value never changes at runtime.
-const resolvedColorCache = new Map<string, string>();
+// Canvas 2D cannot read `var(--x)` (a fillStyle it cannot parse is a silent no-op that keeps the
+// previous colour), so each tick's token is resolved to its value with `readToken`. The values are
+// cached for one theme: the cache is dropped when the theme version changes, and the component
+// redraws then because the version is in `draw`'s dependencies.
+const resolved = new Map<Token, string>();
+let resolvedFor = -1;
 
-function resolveColor(cssValue: string): string {
-  const match = /^var\((--[\w-]+)\)$/.exec(cssValue);
-  if (!match) return cssValue;
-  const varName = match[1];
-  const cached = resolvedColorCache.get(varName);
+function resolveToken(token: Token): string {
+  const version = getThemeVersion();
+  if (resolvedFor !== version) {
+    resolved.clear();
+    resolvedFor = version;
+  }
+  const cached = resolved.get(token);
   if (cached) return cached;
-  const resolved = typeof document !== 'undefined'
-    ? getComputedStyle(document.documentElement).getPropertyValue(varName).trim()
-    : '';
-  const value = resolved || '#2A3242';
-  resolvedColorCache.set(varName, value);
+  // Before the variables apply (or with no document) a token reads empty. That is never cached,
+  // and draws nothing rather than the previous fillStyle.
+  const value = typeof document !== 'undefined' ? readToken(token) : '';
+  if (!value) return 'transparent';
+  resolved.set(token, value);
   return value;
 }
 
 function tickColor(type: string, highlighted: boolean): string {
-  if (highlighted) return '#E5A83B';
-  return resolveColor(EVENT_KIND_COLOR[type] ?? '#2A3242');
+  return resolveToken(highlighted ? 'warn' : EVENT_KIND_COLOR[type] ?? 'border-strong');
 }
 
 interface MinimapProps {
@@ -42,6 +46,7 @@ export function Minimap({ events, scrollRef, highlightedEventIds }: MinimapProps
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const dragging = useRef(false);
   const rafRef = useRef<number | null>(null);
+  const themeVersion = useThemeVersion();
 
   const draw = useCallback(() => {
     const canvas = canvasRef.current;
@@ -86,13 +91,15 @@ export function Minimap({ events, scrollRef, highlightedEventIds }: MinimapProps
       const { scrollTop, scrollHeight, clientHeight } = scrollEl;
       const vpTop = (scrollTop / scrollHeight) * h;
       const vpH = Math.max(12, (clientHeight / scrollHeight) * h);
-      ctx.fillStyle = 'rgba(90,156,248,0.08)';
+      ctx.fillStyle = ctx.strokeStyle = resolveToken('info');
+      ctx.globalAlpha = 0.08;
       ctx.fillRect(1, vpTop, CANVAS_W - 2, vpH);
-      ctx.strokeStyle = 'rgba(90,156,248,0.4)';
+      ctx.globalAlpha = 0.4;
       ctx.lineWidth = 1;
       ctx.strokeRect(1.5, vpTop + 0.5, CANVAS_W - 3, Math.max(11, vpH - 1));
+      ctx.globalAlpha = 1;
     }
-  }, [events, scrollRef, highlightedEventIds]);
+  }, [events, scrollRef, highlightedEventIds, themeVersion]);
 
   // Redraw on scroll — coalesce bursts of scroll events into one draw per frame
   useEffect(() => {

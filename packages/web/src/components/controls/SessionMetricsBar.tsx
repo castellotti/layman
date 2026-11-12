@@ -11,10 +11,10 @@ function formatCost(usd: number): string {
 }
 
 function ContextBar({ pct }: { pct: number }) {
-  const color = pct >= 90 ? '#f85149' : pct >= 70 ? '#d29922' : '#238636';
+  const color = pct >= 90 ? 'var(--error)' : pct >= 70 ? 'var(--warn)' : 'var(--ok)';
   return (
     <div className="flex items-center gap-1.5">
-      <div className="w-16 h-1.5 rounded-full bg-[#21262d] overflow-hidden">
+      <div className="w-16 h-1.5 rounded-full bg-bg-pill overflow-hidden">
         <div
           className="h-full rounded-full transition-all duration-300"
           style={{ width: `${Math.min(pct, 100)}%`, backgroundColor: color }}
@@ -26,13 +26,13 @@ function ContextBar({ pct }: { pct: number }) {
 }
 
 function RateLimitMini({ label, pct, resetsAt }: { label: string; pct: number; resetsAt?: string }) {
-  const color = pct >= 80 ? '#f85149' : pct >= 50 ? '#d29922' : '#8b949e';
+  const color = pct >= 80 ? 'var(--error)' : pct >= 50 ? 'var(--warn)' : 'var(--text-muted)';
   const tooltipParts = [`${label} rate limit: ${Math.round(pct)}% used`];
   if (resetsAt) tooltipParts.push(`Resets at ${new Date(resetsAt).toLocaleTimeString()}`);
   return (
     <div className="flex items-center gap-1" title={tooltipParts.join(' · ')}>
-      <span className="text-[#484f58]">{label}</span>
-      <div className="w-8 h-1.5 rounded-full bg-[#21262d] overflow-hidden">
+      <span className="text-text-faint">{label}</span>
+      <div className="w-8 h-1.5 rounded-full bg-bg-pill overflow-hidden">
         <div
           className="h-full rounded-full transition-all duration-300"
           style={{ width: `${Math.min(pct, 100)}%`, backgroundColor: color }}
@@ -133,30 +133,30 @@ export function SessionMetricsBar() {
   const hasLines = (metrics.linesAdded ?? 0) > 0 || (metrics.linesRemoved ?? 0) > 0;
 
   return (
-    <div className="flex items-center gap-3 px-3 py-1 bg-[#0d1117] border-b border-[#21262d] text-[10px] text-[#8b949e] flex-wrap" data-print-hide>
+    <div className="flex items-center gap-3 px-3 py-1 bg-bg border-b border-border text-[10px] text-text-muted flex-wrap" data-print-hide>
       {/* Model badge — single session only */}
       {!isAllSessions && metrics.modelDisplayName && (
-        <span className="px-1.5 py-0.5 rounded bg-[#21262d] text-[#e6edf3] font-medium">
+        <span className="px-1.5 py-0.5 rounded bg-bg-pill text-text font-medium">
           {metrics.modelDisplayName}
         </span>
       )}
 
       {/* "All sessions" label when aggregating */}
       {isAllSessions && activeSessionIds.size > 1 && (
-        <span className="text-[#484f58]">{activeSessionIds.size} sessions</span>
+        <span className="text-text-faint">{activeSessionIds.size} sessions</span>
       )}
 
       {/* Reasoning effort — only pi reports one */}
       {!isAllSessions && metrics.thinkingLevel && (
-        <span className="text-[#484f58]" title="Reasoning effort">
-          think <span className="text-[#8b949e]">{metrics.thinkingLevel}</span>
+        <span className="text-text-faint" title="Reasoning effort">
+          think <span className="text-text-muted">{metrics.thinkingLevel}</span>
         </span>
       )}
 
       {/* Context window fill */}
       {hasContext && (
         <div className="flex items-center gap-1" title="Context window usage">
-          <span className="text-[#484f58]">ctx</span>
+          <span className="text-text-faint">ctx</span>
           <ContextBar pct={metrics.contextUsedPct!} />
         </div>
       )}
@@ -181,9 +181,9 @@ export function SessionMetricsBar() {
       {/* Lines changed */}
       {hasLines && (
         <span className="tabular-nums">
-          <span className="text-[#3fb950]">+{metrics.linesAdded ?? 0}</span>
+          <span className="text-ok">+{metrics.linesAdded ?? 0}</span>
           {' '}
-          <span className="text-[#f85149]">-{metrics.linesRemoved ?? 0}</span>
+          <span className="text-error">-{metrics.linesRemoved ?? 0}</span>
         </span>
       )}
 

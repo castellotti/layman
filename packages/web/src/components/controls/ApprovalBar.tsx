@@ -33,7 +33,7 @@ export function ApprovalBar({ approvalId, onSend }: ApprovalBarProps) {
 
   if (decided) {
     return (
-      <div className="text-xs text-[#8b949e] italic">Decision sent — waiting for Claude Code to continue...</div>
+      <div className="text-xs text-text-muted italic">Decision sent — waiting for Claude Code to continue...</div>
     );
   }
 
@@ -42,21 +42,21 @@ export function ApprovalBar({ approvalId, onSend }: ApprovalBarProps) {
       <div className="flex gap-2">
         <button
           onClick={handleAllow}
-          className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-md bg-[#238636] hover:bg-[#2ea043] text-white transition-colors border border-[#3fb950]/30"
+          className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-md bg-ok hover:bg-[color-mix(in_srgb,var(--ok)_85%,var(--text))] text-text-on-fill transition-colors border border-ok/30"
         >
           ✓ Allow
         </button>
 
         <button
           onClick={handleDeny}
-          className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-md bg-[#da3633]/20 hover:bg-[#da3633]/30 text-[#f85149] transition-colors border border-[#f85149]/30"
+          className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-md bg-error/20 hover:bg-error/30 text-error transition-colors border border-error/30"
         >
           ✕ Deny
         </button>
 
         <button
           onClick={handleDefer}
-          className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-md bg-[#21262d] hover:bg-[#30363d] text-[#8b949e] transition-colors border border-[#30363d]"
+          className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-md bg-bg-pill hover:bg-border-strong text-text-muted transition-colors border border-border-strong"
           title="Pass the decision to the terminal prompt"
         >
           ⏭ Defer
@@ -70,19 +70,19 @@ export function ApprovalBar({ approvalId, onSend }: ApprovalBarProps) {
             value={denyReason}
             onChange={(e) => setDenyReason(e.target.value)}
             placeholder="Reason for denial (optional)..."
-            className="flex-1 px-3 py-1.5 text-xs bg-[#0d1117] border border-[#f85149]/30 rounded-md text-[#e6edf3] placeholder-[#484f58] focus:outline-none focus:border-[#f85149]"
+            className="flex-1 px-3 py-1.5 text-xs bg-bg border border-error/30 rounded-md text-text placeholder-text-faint focus:outline-none focus:border-error"
             onKeyDown={(e) => { if (e.key === 'Enter') handleDeny(); if (e.key === 'Escape') setShowDeny(false); }}
             autoFocus
           />
           <button
             onClick={handleDeny}
-            className="px-3 py-1.5 text-xs font-medium rounded-md bg-[#da3633]/20 text-[#f85149] border border-[#f85149]/30 hover:bg-[#da3633]/30 transition-colors"
+            className="px-3 py-1.5 text-xs font-medium rounded-md bg-error/20 text-error border border-error/30 hover:bg-error/30 transition-colors"
           >
             Confirm
           </button>
           <button
             onClick={() => setShowDeny(false)}
-            className="px-2 py-1.5 text-xs text-[#8b949e] hover:text-[#e6edf3] transition-colors"
+            className="px-2 py-1.5 text-xs text-text-muted hover:text-text transition-colors"
           >
             ✕
           </button>

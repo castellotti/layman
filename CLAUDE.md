@@ -485,9 +485,13 @@ Four rules that must not be relaxed casually:
   the block is the point of the toggle; losing the signal never was.
 
 - **Export to PDF is the browser's print, restyled** (`@media print` in `packages/web/src/index.css`).
-  It prints light by redefining the colour tokens (`--bg`, `--text`, `--code`, `--diff-*`, …), so a
-  component prints correctly only if its colours come from `var(--…)`. A hex literal stays dark on
-  white paper, which is how the export used to print as black bars. Two more traps: the stream's
+  It prints light by redefining every colour token with the print theme's values (`PRINT_THEME`,
+  Daylight, in `lib/themes.ts`), which `appearanceCss()` writes as an `@media print` block next to
+  the screen theme: there is no second palette in `index.css`, and neither the screen theme nor
+  the user's overrides reach the page. It is written by script, which is fine: without the app's script there
+  is no transcript to print. A component prints correctly only if its colours come from
+  `var(--…)`. A hex literal stays dark on white paper, which is how the export used to print as
+  black bars (`theme-literals.test.ts` now forbids them). Two more traps: the stream's
   ancestors are made `overflow: visible` so the whole transcript prints, which requires
   `min-width: 0` on them too, or one unbreakable line widens the page to 27,000 px and it is
   clipped; and Tailwind 3 drops opacity modifiers on arbitrary variables (`bg-[var(--ok)]/10` emits
@@ -511,12 +515,23 @@ Four rules that must not be relaxed casually:
   misleads). Exceptions are named in `KNOWN_PROBLEMS` and a test fails when one goes stale. Stored
   appearance goes through `normalizeAppearance()`, so a stale config can never blank the page. Classic must equal the
   `:root` block in `index.css`; change both or neither. A canvas/SVG view that reads colours once
-  depends on `useThemeVersion()` to redraw. A new token goes in `TOKENS`, every theme and `:root`.
+  depends on `useThemeVersion()` to redraw (`theme-literals.test.ts` allows reading a colour value, `readToken` or
+  `getComputedStyle`, only in a component or hook that puts `useThemeVersion()` in a dependency array); an SVG or xyflow view drawn with `var(--…)` needs nothing. A new token goes in `TOKENS`, every theme and `:root`.
   Tailwind's colours are generated from `TOKENS` (`lib/tokens.ts`, import-free because the
   Tailwind config loads it in Node): each is its `var(--…)`, and at an opacity a `color-mix`, so
   `bg-ok/10` and `bg-ok/[35%]` work, unlike `bg-[var(--ok)]/10`, which Tailwind 3 drops (a test
   fails on that form). `font-sans`, `font-ui` and `font-mono` follow `--font-ui` / `--font-mono`.
   Mind the names: `bg-bg-code` is the code background, `bg-code` paints with the code *text* colour.
+  No component, `lib` file or stylesheet holds a colour literal (`theme-literals.test.ts` fails on
+  any hex or non-black `rgb()` outside `themes.ts` and `index.css`'s `:root` blocks; black stays
+  allowed for shadows and scrims). In a style, an SVG attribute or a table, use `var(--…)` or
+  `tokenColor(token, '15%')` (`lib/tokens.ts`, the same helper the Tailwind config uses); colour
+  tables such as `lib/event-styles.ts` hold token names. A canvas cannot read `var()`: resolve with
+  `readToken()` and redraw on `useThemeVersion()` (the Minimap does). A shade between two tokens is
+  a `color-mix` of them (the network alarm's `ALARM` mixes `--error` with `--text`, and
+  `alarm.test.ts` holds it to AA in every theme), never a new hex. A hover on a filled button mixes
+  the fill toward `--text` (`hover:bg-[color-mix(in_srgb,var(--ok)_85%,var(--text))]`), never
+  `/85`, which lightens it under `--text-on-fill` in a light theme.
   The choice is the config's `appearance` block (`AppearanceSchema` in the server's
   `config/schema.ts`; it replaced the old top-level `theme`, which `migrateTheme` reads once:
   dark → classic, light → daylight). The server mirrors the theme ids, choices and defaults, and a

@@ -17,6 +17,7 @@ import { useSessionStore } from '../../stores/sessionStore.js';
 import type { TimelineEvent } from '../../lib/types.js';
 import { buildFlowchartGraph, type FlowchartNodeData } from '../../lib/flowchart-graph.js';
 import { FlowchartNode } from './FlowchartNodes.js';
+import { tokenColor } from '../../lib/tokens.js';
 
 const nodeTypes: NodeTypes = { flowchartNode: FlowchartNode };
 const FOLLOW_MIN_ZOOM = 0.75;
@@ -134,7 +135,7 @@ function FlowchartInner({ externalEvents, onSelectEvent, externalSelectedEventId
 
   if (events.length === 0) {
     return (
-      <div className="flex items-center justify-center h-full text-[#484f58] text-xs">
+      <div className="flex items-center justify-center h-full text-text-faint text-xs">
         Waiting for events...
       </div>
     );
@@ -164,14 +165,14 @@ function FlowchartInner({ externalEvents, onSelectEvent, externalSelectedEventId
           proOptions={{ hideAttribution: true }}
           defaultEdgeOptions={{ type: 'default' }}
         >
-          <Background gap={24} size={1} color="#161b22" />
+          <Background gap={24} size={1} color="var(--border-subtle)" />
           <Controls showInteractive={false} />
           <MiniMap
             pannable
             zoomable
-            nodeColor={(node) => (node.data as FlowchartNodeData).borderColor ?? '#30363d'}
+            nodeColor={(node) => (node.data as FlowchartNodeData).borderColor}
             nodeStrokeWidth={0}
-            maskColor="rgba(11,14,20,0.75)"
+            maskColor={tokenColor('bg', '75%')}
           />
         </ReactFlow>
       </div>
@@ -211,9 +212,9 @@ function FlowchartToolbar({
           display: 'inline-flex', alignItems: 'center', gap: 6,
           padding: '4px 10px', fontSize: 11, fontFamily: 'var(--font-ui)', fontWeight: 500,
           borderRadius: 5, cursor: 'pointer', whiteSpace: 'nowrap',
-          background: followLatest ? 'rgba(76,195,138,0.12)' : 'transparent',
+          background: followLatest ? tokenColor('ok', '12%') : 'transparent',
           color: followLatest ? 'var(--ok)' : 'var(--text-muted)',
-          border: followLatest ? '1px solid rgba(76,195,138,0.3)' : '1px solid var(--border-strong)',
+          border: followLatest ? `1px solid ${tokenColor('ok', '30%')}` : '1px solid var(--border-strong)',
         }}
       >
         <span style={{ width: 6, height: 6, borderRadius: '50%', background: followLatest ? 'var(--ok)' : 'var(--text-muted)' }} />

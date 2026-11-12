@@ -5,7 +5,7 @@ import { fileURLToPath } from 'url';
 import { HEX_COLOR } from './color.js';
 import {
   appearanceCss, DEFAULT_APPEARANCE, FONT_MONO, FONT_SANS, KNOWN_PROBLEMS, normalizeAppearance,
-  resolveAppearance, themeById, themeProblems, THEMES, TOKENS,
+  PRINT_THEME, resolveAppearance, themeById, themeProblems, THEMES, TOKENS,
 } from './themes.js';
 
 const DARK = { prefersDark: true, prefersReducedMotion: false };
@@ -142,9 +142,23 @@ describe('normalizeAppearance', () => {
 });
 
 describe('appearanceCss', () => {
-  it('is screen-only, so print keeps its own light palette', () => {
-    const css = appearanceCss(resolveAppearance(DEFAULT_APPEARANCE, DARK));
-    expect(css.startsWith('@media screen {')).toBe(true);
-    expect(css).toContain('--warn: #E5A83B;');
+  const blocks = (css: string) => Object.fromEntries(
+    [...css.matchAll(/@media (\w+) \{\n:root \{\n([\s\S]*?)\n\}\n\}/g)].map((m) => [m[1], m[2]]),
+  );
+
+  it('writes the theme for the screen and the print theme (Daylight) for print, every colour token', () => {
+    const { screen, print } = blocks(appearanceCss(resolveAppearance(DEFAULT_APPEARANCE, DARK)));
+    expect(screen).toContain('--warn: #E5A83B;');
+    expect(PRINT_THEME).toBe('daylight');
+    const daylight = themeById('daylight').tokens;
+    expect(print.split('\n')).toEqual(TOKENS.map((t) => `  --${t}: ${daylight[t]};`));
+  });
+
+  it('prints the same whatever the screen shows: another theme or overrides do not reach print', () => {
+    const plain = blocks(appearanceCss(resolveAppearance(DEFAULT_APPEARANCE, DARK))).print;
+    const custom = { ...DEFAULT_APPEARANCE, theme: 'ember', overrides: { bg: '#123456' } };
+    const { screen, print } = blocks(appearanceCss(resolveAppearance(custom, DARK)));
+    expect(screen).toContain('--bg: #123456;');
+    expect(print).toBe(plain);
   });
 });

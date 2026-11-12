@@ -5,6 +5,7 @@
 import React, { useCallback, useState } from 'react';
 import type { ChipIcon, ChipTone, NetTip } from '../../lib/net-format.js';
 import { tipProps } from './NetTip.js';
+import { tokenColor } from '../../lib/tokens.js';
 
 export type NetIconName =
   | ChipIcon
@@ -68,15 +69,27 @@ export function NetIcon({ name, size = 12, color = 'currentColor', strokeWidth =
   );
 }
 
+/**
+ * The untunnelled-traffic alarm's colours: the error colour lifted toward the text colour, so it
+ * reads on an error-tinted ground in a dark theme and darkens in a light one. `text` is an alarming
+ * value or action, `title` and `body` the alarm banner's two lines, `ground` its fill.
+ */
+export const ALARM = {
+  text: 'color-mix(in srgb, var(--error) 65%, var(--text))',
+  title: 'color-mix(in srgb, var(--error) 35%, var(--text))',
+  body: 'color-mix(in srgb, var(--error) 25%, var(--text))',
+  ground: 'color-mix(in srgb, var(--error) 14%, var(--bg))',
+} as const;
+
 /** Colour, fill and border per chip tone, as the design's gate strip draws them. */
 export const TONE: Record<ChipTone, { color: string; bg: string; border: string }> = {
-  ok: { color: 'var(--ok)', bg: 'rgba(76,195,138,0.12)', border: 'rgba(76,195,138,0.35)' },
-  tunnel: { color: 'var(--net-tunnel)', bg: 'rgba(53,201,180,0.12)', border: 'rgba(53,201,180,0.35)' },
-  warn: { color: 'var(--warn)', bg: 'rgba(229,168,59,0.12)', border: 'rgba(229,168,59,0.4)' },
-  error: { color: '#FF8A80', bg: 'rgba(240,86,74,0.16)', border: 'rgba(240,86,74,0.6)' },
-  violet: { color: 'var(--net-up)', bg: 'rgba(181,140,246,0.14)', border: 'rgba(181,140,246,0.45)' },
-  neutral: { color: 'var(--text-body)', bg: 'rgba(255,255,255,0.03)', border: 'var(--border-strong)' },
-  muted: { color: 'var(--text-muted)', bg: 'rgba(255,255,255,0.02)', border: 'var(--border)' },
+  ok: { color: 'var(--ok)', bg: tokenColor('ok', '12%'), border: tokenColor('ok', '35%') },
+  tunnel: { color: 'var(--net-tunnel)', bg: tokenColor('net-tunnel', '12%'), border: tokenColor('net-tunnel', '35%') },
+  warn: { color: 'var(--warn)', bg: tokenColor('warn', '12%'), border: tokenColor('warn', '40%') },
+  error: { color: ALARM.text, bg: tokenColor('error', '16%'), border: tokenColor('error', '60%') },
+  violet: { color: 'var(--net-up)', bg: tokenColor('net-up', '14%'), border: tokenColor('net-up', '45%') },
+  neutral: { color: 'var(--text-body)', bg: tokenColor('text', '3%'), border: 'var(--border-strong)' },
+  muted: { color: 'var(--text-muted)', bg: tokenColor('text', '2%'), border: 'var(--border)' },
 };
 
 export function Chip({ tone, icon, label, tip, strong, compact }: {

@@ -1,7 +1,8 @@
 import dagre from '@dagrejs/dagre';
 import type { Node, Edge } from '@xyflow/react';
 import type { TimelineEvent } from './types.js';
-import { NODE_BORDER_COLORS, EVENT_ICONS } from './event-styles.js';
+import { NODE_BORDER_COLORS, NODE_BORDER_FADED, EVENT_ICONS } from './event-styles.js';
+import { tokenColor, type Token } from './tokens.js';
 import { extractToolSpans, detectParallelGroups, getParallelEventIds } from './parallel-detection.js';
 
 export type FlowchartNodeType = 'userPrompt' | 'toolCall' | 'agentResponse' | 'sessionEvent' | 'default';
@@ -10,6 +11,8 @@ export interface FlowchartNodeData {
   event: TimelineEvent;
   isSelected: boolean;
   icon: string;
+  /** The border's token, for a glow derived from it; `borderColor` is it as CSS, faded or not. */
+  borderToken: Token;
   borderColor: string;
   label: string;
   sublabel: string;
@@ -69,13 +72,13 @@ function isFlowchartRelevant(event: TimelineEvent): boolean {
 
 // Edge style constants
 const EDGE_STYLES = {
-  spine: { stroke: '#30363d', strokeWidth: 1 },
-  fork: { stroke: '#58a6ff', strokeWidth: 1.5, strokeDasharray: '6 4' },
-  branch: { stroke: '#30363d', strokeWidth: 1 },
-  branchActive: { stroke: '#d29922', strokeWidth: 2 },
-  branchCompleted: { stroke: '#3fb950', strokeWidth: 1.5 },
-  branchFailed: { stroke: '#f85149', strokeWidth: 1.5, strokeDasharray: '8 4' },
-  current: { stroke: '#58a6ff', strokeWidth: 1.5 },
+  spine: { stroke: 'var(--border-strong)', strokeWidth: 1 },
+  fork: { stroke: 'var(--info)', strokeWidth: 1.5, strokeDasharray: '6 4' },
+  branch: { stroke: 'var(--border-strong)', strokeWidth: 1 },
+  branchActive: { stroke: 'var(--warn)', strokeWidth: 2 },
+  branchCompleted: { stroke: 'var(--ok)', strokeWidth: 1.5 },
+  branchFailed: { stroke: 'var(--error)', strokeWidth: 1.5, strokeDasharray: '8 4' },
+  current: { stroke: 'var(--info)', strokeWidth: 1.5 },
 } as const;
 
 const MARKER_DEFAULTS = { type: 'arrowclosed' as const, width: 12, height: 12 };
@@ -115,6 +118,7 @@ export function buildFlowchartGraph(
   // Build nodes
   const nodes: Node<FlowchartNodeData>[] = [];
   for (const event of relevant) {
+    const borderToken = NODE_BORDER_COLORS[event.type] ?? 'border-strong';
     g.setNode(event.id, { width: NODE_WIDTH, height: NODE_HEIGHT });
     nodes.push({
       id: event.id,
@@ -128,7 +132,8 @@ export function buildFlowchartGraph(
         event,
         isSelected: event.id === selectedEventId,
         icon: EVENT_ICONS[event.type] ?? '·',
-        borderColor: NODE_BORDER_COLORS[event.type] ?? '#30363d',
+        borderToken,
+        borderColor: tokenColor(borderToken, NODE_BORDER_FADED.has(event.type) ? '50%' : undefined),
         label: getLabel(event),
         sublabel: getSublabel(event),
         nodeType: classifyNode(event.type),

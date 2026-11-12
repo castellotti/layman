@@ -1,23 +1,29 @@
 import type { TimelineEvent } from './types.js';
 import { toolPathWithRange } from './tool-input.js';
 import { getEffectiveAgentContent } from './reasoning.js';
+import type { Token } from './tokens.js';
 
-/** Kind color for Dashboard tail rows and Logs single-line rows (shared vocabulary). */
-export const EVENT_KIND_COLOR: Record<string, string> = {
-  tool_call_pending:   'var(--warn)',
-  tool_call_approved:  'var(--ok)',
-  tool_call_denied:    'var(--error)',
-  tool_call_completed: 'var(--ok)',
-  tool_call_failed:    'var(--error)',
-  permission_request:  'var(--warn)',
-  user_prompt:         'var(--info)',
-  agent_response:      'var(--ok)',
-  agent_thinking:      'var(--thinking)',
-  subagent_start:      'var(--agent)',
-  subagent_stop:       'var(--agent)',
-  session_start:       'var(--ok)',
-  session_end:         'var(--text-faint)',
-  stop_failure:        'var(--error)',
+/**
+ * The colour tables below hold token names, never colours: a token is drawn as `tokenColor(t)`
+ * (`var(--t)`), so every table follows the theme, and a canvas resolves it with `readToken(t)`.
+ */
+
+/** Kind colour for Dashboard tail rows, Logs single-line rows and Minimap ticks (shared vocabulary). */
+export const EVENT_KIND_COLOR: Record<string, Token> = {
+  tool_call_pending:   'warn',
+  tool_call_approved:  'ok',
+  tool_call_denied:    'error',
+  tool_call_completed: 'ok',
+  tool_call_failed:    'error',
+  permission_request:  'warn',
+  user_prompt:         'info',
+  agent_response:      'ok',
+  agent_thinking:      'thinking',
+  subagent_start:      'agent',
+  subagent_stop:       'agent',
+  session_start:       'ok',
+  session_end:         'text-faint',
+  stop_failure:        'error',
 };
 
 const KIND_LABELS: Record<string, string> = {
@@ -167,11 +173,12 @@ export function withThinkingRows(events: TimelineEvent[]): TimelineEvent[] {
   return out;
 }
 
-export const DRIFT_COLORS: Record<string, string> = {
-  green: '#00e676',
-  yellow: '#ffb300',
-  orange: '#ff9100',
-  red: '#ff3d57',
+/** Drift level colour; yellow and orange are the rules-violation severities' minor and major. */
+export const DRIFT_COLORS: Record<string, Token> = {
+  green: 'ok',
+  yellow: 'severity-minor',
+  orange: 'severity-major',
+  red: 'error',
 };
 
 export const EVENT_ICONS: Record<string, string> = {
@@ -203,30 +210,33 @@ export const EVENT_ICONS: Record<string, string> = {
 };
 
 
-/** Raw hex colors for flowchart node borders (same palette as BORDER_COLORS but as hex values) */
-export const NODE_BORDER_COLORS: Record<string, string> = {
-  tool_call_pending: '#d29922',
-  tool_call_approved: '#3fb950',
-  tool_call_denied: '#f85149',
-  tool_call_delegated: '#8b949e',
-  tool_call_completed: '#3fb95080',
-  tool_call_failed: '#f85149',
-  permission_request: '#d29922',
-  user_prompt: '#58a6ff',
-  agent_response: '#3fb95080',
-  agent_stop: '#30363d',
-  session_start: '#3fb950',
-  session_end: '#30363d',
-  notification: '#58a6ff',
-  subagent_start: '#58a6ff',
-  subagent_stop: '#8b949e',
-  stop_failure: '#f85149',
-  pre_compact: '#8b949e',
-  post_compact: '#8b949e',
-  elicitation: '#58a6ff',
-  elicitation_result: '#58a6ff',
-  analysis_result: '#8b949e',
-  drift_check: '#d29922',
-  drift_alert: '#f85149',
-  web_search: '#79c0ff',
+/** Flowchart node border colour by event type; see `NODE_BORDER_FADED`. */
+export const NODE_BORDER_COLORS: Record<string, Token> = {
+  tool_call_pending: 'warn',
+  tool_call_approved: 'ok',
+  tool_call_denied: 'error',
+  tool_call_delegated: 'text-muted',
+  tool_call_completed: 'ok',
+  tool_call_failed: 'error',
+  permission_request: 'warn',
+  user_prompt: 'info',
+  agent_response: 'ok',
+  agent_stop: 'border-strong',
+  session_start: 'ok',
+  session_end: 'border-strong',
+  notification: 'info',
+  subagent_start: 'info',
+  subagent_stop: 'text-muted',
+  stop_failure: 'error',
+  pre_compact: 'text-muted',
+  post_compact: 'text-muted',
+  elicitation: 'info',
+  elicitation_result: 'info',
+  analysis_result: 'text-muted',
+  drift_check: 'warn',
+  drift_alert: 'error',
+  web_search: 'code',
 };
+
+/** Routine kinds whose border is drawn at half strength, so approvals and starts stand out. */
+export const NODE_BORDER_FADED: ReadonlySet<string> = new Set(['tool_call_completed', 'agent_response']);

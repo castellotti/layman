@@ -24,7 +24,7 @@
 
 .dash-card--focused {
   border-color: var(--accent);
-  box-shadow: 0 0 16px rgba(90, 156, 248, 0.15);
+  box-shadow: 0 0 16px color-mix(in srgb, var(--accent) 15%, transparent);
 }
 
 /* === Drag handle === */
