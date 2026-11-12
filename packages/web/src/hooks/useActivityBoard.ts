@@ -1,34 +1,63 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { shallow } from 'zustand/shallow';
-import { fetchRecordedSessionEvents, useSessionStore } from '../stores/sessionStore.js';
-import { mergeSessionEvents, reduceBoard, type Board } from '../lib/activity-board.js';
+import { fetchRecordedSessionEvents, useSessionStore, type SessionState } from '../stores/sessionStore.js';
+import { reduceBoard, type Board } from '../lib/activity-board.js';
+import { mergeRecordedWithLive } from '../lib/session-events.js';
 import type { TimelineEvent } from '../lib/types.js';
 import { useStationSetup } from './useStationSetup.js';
 
 const NONE: TimelineEvent[] = [];
 
+/** This session's live events, filtered again only when the store's event list changes. */
+function useLiveEvents(sessionId: string | null): TimelineEvent[] {
+  const memo = useRef<{ all: TimelineEvent[]; sessionId: string | null; ours: TimelineEvent[] } | null>(null);
+  return useSessionStore((s: SessionState) => {
+    const m = memo.current;
+    if (m && m.all === s.events && m.sessionId === sessionId) return m.ours;
+    const ours = sessionId ? s.events.filter((e) => e.sessionId === sessionId) : NONE;
+    memo.current = { all: s.events, sessionId, ours };
+    return ours;
+  }, shallow);
+}
+
 /**
- * Every event of one session: its recording (fetched from SQLite once per session, since the live
- * store holds at most 10,000 events of all sessions and the WebSocket replays only the last 100)
- * joined with the live events that arrived since. Re-renders only when this session's events change.
+ * Every event of one session: its recording (fetched from SQLite, lean, since the live store holds at
+ * most 10,000 events of all sessions and the WebSocket replays only the last 100) joined with the
+ * live events, and with the late updates of recorded calls that finished since the fetch. A fetch
+ * that failed, or found the session not recorded yet, is tried again at the session's next prompt.
  */
 export function useSessionTimeline(sessionId: string | null): { events: TimelineEvent[]; loading: boolean } {
-  const [recorded, setRecorded] = useState<{ sessionId: string; events: TimelineEvent[] } | null>(null);
+  const live = useLiveEvents(sessionId);
+  const lateUpdates = useSessionStore((s) => s.lateUpdates);
+  const prompts = useMemo(() => live.reduce((n, e) => (e.type === 'user_prompt' ? n + 1 : n), 0), [live]);
+  const [recorded, setRecorded] = useState<{ sessionId: string; events: TimelineEvent[] | null } | null>(null);
+  const ours = recorded && recorded.sessionId === sessionId ? recorded : null;
+  const missing = ours !== null && ours.events === null;
+
   useEffect(() => {
     if (!sessionId) return;
     let cancelled = false;
-    void fetchRecordedSessionEvents(sessionId).then((events) => {
+    void fetchRecordedSessionEvents(sessionId, { lean: true }).then((events) => {
       if (!cancelled) setRecorded({ sessionId, events });
     });
     return () => { cancelled = true; };
-  }, [sessionId]);
+    // `prompts` only while the recording is missing: a retry, never a refresh of one we have.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionId, missing ? prompts : -1]);
 
-  const live = useSessionStore(
-    (s) => (sessionId ? s.events.filter((e) => e.sessionId === sessionId) : NONE),
-    shallow,
-  );
-  const ours = recorded && recorded.sessionId === sessionId ? recorded.events : null;
-  const events = useMemo(() => mergeSessionEvents(ours ?? NONE, live), [ours, live]);
+  const base = ours?.events ?? NONE;
+  const patched = useMemo(() => {
+    if (lateUpdates.size === 0 || base.length === 0) return base;
+    let changed = false;
+    const out = base.map((e) => {
+      const u = lateUpdates.get(e.id);
+      if (!u) return e;
+      changed = true;
+      return { ...e, ...u, data: { ...e.data, ...u.data } };
+    });
+    return changed ? out : base;
+  }, [base, lateUpdates]);
+  const events = useMemo(() => mergeRecordedWithLive(patched, live), [patched, live]);
   return { events, loading: sessionId !== null && ours === null };
 }
 

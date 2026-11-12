@@ -146,24 +146,31 @@ export async function fetchSessionEvents(
 
 /**
  * A session's recorded events only, no time-metrics: the whole session, or with `limit` only the
- * most recent `limit` (oldest first). `fetchSessionEvents` pairs events with a `/time-metrics`
- * request; the Dashboard preview's bounded tail and the activity board need neither the metrics
- * nor, for the preview, the full thread.
+ * most recent `limit` (oldest first); `lean` leaves out outputs and transcripts. `fetchSessionEvents`
+ * pairs events with a `/time-metrics` request; the Dashboard preview's bounded tail and the activity
+ * board need neither. `null` when the session is not recorded (yet) or the request failed, so a
+ * caller can try again rather than take it for an empty session.
  */
 export async function fetchRecordedSessionEvents(
   sessionId: string,
-  limit?: number,
-): Promise<TimelineEvent[]> {
+  options: { limit?: number; lean?: boolean } = {},
+): Promise<TimelineEvent[] | null> {
   try {
-    const query = limit === undefined ? '' : `?limit=${limit}`;
+    const params = new URLSearchParams();
+    if (options.limit !== undefined) params.set('limit', String(options.limit));
+    if (options.lean) params.set('lean', '1');
+    const query = params.toString() ? `?${params}` : '';
     const res = await fetch(`/api/bookmarks/sessions/${encodeURIComponent(sessionId)}/events${query}`);
-    if (!res.ok) return [];
+    if (!res.ok) return null;
     const data = await res.json() as { events?: TimelineEvent[] };
     return data.events ?? [];
   } catch {
-    return [];
+    return null;
   }
 }
+
+/** How many updates to events the store does not hold it keeps (see `lateUpdates`). */
+const LATE_UPDATES = 500;
 
 interface ResolveOutcome {
   resolved: ResolvedId | null;
@@ -253,6 +260,12 @@ export interface SessionState {
   bookmarks: Bookmark[];
   viewingSessionId: string | null;
   historicalEvents: TimelineEvent[];
+  /**
+   * Updates to events the store does not hold, newest last, at most 500: a call that was already
+   * recorded before this page loaded and finishes now (the WebSocket sends only the change). A
+   * reader that fetched the recording applies them to it (`useSessionTimeline`).
+   */
+  lateUpdates: ReadonlyMap<string, Partial<TimelineEvent>>;
   /** True while a viewed session's recorded events are being fetched. */
   loadingHistorical: boolean;
   sessionTimeMetrics: SessionTimeMetrics | null;
@@ -487,6 +500,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   bookmarks: [],
   viewingSessionId: null,
   historicalEvents: [],
+  lateUpdates: new Map(),
   loadingHistorical: false,
   sessionTimeMetrics: null,
   bookmarksScrollToEventId: null,
@@ -626,6 +640,12 @@ export const useSessionStore = create<SessionState>((set, get) => ({
         const newHist = [...state.historicalEvents];
         newHist[hidx] = { ...newHist[hidx], ...updates };
         result.historicalEvents = newHist;
+      }
+      if (idx < 0 && hidx < 0) {
+        const late = new Map(state.lateUpdates);
+        late.set(eventId, { ...late.get(eventId), ...updates });
+        if (late.size > LATE_UPDATES) late.delete(late.keys().next().value as string);
+        result.lateUpdates = late;
       }
       return result;
     }),

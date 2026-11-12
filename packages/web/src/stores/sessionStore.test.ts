@@ -110,3 +110,25 @@ describe('session_metrics', () => {
     expect(m.totalInputTokens).toBe(9000);
   });
 });
+
+describe('updateEvent: an event the store does not hold', () => {
+  it('keeps the update for a reader of the recording, merged, and changes nothing else', () => {
+    useSessionStore.setState({ events: [], historicalEvents: [], lateUpdates: new Map() });
+    const { updateEvent } = useSessionStore.getState();
+    updateEvent('old', { type: 'tool_call_completed' });
+    updateEvent('old', { data: { completedAt: 5 } });
+    const s = useSessionStore.getState();
+    expect(s.events).toEqual([]);
+    expect(s.lateUpdates.get('old')).toEqual({ type: 'tool_call_completed', data: { completedAt: 5 } });
+  });
+
+  it('keeps no late update for an event it holds', () => {
+    useSessionStore.setState({
+      events: [{ id: 'e', type: 'tool_call_approved', timestamp: 1, sessionId: 's', agentType: 'pi', data: {} }],
+      historicalEvents: [], lateUpdates: new Map(),
+    });
+    useSessionStore.getState().updateEvent('e', { type: 'tool_call_completed' });
+    expect(useSessionStore.getState().lateUpdates.size).toBe(0);
+    expect(useSessionStore.getState().events[0].type).toBe('tool_call_completed');
+  });
+});

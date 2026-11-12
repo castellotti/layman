@@ -7,7 +7,8 @@
  * cases record a second event instead and leave the call's own event open: a failure (a separate
  * `tool_call_failed` from the hooks) and a watcher that sees the call and its result apart (Mistral
  * Vibe records `tool_call_approved`, then `tool_call_completed`). The second event closes the open
- * call of the same tool, the one with the same input first, else the oldest, and counts nothing. A call still open when its session ends, or when the person sends the next prompt,
+ * call of the same tool and the same input, and counts nothing. Only those: on every other harness a
+ * `tool_call_completed` is the call itself, and must never close a sibling still running. A call still open when its session ends, or when the person sends the next prompt,
  * never reported an end; it is `unended`, not running and not a fault.
  */
 import type { TimelineEvent } from './types.js';
@@ -59,6 +60,17 @@ export interface BoardOptions {
 
 const KEEP = 200;
 
+/** Harnesses that record a call's result as an event of its own, apart from the call. */
+const RESULT_APART = new Set(['mistral-vibe']);
+
+/** A tool input as a key, to match a result to its call; cached because Write inputs hold whole files. */
+const inputCache = new WeakMap<TimelineEvent, string>();
+function inputKey(event: TimelineEvent): string {
+  let key = inputCache.get(event);
+  if (key === undefined) { key = `${event.data.toolName ?? ''}\u0000${JSON.stringify(event.data.toolInput ?? {})}`; inputCache.set(event, key); }
+  return key;
+}
+
 /** Events that report on work already counted elsewhere (the Agent call itself; the task list). */
 const NOT_WORK = new Set(['subagent_start', 'subagent_stop', 'task_created', 'task_completed', 'teammate_idle', 'post_compact', 'elicitation_result']);
 
@@ -98,15 +110,16 @@ export function reduceBoard(events: readonly TimelineEvent[], options: BoardOpti
   let turns = 0;
   let context: number | undefined;
   let model: string | undefined;
-  /** Open calls by tool name, oldest first, for a separate result event to close. */
-  const open = new Map<string, { entry: BoardEntry; input: string }[]>();
-  /** The open call a result event belongs to: the same tool and input, else the oldest of the tool. */
-  const claim = (tool: string, input: string): BoardEntry | undefined => {
-    const queue = open.get(tool);
-    if (!queue) return undefined;
-    const [found] = queue.splice(Math.max(0, queue.findIndex((c) => c.input === input)), 1);
-    if (queue.length === 0) open.delete(tool);
-    return found.entry;
+  /**
+   * Calls with no result yet, by tool and input, oldest first, for a result recorded apart to close.
+   * A call marked `unended` at a prompt stays here: its result may still come, and closes it then.
+   */
+  const open = new Map<string, BoardEntry[]>();
+  const claim = (key: string): BoardEntry | undefined => {
+    const queue = open.get(key);
+    const found = queue?.shift();
+    if (queue && queue.length === 0) open.delete(key);
+    return found;
   };
   /** Subagents alive, by type: a stop names only its type. */
   const alive = new Map<string, number>();
@@ -127,15 +140,15 @@ export function reduceBoard(events: readonly TimelineEvent[], options: BoardOpti
     return entry;
   };
   const close = (entry: BoardEntry, status: EntryStatus, at: number): void => {
-    running.delete(entry);
+    // A late result of a call the last prompt already closed belongs to that turn, whose faults are gone.
+    const wasRunning = running.delete(entry);
     entry.status = status;
     entry.endedAt = Math.max(entry.startedAt, at);
-    if (isFault(status)) fault(entry.station);
+    if (wasRunning && isFault(status)) fault(entry.station);
   };
   /** Everything still running is over without a word: the session ended or a new prompt began. */
   const closeAll = (at: number): void => {
     for (const e of [...running]) close(e, 'unended', at);
-    open.clear();
     asking.length = 0;
   };
 
@@ -180,26 +193,24 @@ export function reduceBoard(events: readonly TimelineEvent[], options: BoardOpti
 
     if (type.startsWith('tool_call_')) {
       const station = toolStationOf(event, setup);
-      const tool = data.toolName ?? '';
-      const input = JSON.stringify(data.toolInput ?? {});
       const decided = data.decision !== undefined;
       if (decided) add({ eventId: event.id, station: 'guard', from, status: 'ok', startedAt: at, endedAt: at });
       if (type === 'tool_call_delegated') continue; // the call itself arrives as its own event
       if (type === 'tool_call_pending' || type === 'tool_call_approved') {
         const entry = add({ eventId: event.id, station, from, status: 'run', startedAt: at });
-        const queue = open.get(tool) ?? [];
-        queue.push({ entry, input });
-        open.set(tool, queue);
+        const key = inputKey(event);
+        const queue = open.get(key);
+        if (queue) queue.push(entry); else open.set(key, [entry]);
         continue;
       }
       if (type === 'tool_call_failed') {
-        const call = claim(tool, input);
+        const call = claim(inputKey(event));
         if (call) { call.eventId = event.id; close(call, 'err', at); }
         else add({ eventId: event.id, station, from, status: 'err', startedAt: at, endedAt: at });
         continue;
       }
-      if (type === 'tool_call_completed' && !decided) {
-        const call = claim(tool, input);
+      if (type === 'tool_call_completed' && !decided && RESULT_APART.has(event.agentType)) {
+        const call = claim(inputKey(event));
         if (call) { call.eventId = event.id; close(call, 'ok', endOf(event)); continue; }
       }
       const status: EntryStatus = type === 'tool_call_denied' ? 'block' : 'ok';
@@ -251,13 +262,16 @@ export function runningAt(board: Board): Partial<Record<StationId, number>> {
 export interface RouteStop { station: StationId; at: number }
 
 /**
- * The stations the main loop went through, oldest first, the last `max` of them. Model steps and
- * subagents' work are left out, and a station visited twice in a row is one stop (at its latest).
+ * The stations the main loop went through, oldest first, the last `max` of them. Left out: model
+ * steps, subagents' work, Guard (a decision sits beside a call, not on the way) and what was pushed
+ * in (instructions loaded, a file changed outside); the person's prompt stays. A station visited
+ * twice in a row is one stop (at its latest).
  */
 export function routeOf(entries: readonly BoardEntry[], max = 7): RouteStop[] {
   const stops: RouteStop[] = [];
   for (const e of entries) {
-    if (e.from === 'agents' || e.station === 'model') continue;
+    if (e.from === 'agents' || e.station === 'model' || e.station === 'guard') continue;
+    if (e.from === 'inbound' && e.station !== 'you') continue;
     const last = stops[stops.length - 1];
     if (last && last.station === e.station) last.at = e.startedAt;
     else stops.push({ station: e.station, at: e.startedAt });
@@ -289,17 +303,4 @@ export function foldRows(entries: readonly BoardEntry[], max = 16): FeedRow[] {
     rows.push({ entry: e, times: 1, tookMs: took });
   }
   return rows;
-}
-
-/**
- * A session's recorded events joined with what the live store holds for it, by event id, the live
- * copy winning (it has the latest type and data of a call that changed in place). The live store
- * holds only what arrived since the page loaded (and the WebSocket's short replay), and the
- * recording only what was written when it was fetched, so neither alone is the session.
- */
-export function mergeSessionEvents(recorded: readonly TimelineEvent[], live: readonly TimelineEvent[]): TimelineEvent[] {
-  if (live.length === 0) return recorded as TimelineEvent[];
-  if (recorded.length === 0) return live as TimelineEvent[];
-  const liveIds = new Set(live.map((e) => e.id));
-  return sortStable([...recorded.filter((e) => !liveIds.has(e.id)), ...live]);
 }

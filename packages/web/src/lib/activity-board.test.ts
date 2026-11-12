@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { foldRows, mergeSessionEvents, reduceBoard, routeOf, runningAt, type BoardEntry } from './activity-board.js';
+import { foldRows, reduceBoard, routeOf, runningAt, type BoardEntry } from './activity-board.js';
 import type { EventData, EventType, TimelineEvent } from './types.js';
 
 let seq = 0;
@@ -17,7 +17,7 @@ describe('reduceBoard', () => {
     expect(b.entries).toEqual([{ eventId: expect.any(String), station: 'files', from: 'core', status: 'ok', startedAt: 100, endedAt: 160 }]);
   });
 
-  it('closes the newest open call of the same tool when its failure arrives as a separate event', () => {
+  it('closes the open call with the same input when its failure arrives as a separate event', () => {
     const b = reduceBoard([
       call('tool_call_approved', 100, 'Bash', { command: 'make lint' }),
       call('tool_call_approved', 110, 'Bash', { command: 'make' }),
@@ -231,9 +231,10 @@ const entry = (station: BoardEntry['station'], startedAt: number, extra: Partial
 });
 
 describe('routeOf', () => {
-  it('leaves out model steps and subagents, and joins a station visited twice in a row', () => {
+  it('leaves out model steps, subagents, Guard and what was pushed in, and joins a station visited twice in a row', () => {
     const r = routeOf([
-      entry('you', 1), entry('model', 2), entry('files', 3), entry('files', 4), entry('model', 5),
+      entry('you', 1, { from: 'inbound' }), entry('memory', 2, { from: 'inbound' }), entry('guard', 2),
+      entry('model', 2), entry('files', 3), entry('guard', 3), entry('files', 4), entry('model', 5),
       entry('files', 6), entry('shell', 7, { from: 'agents' }), entry('network', 8),
     ]);
     expect(r).toEqual([{ station: 'you', at: 1 }, { station: 'files', at: 6 }, { station: 'network', at: 8 }]);
@@ -265,36 +266,46 @@ describe('foldRows', () => {
   });
 });
 
-describe('mergeSessionEvents', () => {
-  it("joins the recording with the live store by id, the live copy winning, in time order", () => {
-    const recorded = [ev('user_prompt', 1, {}, { id: 'p' }), call('tool_call_approved', 2, 'Bash', {}, {}), ev('agent_response', 3, {}, { id: 'r' })];
-    recorded[1].id = 'c';
-    const live = [{ ...recorded[1], type: 'tool_call_completed' as const }, ev('user_prompt', 4, {}, { id: 'p2' })];
-    const merged = mergeSessionEvents(recorded, live);
-    expect(merged.map((e) => [e.id, e.type])).toEqual([['p', 'user_prompt'], ['c', 'tool_call_completed'], ['r', 'agent_response'], ['p2', 'user_prompt']]);
-    expect(mergeSessionEvents(recorded, [])).toBe(recorded);
-    expect(mergeSessionEvents([], live)).toBe(live);
-  });
-});
-
 describe('reduceBoard: a call and its result recorded apart', () => {
+  const vibe = (e: TimelineEvent): TimelineEvent => ({ ...e, agentType: 'mistral-vibe' });
+
   it('closes the open call with the same input when the result is its own event (Mistral Vibe)', () => {
     const b = reduceBoard([
-      call('tool_call_approved', 10, 'Read', { file_path: '/a' }),
-      call('tool_call_approved', 11, 'Read', { file_path: '/b' }),
-      call('tool_call_completed', 20, 'Read', { file_path: '/b' }, { completedAt: 20 }),
-      call('tool_call_completed', 30, 'Read', { file_path: '/a' }, { completedAt: 30 }),
+      vibe(call('tool_call_approved', 10, 'Read', { file_path: '/a' })),
+      vibe(call('tool_call_approved', 11, 'Read', { file_path: '/b' })),
+      vibe(call('tool_call_completed', 20, 'Read', { file_path: '/b' }, { completedAt: 20 })),
+      vibe(call('tool_call_completed', 30, 'Read', { file_path: '/a' }, { completedAt: 30 })),
     ]);
     expect(b.counts).toEqual({ files: 2 });
     expect(b.entries.map((e) => [e.startedAt, e.status, e.endedAt])).toEqual([[10, 'ok', 30], [11, 'ok', 20]]);
   });
 
-  it('falls back to the oldest open call of the tool when no input matches', () => {
+  it('never closes a call whose input differs', () => {
     const b = reduceBoard([
-      call('tool_call_approved', 10, 'bash', { command: 'make' }),
-      call('tool_call_approved', 11, 'bash', { command: 'make test' }),
-      call('tool_call_completed', 20, 'bash', {}, { completedAt: 20 }),
+      vibe(call('tool_call_approved', 10, 'bash', { command: 'make' })),
+      vibe(call('tool_call_completed', 20, 'bash', { command: 'make test' }, { completedAt: 20 })),
     ]);
-    expect(b.entries.map((e) => [e.startedAt, e.status])).toEqual([[10, 'ok'], [11, 'run']]);
+    expect(b.entries.map((e) => [e.startedAt, e.status])).toEqual([[10, 'run'], [20, 'ok']]);
+  });
+
+  it('never lets a call completed in place close a sibling still running (hooks harnesses)', () => {
+    const b = reduceBoard([
+      call('tool_call_approved', 10, 'Read', { file_path: '/a' }),
+      call('tool_call_completed', 11, 'Read', { file_path: '/a' }, { completedAt: 12 }),
+    ]);
+    expect(b.counts).toEqual({ files: 2 });
+    expect(runningAt(b)).toEqual({ files: 1 });
+  });
+
+  it('lets a result that arrives after the next prompt close its unended call, counted once and no fault of the new turn', () => {
+    const b = reduceBoard([
+      ev('user_prompt', 0, { prompt: 'a' }),
+      call('tool_call_approved', 10, 'Bash', { command: 'make' }),
+      ev('user_prompt', 20, { prompt: 'stop that' }),
+      call('tool_call_failed', 30, 'Bash', { command: 'make' }, { error: 'interrupted' }),
+    ]);
+    expect(b.counts).toEqual({ you: 2, shell: 1 });
+    expect(b.faults).toEqual({});
+    expect(b.entries[1]).toMatchObject({ status: 'err', endedAt: 30 });
   });
 });

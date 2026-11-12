@@ -358,11 +358,15 @@ the fixture's `labels`/`hosts` with any change.
 The **board** (`packages/web/src/lib/activity-board.ts`, pure) reduces one session's events to counts
 per station, faults since the last prompt (the turn rule's duplicate-prompt window, from `lib/turns.ts`),
 running calls, live subagents and the route. A call is counted once: the second event of a call recorded
-in two (a hooks failure, Vibe's approved-then-completed) closes the open one (same tool and input, else
-the oldest); a decision adds a Guard entry beside the call. A call still open at the next prompt or the
-session's end is `unended`, never a fault. Its input is the whole recording joined with the live store
-(`useSessionTimeline`), never the live store alone, which holds the WebSocket's last 100 events and
-what arrived since.
+in two (a hooks failure; Vibe's approved-then-completed, the only harness whose `tool_call_completed` is
+a separate event) closes the open call with the same tool **and input**, never another: everywhere else
+a completed event *is* the call, and letting it close a sibling hid running calls. A decision adds a
+Guard entry beside the call. A call still open at the next prompt or the session's end is `unended`,
+never a fault, and stays claimable, so a late result closes it without counting twice. Its input is the
+whole recording (`?lean=1`, without outputs) joined with the live store and with `lateUpdates`
+(`useSessionTimeline`), never the live store alone, which holds the WebSocket's last 100 events and what
+arrived since; `lateUpdates` keeps the WebSocket's updates to events the store does not hold, or a
+recorded call that finishes later would run on the board forever.
 
 ### Text to speech
 
