@@ -63,6 +63,18 @@ describe('components follow the theme', () => {
     expect(matches(sources(SRC), appended)).toEqual([]);
   });
 
+  it('a view that reads a colour value (canvas, readToken) redraws on a theme change', () => {
+    // `var(--…)` follows the theme by itself; a value read once does not, so a component that
+    // reads one must redraw on the theme version (useThemeVersion); a non-component reader must at
+    // least key what it caches on getThemeVersion.
+    const readers = sources(SRC).filter((f) => rel(f) !== 'src/lib/theme-runtime.ts'
+      && /import \{[^}]*\breadToken\b[^}]*\}|getComputedStyle\([^)]*\)\.getPropertyValue\('--/.test(readFileSync(f, 'utf8')));
+    expect(readers.map(rel)).toContain('src/components/logs/Minimap.tsx');
+    for (const f of readers) {
+      expect(readFileSync(f, 'utf8'), rel(f)).toMatch(f.endsWith('.tsx') ? /\buseThemeVersion\(/ : /\b(?:useThemeVersion|getThemeVersion)\(/);
+    }
+  });
+
   it('the allow-list names files that exist', () => {
     const all = new Set([...sources(SRC), ...sources(SRC, /\.css$/)].map(rel));
     for (const f of [...ALLOWED, ...PALETTE_BLOCKS]) expect(all.has(f), f).toBe(true);
