@@ -89,6 +89,11 @@ describe('merging the config sources', () => {
     )).toEqual({ theme: 'ember', overrides: { classic: { warn: '#222' } } });
   });
 
+  it('an empty overrides object (everything cleared in Settings) wins too, so nothing comes back on restart', () => {
+    expect(mergeAppearance({ overrides: { classic: { ok: '#111111' } } }, { theme: 'ember', overrides: {} }))
+      .toEqual({ theme: 'ember', overrides: {} });
+  });
+
   it('so a theme cleared in Settings (absent from the runtime file) does not come back from a lower source', () => {
     expect(mergeAppearance({ overrides: { classic: { ok: '#111111' } } }, { overrides: { paper: { bg: '#eee' } } }))
       .toEqual({ overrides: { paper: { bg: '#eee' } } });

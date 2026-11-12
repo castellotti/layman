@@ -181,15 +181,21 @@ export function migrateTheme<T extends object>(config: T): T {
  * The config sources' appearance blocks, lowest precedence first, merged field by field so a
  * partial block (only `theme`) keeps the other choices. Each source's invalid fields are dropped
  * first, so one falls back to a lower source's valid choice rather than straight to the default.
- * `overrides` is taken whole from the highest source that has any: merging it per theme would
- * bring back a theme the user cleared in Settings (the runtime file stores no empty maps) from a
- * lower source on the next start.
+ * `overrides` is taken whole from the highest source that holds an overrides object, even an
+ * empty one: merging per theme, or skipping an empty map, would bring back colours the user
+ * cleared in Settings from a lower source on the next start.
  */
 export function mergeAppearance(...sources: unknown[]): Partial<AppearanceConfig> {
-  return Object.assign({}, ...sources.map((s) => validAppearanceUpdate(
-    // A stored map keeps its good entries: a hand-edited typo must not cost the rest.
-    s && typeof s === 'object' && 'overrides' in s ? { ...s, overrides: cleanOverrides(s.overrides) } : s,
-  )));
+  const out: Partial<AppearanceConfig> = {};
+  for (const s of sources) {
+    Object.assign(out, validAppearanceUpdate(s));
+    // A source holding an overrides object wins whole, even an empty one: that is how the
+    // runtime file records "the user cleared them". A stored map keeps its good entries: a
+    // hand-edited typo must not cost the rest.
+    const o = s && typeof s === 'object' ? (s as { overrides?: unknown }).overrides : undefined;
+    if (o && typeof o === 'object' && !Array.isArray(o)) out.overrides = cleanOverrides(o);
+  }
+  return out;
 }
 
 let runtimeConfig: LaymanConfig | null = null;
