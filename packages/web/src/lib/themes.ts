@@ -39,7 +39,7 @@ export const MIN_GRAPHIC_CONTRAST = 3;
 
 /**
  * Every rule a token map breaks, as readable strings (empty when it holds them all). The tests run
- * it over the built-in themes; Settings will run it over a theme with the user's overrides applied.
+ * it over the built-in themes; Settings runs it over a theme with the user's overrides applied.
  * `allow` names known breaks to skip, as `fg/bg` (contrast) or `accent~status` (distance).
  * `severity-minor` may equal `warn`: both mean "caution", in different panels.
  */
@@ -288,9 +288,18 @@ export function followOsUpdate(a: Appearance, showing: Theme): Partial<Appearanc
   return { theme: 'system', ...(showing.scheme === 'dark' ? { darkTheme: showing.id } : { lightTheme: showing.id }) };
 }
 
-/** A theme's colours with the user's overrides for it laid on top: what it draws with. */
-export function themeColours(theme: Theme, overrides: Overrides): TokenMap {
-  return { ...theme.tokens, ...overrides[theme.id] };
+/** A theme's colours with the user's for it (`overrides[theme.id]`) laid on top: what it draws with. */
+export function themeColours(theme: Theme, colours: Partial<TokenMap> = {}): TokenMap {
+  return { ...theme.tokens, ...colours };
+}
+
+/**
+ * Every rule a theme breaks with the user's colours for it applied. A known break of the theme is
+ * skipped only while neither of its colours is the user's.
+ */
+export function themeProblemsWith(theme: Theme, colours: Partial<TokenMap>): string[] {
+  const allow = new Set([...(KNOWN_PROBLEMS[theme.id] ?? [])].filter((p) => p.split(/[/~]/).every((t) => !(t in colours))));
+  return themeProblems(themeColours(theme, colours), allow);
 }
 
 /** What the browser reports, passed in so resolution stays pure. */
@@ -316,8 +325,8 @@ export function resolveAppearance(input: unknown, env: Environment): ResolvedApp
   const mono = a.font === 'mono' || (a.font === 'theme' && theme.type !== 'sans') || theme.type === 'mono-only';
 
   const vars: Record<string, string> = {};
-  const own = a.overrides[theme.id] ?? {};
-  for (const token of TOKENS) vars[`--${token}`] = own[token] ?? theme.tokens[token];
+  const colours = themeColours(theme, a.overrides[theme.id]);
+  for (const token of TOKENS) vars[`--${token}`] = colours[token];
   vars['--font-ui'] = mono ? FONT_MONO : FONT_SANS;
   vars['--font-mono'] = FONT_MONO;
   vars['--radius'] = `${theme.radius}px`;

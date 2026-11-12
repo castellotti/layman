@@ -201,9 +201,7 @@ function validOverridesUpdate(update: unknown): Overrides | null {
 
 /** `current` with each theme `update` names replaced, and themes left with no colours dropped. */
 export function mergeOverrides(current: Overrides, update: Overrides | undefined): Overrides {
-  const merged: Overrides = { ...current, ...update };
-  for (const id of Object.keys(merged) as ThemeId[]) if (!Object.keys(merged[id] ?? {}).length) delete merged[id];
-  return merged;
+  return cleanOverrides({ ...current, ...update });
 }
 
 /** Each appearance field's valid values, without fallbacks: what an update must hold to be kept. */

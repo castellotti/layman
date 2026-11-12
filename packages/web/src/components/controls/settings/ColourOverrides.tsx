@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { HEX_COLOR, longHex } from '../../../lib/color.js';
 import {
-  KNOWN_PROBLEMS, themeColours, themeProblems, TOKEN_GROUPS,
+  themeProblemsWith, TOKEN_GROUPS,
   type Overrides, type Theme, type ThemeId, type Token, type TokenMap,
 } from '../../../lib/themes.js';
 import { tokenColor } from '../../../lib/tokens.js';
@@ -11,6 +11,9 @@ type Colours = Partial<TokenMap>;
 
 /** How long a colour must stay put before it is saved: a colour picker reports every step of a drag. */
 const SAVE_DELAY_MS = 250;
+
+/** No overrides: one object, so the memo below holds across renders. */
+const NONE: Colours = {};
 
 const sameColour = (a: string, b: string): boolean => longHex(a) === longHex(b);
 
@@ -31,7 +34,7 @@ export function ColourOverrides({
   saved: unknown;
   onSave: (overrides: Overrides) => void;
 }) {
-  const saved = overrides[theme.id] ?? {};
+  const saved = overrides[theme.id] ?? NONE;
   /** Edits not yet seen back in the config; null shows what is saved. */
   const [draft, setDraft] = useState<Colours | null>(null);
   const pending = useRef<{ id: ThemeId; colours: Colours; timer: ReturnType<typeof setTimeout> } | null>(null);
@@ -76,11 +79,7 @@ export function ColourOverrides({
     setColours(next);
   };
 
-  const problems = useMemo(() => {
-    // A known break of the theme is skipped only while neither of its colours is the user's.
-    const allow = new Set([...(KNOWN_PROBLEMS[theme.id] ?? [])].filter((p) => p.split(/[/~]/).every((t) => !(t in colours))));
-    return themeProblems(themeColours(theme, { [theme.id]: colours }), allow);
-  }, [theme, colours]);
+  const problems = useMemo(() => themeProblemsWith(theme, colours), [theme, colours]);
   const changed = Object.keys(colours).length;
 
   return (
@@ -189,6 +188,11 @@ function ColourRow({
   );
 }
 
+const KINDS: readonly [Token, string][] = [
+  ['info', 'info'], ['agent', 'agent'], ['thinking', 'thinking'], ['severity-major', 'major'], ['severity-minor', 'minor'],
+];
+const NET_LINES: readonly Token[] = ['net-tunnel', 'net-up', 'net-down', 'net-fanout'];
+
 /** A small piece of the UI in the current colours, so an edit is seen where it matters. */
 function Specimen() {
   const chip = (token: Token, label: string) => (
@@ -208,11 +212,7 @@ function Specimen() {
         </span>
         <span style={{ fontSize: 10, color: 'var(--text-faint)' }}>2 min ago · faint text</span>
         <div style={{ display: 'flex', gap: 8, fontSize: 10.5 }}>
-          <span style={{ color: 'var(--info)' }}>info</span>
-          <span style={{ color: 'var(--agent)' }}>agent</span>
-          <span style={{ color: 'var(--thinking)' }}>thinking</span>
-          <span style={{ color: 'var(--severity-major)' }}>major</span>
-          <span style={{ color: 'var(--severity-minor)' }}>minor</span>
+          {KINDS.map(([token, label]) => <span key={token} style={{ color: `var(--${token})` }}>{label}</span>)}
         </div>
       </div>
       <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', fontSize: 10.5, fontFamily: 'var(--font-mono)', background: 'var(--bg-code)', border: '1px solid var(--border-subtle)', borderRadius: 5, overflow: 'hidden' }}>
@@ -220,10 +220,7 @@ function Specimen() {
         <span style={{ color: 'var(--diff-remove-text)', background: 'var(--diff-remove-bg)', padding: '1px 8px' }}>- return false;</span>
         <span style={{ color: 'var(--diff-add-text)', background: 'var(--diff-add-bg)', padding: '1px 8px' }}>+ return ok;</span>
         <span style={{ display: 'flex', gap: 6, alignItems: 'center', padding: '4px 8px', background: 'var(--bg-raised)', borderTop: '1px solid var(--border-subtle)', marginTop: 'auto' }}>
-          <span style={{ width: 16, height: 3, background: 'var(--net-tunnel)' }} />
-          <span style={{ width: 16, height: 3, background: 'var(--net-up)' }} />
-          <span style={{ width: 16, height: 3, background: 'var(--net-down)' }} />
-          <span style={{ width: 16, height: 3, background: 'var(--net-fanout)' }} />
+          {NET_LINES.map((token) => <span key={token} style={{ width: 16, height: 3, background: `var(--${token})` }} />)}
           <span style={{ flex: 1 }} />
           <span style={{ fontFamily: 'var(--font-ui)', fontSize: 10, fontWeight: 600, color: 'var(--text-on-fill)', background: 'var(--ok)', borderRadius: 4, padding: '1px 7px' }}>Allow</span>
         </span>

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import type { ClientMessage } from '../../../lib/ws-protocol.js';
 import type { LaymanConfig } from '../../../lib/types.js';
 import { useThemeVersion } from '../../../hooks/useThemeVersion.js';
@@ -37,7 +37,7 @@ export function AppearanceSection({
   config: LaymanConfig;
   onSend: (msg: ClientMessage) => void;
 }) {
-  const a = normalizeAppearance(config.appearance);
+  const a = useMemo(() => normalizeAppearance(config.appearance), [config.appearance]);
   const update = (appearance: Partial<Appearance>) => onSend({ type: 'config:update', config: { appearance } });
   const followOs = a.theme === 'system';
   // The theme on screen now (what `applyTheme` last wrote), which turning "Follow the OS" off
