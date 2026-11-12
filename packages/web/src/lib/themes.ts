@@ -16,18 +16,9 @@
  * `--accent` is an edge and an underline, never a fill behind text, in every theme.
  */
 import { contrast, deltaE, HEX_COLOR } from './color.js';
+import { TOKENS, type Token } from './tokens.js';
 
-/** Every colour token a theme defines; each is the CSS variable `--<name>`. */
-export const TOKENS = [
-  'bg', 'bg-raised', 'bg-card', 'bg-selected', 'bg-pill', 'text-on-fill',
-  'border', 'border-subtle', 'border-strong',
-  'text', 'text-body', 'text-muted', 'text-faint',
-  'accent', 'accent-hot', 'ok', 'warn', 'error', 'info', 'agent', 'thinking',
-  'severity-major', 'severity-minor',
-  'code', 'bg-code', 'diff-add-bg', 'diff-add-text', 'diff-remove-bg', 'diff-remove-text',
-  'net-tunnel', 'net-up', 'net-down', 'net-ocean', 'net-land', 'net-landline', 'net-fanout', 'net-local',
-] as const;
-export type Token = (typeof TOKENS)[number];
+export { TOKENS, type Token };
 export type TokenMap = Record<Token, string>;
 const TOKEN_SET: ReadonlySet<string> = new Set(TOKENS);
 

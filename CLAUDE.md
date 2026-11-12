@@ -470,8 +470,9 @@ Four rules that must not be relaxed casually:
   white paper, which is how the export used to print as black bars. Two more traps: the stream's
   ancestors are made `overflow: visible` so the whole transcript prints, which requires
   `min-width: 0` on them too, or one unbreakable line widens the page to 27,000 px and it is
-  clipped; and Tailwind 3 drops opacity modifiers on variables (`bg-[var(--ok)]/10` emits nothing),
-  so use `bg-[color-mix(in_srgb,var(--ok)_10%,transparent)]`.
+  clipped; and Tailwind 3 drops opacity modifiers on arbitrary variables (`bg-[var(--ok)]/10` emits
+  nothing), so for a theme token use its Tailwind colour (`bg-ok/10`, see "Themes are data"), and for
+  anything else `bg-[color-mix(in_srgb,var(--x)_10%,transparent)]`.
   Print layout is driven by data attributes, not body classes: `data-print-hide`, `data-print-stream`
   (the Logs transcript), `data-print-tail` / `data-print-pane` (Dashboard panes; `RecentTail` keeps
   each to its last 20 rows while printing) and `data-print-stack` (side-by-side panels print one after
@@ -491,9 +492,10 @@ Four rules that must not be relaxed casually:
   appearance goes through `normalizeAppearance()`, so a stale config can never blank the page. Classic must equal the
   `:root` block in `index.css`; change both or neither. A canvas/SVG view that reads colours once
   depends on `useThemeVersion()` to redraw. A new token goes in `TOKENS`, every theme and `:root`.
-  Tailwind's colours are generated from `TOKENS` (`tailwind.config.ts`): each is its `var(--…)`
-  through `color-mix`, so `bg-ok/10` works, unlike `bg-[var(--ok)]/10`, which Tailwind 3 drops
-  (a test fails on that form). Mind the names: `bg-bg-code` is the code background, `bg-code`
+  Tailwind's colours are generated from `TOKENS` (`lib/tokens.ts`, import-free because the
+  Tailwind config loads it in Node): each is its `var(--…)`, and at an opacity a `color-mix`, so
+  `bg-ok/10` and `bg-ok/[35%]` work, unlike `bg-[var(--ok)]/10`, which Tailwind 3 drops (a test
+  fails on that form). `font-sans`, `font-ui` and `font-mono` follow `--font-ui` / `--font-mono`. Mind the names: `bg-bg-code` is the code background, `bg-code`
   paints with the code *text* colour.
 
 - **Auto-activate**: The `autoActivateClients` config array (in `~/.local/share/layman/layman.json`) lists client agent types (e.g. `'claude-code'`) whose sessions should auto-activate without requiring `/layman`. When a hook event arrives from a matching agent, `handler.ts` calls `gate.activate()` before the gate check, so events flow immediately. The toggle is in Settings → Client Setup on each client's row. Off by default.
