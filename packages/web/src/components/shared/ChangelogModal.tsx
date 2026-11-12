@@ -111,7 +111,7 @@ export function ChangelogModal({ agentType, activeVersion, onClose }: ChangelogM
                 href={sourceUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-[10px] text-info hover:text-info transition-colors flex items-center gap-1"
+                className="text-[10px] text-info hover:text-text transition-colors flex items-center gap-1"
                 onClick={(e) => e.stopPropagation()}
               >
                 View on GitHub

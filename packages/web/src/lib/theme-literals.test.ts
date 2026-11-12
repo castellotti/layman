@@ -46,6 +46,23 @@ describe('components follow the theme', () => {
     expect(matches(files, literal)).toEqual([]);
   });
 
+  it('no colour is hsl() or Tailwind\'s own palette (`bg-white`, `text-red-500`)', () => {
+    // `bg-black/60` stays allowed: scrims are black in every theme. Quoted names are not checked:
+    // the drift levels are called 'green' … 'red'.
+    const named = new RegExp([
+      String.raw`hsla?\(`,
+      String.raw`(?<![\w-])(?:bg|text|border(?:-[trblxy])?|ring|fill|stroke|from|via|to|placeholder|divide|outline|decoration|caret|accent|shadow)-` +
+        String.raw`(?:white|black(?!\/)|(?:slate|gray|zinc|neutral|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose)-\d{2,3})(?![\w-])`,
+    ].join('|'), 'g');
+    const files = [...sources(SRC), ...sources(SRC, /\.css$/)].filter((f) => !ALLOWED.has(rel(f)));
+    expect(matches(files, named)).toEqual([]);
+  });
+
+  it('no hex alpha is appended to a colour that is now a var() (`${color}cc`, `var(--ok)cc`), which is invalid CSS', () => {
+    const appended = /(?:\$\{[^}]+\}|var\(--[\w-]+\))[0-9a-f]{2}(?![\w-])/gi;
+    expect(matches(sources(SRC), appended)).toEqual([]);
+  });
+
   it('the allow-list names files that exist', () => {
     const all = new Set([...sources(SRC), ...sources(SRC, /\.css$/)].map(rel));
     for (const f of [...ALLOWED, ...PALETTE_BLOCKS]) expect(all.has(f), f).toBe(true);

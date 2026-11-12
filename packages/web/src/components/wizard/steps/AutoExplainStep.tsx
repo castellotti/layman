@@ -22,7 +22,7 @@ export function AutoExplainStep({ config, onConfigChange }: AutoExplainStepProps
             onClick={() => onConfigChange({ autoExplain: mode })}
             className={`flex-1 px-2 py-1.5 text-xs rounded-md border capitalize transition-colors ${
               config.autoExplain === mode
-                ? 'bg-info border-accent text-text-on-fill'
+                ? 'bg-info border-info text-text-on-fill'
                 : 'bg-bg-pill border-border-strong text-text-muted hover:text-text'
             }`}
           >
@@ -46,7 +46,7 @@ export function AutoExplainStep({ config, onConfigChange }: AutoExplainStepProps
                 onClick={() => onConfigChange({ autoExplainDepth: depth })}
                 className={`flex-1 px-2 py-1.5 text-xs rounded-md border capitalize transition-colors ${
                   config.autoExplainDepth === depth
-                    ? 'bg-bg-pill border-accent text-info'
+                    ? 'bg-bg-pill border-info text-info'
                     : 'bg-bg-pill border-border-strong text-text-muted hover:text-text'
                 }`}
               >

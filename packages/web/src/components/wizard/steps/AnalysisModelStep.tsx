@@ -130,7 +130,7 @@ export function AnalysisModelStep({ config, onConfigChange }: AnalysisModelStepP
             <button
               onClick={() => void fetchModels()}
               disabled={!canFetch || fetchingModels}
-              className="text-[10px] text-info hover:text-info disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              className="text-[10px] text-info hover:text-text disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
             >
               {fetchingModels ? 'Fetching...' : '\u21bb Fetch models'}
             </button>

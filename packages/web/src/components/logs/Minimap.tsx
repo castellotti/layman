@@ -20,11 +20,13 @@ function resolveToken(token: Token): string {
     resolved.clear();
     resolvedFor = getThemeVersion();
   }
-  let value = resolved.get(token);
-  if (value === undefined) {
-    value = typeof document !== 'undefined' ? readToken(token) : '';
-    resolved.set(token, value);
-  }
+  const cached = resolved.get(token);
+  if (cached) return cached;
+  // Before the variables apply (or with no document) a token reads empty. That is never cached,
+  // and draws nothing rather than the previous fillStyle.
+  const value = typeof document !== 'undefined' ? readToken(token) : '';
+  if (!value) return 'transparent';
+  resolved.set(token, value);
   return value;
 }
 

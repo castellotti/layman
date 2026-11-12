@@ -169,7 +169,7 @@ function FlowchartInner({ externalEvents, onSelectEvent, externalSelectedEventId
           <MiniMap
             pannable
             zoomable
-            nodeColor={(node) => (node.data as FlowchartNodeData).borderColor ?? 'var(--border-strong)'}
+            nodeColor={(node) => (node.data as FlowchartNodeData).borderColor}
             nodeStrokeWidth={0}
             maskColor="color-mix(in srgb, var(--bg) 75%, transparent)"
           />

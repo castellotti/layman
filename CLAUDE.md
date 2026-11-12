@@ -503,7 +503,10 @@ Four rules that must not be relaxed casually:
   `tokenColor(token, '15%')` (`lib/tokens.ts`, the same helper the Tailwind config uses); colour
   tables such as `lib/event-styles.ts` hold token names. A canvas cannot read `var()`: resolve with
   `readToken()` and redraw on `useThemeVersion()` (the Minimap does). A shade between two tokens is
-  a `color-mix` of them (the network alarm's `ALARM` mixes `--error` with `--text`), never a new hex.
+  a `color-mix` of them (the network alarm's `ALARM` mixes `--error` with `--text`, and
+  `alarm.test.ts` holds it to AA in every theme), never a new hex. A hover on a filled button mixes
+  the fill toward `--text` (`hover:bg-[color-mix(in_srgb,var(--ok)_85%,var(--text))]`), never
+  `/85`, which lightens it under `--text-on-fill` in a light theme.
   The choice is the config's `appearance` block (`AppearanceSchema` in the server's
   `config/schema.ts`; it replaced the old top-level `theme`, which `migrateTheme` reads once:
   dark → classic, light → daylight). The server mirrors the theme ids, choices and defaults, and a

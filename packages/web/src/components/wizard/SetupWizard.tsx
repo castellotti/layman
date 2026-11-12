@@ -187,7 +187,7 @@ function WizardModal({ onSend, onClose, isFirstRun }: {
             )}
             <button
               onClick={isLastStep ? handleFinish : handleNext}
-              className="px-4 py-1.5 text-xs font-medium rounded bg-ok hover:bg-ok/85 text-text-on-fill transition-colors"
+              className="px-4 py-1.5 text-xs font-medium rounded bg-ok hover:bg-[color-mix(in_srgb,var(--ok)_85%,var(--text))] text-text-on-fill transition-colors"
             >
               {isLastStep ? (isFirstRun ? 'Finish' : 'Save') : 'Next'}
             </button>

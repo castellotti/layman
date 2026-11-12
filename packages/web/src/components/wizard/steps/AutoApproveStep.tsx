@@ -61,7 +61,7 @@ export function AutoApproveStep({ config, onConfigChange }: AutoApproveStepProps
               }`}
             >
               <div
-                className={`absolute top-0.5 w-3 h-3 bg-white rounded-full transition-transform ${
+                className={`absolute top-0.5 w-3 h-3 bg-text rounded-full transition-transform ${
                   config.autoAllow.readOnly ? 'translate-x-4' : 'translate-x-0.5'
                 }`}
               />

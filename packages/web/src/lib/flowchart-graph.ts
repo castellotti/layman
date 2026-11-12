@@ -118,6 +118,7 @@ export function buildFlowchartGraph(
   // Build nodes
   const nodes: Node<FlowchartNodeData>[] = [];
   for (const event of relevant) {
+    const borderToken = NODE_BORDER_COLORS[event.type] ?? 'border-strong';
     g.setNode(event.id, { width: NODE_WIDTH, height: NODE_HEIGHT });
     nodes.push({
       id: event.id,
@@ -131,8 +132,8 @@ export function buildFlowchartGraph(
         event,
         isSelected: event.id === selectedEventId,
         icon: EVENT_ICONS[event.type] ?? '·',
-        borderToken: NODE_BORDER_COLORS[event.type] ?? 'border-strong',
-        borderColor: tokenColor(NODE_BORDER_COLORS[event.type] ?? 'border-strong', NODE_BORDER_FADED.has(event.type) ? '50%' : undefined),
+        borderToken,
+        borderColor: tokenColor(borderToken, NODE_BORDER_FADED.has(event.type) ? '50%' : undefined),
         label: getLabel(event),
         sublabel: getSublabel(event),
         nodeType: classifyNode(event.type),

@@ -94,7 +94,7 @@ export function PromptInput({ sessionId, disabled }: PromptInputProps) {
             'disabled:opacity-40 disabled:cursor-not-allowed',
             isSent
               ? 'bg-ok text-text-on-fill'
-              : 'bg-info hover:bg-info/85 text-text-on-fill',
+              : 'bg-info hover:bg-[color-mix(in_srgb,var(--info)_85%,var(--text))] text-text-on-fill',
           ].join(' ')}
         >
           {isSending ? '…' : isSent ? '✓' : '↑'}

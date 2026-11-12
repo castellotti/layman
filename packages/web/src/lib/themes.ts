@@ -103,7 +103,7 @@ export const THEMES: readonly Theme[] = [
       'border': '#2A241D', 'border-subtle': '#1F1A15', 'border-strong': '#3A3229',
       'text': '#EEE6D8', 'text-body': '#C8BDAC', 'text-muted': '#9A8F7F', 'text-faint': '#6B6255',
       'accent': '#CC8B6C', 'accent-hot': '#EBA190', 'ok': '#86C08F', 'warn': '#E8C84E', 'error': '#F0506E', 'info': '#9DB4D6', 'agent': '#B9A3D9', 'thinking': '#9C86C9',
-      'severity-major': '#F7E07A', 'severity-minor': '#E0BC3C',
+      'severity-major': '#E0BC3C', 'severity-minor': '#F7E07A',
       'code': '#D8C4A2', 'bg-code': '#0B0A08', 'diff-add-bg': '#142417', 'diff-add-text': '#B5E3B9', 'diff-remove-bg': '#2A1216', 'diff-remove-text': '#F6B8C2',
       'net-tunnel': '#6FC2B2', 'net-up': '#C3A6E0', 'net-down': '#9DB4D6', 'net-ocean': '#0B0A08', 'net-land': '#1C1813', 'net-landline': '#2E271F', 'net-fanout': '#A592CC', 'net-local': '#6B6255',
     },

@@ -93,7 +93,7 @@ function StatusBar() {
     borderRadius: '50%',
     background: wsColor,
     flexShrink: 0,
-    boxShadow: wsGlow ? `0 0 8px ${wsColor}b3` : 'none',
+    boxShadow: wsGlow ? `0 0 8px color-mix(in srgb, ${wsColor} 70%, transparent)` : 'none',
   };
 
   return (

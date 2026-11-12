@@ -48,7 +48,7 @@ export function DriftMonitoringStep({ config, onConfigChange }: DriftMonitoringS
             }`}
           >
             <div
-              className={`absolute top-0.5 w-3 h-3 bg-white rounded-full transition-transform ${
+              className={`absolute top-0.5 w-3 h-3 bg-text rounded-full transition-transform ${
                 config.driftMonitoring.enabled ? 'translate-x-4' : 'translate-x-0.5'
               }`}
             />
@@ -191,7 +191,7 @@ export function DriftMonitoringStep({ config, onConfigChange }: DriftMonitoringS
                 }`}
               >
                 <div
-                  className={`absolute top-0.5 w-3 h-3 bg-white rounded-full transition-transform ${
+                  className={`absolute top-0.5 w-3 h-3 bg-text rounded-full transition-transform ${
                     config.driftMonitoring.blockOnRed ? 'translate-x-4' : 'translate-x-0.5'
                   }`}
                 />
@@ -213,7 +213,7 @@ export function DriftMonitoringStep({ config, onConfigChange }: DriftMonitoringS
                 }`}
               >
                 <div
-                  className={`absolute top-0.5 w-3 h-3 bg-white rounded-full transition-transform ${
+                  className={`absolute top-0.5 w-3 h-3 bg-text rounded-full transition-transform ${
                     config.driftMonitoring.remindOnOrange ? 'translate-x-4' : 'translate-x-0.5'
                   }`}
                 />

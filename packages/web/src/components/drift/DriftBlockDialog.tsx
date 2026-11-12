@@ -162,7 +162,7 @@ export function DriftBlockDialog({ onSend }: DriftBlockDialogProps) {
               <div className="flex gap-2">
                 <button
                   onClick={handleContinue}
-                  className="flex-1 px-3 py-2 text-xs font-semibold rounded-md bg-ok hover:bg-ok/85 text-text-on-fill transition-colors border border-ok/30"
+                  className="flex-1 px-3 py-2 text-xs font-semibold rounded-md bg-ok hover:bg-[color-mix(in_srgb,var(--ok)_85%,var(--text))] text-text-on-fill transition-colors border border-ok/30"
                 >
                   Continue
                 </button>

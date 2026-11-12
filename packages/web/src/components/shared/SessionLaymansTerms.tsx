@@ -79,7 +79,7 @@ export function SessionLaymansTerms({
           isSummarizing
             ? 'text-text-muted animate-pulse cursor-not-allowed'
             : summaryError
-              ? 'text-error hover:text-error cursor-pointer'
+              ? 'text-error hover:underline cursor-pointer'
               : 'text-text-muted hover:text-text cursor-pointer'
         }`}
       >

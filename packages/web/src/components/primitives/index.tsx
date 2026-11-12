@@ -100,7 +100,7 @@ export function StatusDot({ state, size = 8 }: StatusDotProps) {
         borderRadius: '50%',
         background: color,
         flexShrink: 0,
-        boxShadow: glow ? `0 0 8px ${color}cc` : 'none',
+        boxShadow: glow ? `0 0 8px color-mix(in srgb, ${color} 80%, transparent)` : 'none',
       }}
     />
   );
@@ -674,7 +674,7 @@ export function LiveChip({ state, buffered, archivedDate }: LiveChipProps) {
         color: 'var(--ok)',
         border: '1px solid color-mix(in srgb, var(--ok) 25%, transparent)',
       }}>
-        <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--ok)', boxShadow: '0 0 6px var(--ok)cc', display: 'inline-block' }} />
+        <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--ok)', boxShadow: '0 0 6px color-mix(in srgb, var(--ok) 80%, transparent)', display: 'inline-block' }} />
         LIVE · following
       </span>
     );
