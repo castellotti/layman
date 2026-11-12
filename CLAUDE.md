@@ -523,7 +523,8 @@ Four rules that must not be relaxed casually:
   chosen for one theme never lands on another (under Follow the OS both halves show). An update
   replaces each theme it names whole, so one colour can be removed and `{}` clears the theme; a
   theme's map with any bad entry is dropped whole (keeping that theme's current map), or it would
-  wipe the others. Rule breaks in overrides are listed in Settings (`themeProblems`), never refused. Updates are never migrated: a
+  wipe the others. Config sources (`mergeAppearance`) take `overrides` whole from the highest that has
+  any, never per theme, or a theme cleared in Settings would return from a lower source. Rule breaks in overrides are listed in Settings (`themeProblems`), never refused. Updates are never migrated: a
   stale tab sending its old config (`theme: 'dark'`) must not overwrite the choice. `useAppearance()` applies
   it on every `session:config` and remembers it in `localStorage`, which `main.tsx` applies at load
   so a non-default theme does not flash Classic first. Settings → Appearance (`AppearanceSection`) only sends config updates; it never

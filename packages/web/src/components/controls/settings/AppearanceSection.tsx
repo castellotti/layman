@@ -96,7 +96,8 @@ export function AppearanceSection({
         onChange={(motion) => update({ motion })}
       />
 
-      <ColourOverrides theme={showing} overrides={a.overrides} onSave={(overrides) => update({ overrides })} />
+      {/* Keyed by theme, so a switch starts clean instead of showing the last theme's unsaved edits. */}
+      <ColourOverrides key={showing.id} theme={showing} overrides={a.overrides} saved={config.appearance} onSave={(overrides) => update({ overrides })} />
     </>
   );
 }

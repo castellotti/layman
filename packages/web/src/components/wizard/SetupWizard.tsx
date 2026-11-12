@@ -74,7 +74,9 @@ function WizardModal({ onSend, onClose, isFirstRun }: {
 
   const handleFinish = useCallback(() => {
     if (draftConfig) {
-      const { port, host, ...configToSend } = draftConfig;
+      // Not appearance: the wizard does not edit it, and sending its copy from when it opened
+      // would undo Appearance changes made since (overrides replace per theme).
+      const { port, host, appearance, ...configToSend } = draftConfig;
       onSend({ type: 'config:update', config: { ...configToSend, setupWizardComplete: true } });
     } else {
       onSend({ type: 'config:update', config: { setupWizardComplete: true } });

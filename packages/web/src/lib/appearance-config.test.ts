@@ -21,6 +21,14 @@ describe('the server validates appearance with the web\'s choices', () => {
     expect(server.cleanOverrides(stored)).toEqual(normalizeAppearance({ overrides: stored }).overrides);
   });
 
+  it('except a token-shaped name the web does not know, which the server keeps and the web ignores', () => {
+    // The server has no token list. Keeping the name is harmless (nothing draws it) and lets a
+    // token from a newer version survive this one; the web's normaliser is what is applied.
+    const stored = { classic: { nope: '#000000' } };
+    expect(server.cleanOverrides(stored)).toEqual(stored);
+    expect(normalizeAppearance({ overrides: stored }).overrides).toEqual({});
+  });
+
   it('the same defaults', () => {
     expect(server.AppearanceSchema.parse({})).toEqual(DEFAULT_APPEARANCE);
   });

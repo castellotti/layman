@@ -181,19 +181,15 @@ export function migrateTheme<T extends object>(config: T): T {
  * The config sources' appearance blocks, lowest precedence first, merged field by field so a
  * partial block (only `theme`) keeps the other choices. Each source's invalid fields are dropped
  * first, so one falls back to a lower source's valid choice rather than straight to the default.
- * `overrides` merge per theme: a higher source's map for a theme replaces a lower one's.
+ * `overrides` is taken whole from the highest source that has any: merging it per theme would
+ * bring back a theme the user cleared in Settings (the runtime file stores no empty maps) from a
+ * lower source on the next start.
  */
 export function mergeAppearance(...sources: unknown[]): Partial<AppearanceConfig> {
-  const out: Partial<AppearanceConfig> = {};
-  for (const s of sources) {
+  return Object.assign({}, ...sources.map((s) => validAppearanceUpdate(
     // A stored map keeps its good entries: a hand-edited typo must not cost the rest.
-    const valid = validAppearanceUpdate(
-      s && typeof s === 'object' && 'overrides' in s ? { ...s, overrides: cleanOverrides(s.overrides) } : s,
-    );
-    const overrides = valid.overrides ? mergeOverrides(out.overrides ?? {}, valid.overrides) : out.overrides;
-    Object.assign(out, valid, overrides ? { overrides } : {});
-  }
-  return out;
+    s && typeof s === 'object' && 'overrides' in s ? { ...s, overrides: cleanOverrides(s.overrides) } : s,
+  )));
 }
 
 let runtimeConfig: LaymanConfig | null = null;

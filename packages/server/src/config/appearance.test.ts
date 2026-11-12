@@ -81,11 +81,17 @@ describe('merging the config sources', () => {
     )).toEqual({ theme: 'ember', density: 'comfortable', motion: 'off' });
   });
 
-  it('overrides merge per theme: a higher source\'s map for a theme replaces a lower one\'s, keeping its good entries', () => {
+  it('overrides come whole from the highest source that has any, which keeps its good entries', () => {
     expect(mergeAppearance(
       { overrides: { classic: { ok: '#111111' }, paper: { bg: '#eee' } } },
       { overrides: { classic: { warn: '#222', error: 'red' } } },
-    )).toEqual({ overrides: { classic: { warn: '#222' }, paper: { bg: '#eee' } } });
+      { theme: 'ember' },
+    )).toEqual({ theme: 'ember', overrides: { classic: { warn: '#222' } } });
+  });
+
+  it('so a theme cleared in Settings (absent from the runtime file) does not come back from a lower source', () => {
+    expect(mergeAppearance({ overrides: { classic: { ok: '#111111' } } }, { overrides: { paper: { bg: '#eee' } } }))
+      .toEqual({ overrides: { paper: { bg: '#eee' } } });
   });
 });
 

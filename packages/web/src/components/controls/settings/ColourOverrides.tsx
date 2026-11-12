@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { HEX_COLOR, longHex } from '../../../lib/color.js';
 import {
   KNOWN_PROBLEMS, themeColours, themeProblems, TOKEN_GROUPS,
@@ -12,10 +12,7 @@ type Colours = Partial<TokenMap>;
 /** How long a colour must stay put before it is saved: a colour picker reports every step of a drag. */
 const SAVE_DELAY_MS = 250;
 
-const sameColours = (a: Colours, b: Colours): boolean => {
-  const ka = Object.keys(a) as Token[];
-  return ka.length === Object.keys(b).length && ka.every((k) => a[k]?.toLowerCase() === b[k]?.toLowerCase());
-};
+const sameColour = (a: string, b: string): boolean => longHex(a) === longHex(b);
 
 /**
  * The colours of the theme showing, each replaceable. Edits show at once in the inputs and are
@@ -25,16 +22,21 @@ const sameColours = (a: Colours, b: Colours): boolean => {
  * user's screen.
  */
 export function ColourOverrides({
-  theme, overrides, onSave,
+  theme, overrides, saved: savedConfig, onSave,
 }: {
+  /** The theme showing; the parent keys this component by its id. */
   theme: Theme;
   overrides: Overrides;
+  /** The config's appearance as received: a new one means the server answered. */
+  saved: unknown;
   onSave: (overrides: Overrides) => void;
 }) {
   const saved = overrides[theme.id] ?? {};
   /** Edits not yet seen back in the config; null shows what is saved. */
   const [draft, setDraft] = useState<Colours | null>(null);
   const pending = useRef<{ id: ThemeId; colours: Colours; timer: ReturnType<typeof setTimeout> } | null>(null);
+  /** A save went out and no config has come back since. */
+  const awaiting = useRef(false);
   const onSaveRef = useRef(onSave);
   onSaveRef.current = onSave;
 
@@ -43,16 +45,21 @@ export function ColourOverrides({
     if (!p) return;
     clearTimeout(p.timer);
     pending.current = null;
+    awaiting.current = true;
     onSaveRef.current({ [p.id]: p.colours });
   };
 
-  // Switching theme (or closing Settings) saves what is pending for the theme being left.
-  useEffect(() => () => { flush(); setDraft(null); }, [theme.id]);
+  // Closing Settings (or switching theme, which remounts this) saves what is pending.
+  useEffect(() => flush, []);
 
-  // The config caught up with the edits: show it again.
+  // The server answered a save: show what it stored, whether or not it took the edit (another
+  // tab may have saved since), so the inputs never claim colours the page is not using.
   useEffect(() => {
-    if (draft && !pending.current && sameColours(draft, saved)) setDraft(null);
-  }, [saved, draft]);
+    if (awaiting.current && !pending.current) {
+      awaiting.current = false;
+      setDraft(null);
+    }
+  }, [savedConfig]);
 
   const colours = draft ?? saved;
 
@@ -64,12 +71,16 @@ export function ColourOverrides({
 
   const setToken = (token: Token, value: string) => {
     const next = { ...colours };
-    if (value.toLowerCase() === theme.tokens[token].toLowerCase()) delete next[token];
+    if (sameColour(value, theme.tokens[token])) delete next[token];
     else next[token] = value;
     setColours(next);
   };
 
-  const problems = themeProblems(themeColours(theme, { [theme.id]: colours }), KNOWN_PROBLEMS[theme.id]);
+  const problems = useMemo(() => {
+    // A known break of the theme is skipped only while neither of its colours is the user's.
+    const allow = new Set([...(KNOWN_PROBLEMS[theme.id] ?? [])].filter((p) => p.split(/[/~]/).every((t) => !(t in colours))));
+    return themeProblems(themeColours(theme, { [theme.id]: colours }), allow);
+  }, [theme, colours]);
   const changed = Object.keys(colours).length;
 
   return (
@@ -137,8 +148,8 @@ function ColourRow({
   const [text, setText] = useState(value);
   useEffect(() => setText(value), [value]);
   const commit = () => {
-    if (HEX_COLOR.test(text)) onChange(text);
-    else setText(value);
+    if (!HEX_COLOR.test(text)) setText(value);
+    else if (!sameColour(text, value)) onChange(text);
   };
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
