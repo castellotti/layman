@@ -4,8 +4,8 @@ import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { HEX_COLOR } from './color.js';
 import {
-  appearanceCss, DEFAULT_APPEARANCE, PRINT_THEME, FONT_MONO, FONT_SANS, KNOWN_PROBLEMS, normalizeAppearance,
-  resolveAppearance, themeById, themeProblems, THEMES, TOKENS,
+  appearanceCss, DEFAULT_APPEARANCE, FONT_MONO, FONT_SANS, KNOWN_PROBLEMS, normalizeAppearance,
+  PRINT_THEME, resolveAppearance, themeById, themeProblems, THEMES, TOKENS,
 } from './themes.js';
 
 const DARK = { prefersDark: true, prefersReducedMotion: false };

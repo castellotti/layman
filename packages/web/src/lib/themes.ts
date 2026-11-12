@@ -298,8 +298,17 @@ export function resolveAppearance(input: unknown, env: Environment): ResolvedApp
  */
 export const PRINT_THEME: ThemeId = 'daylight';
 
+/** Custom properties (names with the leading `--`) as a `:root` block scoped to one media type. */
+function mediaRoot(media: 'screen' | 'print', vars: Record<string, string>): string {
+  const decls = Object.entries(vars).map(([k, v]) => `  ${k}: ${v};`).join('\n');
+  return `@media ${media} {\n:root {\n${decls}\n}\n}\n`;
+}
+
 /** Its colours as an `@media print` block, in `TOKENS` order. Constant, so built once. */
-const PRINT_CSS = `@media print {\n:root {\n${TOKENS.map((t) => `  --${t}: ${themeById(PRINT_THEME).tokens[t]};`).join('\n')}\n}\n}\n`;
+const PRINT_CSS = (() => {
+  const { tokens } = themeById(PRINT_THEME);
+  return mediaRoot('print', Object.fromEntries(TOKENS.map((t) => [`--${t}`, tokens[t]])));
+})();
 
 /**
  * The stylesheet text for a resolved appearance: its variables for the screen, and the print
@@ -310,6 +319,5 @@ const PRINT_CSS = `@media print {\n:root {\n${TOKENS.map((t) => `  --${t}: ${the
  * it belongs with the Appearance settings that make a theme choice visible.
  */
 export function appearanceCss(r: ResolvedAppearance): string {
-  const decls = Object.entries(r.vars).map(([k, v]) => `  ${k}: ${v};`).join('\n');
-  return `@media screen {\n:root {\n${decls}\n}\n}\n${PRINT_CSS}`;
+  return mediaRoot('screen', r.vars) + PRINT_CSS;
 }
