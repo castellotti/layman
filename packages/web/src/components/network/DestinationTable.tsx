@@ -16,7 +16,8 @@ import {
 import { controlDisabledReason } from '../../lib/net-rules.js';
 import { CellLabel, NetToggle, Sparkline } from './cells.js';
 import { ControlPopover } from './ControlPopover.js';
-import { NetIcon, TONE } from './netui.js';
+import { ALARM, NetIcon, TONE } from './netui.js';
+import { tokenColor } from '../../lib/tokens.js';
 
 interface Column {
   key: string;
@@ -85,7 +86,7 @@ function Row({ row, anchor, selected, onSelect, onExpand, disabledReason, onTogg
   const indent = row.depth === 0 ? 4 : row.depth === 1 ? 20 : 36;
   let background = 'transparent';
   if (selected) background = 'var(--bg-selected)';
-  else if (row.loud) background = 'rgba(240,86,74,0.07)';
+  else if (row.loud) background = tokenColor('error', '7%');
   return (
     <div
       role="row"
@@ -120,7 +121,7 @@ function Row({ row, anchor, selected, onSelect, onExpand, disabledReason, onTogg
           ) : <span style={{ width: 11, flexShrink: 0 }} />}
           <span style={{
             ...(row.mono ? { fontFamily: 'var(--font-mono)', fontSize: 11.5 } : { fontSize: 12, fontWeight: 600 }),
-            color: row.kind === 'more' ? 'var(--text-faint)' : row.loud ? '#FF8A80'
+            color: row.kind === 'more' ? 'var(--text-faint)' : row.loud ? ALARM.text
               : row.toggle === 'block' ? 'var(--error)' : row.toggle === 'locked' && top ? 'var(--warn)' : muted ? 'var(--text-muted)' : 'var(--text)',
             whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', flexShrink: 1, minWidth: 0,
           }}>

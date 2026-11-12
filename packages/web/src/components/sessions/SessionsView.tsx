@@ -14,6 +14,7 @@ import { HostChip } from '../shared/HostChip.js';
 import { isEditableCuration } from '../../lib/host.js';
 import type { ClientMessage } from '../../lib/ws-protocol.js';
 import type { RecordedSession } from '../../lib/types.js';
+import { tokenColor } from '../../lib/tokens.js';
 
 const FlowchartView = lazy(() =>
   import('../flowchart/FlowchartView.js').then((m) => ({ default: m.FlowchartView }))
@@ -714,7 +715,7 @@ export function SessionsView({ onSend }: SessionsViewProps) {
                     transition: 'background 0.15s',
                   }}
                   onMouseDown={() => { dividerDragging.current = true; }}
-                  onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(88,166,255,0.5)')}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = tokenColor('accent', '50%'))}
                   onMouseLeave={(e) => (e.currentTarget.style.background = 'var(--border)')}
                 />
                 <div style={{ flex: 1, overflow: 'hidden', minWidth: 0 }}>

@@ -7,6 +7,7 @@ import type { SessionMetrics } from '../../lib/types.js';
 import { deriveSessionState, getSessionDisplayName, contextPctColor, isSessionLive } from '../../lib/session-state.js';
 import { cwdBasename } from '../../lib/format.js';
 import { HostChip } from '../shared/HostChip.js';
+import { tokenColor } from '../../lib/tokens.js';
 
 function getTimeSince(timestamp: number, now: number): string {
   const delta = now - timestamp;
@@ -90,7 +91,7 @@ export const SessionListRow = React.memo(function SessionListRow({
         userSelect: 'none',
       }}
       onMouseEnter={(e) => {
-        if (!isOpen) (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.03)';
+        if (!isOpen) (e.currentTarget as HTMLElement).style.background = tokenColor('text', '3%');
       }}
       onMouseLeave={(e) => {
         if (!isOpen) (e.currentTarget as HTMLElement).style.background = 'transparent';

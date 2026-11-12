@@ -40,7 +40,7 @@ export function RouteErrorPanel() {
     <div style={{
       position: 'fixed', inset: 0, zIndex: 60,
       display: 'flex', alignItems: 'center', justifyContent: 'center',
-      background: 'rgba(4,6,10,0.72)', fontFamily: 'var(--font-ui)',
+      background: 'rgba(0,0,0,0.72)', fontFamily: 'var(--font-ui)',
     }}>
       <div style={{
         width: 460, maxWidth: '92vw',

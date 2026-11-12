@@ -27,12 +27,12 @@ export function AskQuestion({ eventId: _eventId, onAsk, isLoading = false }: Ask
         onChange={(e) => setQuestion(e.target.value)}
         placeholder="Ask a question about this action..."
         disabled={isLoading}
-        className="flex-1 px-3 py-2 text-xs bg-[#0d1117] border border-[#30363d] rounded-md text-[#e6edf3] placeholder-[#484f58] focus:outline-none focus:border-[#58a6ff] disabled:opacity-50"
+        className="flex-1 px-3 py-2 text-xs bg-bg border border-border-strong rounded-md text-text placeholder-text-faint focus:outline-none focus:border-accent disabled:opacity-50"
       />
       <button
         type="submit"
         disabled={!question.trim() || isLoading}
-        className="px-3 py-2 text-xs font-medium bg-[#21262d] border border-[#30363d] rounded-md text-[#e6edf3] hover:bg-[#30363d] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+        className="px-3 py-2 text-xs font-medium bg-bg-pill border border-border-strong rounded-md text-text hover:bg-border-strong disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
       >
         {isLoading ? '...' : 'Ask'}
       </button>

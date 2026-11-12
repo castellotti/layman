@@ -1,4 +1,5 @@
 import React from 'react';
+import { tokenColor } from '../../../lib/tokens.js';
 
 export function StatusPip({ ok, label }: { ok: boolean; label: string }) {
   return (
@@ -7,7 +8,7 @@ export function StatusPip({ ok, label }: { ok: boolean; label: string }) {
         fontSize: 9.5,
         padding: '2px 6px',
         borderRadius: 999,
-        background: ok ? 'rgba(76,195,138,0.15)' : 'rgba(240,86,74,0.15)',
+        background: ok ? tokenColor('ok', '15%') : tokenColor('error', '15%'),
         color: ok ? 'var(--ok)' : 'var(--error)',
       }}
     >

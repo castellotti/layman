@@ -1,17 +1,6 @@
 import type { Config } from 'tailwindcss'
 import typography from '@tailwindcss/typography'
-import { TOKENS } from './src/lib/tokens'
-
-/**
- * A theme colour at an opacity, through `color-mix`, because Tailwind cannot split a `var()`
- * holding a hex colour into channels. Tailwind hands over the modifier as written: nothing (the
- * colour itself), a number or `var(--tw-*-opacity)` (0..1), or a percentage (`/[35%]`).
- */
-export function tokenColor(token: string, opacity?: string): string {
-  if (opacity === undefined) return `var(--${token})`
-  const pct = opacity.trim().endsWith('%') ? opacity : `calc(${opacity} * 100%)`
-  return `color-mix(in srgb, var(--${token}) ${pct}, transparent)`
-}
+import { TOKENS, tokenColor } from './src/lib/tokens'
 
 /**
  * Every theme colour, by its token name, as a reference to the CSS variable the active theme

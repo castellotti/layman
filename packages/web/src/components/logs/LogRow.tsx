@@ -1,6 +1,7 @@
 import React from 'react';
 import { useSessionStore } from '../../stores/sessionStore.js';
 import { EVENT_KIND_COLOR, kindLabel, eventDetail } from '../../lib/event-styles.js';
+import { tokenColor } from '../../lib/tokens.js';
 import { formatTime } from '../../lib/format.js';
 import { EventDetailBody } from '../events/EventCard.js';
 import type { TimelineEvent } from '../../lib/types.js';
@@ -22,7 +23,7 @@ export const LogRow = React.memo(function LogRow({ event, index, hasDetail, isEx
   // Prompts), the one its Highlight button sets and the minimap marks.
   const highlighted = useSessionStore((s) => s.highlightedEventIds.has(event.id));
 
-  const color = EVENT_KIND_COLOR[event.type] ?? 'var(--text-muted)';
+  const color = tokenColor(EVENT_KIND_COLOR[event.type] ?? 'text-muted');
   const expanded = hasDetail && isExpanded;
 
   return (
@@ -63,10 +64,10 @@ export const LogRow = React.memo(function LogRow({ event, index, hasDetail, isEx
         <div
           style={{
             margin: '2px 8px 8px 52px',
-            border: `1px solid ${highlighted ? 'rgba(229,168,59,0.35)' : 'var(--border)'}`,
+            border: `1px solid ${highlighted ? tokenColor('warn', '35%') : 'var(--border)'}`,
             borderLeft: `2px solid ${highlighted ? 'var(--warn)' : color}`,
             borderRadius: 6,
-            background: highlighted ? 'rgba(229,168,59,0.06)' : 'var(--bg-raised)',
+            background: highlighted ? tokenColor('warn', '6%') : 'var(--bg-raised)',
             overflow: 'hidden',
             animation: 'fadeIn 0.15s ease',
           }}

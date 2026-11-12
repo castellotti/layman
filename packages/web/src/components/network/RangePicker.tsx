@@ -19,6 +19,7 @@ import { useNow } from '../../hooks/useNow.js';
 import { buttonStyle } from './ControlPopover.js';
 import { NetIcon } from './netui.js';
 import { tipProps } from './NetTip.js';
+import { tokenColor } from '../../lib/tokens.js';
 
 const WIDTH = 520;
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
@@ -50,7 +51,7 @@ function SegmentRow({ title, range, detail, set, onPick, now }: {
   return (
     <button type="button" aria-pressed={on} onClick={() => onPick(range)} {...tipProps(rangeTitle(range))} style={{
       display: 'flex', flexDirection: 'column', alignItems: 'stretch', gap: 2, width: '100%', textAlign: 'left', padding: '6px 9px',
-      borderRadius: 6, cursor: 'pointer', fontFamily: 'var(--font-ui)', background: on ? 'rgba(90,156,248,0.10)' : 'transparent',
+      borderRadius: 6, cursor: 'pointer', fontFamily: 'var(--font-ui)', background: on ? tokenColor('info', '10%') : 'transparent',
       border: `1px solid ${on ? 'var(--info)' : 'transparent'}`, color: 'var(--text)',
     }}>
       <span style={{ display: 'flex', gap: 8, alignItems: 'baseline', fontSize: 11.5 }}>
@@ -181,7 +182,7 @@ function CalendarTab({ segments, range, onPick, now, openedAt }: {
               style={{
                 height: 30, borderRadius: 5, fontSize: 11, fontFamily: 'var(--font-mono)', cursor: future ? 'default' : 'pointer',
                 color: c.inMonth ? (future ? 'var(--text-faint)' : 'var(--text)') : 'var(--text-faint)',
-                background: c.level ? `color-mix(in srgb, var(--net-tunnel) ${8 + c.level * 14}%, transparent)` : 'transparent',
+                background: c.level ? tokenColor('net-tunnel', `${8 + c.level * 14}%`) : 'transparent',
                 border: `1px solid ${inRange ? 'var(--info)' : c.day === today ? 'var(--border-strong)' : 'var(--border)'}`,
                 opacity: c.inMonth ? 1 : 0.55,
               }}>
@@ -271,7 +272,7 @@ function TimelineTab({ segments, range, onPick, now }: { segments: NetSegments; 
         }}>
         {chart}
         {shown && <rect data-brush="" x={x(shown.from)} y={0} width={Math.max(1, x(shown.to) - x(shown.from))} height={TL_H - 12}
-          fill="rgba(90,156,248,0.18)" stroke="var(--info)" />}
+          fill={tokenColor('info', '18%')} stroke="var(--info)" />}
         <line x1={0} x2={TL_W} y1={TL_H - 12} y2={TL_H - 12} stroke="var(--border-strong)" />
         {hover !== null && <line x1={x(hover)} x2={x(hover)} y1={0} y2={TL_H - 12} stroke="var(--text-muted)" strokeDasharray="1 2" />}
       </svg>

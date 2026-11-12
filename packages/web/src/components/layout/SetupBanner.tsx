@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react';
 import { useSessionStore } from '../../stores/sessionStore.js';
 import type { SetupStatus } from '../../lib/types.js';
+import { tokenColor } from '../../lib/tokens.js';
 
 export function SetupBanner({ onInstall }: { onInstall: () => void }) {
   const { setupStatus, setupBannerDismissed, dismissSetupBanner } = useSessionStore((s) => ({
@@ -57,8 +58,8 @@ export function SetupBanner({ onInstall }: { onInstall: () => void }) {
       style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         padding: '8px 16px',
-        background: 'rgba(229,168,59,0.08)',
-        borderBottom: '1px solid rgba(229,168,59,0.2)',
+        background: tokenColor('warn', '8%'),
+        borderBottom: `1px solid ${tokenColor('warn', '20%')}`,
         fontSize: 12,
         flexShrink: 0,
       }}
@@ -73,7 +74,7 @@ export function SetupBanner({ onInstall }: { onInstall: () => void }) {
         <button
           onClick={() => void handleInstall()}
           disabled={installing}
-          style={{ padding: '3px 10px', fontSize: 11, fontFamily: 'var(--font-ui)', fontWeight: 500, borderRadius: 5, background: 'var(--ok)', color: '#0B0E14', border: 'none', cursor: 'pointer', opacity: installing ? 0.5 : 1 }}
+          style={{ padding: '3px 10px', fontSize: 11, fontFamily: 'var(--font-ui)', fontWeight: 500, borderRadius: 5, background: 'var(--ok)', color: 'var(--text-on-fill)', border: 'none', cursor: 'pointer', opacity: installing ? 0.5 : 1 }}
         >
           {buttonLabel}
         </button>
