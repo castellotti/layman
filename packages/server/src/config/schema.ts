@@ -145,6 +145,78 @@ export const SyncConfigSchema = z.object({
   logRetentionDays: z.number().int().min(1).max(365).default(30),
 });
 
+/**
+ * The web's theme ids (`packages/web/src/lib/themes.ts`, `THEMES`), the font, density and motion
+ * choices and the default appearance, mirrored here so the server can validate what it stores. A
+ * web test (`appearance-config.test.ts`) imports this file and fails when the two disagree.
+ */
+export const THEME_IDS = ['classic', 'ember', 'tide', 'phosphor', 'paper', 'daylight', 'contrast'] as const;
+export const FONT_CHOICES = ['theme', 'sans', 'mono'] as const;
+export const DENSITIES = ['comfortable', 'compact'] as const;
+export const MOTIONS = ['full', 'reduced', 'off'] as const;
+/** `#rgb` or `#rrggbb`, as the web's `HEX_COLOR` (`lib/color.ts`; held equal by a web test). */
+export const HEX_COLOR = /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i;
+
+const isOverride = ([k, v]: [string, unknown]): boolean =>
+  /^[a-z][a-z-]*$/.test(k) && typeof v === 'string' && HEX_COLOR.test(v);
+
+/** Per-token colours, each a token-shaped name with a hex value; one bad entry fails the map. */
+const OverridesSchema = z.record(z.string(), z.unknown()).refine((o) => Object.entries(o).every(isOverride))
+  .transform((o) => o as Record<string, string>);
+
+/** An overrides map with its bad entries dropped (anything else is returned unchanged). */
+export function cleanOverrides(overrides: unknown): unknown {
+  if (!overrides || typeof overrides !== 'object' || Array.isArray(overrides)) return overrides;
+  return Object.fromEntries(Object.entries(overrides).filter(isOverride));
+}
+
+/** Each appearance field's valid values, without fallbacks: what an update must hold to be kept. */
+const APPEARANCE_FIELDS = {
+  /** A theme id, or `system` to follow the OS between `darkTheme` and `lightTheme`. */
+  theme: z.enum([...THEME_IDS, 'system']),
+  darkTheme: z.enum(THEME_IDS),
+  lightTheme: z.enum(THEME_IDS),
+  font: z.enum(FONT_CHOICES),
+  density: z.enum(DENSITIES),
+  motion: z.enum(MOTIONS),
+  overrides: OverridesSchema,
+};
+
+/** A field that takes `fallback` when absent or invalid. */
+const orDefault = <T extends z.ZodTypeAny>(schema: T, fallback: z.infer<T>) => schema.catch(fallback).default(fallback);
+
+/**
+ * How the dashboard looks. A stored field this version does not know (a cut theme, a setting
+ * from a newer version, a hand-edited typo) falls back to its default instead of failing the
+ * whole config, so a stale `layman.json` can never stop Layman starting. The web normalises the
+ * same way (`normalizeAppearance`) and drops override names that are not its tokens. An *update*
+ * is filtered first instead (`validAppearanceUpdate`), so a bad value keeps the current choice.
+ */
+export const AppearanceSchema = z.object({
+  theme: orDefault(APPEARANCE_FIELDS.theme, 'classic'),
+  darkTheme: orDefault(APPEARANCE_FIELDS.darkTheme, 'classic'),
+  lightTheme: orDefault(APPEARANCE_FIELDS.lightTheme, 'daylight'),
+  font: orDefault(APPEARANCE_FIELDS.font, 'sans'),
+  density: orDefault(APPEARANCE_FIELDS.density, 'compact'),
+  motion: orDefault(APPEARANCE_FIELDS.motion, 'full'),
+  overrides: orDefault(z.preprocess(cleanOverrides, APPEARANCE_FIELDS.overrides), {}),
+});
+
+/**
+ * The fields of an appearance update that hold valid values; the rest are dropped. An overrides
+ * map with any bad entry is dropped whole: it replaces the current map, so applying only its good
+ * entries would silently remove the user's other overrides.
+ */
+export function validAppearanceUpdate(update: unknown): Partial<AppearanceConfig> {
+  if (!update || typeof update !== 'object') return {};
+  return Object.fromEntries(
+    Object.entries(update).filter(([k, v]) =>
+      Object.prototype.hasOwnProperty.call(APPEARANCE_FIELDS, k) && APPEARANCE_FIELDS[k as keyof typeof APPEARANCE_FIELDS].safeParse(v).success),
+  ) as Partial<AppearanceConfig>;
+}
+
+export type AppearanceConfig = z.infer<typeof AppearanceSchema>;
+
 export const LaymanConfigSchema = z.object({
   port: z.number().int().min(1).max(65535).default(8880),
   host: z.string().default('localhost'),
@@ -158,7 +230,8 @@ export const LaymanConfigSchema = z.object({
   analysis: AnalysisConfigSchema.default({}),
   autoAllow: AutoAllowRulesSchema.default({}),
   hookTimeout: z.number().int().min(10).max(3600).default(300),
-  theme: z.enum(['dark', 'light', 'system']).default('dark'),
+  /** Replaces the old top-level `theme` (dark | light | system); `migrateTheme` reads that once. */
+  appearance: AppearanceSchema.catch(() => AppearanceSchema.parse({})).default({}),
   open: z.boolean().default(true),
   autoApprove: z.union([
     z.enum(['all', 'medium', 'low', 'none']),
@@ -213,3 +286,6 @@ export type GloveConfig = z.infer<typeof GloveConfigSchema>;
 export type AnalysisConfigType = z.infer<typeof AnalysisConfigSchema>;
 export type TtsConfig = z.infer<typeof TtsConfigSchema>;
 export type AutoAllowRules = z.infer<typeof AutoAllowRulesSchema>;
+
+/** What a Settings update may carry: any fields, and of `appearance` only the choices it changes. */
+export type ConfigUpdate = Omit<Partial<LaymanConfig>, 'appearance'> & { appearance?: Partial<AppearanceConfig> };

@@ -1,9 +1,9 @@
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs';
 import { dirname } from 'path';
 import { cosmiconfig } from 'cosmiconfig';
-import { LaymanConfigSchema } from './schema.js';
+import { cleanOverrides, LaymanConfigSchema, validAppearanceUpdate } from './schema.js';
 import { laymanConfigPath } from './paths.js';
-import type { LaymanConfig } from './schema.js';
+import type { AppearanceConfig, ConfigUpdate, LaymanConfig } from './schema.js';
 
 const explorer = cosmiconfig('layman', {
   searchPlaces: [
@@ -70,7 +70,7 @@ export async function loadConfig(
   }
 
   // Auto-saved runtime config (layman.json in the data dir; see config/paths.ts)
-  const runtimeFile = loadRuntimeConfig();
+  let runtimeFile = loadRuntimeConfig();
 
   // Existing users who already have a config file should not see the wizard
   if (Object.keys(runtimeFile).length > 0 && runtimeFile.setupWizardComplete === undefined) {
@@ -93,6 +93,11 @@ export async function loadConfig(
   if (process.env.ANTHROPIC_API_KEY && !envConfig.analysis) {
     envConfig.analysis = { provider: 'anthropic', model: 'sonnet', maxTokens: 400, temperature: 0.1 };
   }
+
+  // The old top-level `theme` becomes `appearance.theme`, in each source before the merge, so a
+  // source's appearance keeps its precedence over another's.
+  fileConfig = migrateTheme(fileConfig);
+  runtimeFile = migrateTheme(runtimeFile);
 
   // Merge order: defaults → env vars → static file → auto-saved runtime → CLI flags
   // CLI flags (port, host, etc.) always win; runtime file wins over static file
@@ -121,6 +126,7 @@ export async function loadConfig(
       ...runtimeFile.sync,
       ...cliFlags.sync,
     },
+    appearance: mergeAppearance(envConfig.appearance, fileConfig.appearance, runtimeFile.appearance, cliFlags.appearance),
     // Deep-merge glove and glove.network so a partial config (e.g. only
     // `glove.enabled`) can neither blank `home` nor reset the network block.
     glove: {
@@ -154,6 +160,36 @@ export function migrateGloveHome<T extends Record<string, unknown> | undefined>(
   return { ...rest, home } as unknown as T;
 }
 
+/** What each value of the old top-level `theme` field meant, as a theme id. */
+const LEGACY_THEME: Record<string, AppearanceConfig['theme']> = { dark: 'classic', light: 'daylight', system: 'system' };
+
+/**
+ * The old top-level `theme` (`dark` | `light` | `system`) becomes `appearance.theme`, unless the
+ * same config already chose one. Returns a copy without the old key (the schema would drop it
+ * anyway); the next save writes only `appearance`.
+ */
+export function migrateTheme<T extends object>(config: T): T {
+  if (!('theme' in config)) return config;
+  const { theme, ...rest } = config as Record<string, unknown>;
+  const legacy = LEGACY_THEME[String(theme)];
+  const appearance = rest.appearance && typeof rest.appearance === 'object' ? rest.appearance as Record<string, unknown> : {};
+  if (legacy && appearance.theme === undefined) rest.appearance = { ...appearance, theme: legacy };
+  return rest as T;
+}
+
+/**
+ * The config sources' appearance blocks, lowest precedence first, merged field by field so a
+ * partial block (only `theme`) keeps the other choices. Each source's invalid fields are dropped
+ * first, so one falls back to a lower source's valid choice rather than straight to the default.
+ * `overrides` is replaced whole: merging it would make a removed override impossible.
+ */
+export function mergeAppearance(...sources: unknown[]): Partial<AppearanceConfig> {
+  return Object.assign({}, ...sources.map((s) => validAppearanceUpdate(
+    // A stored map keeps its good entries: a hand-edited typo must not cost the rest.
+    s && typeof s === 'object' && 'overrides' in s ? { ...s, overrides: cleanOverrides(s.overrides) } : s,
+  )));
+}
+
 let runtimeConfig: LaymanConfig | null = null;
 
 /** The URL hooks are installed under: `hookUrl` if set, else the listen address. */
@@ -170,8 +206,11 @@ export function setConfig(config: LaymanConfig): void {
   runtimeConfig = config;
 }
 
-export function updateConfig(updates: Partial<LaymanConfig>): LaymanConfig {
+export function updateConfig(updates: ConfigUpdate): LaymanConfig {
   if (!runtimeConfig) throw new Error('Config not initialized.');
+  // No `migrateTheme` here: the dashboard never read `theme`, and a stale tab sending the whole
+  // old config (`theme: 'dark'`, the old default) would overwrite the user's choice. The schema
+  // drops the key.
   runtimeConfig = LaymanConfigSchema.parse({
     ...runtimeConfig,
     ...updates,
@@ -180,6 +219,10 @@ export function updateConfig(updates: Partial<LaymanConfig>): LaymanConfig {
     // Deep-merge so a Settings update that omits sync.hostId (or sends only a
     // role change) keeps the persisted identity instead of minting a new one.
     sync: { ...runtimeConfig.sync, ...updates.sync },
+    // Deep-merge so an update carrying one appearance choice keeps the others, and one
+    // carrying a value this version does not know keeps the current choice. `overrides`,
+    // when sent, replaces the map (so one can be removed).
+    appearance: { ...runtimeConfig.appearance, ...validAppearanceUpdate(updates.appearance) },
     // Deep-merge so a Settings update carrying only `glove.enabled` keeps
     // `home` and the network block (and one carrying only a network
     // toggle keeps the rest of it).

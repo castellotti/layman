@@ -48,7 +48,7 @@ import { registerTtsRoutes } from './routes/tts.js';
 import { searchEvents, parseSearchQuery, matchesSearchTerms } from './db/search.js';
 import { computeTimeMetrics } from './db/time-metrics.js';
 import type { SearchRequest } from './db/search.js';
-import type { LaymanConfig } from './config/schema.js';
+import type { ConfigUpdate, LaymanConfig } from './config/schema.js';
 import { VibeSessionWatcher } from './vibe/watcher.js';
 import { PiSessionWatcher, recordedCursorFrom } from './pi/watcher.js';
 import { PiUsageReader } from './pi/usage.js';
@@ -816,7 +816,7 @@ export function createServer(config: LaymanConfig): LaymanServer {
       return activeConfig;
     });
 
-    fastify.post<{ Body: Partial<LaymanConfig> }>('/api/config', async (request) => {
+    fastify.post<{ Body: ConfigUpdate }>('/api/config', async (request) => {
       activeConfig = updateConfig(request.body);
       analysisEngine.configure(activeConfig.analysis);
       pendingManager.setHookTimeout(activeConfig.hookTimeout);

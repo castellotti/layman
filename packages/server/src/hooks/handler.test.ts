@@ -3,7 +3,7 @@ import { PendingApprovalManager } from './pending.js';
 import { EventStore } from '../events/store.js';
 import { AnalysisEngine } from '../analysis/engine.js';
 import type { PreToolUseInput, PermissionRequestInput } from './types.js';
-import { TtsConfigSchema, type LaymanConfig } from '../config/schema.js';
+import { AppearanceSchema, TtsConfigSchema, type LaymanConfig } from '../config/schema.js';
 
 const BASE_INPUT: Omit<PreToolUseInput, 'tool_name' | 'tool_input'> = {
   session_id: 'sess-1',
@@ -32,7 +32,7 @@ const MOCK_CONFIG: LaymanConfig = {
     trustedCommands: [],
   },
   hookTimeout: 300,
-  theme: 'dark',
+  appearance: AppearanceSchema.parse({}),
   open: true,
   autoApprove: 'all',
   laymansPrompt: 'Explain what the AI is doing here in absolute layman\'s terms to someone who has no understanding of technology',
