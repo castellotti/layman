@@ -480,6 +480,15 @@ Four rules that must not be relaxed casually:
   `usePrintExpandable()` rather than `useState(false)` (`hooks/usePrinting.ts`, which also exports
   `usePrinting()`), or the export silently truncates.
 
+- **Themes are data** (`packages/web/src/lib/themes.ts`, pure; DOM side in `lib/theme-runtime.ts`).
+  Each theme defines every colour token components use as `var(--…)`; `applyTheme()` writes the
+  resolved one as an `@media screen` stylesheet, never an inline style on `<html>`, which would beat
+  the print palette. Tests hold every theme to WCAG AA (text/body/muted on bg/raised/card) and keep
+  `--accent` and `--accent-hot` ≥ 0.12 OKLab ΔE from that theme's `ok`, `warn`, `error` and
+  severities (`--warn` means MEDIUM risk, so an accent near it misleads). Classic must equal the
+  `:root` block in `index.css`; change both or neither. A canvas/SVG view that reads colours once
+  depends on `useThemeVersion()` to redraw. A new token goes in `TOKENS`, every theme and `:root`.
+
 - **Auto-activate**: The `autoActivateClients` config array (in `~/.local/share/layman/layman.json`) lists client agent types (e.g. `'claude-code'`) whose sessions should auto-activate without requiring `/layman`. When a hook event arrives from a matching agent, `handler.ts` calls `gate.activate()` before the gate check, so events flow immediately. The toggle is in Settings → Client Setup on each client's row. Off by default.
 
 - **Duplicate prompts are collapsed at extraction time, not deleted from the DB**: the hook

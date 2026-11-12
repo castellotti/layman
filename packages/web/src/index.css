@@ -36,6 +36,7 @@
 
   /* Semantic colors */
   --accent: #5A9CF8;   /* underline / left-edge indicator ONLY — never a fill behind text */
+  --accent-hot: #8FBBFA; /* the accent's brighter "at work" step; same rule */
   --ok:     #4CC38A;   /* running/live, LOW risk */
   --warn:   #E5A83B;   /* MEDIUM risk, permission pending */
   --error:  #F0564A;   /* HIGH risk, errors, stopped */
@@ -66,6 +67,13 @@
   /* Typography */
   --font-ui:   'IBM Plex Sans', system-ui, sans-serif;
   --font-mono: 'IBM Plex Mono', 'SF Mono', 'Fira Code', monospace;
+
+  /* Shape and motion. Themes live in src/lib/themes.ts, which writes all of the above on top of
+     this block (screen only) through applyTheme(); Classic there must equal this block (tested). */
+  --radius:  6px;
+  --stroke:  1px;
+  --density: 1;  /* spacing multiplier: 1 comfortable, 0.72 compact */
+  --motion:  1;  /* duration multiplier: 0 when motion is off */
 }
 
 @keyframes panelIn {
