@@ -491,6 +491,10 @@ Four rules that must not be relaxed casually:
   appearance goes through `normalizeAppearance()`, so a stale config can never blank the page. Classic must equal the
   `:root` block in `index.css`; change both or neither. A canvas/SVG view that reads colours once
   depends on `useThemeVersion()` to redraw. A new token goes in `TOKENS`, every theme and `:root`.
+  Tailwind's colours are generated from `TOKENS` (`tailwind.config.ts`): each is its `var(--…)`
+  through `color-mix`, so `bg-ok/10` works, unlike `bg-[var(--ok)]/10`, which Tailwind 3 drops
+  (a test fails on that form). Mind the names: `bg-bg-code` is the code background, `bg-code`
+  paints with the code *text* colour.
 
 - **Auto-activate**: The `autoActivateClients` config array (in `~/.local/share/layman/layman.json`) lists client agent types (e.g. `'claude-code'`) whose sessions should auto-activate without requiring `/layman`. When a hook event arrives from a matching agent, `handler.ts` calls `gate.activate()` before the gate check, so events flow immediately. The toggle is in Settings → Client Setup on each client's row. Off by default.
 
