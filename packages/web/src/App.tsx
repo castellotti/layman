@@ -22,6 +22,7 @@ import { isSessionLive } from './lib/session-state.js';
 import { useWebSocket } from './hooks/useWebSocket.js';
 import { useLaymanRoute } from './hooks/useLaymanRoute.js';
 import { useTTS } from './hooks/useTTS.js';
+import { useAppearance } from './hooks/useAppearance.js';
 import { usePendingApprovals } from './hooks/usePendingApprovals.js';
 import { hasChangelog, HARNESS_DISPLAY_NAMES } from './hooks/useChangelog.js';
 import { shallow } from 'zustand/shallow';
@@ -208,6 +209,8 @@ export function App() {
   useLaymanRoute();
   // Queues new agent responses for speech when auto-speak is on.
   useTTS();
+  // Applies the config's theme, type, density and motion.
+  useAppearance();
   const investigationOpen = useSessionStore((s) => s.investigationOpen);
   const flowchartOpen = useSessionStore((s) => s.flowchartOpen);
   const bookmarksOpen = useSessionStore((s) => s.bookmarksOpen);

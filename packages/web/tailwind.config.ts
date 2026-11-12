@@ -1,42 +1,38 @@
 import type { Config } from 'tailwindcss'
 import typography from '@tailwindcss/typography'
+import { TOKENS } from './src/lib/tokens'
+
+/**
+ * A theme colour at an opacity, through `color-mix`, because Tailwind cannot split a `var()`
+ * holding a hex colour into channels. Tailwind hands over the modifier as written: nothing (the
+ * colour itself), a number or `var(--tw-*-opacity)` (0..1), or a percentage (`/[35%]`).
+ */
+export function tokenColor(token: string, opacity?: string): string {
+  if (opacity === undefined) return `var(--${token})`
+  const pct = opacity.trim().endsWith('%') ? opacity : `calc(${opacity} * 100%)`
+  return `color-mix(in srgb, var(--${token}) ${pct}, transparent)`
+}
+
+/**
+ * Every theme colour, by its token name, as a reference to the CSS variable the active theme
+ * writes (`bg-bg-card`, `text-text-muted`, `border-border-strong`, `text-ok/70`). Never a hex value:
+ * a literal here would not follow the theme or print light. Mind the names: `bg-bg-code` is the
+ * code background; `bg-code` paints with the code text colour.
+ */
+const colors = Object.fromEntries(
+  TOKENS.map((t) => [t, ({ opacityValue }: { opacityValue?: string }) => tokenColor(t, opacityValue)]),
+) as unknown as Record<string, string> // Tailwind 3 takes a colour function but does not type one
 
 export default {
   content: ['./index.html', './src/**/*.{ts,tsx}'],
   theme: {
     extend: {
       fontFamily: {
-        ui:   ['IBM Plex Sans', 'system-ui', 'sans-serif'],
-        mono: ['IBM Plex Mono', 'SF Mono', 'Fira Code', 'monospace'],
+        ui:   ['var(--font-ui)'],
+        sans: ['var(--font-ui)'],
+        mono: ['var(--font-mono)'],
       },
-      colors: {
-        /* New design tokens */
-        'bg':          '#0B0E14',
-        'bg-raised':   '#0D1119',
-        'bg-card':     '#11151D',
-        'bg-selected': '#141B29',
-        'border':        '#1D2330',
-        'border-subtle': '#171C26',
-        'border-strong': '#2A3242',
-        'text-primary':  '#E6EAF2',
-        'text-body':     '#B8C0CF',
-        'text-muted':    '#8A94A6',
-        'text-faint':    '#5A6478',
-        'accent':  '#35C9B4',
-        'ok':      '#4CC38A',
-        'warn':    '#E5A83B',
-        'error':   '#F0564A',
-        'info':    '#5A9CF8',
-        'agent':   '#8B7CF6',
-        /* Keep legacy aliases for compatibility during migration */
-        'bg-primary':     '#0B0E14',
-        'border-default': '#1D2330',
-        'text-secondary': '#8A94A6',
-        'accent-green':   '#4CC38A',
-        'accent-yellow':  '#E5A83B',
-        'accent-red':     '#F0564A',
-        'accent-blue':    '#5A9CF8',
-      },
+      colors,
     },
   },
   plugins: [typography],

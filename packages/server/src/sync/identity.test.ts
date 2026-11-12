@@ -124,7 +124,7 @@ describe('config update preserves the persisted host id', () => {
     setConfig(config);
 
     // A Settings change that omits sync entirely, and one that sends a partial sync.
-    const afterTheme = updateConfig({ theme: 'light' });
+    const afterTheme = updateConfig({ appearance: { theme: 'daylight' } });
     expect(afterTheme.sync.hostId).toBe('stable-id');
 
     const afterRole = updateConfig({ sync: { role: 'central' } as LaymanConfig['sync'] });

@@ -1,5 +1,7 @@
 // Shared types for the web frontend
 
+import type { Appearance } from './themes.js';
+
 export type EventType =
   | 'tool_call_pending'
   | 'tool_call_approved'
@@ -312,7 +314,8 @@ export interface LaymanConfig {
     trustedCommands: string[];
   };
   hookTimeout: number;
-  theme: 'dark' | 'light' | 'system';
+  /** How the dashboard looks (`lib/themes.ts`); validated by the server, normalised again here. */
+  appearance: Appearance;
   open: boolean;
   autoApprove: 'all' | 'medium' | 'low' | 'none';
   laymansPrompt: string;
@@ -356,6 +359,9 @@ export interface LaymanConfig {
   /** Base URL for generated links; empty falls back to window.location.origin. */
   publicUrl: string;
 }
+
+/** What a Settings update may carry: any fields, and of `appearance` only the choices it changes. */
+export type ConfigUpdate = Omit<Partial<LaymanConfig>, 'appearance'> & { appearance?: Partial<Appearance> };
 
 // Drift monitoring types
 export type DriftLevel = 'green' | 'yellow' | 'orange' | 'red';
