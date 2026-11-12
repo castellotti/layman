@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import type { ClientMessage } from '../../../lib/ws-protocol.js';
 import type { LaymanConfig } from '../../../lib/types.js';
-import { SectionTitle, ToggleRow, CustomRow, StringListRow } from './primitives.js';
+import { SectionTitle, ToggleRow, CustomRow, StringListRow, Code } from './primitives.js';
 import { normaliseVpnDomain, withVpnEntry } from '../../../lib/net-vpn.js';
 
 const DEFAULT_HOME = '~/.glove';
@@ -104,7 +104,7 @@ function VpnDomainsRow({ list, onChange }: { list: string[]; onChange: (next: st
       withEntry={withVpnEntry}
       help={<>
         Hosts on your corporate network, reached over your own VPN. glove reports their traffic as direct (it left without a tunnel glove set up);
-        listed here, the network views show it as a VPN route instead of untunnelled traffic. <code style={{ fontFamily: 'var(--font-mono)' }}>corp.example</code> covers
+        listed here, the network views show it as a VPN route instead of untunnelled traffic. <Code>corp.example</Code> covers
         every subdomain; a host or IP matches only itself. Traffic through a corporate session's own egress needs no entry. Rules are unchanged.
       </>}
     />

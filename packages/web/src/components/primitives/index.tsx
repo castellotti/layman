@@ -538,30 +538,32 @@ interface FilterChipProps {
   riskOutline?: boolean; // risk chip uses warn outline instead of neutral
 }
 
+/** A filter chip's look, shared with chips that need more than `FilterChip` takes (the Logs station picker). */
+export function filterChipStyle(active: boolean, riskOutline = false): React.CSSProperties {
+  return {
+    display: 'inline-flex',
+    alignItems: 'center',
+    padding: '3px 9px',
+    borderRadius: 5,
+    fontSize: 11,
+    fontWeight: active ? 500 : 400,
+    fontFamily: 'var(--font-ui)',
+    cursor: 'pointer',
+    transition: 'background 0.15s, border-color 0.15s',
+    background: active ? 'var(--bg-selected)' : 'transparent',
+    color: active ? 'var(--text)' : 'var(--text-muted)',
+    border: active
+      ? riskOutline
+        ? `1px solid var(--warn)`
+        : `1px solid var(--border-strong)`
+      : '1px solid transparent',
+    userSelect: 'none',
+  };
+}
+
 export function FilterChip({ label, active, onClick, riskOutline = false }: FilterChipProps) {
   return (
-    <button
-      onClick={onClick}
-      style={{
-        display: 'inline-flex',
-        alignItems: 'center',
-        padding: '3px 9px',
-        borderRadius: 5,
-        fontSize: 11,
-        fontWeight: active ? 500 : 400,
-        fontFamily: 'var(--font-ui)',
-        cursor: 'pointer',
-        transition: 'background 0.15s, border-color 0.15s',
-        background: active ? 'var(--bg-selected)' : 'transparent',
-        color: active ? 'var(--text)' : 'var(--text-muted)',
-        border: active
-          ? riskOutline
-            ? `1px solid var(--warn)`
-            : `1px solid var(--border-strong)`
-          : '1px solid transparent',
-        userSelect: 'none',
-      }}
-    >
+    <button onClick={onClick} style={filterChipStyle(active, riskOutline)}>
       {label}
     </button>
   );

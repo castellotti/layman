@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { StationId } from '../../lib/station.js';
 import { STATION_STYLE } from '../../lib/station-style.js';
 import { StationGlyph } from './StationGlyph.js';
+import { filterChipStyle } from '../primitives/index.js';
 
 /**
  * The Logs filter by station: a chip that opens a list of the stations this session's events fall
@@ -43,14 +44,7 @@ export function StationFilter({
         aria-controls="station-filter-list"
         onClick={() => setOpen((v) => !v)}
         title="Show only the rows at some stations: the kind of work each event is"
-        style={{
-          display: 'inline-flex', alignItems: 'center', gap: 5, padding: '3px 9px', borderRadius: 5,
-          fontSize: 11, fontWeight: active ? 500 : 400, fontFamily: 'var(--font-ui)', cursor: 'pointer',
-          background: active ? 'var(--bg-selected)' : 'transparent',
-          color: active ? 'var(--text)' : 'var(--text-muted)',
-          border: active ? '1px solid var(--border-strong)' : '1px solid transparent',
-          userSelect: 'none',
-        }}
+        style={{ ...filterChipStyle(active), gap: 5 }}
       >
         {selected.length === 1 && <StationGlyph station={selected[0]} size={11} decorative />}
         {label}

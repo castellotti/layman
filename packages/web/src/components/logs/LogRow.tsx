@@ -27,13 +27,14 @@ export const LogRow = React.memo(function LogRow({ event, index, hasDetail, isEx
   const highlighted = useSessionStore((s) => s.highlightedEventIds.has(event.id));
 
   const setup = useStationSetup();
-  const station = useMemo(() => rowStation(event, setup), [event, setup]);
   // The tooltip names the call without its content (the row itself already shows the content).
-  const stationTitle = useMemo(() => {
-    if (!station) return undefined;
-    const name = STATION_STYLE[station].label;
-    return event.data.toolName ? `${name} · ${safeLabel(event.data.toolName, event.data.toolInput as Record<string, unknown> | undefined, setup)}` : name;
-  }, [station, event, setup]);
+  const { station, stationTitle } = useMemo(() => {
+    const st = rowStation(event, setup);
+    if (!st) return { station: undefined, stationTitle: undefined };
+    const name = STATION_STYLE[st].label;
+    const { toolName, toolInput } = event.data;
+    return { station: st, stationTitle: toolName ? `${name} · ${safeLabel(toolName, toolInput as Record<string, unknown> | undefined, setup)}` : name };
+  }, [event, setup]);
 
   const color = EVENT_KIND_COLOR[event.type] ?? 'var(--text-muted)';
   const expanded = hasDetail && isExpanded;

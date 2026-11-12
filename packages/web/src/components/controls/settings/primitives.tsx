@@ -276,19 +276,26 @@ export function CustomRow({ children }: { children: React.ReactNode }) {
   return <div style={ROW_STYLE}>{children}</div>;
 }
 
+const trimmed = (draft: string) => draft.trim() || null;
+
+/** Inline code in a setting's help text. */
+export function Code({ children }: { children: React.ReactNode }) {
+  return <code style={{ fontFamily: 'var(--font-mono)' }}>{children}</code>;
+}
+
 /**
  * A setting that is a list of short strings: a field to add one, a chip per entry to remove it, and
- * a line of help. `normalise` turns the draft into an entry (null refuses it); `withEntry` adds it
- * (default: appended once).
+ * a line of help. `normalise` turns the draft into an entry (null refuses it; default: trimmed,
+ * blank refused); `withEntry` adds it (default: appended once).
  */
 export function StringListRow({
-  label, placeholder, list, onChange, normalise, withEntry, help,
+  label, placeholder, list, onChange, normalise = trimmed, withEntry, help,
 }: {
   label: string;
   placeholder: string;
   list: string[];
   onChange: (next: string[]) => void;
-  normalise: (draft: string) => string | null;
+  normalise?: (draft: string) => string | null;
   withEntry?: (list: string[], entry: string) => string[];
   help: React.ReactNode;
 }) {
