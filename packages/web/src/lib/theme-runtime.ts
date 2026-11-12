@@ -38,8 +38,8 @@ function watchSystem(): void {
 
 /**
  * Resolve `appearance` (any stored value: it is normalised) against the browser's colour-scheme
- * and reduced-motion settings and write it: one `<style>` element (screen only, so print keeps its
- * light palette) and `data-theme`, `data-scheme`, `data-motion` on `<html>`. Re-applies by itself
+ * and reduced-motion settings and write it: one `<style>` element (the theme for the screen, and the
+ * print palette, `PRINT_THEME`, for print) and `data-theme`, `data-scheme`, `data-motion` on `<html>`. Re-applies by itself
  * when either OS setting changes. Does nothing to the page when nothing changed.
  */
 export function applyTheme(appearance: unknown, doc: Document = document): ResolvedAppearance {

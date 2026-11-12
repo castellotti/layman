@@ -292,9 +292,14 @@ export function resolveAppearance(input: unknown, env: Environment): ResolvedApp
 /**
  * The theme print and Export to PDF use, whatever is on screen: a white page, so a PDF prints the
  * same for everyone. Only its colours are used; the user's overrides are not (they are a screen
- * choice).
+ * choice). Fonts, radius and density print from `index.css`'s `:root` (Classic's defaults). The
+ * print palette is written by `applyTheme()`, so it needs the app's script; without it there is
+ * no transcript to print.
  */
 export const PRINT_THEME: ThemeId = 'daylight';
+
+/** Its colours as an `@media print` block, in `TOKENS` order. Constant, so built once. */
+const PRINT_CSS = `@media print {\n:root {\n${TOKENS.map((t) => `  --${t}: ${themeById(PRINT_THEME).tokens[t]};`).join('\n')}\n}\n}\n`;
 
 /**
  * The stylesheet text for a resolved appearance: its variables for the screen, and the print
@@ -305,8 +310,6 @@ export const PRINT_THEME: ThemeId = 'daylight';
  * it belongs with the Appearance settings that make a theme choice visible.
  */
 export function appearanceCss(r: ResolvedAppearance): string {
-  const block = (vars: [string, string][]) => vars.map(([k, v]) => `  ${k}: ${v};`).join('\n');
-  const print = Object.entries(themeById(PRINT_THEME).tokens).map(([t, v]) => [`--${t}`, v] as [string, string]);
-  return `@media screen {\n:root {\n${block(Object.entries(r.vars))}\n}\n}\n`
-    + `@media print {\n:root {\n${block(print)}\n}\n}\n`;
+  const decls = Object.entries(r.vars).map(([k, v]) => `  ${k}: ${v};`).join('\n');
+  return `@media screen {\n:root {\n${decls}\n}\n}\n${PRINT_CSS}`;
 }

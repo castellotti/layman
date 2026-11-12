@@ -9,7 +9,7 @@ const rel = (file: string) => file.slice(WEB.length + 1);
 
 /**
  * The only source file allowed a colour literal: the theme table, which is where colours come
- * from. `index.css` may hold them only in its `:root` blocks (Classic, and the print palette).
+ * from. `index.css` may hold them only in its `:root` block (Classic).
  */
 const ALLOWED = new Set(['src/lib/themes.ts']);
 const PALETTE_BLOCKS = new Set(['src/index.css']);

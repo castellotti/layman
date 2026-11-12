@@ -468,7 +468,8 @@ Four rules that must not be relaxed casually:
   It prints light by redefining every colour token with the print theme's values (`PRINT_THEME`,
   Daylight, in `lib/themes.ts`), which `appearanceCss()` writes as an `@media print` block next to
   the screen theme: there is no second palette in `index.css`, and neither the screen theme nor
-  the user's overrides reach the page. A component prints correctly only if its colours come from
+  the user's overrides reach the page. It is written by script, which is fine: without the app's script there
+  is no transcript to print. A component prints correctly only if its colours come from
   `var(--…)`. A hex literal stays dark on white paper, which is how the export used to print as
   black bars (`theme-literals.test.ts` now forbids them). Two more traps: the stream's
   ancestors are made `overflow: visible` so the whole transcript prints, which requires

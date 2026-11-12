@@ -68,8 +68,9 @@
   --font-ui:   'IBM Plex Sans', system-ui, sans-serif;
   --font-mono: 'IBM Plex Mono', 'SF Mono', 'Fira Code', monospace;
 
-  /* Shape and motion. Themes live in src/lib/themes.ts, which writes all of the above on top of
-     this block (screen only) through applyTheme(); Classic there must equal this block (tested). */
+  /* Shape and motion. Themes live in src/lib/themes.ts: applyTheme() writes the chosen theme over
+     this block for the screen, and the print theme's colours (PRINT_THEME) for print. Classic there
+     must equal this block (tested). */
   --radius:  6px;
   --stroke:  1px;
   --density: 0.72;  /* spacing multiplier: 1 comfortable, 0.72 compact (the default) */
