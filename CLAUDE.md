@@ -348,6 +348,10 @@ lines are scanned (quotes, heredocs, `$(…)`, redirections, wrappers, `bash -c`
 operators: a quoted `|` or a heredoc body read as commands misfiled most of a real history. A new
 harness tool name goes in the fixture with its harness. The **Guard** station is Layman's own
 decisions (approval, denial, drift reminder/block), not a tool.
+**Memory** is Claude Code's `~/.claude/projects/*/memory/` for everyone, plus `activity.memoryPaths`
+and `activity.memoryServers` (config, deep-merged); `instructions_loaded` is memory *pushed* into the
+context (`isPushedMemory`), counted apart from memory the model asked for. `eventStation()` is the
+one place a recorded event gets its station.
 
 ### Text to speech
 

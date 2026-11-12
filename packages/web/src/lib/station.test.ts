@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
-import { commandKind, shellCommands, shellStation, stationOf } from './station';
+import { commandKind, eventStation, isPushedMemory, shellCommands, shellStation, stationOf } from './station';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const serverEvents = join(here, '../../../server/src/events');
@@ -26,6 +26,18 @@ describe('station.ts', () => {
   it('agrees with the census', () => {
     for (const kind of ['files', 'neutral', 'network', 'shell'] as const) {
       for (const line of fixture.census[kind] as string[]) expect([line, commandKind(shellCommands(line)[0]!)]).toEqual([line, kind]);
+    }
+  });
+
+  it('agrees with the memory cases', () => {
+    const { setup, tools, noSetup } = fixture.memory;
+    for (const c of tools) expect([c.tool, stationOf(c.tool, c.input, setup)]).toEqual([c.tool, c.station]);
+    for (const c of noSetup) expect([c.tool, stationOf(c.tool, c.input)]).toEqual([c.tool, c.station]);
+  });
+
+  it('agrees with the event cases', () => {
+    for (const c of fixture.events) {
+      expect([c.type, eventStation(c.type, c.data) ?? null, isPushedMemory(c.type)]).toEqual([c.type, c.station, c.pushed === true]);
     }
   });
 });

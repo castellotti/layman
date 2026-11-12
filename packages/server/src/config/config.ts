@@ -121,6 +121,13 @@ export async function loadConfig(
       ...runtimeFile.sync,
       ...cliFlags.sync,
     },
+    // Deep-merge so a file setting only memoryServers keeps memoryPaths.
+    activity: {
+      ...envConfig.activity,
+      ...fileConfig.activity,
+      ...runtimeFile.activity,
+      ...cliFlags.activity,
+    },
     // Deep-merge glove and glove.network so a partial config (e.g. only
     // `glove.enabled`) can neither blank `home` nor reset the network block.
     glove: {
@@ -180,6 +187,7 @@ export function updateConfig(updates: Partial<LaymanConfig>): LaymanConfig {
     // Deep-merge so a Settings update that omits sync.hostId (or sends only a
     // role change) keeps the persisted identity instead of minting a new one.
     sync: { ...runtimeConfig.sync, ...updates.sync },
+    activity: { ...runtimeConfig.activity, ...updates.activity },
     // Deep-merge so a Settings update carrying only `glove.enabled` keeps
     // `home` and the network block (and one carrying only a network
     // toggle keeps the rest of it).

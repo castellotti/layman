@@ -650,12 +650,64 @@ function mcpStation(server: string): StationId {
   return 'network';
 }
 
+// ---- memory ------------------------------------------------------------------------------------
+
+/** What the person has named as memory, beyond Claude Code's own memory folder. */
+export interface StationSetup {
+  /** Path parts: a call on a path containing one of these is Memory (`/notes/`, `.remember/`). */
+  memoryPaths: readonly string[];
+  /** MCP server names whose tools are Memory (`mcp__<server>__…`, Vibe's `<server>_…`, Cline's server_name). */
+  memoryServers: readonly string[];
+}
+
+export const NO_SETUP: StationSetup = { memoryPaths: [], memoryServers: [] };
+
+/** Paths with Windows separators written as `/`, so one rule reads every system's paths. */
+const slashes = (path: string): string => path.replace(/\\/g, '/');
+
+/** Claude Code's auto-memory folder, for everyone: `~/.claude/projects/<project>/memory/`. */
+const CLAUDE_MEMORY = /(?:^|\/)\.claude\/projects\/[^/]+\/memory(?:\/|$|[\s'"])/;
+
+/** Whether a path, or a shell line naming paths, is in memory. */
+export function isMemoryPath(text: string, setup: StationSetup = NO_SETUP): boolean {
+  const t = slashes(text);
+  return CLAUDE_MEMORY.test(t) || setup.memoryPaths.some((part) => part.trim() !== '' && t.includes(slashes(part.trim())));
+}
+
+/** Keys a harness may use for the file or folder a call works on. */
+const PATH_KEYS = ['file_path', 'path', 'filePath', 'filepath', 'notebook_path'] as const;
+
+function pathOf(input: Record<string, unknown>): string {
+  for (const key of PATH_KEYS) if (str(input[key]) !== '') return str(input[key]);
+  return '';
+}
+
+/** The MCP server a tool belongs to, in any harness's naming, if it is one the person called memory. */
+function isMemoryServer(toolName: string, input: Record<string, unknown>, setup: StationSetup): boolean {
+  if (setup.memoryServers.length === 0) return false;
+  const server = mcpParts(toolName)?.[0] ?? (toolName === 'McpTool' ? str(input.server_name) : undefined);
+  if (server !== undefined) return setup.memoryServers.includes(server);
+  // Mistral Vibe names an MCP tool `<server>_<tool>`.
+  return setup.memoryServers.some((name) => name !== '' && toolName.startsWith(`${name}_`));
+}
+
+// ---- tool calls and events ------------------------------------------------------------------------
+
 /**
  * The station of a tool call, from its recorded name and input. Total: an unknown tool is Shell.
- * `toolInput` may be undefined (a call recorded without arguments).
+ * `toolInput` may be undefined (a call recorded without arguments). A Files call on a memory path,
+ * and any tool of a memory server, is Memory.
  */
-export function stationOf(toolName: string, toolInput?: Record<string, unknown>): StationId {
+export function stationOf(toolName: string, toolInput?: Record<string, unknown>, setup: StationSetup = NO_SETUP): StationId {
   const input = toolInput ?? {};
+  if (isMemoryServer(toolName, input, setup)) return 'memory';
+  const station = toolStation(toolName, input);
+  if (station !== 'files') return station;
+  const where = SHELL_TOOLS.has(toolName) || toolName === 'PowerShell' ? commandLine(input) : pathOf(input);
+  return where !== '' && isMemoryPath(where, setup) ? 'memory' : 'files';
+}
+
+function toolStation(toolName: string, input: Record<string, unknown>): StationId {
   if (SHELL_TOOLS.has(toolName)) return shellStation(commandLine(input));
   if (toolName === 'PowerShell') return shellStation(commandLine(input), true);
   const known = own(TOOL_STATIONS, toolName);
@@ -667,4 +719,43 @@ export function stationOf(toolName: string, toolInput?: Record<string, unknown>)
   // Cline's use_mcp_tool names its server in the input.
   if (toolName === 'McpTool') return mcpStation(str(input.server_name));
   return 'shell';
+}
+
+/** Events that are one tool call at some point of its life: they take the call's own station. */
+const TOOL_EVENTS = new Set(['tool_call_pending', 'tool_call_completed', 'tool_call_failed']);
+
+/**
+ * Events by station. Guard is Layman's own decisions about a call (an approval, a denial, a hand-off
+ * to the terminal, a drift check or alert), never the call itself, which keeps its own station.
+ */
+const EVENT_STATIONS: Record<string, StationId> = {
+  user_prompt: 'you', elicitation: 'you', elicitation_result: 'you',
+  agent_response: 'model', pre_compact: 'model', post_compact: 'model', stop_failure: 'model',
+  instructions_loaded: 'memory',
+  file_changed: 'files',
+  web_search: 'network',
+  subagent_start: 'agents', subagent_stop: 'agents', task_created: 'agents', task_completed: 'agents',
+  teammate_idle: 'agents',
+  tool_call_approved: 'guard', tool_call_denied: 'guard', tool_call_delegated: 'guard',
+  permission_request: 'guard', permission_denied: 'guard', drift_check: 'guard', drift_alert: 'guard',
+};
+
+/**
+ * The station of a recorded event, or undefined for one that is no work at all (a session starting,
+ * a notification, metrics). `data` is the event's recorded data (`toolName`, `toolInput`).
+ */
+export function eventStation(type: string, data: Record<string, unknown> | undefined, setup: StationSetup = NO_SETUP): StationId | undefined {
+  if (TOOL_EVENTS.has(type)) {
+    const input = data?.toolInput;
+    return stationOf(str(data?.toolName), typeof input === 'object' && input !== null ? (input as Record<string, unknown>) : undefined, setup);
+  }
+  return own(EVENT_STATIONS, type);
+}
+
+/**
+ * Memory the model did not ask for: a harness loading instructions (CLAUDE.md, AGENTS.md, rules) into
+ * its context. Counted apart from memory the model read or searched itself.
+ */
+export function isPushedMemory(type: string): boolean {
+  return type === 'instructions_loaded';
 }

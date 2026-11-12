@@ -77,6 +77,19 @@ export const LiveTokensConfigSchema = z.object({
 });
 
 /**
+ * The activity map: what counts as Memory beyond Claude Code's own memory folder
+ * (`~/.claude/projects/<project>/memory/`, always Memory). Read by `stationOf()`
+ * in `events/station.ts` and its web copy; stations are derived at read time,
+ * so a change here re-files all history at once.
+ */
+export const ActivityConfigSchema = z.object({
+  /** Path parts: a Files call on a path containing one of these is Memory. */
+  memoryPaths: z.array(z.string()).default([]),
+  /** MCP server names whose tools are Memory. */
+  memoryServers: z.array(z.string()).default([]),
+});
+
+/**
  * glove — passive monitoring of sandboxed harnesses (github.com/castellotti/glove).
  *
  * glove v3 only. A glove session is a directory the user chose; the only data
@@ -198,6 +211,7 @@ export const LaymanConfigSchema = z.object({
   approvalClients: z.array(z.string()).default([]),
   driftMonitoring: DriftMonitoringConfigSchema.default({}),
   liveTokens: LiveTokensConfigSchema.default({}),
+  activity: ActivityConfigSchema.default({}),
   glove: GloveConfigSchema.default({}),
   sync: SyncConfigSchema.default({}),
   tts: TtsConfigSchema.default({}),
@@ -209,6 +223,7 @@ export const LaymanConfigSchema = z.object({
 export type LaymanConfig = z.infer<typeof LaymanConfigSchema>;
 export type SyncConfig = z.infer<typeof SyncConfigSchema>;
 export type LiveTokensConfig = z.infer<typeof LiveTokensConfigSchema>;
+export type ActivityConfig = z.infer<typeof ActivityConfigSchema>;
 export type GloveConfig = z.infer<typeof GloveConfigSchema>;
 export type AnalysisConfigType = z.infer<typeof AnalysisConfigSchema>;
 export type TtsConfig = z.infer<typeof TtsConfigSchema>;

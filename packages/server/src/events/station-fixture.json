@@ -1236,5 +1236,259 @@
       "./status.sh",
       "netobs-e2e.sh run"
     ]
-  }
+  },
+  "memory": {
+    "setup": {
+      "memoryPaths": [
+        "/notes/memory/",
+        ".remember\\"
+      ],
+      "memoryServers": [
+        "recall",
+        "mem"
+      ]
+    },
+    "tools": [
+      {
+        "tool": "Read",
+        "input": {
+          "file_path": "/Users/me/.claude/projects/-Users-me-app/memory/MEMORY.md"
+        },
+        "station": "memory",
+        "why": "Claude Code's memory folder, for everyone"
+      },
+      {
+        "tool": "Write",
+        "input": {
+          "file_path": "~/.claude/projects/x/memory/feedback.md",
+          "content": "c"
+        },
+        "station": "memory"
+      },
+      {
+        "tool": "Edit",
+        "input": {
+          "path": "C:\\Users\\me\\.claude\\projects\\x\\memory\\a.md"
+        },
+        "station": "memory",
+        "why": "Windows separators"
+      },
+      {
+        "tool": "Read",
+        "input": {
+          "file_path": "/Users/me/.claude/projects/x/notes.md"
+        },
+        "station": "files",
+        "why": "a project folder, not its memory"
+      },
+      {
+        "tool": "Read",
+        "input": {
+          "file_path": "/Users/me/.claude/CLAUDE.md"
+        },
+        "station": "files",
+        "why": "instructions read by the model are a file"
+      },
+      {
+        "tool": "Grep",
+        "input": {
+          "pattern": "x",
+          "path": "/Users/me/.claude/projects/x/memory"
+        },
+        "station": "memory",
+        "why": "a search inside memory"
+      },
+      {
+        "tool": "Bash",
+        "input": {
+          "command": "ls ~/.claude/projects/x/memory/ && cat ~/.claude/projects/x/memory/MEMORY.md"
+        },
+        "station": "memory"
+      },
+      {
+        "tool": "Bash",
+        "input": {
+          "command": "curl -s https://x > ~/.claude/projects/x/memory/a.md"
+        },
+        "station": "network",
+        "why": "memory only takes a Files line"
+      },
+      {
+        "tool": "Read",
+        "input": {
+          "file_path": "/srv/notes/memory/today.md"
+        },
+        "station": "memory",
+        "why": "a configured path part"
+      },
+      {
+        "tool": "Read",
+        "input": {
+          "path": "D:\\work\\.remember\\a.md"
+        },
+        "station": "memory",
+        "why": "a configured part written with Windows separators"
+      },
+      {
+        "tool": "Read",
+        "input": {
+          "file_path": "/srv/notes/today.md"
+        },
+        "station": "files"
+      },
+      {
+        "tool": "mcp__recall__search",
+        "input": {
+          "query": "q"
+        },
+        "station": "memory",
+        "why": "a memory server"
+      },
+      {
+        "tool": "mcp__recaller__search",
+        "input": {},
+        "station": "network",
+        "why": "a server name is matched whole"
+      },
+      {
+        "tool": "mem_store",
+        "input": {},
+        "station": "memory",
+        "why": "Mistral Vibe's <server>_<tool>"
+      },
+      {
+        "tool": "McpTool",
+        "input": {
+          "server_name": "recall",
+          "tool_name": "get"
+        },
+        "station": "memory",
+        "why": "Cline names its server in the input"
+      },
+      {
+        "tool": "WebFetch",
+        "input": {
+          "url": "https://x/notes/memory/"
+        },
+        "station": "network",
+        "why": "only a Files call can be memory by path"
+      }
+    ],
+    "noSetup": [
+      {
+        "tool": "mcp__recall__search",
+        "input": {},
+        "station": "network",
+        "why": "without setup, an unknown server is Network"
+      },
+      {
+        "tool": "Read",
+        "input": {
+          "file_path": "/srv/notes/memory/today.md"
+        },
+        "station": "files"
+      },
+      {
+        "tool": "Read",
+        "input": {
+          "file_path": "/Users/me/.claude/projects/x/memory/a.md"
+        },
+        "station": "memory"
+      }
+    ]
+  },
+  "events": [
+    {
+      "type": "user_prompt",
+      "station": "you"
+    },
+    {
+      "type": "agent_response",
+      "station": "model"
+    },
+    {
+      "type": "instructions_loaded",
+      "data": {
+        "filePath": "~/.claude/CLAUDE.md",
+        "memoryType": "User"
+      },
+      "station": "memory",
+      "pushed": true
+    },
+    {
+      "type": "tool_call_completed",
+      "data": {
+        "toolName": "Bash",
+        "toolInput": {
+          "command": "curl -s x"
+        }
+      },
+      "station": "network"
+    },
+    {
+      "type": "tool_call_failed",
+      "data": {
+        "toolName": "Read",
+        "toolInput": {
+          "file_path": "/a"
+        }
+      },
+      "station": "files"
+    },
+    {
+      "type": "tool_call_pending",
+      "data": {
+        "toolName": "Agent",
+        "toolInput": {}
+      },
+      "station": "agents"
+    },
+    {
+      "type": "tool_call_completed",
+      "data": {
+        "toolName": "Read",
+        "toolInput": "not an object"
+      },
+      "station": "files"
+    },
+    {
+      "type": "tool_call_approved",
+      "data": {
+        "toolName": "Bash"
+      },
+      "station": "guard"
+    },
+    {
+      "type": "tool_call_denied",
+      "station": "guard"
+    },
+    {
+      "type": "permission_request",
+      "station": "guard"
+    },
+    {
+      "type": "drift_alert",
+      "station": "guard"
+    },
+    {
+      "type": "subagent_start",
+      "station": "agents"
+    },
+    {
+      "type": "session_start",
+      "station": null
+    },
+    {
+      "type": "session_metrics",
+      "station": null
+    },
+    {
+      "type": "notification",
+      "station": null
+    },
+    {
+      "type": "constructor",
+      "station": null
+    }
+  ]
 }

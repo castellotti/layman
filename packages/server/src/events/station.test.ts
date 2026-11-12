@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
-import { commandKind, shellCommands, shellStation, stationOf, STATION_IDS } from './station.js';
+import { commandKind, eventStation, isPushedMemory, shellCommands, shellStation, stationOf, STATION_IDS } from './station.js';
 
 /** The fixture both packages' suites read; see the header of station.ts. */
 const fixture = JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'station-fixture.json'), 'utf8'));
@@ -61,4 +61,26 @@ describe('shellCommands', () => {
     expect(shellStation('echo "unterminated $(curl x')).toBe('network');
     expect(() => shellCommands("echo 'open")).not.toThrow();
   });
+});
+
+describe('memory (shared fixture)', () => {
+  for (const c of fixture.memory.tools) {
+    it(`${c.tool} → ${c.station}${c.why ? ` (${c.why})` : ''}`, () => {
+      expect(stationOf(c.tool, c.input, fixture.memory.setup)).toBe(c.station);
+    });
+  }
+  for (const c of fixture.memory.noSetup) {
+    it(`without setup: ${c.tool} → ${c.station}`, () => {
+      expect(stationOf(c.tool, c.input)).toBe(c.station);
+    });
+  }
+});
+
+describe('eventStation (shared fixture)', () => {
+  for (const c of fixture.events) {
+    it(`${c.type} → ${c.station}`, () => {
+      expect(eventStation(c.type, c.data) ?? null).toBe(c.station);
+      expect(isPushedMemory(c.type)).toBe(c.pushed === true);
+    });
+  }
 });
