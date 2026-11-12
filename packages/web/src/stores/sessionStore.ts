@@ -145,19 +145,18 @@ export async function fetchSessionEvents(
 }
 
 /**
- * A session's recorded events only — no time-metrics — capped at the most recent
- * `limit`. `fetchSessionEvents` pairs events with a `/time-metrics` request; the
- * Dashboard preview backfill needs neither the metrics nor the full thread, so it
- * uses this lighter, bounded fetch instead of discarding half of that one.
+ * A session's recorded events only, no time-metrics: the whole session, or with `limit` only the
+ * most recent `limit` (oldest first). `fetchSessionEvents` pairs events with a `/time-metrics`
+ * request; the Dashboard preview's bounded tail and the activity board need neither the metrics
+ * nor, for the preview, the full thread.
  */
-export async function fetchRecordedSessionEventsTail(
+export async function fetchRecordedSessionEvents(
   sessionId: string,
-  limit: number,
+  limit?: number,
 ): Promise<TimelineEvent[]> {
   try {
-    const res = await fetch(
-      `/api/bookmarks/sessions/${encodeURIComponent(sessionId)}/events?limit=${limit}`,
-    );
+    const query = limit === undefined ? '' : `?limit=${limit}`;
+    const res = await fetch(`/api/bookmarks/sessions/${encodeURIComponent(sessionId)}/events${query}`);
     if (!res.ok) return [];
     const data = await res.json() as { events?: TimelineEvent[] };
     return data.events ?? [];

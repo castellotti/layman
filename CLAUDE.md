@@ -355,6 +355,14 @@ one place a recorded event gets its station.
 `safeLabel()` (same file) is the names-only label: a name, never content (no command line, query,
 prompt, search pattern or path beyond its last two parts); `hostOf()` is its URL rule. Add a case to
 the fixture's `labels`/`hosts` with any change.
+The **board** (`packages/web/src/lib/activity-board.ts`, pure) reduces one session's events to counts
+per station, faults since the last prompt (the turn rule's duplicate-prompt window, from `lib/turns.ts`),
+running calls, live subagents and the route. A call is counted once: the second event of a call recorded
+in two (a hooks failure, Vibe's approved-then-completed) closes the open one (same tool and input, else
+the oldest); a decision adds a Guard entry beside the call. A call still open at the next prompt or the
+session's end is `unended`, never a fault. Its input is the whole recording joined with the live store
+(`useSessionTimeline`), never the live store alone, which holds the WebSocket's last 100 events and
+what arrived since.
 
 ### Text to speech
 

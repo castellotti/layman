@@ -2,7 +2,7 @@ import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 're
 import { StatusDot, Meter, StateChip } from '../primitives/index.js';
 import { useNow } from '../../hooks/useNow.js';
 import { usePrinting } from '../../hooks/usePrinting.js';
-import { fetchRecordedSessionEventsTail } from '../../stores/sessionStore.js';
+import { fetchRecordedSessionEvents } from '../../stores/sessionStore.js';
 import type { TimelineEvent, DriftState } from '../../lib/types.js';
 import type { SessionInfo } from '../../lib/ws-protocol.js';
 import type { SessionMetrics } from '../../lib/types.js';
@@ -393,7 +393,7 @@ function useHistoryMergedEvents(
       return;
     }
     let cancelled = false;
-    void fetchRecordedSessionEventsTail(sessionId, MAX_TAIL_EVENTS)
+    void fetchRecordedSessionEvents(sessionId, MAX_TAIL_EVENTS)
       .then((events) => { if (!cancelled) setRecorded(events); })
       .catch(() => {});
     return () => { cancelled = true; };
