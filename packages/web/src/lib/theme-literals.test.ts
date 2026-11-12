@@ -64,14 +64,20 @@ describe('components follow the theme', () => {
   });
 
   it('a view that reads a colour value (canvas, readToken) redraws on a theme change', () => {
-    // `var(--…)` follows the theme by itself; a value read once does not, so a component that
-    // reads one must redraw on the theme version (useThemeVersion); a non-component reader must at
-    // least key what it caches on getThemeVersion.
-    const readers = sources(SRC).filter((f) => rel(f) !== 'src/lib/theme-runtime.ts'
-      && /import \{[^}]*\breadToken\b[^}]*\}|getComputedStyle\([^)]*\)\.getPropertyValue\('--/.test(readFileSync(f, 'utf8')));
-    expect(readers.map(rel)).toContain('src/components/logs/Minimap.tsx');
-    for (const f of readers) {
-      expect(readFileSync(f, 'utf8'), rel(f)).toMatch(f.endsWith('.tsx') ? /\buseThemeVersion\(/ : /\b(?:useThemeVersion|getThemeVersion)\(/);
+    // `var(--…)` follows the theme by itself; a value read once does not. So a colour may be read
+    // only in a component or hook (never in a lib helper a view could call without knowing), and
+    // that file must put `useThemeVersion()`'s value in a dependency array, so it redraws.
+    const THEME_RUNTIME = new Set(['src/lib/theme-runtime.ts']);
+    const reads = /\breadToken\b|getComputedStyle\(|getPropertyValue\(/;
+    const readers = sources(SRC)
+      .map((f) => ({ file: rel(f), text: readFileSync(f, 'utf8').replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, '') })) // code only, not comments
+      .filter(({ file, text }) => !THEME_RUNTIME.has(file) && reads.test(text));
+    expect(readers.map((r) => r.file)).toContain('src/components/logs/Minimap.tsx');
+    for (const { file, text } of readers) {
+      expect(file, 'reads a colour outside a component or hook').toMatch(/^src\/(?:components|hooks)\//);
+      const version = /const (\w+) = useThemeVersion\(\)/.exec(text)?.[1];
+      expect(version, `${file}: no useThemeVersion()`).toBeTruthy();
+      expect(text, `${file}: ${version} is in no dependency array`).toMatch(new RegExp(`\\[[^\\]]*\\b${version}\\b[^\\]]*\\]`));
     }
   });
 

@@ -495,8 +495,8 @@ Four rules that must not be relaxed casually:
   misleads). Exceptions are named in `KNOWN_PROBLEMS` and a test fails when one goes stale. Stored
   appearance goes through `normalizeAppearance()`, so a stale config can never blank the page. Classic must equal the
   `:root` block in `index.css`; change both or neither. A canvas/SVG view that reads colours once
-  depends on `useThemeVersion()` to redraw (`theme-literals.test.ts` fails on a component that imports
-  `readToken` without it); an SVG or xyflow view drawn with `var(--…)` needs nothing. A new token goes in `TOKENS`, every theme and `:root`.
+  depends on `useThemeVersion()` to redraw (`theme-literals.test.ts` allows reading a colour value, `readToken` or
+  `getComputedStyle`, only in a component or hook that puts `useThemeVersion()` in a dependency array); an SVG or xyflow view drawn with `var(--…)` needs nothing. A new token goes in `TOKENS`, every theme and `:root`.
   Tailwind's colours are generated from `TOKENS` (`lib/tokens.ts`, import-free because the
   Tailwind config loads it in Node): each is its `var(--…)`, and at an opacity a `color-mix`, so
   `bg-ok/10` and `bg-ok/[35%]` work, unlike `bg-[var(--ok)]/10`, which Tailwind 3 drops (a test
