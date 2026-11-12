@@ -16,6 +16,9 @@ import { extractTurns } from '../../lib/turns.js';
 import { turnSpan } from '../../lib/turn-range.js';
 import { gloveLive, useGloveToken } from '../network/NetworkForTurn.js';
 import { sessionDisplayName } from '../../lib/session-state.js';
+import { useStationSetup } from '../../hooks/useStationSetup.js';
+import { stationCounts } from '../../lib/station-style.js';
+import type { StationId } from '../../lib/station.js';
 import type { ClientMessage } from '../../lib/ws-protocol.js';
 
 interface EventStreamProps {
@@ -35,6 +38,8 @@ export function EventStream({ onSend, archived = false, archivedDate, turnRuler 
   const [promptsOnly, setPromptsOnly] = useState(false);
   const [requestsOnly, setRequestsOnly] = useState(false);
   const [responsesOnly, setResponsesOnly] = useState(false);
+  const [stations, setStations] = useState<StationId[]>([]);
+  const stationSetup = useStationSetup();
   const [searchQuery, setSearchQuery] = useState('');
   const [matchIndex, setMatchIndex] = useState(0);
   const [selectedIndex, setSelectedIndex] = useState(-1);
@@ -59,7 +64,11 @@ export function EventStream({ onSend, archived = false, archivedDate, turnRuler 
     requestsOnly,
     responsesOnly,
     searchQuery,
+    stations,
+    stationSetup,
   }, sourceOverride);
+  // Counted over the whole session, not the filtered rows, so a picked station never hides the others.
+  const stationCountList = useMemo(() => stationCounts(sessionEvents, stationSetup), [sessionEvents, stationSetup]);
 
   // ─── Display rows ─────────────────────────────────────────────────────────
   // Reasoning is lifted out of each response into a row of its own. Everything
@@ -396,7 +405,12 @@ export function EventStream({ onSend, archived = false, archivedDate, turnRuler 
           setPromptsOnly(false);
           setRequestsOnly(false);
           setResponsesOnly(false);
+          setStations([]);
         }}
+        stationCounts={stationCountList}
+        stations={stations}
+        onToggleStation={(st) => setStations((cur) => (cur.includes(st) ? cur.filter((x) => x !== st) : [...cur, st]))}
+        onClearStations={() => setStations([])}
         followLatest={followLatest}
         archived={archived}
         archivedDate={archivedDate}
