@@ -1372,6 +1372,88 @@
         },
         "station": "network",
         "why": "only a Files call can be memory by path"
+      },
+      {
+        "tool": "Read",
+        "input": {
+          "file_path": "~/notes/memory/a.md"
+        },
+        "station": "memory",
+        "why": "a recorded ~ path against a configured part"
+      },
+      {
+        "tool": "Read",
+        "input": {
+          "file_path": "/home/me/.remember/a.md"
+        },
+        "station": "memory"
+      },
+      {
+        "tool": "web_search",
+        "input": {
+          "query": "q"
+        },
+        "station": "network",
+        "why": "a known tool is never a Vibe <server>_<tool>"
+      },
+      {
+        "tool": "search_replace",
+        "input": {
+          "file_path": "/a.py"
+        },
+        "station": "files"
+      },
+      {
+        "tool": "mcp__ mem __x",
+        "input": {},
+        "station": "network",
+        "why": "not an MCP name"
+      },
+      {
+        "tool": "mcp__plugin_tools_recall__get",
+        "input": {},
+        "station": "memory",
+        "why": "a Claude Code plugin's server"
+      },
+      {
+        "tool": "Bash",
+        "input": {
+          "command": "echo hi >> ~/.claude/projects/p/memory/a.md"
+        },
+        "station": "memory",
+        "why": "neutral commands writing into memory"
+      },
+      {
+        "tool": "Bash",
+        "input": {
+          "command": "echo ~/.claude/projects/p/memory/ && make"
+        },
+        "station": "shell",
+        "why": "a program run beside it"
+      },
+      {
+        "tool": "apply_patch",
+        "input": {
+          "input": "*** Begin Patch\n*** Update File: /Users/me/.claude/projects/p/memory/a.md\n@@\n-a\n+b\n*** End Patch"
+        },
+        "station": "memory",
+        "why": "a patch naming memory"
+      },
+      {
+        "tool": "Glob",
+        "input": {
+          "pattern": "~/.claude/projects/*/memory/*.md"
+        },
+        "station": "memory",
+        "why": "every project's memory is still memory"
+      },
+      {
+        "tool": "Glob",
+        "input": {
+          "pattern": "~/.claude/projects/p/memory/*.md"
+        },
+        "station": "memory",
+        "why": "the folder in the pattern"
       }
     ],
     "noSetup": [
@@ -1394,6 +1476,54 @@
           "file_path": "/Users/me/.claude/projects/x/memory/a.md"
         },
         "station": "memory"
+      }
+    ],
+    "setupLoose": {
+      "memoryPaths": [
+        "/Users/me/notes/"
+      ],
+      "memoryServers": [
+        " recall "
+      ]
+    },
+    "loose": [
+      {
+        "tool": "Read",
+        "input": {
+          "file_path": "~/notes/a.md"
+        },
+        "station": "memory",
+        "why": "a configured absolute home against a recorded ~"
+      },
+      {
+        "tool": "Read",
+        "input": {
+          "file_path": "C:\\Users\\me\\notes\\a.md"
+        },
+        "station": "memory",
+        "why": "a Windows home"
+      },
+      {
+        "tool": "Read",
+        "input": {
+          "file_path": "/Users/you/notes/a.md"
+        },
+        "station": "memory",
+        "why": "any home is ~: a synced history may come from another user"
+      },
+      {
+        "tool": "Read",
+        "input": {
+          "file_path": "/srv/Users/me/notes/a.md"
+        },
+        "station": "files",
+        "why": "a home only at a path's start"
+      },
+      {
+        "tool": "mcp__recall__get",
+        "input": {},
+        "station": "memory",
+        "why": "entries are trimmed"
       }
     ]
   },

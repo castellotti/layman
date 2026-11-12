@@ -83,9 +83,17 @@ export const LiveTokensConfigSchema = z.object({
  * so a change here re-files all history at once.
  */
 export const ActivityConfigSchema = z.object({
-  /** Path parts: a Files call on a path containing one of these is Memory. */
+  /**
+   * Path parts: a Files call on a path containing one of these is Memory. Matched as a
+   * substring after separators and the home folder are normalised (`~/notes/` and
+   * `/Users/me/notes/` are the same), so write a folder with its slashes: `notes` alone
+   * also matches `footnotes`.
+   */
   memoryPaths: z.array(z.string()).default([]),
-  /** MCP server names whose tools are Memory. */
+  /**
+   * MCP server names whose tools are Memory, matched whole. A Claude Code plugin's server
+   * (`plugin_<plugin>_<server>`) matches its `<server>` name too.
+   */
   memoryServers: z.array(z.string()).default([]),
 });
 

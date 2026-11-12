@@ -566,10 +566,23 @@ export function commandKind(words: string[], powershell = false): CommandKind {
  * that is not neutral works on files; Shell otherwise, including a line of only neutral commands.
  */
 export function shellStation(line: string, powershell = false): 'network' | 'files' | 'shell' {
-  const kinds = shellCommands(line, powershell).map((words) => commandKind(words, powershell));
+  const kinds = shellKinds(line, powershell);
   if (kinds.includes('network')) return 'network';
   const real = kinds.filter((k) => k !== 'neutral');
   return real.length > 0 && real.every((k) => k === 'files') ? 'files' : 'shell';
+}
+
+function shellKinds(line: string, powershell: boolean): CommandKind[] {
+  return shellCommands(line, powershell).map((words) => commandKind(words, powershell));
+}
+
+/**
+ * Whether a shell line works on files and nothing else, neutral commands allowed: `echo x >> notes.md`
+ * writes a file although it is, by station, Shell. Memory asks this, not the station.
+ */
+function onlyFileWork(line: string, powershell: boolean): boolean {
+  const kinds = shellKinds(line, powershell);
+  return kinds.length > 0 && kinds.every((k) => k === 'files' || k === 'neutral');
 }
 
 // ---- tool calls ---------------------------------------------------------------------------------
@@ -668,27 +681,54 @@ const slashes = (path: string): string => path.replace(/\\/g, '/');
 /** Claude Code's auto-memory folder, for everyone: `~/.claude/projects/<project>/memory/`. */
 const CLAUDE_MEMORY = /(?:^|\/)\.claude\/projects\/[^/]+\/memory(?:\/|$|[\s'"])/;
 
-/** Whether a path, or a shell line naming paths, is in memory. */
+/**
+ * A home folder written as `~`, wherever it appears: recorded paths are often collapsed to `~/…` and
+ * the person may type either form, so both sides are compared with this applied.
+ */
+const HOME = /(?<![\w.~-])(?:[A-Za-z]:)?\/(?:Users|home)\/[^/\s'"]+(?=\/|$|[\s'"])|(?<![\w.~-])\/root(?=\/|$|[\s'"])/g;
+const homeAsTilde = (text: string): string => slashes(text).replace(HOME, '~');
+
+/**
+ * Whether a path, or a shell line naming paths, is in memory. A configured entry matches as a plain
+ * substring after both sides are normalised (separators, home folder), so `/notes/` is a folder
+ * anywhere and `notes` would also match `footnotes`: the entry is the person's to make precise.
+ */
 export function isMemoryPath(text: string, setup: StationSetup = NO_SETUP): boolean {
-  const t = slashes(text);
-  return CLAUDE_MEMORY.test(t) || setup.memoryPaths.some((part) => part.trim() !== '' && t.includes(slashes(part.trim())));
+  const t = homeAsTilde(text);
+  if (CLAUDE_MEMORY.test(t)) return true;
+  return setup.memoryPaths.some((part) => part.trim() !== '' && t.includes(homeAsTilde(part.trim())));
 }
 
 /** Keys a harness may use for the file or folder a call works on. */
 const PATH_KEYS = ['file_path', 'path', 'filePath', 'filepath', 'notebook_path'] as const;
 
-function pathOf(input: Record<string, unknown>): string {
-  for (const key of PATH_KEYS) if (str(input[key]) !== '') return str(input[key]);
-  return '';
+/**
+ * Where a Files call works: its path argument, a search's pattern too (`Glob` with the folder only in
+ * `pattern`), and the files a patch names (`*** Update File: …`, Codex's apply_patch, whose input
+ * holds the patch text under `input` or `patch`).
+ */
+function whereOf(input: Record<string, unknown>): string {
+  const parts: string[] = [];
+  for (const key of PATH_KEYS) if (str(input[key]) !== '') parts.push(str(input[key]));
+  if (str(input.pattern) !== '') parts.push(str(input.pattern));
+  for (const key of ['input', 'patch'] as const) {
+    for (const m of str(input[key]).matchAll(/^\*\*\* (?:Add|Update|Delete) File: (.+)$/gm)) parts.push(m[1]);
+  }
+  return parts.join('\n');
 }
 
 /** The MCP server a tool belongs to, in any harness's naming, if it is one the person called memory. */
 function isMemoryServer(toolName: string, input: Record<string, unknown>, setup: StationSetup): boolean {
-  if (setup.memoryServers.length === 0) return false;
+  const names = setup.memoryServers.map((n) => n.trim()).filter((n) => n !== '');
+  if (names.length === 0) return false;
   const server = mcpParts(toolName)?.[0] ?? (toolName === 'McpTool' ? str(input.server_name) : undefined);
-  if (server !== undefined) return setup.memoryServers.includes(server);
-  // Mistral Vibe names an MCP tool `<server>_<tool>`.
-  return setup.memoryServers.some((name) => name !== '' && toolName.startsWith(`${name}_`));
+  // Claude Code names a plugin's server `plugin_<plugin>_<server>`; the person names `<server>`.
+  if (server !== undefined) return names.some((n) => server === n || (server.startsWith('plugin_') && server.endsWith(`_${n}`)));
+  // Mistral Vibe names an MCP tool `<server>_<tool>`. Never a tool Layman knows by name
+  // (`web_search`, `search_replace`, a shell or browser tool): a server called `web` is not pi's search.
+  if (own(TOOL_STATIONS, toolName) !== undefined || SHELL_TOOLS.has(toolName) || toolName === 'PowerShell') return false;
+  if (/^(?:playwright_)?browser_/.test(toolName)) return false;
+  return names.some((n) => toolName.startsWith(`${n}_`));
 }
 
 // ---- tool calls and events ------------------------------------------------------------------------
@@ -702,8 +742,15 @@ export function stationOf(toolName: string, toolInput?: Record<string, unknown>,
   const input = toolInput ?? {};
   if (isMemoryServer(toolName, input, setup)) return 'memory';
   const station = toolStation(toolName, input);
+  const powershell = toolName === 'PowerShell';
+  if (SHELL_TOOLS.has(toolName) || powershell) {
+    // A line of file and neutral commands naming memory is Memory, even `echo x >> memory/a.md`,
+    // which by itself is Shell.
+    const line = commandLine(input);
+    return station !== 'network' && isMemoryPath(line, setup) && onlyFileWork(line, powershell) ? 'memory' : station;
+  }
   if (station !== 'files') return station;
-  const where = SHELL_TOOLS.has(toolName) || toolName === 'PowerShell' ? commandLine(input) : pathOf(input);
+  const where = whereOf(input);
   return where !== '' && isMemoryPath(where, setup) ? 'memory' : 'files';
 }
 

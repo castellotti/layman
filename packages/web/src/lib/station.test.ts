@@ -30,7 +30,8 @@ describe('station.ts', () => {
   });
 
   it('agrees with the memory cases', () => {
-    const { setup, tools, noSetup } = fixture.memory;
+    const { setup, tools, noSetup, setupLoose, loose } = fixture.memory;
+    for (const c of loose) expect([c.tool, stationOf(c.tool, c.input, setupLoose)]).toEqual([c.tool, c.station]);
     for (const c of tools) expect([c.tool, stationOf(c.tool, c.input, setup)]).toEqual([c.tool, c.station]);
     for (const c of noSetup) expect([c.tool, stationOf(c.tool, c.input)]).toEqual([c.tool, c.station]);
   });

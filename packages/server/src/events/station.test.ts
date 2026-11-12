@@ -69,6 +69,11 @@ describe('memory (shared fixture)', () => {
       expect(stationOf(c.tool, c.input, fixture.memory.setup)).toBe(c.station);
     });
   }
+  for (const c of fixture.memory.loose) {
+    it(`loosely written setup: ${c.tool} → ${c.station}${c.why ? ` (${c.why})` : ''}`, () => {
+      expect(stationOf(c.tool, c.input, fixture.memory.setupLoose)).toBe(c.station);
+    });
+  }
   for (const c of fixture.memory.noSetup) {
     it(`without setup: ${c.tool} → ${c.station}`, () => {
       expect(stationOf(c.tool, c.input)).toBe(c.station);
