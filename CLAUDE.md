@@ -483,9 +483,12 @@ Four rules that must not be relaxed casually:
 - **Themes are data** (`packages/web/src/lib/themes.ts`, pure; DOM side in `lib/theme-runtime.ts`).
   Each theme defines every colour token components use as `var(--…)`; `applyTheme()` writes the
   resolved one as an `@media screen` stylesheet, never an inline style on `<html>`, which would beat
-  the print palette. Tests hold every theme to WCAG AA (text/body/muted on bg/raised/card) and keep
-  `--accent` and `--accent-hot` ≥ 0.12 OKLab ΔE from that theme's `ok`, `warn`, `error` and
-  severities (`--warn` means MEDIUM risk, so an accent near it misleads). Classic must equal the
+  the print palette. `themeProblems()` is the one rule check (tests run it on every theme, Settings
+  will run it on overrides): WCAG AA for text/body/muted and the status colours used as text on
+  bg/raised/card, 3:1 for network colours, and `--accent`/`--accent-hot` ≥ 0.12 OKLab ΔE from that
+  theme's `ok`, `warn`, `error` and severities (`--warn` means MEDIUM risk, so an accent near it
+  misleads). Exceptions are named in `KNOWN_PROBLEMS` and a test fails when one goes stale. Stored
+  appearance goes through `normalizeAppearance()`, so a stale config can never blank the page. Classic must equal the
   `:root` block in `index.css`; change both or neither. A canvas/SVG view that reads colours once
   depends on `useThemeVersion()` to redraw. A new token goes in `TOKENS`, every theme and `:root`.
 

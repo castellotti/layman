@@ -5,7 +5,9 @@
  * the density and the motion. `resolveAppearance` turns those choices into CSS variables; it is
  * pure, so the rules every theme must hold are tested in node (`themes.test.ts`):
  *
- * - text, body text and muted text reach WCAG AA (4.5) on every ground a component draws on;
+ * - text, body text and muted text reach WCAG AA (4.5) on every ground a component draws on, and
+ *   so do the status and kind colours, which components also use as text (a MEDIUM label);
+ * - network colours, drawn as lines and fills, reach 3:1 (WCAG non-text contrast);
  * - the accent stays clear (OKLab ΔE ≥ 0.12) of the theme's own status colours, because `--warn`
  *   means MEDIUM risk and a pending permission, and an accent near it would read as one;
  * - every theme defines every token, as `#rgb` / `#rrggbb`;
@@ -13,7 +15,7 @@
  *
  * `--accent` is an edge and an underline, never a fill behind text, in every theme.
  */
-import { HEX_COLOR } from './color.js';
+import { contrast, deltaE, HEX_COLOR } from './color.js';
 
 /** Every colour token a theme defines; each is the CSS variable `--<name>`. */
 export const TOKENS = [
@@ -35,6 +37,39 @@ export const MIN_CONTRAST = 4.5;
 /** Status colours the accent must stay clear of, and by how much (OKLab ΔE). */
 export const ACCENT_CLEAR_OF: readonly Token[] = ['ok', 'warn', 'error', 'severity-major', 'severity-minor'];
 export const MIN_ACCENT_DISTANCE = 0.12;
+/** Colours components use as text besides the text tokens: statuses, kinds, code. */
+export const STATUS_TEXTS: readonly Token[] = [
+  'ok', 'warn', 'error', 'info', 'agent', 'thinking', 'code', 'severity-major', 'severity-minor',
+];
+/** Colours drawn as lines, arcs and fills (WCAG 1.4.11: 3:1). */
+export const GRAPHIC_COLOURS: readonly Token[] = ['net-tunnel', 'net-up', 'net-down', 'net-fanout'];
+export const MIN_GRAPHIC_CONTRAST = 3;
+
+/**
+ * Every rule a token map breaks, as readable strings (empty when it holds them all). The tests run
+ * it over the built-in themes; Settings will run it over a theme with the user's overrides applied.
+ * `allow` names known breaks to skip, as `fg/bg` (contrast) or `accent~status` (distance).
+ * `severity-minor` may equal `warn`: both mean "caution", in different panels.
+ */
+export function themeProblems(tokens: TokenMap, allow: ReadonlySet<string> = new Set()): string[] {
+  const out: string[] = [];
+  const need = (fgs: readonly Token[], min: number) => {
+    for (const fg of fgs) for (const bg of CONTRAST_GROUNDS) {
+      const c = contrast(tokens[fg], tokens[bg]);
+      if (c < min && !allow.has(`${fg}/${bg}`)) out.push(`${fg} on ${bg} is ${c.toFixed(2)}:1, below ${min}:1`);
+    }
+  };
+  need(CONTRAST_TEXTS, MIN_CONTRAST);
+  need(STATUS_TEXTS, MIN_CONTRAST);
+  need(GRAPHIC_COLOURS, MIN_GRAPHIC_CONTRAST);
+  for (const a of ['accent', 'accent-hot'] as const) for (const s of ACCENT_CLEAR_OF) {
+    const d = deltaE(tokens[a], tokens[s]);
+    if (d < MIN_ACCENT_DISTANCE && !allow.has(`${a}~${s}`)) {
+      out.push(`${a} is ${d.toFixed(3)} ΔE from ${s}, below ${MIN_ACCENT_DISTANCE}`);
+    }
+  }
+  return out;
+}
 
 export type ThemeId = 'classic' | 'ember' | 'tide' | 'phosphor' | 'paper' | 'daylight' | 'contrast';
 export type Scheme = 'dark' | 'light';
@@ -114,10 +149,10 @@ export const THEMES: readonly Theme[] = [
       'bg': '#F3EFE5', 'bg-raised': '#F8F5EE', 'bg-card': '#FDFBF6', 'bg-selected': '#EAE3D3', 'bg-pill': '#ECE6D9', 'text-on-fill': '#FDFBF6',
       'border': '#DCD4C3', 'border-subtle': '#E7E1D4', 'border-strong': '#C4B9A4',
       'text': '#201D18', 'text-body': '#3B362F', 'text-muted': '#605A50', 'text-faint': '#857D70',
-      'accent': '#6B3F33', 'accent-hot': '#4A2A22', 'ok': '#2E7D46', 'warn': '#8A6D00', 'error': '#B42340', 'info': '#2F5E9E', 'agent': '#5E3FA0', 'thinking': '#7A52B8',
-      'severity-major': '#B85A12', 'severity-minor': '#8A6D00',
+      'accent': '#6B3F33', 'accent-hot': '#4A2A22', 'ok': '#1E7B45', 'warn': '#816900', 'error': '#B42340', 'info': '#2F5E9E', 'agent': '#5E3FA0', 'thinking': '#7A52B8',
+      'severity-major': '#B14E00', 'severity-minor': '#816900',
       'code': '#2F5E9E', 'bg-code': '#F0EBDF', 'diff-add-bg': '#DDEFD9', 'diff-add-text': '#1E5A2E', 'diff-remove-bg': '#F6DCDC', 'diff-remove-text': '#8A1C28',
-      'net-tunnel': '#1E8577', 'net-up': '#6E4FB0', 'net-down': '#2F5E9E', 'net-ocean': '#E9E3D6', 'net-land': '#D9D0BE', 'net-landline': '#C4B9A4', 'net-fanout': '#6A5BB0', 'net-local': '#857D70',
+      'net-tunnel': '#21786C', 'net-up': '#6E4FB0', 'net-down': '#2F5E9E', 'net-ocean': '#E9E3D6', 'net-land': '#D9D0BE', 'net-landline': '#C4B9A4', 'net-fanout': '#6A5BB0', 'net-local': '#857D70',
     },
   },
   {
@@ -148,6 +183,14 @@ export const THEMES: readonly Theme[] = [
   },
 ];
 
+/**
+ * Known breaks the tests accept. Classic is today's palette, unchanged by design: its `thinking`
+ * violet is 4.0–4.2:1 as text, which changes only when Classic itself is revised.
+ */
+export const KNOWN_PROBLEMS: Partial<Record<ThemeId, ReadonlySet<string>>> = {
+  classic: new Set(['thinking/bg', 'thinking/bg-raised', 'thinking/bg-card']),
+};
+
 const BY_ID = new Map<string, Theme>(THEMES.map((t) => [t.id, t]));
 
 /** The theme for an id, or Classic for one this version does not know (a cut or future theme). */
@@ -169,7 +212,7 @@ export interface Appearance {
   font: FontChoice;
   density: Density;
   motion: Motion;
-  /** Per-token colours on top of the chosen theme. Unknown tokens and non-hex values are ignored. */
+  /** Per-token colours on top of the chosen theme. Unknown tokens and non-hex values are dropped. */
   overrides: Partial<Record<string, string>>;
 }
 
@@ -188,6 +231,39 @@ export const FONT_MONO = "'IBM Plex Mono', 'SF Mono', 'Fira Code', monospace";
 /** What `--density` multiplies spacing by. */
 export const DENSITY_SCALE: Record<Density, number> = { comfortable: 1, compact: 0.72 };
 
+const FONTS: readonly FontChoice[] = ['theme', 'sans', 'mono'];
+const DENSITIES: readonly Density[] = ['comfortable', 'compact'];
+const MOTIONS: readonly Motion[] = ['full', 'reduced', 'off'];
+
+const pick = <T extends string>(v: unknown, allowed: readonly T[], fallback: T): T =>
+  allowed.includes(v as T) ? (v as T) : fallback;
+const themeId = (v: unknown, fallback: ThemeId): ThemeId => (typeof v === 'string' && BY_ID.has(v) ? (v as ThemeId) : fallback);
+
+/**
+ * A complete, valid appearance from whatever was stored: missing fields take the default and a
+ * value this version does not know (a cut theme, a newer setting) falls back to it, so a stale or
+ * partial config can never stop the page from drawing.
+ */
+export function normalizeAppearance(input: unknown): Appearance {
+  const a = (input && typeof input === 'object' ? input : {}) as Record<string, unknown>;
+  const d = DEFAULT_APPEARANCE;
+  const overrides: Record<string, string> = {};
+  if (a.overrides && typeof a.overrides === 'object') {
+    for (const [k, v] of Object.entries(a.overrides as Record<string, unknown>)) {
+      if ((TOKENS as readonly string[]).includes(k) && typeof v === 'string' && HEX_COLOR.test(v)) overrides[k] = v;
+    }
+  }
+  return {
+    theme: a.theme === 'system' ? 'system' : themeId(a.theme, d.theme as ThemeId),
+    darkTheme: themeId(a.darkTheme, d.darkTheme),
+    lightTheme: themeId(a.lightTheme, d.lightTheme),
+    font: pick(a.font, FONTS, d.font),
+    density: pick(a.density, DENSITIES, d.density),
+    motion: pick(a.motion, MOTIONS, d.motion),
+    overrides,
+  };
+}
+
 /** What the browser reports, passed in so resolution stays pure. */
 export interface Environment {
   prefersDark: boolean;
@@ -202,17 +278,16 @@ export interface ResolvedAppearance {
   vars: Record<string, string>;
 }
 
-export function resolveAppearance(a: Appearance, env: Environment): ResolvedAppearance {
+/** Resolve stored appearance (normalised first, so any input is safe) against the browser. */
+export function resolveAppearance(input: unknown, env: Environment): ResolvedAppearance {
+  const a = normalizeAppearance(input);
   const id = a.theme === 'system' ? (env.prefersDark ? a.darkTheme : a.lightTheme) : a.theme;
   const theme = themeById(id);
   const motion: Motion = env.prefersReducedMotion && a.motion === 'full' ? 'reduced' : a.motion;
   const mono = a.font === 'mono' || (a.font === 'theme' && theme.type !== 'sans') || theme.type === 'mono-only';
 
   const vars: Record<string, string> = {};
-  for (const token of TOKENS) {
-    const override = a.overrides[token];
-    vars[`--${token}`] = override && HEX_COLOR.test(override) ? override : theme.tokens[token];
-  }
+  for (const token of TOKENS) vars[`--${token}`] = a.overrides[token] ?? theme.tokens[token];
   vars['--font-ui'] = mono ? FONT_MONO : FONT_SANS;
   vars['--font-mono'] = FONT_MONO;
   vars['--radius'] = `${theme.radius}px`;

@@ -3,7 +3,7 @@
  * colours once (canvas, SVG, xyflow) to read them again. `themes.ts` stays pure; this is the only
  * file that touches `document` for it.
  */
-import { appearanceCss, resolveAppearance, type Appearance, type ResolvedAppearance } from './themes.js';
+import { appearanceCss, resolveAppearance, type ResolvedAppearance } from './themes.js';
 
 const STYLE_ID = 'layman-theme';
 
@@ -18,18 +18,35 @@ export function subscribeTheme(listener: () => void): () => void {
   return () => listeners.delete(listener);
 }
 
-const query = (q: string): boolean =>
-  typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia(q).matches;
+const DARK = '(prefers-color-scheme: dark)';
+const REDUCE = '(prefers-reduced-motion: reduce)';
+const media = (q: string): MediaQueryList | null =>
+  typeof window !== 'undefined' && typeof window.matchMedia === 'function' ? window.matchMedia(q) : null;
+
+/** What was last applied, so an OS change (dark/light, reduced motion) can re-apply it. */
+let current: { appearance: unknown; doc: Document } | null = null;
+let watching = false;
+
+function watchSystem(): void {
+  const lists = [media(DARK), media(REDUCE)];
+  if (watching || !lists[0]) return;
+  watching = true;
+  const reapply = () => { if (current) applyTheme(current.appearance, current.doc); };
+  for (const l of lists) l?.addEventListener('change', reapply);
+}
 
 /**
- * Resolve `appearance` against the browser's colour-scheme and reduced-motion settings and write
- * it: one `<style>` element (screen only, so print keeps its light palette) and `data-theme`,
- * `data-scheme`, `data-motion` on `<html>`. Does nothing to the page when nothing changed.
+ * Resolve `appearance` (any stored value: it is normalised) against the browser's colour-scheme
+ * and reduced-motion settings and write it: one `<style>` element (screen only, so print keeps its
+ * light palette) and `data-theme`, `data-scheme`, `data-motion` on `<html>`. Re-applies by itself
+ * when either OS setting changes. Does nothing to the page when nothing changed.
  */
-export function applyTheme(appearance: Appearance, doc: Document = document): ResolvedAppearance {
+export function applyTheme(appearance: unknown, doc: Document = document): ResolvedAppearance {
+  current = { appearance, doc };
+  watchSystem();
   const resolved = resolveAppearance(appearance, {
-    prefersDark: query('(prefers-color-scheme: dark)'),
-    prefersReducedMotion: query('(prefers-reduced-motion: reduce)'),
+    prefersDark: media(DARK)?.matches ?? false,
+    prefersReducedMotion: media(REDUCE)?.matches ?? false,
   });
   const css = appearanceCss(resolved);
   let style = doc.getElementById(STYLE_ID);

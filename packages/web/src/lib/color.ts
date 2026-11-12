@@ -1,6 +1,6 @@
 /**
  * Colour arithmetic for the theme rules: WCAG contrast and OKLab distance. Pure, so the same
- * functions check the built-in themes in a test and a user's colour overrides at run time.
+ * functions check the built-in themes in a test and, through `themeProblems`, a user's overrides.
  */
 
 /** `#rgb` or `#rrggbb`, case-insensitive: the only colour forms a theme or override may use. */

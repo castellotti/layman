@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { applyTheme, getThemeVersion, subscribeTheme } from './theme-runtime.js';
 import { DEFAULT_APPEARANCE } from './themes.js';
 
@@ -37,5 +37,36 @@ describe('applyTheme', () => {
     off();
     applyTheme(DEFAULT_APPEARANCE, d);
     expect(calls).toBe(2);
+  });
+});
+
+describe('following the OS', () => {
+  it('re-applies when the OS switches between dark and light', () => {
+    const queries = new Map<string, { matches: boolean; fire: () => void }>();
+    vi.stubGlobal('window', {
+      matchMedia: (q: string) => {
+        if (!queries.has(q)) {
+          const handlers: Array<() => void> = [];
+          const entry = {
+            matches: q.includes('dark'),
+            addEventListener: (_: string, h: () => void) => handlers.push(h),
+            fire: () => handlers.forEach((h) => h()),
+          };
+          queries.set(q, entry);
+        }
+        return queries.get(q);
+      },
+    });
+    try {
+      const doc = fakeDocument();
+      applyTheme({ theme: 'system' }, doc as unknown as Document);
+      expect(doc.documentElement.dataset.theme).toBe('classic');
+      const dark = queries.get('(prefers-color-scheme: dark)')!;
+      dark.matches = false;
+      dark.fire();
+      expect(doc.documentElement.dataset.theme).toBe('daylight');
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });

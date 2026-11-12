@@ -2,10 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
-import { contrast, deltaE, HEX_COLOR } from './color.js';
+import { HEX_COLOR } from './color.js';
 import {
-  ACCENT_CLEAR_OF, appearanceCss, CONTRAST_GROUNDS, CONTRAST_TEXTS, DEFAULT_APPEARANCE, FONT_MONO,
-  FONT_SANS, MIN_ACCENT_DISTANCE, MIN_CONTRAST, resolveAppearance, themeById, THEMES, TOKENS,
+  appearanceCss, DEFAULT_APPEARANCE, FONT_MONO, FONT_SANS, KNOWN_PROBLEMS, normalizeAppearance,
+  resolveAppearance, themeById, themeProblems, THEMES, TOKENS,
 } from './themes.js';
 
 const DARK = { prefersDark: true, prefersReducedMotion: false };
@@ -23,16 +23,15 @@ describe('every theme', () => {
     for (const tok of TOKENS) expect(t.tokens[tok], tok).toMatch(HEX_COLOR);
   });
 
-  const contrastCases = THEMES.flatMap((t) =>
-    CONTRAST_TEXTS.flatMap((fg) => CONTRAST_GROUNDS.map((bg) => [t.id, fg, bg, t] as const)));
-  it.each(contrastCases)(`%s: %s on %s reaches ${MIN_CONTRAST}:1`, (_, fg, bg, t) => {
-    expect(contrast(t.tokens[fg], t.tokens[bg])).toBeGreaterThanOrEqual(MIN_CONTRAST);
+  it.each(THEMES.map((t) => [t.id, t] as const))('%s holds every contrast and accent rule', (id, t) => {
+    expect(themeProblems(t.tokens, KNOWN_PROBLEMS[id])).toEqual([]);
   });
 
-  const accentCases = THEMES.flatMap((t) => ACCENT_CLEAR_OF.map((s) => [t.id, s, t] as const));
-  it.each(accentCases)(`%s: accent and accent-hot stay ${MIN_ACCENT_DISTANCE} ΔE clear of %s`, (_, s, t) => {
-    expect(deltaE(t.tokens.accent, t.tokens[s])).toBeGreaterThanOrEqual(MIN_ACCENT_DISTANCE);
-    expect(deltaE(t.tokens['accent-hot'], t.tokens[s])).toBeGreaterThanOrEqual(MIN_ACCENT_DISTANCE);
+  it('every known problem is still a problem (no stale exceptions)', () => {
+    for (const [id, allowed] of Object.entries(KNOWN_PROBLEMS)) {
+      const found = themeProblems(themeById(id).tokens);
+      expect(found.length, id).toBe(allowed!.size);
+    }
   });
 });
 
@@ -48,9 +47,11 @@ describe('Classic is today', () => {
     expect(colours).toEqual([...TOKENS].sort());
   });
 
-  it('keeps the fonts index.css declares', () => {
-    expect(declared.get('font-ui')).toBe(FONT_SANS);
-    expect(declared.get('font-mono')).toBe(FONT_MONO);
+  it('the default appearance writes exactly the fonts, shape and motion index.css declares', () => {
+    const { vars } = resolveAppearance(DEFAULT_APPEARANCE, DARK);
+    for (const v of ['font-ui', 'font-mono', 'radius', 'stroke', 'density', 'motion']) {
+      expect(vars[`--${v}`], v).toBe(declared.get(v));
+    }
   });
 
   it('is the default, and the default type is sans', () => {
@@ -109,6 +110,34 @@ describe('resolveAppearance', () => {
     expect(r.vars['--warn']).toBe('#E5A83B');
     expect(r.vars['--ok']).toBe('#4CC38A');
     expect(r.vars).not.toHaveProperty('--nope');
+  });
+});
+
+describe('themeProblems', () => {
+  it('flags an override that puts the accent on warn, or muted text that cannot be read', () => {
+    const t = themeById('classic').tokens;
+    const accentOnWarn = themeProblems({ ...t, accent: t.warn }, KNOWN_PROBLEMS.classic);
+    expect(accentOnWarn).toContainEqual(expect.stringMatching(/^accent is 0\.000 ΔE from warn/));
+    expect(accentOnWarn.every((p) => p.startsWith('accent is'))).toBe(true);
+    expect(themeProblems({ ...t, 'text-muted': '#20242C' }, KNOWN_PROBLEMS.classic)).toHaveLength(3);
+  });
+});
+
+describe('normalizeAppearance', () => {
+  it('fills what is missing and replaces what this version does not know', () => {
+    expect(normalizeAppearance(undefined)).toEqual(DEFAULT_APPEARANCE);
+    expect(normalizeAppearance({ theme: 'paper' })).toEqual({ ...DEFAULT_APPEARANCE, theme: 'paper' });
+    expect(normalizeAppearance({
+      theme: 'slate', darkTheme: 'nope', lightTheme: 7, font: 'serif', density: 'airy', motion: 'wild',
+      overrides: { accent: '#abc', warn: 'red', nope: '#000000', ok: 3 },
+    })).toEqual({ ...DEFAULT_APPEARANCE, overrides: { accent: '#abc' } });
+    expect(normalizeAppearance({ theme: 'system' }).theme).toBe('system');
+  });
+
+  it('so resolving a partial or stale config never throws', () => {
+    expect(() => resolveAppearance({ theme: 'paper' }, DARK)).not.toThrow();
+    expect(resolveAppearance({ density: 'airy' }, DARK).vars['--density']).toBe('0.72');
+    expect(resolveAppearance(null, DARK).theme.id).toBe('classic');
   });
 });
 
