@@ -16,6 +16,9 @@ const FONT_OPTIONS: { label: string; value: FontChoice }[] = [
   { label: 'Sans', value: 'sans' },
   { label: 'Mono', value: 'mono' },
 ];
+const DARK_THEMES = THEMES.filter((t) => t.scheme === 'dark');
+const LIGHT_THEMES = THEMES.filter((t) => t.scheme === 'light');
+
 const MOTION_OPTIONS: { label: string; value: Motion }[] = [
   { label: 'Full', value: 'full' },
   { label: 'Reduced', value: 'reduced' },
@@ -60,14 +63,14 @@ export function AppearanceSection({
         <>
           <ThemePicker
             label="Dark theme"
-            themes={THEMES.filter((t) => t.scheme === 'dark')}
+            themes={DARK_THEMES}
             selected={a.darkTheme}
             showing={showing.id}
             onPick={(id) => update({ darkTheme: id })}
           />
           <ThemePicker
             label="Light theme"
-            themes={THEMES.filter((t) => t.scheme === 'light')}
+            themes={LIGHT_THEMES}
             selected={a.lightTheme}
             showing={showing.id}
             onPick={(id) => update({ lightTheme: id })}

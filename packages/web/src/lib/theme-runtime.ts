@@ -110,7 +110,7 @@ export function rememberAppearance(appearance: unknown, storage?: Storage | null
  * caps). Code that animates itself (eased scrolling, `scrollIntoView`) asks this, since CSS
  * cannot reach it. Full before any theme is applied.
  */
-export function motionIsFull(doc: Document | undefined = typeof document === 'undefined' ? undefined : document): boolean {
+export function motionIsFull(doc: Document | undefined = globalThis.document): boolean {
   return (doc?.documentElement.dataset.motion ?? 'full') === 'full';
 }
 

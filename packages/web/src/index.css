@@ -155,12 +155,13 @@ body {
    (spinners, pulses, the network's moving dashes) and entrances land in their final state, and
    scrolling jumps; transitions stay. Off also drops transitions. Code that animates itself asks
    motionIsFull() (theme-runtime.ts). SMIL (<animate>) is out of reach of these rules: use CSS. */
-html[data-motion='reduced'] *, html[data-motion='reduced'] *::before, html[data-motion='reduced'] *::after,
-html[data-motion='off'] *, html[data-motion='off'] *::before, html[data-motion='off'] *::after {
+html:is([data-motion='reduced'], [data-motion='off']) *,
+html:is([data-motion='reduced'], [data-motion='off']) *::before,
+html:is([data-motion='reduced'], [data-motion='off']) *::after {
   animation-duration: 0.01ms !important;
   animation-iteration-count: 1 !important;
 }
-html[data-motion='reduced'], html[data-motion='reduced'] *, html[data-motion='off'], html[data-motion='off'] * {
+html:is([data-motion='reduced'], [data-motion='off']), html:is([data-motion='reduced'], [data-motion='off']) * {
   scroll-behavior: auto !important;
 }
 html[data-motion='off'] *, html[data-motion='off'] *::before, html[data-motion='off'] *::after {
