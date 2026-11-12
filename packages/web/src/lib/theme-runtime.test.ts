@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { applyTheme, getThemeVersion, subscribeTheme } from './theme-runtime.js';
+import { applyTheme, getThemeVersion, rememberAppearance, rememberedAppearance, subscribeTheme } from './theme-runtime.js';
 import { DEFAULT_APPEARANCE } from './themes.js';
 
 /** Just enough of a Document for applyTheme (the web tests run in node, without a DOM). */
@@ -68,5 +68,29 @@ describe('following the OS', () => {
     } finally {
       vi.unstubAllGlobals();
     }
+  });
+});
+
+describe('the remembered appearance', () => {
+  function fakeStorage() {
+    const m = new Map<string, string>();
+    return { getItem: (k: string) => m.get(k) ?? null, setItem: (k: string, v: string) => void m.set(k, v) } as unknown as Storage;
+  }
+
+  it('gives back what was remembered, and null when nothing was', () => {
+    const s = fakeStorage();
+    expect(rememberedAppearance(s)).toBeNull();
+    rememberAppearance({ ...DEFAULT_APPEARANCE, theme: 'tide' }, s);
+    expect(rememberedAppearance(s)).toEqual({ ...DEFAULT_APPEARANCE, theme: 'tide' });
+  });
+
+  it('never throws: no storage, storage that refuses, or a corrupt value', () => {
+    expect(rememberedAppearance(null)).toBeNull();
+    const refusing = { getItem: () => { throw new Error('denied'); }, setItem: () => { throw new Error('full'); } } as unknown as Storage;
+    expect(() => rememberAppearance(DEFAULT_APPEARANCE, refusing)).not.toThrow();
+    expect(rememberedAppearance(refusing)).toBeNull();
+    const corrupt = fakeStorage();
+    corrupt.setItem('layman.appearance', '{not json');
+    expect(rememberedAppearance(corrupt)).toBeNull();
   });
 });

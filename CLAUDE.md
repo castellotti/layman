@@ -497,6 +497,16 @@ Four rules that must not be relaxed casually:
   `bg-ok/10` and `bg-ok/[35%]` work, unlike `bg-[var(--ok)]/10`, which Tailwind 3 drops (a test
   fails on that form). `font-sans`, `font-ui` and `font-mono` follow `--font-ui` / `--font-mono`.
   Mind the names: `bg-bg-code` is the code background, `bg-code` paints with the code *text* colour.
+  The choice is the config's `appearance` block (`AppearanceSchema` in the server's
+  `config/schema.ts`; it replaced the old top-level `theme`, which `migrateTheme` reads once:
+  dark → classic, light → daylight). The server mirrors the theme ids, choices and defaults, and a
+  web test (`appearance-config.test.ts`) fails when the copies differ: a new theme goes in both. A
+  stored value the server does not know falls back to its default field by field (a stale
+  `layman.json` must never stop startup), but an *update* holding one is dropped
+  (`validAppearanceUpdate`), keeping the current choice. `appearance` is deep-merged like `sync`,
+  except `overrides`, which an update replaces whole so one can be removed. `useAppearance()` applies
+  it on every `session:config` and remembers it in `localStorage`, which `main.tsx` applies at load
+  so a non-default theme does not flash Classic first.
 
 - **Auto-activate**: The `autoActivateClients` config array (in `~/.local/share/layman/layman.json`) lists client agent types (e.g. `'claude-code'`) whose sessions should auto-activate without requiring `/layman`. When a hook event arrives from a matching agent, `handler.ts` calls `gate.activate()` before the gate check, so events flow immediately. The toggle is in Settings → Client Setup on each client's row. Off by default.
 

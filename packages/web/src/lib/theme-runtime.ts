@@ -73,6 +73,30 @@ export function applyTheme(appearance: unknown, doc: Document = document): Resol
   return resolved;
 }
 
+const STORAGE_KEY = 'layman.appearance';
+
+/**
+ * The appearance this browser last applied from the config, kept so the next page load starts in
+ * it instead of flashing the default until the WebSocket delivers the config. Null when none was
+ * kept or storage is unavailable; `applyTheme` normalises whatever comes back.
+ */
+export function rememberedAppearance(storage: Storage | null = globalThis.localStorage ?? null): unknown {
+  try {
+    const raw = storage?.getItem(STORAGE_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function rememberAppearance(appearance: unknown, storage: Storage | null = globalThis.localStorage ?? null): void {
+  try {
+    storage?.setItem(STORAGE_KEY, JSON.stringify(appearance));
+  } catch {
+    // Private mode or full storage: the next load shows the default until the config arrives.
+  }
+}
+
 /** The current value of a CSS variable, e.g. `readToken('warn')`, for code that cannot use `var()`. */
 export function readToken(token: string, doc: Document = document): string {
   return getComputedStyle(doc.documentElement).getPropertyValue(`--${token}`).trim();

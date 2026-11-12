@@ -223,9 +223,9 @@ export const FONT_MONO = "'IBM Plex Mono', 'SF Mono', 'Fira Code', monospace";
 /** What `--density` multiplies spacing by. */
 export const DENSITY_SCALE: Record<Density, number> = { comfortable: 1, compact: 0.72 };
 
-const FONTS: readonly FontChoice[] = ['theme', 'sans', 'mono'];
-const DENSITIES: readonly Density[] = ['comfortable', 'compact'];
-const MOTIONS: readonly Motion[] = ['full', 'reduced', 'off'];
+export const FONTS: readonly FontChoice[] = ['theme', 'sans', 'mono'];
+export const DENSITIES: readonly Density[] = ['comfortable', 'compact'];
+export const MOTIONS: readonly Motion[] = ['full', 'reduced', 'off'];
 
 const pick = <T extends string>(v: unknown, allowed: readonly T[], fallback: T): T =>
   allowed.includes(v as T) ? (v as T) : fallback;

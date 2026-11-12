@@ -2,11 +2,12 @@ import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './App.js';
 import './index.css';
-import { applyTheme } from './lib/theme-runtime.js';
+import { applyTheme, rememberedAppearance } from './lib/theme-runtime.js';
 import { DEFAULT_APPEARANCE } from './lib/themes.js';
 
-// Classic until the config's appearance block is read: the same values as index.css.
-applyTheme(DEFAULT_APPEARANCE);
+// What this browser last applied, else Classic (index.css's values), until the config arrives
+// and useAppearance applies its appearance block.
+applyTheme(rememberedAppearance() ?? DEFAULT_APPEARANCE);
 
 // Request notification permission on load
 if ('Notification' in window && Notification.permission === 'default') {

@@ -145,6 +145,64 @@ export const SyncConfigSchema = z.object({
   logRetentionDays: z.number().int().min(1).max(365).default(30),
 });
 
+/**
+ * The web's theme ids (`packages/web/src/lib/themes.ts`, `THEMES`), the font, density and motion
+ * choices and the default appearance, mirrored here so the server can validate what it stores. A
+ * web test reads this file and fails when the two disagree.
+ */
+export const THEME_IDS = ['classic', 'ember', 'tide', 'phosphor', 'paper', 'daylight', 'contrast'] as const;
+export const FONT_CHOICES = ['theme', 'sans', 'mono'] as const;
+export const DENSITIES = ['comfortable', 'compact'] as const;
+export const MOTIONS = ['full', 'reduced', 'off'] as const;
+const HEX_COLOR = /^#[0-9a-f]{6}$/i;
+
+/** Per-token colours: entries that are not a token-shaped name with a `#rrggbb` value are dropped. */
+const OverridesSchema = z.record(z.string(), z.unknown()).transform((o) =>
+  Object.fromEntries(
+    Object.entries(o).filter(([k, v]) => /^[a-z][a-z-]*$/.test(k) && typeof v === 'string' && HEX_COLOR.test(v)),
+  ) as Record<string, string>,
+);
+
+/** Each appearance field's valid values, without fallbacks: what an update must hold to be kept. */
+const APPEARANCE_FIELDS = {
+  /** A theme id, or `system` to follow the OS between `darkTheme` and `lightTheme`. */
+  theme: z.enum([...THEME_IDS, 'system']),
+  darkTheme: z.enum(THEME_IDS),
+  lightTheme: z.enum(THEME_IDS),
+  font: z.enum(FONT_CHOICES),
+  density: z.enum(DENSITIES),
+  motion: z.enum(MOTIONS),
+  overrides: OverridesSchema,
+};
+
+/**
+ * How the dashboard looks. A stored field this version does not know (a cut theme, a setting
+ * from a newer version, a hand-edited typo) falls back to its default instead of failing the
+ * whole config, so a stale `layman.json` can never stop Layman starting. The web normalises the
+ * same way (`normalizeAppearance`) and drops override names that are not its tokens. An *update*
+ * is filtered first instead (`validAppearanceUpdate`), so a bad value keeps the current choice.
+ */
+export const AppearanceSchema = z.object({
+  theme: APPEARANCE_FIELDS.theme.catch('classic').default('classic'),
+  darkTheme: APPEARANCE_FIELDS.darkTheme.catch('classic').default('classic'),
+  lightTheme: APPEARANCE_FIELDS.lightTheme.catch('daylight').default('daylight'),
+  font: APPEARANCE_FIELDS.font.catch('sans').default('sans'),
+  density: APPEARANCE_FIELDS.density.catch('compact').default('compact'),
+  motion: APPEARANCE_FIELDS.motion.catch('full').default('full'),
+  overrides: APPEARANCE_FIELDS.overrides.catch({}).default({}),
+});
+
+/** The fields of an appearance update that hold valid values; the rest are dropped. */
+export function validAppearanceUpdate(update: unknown): Partial<AppearanceConfig> {
+  if (!update || typeof update !== 'object') return {};
+  return Object.fromEntries(
+    Object.entries(update).filter(([k, v]) =>
+      Object.hasOwn(APPEARANCE_FIELDS, k) && APPEARANCE_FIELDS[k as keyof typeof APPEARANCE_FIELDS].safeParse(v).success),
+  ) as Partial<AppearanceConfig>;
+}
+
+export type AppearanceConfig = z.infer<typeof AppearanceSchema>;
+
 export const LaymanConfigSchema = z.object({
   port: z.number().int().min(1).max(65535).default(8880),
   host: z.string().default('localhost'),
@@ -158,7 +216,8 @@ export const LaymanConfigSchema = z.object({
   analysis: AnalysisConfigSchema.default({}),
   autoAllow: AutoAllowRulesSchema.default({}),
   hookTimeout: z.number().int().min(10).max(3600).default(300),
-  theme: z.enum(['dark', 'light', 'system']).default('dark'),
+  /** Replaces the old top-level `theme` (dark | light | system); `migrateTheme` reads that once. */
+  appearance: AppearanceSchema.catch(() => AppearanceSchema.parse({})).default({}),
   open: z.boolean().default(true),
   autoApprove: z.union([
     z.enum(['all', 'medium', 'low', 'none']),
