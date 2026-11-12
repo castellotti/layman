@@ -80,15 +80,21 @@ function scan(src: string, start: number, out: string[][], end: string, powershe
   };
   const endCommand = (): void => {
     endWord();
+    // A redirection with no target (`cmd >` at a line's end) must not swallow the next command.
+    dropNext = false;
     if (words.length > 0) out.push(words);
     words = [];
   };
   /** `$(…)`, `$((…))` or a backtick at `i`: scans what is inside, returns where it ends. */
   const substitution = (i: number): number => {
     if (src.startsWith('$((', i)) {
-      // Arithmetic, not commands: skip to the matching `))`.
+      // Arithmetic, not commands, except a substitution inside it: skip to the matching `))`.
       let depth = 0;
       for (let j = i + 1; j < src.length; j++) {
+        if ((src[j] === '$' && src[j + 1] === '(' && src[j + 2] !== '(') || (!powershell && src[j] === '`')) {
+          j = substitution(j) - 1;
+          continue;
+        }
         if (src[j] === '(') depth++;
         else if (src[j] === ')' && --depth === 0) return j + 1;
       }
@@ -274,6 +280,14 @@ function insideTest(words: string[]): boolean {
   return at >= 0 && words[at] === '[[' && !words.includes(']]', at);
 }
 
+/**
+ * A table's own entry for a recorded name, never one inherited from `Object.prototype`: a command or
+ * tool called `constructor` or `toString` must read as unknown, not as a function.
+ */
+function own<T>(table: Record<string, T>, key: string): T | undefined {
+  return Object.prototype.hasOwnProperty.call(table, key) ? table[key] : undefined;
+}
+
 /** Words that open or close a construct; the command, if any, follows them. */
 const KEYWORDS = new Set(['if', 'then', 'else', 'elif', 'do', 'while', 'until', '!', '{', '}', 'function']);
 /** A construct whose words are not a command at all. */
@@ -308,10 +322,11 @@ function commandWords(raw: string[]): string[] {
     words = words.slice(i);
     const head = words[0];
     if (head === undefined || NOT_COMMANDS.has(head)) return [];
-    const flags = WRAPPERS[nameOf(head)];
+    const name = nameOf(head);
+    const flags = own(WRAPPERS, name);
     if (flags === undefined) return words;
     // `command -v x` asks where x is; it runs nothing.
-    if (head === 'command' && words[1] === '-v') return words;
+    if (name === 'command' && words[1] === '-v') return words;
     if (words.length === 1) return words;
     let j = 1;
     while (j < words.length) {
@@ -320,7 +335,7 @@ function commandWords(raw: string[]): string[] {
       else if (flags.has(w)) j += 2;
       else if (w.startsWith('-')) j++;
       // timeout's duration
-      else if ((head === 'timeout' || head === 'gtimeout') && /^\d+(\.\d+)?[smhd]?$/.test(w)) j++;
+      else if ((name === 'timeout' || name === 'gtimeout') && /^\d+(\.\d+)?[smhd]?$/.test(w)) j++;
       else break;
     }
     if (j >= words.length) return words.slice(0, 1);
@@ -331,12 +346,29 @@ function commandWords(raw: string[]): string[] {
 /** Shells whose `-c` argument is itself a shell line. */
 const SHELLS = new Set(['bash', 'sh', 'zsh', 'dash', 'ksh', 'fish']);
 
-/** `bash -c "curl …"` (or `-lc`, `-ec`) is the commands inside it. */
+/** Shell options that take a value (`bash -o pipefail -c …`). */
+const SHELL_VALUE_OPTIONS = new Set(['-o', '+o', '-O', '+O', '--rcfile', '--init-file']);
+
+/**
+ * The script of `bash -c '<script>'` (or `-lc`, `-ec`, after any options), or undefined when the
+ * words are not a shell given a script. One rule for scanned lines and for Codex's argv form.
+ */
+function shellScript(words: string[]): string | undefined {
+  if (!SHELLS.has(nameOf(words[0]))) return undefined;
+  for (let i = 1; i < words.length; i++) {
+    const w = words[i];
+    if (/^-[a-z]*c[a-z]*$/.test(w)) return words[i + 1];
+    if (SHELL_VALUE_OPTIONS.has(w)) i++;
+    else if (!w.startsWith('-') && !w.startsWith('+')) return undefined;
+  }
+  return undefined;
+}
+
+/** `bash -c "curl …"` is the commands inside it. */
 function unwrapShell(words: string[], powershell: boolean): string[][] {
-  const at = words.findIndex((w, i) => i > 0 && /^-[a-z]*c[a-z]*$/.test(w));
-  if (!SHELLS.has(nameOf(words[0])) || at < 1 || words[at + 1] === undefined) return [words];
-  if (!words.slice(1, at).every((w) => w.startsWith('-'))) return [words];
-  const inner = shellCommands(words[at + 1], powershell);
+  const script = shellScript(words);
+  if (script === undefined) return [words];
+  const inner = shellCommands(script, powershell);
   return inner.length > 0 ? inner : [words];
 }
 
@@ -451,29 +483,41 @@ const SUBCOMMAND_VALUE_FLAGS: Record<string, ReadonlySet<string>> = {
   go: new Set(['-C']),
 };
 
-/** The first two words after a command's own flags: its subcommand and the word after it. */
-function subcommandOf(words: string[], head: string): [string, string] {
-  const valueFlags = SUBCOMMAND_VALUE_FLAGS[head];
-  let i = 1;
-  while (i < words.length && words[i].startsWith('-') && !NETWORK_SUBCOMMANDS[head]?.has(words[i])) {
-    i += valueFlags?.has(words[i]) ? 2 : 1;
+/**
+ * A command's subcommand and the word after it, flags skipped before and between them
+ * (`git -C dir push`, `docker compose -f a.yml pull`). A flag-shaped subcommand (`pacman -S`,
+ * `npx -y`) counts when it comes first.
+ */
+function subcommandOf(words: string[], head: string, subs: ReadonlySet<string>): [string, string] {
+  const valueFlags = own(SUBCOMMAND_VALUE_FLAGS, head);
+  const found: string[] = [];
+  for (let i = 1; i < words.length && found.length < 2; i++) {
+    const w = words[i];
+    if (found.length === 0 && subs.has(w)) found.push(w);
+    else if (w.startsWith('-')) {
+      if (valueFlags?.has(w)) i++;
+    } else found.push(w);
   }
-  return [words[i] ?? '', words[i + 1] ?? ''];
+  return [found[0] ?? '', found[1] ?? ''];
 }
 
 /** `host:path` or `user@host:path`: not a local path, not a URL, not a Windows drive. */
 const REMOTE_ARG = /^(?:[\w.-]+@)?[\w.-]+:(?!\/\/)/;
 const WINDOWS_DRIVE = /^[A-Za-z]:[\\/]/;
+/** A copy tool's own URL form (`rsync://host/module`). */
+const COPY_URL = /^(?:rsync|scp|sftp):\/\//;
 
 function reachesNetwork(words: string[], head: string): boolean {
   if (NETWORK_WORDS.has(head)) return true;
   if (REMOTE_COPY.has(head)) {
-    return words.slice(1).some((w) => !w.startsWith('-') && REMOTE_ARG.test(w) && !WINDOWS_DRIVE.test(w));
+    return words
+      .slice(1)
+      .some((w) => !w.startsWith('-') && (COPY_URL.test(w) || (REMOTE_ARG.test(w) && !WINDOWS_DRIVE.test(w))));
   }
-  const subs = NETWORK_SUBCOMMANDS[head];
+  const subs = own(NETWORK_SUBCOMMANDS, head);
   if (subs === undefined) return false;
   if (subs.has('*')) return true;
-  const [sub, next] = subcommandOf(words, head);
+  const [sub, next] = subcommandOf(words, head, subs);
   return subs.has(sub) || subs.has(`${sub} ${next}`);
 }
 
@@ -535,8 +579,8 @@ function commandLine(input: Record<string, unknown>): string {
   const c = input.command ?? input.cmd;
   if (!Array.isArray(c)) return str(c);
   const argv = c.map(String);
-  const at = argv.findIndex((w, i) => i > 0 && /^-[a-z]*c[a-z]*$/.test(w));
-  if (SHELLS.has(nameOf(argv[0])) && at > 0 && argv[at + 1] !== undefined) return argv[at + 1];
+  const script = shellScript(argv);
+  if (script !== undefined) return script;
   return argv.map((w) => (/^[\w@%+=:,./-]+$/.test(w) ? w : `'${w.replace(/'/g, `'\\''`)}'`)).join(' ');
 }
 
@@ -547,18 +591,21 @@ const TOOL_STATIONS: Record<string, StationId> = {
   Grep: 'files', Glob: 'files', LS: 'files', ListDirectory: 'files', LSP: 'files',
   search_replace: 'files', // Mistral Vibe
   apply_patch: 'files', // Codex
+  list: 'files', patch: 'files', multiedit: 'files', // OpenCode, unmapped
   view_image: 'files', // Codex
   // Network
   WebFetch: 'network', WebSearch: 'network', Artifact: 'network',
   web_search: 'network', web_fetch: 'network', web_download: 'network', web_download_status: 'network', // pi
   searxng_web_search: 'network', webfetch_fetch_url: 'network', // Mistral Vibe
   McpResource: 'network', // Cline
+  webfetch: 'network', websearch: 'network', // OpenCode, unmapped
   // Browser
   Browser: 'browser', // Cline's browser_action
   // You: the person is asked, or shown something
   AskUserQuestion: 'you', AskUser: 'you', ask_user_question: 'you', SendUserFile: 'you',
   EnterPlanMode: 'you', ExitPlanMode: 'you', PlanRespond: 'you', ActRespond: 'you', ReportFindings: 'you',
   Complete: 'you', // Cline's attempt_completion
+  question: 'you', // OpenCode
   // Model: the agent's own bookkeeping, with nothing outside it touched
   TaskCreate: 'model', TaskUpdate: 'model', TaskList: 'model', TaskGet: 'model', TodoWrite: 'model',
   TodoRead: 'model', todo: 'model', todowrite: 'model', todoread: 'model', update_plan: 'model',
@@ -567,15 +614,16 @@ const TOOL_STATIONS: Record<string, StationId> = {
   Agent: 'agents', Task: 'agents', task: 'agents', NewTask: 'agents', SubagentHandback: 'agents',
   SendMessage: 'agents', ListAgents: 'agents', TaskStop: 'agents', TaskOutput: 'agents', Workflow: 'agents',
   ScheduleWakeup: 'agents', CronCreate: 'agents', CronDelete: 'agents', CronList: 'agents',
-  RemoteTrigger: 'agents',
+  RemoteTrigger: 'agents', Subagents: 'agents', // Cline's use_subagents
   // Skills
   Skill: 'skills', skill: 'skills', ToolSearch: 'skills', NewRule: 'skills',
+  McpDocs: 'skills', // Cline's load_mcp_documentation: learning what tools there are, like ToolSearch
   // Shell: runs commands, or watches them
   Monitor: 'shell', EnterWorktree: 'shell', ExitWorktree: 'shell', ReportBug: 'shell',
 };
 
 /** MCP servers by what they are; any other server is Network, as a remote tool is until shown otherwise. */
-const BROWSER_SERVERS = /(?:^|_)(?:playwright|puppeteer|browser|chrome|chromium|Claude_Browser|claude-in-chrome)(?:$|_)/i;
+const BROWSER_SERVERS = /(?:^|[_-])(?:playwright|puppeteer|browser|chrome|chromium|Claude_Browser|claude-in-chrome)(?:$|[_-])/i;
 const SHELL_SERVERS = new Set(['terminal', 'shell', 'desktop-commander']);
 const FILE_SERVERS = new Set(['filesystem', 'fs']);
 
@@ -604,7 +652,7 @@ export function stationOf(toolName: string, toolInput?: Record<string, unknown>)
     return shellStation(commandLine(input));
   }
   if (toolName === 'PowerShell') return shellStation(commandLine(input), true);
-  const known = TOOL_STATIONS[toolName];
+  const known = own(TOOL_STATIONS, toolName);
   if (known !== undefined) return known;
   // pi's own browser tools, and Mistral Vibe's MCP tools named `<server>_<tool>`.
   if (/^(?:playwright_)?browser_/.test(toolName)) return 'browser';

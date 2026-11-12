@@ -1,152 +1,1240 @@
 {
   "about": "Shared by packages/server/src/events/station.test.ts and packages/web/src/lib/station.test.ts. Tool names are as Layman records them, after each harness's own name map.",
   "tools": [
-    { "harness": "claude-code", "tool": "Read", "input": { "file_path": "/repo/src/a.ts" }, "station": "files" },
-    { "harness": "claude-code", "tool": "Write", "input": { "file_path": "/repo/a.md", "content": "x" }, "station": "files" },
-    { "harness": "claude-code", "tool": "Edit", "input": { "file_path": "/repo/a.ts", "old_string": "a", "new_string": "b" }, "station": "files" },
-    { "harness": "claude-code", "tool": "NotebookEdit", "input": { "notebook_path": "/repo/n.ipynb" }, "station": "files" },
-    { "harness": "claude-code", "tool": "Grep", "input": { "pattern": "x", "path": "/repo" }, "station": "files" },
-    { "harness": "claude-code", "tool": "Glob", "input": { "pattern": "**/*.ts" }, "station": "files" },
-    { "harness": "claude-code", "tool": "Bash", "input": { "command": "grep -rn foo src | head -20", "description": "Find foo" }, "station": "files" },
-    { "harness": "claude-code", "tool": "Bash", "input": { "command": "curl -s https://example.com/x" }, "station": "network" },
-    { "harness": "claude-code", "tool": "Bash", "input": { "command": "pnpm -r test" }, "station": "shell" },
-    { "harness": "claude-code", "tool": "PowerShell", "input": { "command": "Get-Content a.txt | Select-Object -First 5" }, "station": "files" },
-    { "harness": "claude-code", "tool": "PowerShell", "input": { "command": "$r = Invoke-WebRequest https://example.com" }, "station": "network" },
-    { "harness": "claude-code", "tool": "WebFetch", "input": { "url": "https://example.com/a", "prompt": "p" }, "station": "network" },
-    { "harness": "claude-code", "tool": "WebSearch", "input": { "query": "q" }, "station": "network" },
-    { "harness": "claude-code", "tool": "Artifact", "input": {}, "station": "network" },
-    { "harness": "claude-code", "tool": "Agent", "input": { "description": "Explore", "prompt": "p" }, "station": "agents" },
-    { "harness": "claude-code", "tool": "SubagentHandback", "input": { "message": "m" }, "station": "agents" },
-    { "harness": "claude-code", "tool": "SendMessage", "input": {}, "station": "agents" },
-    { "harness": "claude-code", "tool": "ListAgents", "input": {}, "station": "agents" },
-    { "harness": "claude-code", "tool": "TaskStop", "input": {}, "station": "agents" },
-    { "harness": "claude-code", "tool": "TaskOutput", "input": {}, "station": "agents" },
-    { "harness": "claude-code", "tool": "ScheduleWakeup", "input": {}, "station": "agents" },
-    { "harness": "claude-code", "tool": "CronCreate", "input": {}, "station": "agents" },
-    { "harness": "claude-code", "tool": "CronList", "input": {}, "station": "agents" },
-    { "harness": "claude-code", "tool": "TaskCreate", "input": {}, "station": "model" },
-    { "harness": "claude-code", "tool": "TaskUpdate", "input": {}, "station": "model" },
-    { "harness": "claude-code", "tool": "TaskList", "input": {}, "station": "model" },
-    { "harness": "claude-code", "tool": "Skill", "input": { "skill": "simplify" }, "station": "skills" },
-    { "harness": "claude-code", "tool": "ToolSearch", "input": {}, "station": "skills" },
-    { "harness": "claude-code", "tool": "AskUserQuestion", "input": {}, "station": "you" },
-    { "harness": "claude-code", "tool": "ExitPlanMode", "input": {}, "station": "you" },
-    { "harness": "claude-code", "tool": "EnterPlanMode", "input": {}, "station": "you" },
-    { "harness": "claude-code", "tool": "ReportFindings", "input": {}, "station": "you" },
-    { "harness": "claude-code", "tool": "SendUserFile", "input": {}, "station": "you" },
-    { "harness": "claude-code", "tool": "Monitor", "input": { "description": "watch" }, "station": "shell" },
-    { "harness": "claude-code", "tool": "EnterWorktree", "input": {}, "station": "shell" },
-    { "harness": "claude-code", "tool": "ExitWorktree", "input": {}, "station": "shell" },
-    { "harness": "claude-code", "tool": "mcp__plugin_playwright_playwright__browser_click", "input": {}, "station": "browser" },
-    { "harness": "claude-code", "tool": "mcp__plugin_playwright_playwright__browser_navigate", "input": { "url": "https://example.com" }, "station": "browser" },
-    { "harness": "claude-code", "tool": "mcp__Claude_Browser__navigate", "input": {}, "station": "browser" },
-    { "harness": "claude-code", "tool": "mcp__claude-in-chrome__read_page", "input": {}, "station": "browser" },
-    { "harness": "claude-code", "tool": "mcp__Home_Assistant__ha_get_state", "input": {}, "station": "network" },
-    { "harness": "claude-code", "tool": "mcp__plugin_github_github__create_pull_request", "input": {}, "station": "network" },
-    { "harness": "claude-code", "tool": "mcp__plugin_context7_context7__resolve-library-id", "input": {}, "station": "network" },
-    { "harness": "claude-code", "tool": "mcp__godot__run_project", "input": {}, "station": "network" },
-    { "harness": "claude-code", "tool": "mcp__terminal__run", "input": {}, "station": "shell" },
-    { "harness": "claude-code", "tool": "mcp__visualize__show", "input": {}, "station": "you" },
-    { "harness": "claude-code", "tool": "mcp__plugin-authoring__validate", "input": {}, "station": "skills" },
-    { "harness": "claude-code", "tool": "SomethingNew", "input": {}, "station": "shell" },
-    { "harness": "pi", "tool": "Bash", "input": { "command": "ls -la /work" }, "station": "files" },
-    { "harness": "pi", "tool": "Read", "input": { "path": "/work/a.md", "offset": 1, "limit": 20 }, "station": "files" },
-    { "harness": "pi", "tool": "Edit", "input": { "path": "/work/a.md", "edits": [] }, "station": "files" },
-    { "harness": "pi", "tool": "Write", "input": { "path": "/work/a.md", "content": "x" }, "station": "files" },
-    { "harness": "pi", "tool": "Glob", "input": { "pattern": "*.md" }, "station": "files" },
-    { "harness": "pi", "tool": "LS", "input": { "path": "/work" }, "station": "files" },
-    { "harness": "pi", "tool": "web_search", "input": { "query": "q" }, "station": "network" },
-    { "harness": "pi", "tool": "web_fetch", "input": { "url": "https://example.com" }, "station": "network" },
-    { "harness": "pi", "tool": "web_download", "input": { "url": "https://example.com/f.pdf", "name": "f.pdf" }, "station": "network" },
-    { "harness": "pi", "tool": "web_download_status", "input": {}, "station": "network" },
-    { "harness": "pi", "tool": "mcp__searxng__web_search", "input": { "query": "q" }, "station": "network" },
-    { "harness": "pi", "tool": "mcp__webfetch__fetch_url", "input": { "url": "https://example.com" }, "station": "network" },
-    { "harness": "pi", "tool": "mcp__webdownload__web_download", "input": { "url": "https://example.com" }, "station": "network" },
-    { "harness": "pi", "tool": "browser_navigate", "input": { "url": "https://example.com" }, "station": "browser" },
-    { "harness": "pi", "tool": "browser_evaluate", "input": {}, "station": "browser" },
-    { "harness": "pi", "tool": "mcp__playwright__browser_evaluate", "input": {}, "station": "browser" },
-    { "harness": "mistral-vibe", "tool": "Bash", "input": { "command": "git status" }, "station": "shell" },
-    { "harness": "mistral-vibe", "tool": "Read", "input": { "path": "/a.py" }, "station": "files" },
-    { "harness": "mistral-vibe", "tool": "Grep", "input": { "pattern": "x", "path": "." }, "station": "files" },
-    { "harness": "mistral-vibe", "tool": "WebFetch", "input": { "url": "https://example.com" }, "station": "network" },
-    { "harness": "mistral-vibe", "tool": "search_replace", "input": { "file_path": "/a.py", "content": "x" }, "station": "files" },
-    { "harness": "mistral-vibe", "tool": "ListDirectory", "input": { "path": "." }, "station": "files" },
-    { "harness": "mistral-vibe", "tool": "playwright_browser_navigate", "input": { "url": "https://example.com" }, "station": "browser" },
-    { "harness": "mistral-vibe", "tool": "searxng_web_search", "input": { "query": "q" }, "station": "network" },
-    { "harness": "mistral-vibe", "tool": "webfetch_fetch_url", "input": { "url": "https://example.com" }, "station": "network" },
-    { "harness": "mistral-vibe", "tool": "todo", "input": { "action": "read" }, "station": "model" },
-    { "harness": "mistral-vibe", "tool": "task", "input": { "task": "t", "agent": "explore" }, "station": "agents" },
-    { "harness": "mistral-vibe", "tool": "skill", "input": { "name": "s" }, "station": "skills" },
-    { "harness": "mistral-vibe", "tool": "ask_user_question", "input": { "questions": [] }, "station": "you" },
-    { "harness": "codex", "tool": "Bash", "input": { "command": "cat ~/.codex/skills/layman/SKILL.md" }, "station": "files" },
-    { "harness": "codex", "tool": "shell", "input": { "command": ["bash", "-lc", "curl -s http://localhost:8880/api/x"] }, "station": "network" },
-    { "harness": "codex", "tool": "apply_patch", "input": {}, "station": "files" },
-    { "harness": "codex", "tool": "update_plan", "input": {}, "station": "model" },
-    { "harness": "opencode", "tool": "Read", "input": { "filePath": "/a.ts" }, "station": "files" },
-    { "harness": "opencode", "tool": "LSP", "input": {}, "station": "files" },
-    { "harness": "opencode", "tool": "todowrite", "input": {}, "station": "model" },
-    { "harness": "opencode", "tool": "Batch", "input": {}, "station": "shell" },
-    { "harness": "cline", "tool": "Read", "input": { "path": "src/a.ts" }, "station": "files" },
-    { "harness": "cline", "tool": "Bash", "input": { "command": "npm install", "requires_approval": true }, "station": "network" },
-    { "harness": "cline", "tool": "AskUser", "input": { "question": "q" }, "station": "you" },
-    { "harness": "cline", "tool": "Browser", "input": { "action": "launch", "url": "https://example.com" }, "station": "browser" },
-    { "harness": "cline", "tool": "McpTool", "input": { "server_name": "playwright", "tool_name": "browser_click" }, "station": "browser" },
-    { "harness": "cline", "tool": "McpTool", "input": { "server_name": "github", "tool_name": "get_issue" }, "station": "network" },
-    { "harness": "cline", "tool": "McpResource", "input": {}, "station": "network" },
-    { "harness": "cline", "tool": "NewTask", "input": {}, "station": "agents" },
-    { "harness": "cline", "tool": "Complete", "input": {}, "station": "you" },
-    { "harness": "cline", "tool": "PlanRespond", "input": {}, "station": "you" },
-    { "harness": "cline", "tool": "FocusChain", "input": {}, "station": "model" },
-    { "harness": "cline", "tool": "NewRule", "input": {}, "station": "skills" },
-    { "harness": "none", "tool": "Read", "station": "files" },
-    { "harness": "none", "tool": "Bash", "station": "shell" }
+    {
+      "harness": "claude-code",
+      "tool": "Read",
+      "input": {
+        "file_path": "/repo/src/a.ts"
+      },
+      "station": "files"
+    },
+    {
+      "harness": "claude-code",
+      "tool": "Write",
+      "input": {
+        "file_path": "/repo/a.md",
+        "content": "x"
+      },
+      "station": "files"
+    },
+    {
+      "harness": "claude-code",
+      "tool": "Edit",
+      "input": {
+        "file_path": "/repo/a.ts",
+        "old_string": "a",
+        "new_string": "b"
+      },
+      "station": "files"
+    },
+    {
+      "harness": "claude-code",
+      "tool": "NotebookEdit",
+      "input": {
+        "notebook_path": "/repo/n.ipynb"
+      },
+      "station": "files"
+    },
+    {
+      "harness": "claude-code",
+      "tool": "Grep",
+      "input": {
+        "pattern": "x",
+        "path": "/repo"
+      },
+      "station": "files"
+    },
+    {
+      "harness": "claude-code",
+      "tool": "Glob",
+      "input": {
+        "pattern": "**/*.ts"
+      },
+      "station": "files"
+    },
+    {
+      "harness": "claude-code",
+      "tool": "Bash",
+      "input": {
+        "command": "grep -rn foo src | head -20",
+        "description": "Find foo"
+      },
+      "station": "files"
+    },
+    {
+      "harness": "claude-code",
+      "tool": "Bash",
+      "input": {
+        "command": "curl -s https://example.com/x"
+      },
+      "station": "network"
+    },
+    {
+      "harness": "claude-code",
+      "tool": "Bash",
+      "input": {
+        "command": "pnpm -r test"
+      },
+      "station": "shell"
+    },
+    {
+      "harness": "claude-code",
+      "tool": "PowerShell",
+      "input": {
+        "command": "Get-Content a.txt | Select-Object -First 5"
+      },
+      "station": "files"
+    },
+    {
+      "harness": "claude-code",
+      "tool": "PowerShell",
+      "input": {
+        "command": "$r = Invoke-WebRequest https://example.com"
+      },
+      "station": "network"
+    },
+    {
+      "harness": "claude-code",
+      "tool": "WebFetch",
+      "input": {
+        "url": "https://example.com/a",
+        "prompt": "p"
+      },
+      "station": "network"
+    },
+    {
+      "harness": "claude-code",
+      "tool": "WebSearch",
+      "input": {
+        "query": "q"
+      },
+      "station": "network"
+    },
+    {
+      "harness": "claude-code",
+      "tool": "Artifact",
+      "input": {},
+      "station": "network"
+    },
+    {
+      "harness": "claude-code",
+      "tool": "Agent",
+      "input": {
+        "description": "Explore",
+        "prompt": "p"
+      },
+      "station": "agents"
+    },
+    {
+      "harness": "claude-code",
+      "tool": "SubagentHandback",
+      "input": {
+        "message": "m"
+      },
+      "station": "agents"
+    },
+    {
+      "harness": "claude-code",
+      "tool": "SendMessage",
+      "input": {},
+      "station": "agents"
+    },
+    {
+      "harness": "claude-code",
+      "tool": "ListAgents",
+      "input": {},
+      "station": "agents"
+    },
+    {
+      "harness": "claude-code",
+      "tool": "TaskStop",
+      "input": {},
+      "station": "agents"
+    },
+    {
+      "harness": "claude-code",
+      "tool": "TaskOutput",
+      "input": {},
+      "station": "agents"
+    },
+    {
+      "harness": "claude-code",
+      "tool": "ScheduleWakeup",
+      "input": {},
+      "station": "agents"
+    },
+    {
+      "harness": "claude-code",
+      "tool": "CronCreate",
+      "input": {},
+      "station": "agents"
+    },
+    {
+      "harness": "claude-code",
+      "tool": "CronList",
+      "input": {},
+      "station": "agents"
+    },
+    {
+      "harness": "claude-code",
+      "tool": "TaskCreate",
+      "input": {},
+      "station": "model"
+    },
+    {
+      "harness": "claude-code",
+      "tool": "TaskUpdate",
+      "input": {},
+      "station": "model"
+    },
+    {
+      "harness": "claude-code",
+      "tool": "TaskList",
+      "input": {},
+      "station": "model"
+    },
+    {
+      "harness": "claude-code",
+      "tool": "Skill",
+      "input": {
+        "skill": "simplify"
+      },
+      "station": "skills"
+    },
+    {
+      "harness": "claude-code",
+      "tool": "ToolSearch",
+      "input": {},
+      "station": "skills"
+    },
+    {
+      "harness": "claude-code",
+      "tool": "AskUserQuestion",
+      "input": {},
+      "station": "you"
+    },
+    {
+      "harness": "claude-code",
+      "tool": "ExitPlanMode",
+      "input": {},
+      "station": "you"
+    },
+    {
+      "harness": "claude-code",
+      "tool": "EnterPlanMode",
+      "input": {},
+      "station": "you"
+    },
+    {
+      "harness": "claude-code",
+      "tool": "ReportFindings",
+      "input": {},
+      "station": "you"
+    },
+    {
+      "harness": "claude-code",
+      "tool": "SendUserFile",
+      "input": {},
+      "station": "you"
+    },
+    {
+      "harness": "claude-code",
+      "tool": "Monitor",
+      "input": {
+        "description": "watch"
+      },
+      "station": "shell"
+    },
+    {
+      "harness": "claude-code",
+      "tool": "EnterWorktree",
+      "input": {},
+      "station": "shell"
+    },
+    {
+      "harness": "claude-code",
+      "tool": "ExitWorktree",
+      "input": {},
+      "station": "shell"
+    },
+    {
+      "harness": "claude-code",
+      "tool": "mcp__plugin_playwright_playwright__browser_click",
+      "input": {},
+      "station": "browser"
+    },
+    {
+      "harness": "claude-code",
+      "tool": "mcp__plugin_playwright_playwright__browser_navigate",
+      "input": {
+        "url": "https://example.com"
+      },
+      "station": "browser"
+    },
+    {
+      "harness": "claude-code",
+      "tool": "mcp__Claude_Browser__navigate",
+      "input": {},
+      "station": "browser"
+    },
+    {
+      "harness": "claude-code",
+      "tool": "mcp__claude-in-chrome__read_page",
+      "input": {},
+      "station": "browser"
+    },
+    {
+      "harness": "claude-code",
+      "tool": "mcp__Home_Assistant__ha_get_state",
+      "input": {},
+      "station": "network"
+    },
+    {
+      "harness": "claude-code",
+      "tool": "mcp__plugin_github_github__create_pull_request",
+      "input": {},
+      "station": "network"
+    },
+    {
+      "harness": "claude-code",
+      "tool": "mcp__plugin_context7_context7__resolve-library-id",
+      "input": {},
+      "station": "network"
+    },
+    {
+      "harness": "claude-code",
+      "tool": "mcp__godot__run_project",
+      "input": {},
+      "station": "network"
+    },
+    {
+      "harness": "claude-code",
+      "tool": "mcp__terminal__run",
+      "input": {},
+      "station": "shell"
+    },
+    {
+      "harness": "claude-code",
+      "tool": "mcp__visualize__show",
+      "input": {},
+      "station": "you"
+    },
+    {
+      "harness": "claude-code",
+      "tool": "mcp__plugin-authoring__validate",
+      "input": {},
+      "station": "skills"
+    },
+    {
+      "harness": "claude-code",
+      "tool": "SomethingNew",
+      "input": {},
+      "station": "shell"
+    },
+    {
+      "harness": "pi",
+      "tool": "Bash",
+      "input": {
+        "command": "ls -la /work"
+      },
+      "station": "files"
+    },
+    {
+      "harness": "pi",
+      "tool": "Read",
+      "input": {
+        "path": "/work/a.md",
+        "offset": 1,
+        "limit": 20
+      },
+      "station": "files"
+    },
+    {
+      "harness": "pi",
+      "tool": "Edit",
+      "input": {
+        "path": "/work/a.md",
+        "edits": []
+      },
+      "station": "files"
+    },
+    {
+      "harness": "pi",
+      "tool": "Write",
+      "input": {
+        "path": "/work/a.md",
+        "content": "x"
+      },
+      "station": "files"
+    },
+    {
+      "harness": "pi",
+      "tool": "Glob",
+      "input": {
+        "pattern": "*.md"
+      },
+      "station": "files"
+    },
+    {
+      "harness": "pi",
+      "tool": "LS",
+      "input": {
+        "path": "/work"
+      },
+      "station": "files"
+    },
+    {
+      "harness": "pi",
+      "tool": "web_search",
+      "input": {
+        "query": "q"
+      },
+      "station": "network"
+    },
+    {
+      "harness": "pi",
+      "tool": "web_fetch",
+      "input": {
+        "url": "https://example.com"
+      },
+      "station": "network"
+    },
+    {
+      "harness": "pi",
+      "tool": "web_download",
+      "input": {
+        "url": "https://example.com/f.pdf",
+        "name": "f.pdf"
+      },
+      "station": "network"
+    },
+    {
+      "harness": "pi",
+      "tool": "web_download_status",
+      "input": {},
+      "station": "network"
+    },
+    {
+      "harness": "pi",
+      "tool": "mcp__searxng__web_search",
+      "input": {
+        "query": "q"
+      },
+      "station": "network"
+    },
+    {
+      "harness": "pi",
+      "tool": "mcp__webfetch__fetch_url",
+      "input": {
+        "url": "https://example.com"
+      },
+      "station": "network"
+    },
+    {
+      "harness": "pi",
+      "tool": "mcp__webdownload__web_download",
+      "input": {
+        "url": "https://example.com"
+      },
+      "station": "network"
+    },
+    {
+      "harness": "pi",
+      "tool": "browser_navigate",
+      "input": {
+        "url": "https://example.com"
+      },
+      "station": "browser"
+    },
+    {
+      "harness": "pi",
+      "tool": "browser_evaluate",
+      "input": {},
+      "station": "browser"
+    },
+    {
+      "harness": "pi",
+      "tool": "mcp__playwright__browser_evaluate",
+      "input": {},
+      "station": "browser"
+    },
+    {
+      "harness": "mistral-vibe",
+      "tool": "Bash",
+      "input": {
+        "command": "git status"
+      },
+      "station": "shell"
+    },
+    {
+      "harness": "mistral-vibe",
+      "tool": "Read",
+      "input": {
+        "path": "/a.py"
+      },
+      "station": "files"
+    },
+    {
+      "harness": "mistral-vibe",
+      "tool": "Grep",
+      "input": {
+        "pattern": "x",
+        "path": "."
+      },
+      "station": "files"
+    },
+    {
+      "harness": "mistral-vibe",
+      "tool": "WebFetch",
+      "input": {
+        "url": "https://example.com"
+      },
+      "station": "network"
+    },
+    {
+      "harness": "mistral-vibe",
+      "tool": "search_replace",
+      "input": {
+        "file_path": "/a.py",
+        "content": "x"
+      },
+      "station": "files"
+    },
+    {
+      "harness": "mistral-vibe",
+      "tool": "ListDirectory",
+      "input": {
+        "path": "."
+      },
+      "station": "files"
+    },
+    {
+      "harness": "mistral-vibe",
+      "tool": "playwright_browser_navigate",
+      "input": {
+        "url": "https://example.com"
+      },
+      "station": "browser"
+    },
+    {
+      "harness": "mistral-vibe",
+      "tool": "searxng_web_search",
+      "input": {
+        "query": "q"
+      },
+      "station": "network"
+    },
+    {
+      "harness": "mistral-vibe",
+      "tool": "webfetch_fetch_url",
+      "input": {
+        "url": "https://example.com"
+      },
+      "station": "network"
+    },
+    {
+      "harness": "mistral-vibe",
+      "tool": "todo",
+      "input": {
+        "action": "read"
+      },
+      "station": "model"
+    },
+    {
+      "harness": "mistral-vibe",
+      "tool": "task",
+      "input": {
+        "task": "t",
+        "agent": "explore"
+      },
+      "station": "agents"
+    },
+    {
+      "harness": "mistral-vibe",
+      "tool": "skill",
+      "input": {
+        "name": "s"
+      },
+      "station": "skills"
+    },
+    {
+      "harness": "mistral-vibe",
+      "tool": "ask_user_question",
+      "input": {
+        "questions": []
+      },
+      "station": "you"
+    },
+    {
+      "harness": "codex",
+      "tool": "Bash",
+      "input": {
+        "command": "cat ~/.codex/skills/layman/SKILL.md"
+      },
+      "station": "files"
+    },
+    {
+      "harness": "codex",
+      "tool": "shell",
+      "input": {
+        "command": [
+          "bash",
+          "-lc",
+          "curl -s http://localhost:8880/api/x"
+        ]
+      },
+      "station": "network"
+    },
+    {
+      "harness": "codex",
+      "tool": "apply_patch",
+      "input": {},
+      "station": "files"
+    },
+    {
+      "harness": "codex",
+      "tool": "update_plan",
+      "input": {},
+      "station": "model"
+    },
+    {
+      "harness": "opencode",
+      "tool": "Read",
+      "input": {
+        "filePath": "/a.ts"
+      },
+      "station": "files"
+    },
+    {
+      "harness": "opencode",
+      "tool": "LSP",
+      "input": {},
+      "station": "files"
+    },
+    {
+      "harness": "opencode",
+      "tool": "todowrite",
+      "input": {},
+      "station": "model"
+    },
+    {
+      "harness": "opencode",
+      "tool": "Batch",
+      "input": {},
+      "station": "shell"
+    },
+    {
+      "harness": "cline",
+      "tool": "Read",
+      "input": {
+        "path": "src/a.ts"
+      },
+      "station": "files"
+    },
+    {
+      "harness": "cline",
+      "tool": "Bash",
+      "input": {
+        "command": "npm install",
+        "requires_approval": true
+      },
+      "station": "network"
+    },
+    {
+      "harness": "cline",
+      "tool": "AskUser",
+      "input": {
+        "question": "q"
+      },
+      "station": "you"
+    },
+    {
+      "harness": "cline",
+      "tool": "Browser",
+      "input": {
+        "action": "launch",
+        "url": "https://example.com"
+      },
+      "station": "browser"
+    },
+    {
+      "harness": "cline",
+      "tool": "McpTool",
+      "input": {
+        "server_name": "playwright",
+        "tool_name": "browser_click"
+      },
+      "station": "browser"
+    },
+    {
+      "harness": "cline",
+      "tool": "McpTool",
+      "input": {
+        "server_name": "github",
+        "tool_name": "get_issue"
+      },
+      "station": "network"
+    },
+    {
+      "harness": "cline",
+      "tool": "McpResource",
+      "input": {},
+      "station": "network"
+    },
+    {
+      "harness": "cline",
+      "tool": "NewTask",
+      "input": {},
+      "station": "agents"
+    },
+    {
+      "harness": "cline",
+      "tool": "Complete",
+      "input": {},
+      "station": "you"
+    },
+    {
+      "harness": "cline",
+      "tool": "PlanRespond",
+      "input": {},
+      "station": "you"
+    },
+    {
+      "harness": "cline",
+      "tool": "FocusChain",
+      "input": {},
+      "station": "model"
+    },
+    {
+      "harness": "cline",
+      "tool": "NewRule",
+      "input": {},
+      "station": "skills"
+    },
+    {
+      "harness": "opencode",
+      "tool": "webfetch",
+      "input": {},
+      "station": "network"
+    },
+    {
+      "harness": "opencode",
+      "tool": "websearch",
+      "input": {},
+      "station": "network"
+    },
+    {
+      "harness": "opencode",
+      "tool": "list",
+      "input": {},
+      "station": "files"
+    },
+    {
+      "harness": "opencode",
+      "tool": "patch",
+      "input": {},
+      "station": "files"
+    },
+    {
+      "harness": "opencode",
+      "tool": "multiedit",
+      "input": {},
+      "station": "files"
+    },
+    {
+      "harness": "opencode",
+      "tool": "question",
+      "input": {},
+      "station": "you"
+    },
+    {
+      "harness": "cline",
+      "tool": "Subagents",
+      "input": {},
+      "station": "agents"
+    },
+    {
+      "harness": "cline",
+      "tool": "McpDocs",
+      "input": {},
+      "station": "skills"
+    },
+    {
+      "harness": "claude-code",
+      "tool": "mcp__chrome-devtools__click",
+      "input": {},
+      "station": "browser"
+    },
+    {
+      "harness": "claude-code",
+      "tool": "mcp__playwright-mcp__navigate",
+      "input": {},
+      "station": "browser"
+    },
+    {
+      "harness": "none",
+      "tool": "constructor",
+      "input": {},
+      "station": "shell"
+    },
+    {
+      "harness": "none",
+      "tool": "toString",
+      "input": {},
+      "station": "shell"
+    },
+    {
+      "harness": "none",
+      "tool": "__proto__",
+      "input": {},
+      "station": "shell"
+    },
+    {
+      "harness": "codex",
+      "tool": "shell",
+      "input": {
+        "command": [
+          "bash",
+          "-o",
+          "pipefail",
+          "-c",
+          "curl -s https://x"
+        ]
+      },
+      "station": "network"
+    },
+    {
+      "harness": "none",
+      "tool": "Read",
+      "station": "files"
+    },
+    {
+      "harness": "none",
+      "tool": "Bash",
+      "station": "shell"
+    }
   ],
   "lines": [
-    { "line": "grep -E \"a|curl|b\" src/x.ts", "station": "files", "why": "a | inside quotes is not a pipe" },
-    { "line": "echo $(curl -s https://x)", "station": "network", "why": "inside $(…)" },
-    { "line": "echo `wget -q https://x`", "station": "network", "why": "inside backticks" },
-    { "line": "x=\"$(curl -s https://x)\"", "station": "network", "why": "inside $(…) inside double quotes" },
-    { "line": "diff <(curl -s https://a) b.txt", "station": "network", "why": "process substitution" },
-    { "line": "cd /repo && git -C sub push origin main", "station": "network", "why": "git subcommand after -C <dir>" },
-    { "line": "git -C /repo diff --stat", "station": "shell", "why": "a local git subcommand" },
-    { "line": "pnpm --filter web add zod", "station": "network", "why": "pnpm subcommand after --filter <pkg>" },
-    { "line": "uv pip install requests", "station": "network", "why": "a two-word subcommand" },
-    { "line": "uv run pytest", "station": "shell" },
-    { "line": "docker compose pull", "station": "network" },
-    { "line": "docker exec web ls /app", "station": "shell" },
-    { "line": "rsync -a src/ /backup/src/", "station": "files", "why": "a local copy" },
-    { "line": "rsync -avz -e ssh dist/ me@box.local:/srv/app/", "station": "network", "why": "a host:path argument" },
-    { "line": "scp a.txt box:/tmp/", "station": "network" },
-    { "line": "cp C:/x.txt D:/y.txt", "station": "files", "why": "a Windows drive is not a host" },
-    { "line": "LANG=C sort -u a.txt > b.txt", "station": "files", "why": "a leading assignment and a redirection target" },
-    { "line": "sudo -u web cat /etc/hosts", "station": "files", "why": "a wrapper with a value flag" },
-    { "line": "timeout 30 curl -s https://x", "station": "network", "why": "timeout's duration" },
-    { "line": "find . -name '*.ts' | xargs -I {} grep -l foo {}", "station": "files", "why": "xargs runs grep" },
-    { "line": "bash -c 'curl -s https://x | jq .'", "station": "network", "why": "bash -c is the line inside it" },
-    { "line": "sh -c \"ls -la && wc -l a\"", "station": "files" },
-    { "line": "python3 - <<'EOF'\nimport json\nprint(json.dumps({'a': \"don't curl\"}))\nEOF", "station": "shell", "why": "a heredoc body is data" },
-    { "line": "git commit -m \"$(cat <<'EOF'\nFix it: don't (ever) break\nEOF\n)\"", "station": "shell", "why": "a heredoc inside $(…) with apostrophes and parentheses" },
-    { "line": "cat <<EOF > out.txt\ncurl https://x\nEOF\nwc -l out.txt", "station": "files", "why": "the heredoc is data, the commands after it still count" },
-    { "line": "for f in *.ts; do wc -l \"$f\"; done", "station": "files", "why": "for/do/done are not commands" },
-    { "line": "for rt in docker podman; do RT=$rt bash t.sh; done", "station": "shell", "why": "keyword then assignment" },
-    { "line": "if [[ -n \"$x\" && -f a ]]; then cat a; fi", "station": "files", "why": "&& inside [[ ]] is the test's" },
-    { "line": "H=(--rm --cap-drop ALL); docker run \"${H[@]}\" img", "station": "shell", "why": "an array assignment is one word" },
-    { "line": "echo hi && cd /tmp && pwd", "station": "shell", "why": "only neutral commands" },
-    { "line": "cat a.txt 2>&1 | head -5 # curl is only a comment", "station": "files", "why": "a comment" },
-    { "line": "ls \\\n  -la /tmp", "station": "files", "why": "a line continuation" },
-    { "line": "/usr/bin/curl -s https://x", "station": "network", "why": "a command named by its path" },
-    { "line": "\"C:\\Program Files\\Git\\cmd\\git.EXE\" push", "station": "network", "why": "a quoted Windows program path" },
-    { "line": "npx vitest run", "station": "shell" },
-    { "line": "npx -y create-vite app", "station": "network" },
-    { "line": "openssl s_client -connect x:443", "station": "network" },
-    { "line": "openssl rand -hex 16", "station": "shell" },
-    { "line": "", "station": "shell" }
+    {
+      "line": "grep -E \"a|curl|b\" src/x.ts",
+      "station": "files",
+      "why": "a | inside quotes is not a pipe"
+    },
+    {
+      "line": "echo $(curl -s https://x)",
+      "station": "network",
+      "why": "inside $(…)"
+    },
+    {
+      "line": "echo `wget -q https://x`",
+      "station": "network",
+      "why": "inside backticks"
+    },
+    {
+      "line": "x=\"$(curl -s https://x)\"",
+      "station": "network",
+      "why": "inside $(…) inside double quotes"
+    },
+    {
+      "line": "diff <(curl -s https://a) b.txt",
+      "station": "network",
+      "why": "process substitution"
+    },
+    {
+      "line": "cd /repo && git -C sub push origin main",
+      "station": "network",
+      "why": "git subcommand after -C <dir>"
+    },
+    {
+      "line": "git -C /repo diff --stat",
+      "station": "shell",
+      "why": "a local git subcommand"
+    },
+    {
+      "line": "pnpm --filter web add zod",
+      "station": "network",
+      "why": "pnpm subcommand after --filter <pkg>"
+    },
+    {
+      "line": "uv pip install requests",
+      "station": "network",
+      "why": "a two-word subcommand"
+    },
+    {
+      "line": "uv run pytest",
+      "station": "shell"
+    },
+    {
+      "line": "docker compose pull",
+      "station": "network"
+    },
+    {
+      "line": "docker exec web ls /app",
+      "station": "shell"
+    },
+    {
+      "line": "rsync -a src/ /backup/src/",
+      "station": "files",
+      "why": "a local copy"
+    },
+    {
+      "line": "rsync -avz -e ssh dist/ me@box.local:/srv/app/",
+      "station": "network",
+      "why": "a host:path argument"
+    },
+    {
+      "line": "scp a.txt box:/tmp/",
+      "station": "network"
+    },
+    {
+      "line": "cp C:/x.txt D:/y.txt",
+      "station": "files",
+      "why": "a Windows drive is not a host"
+    },
+    {
+      "line": "LANG=C sort -u a.txt > b.txt",
+      "station": "files",
+      "why": "a leading assignment and a redirection target"
+    },
+    {
+      "line": "sudo -u web cat /etc/hosts",
+      "station": "files",
+      "why": "a wrapper with a value flag"
+    },
+    {
+      "line": "timeout 30 curl -s https://x",
+      "station": "network",
+      "why": "timeout's duration"
+    },
+    {
+      "line": "find . -name '*.ts' | xargs -I {} grep -l foo {}",
+      "station": "files",
+      "why": "xargs runs grep"
+    },
+    {
+      "line": "bash -c 'curl -s https://x | jq .'",
+      "station": "network",
+      "why": "bash -c is the line inside it"
+    },
+    {
+      "line": "sh -c \"ls -la && wc -l a\"",
+      "station": "files"
+    },
+    {
+      "line": "python3 - <<'EOF'\nimport json\nprint(json.dumps({'a': \"don't curl\"}))\nEOF",
+      "station": "shell",
+      "why": "a heredoc body is data"
+    },
+    {
+      "line": "git commit -m \"$(cat <<'EOF'\nFix it: don't (ever) break\nEOF\n)\"",
+      "station": "shell",
+      "why": "a heredoc inside $(…) with apostrophes and parentheses"
+    },
+    {
+      "line": "cat <<EOF > out.txt\ncurl https://x\nEOF\nwc -l out.txt",
+      "station": "files",
+      "why": "the heredoc is data, the commands after it still count"
+    },
+    {
+      "line": "for f in *.ts; do wc -l \"$f\"; done",
+      "station": "files",
+      "why": "for/do/done are not commands"
+    },
+    {
+      "line": "for rt in docker podman; do RT=$rt bash t.sh; done",
+      "station": "shell",
+      "why": "keyword then assignment"
+    },
+    {
+      "line": "if [[ -n \"$x\" && -f a ]]; then cat a; fi",
+      "station": "files",
+      "why": "&& inside [[ ]] is the test's"
+    },
+    {
+      "line": "H=(--rm --cap-drop ALL); docker run \"${H[@]}\" img",
+      "station": "shell",
+      "why": "an array assignment is one word"
+    },
+    {
+      "line": "echo hi && cd /tmp && pwd",
+      "station": "shell",
+      "why": "only neutral commands"
+    },
+    {
+      "line": "cat a.txt 2>&1 | head -5 # curl is only a comment",
+      "station": "files",
+      "why": "a comment"
+    },
+    {
+      "line": "ls \\\n  -la /tmp",
+      "station": "files",
+      "why": "a line continuation"
+    },
+    {
+      "line": "/usr/bin/curl -s https://x",
+      "station": "network",
+      "why": "a command named by its path"
+    },
+    {
+      "line": "\"C:\\Program Files\\Git\\cmd\\git.EXE\" push",
+      "station": "network",
+      "why": "a quoted Windows program path"
+    },
+    {
+      "line": "npx vitest run",
+      "station": "shell"
+    },
+    {
+      "line": "npx -y create-vite app",
+      "station": "network"
+    },
+    {
+      "line": "openssl s_client -connect x:443",
+      "station": "network"
+    },
+    {
+      "line": "openssl rand -hex 16",
+      "station": "shell"
+    },
+    {
+      "line": "toString -x",
+      "station": "shell",
+      "why": "a name on Object.prototype is no table entry"
+    },
+    {
+      "line": "constructor curl",
+      "station": "shell",
+      "why": "a name on Object.prototype is no wrapper"
+    },
+    {
+      "line": "cmd >\ncurl x",
+      "station": "network",
+      "why": "a redirection with no target swallows nothing"
+    },
+    {
+      "line": "/usr/bin/timeout 10 curl x",
+      "station": "network",
+      "why": "a path-qualified wrapper"
+    },
+    {
+      "line": "bash -o pipefail -c 'curl x'",
+      "station": "network",
+      "why": "a shell option with a value before -c"
+    },
+    {
+      "line": "x=$(( 1 + $(curl -s x | wc -l) ))",
+      "station": "network",
+      "why": "a substitution inside arithmetic"
+    },
+    {
+      "line": "docker compose -f a.yml pull",
+      "station": "network",
+      "why": "flags between a two-word subcommand"
+    },
+    {
+      "line": "uv pip --python 3.12 install x",
+      "station": "network",
+      "why": "a value flag between a two-word subcommand"
+    },
+    {
+      "line": "rsync -a rsync://host/mod/ dst/",
+      "station": "network",
+      "why": "rsync's own URL"
+    },
+    {
+      "line": "",
+      "station": "shell"
+    }
   ],
   "census": {
     "about": "The top command heads in a real layman.db (2026-11-12, 81,351 shell calls), each decided on purpose. Heads that are shell variables or functions a line defines are left out.",
-    "files": ["grep", "head", "sed -n 1,5p a", "tail", "cat", "ls", "wc", "find", "cut", "sort", "rm", "mkdir", "cp", "awk", "mktemp", "uniq", "tr", "chmod", "diff", "mv", "du", "jq", "basename", "base64", "file", "pdftotext", "dirname", "rmdir", "stat", "pdfinfo", "df", "touch", "strings", "tar", "shasum", "ln", "od", "unzip", "col", "cmp", "tee", "comm", "xattr", "xxd", "md5", "paste"],
-    "neutral": ["cd", "echo", "sleep", "export", "printf", "[", "set", "date", "which", "true", "seq", "command -v x", "read", "wait", "id", "pwd", "exit", "unset", "[[", ":", "test", "disown", "umask", "shift", "env", "jobs", "sw_vers"],
-    "network": ["git push", "git pull", "git fetch", "git clone", "uv sync", "uv pip install x", "docker pull x", "ssh host", "curl", "pnpm install", "pnpm add x", "gh pr view", "npx -y x", "npm install", "npm view x", "scp a h:b", "rsync -a a h:b", "brew install x", "pip install x", "pip3 install x", "dig x", "huggingface-cli download x", "nc -z h 1", "ping h", "hf download x", "pyenv install 3.12", "fnm install 22", "corepack prepare", "dns-sd -B _http._tcp", "openssl s_client -connect h:443", "esphome upload x.yaml"],
-    "shell": ["git diff", "git status", "git log", "git add .", "git commit -m x", "python3", "uv run x", "docker exec c ls", "docker run img", "docker compose up", "pnpm -r test", "pnpm build", "npx vitest", "npm run build", "bash x.sh", "podman ps", "node x.js", "sqlite3 db", "security find-generic-password", "pkill x", "xcodebuild", "adb -s x shell", "kill 1", "make build", "python", "ps aux", "pgrep x", "sh x.sh", "lsof -i", "OpenSCAD", "glove up", "ffmpeg -i a b", "perl -e x", "vitest", "convert a b", "eval x", "identify a", "pdftoppm a", "log show", "sips a", "pi -p x", "tsc", "ffprobe a", "source a", ". a", "restic snapshots", "tmutil status", "mkvinfo a", "uvx ruff", "monodis a", "sysctl -n x", "ssh-keygen -t ed25519", "dscacheutil -flushcache", "xcrun simctl list", "gs a", "tesseract a b", "diskutil list", "system_profiler x", "llama-server", "open a", "dotnet build", "vibe", "plutil a", "shellcheck a", "ifconfig", "ruff check", "ocrmypdf a b", "script a", "magick a b", "scutil --dns", "ipconfig getifaddr en0", "route get x", "openssl rand -hex 4", "./status.sh", "netobs-e2e.sh run"]
+    "files": [
+      "grep",
+      "head",
+      "sed -n 1,5p a",
+      "tail",
+      "cat",
+      "ls",
+      "wc",
+      "find",
+      "cut",
+      "sort",
+      "rm",
+      "mkdir",
+      "cp",
+      "awk",
+      "mktemp",
+      "uniq",
+      "tr",
+      "chmod",
+      "diff",
+      "mv",
+      "du",
+      "jq",
+      "basename",
+      "base64",
+      "file",
+      "pdftotext",
+      "dirname",
+      "rmdir",
+      "stat",
+      "pdfinfo",
+      "df",
+      "touch",
+      "strings",
+      "tar",
+      "shasum",
+      "ln",
+      "od",
+      "unzip",
+      "col",
+      "cmp",
+      "tee",
+      "comm",
+      "xattr",
+      "xxd",
+      "md5",
+      "paste"
+    ],
+    "neutral": [
+      "cd",
+      "echo",
+      "sleep",
+      "export",
+      "printf",
+      "[",
+      "set",
+      "date",
+      "which",
+      "true",
+      "seq",
+      "command -v x",
+      "read",
+      "wait",
+      "id",
+      "pwd",
+      "exit",
+      "unset",
+      "[[",
+      ":",
+      "test",
+      "disown",
+      "umask",
+      "shift",
+      "env",
+      "jobs",
+      "sw_vers"
+    ],
+    "network": [
+      "git push",
+      "git pull",
+      "git fetch",
+      "git clone",
+      "uv sync",
+      "uv pip install x",
+      "docker pull x",
+      "ssh host",
+      "curl",
+      "pnpm install",
+      "pnpm add x",
+      "gh pr view",
+      "npx -y x",
+      "npm install",
+      "npm view x",
+      "scp a h:b",
+      "rsync -a a h:b",
+      "brew install x",
+      "pip install x",
+      "pip3 install x",
+      "dig x",
+      "huggingface-cli download x",
+      "nc -z h 1",
+      "ping h",
+      "hf download x",
+      "pyenv install 3.12",
+      "fnm install 22",
+      "corepack prepare",
+      "dns-sd -B _http._tcp",
+      "openssl s_client -connect h:443",
+      "esphome upload x.yaml"
+    ],
+    "shell": [
+      "git diff",
+      "git status",
+      "git log",
+      "git add .",
+      "git commit -m x",
+      "python3",
+      "uv run x",
+      "docker exec c ls",
+      "docker run img",
+      "docker compose up",
+      "pnpm -r test",
+      "pnpm build",
+      "npx vitest",
+      "npm run build",
+      "bash x.sh",
+      "podman ps",
+      "node x.js",
+      "sqlite3 db",
+      "security find-generic-password",
+      "pkill x",
+      "xcodebuild",
+      "adb -s x shell",
+      "kill 1",
+      "make build",
+      "python",
+      "ps aux",
+      "pgrep x",
+      "sh x.sh",
+      "lsof -i",
+      "OpenSCAD",
+      "glove up",
+      "ffmpeg -i a b",
+      "perl -e x",
+      "vitest",
+      "convert a b",
+      "eval x",
+      "identify a",
+      "pdftoppm a",
+      "log show",
+      "sips a",
+      "pi -p x",
+      "tsc",
+      "ffprobe a",
+      "source a",
+      ". a",
+      "restic snapshots",
+      "tmutil status",
+      "mkvinfo a",
+      "uvx ruff",
+      "monodis a",
+      "sysctl -n x",
+      "ssh-keygen -t ed25519",
+      "dscacheutil -flushcache",
+      "xcrun simctl list",
+      "gs a",
+      "tesseract a b",
+      "diskutil list",
+      "system_profiler x",
+      "llama-server",
+      "open a",
+      "dotnet build",
+      "vibe",
+      "plutil a",
+      "shellcheck a",
+      "ifconfig",
+      "ruff check",
+      "ocrmypdf a b",
+      "script a",
+      "magick a b",
+      "scutil --dns",
+      "ipconfig getifaddr en0",
+      "route get x",
+      "openssl rand -hex 4",
+      "./status.sh",
+      "netobs-e2e.sh run"
+    ]
   }
 }
