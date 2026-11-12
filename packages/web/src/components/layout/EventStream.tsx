@@ -14,6 +14,7 @@ import { saveAndBookmarkSession } from '../../lib/bookmarks-api.js';
 import { pairFor, hasLogDetail } from '../../lib/event-pairing.js';
 import { extractTurns } from '../../lib/turns.js';
 import { turnSpan } from '../../lib/turn-range.js';
+import { scrollBehavior } from '../../lib/theme-runtime.js';
 import { gloveLive, useGloveToken } from '../network/NetworkForTurn.js';
 import { sessionDisplayName } from '../../lib/session-state.js';
 import type { ClientMessage } from '../../lib/ws-protocol.js';
@@ -216,7 +217,7 @@ export function EventStream({ onSend, archived = false, archivedDate, turnRuler 
       const cards = scrollRef.current?.querySelectorAll('[data-event-card]');
       if (cards) {
         const target = Array.from(cards).find((c) => c.getAttribute('data-event-id') === pendingScrollEventId);
-        if (target) target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        if (target) target.scrollIntoView({ behavior: scrollBehavior(), block: 'center' });
       }
     });
   }, [pendingScrollEventId, events, sessionEvents, clearPendingScroll, setExpandedLogEventIds]);
@@ -274,7 +275,7 @@ export function EventStream({ onSend, archived = false, archivedDate, turnRuler 
     const containerRect = container.getBoundingClientRect();
     const cardRect = card.getBoundingClientRect();
     const delta = (cardRect.top - containerRect.top) - (container.clientHeight / 2 - cardRect.height / 2);
-    container.scrollTo({ top: container.scrollTop + delta, behavior: 'smooth' });
+    container.scrollTo({ top: container.scrollTop + delta, behavior: scrollBehavior() });
   }, []);
 
   const goToPrevMatch = useCallback(() => {
@@ -296,7 +297,7 @@ export function EventStream({ onSend, archived = false, archivedDate, turnRuler 
     setSelectedIndex(clamped);
     const cards = scrollRef.current?.querySelectorAll('[data-event-card]');
     if (cards && cards[clamped]) {
-      cards[clamped].scrollIntoView({ behavior: 'smooth', block: 'center' });
+      cards[clamped].scrollIntoView({ behavior: scrollBehavior(), block: 'center' });
     }
   }, [displayEvents]);
 

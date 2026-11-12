@@ -4,7 +4,7 @@ import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { HEX_COLOR } from './color.js';
 import {
-  appearanceCss, DEFAULT_APPEARANCE, FONT_MONO, FONT_SANS, KNOWN_PROBLEMS, normalizeAppearance,
+  appearanceCss, DEFAULT_APPEARANCE, followOsUpdate, FONT_MONO, FONT_SANS, KNOWN_PROBLEMS, normalizeAppearance,
   PRINT_THEME, resolveAppearance, themeById, themeProblems, THEMES, TOKENS,
 } from './themes.js';
 
@@ -151,7 +151,15 @@ describe('appearanceCss', () => {
     expect(screen).toContain('--warn: #E5A83B;');
     expect(PRINT_THEME).toBe('daylight');
     const daylight = themeById('daylight').tokens;
-    expect(print.split('\n')).toEqual(TOKENS.map((t) => `  --${t}: ${daylight[t]};`));
+    expect(print.split('\n')).toEqual([...TOKENS.map((t) => `  --${t}: ${daylight[t]};`), '  color-scheme: light;']);
+  });
+
+  it("sets each block's color-scheme from its theme, so native controls match", () => {
+    expect(blocks(appearanceCss(resolveAppearance(DEFAULT_APPEARANCE, DARK))).screen).toMatch(/ {2}color-scheme: dark;$/);
+    const paper = { ...DEFAULT_APPEARANCE, theme: 'paper' };
+    expect(blocks(appearanceCss(resolveAppearance(paper, DARK))).screen).toMatch(/ {2}color-scheme: light;$/);
+    const system = { ...DEFAULT_APPEARANCE, theme: 'system' };
+    expect(blocks(appearanceCss(resolveAppearance(system, LIGHT))).screen).toMatch(/ {2}color-scheme: light;$/);
   });
 
   it('prints the same whatever the screen shows: another theme or overrides do not reach print', () => {
@@ -160,5 +168,18 @@ describe('appearanceCss', () => {
     const { screen, print } = blocks(appearanceCss(resolveAppearance(custom, DARK)));
     expect(screen).toContain('--bg: #123456;');
     expect(print).toBe(plain);
+  });
+});
+
+describe('followOsUpdate', () => {
+  it('turning it on keeps the theme on screen, as its scheme\'s half of the pair', () => {
+    expect(followOsUpdate({ ...DEFAULT_APPEARANCE, theme: 'ember' }, themeById('ember'))).toEqual({ theme: 'system', darkTheme: 'ember' });
+    expect(followOsUpdate({ ...DEFAULT_APPEARANCE, theme: 'paper' }, themeById('paper'))).toEqual({ theme: 'system', lightTheme: 'paper' });
+  });
+
+  it('turning it off keeps whichever half is showing', () => {
+    const system = { ...DEFAULT_APPEARANCE, theme: 'system' as const, darkTheme: 'tide' as const };
+    expect(followOsUpdate(system, themeById('tide'))).toEqual({ theme: 'tide' });
+    expect(followOsUpdate(system, themeById('daylight'))).toEqual({ theme: 'daylight' });
   });
 });

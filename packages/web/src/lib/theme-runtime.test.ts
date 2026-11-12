@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { applyTheme, getThemeVersion, rememberAppearance, rememberedAppearance, subscribeTheme } from './theme-runtime.js';
+import { applyTheme, getThemeVersion, motionIsFull, rememberAppearance, rememberedAppearance, subscribeTheme } from './theme-runtime.js';
 import { DEFAULT_APPEARANCE } from './themes.js';
 
 /** Just enough of a Document for applyTheme (the web tests run in node, without a DOM). */
@@ -103,5 +103,17 @@ describe('the remembered appearance', () => {
     const corrupt = fakeStorage();
     corrupt.setItem('layman.appearance', '{not json');
     expect(rememberedAppearance(corrupt)).toBeNull();
+  });
+});
+
+describe('motionIsFull', () => {
+  it('follows the applied motion, so Reduced and Off stop code that animates itself', () => {
+    const doc = fakeDocument();
+    const d = doc as unknown as Document;
+    expect(motionIsFull(d)).toBe(true); // nothing applied yet
+    for (const [motion, full] of [['full', true], ['reduced', false], ['off', false]] as const) {
+      applyTheme({ ...DEFAULT_APPEARANCE, motion }, d);
+      expect(motionIsFull(d), motion).toBe(full);
+    }
   });
 });

@@ -523,7 +523,13 @@ Four rules that must not be relaxed casually:
   bad entry is therefore dropped whole, or it would wipe the others. Updates are never migrated: a
   stale tab sending its old config (`theme: 'dark'`) must not overwrite the choice. `useAppearance()` applies
   it on every `session:config` and remembers it in `localStorage`, which `main.tsx` applies at load
-  so a non-default theme does not flash Classic first.
+  so a non-default theme does not flash Classic first. Settings → Appearance (`AppearanceSection`) only sends config updates; it never
+  applies a theme itself, so every tab changes from the same `session:config`. Each stylesheet block
+  sets its theme's `color-scheme`. Motion is applied as `html[data-motion]` (`index.css`), already
+  capped by the OS's reduced-motion setting; code that animates itself (eased scrolling,
+  `scrollIntoView`) asks `motionIsFull()` / `scrollBehavior()` (`theme-runtime.ts`), never
+  `prefers-reduced-motion`, or Off would not stop it. `--density`, `--radius` and `--stroke` are
+  written but nothing reads them yet (inline px spacing), so Appearance does not offer density.
 
 - **Auto-activate**: The `autoActivateClients` config array (in `~/.local/share/layman/layman.json`) lists client agent types (e.g. `'claude-code'`) whose sessions should auto-activate without requiring `/layman`. When a hook event arrives from a matching agent, `handler.ts` calls `gate.activate()` before the gate check, so events flow immediately. The toggle is in Settings → Client Setup on each client's row. Off by default.
 

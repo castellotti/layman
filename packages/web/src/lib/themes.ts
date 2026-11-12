@@ -256,6 +256,15 @@ export function normalizeAppearance(input: unknown): Appearance {
   };
 }
 
+/**
+ * The update that turns "Follow the OS" on or off without changing what is on screen: turning it
+ * on makes the theme showing now its scheme's half of the pair, turning it off keeps it as the theme.
+ */
+export function followOsUpdate(a: Appearance, showing: Theme): Partial<Appearance> {
+  if (a.theme === 'system') return { theme: showing.id };
+  return { theme: 'system', ...(showing.scheme === 'dark' ? { darkTheme: showing.id } : { lightTheme: showing.id }) };
+}
+
 /** What the browser reports, passed in so resolution stays pure. */
 export interface Environment {
   prefersDark: boolean;
@@ -298,26 +307,28 @@ export function resolveAppearance(input: unknown, env: Environment): ResolvedApp
  */
 export const PRINT_THEME: ThemeId = 'daylight';
 
-/** Custom properties (names with the leading `--`) as a `:root` block scoped to one media type. */
-function mediaRoot(media: 'screen' | 'print', vars: Record<string, string>): string {
+/**
+ * Custom properties (names with the leading `--`) as a `:root` block scoped to one media type,
+ * ending with the `color-scheme` that makes native controls and scrollbars match the theme.
+ */
+function mediaRoot(media: 'screen' | 'print', vars: Record<string, string>, scheme: Scheme): string {
   const decls = Object.entries(vars).map(([k, v]) => `  ${k}: ${v};`).join('\n');
-  return `@media ${media} {\n:root {\n${decls}\n}\n}\n`;
+  return `@media ${media} {\n:root {\n${decls}\n  color-scheme: ${scheme};\n}\n}\n`;
 }
 
 /** Its colours as an `@media print` block, in `TOKENS` order. Constant, so built once. */
 const PRINT_CSS = (() => {
-  const { tokens } = themeById(PRINT_THEME);
-  return mediaRoot('print', Object.fromEntries(TOKENS.map((t) => [`--${t}`, tokens[t]])));
+  const { tokens, scheme } = themeById(PRINT_THEME);
+  return mediaRoot('print', Object.fromEntries(TOKENS.map((t) => [`--${t}`, tokens[t]])), scheme);
 })();
 
 /**
  * The stylesheet text for a resolved appearance: its variables for the screen, and the print
  * theme's colours for print. The screen block is media-scoped, never an inline style on `<html>`,
  * which would beat the print block. `index.css` keeps only Classic in `:root`, the fallback before
- * a theme is applied; print's palette comes from here.
- * `color-scheme` is not set yet: today native controls render light on the dark UI, and setting
- * it belongs with the Appearance settings that make a theme choice visible.
+ * a theme is applied; print's palette comes from here. Each block sets its theme's `color-scheme`,
+ * so a select or a scrollbar is dark under a dark theme and light under a light one.
  */
 export function appearanceCss(r: ResolvedAppearance): string {
-  return mediaRoot('screen', r.vars) + PRINT_CSS;
+  return mediaRoot('screen', r.vars, r.theme.scheme) + PRINT_CSS;
 }

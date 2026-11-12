@@ -4,6 +4,7 @@ import remarkGfm from 'remark-gfm';
 
 const REMARK_PLUGINS = [remarkGfm];
 import { useChangelog, HARNESS_DISPLAY_NAMES } from '../../hooks/useChangelog.js';
+import { scrollBehavior } from '../../lib/theme-runtime.js';
 
 const MARKDOWN_PROSE = `text-xs text-text leading-relaxed prose prose-invert prose-xs max-w-none
   [&_p]:my-1 [&_p]:leading-relaxed
@@ -40,7 +41,7 @@ function scrollToVersion(container: HTMLElement, version: string) {
   const headings = container.querySelectorAll('h2');
   for (const h of headings) {
     if (extractVersion(h.textContent ?? '') === version) {
-      h.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      h.scrollIntoView({ behavior: scrollBehavior(), block: 'start' });
       return true;
     }
   }

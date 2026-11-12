@@ -9,6 +9,7 @@ import { useNetStore } from '../../stores/netStore.js';
 import { useSessionStore } from '../../stores/sessionStore.js';
 import { directLegend, LEGEND_BY_KEY, TOPOLOGY_BAND_WIDTH_TIP, TOPOLOGY_LEGEND, formatBytes } from '../../lib/net-format.js';
 import type { NetSessionData } from '../../lib/net-state.js';
+import { motionIsFull } from '../../lib/theme-runtime.js';
 import { controlDisabledReason, siblingIds } from '../../lib/net-rules.js';
 import { toolLabel } from '../../lib/net-table.js';
 import {
@@ -172,7 +173,6 @@ const SORTS: Record<DestSort, { label: string; next: DestSort }> = {
 };
 const SORT_KEY = 'layman.topology.destSort';
 
-const reducedMotion = () => typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 
 /** A selected box's (or wall label's) fill. */
 const SELECTED_FILL = tokenColor('info', '10%');
@@ -223,13 +223,13 @@ function useColumnScroll(t: Topology, col: ScrollColumnId) {
 
   const stop = () => { if (frame.current !== null) cancelAnimationFrame(frame.current); frame.current = null; };
   /**
-   * Scroll to `to`: eased, or at once (`now`, or when the user prefers reduced motion). `live`
+   * Scroll to `to`: eased, or at once (`now`, or when motion is Reduced or Off). `live`
    * moves at once without committing, for a drag of the thumb; its end scrolls `now`.
    */
   const scrollTo = useCallback((to: number, how: 'ease' | 'now' | 'live' = 'ease') => {
     const { maxScroll } = tRef.current[col];
     target.current = Math.max(0, Math.min(maxScroll, to));
-    if (how !== 'ease' || reducedMotion()) {
+    if (how !== 'ease' || !motionIsFull()) {
       stop();
       pos.current = target.current;
       paint(pos.current);

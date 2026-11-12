@@ -156,6 +156,21 @@ body {
   }
 }
 
+/* The Appearance setting's motion, as applyTheme resolves it (the OS's reduced-motion setting
+   caps Full at Reduced). Reduced plays each animation once, at once, so nothing moves on its own
+   (spinners, pulses, the network's moving dashes) and entrances land in their final state;
+   transitions stay. Off also drops transitions. */
+html[data-motion='reduced'] *, html[data-motion='reduced'] *::before, html[data-motion='reduced'] *::after,
+html[data-motion='off'] *, html[data-motion='off'] *::before, html[data-motion='off'] *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+}
+html[data-motion='off'] *, html[data-motion='off'] *::before, html[data-motion='off'] *::after {
+  transition-duration: 0.01ms !important;
+  transition-delay: 0s !important;
+  scroll-behavior: auto !important;
+}
+
 /* ===== Print / Export to PDF ===== */
 /* The export is a record, not a screenshot: it prints in a light palette so it is legible on
    paper and does not spend a page of toner per page of transcript. The palette is swapped at the

@@ -105,6 +105,18 @@ export function rememberAppearance(appearance: unknown, storage?: Storage | null
   }
 }
 
+/**
+ * Whether motion is Full as applied (`data-motion`, which the OS's reduced-motion setting already
+ * caps). Code that animates itself (eased scrolling, `scrollIntoView`) asks this, since CSS
+ * cannot reach it. Full before any theme is applied.
+ */
+export function motionIsFull(doc: Document | undefined = typeof document === 'undefined' ? undefined : document): boolean {
+  return (doc?.documentElement.dataset.motion ?? 'full') === 'full';
+}
+
+/** `smooth` under Full motion, else `auto` (a jump): for `scrollIntoView` and `scrollTo`. */
+export const scrollBehavior = (): ScrollBehavior => (motionIsFull() ? 'smooth' : 'auto');
+
 /** The current value of a CSS variable, e.g. `readToken('warn')`, for code that cannot use `var()`. */
 export function readToken(token: string, doc: Document = document): string {
   return getComputedStyle(doc.documentElement).getPropertyValue(`--${token}`).trim();
