@@ -1720,6 +1720,39 @@
     {
       "url": "",
       "host": ""
+    },
+    {
+      "url": "https://user:p@ss/word@host/x",
+      "host": "https",
+      "why": "a password holding @ and /: read two ways"
+    },
+    {
+      "url": "https://us/er@host",
+      "host": "us",
+      "why": "a / before the only @: us is the host, er@host its path"
+    },
+    {
+      "url": "https://real.com\\@shown.com/",
+      "host": "real.com",
+      "why": "a browser reads \\ as /"
+    },
+    {
+      "url": "secrettoken",
+      "host": "",
+      "why": "a bare word without a scheme is no host"
+    },
+    {
+      "url": "sk-ant-api03-abcdef",
+      "host": ""
+    },
+    {
+      "url": "localhost:8080/x",
+      "host": "localhost:8080",
+      "why": "a port makes it a host"
+    },
+    {
+      "url": "about:blank",
+      "host": ""
     }
   ],
   "labels": {
@@ -2005,6 +2038,113 @@
         "tool": "Read",
         "input": {},
         "label": "Read"
+      },
+      {
+        "tool": "PowerShell",
+        "input": {
+          "command": "$env:API_KEY=\"sk-abc123\"; python x.py"
+        },
+        "label": "python",
+        "why": "an assignment is no name"
+      },
+      {
+        "tool": "PowerShell",
+        "input": {
+          "command": "$env:API_KEY = \"sk-abc123\"; python x.py"
+        },
+        "label": "python"
+      },
+      {
+        "tool": "Bash",
+        "input": {
+          "command": "${SECRET:-hunter2} run"
+        },
+        "label": "shell",
+        "why": "an expansion is no name"
+      },
+      {
+        "tool": "Bash",
+        "input": {
+          "command": "`echo secret`"
+        },
+        "label": "echo",
+        "why": "the command inside, by name"
+      },
+      {
+        "tool": "Bash",
+        "input": {
+          "command": "'echo hunter2' x"
+        },
+        "label": "shell",
+        "why": "quoted words are no name"
+      },
+      {
+        "tool": "Bash",
+        "input": {
+          "command": "\"my secret\""
+        },
+        "label": "shell"
+      },
+      {
+        "tool": "Bash",
+        "input": {
+          "command": "a\\ secret\\ word arg"
+        },
+        "label": "shell"
+      },
+      {
+        "tool": "Bash",
+        "input": {
+          "command": "https://evil/x?token=abc"
+        },
+        "label": "shell",
+        "why": "a URL is no name"
+      },
+      {
+        "tool": "WebFetch",
+        "input": {
+          "url": "secrettoken"
+        },
+        "label": "WebFetch",
+        "why": "no host: the tool's name"
+      },
+      {
+        "tool": "mcp__filesystem__search_files",
+        "input": {
+          "pattern": "secret"
+        },
+        "label": "filesystem: search files",
+        "why": "a pattern is never shown"
+      },
+      {
+        "tool": "LS",
+        "input": {
+          "pattern": "password=hunter2"
+        },
+        "label": "LS"
+      },
+      {
+        "tool": "mcp__playwright__browser_navigate",
+        "input": {
+          "url": "about:blank"
+        },
+        "label": "navigate"
+      },
+      {
+        "tool": "Bash",
+        "input": {
+          "description": "a b؜c​d﻿e"
+        },
+        "label": "a b cde",
+        "why": "line separators and hidden marks"
+      },
+      {
+        "tool": "Bash",
+        "input": {
+          "description": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx😀yz"
+        },
+        "label": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx😀…",
+        "why": "cut by code point, an emoji kept whole"
       }
     ]
   }

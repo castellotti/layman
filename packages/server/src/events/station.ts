@@ -710,15 +710,21 @@ const PATH_KEYS = ['file_path', 'path', 'filePath', 'filepath', 'notebook_path']
  * holds the patch text under `input` or `patch`).
  */
 function whereOf(input: Record<string, unknown>): string {
+  const pattern = str(input.pattern);
+  return [...filePaths(input), ...(pattern !== '' ? [pattern] : [])].join('\n');
+}
+
+/** The paths a Files call names: its path argument and a patch's file headers. Never a search pattern. */
+function filePaths(input: Record<string, unknown>): string[] {
   const parts: string[] = [];
-  for (const key of [...PATH_KEYS, 'pattern'] as const) {
+  for (const key of PATH_KEYS) {
     const v = str(input[key]);
     if (v !== '') parts.push(v);
   }
   for (const key of ['input', 'patch'] as const) {
     for (const m of str(input[key]).matchAll(/^\*\*\* (?:Add|Update|Delete) File: (.+)$/gm)) parts.push(m[1]);
   }
-  return parts.join('\n');
+  return parts;
 }
 
 /** The MCP server a tool belongs to, in any harness's naming, if it is one the person called memory. */
@@ -819,10 +825,14 @@ export function isPushedMemory(type: string): boolean {
  */
 export function cleanLabel(label: string, max = 120): string {
   const text = label
-    .replace(/[\u0000-\u001f\u007f-\u009f\u200e\u200f\u202a-\u202e\u2066-\u2069]+/g, ' ')
+    .replace(/[\u0000-\u001f\u007f-\u009f\u061c\u200e\u200f\u2028\u2029\u202a-\u202e\u2066-\u2069]+/g, ' ')
+    // Invisible characters that hide or split what is read (soft hyphen, zero-width space, BOM).
+    .replace(/[\u00ad\u200b\u200c\u2060\ufeff]/g, '')
     .replace(/ {2,}/g, ' ')
     .trim();
-  return text.length > max ? `${text.slice(0, max - 1)}…` : text;
+  // Cut by code point, so a character outside the BMP (an emoji) is never split in half.
+  const chars = Array.from(text);
+  return chars.length > max ? `${chars.slice(0, max - 1).join('')}…` : text;
 }
 
 /** A host and an optional port: letters, digits, dots and dashes, or a bracketed IPv6 address. */
@@ -838,18 +848,24 @@ const HOST_PORT = /^(?:[\p{L}\p{N}.-]+|\[[0-9A-Fa-f:.]+(?:%[\w.-]+)?\])(?::\d{1,
 export function hostOf(url: string): string {
   const m = /^([a-z][a-z0-9+.-]*):\/\/(.*)$/is.exec(url.trim());
   const scheme = m ? m[1].toLowerCase() : '';
-  const rest = m ? m[2] : url.trim();
+  // A browser reads `\` as `/` in an address: `https://real.com\@shown.com` goes to real.com.
+  const rest = (m ? m[2] : url.trim()).replace(/\\/g, '/');
   const end = rest.search(/[/?#]/);
   const authority = end < 0 ? rest : rest.slice(0, end);
   const after = end < 0 ? '' : rest.slice(end);
   let host = authority.slice(authority.lastIndexOf('@') + 1);
-  if (!authority.includes('@') && authority.includes(':') && !authority.startsWith('[') && after.includes('@')) {
+  // An `@` before the first `/` and another after it: the password holds `@` and `/`, or the second
+  // is in the path. Either way, which is the host cannot be told.
+  if (authority.includes('@') && after.includes('@')) host = '';
+  else if (!authority.includes('@') && authority.includes(':') && !authority.startsWith('[') && after.includes('@')) {
     // `name:word` and an `@` further on: a login whose password holds `/`, `?` or `#`, unless the word
     // is a number, when it may as well be a port. One `@` only: with more, any could be the real one.
     const ats = after.split('@').length - 1;
     host = /:\d+$/.test(authority) || ats > 1 ? '' : (after.slice(after.indexOf('@') + 1).split(/[/?#]/)[0] ?? '');
   }
-  return host !== '' && HOST_PORT.test(host) ? host.toLowerCase().slice(0, 64) : scheme;
+  // Without a scheme, a bare word (`secrettoken`) is no host: one needs a dot, a port or brackets.
+  const hostLike = m !== null || /[.:[]/.test(host);
+  return host !== '' && hostLike && HOST_PORT.test(host) ? host.toLowerCase().slice(0, 64) : scheme;
 }
 
 /** The last two parts of a path: a file and its folder, never the rest of where it lives. */
@@ -884,10 +900,18 @@ function shortId(input: Record<string, unknown>): string {
 }
 
 /** The first command in a shell line that does some work, by its name alone. */
+/**
+ * A command's name may be shown only if it looks like one: no spaces, quotes, `$`, `=`, `?` or
+ * backticks. The first word of a line is not always a name (`$env:KEY="…"`, `` `echo x` ``,
+ * `"quoted words"`, a URL), and anything else could be content.
+ */
+const NAME_SHAPED = /^[A-Za-z0-9_][\w.+-]{0,63}$/;
+
 function commandName(line: string, powershell: boolean): string {
-  const commands = shellCommands(line, powershell);
-  const doing = commands.find((w) => commandKind(w, powershell) !== 'neutral') ?? commands[0];
-  return doing ? nameOf(doing[0]) : '';
+  const named = shellCommands(line, powershell)
+    .map((w) => ({ name: nameOf(w[0]), kind: commandKind(w, powershell) }))
+    .filter((c) => NAME_SHAPED.test(c.name));
+  return (named.find((c) => c.kind !== 'neutral') ?? named[0])?.name ?? '';
 }
 
 /**
@@ -913,11 +937,14 @@ function rawLabel(toolName: string, input: Record<string, unknown>, setup: Stati
   }
   const url = str(input.url);
   const station = toolStation(toolName, input);
-  if (station === 'browser') return url !== '' && /^[a-z][a-z0-9+.-]*:/i.test(url) ? hostOf(url) : words(tool.replace(/^(?:playwright_)?browser_/, ''));
+  if (station === 'browser') {
+    const host = url !== '' && /^[a-z][a-z0-9+.-]*:/i.test(url) ? hostOf(url) : '';
+    return host || words(tool.replace(/^(?:playwright_)?browser_/, ''));
+  }
   if (url !== '') return hostOf(url);
   if (station === 'files') {
     if (toolName === 'Grep' || toolName === 'Glob') return toolName === 'Grep' ? 'search' : 'find files';
-    return lastTwo(whereOf(input).split('\n')[0] ?? '') || words(toolName);
+    return lastTwo(filePaths(input)[0] ?? '') || (server !== '' ? `${words(serverName(server))}: ${words(tool)}` : words(toolName));
   }
   if (station === 'agents') return str(input.description).trim() || str(input.agent).trim() || own(TOOL_WORDS, toolName) || words(toolName);
   if (station === 'skills') return str(input.skill) || str(input.name) || own(TOOL_WORDS, toolName) || 'skill';
