@@ -182,6 +182,9 @@ const APPEARANCE_FIELDS = {
   overrides: OverridesSchema,
 };
 
+/** A field that takes `fallback` when absent or invalid. */
+const orDefault = <T extends z.ZodTypeAny>(schema: T, fallback: z.infer<T>) => schema.catch(fallback).default(fallback);
+
 /**
  * How the dashboard looks. A stored field this version does not know (a cut theme, a setting
  * from a newer version, a hand-edited typo) falls back to its default instead of failing the
@@ -190,13 +193,13 @@ const APPEARANCE_FIELDS = {
  * is filtered first instead (`validAppearanceUpdate`), so a bad value keeps the current choice.
  */
 export const AppearanceSchema = z.object({
-  theme: APPEARANCE_FIELDS.theme.catch('classic').default('classic'),
-  darkTheme: APPEARANCE_FIELDS.darkTheme.catch('classic').default('classic'),
-  lightTheme: APPEARANCE_FIELDS.lightTheme.catch('daylight').default('daylight'),
-  font: APPEARANCE_FIELDS.font.catch('sans').default('sans'),
-  density: APPEARANCE_FIELDS.density.catch('compact').default('compact'),
-  motion: APPEARANCE_FIELDS.motion.catch('full').default('full'),
-  overrides: z.preprocess(cleanOverrides, APPEARANCE_FIELDS.overrides).catch({}).default({}),
+  theme: orDefault(APPEARANCE_FIELDS.theme, 'classic'),
+  darkTheme: orDefault(APPEARANCE_FIELDS.darkTheme, 'classic'),
+  lightTheme: orDefault(APPEARANCE_FIELDS.lightTheme, 'daylight'),
+  font: orDefault(APPEARANCE_FIELDS.font, 'sans'),
+  density: orDefault(APPEARANCE_FIELDS.density, 'compact'),
+  motion: orDefault(APPEARANCE_FIELDS.motion, 'full'),
+  overrides: orDefault(z.preprocess(cleanOverrides, APPEARANCE_FIELDS.overrides), {}),
 });
 
 /**

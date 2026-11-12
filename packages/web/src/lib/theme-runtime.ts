@@ -76,11 +76,12 @@ export function applyTheme(appearance: unknown, doc: Document = document): Resol
 const STORAGE_KEY = 'layman.appearance';
 
 /**
- * The page's localStorage, read inside the callers' `try`: with site data blocked or in a
+ * `storage`, else the page's localStorage, read inside the callers' `try`: with site data blocked or in a
  * sandboxed iframe, merely reading `window.localStorage` throws, and a default parameter would
  * throw before any `try` and leave the page blank.
  */
-const pageStorage = (): Storage | null => (typeof localStorage === 'undefined' ? null : localStorage);
+const storageOr = (storage: Storage | null | undefined): Storage | null =>
+  storage !== undefined ? storage : typeof localStorage === 'undefined' ? null : localStorage;
 
 /**
  * The appearance this browser last applied from the config, kept so the next page load starts in
@@ -89,7 +90,7 @@ const pageStorage = (): Storage | null => (typeof localStorage === 'undefined' ?
  */
 export function rememberedAppearance(storage?: Storage | null): unknown {
   try {
-    const raw = (storage === undefined ? pageStorage() : storage)?.getItem(STORAGE_KEY);
+    const raw = storageOr(storage)?.getItem(STORAGE_KEY);
     return raw ? JSON.parse(raw) : null;
   } catch {
     return null;
@@ -98,7 +99,7 @@ export function rememberedAppearance(storage?: Storage | null): unknown {
 
 export function rememberAppearance(appearance: unknown, storage?: Storage | null): void {
   try {
-    (storage === undefined ? pageStorage() : storage)?.setItem(STORAGE_KEY, JSON.stringify(appearance));
+    storageOr(storage)?.setItem(STORAGE_KEY, JSON.stringify(appearance));
   } catch {
     // Private mode or full storage: the next load shows the default until the config arrives.
   }
