@@ -465,9 +465,12 @@ Four rules that must not be relaxed casually:
   the block is the point of the toggle; losing the signal never was.
 
 - **Export to PDF is the browser's print, restyled** (`@media print` in `packages/web/src/index.css`).
-  It prints light by redefining the colour tokens (`--bg`, `--text`, `--code`, `--diff-*`, …), so a
-  component prints correctly only if its colours come from `var(--…)`. A hex literal stays dark on
-  white paper, which is how the export used to print as black bars. Two more traps: the stream's
+  It prints light by redefining every colour token with the print theme's values (`PRINT_THEME`,
+  Daylight, in `lib/themes.ts`), which `appearanceCss()` writes as an `@media print` block next to
+  the screen theme: there is no second palette in `index.css`, and neither the screen theme nor
+  the user's overrides reach the page. A component prints correctly only if its colours come from
+  `var(--…)`. A hex literal stays dark on white paper, which is how the export used to print as
+  black bars (`theme-literals.test.ts` now forbids them). Two more traps: the stream's
   ancestors are made `overflow: visible` so the whole transcript prints, which requires
   `min-width: 0` on them too, or one unbreakable line widens the page to 27,000 px and it is
   clipped; and Tailwind 3 drops opacity modifiers on arbitrary variables (`bg-[var(--ok)]/10` emits

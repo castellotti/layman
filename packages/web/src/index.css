@@ -163,41 +163,8 @@ body {
    dark on the page — which is how the export used to print as black bars — so stream components
    must use var(--…) colours. */
 @media print {
-  :root {
-    --bg:          #FFFFFF;
-    --bg-raised:   #FFFFFF;
-    --bg-card:     #F6F8FA;
-    --bg-selected: #EEF2F7;
-    --bg-pill:     #EEF1F5;
-    --text-on-fill: #FFFFFF;
-
-    --border:        #D0D7DE;
-    --border-subtle: #E4E8EE;
-    --border-strong: #B8C0CC;
-
-    --text:       #1F2328;
-    --text-body:  #2F363F;
-    --text-muted: #57606A;
-    --text-faint: #6E7781;
-
-    --accent:   #0969DA;
-    --accent-hot: #0550AE;
-    --ok:       #1A7F37;
-    --warn:     #9A6700;
-    --error:    #CF222E;
-    --info:     #0969DA;
-    --agent:    #6639BA;
-    --thinking: #8250DF;
-    --severity-major: #BC4C00;
-    --severity-minor: #9A6700;
-
-    --code:             #0550AE;
-    --bg-code:          #F6F8FA;
-    --diff-add-bg:      #DAFBE1;
-    --diff-add-text:    #116329;
-    --diff-remove-bg:   #FFEBE9;
-    --diff-remove-text: #82071E;
-  }
+  /* The print palette is the print theme's colours (PRINT_THEME in lib/themes.ts), written by
+     applyTheme() next to the screen theme, so there is one light palette, not a copy here. */
 
   /* Markdown is rendered with Tailwind Typography's prose-invert, whose colours are its own
      variables rather than ours; point them at the tokens so tables, rules, quotes and lists

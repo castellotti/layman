@@ -290,12 +290,23 @@ export function resolveAppearance(input: unknown, env: Environment): ResolvedApp
 }
 
 /**
- * The stylesheet text for a resolved appearance. Screen only: print keeps its own light palette
- * in `index.css`, which a screen theme must not override (an inline style on `<html>` would).
+ * The theme print and Export to PDF use, whatever is on screen: a white page, so a PDF prints the
+ * same for everyone. Only its colours are used; the user's overrides are not (they are a screen
+ * choice).
+ */
+export const PRINT_THEME: ThemeId = 'daylight';
+
+/**
+ * The stylesheet text for a resolved appearance: its variables for the screen, and the print
+ * theme's colours for print. The screen block is media-scoped, never an inline style on `<html>`,
+ * which would beat the print block. `index.css` keeps only Classic in `:root`, the fallback before
+ * a theme is applied; print's palette comes from here.
  * `color-scheme` is not set yet: today native controls render light on the dark UI, and setting
  * it belongs with the Appearance settings that make a theme choice visible.
  */
 export function appearanceCss(r: ResolvedAppearance): string {
-  const decls = Object.entries(r.vars).map(([k, v]) => `  ${k}: ${v};`).join('\n');
-  return `@media screen {\n:root {\n${decls}\n}\n}\n`;
+  const block = (vars: [string, string][]) => vars.map(([k, v]) => `  ${k}: ${v};`).join('\n');
+  const print = Object.entries(themeById(PRINT_THEME).tokens).map(([t, v]) => [`--${t}`, v] as [string, string]);
+  return `@media screen {\n:root {\n${block(Object.entries(r.vars))}\n}\n}\n`
+    + `@media print {\n:root {\n${block(print)}\n}\n}\n`;
 }
