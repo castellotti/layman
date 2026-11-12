@@ -495,8 +495,8 @@ Four rules that must not be relaxed casually:
   Tailwind's colours are generated from `TOKENS` (`lib/tokens.ts`, import-free because the
   Tailwind config loads it in Node): each is its `var(--…)`, and at an opacity a `color-mix`, so
   `bg-ok/10` and `bg-ok/[35%]` work, unlike `bg-[var(--ok)]/10`, which Tailwind 3 drops (a test
-  fails on that form). `font-sans`, `font-ui` and `font-mono` follow `--font-ui` / `--font-mono`. Mind the names: `bg-bg-code` is the code background, `bg-code`
-  paints with the code *text* colour.
+  fails on that form). `font-sans`, `font-ui` and `font-mono` follow `--font-ui` / `--font-mono`.
+  Mind the names: `bg-bg-code` is the code background, `bg-code` paints with the code *text* colour.
 
 - **Auto-activate**: The `autoActivateClients` config array (in `~/.local/share/layman/layman.json`) lists client agent types (e.g. `'claude-code'`) whose sessions should auto-activate without requiring `/layman`. When a hook event arrives from a matching agent, `handler.ts` calls `gate.activate()` before the gate check, so events flow immediately. The toggle is in Settings → Client Setup on each client's row. Off by default.
 

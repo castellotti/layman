@@ -3,7 +3,7 @@ import { readdirSync, readFileSync, statSync } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import config, { tokenColor } from '../../tailwind.config.js';
-import { TOKENS } from './themes.js';
+import { TOKENS } from './tokens.js';
 
 const SRC = join(dirname(fileURLToPath(import.meta.url)), '..');
 const WEB = join(SRC, '..');
