@@ -28,8 +28,9 @@ let current: { appearance: unknown; doc: Document } | null = null;
 let watching = false;
 
 function watchSystem(): void {
+  if (watching) return;
   const lists = [media(DARK), media(REDUCE)];
-  if (watching || !lists[0]) return;
+  if (!lists[0]) return;
   watching = true;
   const reapply = () => { if (current) applyTheme(current.appearance, current.doc); };
   for (const l of lists) l?.addEventListener('change', reapply);

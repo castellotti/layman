@@ -29,6 +29,7 @@ export const TOKENS = [
 ] as const;
 export type Token = (typeof TOKENS)[number];
 export type TokenMap = Record<Token, string>;
+const TOKEN_SET: ReadonlySet<string> = new Set(TOKENS);
 
 /** The grounds text is drawn on, and the text tokens that must read on each (WCAG AA). */
 export const CONTRAST_GROUNDS: readonly Token[] = ['bg', 'bg-raised', 'bg-card'];
@@ -213,7 +214,7 @@ export interface Appearance {
   density: Density;
   motion: Motion;
   /** Per-token colours on top of the chosen theme. Unknown tokens and non-hex values are dropped. */
-  overrides: Partial<Record<string, string>>;
+  overrides: Partial<TokenMap>;
 }
 
 export const DEFAULT_APPEARANCE: Appearance = {
@@ -247,10 +248,10 @@ const themeId = (v: unknown, fallback: ThemeId): ThemeId => (typeof v === 'strin
 export function normalizeAppearance(input: unknown): Appearance {
   const a = (input && typeof input === 'object' ? input : {}) as Record<string, unknown>;
   const d = DEFAULT_APPEARANCE;
-  const overrides: Record<string, string> = {};
+  const overrides: Partial<TokenMap> = {};
   if (a.overrides && typeof a.overrides === 'object') {
     for (const [k, v] of Object.entries(a.overrides as Record<string, unknown>)) {
-      if ((TOKENS as readonly string[]).includes(k) && typeof v === 'string' && HEX_COLOR.test(v)) overrides[k] = v;
+      if (TOKEN_SET.has(k) && typeof v === 'string' && HEX_COLOR.test(v)) overrides[k as Token] = v;
     }
   }
   return {
