@@ -86,7 +86,7 @@ export function AppearanceSection({
       />
       <SegmentRow
         label="Motion"
-        desc="Reduced stops anything that moves on its own (spinners, pulses, moving dashes); Off also drops transitions and smooth scrolling. When your system asks for reduced motion, Full acts as Reduced."
+        desc="Reduced stops anything that moves on its own (spinners, pulses, moving dashes) and smooth scrolling; Off also drops transitions. When your system asks for reduced motion, Full acts as Reduced."
         options={MOTION_OPTIONS}
         value={a.motion}
         onChange={(motion) => update({ motion })}
@@ -130,7 +130,8 @@ function ThemeCard({ theme, selected, showing, onPick }: { theme: Theme; selecte
         padding: '8px 10px', borderRadius: 6, fontFamily: 'inherit',
         background: c.bg, color: c.text,
         border: `1px solid ${c['border-strong']}`,
-        outline: selected ? '2px solid var(--accent)' : 'none', outlineOffset: 2,
+        // A ring, not an outline: an inline `outline: none` would hide the keyboard focus ring.
+        boxShadow: selected ? '0 0 0 2px var(--bg-raised), 0 0 0 4px var(--accent)' : undefined,
       }}
     >
       <span style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
