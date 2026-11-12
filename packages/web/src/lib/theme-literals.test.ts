@@ -67,11 +67,10 @@ describe('components follow the theme', () => {
     // `var(--…)` follows the theme by itself; a value read once does not. So a colour may be read
     // only in a component or hook (never in a lib helper a view could call without knowing), and
     // that file must put `useThemeVersion()`'s value in a dependency array, so it redraws.
-    const THEME_RUNTIME = new Set(['src/lib/theme-runtime.ts']);
     const reads = /\breadToken\b|getComputedStyle\(|getPropertyValue\(/;
     const readers = sources(SRC)
       .map((f) => ({ file: rel(f), text: readFileSync(f, 'utf8').replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, '') })) // code only, not comments
-      .filter(({ file, text }) => !THEME_RUNTIME.has(file) && reads.test(text));
+      .filter(({ file, text }) => file !== 'src/lib/theme-runtime.ts' && reads.test(text));
     expect(readers.map((r) => r.file)).toContain('src/components/logs/Minimap.tsx');
     for (const { file, text } of readers) {
       expect(file, 'reads a colour outside a component or hook').toMatch(/^src\/(?:components|hooks)\//);
