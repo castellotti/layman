@@ -566,7 +566,10 @@ export function commandKind(words: string[], powershell = false): CommandKind {
  * that is not neutral works on files; Shell otherwise, including a line of only neutral commands.
  */
 export function shellStation(line: string, powershell = false): 'network' | 'files' | 'shell' {
-  const kinds = shellKinds(line, powershell);
+  return kindsStation(shellKinds(line, powershell));
+}
+
+function kindsStation(kinds: CommandKind[]): 'network' | 'files' | 'shell' {
   if (kinds.includes('network')) return 'network';
   const real = kinds.filter((k) => k !== 'neutral');
   return real.length > 0 && real.every((k) => k === 'files') ? 'files' : 'shell';
@@ -580,8 +583,7 @@ function shellKinds(line: string, powershell: boolean): CommandKind[] {
  * Whether a shell line works on files and nothing else, neutral commands allowed: `echo x >> notes.md`
  * writes a file although it is, by station, Shell. Memory asks this, not the station.
  */
-function onlyFileWork(line: string, powershell: boolean): boolean {
-  const kinds = shellKinds(line, powershell);
+function onlyFileWork(kinds: CommandKind[]): boolean {
   return kinds.length > 0 && kinds.every((k) => k === 'files' || k === 'neutral');
 }
 
@@ -709,8 +711,10 @@ const PATH_KEYS = ['file_path', 'path', 'filePath', 'filepath', 'notebook_path']
  */
 function whereOf(input: Record<string, unknown>): string {
   const parts: string[] = [];
-  for (const key of PATH_KEYS) if (str(input[key]) !== '') parts.push(str(input[key]));
-  if (str(input.pattern) !== '') parts.push(str(input.pattern));
+  for (const key of [...PATH_KEYS, 'pattern'] as const) {
+    const v = str(input[key]);
+    if (v !== '') parts.push(v);
+  }
   for (const key of ['input', 'patch'] as const) {
     for (const m of str(input[key]).matchAll(/^\*\*\* (?:Add|Update|Delete) File: (.+)$/gm)) parts.push(m[1]);
   }
@@ -741,22 +745,22 @@ function isMemoryServer(toolName: string, input: Record<string, unknown>, setup:
 export function stationOf(toolName: string, toolInput?: Record<string, unknown>, setup: StationSetup = NO_SETUP): StationId {
   const input = toolInput ?? {};
   if (isMemoryServer(toolName, input, setup)) return 'memory';
-  const station = toolStation(toolName, input);
   const powershell = toolName === 'PowerShell';
   if (SHELL_TOOLS.has(toolName) || powershell) {
     // A line of file and neutral commands naming memory is Memory, even `echo x >> memory/a.md`,
     // which by itself is Shell.
     const line = commandLine(input);
-    return station !== 'network' && isMemoryPath(line, setup) && onlyFileWork(line, powershell) ? 'memory' : station;
+    const kinds = shellKinds(line, powershell);
+    return onlyFileWork(kinds) && isMemoryPath(line, setup) ? 'memory' : kindsStation(kinds);
   }
+  const station = toolStation(toolName, input);
   if (station !== 'files') return station;
   const where = whereOf(input);
   return where !== '' && isMemoryPath(where, setup) ? 'memory' : 'files';
 }
 
+/** The station of a tool call that is not a shell line, before Memory is considered. */
 function toolStation(toolName: string, input: Record<string, unknown>): StationId {
-  if (SHELL_TOOLS.has(toolName)) return shellStation(commandLine(input));
-  if (toolName === 'PowerShell') return shellStation(commandLine(input), true);
   const known = own(TOOL_STATIONS, toolName);
   if (known !== undefined) return known;
   // pi's own browser tools, and Mistral Vibe's MCP tools named `<server>_<tool>`.
