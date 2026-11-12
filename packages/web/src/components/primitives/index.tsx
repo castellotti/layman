@@ -3,6 +3,7 @@ import { useInlineEdit } from '../../hooks/useInlineEdit.js';
 import { useSessionStore, instanceUrlOf } from '../../stores/sessionStore.js';
 import { buildUrl } from '../../lib/layman-url.js';
 import type { LaymanRoute, RouteOptions } from '../../lib/layman-url.js';
+import { tokenColor } from '../../lib/tokens.js';
 
 // ─── DepthButton ────────────────────────────────────────────────────────────
 // Shared colored icon button for the two analysis depths (Investigation
@@ -35,8 +36,8 @@ interface DepthButtonProps {
 }
 
 const DEPTH_BUTTON_STYLES = {
-  quick:    { color: 'var(--ok)',   bg: 'color-mix(in srgb, var(--ok) 12%, transparent)', bgHover: 'color-mix(in srgb, var(--ok) 20%, transparent)', border: '1px solid color-mix(in srgb, var(--ok) 30%, transparent)',  label: 'Quick' },
-  detailed: { color: 'var(--info)', bg: 'color-mix(in srgb, var(--info) 12%, transparent)', bgHover: 'color-mix(in srgb, var(--info) 20%, transparent)',  border: '1px solid color-mix(in srgb, var(--info) 25%, transparent)', label: 'Detailed' },
+  quick:    { color: 'var(--ok)',   bg: tokenColor('ok', '12%'), bgHover: tokenColor('ok', '20%'), border: `1px solid ${tokenColor('ok', '30%')}`,  label: 'Quick' },
+  detailed: { color: 'var(--info)', bg: tokenColor('info', '12%'), bgHover: tokenColor('info', '20%'),  border: `1px solid ${tokenColor('info', '25%')}`, label: 'Detailed' },
 } as const;
 
 export function DepthButton({ depth, onClick, disabled, loading, loadingLabel = 'Working…' }: DepthButtonProps) {
@@ -114,13 +115,13 @@ export type StateChipVariant = 'permission' | 'running' | 'error' | 'idle' | 'en
 const STATE_CHIP_STYLES: Record<StateChipVariant, { bg: string; color: string; border?: string }> = {
   // A tint, not a fill, so the text takes the semantic colour (as live/paused do) —
   // --text-on-fill is for solid fills and was near-invisible here.
-  permission: { bg: 'color-mix(in srgb, var(--warn) 18%, transparent)', color: 'var(--warn)', border: 'none' },
-  running:    { bg: 'color-mix(in srgb, var(--ok) 18%, transparent)',   color: 'var(--ok)',   border: 'none' },
+  permission: { bg: tokenColor('warn', '18%'), color: 'var(--warn)', border: 'none' },
+  running:    { bg: tokenColor('ok', '18%'),   color: 'var(--ok)',   border: 'none' },
   error:      { bg: 'var(--error)',             color: 'var(--text-on-fill)',           border: 'none' },
   idle:       { bg: 'var(--border)',            color: 'var(--text-muted)', border: 'none' },
   ended:      { bg: 'var(--border)',            color: 'var(--text-muted)', border: 'none' },
-  live:       { bg: 'color-mix(in srgb, var(--ok) 15%, transparent)',   color: 'var(--ok)',   border: '1px solid color-mix(in srgb, var(--ok) 30%, transparent)' },
-  paused:     { bg: 'color-mix(in srgb, var(--warn) 15%, transparent)', color: 'var(--warn)', border: '1px solid color-mix(in srgb, var(--warn) 30%, transparent)' },
+  live:       { bg: tokenColor('ok', '15%'),   color: 'var(--ok)',   border: `1px solid ${tokenColor('ok', '30%')}` },
+  paused:     { bg: tokenColor('warn', '15%'), color: 'var(--warn)', border: `1px solid ${tokenColor('warn', '30%')}` },
   archived:   { bg: 'var(--bg-card)',           color: 'var(--text-muted)', border: '1px solid var(--border-strong)' },
 };
 
@@ -670,11 +671,11 @@ export function LiveChip({ state, buffered, archivedDate }: LiveChipProps) {
         display: 'inline-flex', alignItems: 'center', gap: 6,
         padding: '3px 9px', borderRadius: 5, fontSize: 11,
         fontFamily: 'var(--font-ui)', fontWeight: 500,
-        background: 'color-mix(in srgb, var(--ok) 12%, transparent)',
+        background: tokenColor('ok', '12%'),
         color: 'var(--ok)',
-        border: '1px solid color-mix(in srgb, var(--ok) 25%, transparent)',
+        border: `1px solid ${tokenColor('ok', '25%')}`,
       }}>
-        <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--ok)', boxShadow: '0 0 6px color-mix(in srgb, var(--ok) 80%, transparent)', display: 'inline-block' }} />
+        <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--ok)', boxShadow: `0 0 6px ${tokenColor('ok', '80%')}`, display: 'inline-block' }} />
         LIVE · following
       </span>
     );
@@ -685,9 +686,9 @@ export function LiveChip({ state, buffered, archivedDate }: LiveChipProps) {
         display: 'inline-flex', alignItems: 'center', gap: 6,
         padding: '3px 9px', borderRadius: 5, fontSize: 11,
         fontFamily: 'var(--font-ui)', fontWeight: 500,
-        background: 'color-mix(in srgb, var(--warn) 12%, transparent)',
+        background: tokenColor('warn', '12%'),
         color: 'var(--warn)',
-        border: '1px solid color-mix(in srgb, var(--warn) 25%, transparent)',
+        border: `1px solid ${tokenColor('warn', '25%')}`,
       }}>
         ⏸ PAUSED{buffered ? ` · ${buffered} buffered` : ''}
       </span>

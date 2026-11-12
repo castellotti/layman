@@ -18,6 +18,7 @@ import { REJECTED_TITLE, rejectedAuthor } from '../../lib/net-rules.js';
 import { ALARM, Chip, NetIcon, useStored, type NetIconName } from './netui.js';
 import { TipWrap, tipProps } from './NetTip.js';
 import { useNetStore } from '../../stores/netStore.js';
+import { tokenColor } from '../../lib/tokens.js';
 
 const bannerButton: React.CSSProperties = {
   display: 'inline-flex', alignItems: 'center', gap: 6, height: 26, padding: '0 10px', borderRadius: 6,
@@ -74,7 +75,7 @@ function RangeControl({ token, range, onRange, display, setDisplay }: {
         style={{
           display: 'flex', alignItems: 'center', justifyContent: 'center', width: 24, height: 24, borderRadius: 5, cursor: 'pointer',
           border: `1px solid ${lit ? 'var(--info)' : 'var(--border)'}`,
-          background: lit ? 'color-mix(in srgb, var(--info) 22%, transparent)' : 'transparent',
+          background: lit ? tokenColor('info', '22%') : 'transparent',
         }}>
         <NetIcon name="calendar" color={lit ? 'var(--info)' : 'var(--text-muted)'} strokeWidth={lit ? 1.8 : 1.4} />
       </button>
@@ -88,7 +89,7 @@ function RangeControl({ token, range, onRange, display, setDisplay }: {
               display: 'flex', alignItems: 'center', gap: 5, height: 24, padding: '0 8px', borderRadius: 5, cursor: 'pointer',
               fontSize: 10.5, fontFamily: range ? 'var(--font-mono)' : 'var(--font-ui)', whiteSpace: 'nowrap',
               color: range ? 'var(--text)' : 'var(--text-muted)', background: anchor ? 'var(--bg-selected)' : 'transparent',
-              border: `1px solid ${range ? 'color-mix(in srgb, var(--info) 55%, transparent)' : 'var(--border)'}`,
+              border: `1px solid ${range ? tokenColor('info', '55%') : 'var(--border)'}`,
             }}>
             {range ? <>{name && <span style={{ fontFamily: 'var(--font-ui)', fontWeight: 600 }}>{name} ·</span>}<RangeText range={range} /></> : 'All records'}
             <NetIcon name="chevron" size={10} color="var(--text-faint)" />
@@ -179,7 +180,7 @@ export function GateStrip({ sessions, notObservable, token, onPick, range, onRan
             <span key={c.key} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
               <Chip tone={c.tone} icon={c.icon} label={c.label} tip={c.tip} strong />
               <button type="button" disabled={data.rules.control.state !== 'ok'} onClick={() => useNetStore.getState().applyRules({ kind: 'restoreAll' })}
-                style={{ height: 20, padding: '0 8px', borderRadius: 10, fontSize: 10.5, cursor: 'pointer', fontFamily: 'var(--font-ui)', color: 'var(--net-tunnel)', background: 'color-mix(in srgb, var(--net-tunnel) 12%, transparent)', border: '1px solid color-mix(in srgb, var(--net-tunnel) 45%, transparent)' }}>
+                style={{ height: 20, padding: '0 8px', borderRadius: 10, fontSize: 10.5, cursor: 'pointer', fontFamily: 'var(--font-ui)', color: 'var(--net-tunnel)', background: tokenColor('net-tunnel', '12%'), border: `1px solid ${tokenColor('net-tunnel', '45%')}` }}>
                 Restore
               </button>
             </span>
@@ -228,7 +229,7 @@ export function RangeBanner({ range }: { range: NetRangeInfo }) {
     <div role="status" aria-label="Range coverage" style={{
       display: 'flex', alignItems: 'center', gap: 10, padding: '6px 12px', flexShrink: 0, fontFamily: 'var(--font-ui)',
       fontSize: 11.5, borderBottom: '1px solid var(--border)',
-      background: 'color-mix(in srgb, var(--info) 8%, transparent)', color: 'var(--text-body)',
+      background: tokenColor('info', '8%'), color: 'var(--text-body)',
     }}>
       <NetIcon name="calendar" color="var(--info)" />
       {notes && <span style={{ color: 'var(--text-faint)' }}>{notes}</span>}
@@ -290,7 +291,7 @@ export function RulesRejectedBanner({ data }: { data: NetSessionData }) {
         </TipWrap>
         <TipWrap tip={canRetry ? 'Write rules.json again, handed to the gate’s user' : control ?? 'The file on disk is invalid'} disabled={!canRetry}>
           <button type="button" disabled={!canRetry}
-            onClick={() => useNetStore.getState().applyRules({ kind: 'rewrite' })} style={{ ...bannerButton, color: ALARM.text, border: '1px solid color-mix(in srgb, var(--error) 60%, transparent)', background: 'transparent' }}>
+            onClick={() => useNetStore.getState().applyRules({ kind: 'rewrite' })} style={{ ...bannerButton, color: ALARM.text, border: `1px solid ${tokenColor('error', '60%')}`, background: 'transparent' }}>
             Try again
           </button>
         </TipWrap>

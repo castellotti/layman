@@ -11,6 +11,7 @@ import { offMap } from '../../lib/netobs-types.js';
 import { untunnelledFlows } from '../../lib/net-vpn.js';
 import { ALARM, NetIcon, type NetIconName } from './netui.js';
 import { WorldMap } from './WorldMap.js';
+import { tokenColor } from '../../lib/tokens.js';
 
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 const ROUTE_NAME: Record<string, string> = { vpn: 'the VPN', tor: 'Tor' };
@@ -23,7 +24,7 @@ function Kpi({ icon, iconColour, label, value, valueColour = 'var(--text)', sub,
   return (
     <div role={alert ? 'alert' : undefined} style={{
       flex: '1 1 0', minWidth: 0, padding: '10px 12px', borderRadius: 8,
-      background: alert ? 'color-mix(in srgb, var(--error) 10%, transparent)' : 'var(--bg-card)', border: `1px solid ${alert ? 'var(--error)' : 'var(--border)'}`,
+      background: alert ? tokenColor('error', '10%') : 'var(--bg-card)', border: `1px solid ${alert ? 'var(--error)' : 'var(--border)'}`,
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 10, letterSpacing: '0.08em', fontWeight: 600, color: alert ? ALARM.text : 'var(--text-muted)' }}>
         <NetIcon name={icon} size={13} color={iconColour} />{label}
@@ -86,10 +87,10 @@ export function MiniMap({ data }: { data: NetSessionData }) {
       onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setViewMode('map'); }}
       style={{ position: 'relative', width: '100%', height: '100%', minHeight: 150, cursor: 'pointer', overflow: 'hidden' }}>
       <WorldMap data={data} selected={netDest} compact />
-      <span style={{ position: 'absolute', top: 8, right: 8, fontSize: 10, color: 'var(--text-muted)', background: 'color-mix(in srgb, var(--bg) 80%, transparent)', border: '1px solid var(--border-strong)', borderRadius: 10, padding: '2px 8px' }}>
+      <span style={{ position: 'absolute', top: 8, right: 8, fontSize: 10, color: 'var(--text-muted)', background: tokenColor('bg', '80%'), border: '1px solid var(--border-strong)', borderRadius: 10, padding: '2px 8px' }}>
         {placed} mapped · Unknown location · {dests.length - placed}
       </span>
-      <span style={{ position: 'absolute', left: 8, bottom: 8, display: 'flex', alignItems: 'center', gap: 5, fontSize: 10.5, color: 'var(--text-body)', background: 'color-mix(in srgb, var(--bg) 80%, transparent)', border: '1px solid var(--border-strong)', borderRadius: 10, padding: '2px 8px' }}>
+      <span style={{ position: 'absolute', left: 8, bottom: 8, display: 'flex', alignItems: 'center', gap: 5, fontSize: 10.5, color: 'var(--text-body)', background: tokenColor('bg', '80%'), border: '1px solid var(--border-strong)', borderRadius: 10, padding: '2px 8px' }}>
         <NetIcon name="tunnel" color="var(--net-tunnel)" /> sandbox → {origin}
       </span>
     </div>

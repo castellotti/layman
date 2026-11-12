@@ -27,6 +27,7 @@ import { isLlmDestination, tokenTiles } from '../../lib/net-tokens.js';
 import type { NetRange } from '../../lib/netobs-types.js';
 import { useNetTokens } from '../../hooks/useNetTrace.js';
 import { tipProps } from './NetTip.js';
+import { tokenColor } from '../../lib/tokens.js';
 
 const BAND: Record<BandKind, { colour: string; opacity: number }> = {
   tunnel: { colour: 'var(--net-tunnel)', opacity: 0.55 },
@@ -174,7 +175,7 @@ const SORT_KEY = 'layman.topology.destSort';
 const reducedMotion = () => typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 
 /** A selected box's (or wall label's) fill. */
-const SELECTED_FILL = 'color-mix(in srgb, var(--info) 10%, transparent)';
+const SELECTED_FILL = tokenColor('info', '10%');
 
 /** A policy-wall label's hit area: wide enough for `your rule “…” · 12`. */
 const WALL_LABEL_W = 180;
@@ -534,7 +535,7 @@ function Explanation({ explain }: { explain: BoxExplanation | null }) {
   return (
     <div role="note" data-box-explanation="" style={{
       display: 'flex', gap: 8, alignItems: 'flex-start', padding: '8px 8px 8px 10px', margin: '14px 0 0', borderRadius: 6,
-      border: '1px solid color-mix(in srgb, var(--info) 40%, transparent)', background: 'color-mix(in srgb, var(--info) 7%, transparent)',
+      border: `1px solid ${tokenColor('info', '40%')}`, background: tokenColor('info', '7%'),
     }}>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--text)' }}>{explain.heading}</div>

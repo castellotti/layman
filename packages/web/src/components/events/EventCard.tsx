@@ -497,8 +497,8 @@ function DriftApprovalBar({
           onClick={handleDismiss}
           className="flex-1 px-3 py-2 text-xs font-semibold rounded-md transition-colors border"
           style={{
-            background: 'color-mix(in srgb, var(--warn) 15%, transparent)',
-            borderColor: 'color-mix(in srgb, var(--warn) 30%, transparent)',
+            background: tokenColor('warn', '15%'),
+            borderColor: tokenColor('warn', '30%'),
             color: 'var(--warn)',
           }}
         >

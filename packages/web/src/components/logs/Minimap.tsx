@@ -16,9 +16,10 @@ const resolved = new Map<Token, string>();
 let resolvedFor = -1;
 
 function resolveToken(token: Token): string {
-  if (resolvedFor !== getThemeVersion()) {
+  const version = getThemeVersion();
+  if (resolvedFor !== version) {
     resolved.clear();
-    resolvedFor = getThemeVersion();
+    resolvedFor = version;
   }
   const cached = resolved.get(token);
   if (cached) return cached;

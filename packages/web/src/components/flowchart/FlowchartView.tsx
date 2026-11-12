@@ -17,6 +17,7 @@ import { useSessionStore } from '../../stores/sessionStore.js';
 import type { TimelineEvent } from '../../lib/types.js';
 import { buildFlowchartGraph, type FlowchartNodeData } from '../../lib/flowchart-graph.js';
 import { FlowchartNode } from './FlowchartNodes.js';
+import { tokenColor } from '../../lib/tokens.js';
 
 const nodeTypes: NodeTypes = { flowchartNode: FlowchartNode };
 const FOLLOW_MIN_ZOOM = 0.75;
@@ -171,7 +172,7 @@ function FlowchartInner({ externalEvents, onSelectEvent, externalSelectedEventId
             zoomable
             nodeColor={(node) => (node.data as FlowchartNodeData).borderColor}
             nodeStrokeWidth={0}
-            maskColor="color-mix(in srgb, var(--bg) 75%, transparent)"
+            maskColor={tokenColor('bg', '75%')}
           />
         </ReactFlow>
       </div>
@@ -211,9 +212,9 @@ function FlowchartToolbar({
           display: 'inline-flex', alignItems: 'center', gap: 6,
           padding: '4px 10px', fontSize: 11, fontFamily: 'var(--font-ui)', fontWeight: 500,
           borderRadius: 5, cursor: 'pointer', whiteSpace: 'nowrap',
-          background: followLatest ? 'color-mix(in srgb, var(--ok) 12%, transparent)' : 'transparent',
+          background: followLatest ? tokenColor('ok', '12%') : 'transparent',
           color: followLatest ? 'var(--ok)' : 'var(--text-muted)',
-          border: followLatest ? '1px solid color-mix(in srgb, var(--ok) 30%, transparent)' : '1px solid var(--border-strong)',
+          border: followLatest ? `1px solid ${tokenColor('ok', '30%')}` : '1px solid var(--border-strong)',
         }}
       >
         <span style={{ width: 6, height: 6, borderRadius: '50%', background: followLatest ? 'var(--ok)' : 'var(--text-muted)' }} />

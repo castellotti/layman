@@ -75,7 +75,7 @@ export function DriftBlockDialog({ onSend }: DriftBlockDialogProps) {
         <div className="flex items-center gap-3 px-5 pt-5 pb-3">
           <div
             className="w-8 h-8 rounded-full flex items-center justify-center text-base"
-            style={{ background: 'color-mix(in srgb, var(--error) 15%, transparent)', color: 'var(--error)' }}
+            style={{ background: tokenColor('error', '15%'), color: 'var(--error)' }}
           >
             !
           </div>
@@ -144,7 +144,7 @@ export function DriftBlockDialog({ onSend }: DriftBlockDialogProps) {
         <div className="px-5 pb-3">
           <div
             className="text-[10px] px-2 py-1 rounded"
-            style={{ background: 'color-mix(in srgb, var(--warn) 10%, transparent)', border: '1px solid color-mix(in srgb, var(--warn) 20%, transparent)' }}
+            style={{ background: tokenColor('warn', '10%'), border: `1px solid ${tokenColor('warn', '20%')}` }}
           >
             <span className="text-warn">Blocked tool:</span>{' '}
             <span className="text-text font-mono">{driftBlockApproval.toolName}</span>
@@ -170,8 +170,8 @@ export function DriftBlockDialog({ onSend }: DriftBlockDialogProps) {
                   onClick={handleDismissFalsePositive}
                   className="flex-1 px-3 py-2 text-xs font-semibold rounded-md transition-colors border"
                   style={{
-                    background: 'color-mix(in srgb, var(--warn) 15%, transparent)',
-                    borderColor: 'color-mix(in srgb, var(--warn) 30%, transparent)',
+                    background: tokenColor('warn', '15%'),
+                    borderColor: tokenColor('warn', '30%'),
                     color: 'var(--warn)',
                   }}
                 >

@@ -8,6 +8,7 @@ import type { CellText } from '../../lib/net-table.js';
 import type { RateBucket } from '../../lib/netobs-types.js';
 import { NetIcon, type NetIconName } from './netui.js';
 import { TipWrap } from './NetTip.js';
+import { tokenColor } from '../../lib/tokens.js';
 
 const VERB: Record<ToggleKind, (target: string) => string> = {
   allow: (t) => `Block ${t}`,
@@ -46,11 +47,11 @@ export function NetToggle({ kind, target, disabledReason, onClick }: {
   let knob: React.CSSProperties | null = { position: 'absolute', top: 1, width: 12, height: 12, borderRadius: 6 };
   switch (kind) {
     case 'allow':
-      style = { ...base, border: '1px solid var(--net-tunnel)', background: 'color-mix(in srgb, var(--net-tunnel) 90%, transparent)' };
+      style = { ...base, border: '1px solid var(--net-tunnel)', background: tokenColor('net-tunnel', '90%') };
       knob = { ...knob, left: 15, background: 'var(--bg)' };
       break;
     case 'block':
-      style = { ...base, border: '1px solid var(--error)', background: 'color-mix(in srgb, var(--error) 90%, transparent)' };
+      style = { ...base, border: '1px solid var(--error)', background: tokenColor('error', '90%') };
       knob = { ...knob, left: 1, background: 'var(--bg)' };
       break;
     case 'default':
@@ -59,7 +60,7 @@ export function NetToggle({ kind, target, disabledReason, onClick }: {
       break;
     case 'pending':
       style = { ...base, border: '1px solid var(--warn)',
-        background: 'repeating-linear-gradient(135deg, color-mix(in srgb, var(--warn) 35%, transparent) 0 3px, transparent 3px 6px)' };
+        background: `repeating-linear-gradient(135deg, ${tokenColor('warn', '35%')} 0 3px, transparent 3px 6px)` };
       knob = { ...knob, left: 8, background: 'var(--warn)' };
       break;
     case 'locked':

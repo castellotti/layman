@@ -9,6 +9,7 @@ import { useNow } from '../../hooks/useNow.js';
 import { useNetStore } from '../../stores/netStore.js';
 import type { NetSessionData } from '../../lib/net-state.js';
 import { ALARM, NetIcon } from './netui.js';
+import { tokenColor } from '../../lib/tokens.js';
 
 /** How long a notice stays up. */
 const SHOW_MS = 12_000;
@@ -17,7 +18,7 @@ function Toast({ tone, title, children, onDismiss }: { tone: 'error' | 'info'; t
   return (
     <div role={tone === 'error' ? 'alert' : 'status'} style={{
       display: 'flex', alignItems: 'flex-start', gap: 8, width: 360, padding: '10px 12px', borderRadius: 8,
-      background: 'var(--bg-card)', border: `1px solid ${tone === 'error' ? 'color-mix(in srgb, var(--error) 60%, transparent)' : 'var(--border-strong)'}`,
+      background: 'var(--bg-card)', border: `1px solid ${tone === 'error' ? tokenColor('error', '60%') : 'var(--border-strong)'}`,
       boxShadow: '0 12px 32px rgba(0,0,0,0.5)', fontFamily: 'var(--font-ui)',
     }}>
       <NetIcon name={tone === 'error' ? 'alert' : 'file'} color={tone === 'error' ? 'var(--error)' : 'var(--info)'} size={14} />

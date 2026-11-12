@@ -17,6 +17,7 @@ import { controlDisabledReason } from '../../lib/net-rules.js';
 import { CellLabel, NetToggle, Sparkline } from './cells.js';
 import { ControlPopover } from './ControlPopover.js';
 import { ALARM, NetIcon, TONE } from './netui.js';
+import { tokenColor } from '../../lib/tokens.js';
 
 interface Column {
   key: string;
@@ -85,7 +86,7 @@ function Row({ row, anchor, selected, onSelect, onExpand, disabledReason, onTogg
   const indent = row.depth === 0 ? 4 : row.depth === 1 ? 20 : 36;
   let background = 'transparent';
   if (selected) background = 'var(--bg-selected)';
-  else if (row.loud) background = 'color-mix(in srgb, var(--error) 7%, transparent)';
+  else if (row.loud) background = tokenColor('error', '7%');
   return (
     <div
       role="row"

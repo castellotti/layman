@@ -50,8 +50,8 @@ function ActivityStrip({
         margin: '0 10px 6px',
         padding: '8px 10px',
         borderRadius: 6,
-        background: 'color-mix(in srgb, var(--error) 8%, transparent)',
-        border: '1px solid color-mix(in srgb, var(--error) 25%, transparent)',
+        background: tokenColor('error', '8%'),
+        border: `1px solid ${tokenColor('error', '25%')}`,
         display: 'flex',
         alignItems: 'center',
         gap: 8,
@@ -62,7 +62,7 @@ function ActivityStrip({
         </span>
         <button
           onClick={() => onOpenInLogs(sessionId)}
-          style={{ fontSize: 10, color: 'var(--error)', background: 'color-mix(in srgb, var(--error) 12%, transparent)', border: '1px solid color-mix(in srgb, var(--error) 25%, transparent)', borderRadius: 4, padding: '2px 8px', cursor: 'pointer', fontFamily: 'var(--font-ui)', flexShrink: 0 }}
+          style={{ fontSize: 10, color: 'var(--error)', background: tokenColor('error', '12%'), border: `1px solid ${tokenColor('error', '25%')}`, borderRadius: 4, padding: '2px 8px', cursor: 'pointer', fontFamily: 'var(--font-ui)', flexShrink: 0 }}
         >
           Open logs
         </button>
@@ -79,8 +79,8 @@ function ActivityStrip({
         margin: '0 10px 6px',
         padding: '8px 10px',
         borderRadius: 6,
-        background: 'color-mix(in srgb, var(--warn) 8%, transparent)',
-        border: '1px solid color-mix(in srgb, var(--warn) 30%, transparent)',
+        background: tokenColor('warn', '8%'),
+        border: `1px solid ${tokenColor('warn', '30%')}`,
         display: 'flex',
         alignItems: 'center',
         gap: 8,
@@ -107,8 +107,8 @@ function ActivityStrip({
         margin: '0 10px 6px',
         padding: '6px 10px',
         borderRadius: 6,
-        background: 'color-mix(in srgb, var(--ok) 6%, transparent)',
-        border: '1px solid color-mix(in srgb, var(--ok) 15%, transparent)',
+        background: tokenColor('ok', '6%'),
+        border: `1px solid ${tokenColor('ok', '15%')}`,
         display: 'flex',
         alignItems: 'center',
         gap: 8,
@@ -419,7 +419,7 @@ function AutoscrollToggle({ on, onToggle }: { on: boolean; onToggle: () => void 
         height: 18, padding: '0 6px', borderRadius: 3,
         fontFamily: 'var(--font-mono)', fontSize: 10,
         border: `1px solid ${on ? 'var(--accent)' : 'var(--border)'}`,
-        background: on ? 'color-mix(in srgb, var(--accent) 12%, transparent)' : 'none',
+        background: on ? tokenColor('accent', '12%') : 'none',
         color: on ? 'var(--accent)' : 'var(--text-faint)',
       }}
     >

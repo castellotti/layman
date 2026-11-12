@@ -26,6 +26,7 @@ import { TipWrap, tipProps } from './NetTip.js';
 import { isUntunnelled, isVpnRoute } from '../../lib/net-vpn.js';
 import { useVpnDomains } from '../../hooks/useVpnDomains.js';
 import { bannerHosts, useDismissedBanner } from '../../lib/net-banner.js';
+import { tokenColor } from '../../lib/tokens.js';
 
 type Corner = 'tl' | 'tc' | 'tr' | 'bl' | 'br';
 const DEFAULT_CORNER: Record<string, Corner> = { talking: 'tl', unknown: 'tc', detail: 'tr', sandbox: 'bl', legend: 'br' };
@@ -57,7 +58,7 @@ function Card({ id, title, icon, count, extra, onHide, onDragStart, width = 300,
 }) {
   return (
     <section aria-label={title} style={{
-      width, maxWidth: '100%', background: 'color-mix(in srgb, var(--bg-card) 94%, transparent)', border: '1px solid var(--border)', borderRadius: 8,
+      width, maxWidth: '100%', background: tokenColor('bg-card', '94%'), border: '1px solid var(--border)', borderRadius: 8,
       boxShadow: '0 8px 24px rgba(0,0,0,0.35)', backdropFilter: 'blur(4px)', overflow: 'hidden', pointerEvents: 'auto',
       // Shrinks to its corner's share of the height, and scrolls inside.
       display: 'flex', flexDirection: 'column', minHeight: 0, flexShrink: 1,

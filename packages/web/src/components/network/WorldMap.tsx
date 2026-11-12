@@ -19,6 +19,7 @@ import {
 import { NetIcon } from './netui.js';
 import { tipProps } from './NetTip.js';
 import { isUntunnelled, isVpnRoute } from '../../lib/net-vpn.js';
+import { tokenColor } from '../../lib/tokens.js';
 
 type Land = FeatureCollection<Geometry>;
 let landCache: Promise<Land> | null = null;
@@ -211,13 +212,13 @@ export function WorldMap({ data, selected, onSelect, compact = false, sandboxAnc
         const p = placed.get(c.key);
         if (!p) return null;
         return (
-          <span key={`lbl-${c.key}`} style={{ ...pill, left: p.left, top: p.top, borderColor: c.direct ? 'color-mix(in srgb, var(--error) 60%, transparent)' : 'var(--border-strong)' }}>
+          <span key={`lbl-${c.key}`} style={{ ...pill, left: p.left, top: p.top, borderColor: c.direct ? tokenColor('error', '60%') : 'var(--border-strong)' }}>
             {labelText(c)}
           </span>
         );
       })}
       {placed && exitLabel && (
-        <span style={{ ...pill, ...exitLabel.at, color: 'var(--net-tunnel)', borderColor: 'color-mix(in srgb, var(--net-tunnel) 45%, transparent)' }}>{exitLabel.text}</span>
+        <span style={{ ...pill, ...exitLabel.at, color: 'var(--net-tunnel)', borderColor: tokenColor('net-tunnel', '45%') }}>{exitLabel.text}</span>
       )}
       {!compact && (
         <div style={{ position: 'absolute', right: 12, bottom: 64, display: 'flex', flexDirection: 'column', gap: 4, zIndex: 2 }}>
@@ -237,7 +238,7 @@ export function WorldMap({ data, selected, onSelect, compact = false, sandboxAnc
 
 const pill: React.CSSProperties = {
   position: 'absolute', transform: 'translateY(-50%)', padding: '1px 7px', borderRadius: 9, fontSize: 10.5, whiteSpace: 'nowrap',
-  color: 'var(--text-body)', background: 'color-mix(in srgb, var(--bg) 82%, transparent)', border: '1px solid var(--border-strong)', pointerEvents: 'none',
+  color: 'var(--text-body)', background: tokenColor('bg', '82%'), border: '1px solid var(--border-strong)', pointerEvents: 'none',
   fontFamily: 'var(--font-ui)',
 };
 const zoomButton: React.CSSProperties = {

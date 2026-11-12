@@ -26,6 +26,7 @@ import { Row, SectionHead } from './DetailCard.js';
 import { ALARM, EmptyState, NetIcon, type NetIconName } from './netui.js';
 import { TipWrap, tipProps } from './NetTip.js';
 import { NetworkForTurn } from './NetworkForTurn.js';
+import { tokenColor } from '../../lib/tokens.js';
 
 // ─── Shared state ─────────────────────────────────────────────────────────────
 
@@ -90,7 +91,7 @@ export function openInTrace(token: string, promptEventId: string, flowId: string
 // ─── Turn bar ─────────────────────────────────────────────────────────────────
 
 function Chip({ tone, icon, children }: { tone: 'neutral' | 'warn' | 'error' | 'info'; icon?: NetIconName; children: React.ReactNode }) {
-  const c = { neutral: ['var(--text-body)', 'var(--border-strong)'], warn: ['var(--warn)', 'color-mix(in srgb, var(--warn) 50%, transparent)'], error: [ALARM.text, 'color-mix(in srgb, var(--error) 55%, transparent)'], info: ['var(--info)', 'color-mix(in srgb, var(--info) 50%, transparent)'] }[tone];
+  const c = { neutral: ['var(--text-body)', 'var(--border-strong)'], warn: ['var(--warn)', tokenColor('warn', '50%')], error: [ALARM.text, tokenColor('error', '55%')], info: ['var(--info)', tokenColor('info', '50%')] }[tone];
   return (
     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, height: 22, padding: '0 8px', borderRadius: 11, fontSize: 11, whiteSpace: 'nowrap', color: c[0], border: `1px solid ${c[1]}`, background: 'var(--bg)' }}>
       {icon && <NetIcon name={icon} size={11} color={c[0]} />}{children}
@@ -188,7 +189,7 @@ function RowView({ row, data, selected, onSelect, onToggleRow, onPolicy, axisWid
     <div role="row" aria-selected={selected} data-row={row.id} onClick={onSelect} style={{
       display: 'grid', gridTemplateColumns: GRID, alignItems: 'center', minHeight: 27, cursor: 'pointer',
       borderBottom: '1px solid var(--border)', borderLeft: `2px solid ${selected ? 'var(--warn)' : 'transparent'}`,
-      background: selected ? 'color-mix(in srgb, var(--warn) 7%, transparent)' : isCall ? 'color-mix(in srgb, var(--text) 1.2%, transparent)' : undefined,
+      background: selected ? tokenColor('warn', '7%') : isCall ? tokenColor('text', '1.2%') : undefined,
     }}>
       <div role="cell" style={{ display: 'flex', alignItems: 'center', gap: 7, paddingLeft: pad, minWidth: 0 }}>
         {row.expandable ? (
@@ -207,11 +208,11 @@ function RowView({ row, data, selected, onSelect, onToggleRow, onPolicy, axisWid
         )}
         {row.call?.redacted && (
           <span data-tip="The PII filter redacted this URL's host when Layman recorded the call, so no flow can be joined to it; its traffic is under Unattributed. To keep IP addresses in glove sessions, turn on Settings → glove → Show IP addresses in sandboxed sessions (calls recorded from then on)."
-            style={{ fontSize: 9.5, color: 'var(--warn)', border: '1px solid color-mix(in srgb, var(--warn) 50%, transparent)', borderRadius: 4, padding: '0 4px', flexShrink: 0 }}>redacted</span>
+            style={{ fontSize: 9.5, color: 'var(--warn)', border: `1px solid ${tokenColor('warn', '50%')}`, borderRadius: 4, padding: '0 4px', flexShrink: 0 }}>redacted</span>
         )}
         {row.call?.timing === 'approximate' && (
           <span data-tip="Layman read this call after it ran and did not keep the transcript's own times, so its flows were joined by host alone."
-            style={{ fontSize: 9.5, color: 'var(--warn)', border: '1px solid color-mix(in srgb, var(--warn) 50%, transparent)', borderRadius: 4, padding: '0 4px', flexShrink: 0 }}>≈ time</span>
+            style={{ fontSize: 9.5, color: 'var(--warn)', border: `1px solid ${tokenColor('warn', '50%')}`, borderRadius: 4, padding: '0 4px', flexShrink: 0 }}>≈ time</span>
         )}
       </div>
       <div role="cell" style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 10.5, color: row.outcome ? TONE[row.outcome.tone] : undefined, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden' }}>
@@ -319,7 +320,7 @@ export function TraceWaterfall({ data }: { data: NetSessionData }) {
             <span key={t} style={{ position: 'absolute', left: `${(t / axis.span) * 100}%`, fontFamily: 'var(--font-mono)', fontWeight: 400, letterSpacing: 0, pointerEvents: 'none' }}>{tickLabel(t)}</span>
           ))}
           {brush && (
-            <span data-trace-brush="" style={{ position: 'absolute', top: 2, bottom: 2, ...brushBox(brush), background: 'color-mix(in srgb, var(--info) 25%, transparent)', borderRadius: 2, pointerEvents: 'none' }} />
+            <span data-trace-brush="" style={{ position: 'absolute', top: 2, bottom: 2, ...brushBox(brush), background: tokenColor('info', '25%'), borderRadius: 2, pointerEvents: 'none' }} />
           )}
         </span>
         <span />

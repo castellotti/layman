@@ -1,5 +1,6 @@
 import React from 'react';
 import { sessionDisplayName } from '../../../lib/session-state.js';
+import { tokenColor } from '../../../lib/tokens.js';
 
 const overlayStyle: React.CSSProperties = { position: 'fixed', inset: 0, zIndex: 60, display: 'flex', alignItems: 'center', justifyContent: 'center' };
 const scrimStyle: React.CSSProperties = { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)' };
@@ -166,7 +167,7 @@ export function ImportDialog({
                         <td style={{ padding: '4px 8px', textAlign: 'right', color: 'var(--text-muted)', fontVariantNumeric: 'tabular-nums' }}>{s.eventCount}</td>
                         <td style={{ padding: '4px 8px', textAlign: 'right', color: 'var(--text-muted)', fontVariantNumeric: 'tabular-nums' }}>{s.toolCallCount}</td>
                         <td style={{ padding: '4px 8px', textAlign: 'center' }}>
-                          <span style={{ padding: '1px 6px', borderRadius: 4, color: s.status === 'discovered' ? 'var(--ok)' : 'var(--info)', background: s.status === 'discovered' ? 'color-mix(in srgb, var(--ok) 10%, transparent)' : 'color-mix(in srgb, var(--info) 10%, transparent)' }}>
+                          <span style={{ padding: '1px 6px', borderRadius: 4, color: s.status === 'discovered' ? 'var(--ok)' : 'var(--info)', background: s.status === 'discovered' ? tokenColor('ok', '10%') : tokenColor('info', '10%') }}>
                             {s.status}
                           </span>
                         </td>

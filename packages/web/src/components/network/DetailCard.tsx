@@ -20,6 +20,7 @@ import { useNetTrace } from '../../hooks/useNetTrace.js';
 import { openInTrace } from './TraceView.js';
 import { useVpnDomains } from '../../hooks/useVpnDomains.js';
 import { isVpnRoute, vpnEntryFor, vpnParentDomain } from '../../lib/net-vpn.js';
+import { tokenColor } from '../../lib/tokens.js';
 
 type SectionId = 'totals' | 'asked' | 'connection' | 'flows';
 const SECTIONS: Array<{ id: SectionId; label: string; on: boolean }> = [
@@ -362,7 +363,7 @@ function VpnMark({ host, vpn }: { host: string; vpn: DestinationAggregate['flags
     );
   }
   return (
-    <div style={{ marginTop: 10, padding: '7px 9px', borderRadius: 6, border: '1px solid color-mix(in srgb, var(--error) 40%, transparent)', background: 'var(--bg)' }}>
+    <div style={{ marginTop: 10, padding: '7px 9px', borderRadius: 6, border: `1px solid ${tokenColor('error', '40%')}`, background: 'var(--bg)' }}>
       <div style={{ fontSize: 11, color: 'var(--text-body)', lineHeight: 1.5 }}>
         Is this host on your corporate network? Traffic that reaches it over your own VPN is expected, not a leak.
       </div>

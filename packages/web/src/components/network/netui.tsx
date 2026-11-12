@@ -5,6 +5,7 @@
 import React, { useCallback, useState } from 'react';
 import type { ChipIcon, ChipTone, NetTip } from '../../lib/net-format.js';
 import { tipProps } from './NetTip.js';
+import { tokenColor } from '../../lib/tokens.js';
 
 export type NetIconName =
   | ChipIcon
@@ -82,13 +83,13 @@ export const ALARM = {
 
 /** Colour, fill and border per chip tone, as the design's gate strip draws them. */
 export const TONE: Record<ChipTone, { color: string; bg: string; border: string }> = {
-  ok: { color: 'var(--ok)', bg: 'color-mix(in srgb, var(--ok) 12%, transparent)', border: 'color-mix(in srgb, var(--ok) 35%, transparent)' },
-  tunnel: { color: 'var(--net-tunnel)', bg: 'color-mix(in srgb, var(--net-tunnel) 12%, transparent)', border: 'color-mix(in srgb, var(--net-tunnel) 35%, transparent)' },
-  warn: { color: 'var(--warn)', bg: 'color-mix(in srgb, var(--warn) 12%, transparent)', border: 'color-mix(in srgb, var(--warn) 40%, transparent)' },
-  error: { color: ALARM.text, bg: 'color-mix(in srgb, var(--error) 16%, transparent)', border: 'color-mix(in srgb, var(--error) 60%, transparent)' },
-  violet: { color: 'var(--net-up)', bg: 'color-mix(in srgb, var(--net-up) 14%, transparent)', border: 'color-mix(in srgb, var(--net-up) 45%, transparent)' },
-  neutral: { color: 'var(--text-body)', bg: 'color-mix(in srgb, var(--text) 3%, transparent)', border: 'var(--border-strong)' },
-  muted: { color: 'var(--text-muted)', bg: 'color-mix(in srgb, var(--text) 2%, transparent)', border: 'var(--border)' },
+  ok: { color: 'var(--ok)', bg: tokenColor('ok', '12%'), border: tokenColor('ok', '35%') },
+  tunnel: { color: 'var(--net-tunnel)', bg: tokenColor('net-tunnel', '12%'), border: tokenColor('net-tunnel', '35%') },
+  warn: { color: 'var(--warn)', bg: tokenColor('warn', '12%'), border: tokenColor('warn', '40%') },
+  error: { color: ALARM.text, bg: tokenColor('error', '16%'), border: tokenColor('error', '60%') },
+  violet: { color: 'var(--net-up)', bg: tokenColor('net-up', '14%'), border: tokenColor('net-up', '45%') },
+  neutral: { color: 'var(--text-body)', bg: tokenColor('text', '3%'), border: 'var(--border-strong)' },
+  muted: { color: 'var(--text-muted)', bg: tokenColor('text', '2%'), border: 'var(--border)' },
 };
 
 export function Chip({ tone, icon, label, tip, strong, compact }: {

@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react';
 import { useSessionStore } from '../../stores/sessionStore.js';
 import type { SetupStatus } from '../../lib/types.js';
+import { tokenColor } from '../../lib/tokens.js';
 
 export function SetupBanner({ onInstall }: { onInstall: () => void }) {
   const { setupStatus, setupBannerDismissed, dismissSetupBanner } = useSessionStore((s) => ({
@@ -57,8 +58,8 @@ export function SetupBanner({ onInstall }: { onInstall: () => void }) {
       style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         padding: '8px 16px',
-        background: 'color-mix(in srgb, var(--warn) 8%, transparent)',
-        borderBottom: '1px solid color-mix(in srgb, var(--warn) 20%, transparent)',
+        background: tokenColor('warn', '8%'),
+        borderBottom: `1px solid ${tokenColor('warn', '20%')}`,
         fontSize: 12,
         flexShrink: 0,
       }}

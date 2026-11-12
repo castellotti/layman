@@ -4,6 +4,7 @@ import { useNetStore } from '../../stores/netStore.js';
 import { networkTabSignal, type NetTabSignal } from '../../lib/net-state.js';
 import { NET_TABS } from '../network/tabs.js';
 import { sessionDisplayName } from '../../lib/session-state.js';
+import { tokenColor } from '../../lib/tokens.js';
 
 function getSessionName(cwd: string, sessionId: string, agentType?: string, showAgentPrefix?: boolean, sessionName?: string): string {
   const name = sessionDisplayName(sessionName, cwd, sessionId);
@@ -236,8 +237,8 @@ export function Header() {
         <span style={{
           fontSize: 10,
           color: 'var(--warn)',
-          background: 'color-mix(in srgb, var(--warn) 12%, transparent)',
-          border: '1px solid color-mix(in srgb, var(--warn) 30%, transparent)',
+          background: tokenColor('warn', '12%'),
+          border: `1px solid ${tokenColor('warn', '30%')}`,
           padding: '2px 8px',
           borderRadius: 10,
           marginRight: 12,

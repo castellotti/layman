@@ -3,6 +3,7 @@ import type { ClientMessage } from '../../../lib/ws-protocol.js';
 import type { LaymanConfig } from '../../../lib/types.js';
 import { SectionTitle, SectionIntro, ToggleRow, CustomRow } from './primitives.js';
 import { RecoveryDialog, ImportDialog, PurgeDialog } from './RecordingDialogs.js';
+import { tokenColor } from '../../../lib/tokens.js';
 
 interface PiiCategory {
   id: string;
@@ -225,7 +226,7 @@ export function RecordingSection({
           <button
             onClick={() => void handlePurgeScan()}
             disabled={purgeState === 'scanning' || purgeState === 'purging'}
-            style={{ flexShrink: 0, padding: '6px 12px', fontSize: 11, fontWeight: 500, borderRadius: 5, background: 'color-mix(in srgb, var(--error) 12%, transparent)', border: '1px solid var(--error)', color: 'var(--error)', cursor: 'pointer', opacity: purgeState === 'scanning' || purgeState === 'purging' ? 0.5 : 1 }}
+            style={{ flexShrink: 0, padding: '6px 12px', fontSize: 11, fontWeight: 500, borderRadius: 5, background: tokenColor('error', '12%'), border: '1px solid var(--error)', color: 'var(--error)', cursor: 'pointer', opacity: purgeState === 'scanning' || purgeState === 'purging' ? 0.5 : 1 }}
           >
             {purgeState === 'scanning' ? 'Scanning…' : 'Purge all PII'}
           </button>

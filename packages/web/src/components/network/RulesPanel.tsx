@@ -19,16 +19,17 @@ import type { Rule, RuleAction } from '../../lib/netobs-types.js';
 import { buttonStyle } from './ControlPopover.js';
 import { ALARM, NetIcon, type NetIconName } from './netui.js';
 import { TipWrap, tipProps } from './NetTip.js';
+import { tokenColor } from '../../lib/tokens.js';
 
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 const sectionTitle: React.CSSProperties = { fontSize: 10, letterSpacing: '0.08em', fontWeight: 600, color: 'var(--text-muted)', marginBottom: 6 };
 
 type Tone = 'ok' | 'error' | 'warn' | 'neutral';
 const TONES: Record<Tone, { bg: string; border: string; icon: NetIconName; colour: string }> = {
-  ok: { bg: 'color-mix(in srgb, var(--ok) 8%, transparent)', border: 'color-mix(in srgb, var(--ok) 30%, transparent)', icon: 'check', colour: 'var(--ok)' },
-  error: { bg: 'color-mix(in srgb, var(--error) 10%, transparent)', border: 'color-mix(in srgb, var(--error) 50%, transparent)', icon: 'alert', colour: 'var(--error)' },
-  warn: { bg: 'color-mix(in srgb, var(--warn) 10%, transparent)', border: 'color-mix(in srgb, var(--warn) 45%, transparent)', icon: 'clock', colour: 'var(--warn)' },
-  neutral: { bg: 'color-mix(in srgb, var(--text) 3%, transparent)', border: 'var(--border-strong)', icon: 'shield', colour: 'var(--text-muted)' },
+  ok: { bg: tokenColor('ok', '8%'), border: tokenColor('ok', '30%'), icon: 'check', colour: 'var(--ok)' },
+  error: { bg: tokenColor('error', '10%'), border: tokenColor('error', '50%'), icon: 'alert', colour: 'var(--error)' },
+  warn: { bg: tokenColor('warn', '10%'), border: tokenColor('warn', '45%'), icon: 'clock', colour: 'var(--warn)' },
+  neutral: { bg: tokenColor('text', '3%'), border: 'var(--border-strong)', icon: 'shield', colour: 'var(--text-muted)' },
 };
 
 function StatusBox({ tone, title, sub, role }: { tone: Tone; title: React.ReactNode; sub: React.ReactNode; role?: string }) {
@@ -147,7 +148,7 @@ function RuleRow({ index, rule, hits, locked, unsaved, editable, drag, dropTarge
 }
 
 const Badge = ({ children }: { children: React.ReactNode }) => (
-  <span style={{ fontSize: 9.5, fontWeight: 600, letterSpacing: '0.04em', color: 'var(--warn)', border: '1px solid color-mix(in srgb, var(--warn) 45%, transparent)', background: 'color-mix(in srgb, var(--warn) 10%, transparent)', borderRadius: 4, padding: '1px 5px', whiteSpace: 'nowrap' }}>
+  <span style={{ fontSize: 9.5, fontWeight: 600, letterSpacing: '0.04em', color: 'var(--warn)', border: `1px solid ${tokenColor('warn', '45%')}`, background: tokenColor('warn', '10%'), borderRadius: 4, padding: '1px 5px', whiteSpace: 'nowrap' }}>
     {children}
   </span>
 );
@@ -278,7 +279,7 @@ export function RulesPanel({ data, now }: { data: NetSessionData; now: number })
     <div style={{ padding: 10 }}>
       {enforcementBox(data, now)}
       {conflict && dirty && (
-        <div role="status" style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 9px', borderRadius: 6, background: 'color-mix(in srgb, var(--warn) 10%, transparent)', border: '1px solid color-mix(in srgb, var(--warn) 45%, transparent)', marginBottom: 10 }}>
+        <div role="status" style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 9px', borderRadius: 6, background: tokenColor('warn', '10%'), border: `1px solid ${tokenColor('warn', '45%')}`, marginBottom: 10 }}>
           <NetIcon name="alert" color="var(--warn)" />
           <div style={{ flex: 1, fontSize: 11, color: 'var(--text-body)' }}>
             <div style={{ fontWeight: 600, color: 'var(--warn)' }}>Your unsaved change conflicts</div>

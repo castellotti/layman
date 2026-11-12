@@ -12,6 +12,7 @@ import { getEffectiveAgentContent } from '../../lib/reasoning.js';
 import type { ClientMessage } from '../../lib/ws-protocol.js';
 import type { TimelineEvent } from '../../lib/types.js';
 import { ThinkingBlock } from '../shared/ThinkingBlock.js';
+import { tokenColor } from '../../lib/tokens.js';
 
 type AskPhase = 'connecting' | 'waiting';
 
@@ -441,8 +442,8 @@ export function InvestigationPanel({ onSend, eventId: embeddedEventId, onClose, 
                 {event.laymans.tokens && (
                   <>
                     <span>·</span>
-                    <span style={{ color: 'color-mix(in srgb, var(--ok) 70%, transparent)' }}>↑{event.laymans.tokens.input.toLocaleString()}</span>
-                    <span style={{ color: 'color-mix(in srgb, var(--info) 70%, transparent)' }}>↓{event.laymans.tokens.output.toLocaleString()}</span>
+                    <span style={{ color: tokenColor('ok', '70%') }}>↑{event.laymans.tokens.input.toLocaleString()}</span>
+                    <span style={{ color: tokenColor('info', '70%') }}>↓{event.laymans.tokens.output.toLocaleString()}</span>
                   </>
                 )}
                 {event.laymans.model && <><span>·</span><span>{event.laymans.model}</span></>}
@@ -453,7 +454,7 @@ export function InvestigationPanel({ onSend, eventId: embeddedEventId, onClose, 
               <span style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'var(--font-ui)' }}>Explaining in plain language…</span>
             </div>
           ) : laymansError ? (
-            <div style={{ background: 'var(--bg-raised)', border: '1px solid color-mix(in srgb, var(--error) 40%, transparent)', borderRadius: 8, padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <div style={{ background: 'var(--bg-raised)', border: `1px solid ${tokenColor('error', '40%')}`, borderRadius: 8, padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 4 }}>
               <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--error)', fontFamily: 'var(--font-ui)' }}>Explanation failed</span>
               <p style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', wordBreak: 'break-all', margin: 0 }}>{laymansError}</p>
             </div>
@@ -502,7 +503,7 @@ export function InvestigationPanel({ onSend, eventId: embeddedEventId, onClose, 
               <span style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'var(--font-ui)' }}>Analyzing with LLM…</span>
             </div>
           ) : state.analysisError ? (
-            <div style={{ background: 'var(--bg-raised)', border: '1px solid color-mix(in srgb, var(--error) 40%, transparent)', borderRadius: 8, padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <div style={{ background: 'var(--bg-raised)', border: `1px solid ${tokenColor('error', '40%')}`, borderRadius: 8, padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 4 }}>
               <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--error)', fontFamily: 'var(--font-ui)' }}>Analysis failed</span>
               <p style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', wordBreak: 'break-all', margin: 0 }}>{state.analysisError}</p>
               <p style={{ fontSize: 10, color: 'var(--text-faint)', fontFamily: 'var(--font-ui)', margin: '4px 0 0 0' }}>
@@ -600,8 +601,8 @@ export function InvestigationPanel({ onSend, eventId: embeddedEventId, onClose, 
                     {qa.tokens && (
                       <>
                         <span>·</span>
-                        <span style={{ color: 'color-mix(in srgb, var(--ok) 70%, transparent)' }}>↑{qa.tokens.input.toLocaleString()}</span>
-                        <span style={{ color: 'color-mix(in srgb, var(--info) 70%, transparent)' }}>↓{qa.tokens.output.toLocaleString()}</span>
+                        <span style={{ color: tokenColor('ok', '70%') }}>↑{qa.tokens.input.toLocaleString()}</span>
+                        <span style={{ color: tokenColor('info', '70%') }}>↓{qa.tokens.output.toLocaleString()}</span>
                       </>
                     )}
                     {qa.model && <><span>·</span><span>{qa.model}</span></>}

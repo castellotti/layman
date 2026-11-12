@@ -64,10 +64,10 @@ export const LogRow = React.memo(function LogRow({ event, index, hasDetail, isEx
         <div
           style={{
             margin: '2px 8px 8px 52px',
-            border: `1px solid ${highlighted ? 'color-mix(in srgb, var(--warn) 35%, transparent)' : 'var(--border)'}`,
+            border: `1px solid ${highlighted ? tokenColor('warn', '35%') : 'var(--border)'}`,
             borderLeft: `2px solid ${highlighted ? 'var(--warn)' : color}`,
             borderRadius: 6,
-            background: highlighted ? 'color-mix(in srgb, var(--warn) 6%, transparent)' : 'var(--bg-raised)',
+            background: highlighted ? tokenColor('warn', '6%') : 'var(--bg-raised)',
             overflow: 'hidden',
             animation: 'fadeIn 0.15s ease',
           }}

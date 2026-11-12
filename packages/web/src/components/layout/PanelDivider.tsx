@@ -1,4 +1,5 @@
 import React, { useCallback, useRef } from 'react';
+import { tokenColor } from '../../lib/tokens.js';
 
 interface PanelDividerProps {
   /** Current width of the panel this divider resizes. */
@@ -90,7 +91,7 @@ export function PanelDivider({ value, min, max, direction, onChange, title }: Pa
         borderRight: '1px solid var(--border)',
         transition: 'background 0.12s',
       }}
-      onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.background = 'color-mix(in srgb, var(--info) 40%, transparent)')}
+      onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.background = tokenColor('info', '40%'))}
       onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.background = 'var(--bg-raised)')}
     />
   );
