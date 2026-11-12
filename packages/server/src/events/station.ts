@@ -70,6 +70,7 @@ function scan(src: string, start: number, out: string[][], end: string, powershe
   let dropNext = false;
   let parens = 0;
   const heredocs: string[] = [];
+  const escape = powershell ? '`' : '\\';
 
   const endWord = (): void => {
     if (!inWord) return;
@@ -107,7 +108,6 @@ function scan(src: string, start: number, out: string[][], end: string, powershe
   let i = start;
   while (i < src.length) {
     const c = src[i];
-    const escape = powershell ? '`' : '\\';
 
     if (c === escape) {
       if (src[i + 1] === '\n') i += 2;
@@ -244,7 +244,7 @@ function scan(src: string, start: number, out: string[][], end: string, powershe
       endWord();
       while (i < src.length && /[<>&|]/.test(src[i])) i++;
       // `>&2`, `2>&1`: the descriptor follows directly.
-      if (/\d/.test(src[i] ?? '') && /&$/.test(src.slice(0, i))) {
+      if (src[i - 1] === '&' && /\d/.test(src[i] ?? '')) {
         while (/\d|-/.test(src[i] ?? '')) i++;
       } else dropNext = true;
       continue;
@@ -293,6 +293,8 @@ const KEYWORDS = new Set(['if', 'then', 'else', 'elif', 'do', 'while', 'until', 
 /** A construct whose words are not a command at all. */
 const NOT_COMMANDS = new Set(['for', 'case', 'select', 'done', 'fi', 'esac', ';;', 'return', 'break', 'continue']);
 
+const TIMEOUT_FLAGS: ReadonlySet<string> = new Set(['-s', '-k', '--signal', '--kill-after']);
+
 /** Commands that run the command after them; the flags listed take a value. */
 const WRAPPERS: Record<string, ReadonlySet<string>> = {
   sudo: new Set(['-u', '-g', '-C', '-h', '-p', '-U', '-r', '-t']),
@@ -303,8 +305,8 @@ const WRAPPERS: Record<string, ReadonlySet<string>> = {
   command: new Set(),
   builtin: new Set(),
   nice: new Set(['-n']),
-  timeout: new Set(['-s', '-k', '--signal', '--kill-after']),
-  gtimeout: new Set(['-s', '-k', '--signal', '--kill-after']),
+  timeout: TIMEOUT_FLAGS,
+  gtimeout: TIMEOUT_FLAGS,
   xargs: new Set(['-I', '-n', '-P', '-L', '-d', '-E', '-s', '-a']),
   watch: new Set(['-n', '-d']),
   stdbuf: new Set(['-i', '-o', '-e']),
@@ -335,7 +337,7 @@ function commandWords(raw: string[]): string[] {
       else if (flags.has(w)) j += 2;
       else if (w.startsWith('-')) j++;
       // timeout's duration
-      else if ((name === 'timeout' || name === 'gtimeout') && /^\d+(\.\d+)?[smhd]?$/.test(w)) j++;
+      else if (flags === TIMEOUT_FLAGS && /^\d+(\.\d+)?[smhd]?$/.test(w)) j++;
       else break;
     }
     if (j >= words.length) return words.slice(0, 1);
@@ -378,7 +380,8 @@ function unwrapShell(words: string[], powershell: boolean): string[][] {
  */
 function nameOf(word = ''): string {
   const name = word.replace(/\\/g, '/').split('/').pop() ?? word;
-  return /\.(exe|cmd|bat)$/i.test(name) ? name.replace(/\.(exe|cmd|bat)$/i, '').toLowerCase() : name;
+  const program = name.replace(/\.(exe|cmd|bat)$/i, '');
+  return program === name ? name : program.toLowerCase();
 }
 
 // ---- what a command is --------------------------------------------------------------------------
@@ -425,6 +428,8 @@ const REMOTE_COPY = new Set(['rsync', 'scp', 'rclone']);
  * Commands that reach the network with some of their subcommands. A value of `a b` is a subcommand
  * and the one after it (`uv pip install`, `docker compose pull`).
  */
+const PIP_NETWORK: ReadonlySet<string> = new Set(['install', 'download', 'search', 'index']);
+
 const NETWORK_SUBCOMMANDS: Record<string, ReadonlySet<string>> = {
   git: new Set(['push', 'pull', 'fetch', 'clone', 'ls-remote', 'remote update', 'submodule update', 'lfs']),
   npm: new Set(['install', 'i', 'ci', 'add', 'update', 'up', 'publish', 'view', 'info', 'show', 'audit',
@@ -433,8 +438,8 @@ const NETWORK_SUBCOMMANDS: Record<string, ReadonlySet<string>> = {
   yarn: new Set(['install', 'add', 'upgrade', 'up', 'publish', 'dlx', 'info', 'npm']),
   bun: new Set(['install', 'i', 'add', 'update', 'publish', 'x']),
   bunx: new Set(['*']),
-  pip: new Set(['install', 'download', 'search', 'index']),
-  pip3: new Set(['install', 'download', 'search', 'index']),
+  pip: PIP_NETWORK,
+  pip3: PIP_NETWORK,
   pipx: new Set(['install', 'upgrade', 'run']),
   uv: new Set(['add', 'sync', 'lock', 'pip install', 'pip compile', 'pip sync', 'tool install', 'tool upgrade',
     'python install', 'publish', 'self update']),
@@ -584,6 +589,9 @@ function commandLine(input: Record<string, unknown>): string {
   return argv.map((w) => (/^[\w@%+=:,./-]+$/.test(w) ? w : `'${w.replace(/'/g, `'\\''`)}'`)).join(' ');
 }
 
+/** Tools whose input is a shell line, as each harness names them once normalised. */
+const SHELL_TOOLS = new Set(['Bash', 'shell', 'local_shell', 'exec_command']);
+
 /** Tools by name, across every harness Layman records. A name not here falls to the rules below. */
 const TOOL_STATIONS: Record<string, StationId> = {
   // Files: claude-code, and every harness's name once Layman has normalised it.
@@ -648,9 +656,7 @@ function mcpStation(server: string): StationId {
  */
 export function stationOf(toolName: string, toolInput?: Record<string, unknown>): StationId {
   const input = toolInput ?? {};
-  if (toolName === 'Bash' || toolName === 'shell' || toolName === 'local_shell' || toolName === 'exec_command') {
-    return shellStation(commandLine(input));
-  }
+  if (SHELL_TOOLS.has(toolName)) return shellStation(commandLine(input));
   if (toolName === 'PowerShell') return shellStation(commandLine(input), true);
   const known = own(TOOL_STATIONS, toolName);
   if (known !== undefined) return known;
