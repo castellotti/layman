@@ -810,3 +810,119 @@ export function eventStation(type: string, data: Record<string, unknown> | undef
 export function isPushedMemory(type: string): boolean {
   return type === 'instructions_loaded';
 }
+
+// ---- names-only labels ------------------------------------------------------------------------------
+
+/**
+ * A label as it may be shown: control characters (which a terminal acts on) and direction marks
+ * (which reorder what is read) become spaces, runs of spaces one, and a long label is cut with `…`.
+ */
+export function cleanLabel(label: string, max = 120): string {
+  const text = label
+    .replace(/[\u0000-\u001f\u007f-\u009f\u200e\u200f\u202a-\u202e\u2066-\u2069]+/g, ' ')
+    .replace(/ {2,}/g, ' ')
+    .trim();
+  return text.length > max ? `${text.slice(0, max - 1)}…` : text;
+}
+
+/** A host and an optional port: letters, digits, dots and dashes, or a bracketed IPv6 address. */
+const HOST_PORT = /^(?:[\p{L}\p{N}.-]+|\[[0-9A-Fa-f:.]+(?:%[\w.-]+)?\])(?::\d{1,5})?$/u;
+
+/**
+ * Only the host of an address (with its port): never a login, a password, a path, a query or a
+ * fragment. A password may hold `/`, `?` or `#` unencoded, so where the host ends is not always the
+ * first of those: `https://user:pa/ss@host/x` is `host`. When an address can be read two ways
+ * (`https://host:8080/a@b`: a port and a path, or a login and a password at `b`), and whenever what is
+ * left is no host at all, the label is the scheme alone, or '' with none.
+ */
+export function hostOf(url: string): string {
+  const m = /^([a-z][a-z0-9+.-]*):\/\/(.*)$/is.exec(url.trim());
+  const scheme = m ? m[1].toLowerCase() : '';
+  const rest = m ? m[2] : url.trim();
+  const end = rest.search(/[/?#]/);
+  const authority = end < 0 ? rest : rest.slice(0, end);
+  const after = end < 0 ? '' : rest.slice(end);
+  let host = authority.slice(authority.lastIndexOf('@') + 1);
+  if (!authority.includes('@') && authority.includes(':') && !authority.startsWith('[') && after.includes('@')) {
+    // `name:word` and an `@` further on: a login whose password holds `/`, `?` or `#`, unless the word
+    // is a number, when it may as well be a port. One `@` only: with more, any could be the real one.
+    const ats = after.split('@').length - 1;
+    host = /:\d+$/.test(authority) || ats > 1 ? '' : (after.slice(after.indexOf('@') + 1).split(/[/?#]/)[0] ?? '');
+  }
+  return host !== '' && HOST_PORT.test(host) ? host.toLowerCase().slice(0, 64) : scheme;
+}
+
+/** The last two parts of a path: a file and its folder, never the rest of where it lives. */
+export function lastTwo(path: string): string {
+  return slashes(path).split('/').filter((p) => p !== '' && p !== '~').slice(-2).join('/');
+}
+
+/** `browser_take_screenshot` reads as `take screenshot`. */
+const words = (name: string): string => name.replace(/[_-]+/g, ' ').trim();
+
+/** A server's own name: Claude Code calls a plugin's server `plugin_<plugin>_<server>`. */
+function serverName(server: string): string {
+  const m = /^plugin_(?:[^_]+)_(.+)$/.exec(server);
+  return m ? m[1] : server;
+}
+
+/** Words for a tool when nothing safer can be shown. */
+const TOOL_WORDS: Record<string, string> = {
+  WebSearch: 'web search', web_search: 'web search', searxng_web_search: 'web search',
+  Artifact: 'artifact', Agent: 'subagent', Task: 'subagent', task: 'subagent', NewTask: 'new task',
+  Subagents: 'subagents', SubagentHandback: 'subagent done', Skill: 'skill', skill: 'skill', ToolSearch: 'loading tools', McpDocs: 'loading tools',
+  AskUserQuestion: 'question for you', AskUser: 'question for you', ask_user_question: 'question for you',
+  SendUserFile: 'file for you', ExitPlanMode: 'plan for you', EnterPlanMode: 'planning', ReportFindings: 'findings for you',
+  Complete: 'done', PlanRespond: 'plan for you', ActRespond: 'reply to you',
+};
+
+/** A short identifier may be shown; a longer string under `id` could be anything. */
+function shortId(input: Record<string, unknown>): string {
+  const id = input.id;
+  if (typeof id === 'number' && Number.isFinite(id)) return ` #${id}`;
+  return typeof id === 'string' && /^[\w-]{1,24}$/.test(id) ? ` #${id}` : '';
+}
+
+/** The first command in a shell line that does some work, by its name alone. */
+function commandName(line: string, powershell: boolean): string {
+  const commands = shellCommands(line, powershell);
+  const doing = commands.find((w) => commandKind(w, powershell) !== 'neutral') ?? commands[0];
+  return doing ? nameOf(doing[0]) : '';
+}
+
+/**
+ * A label that holds a name, never content (lot-map's rule, Layman's code): a file is its last two
+ * path parts; an address its host; a shell command the description the agent wrote for it, or the
+ * command's name, never the line; a subagent the description it was started with; an MCP tool its
+ * server and tool; a memory server's tool its name and a short id. Never the text written, the query,
+ * the prompt or the arguments. The PII filter has already run; this is on top of it.
+ */
+export function safeLabel(toolName: string, toolInput?: Record<string, unknown>, setup: StationSetup = NO_SETUP): string {
+  const input = toolInput ?? {};
+  return cleanLabel(rawLabel(toolName, input, setup)) || cleanLabel(toolName) || 'tool';
+}
+
+function rawLabel(toolName: string, input: Record<string, unknown>, setup: StationSetup): string {
+  const mcp = mcpParts(toolName);
+  const server = mcp?.[0] ?? (toolName === 'McpTool' ? str(input.server_name) : '');
+  const tool = mcp?.[1] ?? (toolName === 'McpTool' ? str(input.tool_name) : toolName);
+  if (isMemoryServer(toolName, input, setup)) return `${words(server === '' ? toolName : tool)}${shortId(input)}`;
+
+  if (SHELL_TOOLS.has(toolName) || toolName === 'PowerShell') {
+    return str(input.description).trim() || commandName(commandLine(input), toolName === 'PowerShell') || 'shell';
+  }
+  const url = str(input.url);
+  const station = toolStation(toolName, input);
+  if (station === 'browser') return url !== '' && /^[a-z][a-z0-9+.-]*:/i.test(url) ? hostOf(url) : words(tool.replace(/^(?:playwright_)?browser_/, ''));
+  if (url !== '') return hostOf(url);
+  if (station === 'files') {
+    if (toolName === 'Grep' || toolName === 'Glob') return toolName === 'Grep' ? 'search' : 'find files';
+    return lastTwo(whereOf(input).split('\n')[0] ?? '') || words(toolName);
+  }
+  if (station === 'agents') return str(input.description).trim() || str(input.agent).trim() || own(TOOL_WORDS, toolName) || words(toolName);
+  if (station === 'skills') return str(input.skill) || str(input.name) || own(TOOL_WORDS, toolName) || 'skill';
+  const fixed = own(TOOL_WORDS, toolName);
+  if (fixed !== undefined) return fixed;
+  if (server !== '') return `${words(serverName(server))}: ${words(tool)}`;
+  return words(toolName);
+}

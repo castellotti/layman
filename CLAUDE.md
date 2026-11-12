@@ -352,6 +352,9 @@ decisions (approval, denial, drift reminder/block), not a tool.
 and `activity.memoryServers` (config, deep-merged); `instructions_loaded` is memory *pushed* into the
 context (`isPushedMemory`), counted apart from memory the model asked for. `eventStation()` is the
 one place a recorded event gets its station.
+`safeLabel()` (same file) is the names-only label: a name, never content (no command line, query,
+prompt, search pattern or path beyond its last two parts); `hostOf()` is its URL rule. Add a case to
+the fixture's `labels`/`hosts` with any change.
 
 ### Text to speech
 

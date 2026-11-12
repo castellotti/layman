@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
-import { commandKind, eventStation, isPushedMemory, shellCommands, shellStation, stationOf } from './station';
+import { commandKind, eventStation, hostOf, isPushedMemory, safeLabel, shellCommands, shellStation, stationOf } from './station';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const serverEvents = join(here, '../../../server/src/events');
@@ -40,5 +40,10 @@ describe('station.ts', () => {
     for (const c of fixture.events) {
       expect([c.type, eventStation(c.type, c.data) ?? null, isPushedMemory(c.type)]).toEqual([c.type, c.station, c.pushed === true]);
     }
+  });
+
+  it('agrees with the host and label cases', () => {
+    for (const c of fixture.hosts) expect([c.url, hostOf(c.url)]).toEqual([c.url, c.host]);
+    for (const c of fixture.labels.cases) expect([c.tool, safeLabel(c.tool, c.input, fixture.labels.setup)]).toEqual([c.tool, c.label]);
   });
 });

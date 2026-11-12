@@ -1620,5 +1620,392 @@
       "type": "constructor",
       "station": null
     }
-  ]
+  ],
+  "hosts": [
+    {
+      "url": "https://example.com/a/b?q=secret#frag",
+      "host": "example.com"
+    },
+    {
+      "url": "HTTPS://Example.COM:8443/x",
+      "host": "example.com:8443",
+      "why": "case folded, port kept"
+    },
+    {
+      "url": "https://user:pass@example.com/x",
+      "host": "example.com",
+      "why": "login and password dropped"
+    },
+    {
+      "url": "https://user:pa/ss@example.com/x",
+      "host": "example.com",
+      "why": "a password holding /"
+    },
+    {
+      "url": "https://user:pa?ss@example.com",
+      "host": "example.com",
+      "why": "a password holding ?"
+    },
+    {
+      "url": "https://user:pa#ss@example.com/",
+      "host": "example.com",
+      "why": "a password holding #"
+    },
+    {
+      "url": "https://example.com/p?email=a@b.com",
+      "host": "example.com",
+      "why": "an @ in the query is not a login"
+    },
+    {
+      "url": "https://example.com/p@q",
+      "host": "example.com",
+      "why": "an @ in the path"
+    },
+    {
+      "url": "https://example.com:8080/a@b",
+      "host": "https",
+      "why": "a port and a path, or a login at b: read two ways"
+    },
+    {
+      "url": "https://u:p/x@a.com/y?e=c@d.com",
+      "host": "https",
+      "why": "more than one @ beyond: any could be the real one"
+    },
+    {
+      "url": "http://[::1]:8080/x",
+      "host": "[::1]:8080",
+      "why": "IPv6 with a port"
+    },
+    {
+      "url": "http://[fe80::1%25en0]/",
+      "host": "[fe80::1%25en0]",
+      "why": "IPv6 with a zone"
+    },
+    {
+      "url": "http://user@[2001:db8::1]/",
+      "host": "[2001:db8::1]"
+    },
+    {
+      "url": "https://192.168.1.10:5000/api",
+      "host": "192.168.1.10:5000"
+    },
+    {
+      "url": "example.com/path",
+      "host": "example.com",
+      "why": "no scheme"
+    },
+    {
+      "url": "https://bücher.de/x",
+      "host": "bücher.de",
+      "why": "a Unicode host"
+    },
+    {
+      "url": "https://exa mple.com/",
+      "host": "https",
+      "why": "no host at all: the scheme alone"
+    },
+    {
+      "url": "https://<script>/",
+      "host": "https"
+    },
+    {
+      "url": "file:///etc/passwd",
+      "host": "file",
+      "why": "no host: the scheme, never the path"
+    },
+    {
+      "url": "not a url",
+      "host": ""
+    },
+    {
+      "url": "",
+      "host": ""
+    }
+  ],
+  "labels": {
+    "setup": {
+      "memoryPaths": [],
+      "memoryServers": [
+        "recall"
+      ]
+    },
+    "cases": [
+      {
+        "tool": "Read",
+        "input": {
+          "file_path": "/Users/me/src/app/main.ts"
+        },
+        "label": "app/main.ts"
+      },
+      {
+        "tool": "Read",
+        "input": {
+          "path": "~/a.md"
+        },
+        "label": "a.md"
+      },
+      {
+        "tool": "Edit",
+        "input": {
+          "file_path": "C:\\Users\\me\\src\\x.ts"
+        },
+        "label": "src/x.ts"
+      },
+      {
+        "tool": "Write",
+        "input": {
+          "file_path": "/a/b/secret-plan.md",
+          "content": "the text written"
+        },
+        "label": "b/secret-plan.md"
+      },
+      {
+        "tool": "Grep",
+        "input": {
+          "pattern": "password=hunter2",
+          "path": "/repo"
+        },
+        "label": "search",
+        "why": "a pattern can be content"
+      },
+      {
+        "tool": "Glob",
+        "input": {
+          "pattern": "**/*.ts"
+        },
+        "label": "find files"
+      },
+      {
+        "tool": "apply_patch",
+        "input": {
+          "input": "*** Begin Patch\n*** Update File: src/lib/a.ts\n+secret\n*** End Patch"
+        },
+        "label": "lib/a.ts"
+      },
+      {
+        "tool": "Bash",
+        "input": {
+          "command": "curl -H 'Authorization: x' https://a",
+          "description": "Check the API"
+        },
+        "label": "Check the API"
+      },
+      {
+        "tool": "Bash",
+        "input": {
+          "command": "cd /repo && TOKEN=abc pnpm -r test --filter secret"
+        },
+        "label": "pnpm",
+        "why": "the command's name, never the line"
+      },
+      {
+        "tool": "Bash",
+        "input": {
+          "command": "/opt/tools/bin/deploy.sh --key=abc"
+        },
+        "label": "deploy.sh",
+        "why": "no folders"
+      },
+      {
+        "tool": "Bash",
+        "input": {
+          "command": "echo hi"
+        },
+        "label": "echo"
+      },
+      {
+        "tool": "Bash",
+        "input": {},
+        "label": "shell"
+      },
+      {
+        "tool": "PowerShell",
+        "input": {
+          "command": "Get-ChildItem C:\\x"
+        },
+        "label": "Get-ChildItem"
+      },
+      {
+        "tool": "WebFetch",
+        "input": {
+          "url": "https://user:pw@docs.example.com/private?token=x",
+          "prompt": "summarise"
+        },
+        "label": "docs.example.com"
+      },
+      {
+        "tool": "web_fetch",
+        "input": {
+          "url": "https://example.org/a"
+        },
+        "label": "example.org"
+      },
+      {
+        "tool": "WebSearch",
+        "input": {
+          "query": "my medical condition"
+        },
+        "label": "web search",
+        "why": "a query is content"
+      },
+      {
+        "tool": "web_search",
+        "input": {
+          "query": "q"
+        },
+        "label": "web search"
+      },
+      {
+        "tool": "mcp__plugin_playwright_playwright__browser_navigate",
+        "input": {
+          "url": "https://shop.example/cart?id=1"
+        },
+        "label": "shop.example"
+      },
+      {
+        "tool": "mcp__plugin_playwright_playwright__browser_click",
+        "input": {
+          "element": "Pay now",
+          "ref": "e12"
+        },
+        "label": "click"
+      },
+      {
+        "tool": "browser_take_screenshot",
+        "input": {},
+        "label": "take screenshot"
+      },
+      {
+        "tool": "playwright_browser_evaluate",
+        "input": {
+          "function": "() => document.cookie"
+        },
+        "label": "evaluate"
+      },
+      {
+        "tool": "mcp__Home_Assistant__ha_get_state",
+        "input": {
+          "entity_id": "lock.front"
+        },
+        "label": "Home Assistant: ha get state"
+      },
+      {
+        "tool": "mcp__plugin_github_github__create_pull_request",
+        "input": {
+          "title": "t"
+        },
+        "label": "github: create pull request"
+      },
+      {
+        "tool": "McpTool",
+        "input": {
+          "server_name": "github",
+          "tool_name": "get_issue",
+          "arguments": "{}"
+        },
+        "label": "github: get issue"
+      },
+      {
+        "tool": "mcp__recall__search_notes",
+        "input": {
+          "query": "private",
+          "id": 42
+        },
+        "label": "search notes #42",
+        "why": "a memory tool: its name and a short id"
+      },
+      {
+        "tool": "mcp__recall__get",
+        "input": {
+          "id": "a very long string that could be content"
+        },
+        "label": "get"
+      },
+      {
+        "tool": "Agent",
+        "input": {
+          "description": "Explore the repo",
+          "prompt": "the whole prompt"
+        },
+        "label": "Explore the repo"
+      },
+      {
+        "tool": "Agent",
+        "input": {
+          "prompt": "p"
+        },
+        "label": "subagent"
+      },
+      {
+        "tool": "task",
+        "input": {
+          "task": "secret task text",
+          "agent": "explore"
+        },
+        "label": "explore"
+      },
+      {
+        "tool": "Skill",
+        "input": {
+          "skill": "simplify",
+          "args": "x"
+        },
+        "label": "simplify"
+      },
+      {
+        "tool": "skill",
+        "input": {
+          "name": "review"
+        },
+        "label": "review"
+      },
+      {
+        "tool": "AskUserQuestion",
+        "input": {
+          "questions": [
+            {
+              "question": "private?"
+            }
+          ]
+        },
+        "label": "question for you"
+      },
+      {
+        "tool": "TaskCreate",
+        "input": {
+          "subject": "s"
+        },
+        "label": "TaskCreate"
+      },
+      {
+        "tool": "Read",
+        "input": {
+          "file_path": "/x/a\u001b[31m.md"
+        },
+        "label": "x/a [31m.md",
+        "why": "control characters removed"
+      },
+      {
+        "tool": "Bash",
+        "input": {
+          "description": "Rename ‮gnp.exe"
+        },
+        "label": "Rename gnp.exe",
+        "why": "direction marks removed"
+      },
+      {
+        "tool": "Bash",
+        "input": {
+          "description": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        "label": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa…",
+        "why": "cut at 120"
+      },
+      {
+        "tool": "Read",
+        "input": {},
+        "label": "Read"
+      }
+    ]
+  }
 }

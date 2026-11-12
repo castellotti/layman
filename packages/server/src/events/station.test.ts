@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
-import { commandKind, eventStation, isPushedMemory, shellCommands, shellStation, stationOf, STATION_IDS } from './station.js';
+import { commandKind, eventStation, hostOf, isPushedMemory, safeLabel, shellCommands, shellStation, stationOf, STATION_IDS } from './station.js';
 
 /** The fixture both packages' suites read; see the header of station.ts. */
 const fixture = JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'station-fixture.json'), 'utf8'));
@@ -86,6 +86,22 @@ describe('eventStation (shared fixture)', () => {
     it(`${c.type} → ${c.station}`, () => {
       expect(eventStation(c.type, c.data) ?? null).toBe(c.station);
       expect(isPushedMemory(c.type)).toBe(c.pushed === true);
+    });
+  }
+});
+
+describe('hostOf (shared fixture)', () => {
+  for (const c of fixture.hosts) {
+    it(`${JSON.stringify(c.url)} → ${JSON.stringify(c.host)}${c.why ? ` (${c.why})` : ''}`, () => {
+      expect(hostOf(c.url)).toBe(c.host);
+    });
+  }
+});
+
+describe('safeLabel (shared fixture)', () => {
+  for (const c of fixture.labels.cases) {
+    it(`${c.tool} → ${JSON.stringify(c.label).slice(0, 60)}${c.why ? ` (${c.why})` : ''}`, () => {
+      expect(safeLabel(c.tool, c.input, fixture.labels.setup)).toBe(c.label);
     });
   }
 });
