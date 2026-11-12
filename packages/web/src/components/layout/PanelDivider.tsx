@@ -90,7 +90,7 @@ export function PanelDivider({ value, min, max, direction, onChange, title }: Pa
         borderRight: '1px solid var(--border)',
         transition: 'background 0.12s',
       }}
-      onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.background = 'rgba(90,156,248,0.4)')}
+      onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.background = 'color-mix(in srgb, var(--info) 40%, transparent)')}
       onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.background = 'var(--bg-raised)')}
     />
   );

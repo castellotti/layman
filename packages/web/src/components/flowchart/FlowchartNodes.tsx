@@ -1,9 +1,10 @@
 import React, { memo } from 'react';
 import { Handle, Position } from '@xyflow/react';
 import type { FlowchartNodeData } from '../../lib/flowchart-graph.js';
+import { tokenColor } from '../../lib/tokens.js';
 
 function FlowchartNodeComponent({ data }: { data: FlowchartNodeData }) {
-  const { event, isSelected, icon, borderColor, label, sublabel, nodeType } = data;
+  const { event, isSelected, icon, borderToken, borderColor, label, sublabel, nodeType } = data;
   const isPending = event.type === 'tool_call_pending';
   const isFailed = event.type === 'tool_call_failed';
   const riskLevel = event.riskLevel;
@@ -14,17 +15,17 @@ function FlowchartNodeComponent({ data }: { data: FlowchartNodeData }) {
       <Handle type="target" position={Position.Top} id="top" className="!bg-transparent !border-0 !w-0 !h-0" />
       <div
         className={`rounded-lg cursor-pointer transition-all duration-150 hover:brightness-125 ${
-          isSelected ? 'ring-2 ring-[#58a6ff]/60' : ''
+          isSelected ? 'ring-2 ring-accent/60' : ''
         }`}
         style={{
           width: 220,
           minHeight: 56,
           border: `1.5px solid ${borderColor}`,
-          background: isSelected ? '#1c2333' : '#0d1117',
+          background: isSelected ? 'var(--bg-selected)' : 'var(--bg-code)',
           boxShadow: isPending
-            ? `0 0 12px ${borderColor}30`
+            ? `0 0 12px ${tokenColor(borderToken, '19%')}`
             : isSelected
-            ? '0 0 8px rgba(88,166,255,0.15)'
+            ? `0 0 8px ${tokenColor('accent', '15%')}`
             : '0 1px 3px rgba(0,0,0,0.3)',
         }}
       >
@@ -33,10 +34,10 @@ function FlowchartNodeComponent({ data }: { data: FlowchartNodeData }) {
           <span className="text-[12px] shrink-0">{icon}</span>
           <span
             className={`text-[11px] font-mono font-semibold truncate ${
-              nodeType === 'userPrompt' ? 'text-[#58a6ff]'
-              : nodeType === 'agentResponse' ? 'text-[#3fb950]'
-              : isFailed ? 'text-[#f85149]'
-              : 'text-[#e6edf3]'
+              nodeType === 'userPrompt' ? 'text-info'
+              : nodeType === 'agentResponse' ? 'text-ok'
+              : isFailed ? 'text-error'
+              : 'text-text'
             }`}
           >
             {label}
@@ -46,8 +47,8 @@ function FlowchartNodeComponent({ data }: { data: FlowchartNodeData }) {
             <span
               className="text-[9px] font-mono px-1.5 py-0.5 rounded"
               style={{
-                color: riskLevel === 'high' ? '#f85149' : '#d29922',
-                background: riskLevel === 'high' ? '#f8514915' : '#d2992215',
+                color: tokenColor(riskLevel === 'high' ? 'error' : 'warn'),
+                background: tokenColor(riskLevel === 'high' ? 'error' : 'warn', '8%'),
               }}
             >
               {riskLevel}
@@ -57,7 +58,7 @@ function FlowchartNodeComponent({ data }: { data: FlowchartNodeData }) {
         {/* Bottom row: sublabel */}
         {sublabel && (
           <div className="px-3 pb-2 pt-0">
-            <span className="text-[10px] text-[#8b949e] font-mono truncate block">
+            <span className="text-[10px] text-text-muted font-mono truncate block">
               {sublabel}
             </span>
           </div>

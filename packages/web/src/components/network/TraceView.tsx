@@ -23,7 +23,7 @@ import { fetchTrace, pollSettled, useNetDownloads } from '../../hooks/useNetTrac
 import { buttonStyle, ControlPopover } from './ControlPopover.js';
 import { NetToggle } from './cells.js';
 import { Row, SectionHead } from './DetailCard.js';
-import { EmptyState, NetIcon, type NetIconName } from './netui.js';
+import { ALARM, EmptyState, NetIcon, type NetIconName } from './netui.js';
 import { TipWrap, tipProps } from './NetTip.js';
 import { NetworkForTurn } from './NetworkForTurn.js';
 
@@ -90,7 +90,7 @@ export function openInTrace(token: string, promptEventId: string, flowId: string
 // ─── Turn bar ─────────────────────────────────────────────────────────────────
 
 function Chip({ tone, icon, children }: { tone: 'neutral' | 'warn' | 'error' | 'info'; icon?: NetIconName; children: React.ReactNode }) {
-  const c = { neutral: ['var(--text-body)', 'var(--border-strong)'], warn: ['var(--warn)', 'rgba(229,168,59,0.5)'], error: ['#FF8A80', 'rgba(240,86,74,0.55)'], info: ['var(--info)', 'rgba(90,156,248,0.5)'] }[tone];
+  const c = { neutral: ['var(--text-body)', 'var(--border-strong)'], warn: ['var(--warn)', 'color-mix(in srgb, var(--warn) 50%, transparent)'], error: [ALARM.text, 'color-mix(in srgb, var(--error) 55%, transparent)'], info: ['var(--info)', 'color-mix(in srgb, var(--info) 50%, transparent)'] }[tone];
   return (
     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, height: 22, padding: '0 8px', borderRadius: 11, fontSize: 11, whiteSpace: 'nowrap', color: c[0], border: `1px solid ${c[1]}`, background: 'var(--bg)' }}>
       {icon && <NetIcon name={icon} size={11} color={c[0]} />}{children}
@@ -151,7 +151,7 @@ export function TurnBar({ data }: { data: NetSessionData }) {
 // ─── Waterfall ────────────────────────────────────────────────────────────────
 
 const TONE: Record<Tone, string> = {
-  muted: 'var(--text-muted)', ok: 'var(--text-muted)', tunnel: 'var(--net-tunnel)', warn: 'var(--warn)', error: '#FF8A80', fanout: 'var(--net-fanout)', local: 'var(--text-muted)',
+  muted: 'var(--text-muted)', ok: 'var(--text-muted)', tunnel: 'var(--net-tunnel)', warn: 'var(--warn)', error: ALARM.text, fanout: 'var(--net-fanout)', local: 'var(--text-muted)',
 };
 const BAR: Record<Tone, string> = {
   muted: 'var(--text-faint)', ok: 'var(--net-tunnel)', tunnel: 'var(--net-tunnel)', warn: 'var(--warn)', error: 'var(--error)', fanout: 'var(--net-fanout)', local: 'var(--net-local)',
@@ -188,7 +188,7 @@ function RowView({ row, data, selected, onSelect, onToggleRow, onPolicy, axisWid
     <div role="row" aria-selected={selected} data-row={row.id} onClick={onSelect} style={{
       display: 'grid', gridTemplateColumns: GRID, alignItems: 'center', minHeight: 27, cursor: 'pointer',
       borderBottom: '1px solid var(--border)', borderLeft: `2px solid ${selected ? 'var(--warn)' : 'transparent'}`,
-      background: selected ? 'rgba(229,168,59,0.07)' : isCall ? 'rgba(255,255,255,0.012)' : undefined,
+      background: selected ? 'color-mix(in srgb, var(--warn) 7%, transparent)' : isCall ? 'color-mix(in srgb, var(--text) 1.2%, transparent)' : undefined,
     }}>
       <div role="cell" style={{ display: 'flex', alignItems: 'center', gap: 7, paddingLeft: pad, minWidth: 0 }}>
         {row.expandable ? (
@@ -207,11 +207,11 @@ function RowView({ row, data, selected, onSelect, onToggleRow, onPolicy, axisWid
         )}
         {row.call?.redacted && (
           <span data-tip="The PII filter redacted this URL's host when Layman recorded the call, so no flow can be joined to it; its traffic is under Unattributed. To keep IP addresses in glove sessions, turn on Settings → glove → Show IP addresses in sandboxed sessions (calls recorded from then on)."
-            style={{ fontSize: 9.5, color: 'var(--warn)', border: '1px solid rgba(229,168,59,0.5)', borderRadius: 4, padding: '0 4px', flexShrink: 0 }}>redacted</span>
+            style={{ fontSize: 9.5, color: 'var(--warn)', border: '1px solid color-mix(in srgb, var(--warn) 50%, transparent)', borderRadius: 4, padding: '0 4px', flexShrink: 0 }}>redacted</span>
         )}
         {row.call?.timing === 'approximate' && (
           <span data-tip="Layman read this call after it ran and did not keep the transcript's own times, so its flows were joined by host alone."
-            style={{ fontSize: 9.5, color: 'var(--warn)', border: '1px solid rgba(229,168,59,0.5)', borderRadius: 4, padding: '0 4px', flexShrink: 0 }}>≈ time</span>
+            style={{ fontSize: 9.5, color: 'var(--warn)', border: '1px solid color-mix(in srgb, var(--warn) 50%, transparent)', borderRadius: 4, padding: '0 4px', flexShrink: 0 }}>≈ time</span>
         )}
       </div>
       <div role="cell" style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 10.5, color: row.outcome ? TONE[row.outcome.tone] : undefined, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden' }}>
@@ -391,7 +391,7 @@ function CanIAllow({ data, flow }: { data: NetSessionData; flow: FlowView }) {
     action = <button type="button" disabled={!!disabled} onClick={() => apply({ kind: 'allowHost', host })} style={buttonStyle('ok')}>Allow {host}</button>;
   } else {
     text = 'It is allowed. You can block it from here or from its toggle.';
-    action = <button type="button" disabled={!!disabled} onClick={() => apply({ kind: 'blockHost', host, terminate: false })} style={buttonStyle('danger')}><NetIcon name="blocked" color="#FF8A80" />Block {host}</button>;
+    action = <button type="button" disabled={!!disabled} onClick={() => apply({ kind: 'blockHost', host, terminate: false })} style={buttonStyle('danger')}><NetIcon name="blocked" color={ALARM.text} />Block {host}</button>;
   }
   return (
     <>
@@ -461,7 +461,7 @@ export function TraceDetails({ data }: { data: NetSessionData }) {
           <Row k="Relay" v={c.relay.via === 'github' ? 'glove’s GitHub relay' : `glove’s ssh relay${c.relay.host ? ` · ${c.relay.host}` : ''}`} mono={false}
             sub={c.relay.via === 'github' ? 'the sidecar holds the token and makes the traffic (client github)' : `the sidecar dials the host (gate ssh-${c.relay.host ?? '…'})`} />
         )}
-        {c.failed && <Row k="Result" v="failed" colour="#FF8A80" />}
+        {c.failed && <Row k="Result" v="failed" colour={ALARM.text} />}
         {c.downloads.length > 0 && (
           <>
             <SectionHead>Saved</SectionHead>

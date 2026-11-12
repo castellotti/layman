@@ -90,7 +90,7 @@ export const SessionListRow = React.memo(function SessionListRow({
         userSelect: 'none',
       }}
       onMouseEnter={(e) => {
-        if (!isOpen) (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.03)';
+        if (!isOpen) (e.currentTarget as HTMLElement).style.background = 'color-mix(in srgb, var(--text) 3%, transparent)';
       }}
       onMouseLeave={(e) => {
         if (!isOpen) (e.currentTarget as HTMLElement).style.background = 'transparent';

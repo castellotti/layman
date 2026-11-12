@@ -166,7 +166,7 @@ export function ImportDialog({
                         <td style={{ padding: '4px 8px', textAlign: 'right', color: 'var(--text-muted)', fontVariantNumeric: 'tabular-nums' }}>{s.eventCount}</td>
                         <td style={{ padding: '4px 8px', textAlign: 'right', color: 'var(--text-muted)', fontVariantNumeric: 'tabular-nums' }}>{s.toolCallCount}</td>
                         <td style={{ padding: '4px 8px', textAlign: 'center' }}>
-                          <span style={{ padding: '1px 6px', borderRadius: 4, color: s.status === 'discovered' ? 'var(--ok)' : 'var(--accent)', background: s.status === 'discovered' ? 'rgba(76,195,138,0.1)' : 'rgba(90,156,248,0.1)' }}>
+                          <span style={{ padding: '1px 6px', borderRadius: 4, color: s.status === 'discovered' ? 'var(--ok)' : 'var(--accent)', background: s.status === 'discovered' ? 'color-mix(in srgb, var(--ok) 10%, transparent)' : 'color-mix(in srgb, var(--info) 10%, transparent)' }}>
                             {s.status}
                           </span>
                         </td>

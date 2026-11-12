@@ -14,7 +14,7 @@ import {
   blockChoices, blockOp, decidedBy, groupTarget, previewText, siblingIds, CUT_PREFIX, type BlockScope,
 } from '../../lib/net-rules.js';
 import type { DestinationAggregate, Rule, RulesOp } from '../../lib/netobs-types.js';
-import { NetIcon } from './netui.js';
+import { ALARM, NetIcon } from './netui.js';
 
 const WIDTH = 400;
 
@@ -22,8 +22,8 @@ export const buttonStyle = (kind: 'primary' | 'danger' | 'ok' | 'plain' | 'ghost
   display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, height: 26, padding: '0 10px', borderRadius: 6,
   fontSize: 11.5, fontWeight: 500, whiteSpace: 'nowrap', cursor: 'pointer', fontFamily: 'var(--font-ui)',
   ...(kind === 'primary' ? { background: 'var(--text)', border: '1px solid var(--text)', color: 'var(--bg)' }
-    : kind === 'danger' ? { background: 'rgba(240,86,74,0.12)', border: '1px solid rgba(240,86,74,0.5)', color: '#FF8A80' }
-      : kind === 'ok' ? { background: 'rgba(53,201,180,0.12)', border: '1px solid rgba(53,201,180,0.5)', color: 'var(--net-tunnel)' }
+    : kind === 'danger' ? { background: 'color-mix(in srgb, var(--error) 12%, transparent)', border: '1px solid color-mix(in srgb, var(--error) 50%, transparent)', color: ALARM.text }
+      : kind === 'ok' ? { background: 'color-mix(in srgb, var(--net-tunnel) 12%, transparent)', border: '1px solid color-mix(in srgb, var(--net-tunnel) 50%, transparent)', color: 'var(--net-tunnel)' }
         : kind === 'ghost' ? { background: 'transparent', border: '1px solid transparent', color: 'var(--text-muted)' }
           : { background: 'var(--bg-pill)', border: '1px solid var(--border-strong)', color: 'var(--text)' }),
 });
@@ -34,7 +34,7 @@ function Choice({ checked, onSelect, label, detail, warning, name }: {
   return (
     <label style={{
       display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 6, cursor: 'pointer',
-      border: `1px solid ${checked ? 'var(--info)' : 'var(--border)'}`, background: checked ? 'rgba(90,156,248,0.08)' : 'var(--bg)',
+      border: `1px solid ${checked ? 'var(--info)' : 'var(--border)'}`, background: checked ? 'color-mix(in srgb, var(--info) 8%, transparent)' : 'var(--bg)',
     }}>
       <input type="radio" name={name} checked={checked} onChange={onSelect} />
       <span style={{ minWidth: 0 }}>
@@ -99,7 +99,7 @@ function BlockForm({ row, submit, onClose }: { row: TableRow; submit: Submit; on
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6, marginTop: 10 }}>
         <button type="button" onClick={onClose} style={buttonStyle('ghost')}>Cancel</button>
         <button type="button" disabled={!op} onClick={() => op && submit(op)} style={buttonStyle('danger')}>
-          <NetIcon name="blocked" color="#FF8A80" />Block
+          <NetIcon name="blocked" color={ALARM.text} />Block
         </button>
       </div>
     </>

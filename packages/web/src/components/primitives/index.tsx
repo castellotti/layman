@@ -35,8 +35,8 @@ interface DepthButtonProps {
 }
 
 const DEPTH_BUTTON_STYLES = {
-  quick:    { color: 'var(--ok)',   bg: 'rgba(76,195,138,0.12)', bgHover: 'rgba(76,195,138,0.2)', border: '1px solid rgba(76,195,138,0.3)',  label: 'Quick' },
-  detailed: { color: 'var(--info)', bg: 'rgba(90,156,248,0.12)', bgHover: 'rgba(90,156,248,0.2)',  border: '1px solid rgba(90,156,248,0.25)', label: 'Detailed' },
+  quick:    { color: 'var(--ok)',   bg: 'color-mix(in srgb, var(--ok) 12%, transparent)', bgHover: 'color-mix(in srgb, var(--ok) 20%, transparent)', border: '1px solid color-mix(in srgb, var(--ok) 30%, transparent)',  label: 'Quick' },
+  detailed: { color: 'var(--info)', bg: 'color-mix(in srgb, var(--info) 12%, transparent)', bgHover: 'color-mix(in srgb, var(--info) 20%, transparent)',  border: '1px solid color-mix(in srgb, var(--info) 25%, transparent)', label: 'Detailed' },
 } as const;
 
 export function DepthButton({ depth, onClick, disabled, loading, loadingLabel = 'Working…' }: DepthButtonProps) {
@@ -116,7 +116,7 @@ const STATE_CHIP_STYLES: Record<StateChipVariant, { bg: string; color: string; b
   // --text-on-fill is for solid fills and was near-invisible here.
   permission: { bg: 'color-mix(in srgb, var(--warn) 18%, transparent)', color: 'var(--warn)', border: 'none' },
   running:    { bg: 'color-mix(in srgb, var(--ok) 18%, transparent)',   color: 'var(--ok)',   border: 'none' },
-  error:      { bg: 'var(--error)',             color: '#fff',           border: 'none' },
+  error:      { bg: 'var(--error)',             color: 'var(--text-on-fill)',           border: 'none' },
   idle:       { bg: 'var(--border)',            color: 'var(--text-muted)', border: 'none' },
   ended:      { bg: 'var(--border)',            color: 'var(--text-muted)', border: 'none' },
   live:       { bg: 'color-mix(in srgb, var(--ok) 15%, transparent)',   color: 'var(--ok)',   border: '1px solid color-mix(in srgb, var(--ok) 30%, transparent)' },
@@ -431,7 +431,7 @@ export function ConfirmDialog({ title, body, confirmLabel = 'Delete', onCancel, 
             style={{
               padding: '5px 12px', fontSize: 11, borderRadius: 5,
               background: 'var(--error)', border: '1px solid var(--error)',
-              color: '#fff', cursor: 'pointer',
+              color: 'var(--text-on-fill)', cursor: 'pointer',
             }}
           >
             {confirmLabel}
@@ -670,9 +670,9 @@ export function LiveChip({ state, buffered, archivedDate }: LiveChipProps) {
         display: 'inline-flex', alignItems: 'center', gap: 6,
         padding: '3px 9px', borderRadius: 5, fontSize: 11,
         fontFamily: 'var(--font-ui)', fontWeight: 500,
-        background: 'rgba(76,195,138,0.12)',
+        background: 'color-mix(in srgb, var(--ok) 12%, transparent)',
         color: 'var(--ok)',
-        border: '1px solid rgba(76,195,138,0.25)',
+        border: '1px solid color-mix(in srgb, var(--ok) 25%, transparent)',
       }}>
         <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--ok)', boxShadow: '0 0 6px var(--ok)cc', display: 'inline-block' }} />
         LIVE · following
@@ -685,9 +685,9 @@ export function LiveChip({ state, buffered, archivedDate }: LiveChipProps) {
         display: 'inline-flex', alignItems: 'center', gap: 6,
         padding: '3px 9px', borderRadius: 5, fontSize: 11,
         fontFamily: 'var(--font-ui)', fontWeight: 500,
-        background: 'rgba(229,168,59,0.12)',
+        background: 'color-mix(in srgb, var(--warn) 12%, transparent)',
         color: 'var(--warn)',
-        border: '1px solid rgba(229,168,59,0.25)',
+        border: '1px solid color-mix(in srgb, var(--warn) 25%, transparent)',
       }}>
         ⏸ PAUSED{buffered ? ` · ${buffered} buffered` : ''}
       </span>

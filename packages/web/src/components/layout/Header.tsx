@@ -236,8 +236,8 @@ export function Header() {
         <span style={{
           fontSize: 10,
           color: 'var(--warn)',
-          background: 'rgba(229,168,59,0.12)',
-          border: '1px solid rgba(229,168,59,0.3)',
+          background: 'color-mix(in srgb, var(--warn) 12%, transparent)',
+          border: '1px solid color-mix(in srgb, var(--warn) 30%, transparent)',
           padding: '2px 8px',
           borderRadius: 10,
           marginRight: 12,

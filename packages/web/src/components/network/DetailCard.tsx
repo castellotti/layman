@@ -15,7 +15,7 @@ import { clockTime, flowLabel, toolLabel } from '../../lib/net-table.js';
 import { controlDisabledReason, siblingIds } from '../../lib/net-rules.js';
 import { isLanOnlyRule, type DestinationAggregate, type FlowView, type GeoStatus, type RulesOp, type TraceView } from '../../lib/netobs-types.js';
 import { buttonStyle } from './ControlPopover.js';
-import { NetIcon, type NetIconName } from './netui.js';
+import { ALARM, NetIcon, type NetIconName } from './netui.js';
 import { useNetTrace } from '../../hooks/useNetTrace.js';
 import { openInTrace } from './TraceView.js';
 import { useVpnDomains } from '../../hooks/useVpnDomains.js';
@@ -150,7 +150,7 @@ function Policy({ data, d }: { data: NetSessionData; d: DestinationAggregate }) 
           {v.action === 'allow' && (
             <>
               <button type="button" disabled={!!disabled} onClick={() => apply({ kind: 'blockHost', host, terminate: false })} style={buttonStyle('danger')}>
-                <NetIcon name="blocked" color="#FF8A80" />Block this host
+                <NetIcon name="blocked" color={ALARM.text} />Block this host
               </button>
               {apex && <button type="button" disabled={!!disabled} onClick={() => apply({ kind: 'blockDomain', apex, terminate: false })} style={buttonStyle('plain')}>Block {apex}</button>}
               {d.openFlows > 0 && (

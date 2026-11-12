@@ -9,6 +9,7 @@ import type { SessionMetrics } from '../../lib/types.js';
 import { deriveSessionState, getSessionDisplayName, contextPctColor, isSessionLive } from '../../lib/session-state.js';
 import { formatTime, formatDuration as formatElapsed, cwdBasename } from '../../lib/format.js';
 import { EVENT_KIND_COLOR, kindLabel, eventDetail, withThinkingRows, baseEventId } from '../../lib/event-styles.js';
+import { tokenColor } from '../../lib/tokens.js';
 import { HostChip } from '../shared/HostChip.js';
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
@@ -49,8 +50,8 @@ function ActivityStrip({
         margin: '0 10px 6px',
         padding: '8px 10px',
         borderRadius: 6,
-        background: 'rgba(240,86,74,0.08)',
-        border: '1px solid rgba(240,86,74,0.25)',
+        background: 'color-mix(in srgb, var(--error) 8%, transparent)',
+        border: '1px solid color-mix(in srgb, var(--error) 25%, transparent)',
         display: 'flex',
         alignItems: 'center',
         gap: 8,
@@ -61,7 +62,7 @@ function ActivityStrip({
         </span>
         <button
           onClick={() => onOpenInLogs(sessionId)}
-          style={{ fontSize: 10, color: 'var(--error)', background: 'rgba(240,86,74,0.12)', border: '1px solid rgba(240,86,74,0.25)', borderRadius: 4, padding: '2px 8px', cursor: 'pointer', fontFamily: 'var(--font-ui)', flexShrink: 0 }}
+          style={{ fontSize: 10, color: 'var(--error)', background: 'color-mix(in srgb, var(--error) 12%, transparent)', border: '1px solid color-mix(in srgb, var(--error) 25%, transparent)', borderRadius: 4, padding: '2px 8px', cursor: 'pointer', fontFamily: 'var(--font-ui)', flexShrink: 0 }}
         >
           Open logs
         </button>
@@ -78,8 +79,8 @@ function ActivityStrip({
         margin: '0 10px 6px',
         padding: '8px 10px',
         borderRadius: 6,
-        background: 'rgba(229,168,59,0.08)',
-        border: '1px solid rgba(229,168,59,0.3)',
+        background: 'color-mix(in srgb, var(--warn) 8%, transparent)',
+        border: '1px solid color-mix(in srgb, var(--warn) 30%, transparent)',
         display: 'flex',
         alignItems: 'center',
         gap: 8,
@@ -106,8 +107,8 @@ function ActivityStrip({
         margin: '0 10px 6px',
         padding: '6px 10px',
         borderRadius: 6,
-        background: 'rgba(76,195,138,0.06)',
-        border: '1px solid rgba(76,195,138,0.15)',
+        background: 'color-mix(in srgb, var(--ok) 6%, transparent)',
+        border: '1px solid color-mix(in srgb, var(--ok) 15%, transparent)',
         display: 'flex',
         alignItems: 'center',
         gap: 8,
@@ -223,7 +224,7 @@ function TailRows({ rows, eventIndexById, onOpenInLogs, sessionId }: {
   return (
     <>
       {rows.map((event) => {
-        const color = EVENT_KIND_COLOR[event.type] ?? 'var(--text-muted)';
+        const color = tokenColor(EVENT_KIND_COLOR[event.type] ?? 'text-muted');
         const detail = eventDetail(event);
         const realId = baseEventId(event.id);
         const globalIdx = eventIndexById.get(realId) ?? -1;

@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { useSessionStore } from '../../stores/sessionStore.js';
 import { usePendingApprovals } from '../../hooks/usePendingApprovals.js';
 import { DRIFT_COLORS } from '../../lib/event-styles.js';
+import { tokenColor } from '../../lib/tokens.js';
 import type { ClientMessage } from '../../lib/ws-protocol.js';
 import type { DriftLevel } from '../../lib/types.js';
 
@@ -67,22 +68,22 @@ export function DriftBlockDialog({ onSend }: DriftBlockDialogProps) {
       onClick={handleKeepPaused}
     >
       <div
-        className="relative bg-[#161b22] border border-[#30363d] rounded-lg shadow-2xl max-w-md w-full mx-4"
+        className="relative bg-bg-card border border-border-strong rounded-lg shadow-2xl max-w-md w-full mx-4"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
         <div className="flex items-center gap-3 px-5 pt-5 pb-3">
           <div
             className="w-8 h-8 rounded-full flex items-center justify-center text-base"
-            style={{ background: 'rgba(255, 61, 87, 0.15)', color: '#ff3d57' }}
+            style={{ background: 'color-mix(in srgb, var(--error) 15%, transparent)', color: 'var(--error)' }}
           >
             !
           </div>
           <div>
-            <h2 className="text-sm font-semibold text-[#e6edf3]">
+            <h2 className="text-sm font-semibold text-text">
               Drift Monitor — Session Paused
             </h2>
-            <p className="text-xs text-[#8b949e] mt-0.5">
+            <p className="text-xs text-text-muted mt-0.5">
               Agent activity has been halted due to drift detection
             </p>
           </div>
@@ -96,18 +97,18 @@ export function DriftBlockDialog({ onSend }: DriftBlockDialogProps) {
 
         {/* Summary */}
         <div className="px-5 pb-3">
-          <p className="text-xs text-[#8b949e] leading-relaxed">{summary}</p>
+          <p className="text-xs text-text-muted leading-relaxed">{summary}</p>
           {ds?.sessionGoalIndicators && ds.sessionGoalIndicators.length > 0 && (
             <ul className="mt-2 space-y-0.5">
               {ds.sessionGoalIndicators.map((ind, i) => {
                 const isDismissed = dismissedItems?.indicators?.includes(ind);
                 return (
-                  <li key={i} className={`text-xs flex items-start gap-1.5 ${isDismissed ? 'line-through opacity-40' : 'text-[#8b949e]'}`}>
-                    <span style={{ color: '#d29922' }}>&#x2022;</span>
+                  <li key={i} className={`text-xs flex items-start gap-1.5 ${isDismissed ? 'line-through opacity-40' : 'text-text-muted'}`}>
+                    <span style={{ color: 'var(--warn)' }}>&#x2022;</span>
                     <span className="flex-1">{ind}</span>
                     {!isDismissed && (
                       <button
-                        className="text-[#484f58] hover:text-[#8b949e] text-[10px] shrink-0 px-1"
+                        className="text-text-faint hover:text-text-muted text-[10px] shrink-0 px-1"
                         onClick={(e) => { e.stopPropagation(); onSend({ type: 'drift:dismiss-item', sessionId, category: 'indicator', value: ind }); }}
                         title="Dismiss as false positive"
                       >&times;</button>
@@ -122,12 +123,12 @@ export function DriftBlockDialog({ onSend }: DriftBlockDialogProps) {
               {ds.rulesViolations.map((v, i) => {
                 const isDismissed = dismissedItems?.violations?.includes(v.rule);
                 return (
-                  <li key={i} className={`text-xs flex items-start gap-1.5 ${isDismissed ? 'line-through opacity-40' : 'text-[#8b949e]'}`}>
-                    <span style={{ color: '#f85149' }}>&#x2022;</span>
-                    <span className="flex-1"><strong className="text-[#e6edf3]">{v.rule}</strong>: {v.action}</span>
+                  <li key={i} className={`text-xs flex items-start gap-1.5 ${isDismissed ? 'line-through opacity-40' : 'text-text-muted'}`}>
+                    <span style={{ color: 'var(--error)' }}>&#x2022;</span>
+                    <span className="flex-1"><strong className="text-text">{v.rule}</strong>: {v.action}</span>
                     {!isDismissed && (
                       <button
-                        className="text-[#484f58] hover:text-[#8b949e] text-[10px] shrink-0 px-1"
+                        className="text-text-faint hover:text-text-muted text-[10px] shrink-0 px-1"
                         onClick={(e) => { e.stopPropagation(); onSend({ type: 'drift:dismiss-item', sessionId, category: 'violation', value: v.rule }); }}
                         title="Dismiss as false positive"
                       >&times;</button>
@@ -143,17 +144,17 @@ export function DriftBlockDialog({ onSend }: DriftBlockDialogProps) {
         <div className="px-5 pb-3">
           <div
             className="text-[10px] px-2 py-1 rounded"
-            style={{ background: 'rgba(210, 153, 34, 0.1)', border: '1px solid rgba(210, 153, 34, 0.2)' }}
+            style={{ background: 'color-mix(in srgb, var(--warn) 10%, transparent)', border: '1px solid color-mix(in srgb, var(--warn) 20%, transparent)' }}
           >
-            <span className="text-[#d29922]">Blocked tool:</span>{' '}
-            <span className="text-[#e6edf3] font-mono">{driftBlockApproval.toolName}</span>
+            <span className="text-warn">Blocked tool:</span>{' '}
+            <span className="text-text font-mono">{driftBlockApproval.toolName}</span>
           </div>
         </div>
 
         {/* Action buttons */}
         <div className="px-5 pb-5 space-y-2">
           {isDecided ? (
-            <div className="text-xs text-[#8b949e] italic text-center py-2">
+            <div className="text-xs text-text-muted italic text-center py-2">
               Decision sent — waiting for agent to continue...
             </div>
           ) : (
@@ -161,7 +162,7 @@ export function DriftBlockDialog({ onSend }: DriftBlockDialogProps) {
               <div className="flex gap-2">
                 <button
                   onClick={handleContinue}
-                  className="flex-1 px-3 py-2 text-xs font-semibold rounded-md bg-[#238636] hover:bg-[#2ea043] text-white transition-colors border border-[#3fb950]/30"
+                  className="flex-1 px-3 py-2 text-xs font-semibold rounded-md bg-ok hover:bg-ok/85 text-text-on-fill transition-colors border border-ok/30"
                 >
                   Continue
                 </button>
@@ -169,9 +170,9 @@ export function DriftBlockDialog({ onSend }: DriftBlockDialogProps) {
                   onClick={handleDismissFalsePositive}
                   className="flex-1 px-3 py-2 text-xs font-semibold rounded-md transition-colors border"
                   style={{
-                    background: 'rgba(210, 153, 34, 0.15)',
-                    borderColor: 'rgba(210, 153, 34, 0.3)',
-                    color: '#d29922',
+                    background: 'color-mix(in srgb, var(--warn) 15%, transparent)',
+                    borderColor: 'color-mix(in srgb, var(--warn) 30%, transparent)',
+                    color: 'var(--warn)',
                   }}
                 >
                   Dismiss as False Positive
@@ -179,7 +180,7 @@ export function DriftBlockDialog({ onSend }: DriftBlockDialogProps) {
               </div>
               <button
                 onClick={handleKeepPaused}
-                className="w-full px-3 py-2 text-xs font-medium rounded-md bg-[#21262d] hover:bg-[#30363d] text-[#8b949e] transition-colors border border-[#30363d]"
+                className="w-full px-3 py-2 text-xs font-medium rounded-md bg-bg-pill hover:bg-border-strong text-text-muted transition-colors border border-border-strong"
               >
                 Keep Paused
               </button>
@@ -192,13 +193,13 @@ export function DriftBlockDialog({ onSend }: DriftBlockDialogProps) {
 }
 
 function DriftBarMini({ label, pct, level }: { label: string; pct: number; level: DriftLevel }) {
-  const color = DRIFT_COLORS[level];
+  const color = tokenColor(DRIFT_COLORS[level]);
   return (
     <div className="flex items-center gap-3">
-      <span className="text-[10px] text-[#8b949e] w-20 text-right" style={{ fontFamily: 'var(--dash-font-data, monospace)' }}>
+      <span className="text-[10px] text-text-muted w-20 text-right" style={{ fontFamily: 'var(--dash-font-data, monospace)' }}>
         {label}
       </span>
-      <div className="flex-1 h-2 rounded-full overflow-hidden" style={{ background: '#21262d' }}>
+      <div className="flex-1 h-2 rounded-full overflow-hidden" style={{ background: 'var(--bg-pill)' }}>
         <div
           className="h-full rounded-full"
           style={{

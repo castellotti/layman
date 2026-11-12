@@ -22,7 +22,7 @@ import { useSharedLayout, useTopologyBox, useTopologyFocus } from './topologyFoc
 import { formatStamp } from '../../lib/net-range.js';
 import { buttonStyle } from './ControlPopover.js';
 import { Badge, SectionHead, Tile } from './DetailCard.js';
-import { NetIcon, useStored, type NetIconName } from './netui.js';
+import { ALARM, NetIcon, useStored, type NetIconName } from './netui.js';
 import { isLlmDestination, tokenTiles } from '../../lib/net-tokens.js';
 import type { NetRange } from '../../lib/netobs-types.js';
 import { useNetTokens } from '../../hooks/useNetTrace.js';
@@ -51,7 +51,7 @@ const LINE: Record<LineTone, { colour: string; mono: boolean }> = {
   ok: { colour: 'var(--net-tunnel)', mono: false },
   tunnel: { colour: 'var(--net-tunnel)', mono: false },
   warn: { colour: 'var(--warn)', mono: false },
-  error: { colour: '#FF8A80', mono: false },
+  error: { colour: ALARM.text, mono: false },
   fanout: { colour: 'var(--net-fanout)', mono: false },
 };
 
@@ -119,7 +119,7 @@ function Node({ n, selected, onSelect, tabbable = true }: { n: TopoNode; selecte
       <g {...common} {...tipProps(n.title)} data-node={n.id}>
         <rect x={n.x} y={n.y} width={n.w} height={n.h} rx={4} fill={selected ? SELECTED_FILL : 'var(--bg-card)'}
           stroke={stroke} strokeWidth={selected ? 1.5 : 1} strokeDasharray={n.dashed ? '3 3' : undefined} />
-        <text x={n.x + 8} y={n.y + n.h / 2 + 4} fontSize={11} fontFamily="var(--font-mono)" fill={n.tone === 'direct' ? '#FF8A80' : 'var(--text)'}>
+        <text x={n.x + 8} y={n.y + n.h / 2 + 4} fontSize={11} fontFamily="var(--font-mono)" fill={n.tone === 'direct' ? ALARM.text : 'var(--text)'}>
           {clip(n.title, n.w - (n.live ? 22 : 14))}
         </text>
         {n.live && <circle cx={n.x + n.w - 7} cy={n.y + n.h / 2} r={2.5} fill="var(--net-tunnel)" />}
@@ -174,7 +174,7 @@ const SORT_KEY = 'layman.topology.destSort';
 const reducedMotion = () => typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 
 /** A selected box's (or wall label's) fill. */
-const SELECTED_FILL = 'rgba(90,156,248,0.10)';
+const SELECTED_FILL = 'color-mix(in srgb, var(--info) 10%, transparent)';
 
 /** A policy-wall label's hit area: wide enough for `your rule “…” · 12`. */
 const WALL_LABEL_W = 180;
@@ -411,7 +411,7 @@ export function TopologyDiagram({ data }: { data: NetSessionData }) {
           strokeDasharray={b.dashed ? (b.kind === 'broken' ? '3 3' : '4 4') : undefined} />
         {b.live && !b.dashed && !dim && (
           // Live traffic: a thin line moving along the band, not the band itself dashed.
-          <path d={b.d} fill="none" stroke="#FFFFFF" strokeOpacity={0.45} strokeWidth={1.2} className="net-live-dash" />
+          <path d={b.d} fill="none" stroke="var(--text)" strokeOpacity={0.45} strokeWidth={1.2} className="net-live-dash" />
         )}
         {b.hosts.length > 0 && (
           // A wider invisible stroke so a thin band is still easy to click.
@@ -452,10 +452,10 @@ export function TopologyDiagram({ data }: { data: NetSessionData }) {
         )}
         {bands.filter((b) => order(b.kind) === 0).map(band)}
         <g data-wall>
-          <line x1={t.wall.x} x2={t.wall.x} y1={t.wall.y1} y2={t.wall.y2} stroke="#3A4252" strokeWidth={3} strokeLinecap="round" />
+          <line x1={t.wall.x} x2={t.wall.x} y1={t.wall.y1} y2={t.wall.y2} stroke="var(--border-strong)" strokeWidth={3} strokeLinecap="round" />
           {t.wall.labels.map((l) => {
             const selected = box === l.id;
-            const colour = l.kind === 'guard' ? 'var(--warn)' : '#FF8A80';
+            const colour = l.kind === 'guard' ? 'var(--warn)' : ALARM.text;
             return (
               <g key={l.id} data-wall-label={l.id} {...svgButton(`Show ${l.text} in Details`, () => selectBox(l.id))}>
                 {/* Its hit area, and its outline when selected. */}
@@ -563,7 +563,7 @@ const BOX_KIND: Readonly<Record<BoxDetails['kind'], string>> = {
   sandbox: 'Sandbox', service: 'Gate service', route: 'Route', exit: 'Apparent origin', policy: 'Policy', dest: 'Destination', broken: 'Broken path',
 };
 const FACT_TONE: Readonly<Record<NonNullable<BoxFact['tone']>, string>> = {
-  ok: 'var(--net-tunnel)', warn: 'var(--warn)', error: '#FF8A80', faint: 'var(--text-faint)',
+  ok: 'var(--net-tunnel)', warn: 'var(--warn)', error: ALARM.text, faint: 'var(--text-faint)',
 };
 
 const pct = (part: number, whole: number) => (whole > 0 ? `${Math.round((100 * part) / whole)}%` : '—');
@@ -759,7 +759,7 @@ export function SelectedPath({ data }: { data: NetSessionData }) {
       <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }} data-tip={disabled ?? undefined}>
         {d.host && d.state !== 'guard' && v?.action === 'allow' && (
           <button type="button" disabled={!!disabled} onClick={() => apply({ kind: 'blockHost', host: d.host!, terminate: false })} style={buttonStyle('danger')}>
-            <NetIcon name="blocked" color="#FF8A80" />Block {d.host}
+            <NetIcon name="blocked" color={ALARM.text} />Block {d.host}
           </button>
         )}
         {v?.action === 'block' && v.rule && (

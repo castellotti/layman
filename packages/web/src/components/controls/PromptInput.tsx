@@ -66,7 +66,7 @@ export function PromptInput({ sessionId, disabled }: PromptInputProps) {
   const isSent = status === 'sent';
 
   return (
-    <div className="border-t border-[#30363d] bg-[#0d1117] px-3 py-2 shrink-0">
+    <div className="border-t border-border-strong bg-bg px-3 py-2 shrink-0">
       <div className="flex items-start gap-2">
         <div className="flex-1 relative">
           <textarea
@@ -78,10 +78,10 @@ export function PromptInput({ sessionId, disabled }: PromptInputProps) {
             placeholder="Send a prompt to OpenCode… (Enter to send, Shift+Enter for newline)"
             rows={1}
             className={[
-              'w-full resize-none rounded-md px-3 py-2 text-sm bg-[#161b22] text-[#e6edf3]',
-              'border placeholder-[#484f58] outline-none transition-colors',
-              'focus:border-[#388bfd] disabled:opacity-50 disabled:cursor-not-allowed',
-              status === 'error' ? 'border-[#f85149]' : 'border-[#30363d]',
+              'w-full resize-none rounded-md px-3 py-2 text-sm bg-bg-card text-text',
+              'border placeholder-text-faint outline-none transition-colors',
+              'focus:border-accent disabled:opacity-50 disabled:cursor-not-allowed',
+              status === 'error' ? 'border-error' : 'border-border-strong',
             ].join(' ')}
             style={{ minHeight: '36px', maxHeight: '160px' }}
           />
@@ -93,15 +93,15 @@ export function PromptInput({ sessionId, disabled }: PromptInputProps) {
             'shrink-0 rounded-md px-3 py-2 text-sm font-medium transition-colors mt-0',
             'disabled:opacity-40 disabled:cursor-not-allowed',
             isSent
-              ? 'bg-[#238636] text-white'
-              : 'bg-[#1f6feb] hover:bg-[#388bfd] text-white',
+              ? 'bg-ok text-text-on-fill'
+              : 'bg-info hover:bg-info/85 text-text-on-fill',
           ].join(' ')}
         >
           {isSending ? '…' : isSent ? '✓' : '↑'}
         </button>
       </div>
       {status === 'error' && errorMsg && (
-        <p className="mt-1 text-[11px] text-[#f85149]">{errorMsg}</p>
+        <p className="mt-1 text-[11px] text-error">{errorMsg}</p>
       )}
     </div>
   );

@@ -497,6 +497,13 @@ Four rules that must not be relaxed casually:
   `bg-ok/10` and `bg-ok/[35%]` work, unlike `bg-[var(--ok)]/10`, which Tailwind 3 drops (a test
   fails on that form). `font-sans`, `font-ui` and `font-mono` follow `--font-ui` / `--font-mono`.
   Mind the names: `bg-bg-code` is the code background, `bg-code` paints with the code *text* colour.
+  No component, `lib` file or stylesheet holds a colour literal (`theme-literals.test.ts` fails on
+  any hex or non-black `rgb()` outside `themes.ts` and `index.css`'s `:root` blocks; black stays
+  allowed for shadows and scrims). In a style, an SVG attribute or a table, use `var(--…)` or
+  `tokenColor(token, '15%')` (`lib/tokens.ts`, the same helper the Tailwind config uses); colour
+  tables such as `lib/event-styles.ts` hold token names. A canvas cannot read `var()`: resolve with
+  `readToken()` and redraw on `useThemeVersion()` (the Minimap does). A shade between two tokens is
+  a `color-mix` of them (the network alarm's `ALARM` mixes `--error` with `--text`), never a new hex.
   The choice is the config's `appearance` block (`AppearanceSchema` in the server's
   `config/schema.ts`; it replaced the old top-level `theme`, which `migrateTheme` reads once:
   dark → classic, light → daylight). The server mirrors the theme ids, choices and defaults, and a

@@ -120,7 +120,7 @@ export function SettingsDrawer({ onSend }: SettingsDrawerProps) {
 
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 50, display: 'flex', justifyContent: 'flex-end', fontFamily: 'var(--font-ui)' }}>
-      <div style={{ position: 'absolute', inset: 0, background: 'rgba(4,6,10,0.6)' }} onClick={() => setSettingsOpen(false)} />
+      <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.6)' }} onClick={() => setSettingsOpen(false)} />
       <div style={{ position: 'relative', width: 740, maxWidth: '92vw', height: '100%', background: 'var(--bg-raised)', borderLeft: '1px solid var(--border)', display: 'flex', flexDirection: 'column', boxShadow: '-24px 0 60px rgba(0,0,0,0.5)' }}>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>

@@ -10,6 +10,7 @@ import { usePendingApprovals } from '../../hooks/usePendingApprovals.js';
 import { usePrintExpandable } from '../../hooks/usePrinting.js';
 import { useSessionStore } from '../../stores/sessionStore.js';
 import { DRIFT_COLORS, baseEventId, eventDetail } from '../../lib/event-styles.js';
+import { tokenColor } from '../../lib/tokens.js';
 import { MagnifierIcon, CopyButton, CopyLinkButton } from '../primitives/index.js';
 import { RiskBadge } from '../shared/RiskBadge.js';
 import { SpeakButton } from '../tts/SpeakButton.js';
@@ -488,7 +489,7 @@ function DriftApprovalBar({
       <div className="flex gap-2">
         <button
           onClick={handleContinue}
-          className="flex-1 px-3 py-2 text-xs font-semibold rounded-md bg-[var(--ok)] hover:bg-[var(--ok)] text-white transition-colors border border-[color-mix(in_srgb,var(--ok)_30%,transparent)]"
+          className="flex-1 px-3 py-2 text-xs font-semibold rounded-md bg-ok hover:bg-ok/85 text-text-on-fill transition-colors border border-[color-mix(in_srgb,var(--ok)_30%,transparent)]"
         >
           Continue
         </button>
@@ -496,8 +497,8 @@ function DriftApprovalBar({
           onClick={handleDismiss}
           className="flex-1 px-3 py-2 text-xs font-semibold rounded-md transition-colors border"
           style={{
-            background: 'rgba(210, 153, 34, 0.15)',
-            borderColor: 'rgba(210, 153, 34, 0.3)',
+            background: 'color-mix(in srgb, var(--warn) 15%, transparent)',
+            borderColor: 'color-mix(in srgb, var(--warn) 30%, transparent)',
             color: 'var(--warn)',
           }}
         >
@@ -558,7 +559,7 @@ function DriftDetailSection({
         }`}>
           {event.data.driftType === 'rules' ? 'RULES DRIFT' : 'SESSION DRIFT'}
         </span>
-        <span className="text-xs font-mono font-semibold" style={{ color: DRIFT_COLORS[event.data.driftLevel ?? 'red'] }}>
+        <span className="text-xs font-mono font-semibold" style={{ color: tokenColor(DRIFT_COLORS[event.data.driftLevel ?? 'red']) }}>
           {Math.round(event.data.driftPct ?? 0)}%
         </span>
         {event.data.driftPreviousLevel && event.data.driftPreviousLevel !== event.data.driftLevel && (

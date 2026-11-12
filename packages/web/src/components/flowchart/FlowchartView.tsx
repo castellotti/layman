@@ -134,7 +134,7 @@ function FlowchartInner({ externalEvents, onSelectEvent, externalSelectedEventId
 
   if (events.length === 0) {
     return (
-      <div className="flex items-center justify-center h-full text-[#484f58] text-xs">
+      <div className="flex items-center justify-center h-full text-text-faint text-xs">
         Waiting for events...
       </div>
     );
@@ -164,14 +164,14 @@ function FlowchartInner({ externalEvents, onSelectEvent, externalSelectedEventId
           proOptions={{ hideAttribution: true }}
           defaultEdgeOptions={{ type: 'default' }}
         >
-          <Background gap={24} size={1} color="#161b22" />
+          <Background gap={24} size={1} color="var(--border-subtle)" />
           <Controls showInteractive={false} />
           <MiniMap
             pannable
             zoomable
-            nodeColor={(node) => (node.data as FlowchartNodeData).borderColor ?? '#30363d'}
+            nodeColor={(node) => (node.data as FlowchartNodeData).borderColor ?? 'var(--border-strong)'}
             nodeStrokeWidth={0}
-            maskColor="rgba(11,14,20,0.75)"
+            maskColor="color-mix(in srgb, var(--bg) 75%, transparent)"
           />
         </ReactFlow>
       </div>
@@ -211,9 +211,9 @@ function FlowchartToolbar({
           display: 'inline-flex', alignItems: 'center', gap: 6,
           padding: '4px 10px', fontSize: 11, fontFamily: 'var(--font-ui)', fontWeight: 500,
           borderRadius: 5, cursor: 'pointer', whiteSpace: 'nowrap',
-          background: followLatest ? 'rgba(76,195,138,0.12)' : 'transparent',
+          background: followLatest ? 'color-mix(in srgb, var(--ok) 12%, transparent)' : 'transparent',
           color: followLatest ? 'var(--ok)' : 'var(--text-muted)',
-          border: followLatest ? '1px solid rgba(76,195,138,0.3)' : '1px solid var(--border-strong)',
+          border: followLatest ? '1px solid color-mix(in srgb, var(--ok) 30%, transparent)' : '1px solid var(--border-strong)',
         }}
       >
         <span style={{ width: 6, height: 6, borderRadius: '50%', background: followLatest ? 'var(--ok)' : 'var(--text-muted)' }} />

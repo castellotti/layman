@@ -16,7 +16,7 @@ const LEVEL_ICONS = {
 
 export function AnalysisBadge({ analysis }: AnalysisBadgeProps) {
   return (
-    <span className="inline-flex items-center gap-1 text-xs text-[#8b949e]">
+    <span className="inline-flex items-center gap-1 text-xs text-text-muted">
       {LEVEL_ICONS[analysis.risk.level]} {analysis.risk.level.toUpperCase()}
     </span>
   );

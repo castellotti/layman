@@ -1,25 +1,25 @@
 .react-flow__background {
-  background-color: #0d1117 !important;
+  background-color: var(--bg-code) !important;
 }
 
 .react-flow__controls {
-  background: #161b22 !important;
-  border: 1px solid #30363d !important;
+  background: var(--bg-card) !important;
+  border: 1px solid var(--border-strong) !important;
   border-radius: 6px !important;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4) !important;
 }
 
 .react-flow__controls-button {
-  background: #161b22 !important;
-  border-bottom: 1px solid #30363d !important;
-  fill: #8b949e !important;
+  background: var(--bg-card) !important;
+  border-bottom: 1px solid var(--border-strong) !important;
+  fill: var(--text-muted) !important;
   width: 24px !important;
   height: 24px !important;
 }
 
 .react-flow__controls-button:hover {
-  background: #21262d !important;
-  fill: #e6edf3 !important;
+  background: var(--bg-pill) !important;
+  fill: var(--text) !important;
 }
 
 .react-flow__controls-button:last-child {
@@ -27,13 +27,13 @@
 }
 
 .react-flow__minimap {
-  background: #161b22 !important;
-  border: 1px solid #30363d !important;
+  background: var(--bg-card) !important;
+  border: 1px solid var(--border-strong) !important;
   border-radius: 6px !important;
 }
 
 .react-flow__edge-path {
-  stroke: #30363d;
+  stroke: var(--border-strong);
 }
 
 .react-flow__attribution {
@@ -55,18 +55,18 @@
 }
 
 .react-flow__edge.edge-branchActive .react-flow__edge-path {
-  filter: drop-shadow(0 0 3px #d2992240);
+  filter: drop-shadow(0 0 3px color-mix(in srgb, var(--warn) 25%, transparent));
 }
 
 .react-flow__edge.edge-branchCompleted .react-flow__edge-path {
-  filter: drop-shadow(0 0 2px #3fb95030);
+  filter: drop-shadow(0 0 2px color-mix(in srgb, var(--ok) 19%, transparent));
 }
 
 .react-flow__edge.edge-branchFailed .react-flow__edge-path {
-  filter: drop-shadow(0 0 3px #f8514940);
+  filter: drop-shadow(0 0 3px color-mix(in srgb, var(--error) 25%, transparent));
 }
 
 .react-flow__edge.edge-current .react-flow__edge-path {
   animation: edge-pulse 2s ease-in-out infinite;
-  filter: drop-shadow(0 0 4px #58a6ff30);
+  filter: drop-shadow(0 0 4px color-mix(in srgb, var(--info) 19%, transparent));
 }

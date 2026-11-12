@@ -5,23 +5,23 @@ import remarkGfm from 'remark-gfm';
 const REMARK_PLUGINS = [remarkGfm];
 import { useChangelog, HARNESS_DISPLAY_NAMES } from '../../hooks/useChangelog.js';
 
-const MARKDOWN_PROSE = `text-xs text-[#e6edf3] leading-relaxed prose prose-invert prose-xs max-w-none
+const MARKDOWN_PROSE = `text-xs text-text leading-relaxed prose prose-invert prose-xs max-w-none
   [&_p]:my-1 [&_p]:leading-relaxed
-  [&_strong]:text-[#e6edf3] [&_strong]:font-semibold
-  [&_em]:text-[#8b949e]
-  [&_code]:text-[#79c0ff] [&_code]:bg-[#0d1117] [&_code]:px-1 [&_code]:rounded [&_code]:text-[11px]
-  [&_pre]:bg-[#0d1117] [&_pre]:rounded [&_pre]:p-2 [&_pre]:overflow-x-auto
+  [&_strong]:text-text [&_strong]:font-semibold
+  [&_em]:text-text-muted
+  [&_code]:text-info [&_code]:bg-bg [&_code]:px-1 [&_code]:rounded [&_code]:text-[11px]
+  [&_pre]:bg-bg [&_pre]:rounded [&_pre]:p-2 [&_pre]:overflow-x-auto
   [&_ul]:list-disc [&_ul]:pl-4 [&_ul]:my-1
   [&_ol]:list-decimal [&_ol]:pl-4 [&_ol]:my-1
   [&_li]:my-0.5
   [&_h1]:text-base [&_h2]:text-sm [&_h3]:text-xs [&_h1]:font-bold [&_h2]:font-bold [&_h3]:font-semibold
-  [&_h2]:mt-6 [&_h2]:mb-2 [&_h2]:text-[#58a6ff] [&_h2]:border-b [&_h2]:border-[#21262d] [&_h2]:pb-1
-  [&_h3]:mt-3 [&_h3]:mb-1 [&_h3]:text-[#e6edf3]
-  [&_hr]:border-[#21262d] [&_hr]:my-4
-  [&_blockquote]:border-l-2 [&_blockquote]:border-[#30363d] [&_blockquote]:pl-2 [&_blockquote]:text-[#8b949e]
+  [&_h2]:mt-6 [&_h2]:mb-2 [&_h2]:text-info [&_h2]:border-b [&_h2]:border-border [&_h2]:pb-1
+  [&_h3]:mt-3 [&_h3]:mb-1 [&_h3]:text-text
+  [&_hr]:border-border [&_hr]:my-4
+  [&_blockquote]:border-l-2 [&_blockquote]:border-border-strong [&_blockquote]:pl-2 [&_blockquote]:text-text-muted
   [&_table]:w-full [&_table]:border-collapse [&_table]:my-2
-  [&_th]:border [&_th]:border-[#30363d] [&_th]:px-2 [&_th]:py-1 [&_th]:text-left [&_th]:font-semibold [&_th]:bg-[#161b22]
-  [&_td]:border [&_td]:border-[#30363d] [&_td]:px-2 [&_td]:py-1`.replace(/\s+/g, ' ').trim();
+  [&_th]:border [&_th]:border-border-strong [&_th]:px-2 [&_th]:py-1 [&_th]:text-left [&_th]:font-semibold [&_th]:bg-bg-card
+  [&_td]:border [&_td]:border-border-strong [&_td]:px-2 [&_td]:py-1`.replace(/\s+/g, ' ').trim();
 
 interface ChangelogModalProps {
   agentType: string;
@@ -93,14 +93,14 @@ export function ChangelogModal({ agentType, activeVersion, onClose }: ChangelogM
       onClick={onClose}
     >
       <div
-        className="bg-[#0d1117] border border-[#30363d] rounded-lg shadow-2xl w-full max-w-3xl max-h-[80vh] flex flex-col"
+        className="bg-bg border border-border-strong rounded-lg shadow-2xl w-full max-w-3xl max-h-[80vh] flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between px-4 py-3 border-b border-[#30363d] shrink-0">
-          <h2 className="text-sm font-semibold text-[#e6edf3]">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-border-strong shrink-0">
+          <h2 className="text-sm font-semibold text-text">
             {displayName} Changelog
             {activeVersion && (
-              <span className="ml-2 text-[10px] font-mono text-[#484f58] font-normal">
+              <span className="ml-2 text-[10px] font-mono text-text-faint font-normal">
                 v{activeVersion} active
               </span>
             )}
@@ -111,7 +111,7 @@ export function ChangelogModal({ agentType, activeVersion, onClose }: ChangelogM
                 href={sourceUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-[10px] text-[#58a6ff] hover:text-[#79c0ff] transition-colors flex items-center gap-1"
+                className="text-[10px] text-info hover:text-info transition-colors flex items-center gap-1"
                 onClick={(e) => e.stopPropagation()}
               >
                 View on GitHub
@@ -122,7 +122,7 @@ export function ChangelogModal({ agentType, activeVersion, onClose }: ChangelogM
             )}
             <button
               onClick={onClose}
-              className="text-[#8b949e] hover:text-[#e6edf3] transition-colors text-lg leading-none"
+              className="text-text-muted hover:text-text transition-colors text-lg leading-none"
             >
               ×
             </button>
@@ -131,12 +131,12 @@ export function ChangelogModal({ agentType, activeVersion, onClose }: ChangelogM
 
         <div ref={contentRef} className="flex-1 overflow-y-auto p-5">
           {loading && (
-            <div className="flex items-center justify-center py-12 text-[#484f58] text-xs">
+            <div className="flex items-center justify-center py-12 text-text-faint text-xs">
               Loading changelog…
             </div>
           )}
           {error && (
-            <div className="flex items-center justify-center py-12 text-[#f85149] text-xs">
+            <div className="flex items-center justify-center py-12 text-error text-xs">
               Failed to load changelog: {error}
             </div>
           )}

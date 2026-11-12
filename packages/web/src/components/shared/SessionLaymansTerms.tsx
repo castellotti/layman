@@ -77,10 +77,10 @@ export function SessionLaymansTerms({
         disabled={isSummarizing}
         className={`truncate text-xs transition-colors disabled:cursor-not-allowed text-left ${
           isSummarizing
-            ? 'text-[#8b949e] animate-pulse cursor-not-allowed'
+            ? 'text-text-muted animate-pulse cursor-not-allowed'
             : summaryError
-              ? 'text-[#f85149] hover:text-[#ff7b72] cursor-pointer'
-              : 'text-[#8b949e] hover:text-[#e6edf3] cursor-pointer'
+              ? 'text-error hover:text-error cursor-pointer'
+              : 'text-text-muted hover:text-text cursor-pointer'
         }`}
       >
         {isSummarizing
@@ -92,32 +92,32 @@ export function SessionLaymansTerms({
 
       {/* Tooltip */}
       {tooltipOpen && !isSummarizing && (
-        <div className={`absolute ${tooltipAlignClass} ${tooltipPositionClass} z-50 w-96 max-w-[90vw] bg-[#1c2128] border border-[#30363d] rounded-lg shadow-2xl p-3 space-y-2 text-left pointer-events-none`}>
+        <div className={`absolute ${tooltipAlignClass} ${tooltipPositionClass} z-50 w-96 max-w-[90vw] bg-bg-selected border border-border-strong rounded-lg shadow-2xl p-3 space-y-2 text-left pointer-events-none`}>
           {summaryHistory.length === 0 ? (
             <>
-              <p className="text-[11px] font-semibold text-[#e6edf3]">Layman&apos;s Terms</p>
-              <p className="text-[11px] text-[#8b949e] leading-relaxed">
+              <p className="text-[11px] font-semibold text-text">Layman&apos;s Terms</p>
+              <p className="text-[11px] text-text-muted leading-relaxed">
                 Generates a plain-English summary of what the AI agent has been doing during this session — written for someone with no technical background. Click to generate your first summary.
               </p>
             </>
           ) : (
             <>
-              <p className="text-[11px] font-semibold text-[#e6edf3]">Layman&apos;s Terms — latest</p>
-              <p className="text-[11px] text-[#e6edf3] leading-relaxed whitespace-pre-wrap">
+              <p className="text-[11px] font-semibold text-text">Layman&apos;s Terms — latest</p>
+              <p className="text-[11px] text-text leading-relaxed whitespace-pre-wrap">
                 {summaryHistory[summaryHistory.length - 1].summary}
               </p>
               {summaryHistory.length > 1 && (
-                <div className="border-t border-[#30363d] pt-2 space-y-2">
-                  <p className="text-[10px] text-[#484f58] uppercase tracking-wider font-medium">Previous generations</p>
+                <div className="border-t border-border-strong pt-2 space-y-2">
+                  <p className="text-[10px] text-text-faint uppercase tracking-wider font-medium">Previous generations</p>
                   {[...summaryHistory].slice(0, -1).reverse().map((h, i) => (
                     <div key={i} className="space-y-0.5">
-                      <p className="text-[9px] text-[#484f58]">{formatTime(h.generatedAt)}</p>
-                      <p className="text-[10px] text-[#8b949e] leading-relaxed line-clamp-3 whitespace-pre-wrap">{h.summary}</p>
+                      <p className="text-[9px] text-text-faint">{formatTime(h.generatedAt)}</p>
+                      <p className="text-[10px] text-text-muted leading-relaxed line-clamp-3 whitespace-pre-wrap">{h.summary}</p>
                     </div>
                   ))}
                 </div>
               )}
-              <p className="text-[9px] text-[#484f58] border-t border-[#30363d] pt-1">
+              <p className="text-[9px] text-text-faint border-t border-border-strong pt-1">
                 Generated {formatTime(summaryHistory[summaryHistory.length - 1].generatedAt)} · Click to regenerate
               </p>
             </>

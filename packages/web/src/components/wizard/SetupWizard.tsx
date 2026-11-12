@@ -113,14 +113,14 @@ function WizardModal({ onSend, onClose, isFirstRun }: {
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60">
-      <div className="w-full max-w-2xl mx-4 bg-[#161b22] border border-[#30363d] rounded-lg shadow-2xl flex flex-col" style={{ maxHeight: '85vh' }}>
+      <div className="w-full max-w-2xl mx-4 bg-bg-card border border-border-strong rounded-lg shadow-2xl flex flex-col" style={{ maxHeight: '85vh' }}>
         {/* Header with progress indicator */}
-        <div className="px-6 pt-5 pb-4 border-b border-[#30363d] shrink-0">
+        <div className="px-6 pt-5 pb-4 border-b border-border-strong shrink-0">
           <div className="flex items-center justify-between mb-4">
-            <h1 className="text-sm font-semibold text-[#e6edf3]">Setup Wizard</h1>
+            <h1 className="text-sm font-semibold text-text">Setup Wizard</h1>
             <button
               onClick={handleClose}
-              className="text-[#8b949e] hover:text-[#e6edf3] transition-colors text-lg leading-none"
+              className="text-text-muted hover:text-text transition-colors text-lg leading-none"
               title="Close"
             >
               ×
@@ -138,18 +138,18 @@ function WizardModal({ onSend, onClose, isFirstRun }: {
                 <div
                   className={`w-3 h-3 rounded-full transition-colors ${
                     i === currentStep
-                      ? 'bg-[#58a6ff]'
+                      ? 'bg-info'
                       : i < currentStep
-                        ? 'bg-[#238636]'
-                        : 'border border-[#30363d] bg-transparent'
+                        ? 'bg-ok'
+                        : 'border border-border-strong bg-transparent'
                   }`}
                 />
                 <span className={`text-[9px] transition-colors ${
                   i === currentStep
-                    ? 'text-[#58a6ff]'
+                    ? 'text-info'
                     : i < currentStep
-                      ? 'text-[#3fb950]'
-                      : 'text-[#484f58]'
+                      ? 'text-ok'
+                      : 'text-text-faint'
                 }`}>
                   {step.label}
                 </span>
@@ -169,10 +169,10 @@ function WizardModal({ onSend, onClose, isFirstRun }: {
         </div>
 
         {/* Footer navigation */}
-        <div className="flex items-center justify-between px-6 py-4 border-t border-[#30363d] shrink-0">
+        <div className="flex items-center justify-between px-6 py-4 border-t border-border-strong shrink-0">
           <button
             onClick={handleClose}
-            className="text-xs text-[#8b949e] hover:text-[#e6edf3] transition-colors"
+            className="text-xs text-text-muted hover:text-text transition-colors"
           >
             {isFirstRun ? 'Skip setup' : 'Cancel'}
           </button>
@@ -180,14 +180,14 @@ function WizardModal({ onSend, onClose, isFirstRun }: {
             {currentStep > 0 && (
               <button
                 onClick={handleBack}
-                className="px-4 py-1.5 text-xs font-medium rounded bg-[#21262d] border border-[#30363d] text-[#e6edf3] hover:bg-[#30363d] transition-colors"
+                className="px-4 py-1.5 text-xs font-medium rounded bg-bg-pill border border-border-strong text-text hover:bg-border-strong transition-colors"
               >
                 Back
               </button>
             )}
             <button
               onClick={isLastStep ? handleFinish : handleNext}
-              className="px-4 py-1.5 text-xs font-medium rounded bg-[#238636] hover:bg-[#2ea043] text-white transition-colors"
+              className="px-4 py-1.5 text-xs font-medium rounded bg-ok hover:bg-ok/85 text-text-on-fill transition-colors"
             >
               {isLastStep ? (isFirstRun ? 'Finish' : 'Save') : 'Next'}
             </button>

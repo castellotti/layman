@@ -50,7 +50,7 @@ function SegmentRow({ title, range, detail, set, onPick, now }: {
   return (
     <button type="button" aria-pressed={on} onClick={() => onPick(range)} {...tipProps(rangeTitle(range))} style={{
       display: 'flex', flexDirection: 'column', alignItems: 'stretch', gap: 2, width: '100%', textAlign: 'left', padding: '6px 9px',
-      borderRadius: 6, cursor: 'pointer', fontFamily: 'var(--font-ui)', background: on ? 'rgba(90,156,248,0.10)' : 'transparent',
+      borderRadius: 6, cursor: 'pointer', fontFamily: 'var(--font-ui)', background: on ? 'color-mix(in srgb, var(--info) 10%, transparent)' : 'transparent',
       border: `1px solid ${on ? 'var(--info)' : 'transparent'}`, color: 'var(--text)',
     }}>
       <span style={{ display: 'flex', gap: 8, alignItems: 'baseline', fontSize: 11.5 }}>
@@ -271,7 +271,7 @@ function TimelineTab({ segments, range, onPick, now }: { segments: NetSegments; 
         }}>
         {chart}
         {shown && <rect data-brush="" x={x(shown.from)} y={0} width={Math.max(1, x(shown.to) - x(shown.from))} height={TL_H - 12}
-          fill="rgba(90,156,248,0.18)" stroke="var(--info)" />}
+          fill="color-mix(in srgb, var(--info) 18%, transparent)" stroke="var(--info)" />}
         <line x1={0} x2={TL_W} y1={TL_H - 12} y2={TL_H - 12} stroke="var(--border-strong)" />
         {hover !== null && <line x1={x(hover)} x2={x(hover)} y1={0} y2={TL_H - 12} stroke="var(--text-muted)" strokeDasharray="1 2" />}
       </svg>

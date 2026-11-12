@@ -1,20 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { readdirSync, readFileSync, statSync } from 'fs';
-import { dirname, join } from 'path';
-import { fileURLToPath } from 'url';
-import config, { tokenColor } from '../../tailwind.config.js';
-import { TOKENS } from './tokens.js';
-
-const SRC = join(dirname(fileURLToPath(import.meta.url)), '..');
-const WEB = join(SRC, '..');
-
-function sources(dir: string): string[] {
-  return readdirSync(dir).flatMap((name) => {
-    const p = join(dir, name);
-    if (statSync(p).isDirectory()) return sources(p);
-    return /\.tsx?$/.test(name) && !/\.test\.tsx?$/.test(name) ? [p] : [];
-  });
-}
+import config from '../../tailwind.config.js';
+import { TOKENS, tokenColor } from './tokens.js';
 
 describe('Tailwind follows the theme', () => {
   it('its colours are exactly the theme tokens, each its variable at any opacity', () => {
@@ -41,11 +27,4 @@ describe('Tailwind follows the theme', () => {
     });
   });
 
-  it('no class puts an opacity modifier on an arbitrary var() (`bg-[var(--ok)]/10`), which Tailwind 3 silently drops', () => {
-    const dropped = /\[(?:[\w-]+:)?var\(--[^\]]+\)\]\/(?:\d+|\[[^\]]+\])/g;
-    const found = [join(WEB, 'index.html'), ...sources(SRC)].flatMap((file) =>
-      [...readFileSync(file, 'utf8').matchAll(dropped)].map((m) => `${file.slice(WEB.length + 1)}: ${m[0]}`),
-    );
-    expect(found).toEqual([]);
-  });
 });

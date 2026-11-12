@@ -7,7 +7,7 @@ export function StatusPip({ ok, label }: { ok: boolean; label: string }) {
         fontSize: 9.5,
         padding: '2px 6px',
         borderRadius: 999,
-        background: ok ? 'rgba(76,195,138,0.15)' : 'rgba(240,86,74,0.15)',
+        background: ok ? 'color-mix(in srgb, var(--ok) 15%, transparent)' : 'color-mix(in srgb, var(--error) 15%, transparent)',
         color: ok ? 'var(--ok)' : 'var(--error)',
       }}
     >

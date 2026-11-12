@@ -289,7 +289,7 @@ export function App() {
   if (isNetworkView(viewMode)) {
     return (
       <AppShell onSend={send} onInstall={handleSetupInstall}>
-        <Suspense fallback={<div className="flex items-center justify-center h-full text-[#484f58] text-xs">Loading...</div>}>
+        <Suspense fallback={<div className="flex items-center justify-center h-full text-text-faint text-xs">Loading...</div>}>
           <NetworkView tab={viewMode as 'network' | 'map' | 'topology' | 'trace'} onSend={send} />
         </Suspense>
       </AppShell>
@@ -332,7 +332,7 @@ export function App() {
             className="flex flex-col min-w-0 overflow-hidden"
             style={{ width: investigationOpen ? `${leftWidthPct}%` : '100%' }}
           >
-            <Suspense fallback={<div className="flex items-center justify-center h-full text-[#484f58] text-xs">Loading...</div>}>
+            <Suspense fallback={<div className="flex items-center justify-center h-full text-text-faint text-xs">Loading...</div>}>
               <FlowchartView />
             </Suspense>
           </div>
@@ -340,7 +340,7 @@ export function App() {
           {investigationOpen && (
             <div
               data-print-hide
-              className="w-1 shrink-0 bg-[#30363d] hover:bg-[#58a6ff]/50 active:bg-[#58a6ff] cursor-col-resize transition-colors select-none"
+              className="w-1 shrink-0 bg-border-strong hover:bg-info/50 active:bg-info cursor-col-resize transition-colors select-none"
               onMouseDown={onDividerMouseDown}
             />
           )}

@@ -46,11 +46,11 @@ export function NetToggle({ kind, target, disabledReason, onClick }: {
   let knob: React.CSSProperties | null = { position: 'absolute', top: 1, width: 12, height: 12, borderRadius: 6 };
   switch (kind) {
     case 'allow':
-      style = { ...base, border: '1px solid var(--net-tunnel)', background: 'rgba(53,201,180,0.9)' };
+      style = { ...base, border: '1px solid var(--net-tunnel)', background: 'color-mix(in srgb, var(--net-tunnel) 90%, transparent)' };
       knob = { ...knob, left: 15, background: 'var(--bg)' };
       break;
     case 'block':
-      style = { ...base, border: '1px solid var(--error)', background: 'rgba(240,86,74,0.9)' };
+      style = { ...base, border: '1px solid var(--error)', background: 'color-mix(in srgb, var(--error) 90%, transparent)' };
       knob = { ...knob, left: 1, background: 'var(--bg)' };
       break;
     case 'default':
@@ -59,7 +59,7 @@ export function NetToggle({ kind, target, disabledReason, onClick }: {
       break;
     case 'pending':
       style = { ...base, border: '1px solid var(--warn)',
-        background: 'repeating-linear-gradient(135deg, rgba(229,168,59,0.35) 0 3px, transparent 3px 6px)' };
+        background: 'repeating-linear-gradient(135deg, color-mix(in srgb, var(--warn) 35%, transparent) 0 3px, transparent 3px 6px)' };
       knob = { ...knob, left: 8, background: 'var(--warn)' };
       break;
     case 'locked':

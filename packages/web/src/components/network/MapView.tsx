@@ -21,7 +21,7 @@ import { NetToggle } from './cells.js';
 import { ControlPopover, buttonStyle } from './ControlPopover.js';
 import { DetailCard, useGeoStatus } from './DetailCard.js';
 import { WorldMap } from './WorldMap.js';
-import { NetIcon, type NetIconName } from './netui.js';
+import { ALARM, NetIcon, type NetIconName } from './netui.js';
 import { TipWrap, tipProps } from './NetTip.js';
 import { isUntunnelled, isVpnRoute } from '../../lib/net-vpn.js';
 import { useVpnDomains } from '../../hooks/useVpnDomains.js';
@@ -57,7 +57,7 @@ function Card({ id, title, icon, count, extra, onHide, onDragStart, width = 300,
 }) {
   return (
     <section aria-label={title} style={{
-      width, maxWidth: '100%', background: 'rgba(17,21,29,0.94)', border: '1px solid var(--border)', borderRadius: 8,
+      width, maxWidth: '100%', background: 'color-mix(in srgb, var(--bg-card) 94%, transparent)', border: '1px solid var(--border)', borderRadius: 8,
       boxShadow: '0 8px 24px rgba(0,0,0,0.35)', backdropFilter: 'blur(4px)', overflow: 'hidden', pointerEvents: 'auto',
       // Shrinks to its corner's share of the height, and scrolls inside.
       display: 'flex', flexDirection: 'column', minHeight: 0, flexShrink: 1,
@@ -112,7 +112,7 @@ function TalkingNow({ data, now, select, selected }: { data: NetSessionData; now
           }}>
             <span style={{ width: 7, height: 7, borderRadius: 4, flexShrink: 0, background: d.state === 'active' ? 'var(--net-tunnel)' : 'var(--text-faint)' }} />
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11.5, color: isUntunnelled(d.scope, d.flags) ? '#FF8A80' : 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{d.host ?? d.endpoint}</div>
+              <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11.5, color: isUntunnelled(d.scope, d.flags) ? ALARM.text : 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{d.host ?? d.endpoint}</div>
               <div style={{ fontSize: 10, color: 'var(--text-faint)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                 {toolLabel(d.tools[0] ?? '')} · {d.state === 'active' ? 'live' : row.state.text} · {formatBytes(d.bytesDown)}
               </div>
@@ -320,10 +320,10 @@ export function MapView({ data, panels }: { data: NetSessionData; panels: Return
   // Dismissed, it stays away for this glove session until a host it has not seen goes out
   // untunnelled (the strip chip and the KPI still count them). Stacked in the top-centre column so it covers no card.
   const directBanner = direct.length > 0 && !banner.dismissed ? (
-    <div role="alert" style={{ pointerEvents: 'auto', display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', borderRadius: 8, background: '#2A0F0E', border: '1px solid var(--error)', maxWidth: 620 }}>
+    <div role="alert" style={{ pointerEvents: 'auto', display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', borderRadius: 8, background: ALARM.ground, border: '1px solid var(--error)', maxWidth: 620 }}>
             <NetIcon name="alert" size={18} color="var(--error)" strokeWidth={1.8} />
-            <div style={{ fontSize: 11.5, color: '#F3C6C1' }}>
-              <div style={{ fontSize: 12.5, fontWeight: 700, color: '#FFB4AD' }}>Untunnelled traffic</div>
+            <div style={{ fontSize: 11.5, color: ALARM.body }}>
+              <div style={{ fontSize: 12.5, fontWeight: 700, color: ALARM.title }}>Untunnelled traffic</div>
               {plural(direct.reduce((a, d) => a + d.flows, 0), 'flow')} to <span style={{ fontFamily: 'var(--font-mono)' }}>{direct.map((d) => d.host).slice(0, 3).join(', ')}{direct.length > 3 ? '…' : ''}</span> left through a <b>direct</b> route and carried the operator’s real IP.
             </div>
             {/* A rule matches glove's scope, not Layman's VPN view: it cuts the VPN routes too, so say so. */}
@@ -333,7 +333,7 @@ export function MapView({ data, panels }: { data: NetSessionData; panels: Return
               <button type="button" disabled={!!disabled}
                 onClick={() => useNetStore.getState().applyRules({ kind: 'blockGroup', key: 'scope', value: 'direct', terminate: true, note: 'Blocked direct egress from the Map' })}
                 style={buttonStyle('danger')}>
-                <NetIcon name="blocked" color="#FF8A80" />Block direct egress
+                <NetIcon name="blocked" color={ALARM.text} />Block direct egress
               </button>
             </TipWrap>
             <TipWrap tip={vpn.writable ? 'These hosts are on my corporate network: list them as VPN routes (Settings → Glove)' : 'Needs a live connection'} disabled={!vpn.writable}>
@@ -346,7 +346,7 @@ export function MapView({ data, panels }: { data: NetSessionData; panels: Return
             <button type="button" aria-label="Dismiss" title="Dismiss for this session (it comes back for a new untunnelled host)"
               onClick={banner.dismiss}
               style={{ pointerEvents: 'auto', display: 'flex', alignItems: 'center', justifyContent: 'center', width: 22, height: 22, background: 'transparent', border: 'none', borderRadius: 4, cursor: 'pointer', flexShrink: 0 }}>
-              <NetIcon name="close" size={11} color="#F3C6C1" />
+              <NetIcon name="close" size={11} color={ALARM.body} />
             </button>
           </div>
   ) : null;

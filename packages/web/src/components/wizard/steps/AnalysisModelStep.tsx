@@ -63,8 +63,8 @@ export function AnalysisModelStep({ config, onConfigChange }: AnalysisModelStepP
 
   return (
     <div>
-      <h2 className="text-base font-semibold text-[#e6edf3] mb-1">Configure your analysis model</h2>
-      <p className="text-xs text-[#8b949e] mb-5">
+      <h2 className="text-base font-semibold text-text mb-1">Configure your analysis model</h2>
+      <p className="text-xs text-text-muted mb-5">
         Layman uses an AI model to assess the risk of each tool call, generate plain-language explanations,
         and detect when an agent drifts from your goals. Choose a provider and model below.
       </p>
@@ -72,7 +72,7 @@ export function AnalysisModelStep({ config, onConfigChange }: AnalysisModelStepP
       <div className="space-y-3">
         {/* Provider */}
         <div>
-          <label className="text-xs text-[#8b949e] block mb-1">Provider</label>
+          <label className="text-xs text-text-muted block mb-1">Provider</label>
           <select
             value={provider}
             onChange={(e) => {
@@ -80,7 +80,7 @@ export function AnalysisModelStep({ config, onConfigChange }: AnalysisModelStepP
               setAvailableModels([]);
               setFetchError(null);
             }}
-            className="w-full px-3 py-1.5 text-xs bg-[#0d1117] border border-[#30363d] rounded-md text-[#e6edf3] focus:outline-none focus:border-[#58a6ff]"
+            className="w-full px-3 py-1.5 text-xs bg-bg border border-border-strong rounded-md text-text focus:outline-none focus:border-accent"
           >
             {PROVIDER_OPTIONS.map((p) => (
               <option key={p} value={p}>{PROVIDER_LABELS[p]}</option>
@@ -91,7 +91,7 @@ export function AnalysisModelStep({ config, onConfigChange }: AnalysisModelStepP
         {/* Endpoint URL */}
         {providerCfg.needsEndpoint && (
           <div>
-            <label className="text-xs text-[#8b949e] block mb-1">Endpoint URL</label>
+            <label className="text-xs text-text-muted block mb-1">Endpoint URL</label>
             <input
               type="text"
               value={config.analysis.endpoint ?? ''}
@@ -101,17 +101,17 @@ export function AnalysisModelStep({ config, onConfigChange }: AnalysisModelStepP
                 setFetchError(null);
               }}
               placeholder={providerCfg.endpointPlaceholder}
-              className="w-full px-3 py-1.5 text-xs bg-[#0d1117] border border-[#30363d] rounded-md text-[#e6edf3] placeholder-[#484f58] focus:outline-none focus:border-[#58a6ff]"
+              className="w-full px-3 py-1.5 text-xs bg-bg border border-border-strong rounded-md text-text placeholder-text-faint focus:outline-none focus:border-accent"
             />
           </div>
         )}
 
         {/* API Key */}
         <div>
-          <label className="text-xs text-[#8b949e] block mb-1">
+          <label className="text-xs text-text-muted block mb-1">
             API Key
             {providerCfg.apiKeyOptional && (
-              <span className="text-[#484f58]"> (optional for local models)</span>
+              <span className="text-text-faint"> (optional for local models)</span>
             )}
           </label>
           <input
@@ -119,18 +119,18 @@ export function AnalysisModelStep({ config, onConfigChange }: AnalysisModelStepP
             value={config.analysis.apiKey ?? ''}
             onChange={(e) => updateAnalysis({ apiKey: e.target.value || undefined })}
             placeholder={providerCfg.apiKeyPlaceholder}
-            className="w-full px-3 py-1.5 text-xs bg-[#0d1117] border border-[#30363d] rounded-md text-[#e6edf3] placeholder-[#484f58] focus:outline-none focus:border-[#58a6ff]"
+            className="w-full px-3 py-1.5 text-xs bg-bg border border-border-strong rounded-md text-text placeholder-text-faint focus:outline-none focus:border-accent"
           />
         </div>
 
         {/* Model */}
         <div>
           <div className="flex items-center justify-between mb-1">
-            <label className="text-xs text-[#8b949e]">Model</label>
+            <label className="text-xs text-text-muted">Model</label>
             <button
               onClick={() => void fetchModels()}
               disabled={!canFetch || fetchingModels}
-              className="text-[10px] text-[#58a6ff] hover:text-[#79c0ff] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              className="text-[10px] text-info hover:text-info disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
             >
               {fetchingModels ? 'Fetching...' : '\u21bb Fetch models'}
             </button>
@@ -140,7 +140,7 @@ export function AnalysisModelStep({ config, onConfigChange }: AnalysisModelStepP
             <select
               value={config.analysis.model}
               onChange={(e) => updateAnalysis({ model: e.target.value })}
-              className="w-full px-3 py-1.5 text-xs bg-[#0d1117] border border-[#30363d] rounded-md text-[#e6edf3] focus:outline-none focus:border-[#58a6ff]"
+              className="w-full px-3 py-1.5 text-xs bg-bg border border-border-strong rounded-md text-text focus:outline-none focus:border-accent"
             >
               {!availableModels.includes(config.analysis.model) && config.analysis.model && (
                 <option value={config.analysis.model}>{config.analysis.model}</option>
@@ -155,12 +155,12 @@ export function AnalysisModelStep({ config, onConfigChange }: AnalysisModelStepP
               value={config.analysis.model}
               onChange={(e) => updateAnalysis({ model: e.target.value })}
               placeholder="Enter model name or click \u21bb Fetch models"
-              className="w-full px-3 py-1.5 text-xs bg-[#0d1117] border border-[#30363d] rounded-md text-[#e6edf3] placeholder-[#484f58] focus:outline-none focus:border-[#58a6ff]"
+              className="w-full px-3 py-1.5 text-xs bg-bg border border-border-strong rounded-md text-text placeholder-text-faint focus:outline-none focus:border-accent"
             />
           )}
 
           {fetchError && (
-            <p className="text-[10px] text-[#f85149] mt-1">{fetchError}</p>
+            <p className="text-[10px] text-error mt-1">{fetchError}</p>
           )}
         </div>
       </div>

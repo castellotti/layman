@@ -9,7 +9,7 @@ import { BLOCK_STATES, formatBytes } from '../../lib/net-format.js';
 import type { NetSessionData } from '../../lib/net-state.js';
 import { offMap } from '../../lib/netobs-types.js';
 import { untunnelledFlows } from '../../lib/net-vpn.js';
-import { NetIcon, type NetIconName } from './netui.js';
+import { ALARM, NetIcon, type NetIconName } from './netui.js';
 import { WorldMap } from './WorldMap.js';
 
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
@@ -23,13 +23,13 @@ function Kpi({ icon, iconColour, label, value, valueColour = 'var(--text)', sub,
   return (
     <div role={alert ? 'alert' : undefined} style={{
       flex: '1 1 0', minWidth: 0, padding: '10px 12px', borderRadius: 8,
-      background: alert ? 'rgba(240,86,74,0.10)' : 'var(--bg-card)', border: `1px solid ${alert ? 'var(--error)' : 'var(--border)'}`,
+      background: alert ? 'color-mix(in srgb, var(--error) 10%, transparent)' : 'var(--bg-card)', border: `1px solid ${alert ? 'var(--error)' : 'var(--border)'}`,
     }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 10, letterSpacing: '0.08em', fontWeight: 600, color: alert ? '#FF8A80' : 'var(--text-muted)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 10, letterSpacing: '0.08em', fontWeight: 600, color: alert ? ALARM.text : 'var(--text-muted)' }}>
         <NetIcon name={icon} size={13} color={iconColour} />{label}
       </div>
       <div style={{ fontFamily: 'var(--font-mono)', fontSize: 20, fontWeight: 600, color: valueColour, marginTop: 3 }}>{value}</div>
-      <div style={{ fontSize: 10.5, color: alert ? '#F3C6C1' : 'var(--text-faint)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} data-tip={sub}>{sub}</div>
+      <div style={{ fontSize: 10.5, color: alert ? ALARM.body : 'var(--text-faint)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} data-tip={sub}>{sub}</div>
     </div>
   );
 }
@@ -58,7 +58,7 @@ export function KpiRow({ data }: { data: NetSessionData }) {
       <Kpi icon="blocked" iconColour="var(--error)" label="BLOCKED" value={String(blocked)} valueColour={blocked ? 'var(--error)' : 'var(--text)'}
         sub={blockedParts.length ? blockedParts.join(' · ') : 'nothing blocked'} />
       {untunnelled > 0 ? (
-        <Kpi alert icon="alert" iconColour="var(--error)" label="UNTUNNELLED" value={String(untunnelled)} valueColour="#FF8A80"
+        <Kpi alert icon="alert" iconColour="var(--error)" label="UNTUNNELLED" value={String(untunnelled)} valueColour={ALARM.text}
           sub={`${plural(untunnelled, 'flow')} skipped the tunnel${t.vpnFlows ? ` · ${plural(t.vpnFlows, 'VPN flow')} not counted` : ''}`} />
       ) : (
         <Kpi icon="check" iconColour="var(--ok)" label="UNTUNNELLED" value="0" valueColour="var(--ok)"
@@ -86,10 +86,10 @@ export function MiniMap({ data }: { data: NetSessionData }) {
       onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setViewMode('map'); }}
       style={{ position: 'relative', width: '100%', height: '100%', minHeight: 150, cursor: 'pointer', overflow: 'hidden' }}>
       <WorldMap data={data} selected={netDest} compact />
-      <span style={{ position: 'absolute', top: 8, right: 8, fontSize: 10, color: 'var(--text-muted)', background: 'rgba(11,14,20,0.8)', border: '1px solid var(--border-strong)', borderRadius: 10, padding: '2px 8px' }}>
+      <span style={{ position: 'absolute', top: 8, right: 8, fontSize: 10, color: 'var(--text-muted)', background: 'color-mix(in srgb, var(--bg) 80%, transparent)', border: '1px solid var(--border-strong)', borderRadius: 10, padding: '2px 8px' }}>
         {placed} mapped · Unknown location · {dests.length - placed}
       </span>
-      <span style={{ position: 'absolute', left: 8, bottom: 8, display: 'flex', alignItems: 'center', gap: 5, fontSize: 10.5, color: 'var(--text-body)', background: 'rgba(11,14,20,0.8)', border: '1px solid var(--border-strong)', borderRadius: 10, padding: '2px 8px' }}>
+      <span style={{ position: 'absolute', left: 8, bottom: 8, display: 'flex', alignItems: 'center', gap: 5, fontSize: 10.5, color: 'var(--text-body)', background: 'color-mix(in srgb, var(--bg) 80%, transparent)', border: '1px solid var(--border-strong)', borderRadius: 10, padding: '2px 8px' }}>
         <NetIcon name="tunnel" color="var(--net-tunnel)" /> sandbox → {origin}
       </span>
     </div>

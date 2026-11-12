@@ -714,7 +714,7 @@ export function SessionsView({ onSend }: SessionsViewProps) {
                     transition: 'background 0.15s',
                   }}
                   onMouseDown={() => { dividerDragging.current = true; }}
-                  onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(88,166,255,0.5)')}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = 'color-mix(in srgb, var(--accent) 50%, transparent)')}
                   onMouseLeave={(e) => (e.currentTarget.style.background = 'var(--border)')}
                 />
                 <div style={{ flex: 1, overflow: 'hidden', minWidth: 0 }}>
