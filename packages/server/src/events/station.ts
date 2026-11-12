@@ -846,10 +846,11 @@ const HOST_PORT = /^(?:[\p{L}\p{N}.-]+|\[[0-9A-Fa-f:.]+(?:%[\w.-]+)?\])(?::\d{1,
  * left is no host at all, the label is the scheme alone, or '' with none.
  */
 export function hostOf(url: string): string {
-  const m = /^([a-z][a-z0-9+.-]*):\/\/(.*)$/is.exec(url.trim());
+  const trimmed = url.trim();
+  const m = /^([a-z][a-z0-9+.-]*):\/\/(.*)$/is.exec(trimmed);
   const scheme = m ? m[1].toLowerCase() : '';
   // A browser reads `\` as `/` in an address: `https://real.com\@shown.com` goes to real.com.
-  const rest = (m ? m[2] : url.trim()).replace(/\\/g, '/');
+  const rest = (m ? m[2] : trimmed).replace(/\\/g, '/');
   const end = rest.search(/[/?#]/);
   const authority = end < 0 ? rest : rest.slice(0, end);
   const after = end < 0 ? '' : rest.slice(end);
@@ -882,6 +883,9 @@ function serverName(server: string): string {
   return m ? m[1] : server;
 }
 
+/** An MCP tool by its server and tool: `github: create issue`. */
+const mcpLabel = (server: string, tool: string): string => `${words(serverName(server))}: ${words(tool)}`;
+
 /** Words for a tool when nothing safer can be shown. */
 const TOOL_WORDS: Record<string, string> = {
   WebSearch: 'web search', web_search: 'web search', searxng_web_search: 'web search',
@@ -899,7 +903,6 @@ function shortId(input: Record<string, unknown>): string {
   return typeof id === 'string' && /^[\w-]{1,24}$/.test(id) ? ` #${id}` : '';
 }
 
-/** The first command in a shell line that does some work, by its name alone. */
 /**
  * A command's name may be shown only if it looks like one: no spaces, quotes, `$`, `=`, `?` or
  * backticks. The first word of a line is not always a name (`$env:KEY="…"`, `` `echo x` ``,
@@ -907,6 +910,7 @@ function shortId(input: Record<string, unknown>): string {
  */
 const NAME_SHAPED = /^[A-Za-z0-9_][\w.+-]{0,63}$/;
 
+/** The first command in a shell line that does some work, by its name alone. */
 function commandName(line: string, powershell: boolean): string {
   const named = shellCommands(line, powershell)
     .map((w) => ({ name: nameOf(w[0]), kind: commandKind(w, powershell) }))
@@ -943,13 +947,14 @@ function rawLabel(toolName: string, input: Record<string, unknown>, setup: Stati
   }
   if (url !== '') return hostOf(url);
   if (station === 'files') {
-    if (toolName === 'Grep' || toolName === 'Glob') return toolName === 'Grep' ? 'search' : 'find files';
-    return lastTwo(filePaths(input)[0] ?? '') || (server !== '' ? `${words(serverName(server))}: ${words(tool)}` : words(toolName));
+    if (toolName === 'Grep') return 'search';
+    if (toolName === 'Glob') return 'find files';
+    return lastTwo(filePaths(input)[0] ?? '') || (server !== '' ? mcpLabel(server, tool) : words(toolName));
   }
   if (station === 'agents') return str(input.description).trim() || str(input.agent).trim() || own(TOOL_WORDS, toolName) || words(toolName);
   if (station === 'skills') return str(input.skill) || str(input.name) || own(TOOL_WORDS, toolName) || 'skill';
   const fixed = own(TOOL_WORDS, toolName);
   if (fixed !== undefined) return fixed;
-  if (server !== '') return `${words(serverName(server))}: ${words(tool)}`;
+  if (server !== '') return mcpLabel(server, tool);
   return words(toolName);
 }
