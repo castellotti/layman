@@ -148,20 +148,27 @@ export const SyncConfigSchema = z.object({
 /**
  * The web's theme ids (`packages/web/src/lib/themes.ts`, `THEMES`), the font, density and motion
  * choices and the default appearance, mirrored here so the server can validate what it stores. A
- * web test reads this file and fails when the two disagree.
+ * web test (`appearance-config.test.ts`) imports this file and fails when the two disagree.
  */
 export const THEME_IDS = ['classic', 'ember', 'tide', 'phosphor', 'paper', 'daylight', 'contrast'] as const;
 export const FONT_CHOICES = ['theme', 'sans', 'mono'] as const;
 export const DENSITIES = ['comfortable', 'compact'] as const;
 export const MOTIONS = ['full', 'reduced', 'off'] as const;
-const HEX_COLOR = /^#[0-9a-f]{6}$/i;
+/** `#rgb` or `#rrggbb`, as the web's `HEX_COLOR` (`lib/color.ts`; held equal by a web test). */
+export const HEX_COLOR = /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i;
 
-/** Per-token colours: entries that are not a token-shaped name with a `#rrggbb` value are dropped. */
-const OverridesSchema = z.record(z.string(), z.unknown()).transform((o) =>
-  Object.fromEntries(
-    Object.entries(o).filter(([k, v]) => /^[a-z][a-z-]*$/.test(k) && typeof v === 'string' && HEX_COLOR.test(v)),
-  ) as Record<string, string>,
-);
+const isOverride = ([k, v]: [string, unknown]): boolean =>
+  /^[a-z][a-z-]*$/.test(k) && typeof v === 'string' && HEX_COLOR.test(v);
+
+/** Per-token colours, each a token-shaped name with a hex value; one bad entry fails the map. */
+const OverridesSchema = z.record(z.string(), z.unknown()).refine((o) => Object.entries(o).every(isOverride))
+  .transform((o) => o as Record<string, string>);
+
+/** An overrides map with its bad entries dropped (anything else is returned unchanged). */
+export function cleanOverrides(overrides: unknown): unknown {
+  if (!overrides || typeof overrides !== 'object' || Array.isArray(overrides)) return overrides;
+  return Object.fromEntries(Object.entries(overrides).filter(isOverride));
+}
 
 /** Each appearance field's valid values, without fallbacks: what an update must hold to be kept. */
 const APPEARANCE_FIELDS = {
@@ -189,15 +196,19 @@ export const AppearanceSchema = z.object({
   font: APPEARANCE_FIELDS.font.catch('sans').default('sans'),
   density: APPEARANCE_FIELDS.density.catch('compact').default('compact'),
   motion: APPEARANCE_FIELDS.motion.catch('full').default('full'),
-  overrides: APPEARANCE_FIELDS.overrides.catch({}).default({}),
+  overrides: z.preprocess(cleanOverrides, APPEARANCE_FIELDS.overrides).catch({}).default({}),
 });
 
-/** The fields of an appearance update that hold valid values; the rest are dropped. */
+/**
+ * The fields of an appearance update that hold valid values; the rest are dropped. An overrides
+ * map with any bad entry is dropped whole: it replaces the current map, so applying only its good
+ * entries would silently remove the user's other overrides.
+ */
 export function validAppearanceUpdate(update: unknown): Partial<AppearanceConfig> {
   if (!update || typeof update !== 'object') return {};
   return Object.fromEntries(
     Object.entries(update).filter(([k, v]) =>
-      Object.hasOwn(APPEARANCE_FIELDS, k) && APPEARANCE_FIELDS[k as keyof typeof APPEARANCE_FIELDS].safeParse(v).success),
+      Object.prototype.hasOwnProperty.call(APPEARANCE_FIELDS, k) && APPEARANCE_FIELDS[k as keyof typeof APPEARANCE_FIELDS].safeParse(v).success),
   ) as Partial<AppearanceConfig>;
 }
 
@@ -272,3 +283,6 @@ export type GloveConfig = z.infer<typeof GloveConfigSchema>;
 export type AnalysisConfigType = z.infer<typeof AnalysisConfigSchema>;
 export type TtsConfig = z.infer<typeof TtsConfigSchema>;
 export type AutoAllowRules = z.infer<typeof AutoAllowRulesSchema>;
+
+/** What a Settings update may carry: any fields, and of `appearance` only the choices it changes. */
+export type ConfigUpdate = Omit<Partial<LaymanConfig>, 'appearance'> & { appearance?: Partial<AppearanceConfig> };

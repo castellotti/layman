@@ -89,6 +89,16 @@ describe('the remembered appearance', () => {
     const refusing = { getItem: () => { throw new Error('denied'); }, setItem: () => { throw new Error('full'); } } as unknown as Storage;
     expect(() => rememberAppearance(DEFAULT_APPEARANCE, refusing)).not.toThrow();
     expect(rememberedAppearance(refusing)).toBeNull();
+    // Blocked site data: merely reading window.localStorage throws.
+    const original = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
+    Object.defineProperty(globalThis, 'localStorage', { configurable: true, get() { throw new Error('SecurityError'); } });
+    try {
+      expect(rememberedAppearance()).toBeNull();
+      expect(() => rememberAppearance(DEFAULT_APPEARANCE)).not.toThrow();
+    } finally {
+      if (original) Object.defineProperty(globalThis, 'localStorage', original);
+      else delete (globalThis as { localStorage?: unknown }).localStorage;
+    }
     const corrupt = fakeStorage();
     corrupt.setItem('layman.appearance', '{not json');
     expect(rememberedAppearance(corrupt)).toBeNull();

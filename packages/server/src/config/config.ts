@@ -1,9 +1,9 @@
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs';
 import { dirname } from 'path';
 import { cosmiconfig } from 'cosmiconfig';
-import { LaymanConfigSchema, validAppearanceUpdate } from './schema.js';
+import { cleanOverrides, LaymanConfigSchema, validAppearanceUpdate } from './schema.js';
 import { laymanConfigPath } from './paths.js';
-import type { AppearanceConfig, LaymanConfig } from './schema.js';
+import type { AppearanceConfig, ConfigUpdate, LaymanConfig } from './schema.js';
 
 const explorer = cosmiconfig('layman', {
   searchPlaces: [
@@ -98,7 +98,6 @@ export async function loadConfig(
   // source's appearance keeps its precedence over another's.
   fileConfig = migrateTheme(fileConfig);
   runtimeFile = migrateTheme(runtimeFile);
-  cliFlags = migrateTheme(cliFlags);
 
   // Merge order: defaults → env vars → static file → auto-saved runtime → CLI flags
   // CLI flags (port, host, etc.) always win; runtime file wins over static file
@@ -127,14 +126,7 @@ export async function loadConfig(
       ...runtimeFile.sync,
       ...cliFlags.sync,
     },
-    // Deep-merge appearance so a partial config (only `theme`) keeps the other choices.
-    // `overrides` is replaced whole: merging it would make a removed override impossible.
-    appearance: {
-      ...envConfig.appearance,
-      ...fileConfig.appearance,
-      ...runtimeFile.appearance,
-      ...cliFlags.appearance,
-    },
+    appearance: mergeAppearance(envConfig.appearance, fileConfig.appearance, runtimeFile.appearance, cliFlags.appearance),
     // Deep-merge glove and glove.network so a partial config (e.g. only
     // `glove.enabled`) can neither blank `home` nor reset the network block.
     glove: {
@@ -185,6 +177,19 @@ export function migrateTheme<T extends object>(config: T): T {
   return rest as T;
 }
 
+/**
+ * The config sources' appearance blocks, lowest precedence first, merged field by field so a
+ * partial block (only `theme`) keeps the other choices. Each source's invalid fields are dropped
+ * first, so one falls back to a lower source's valid choice rather than straight to the default.
+ * `overrides` is replaced whole: merging it would make a removed override impossible.
+ */
+export function mergeAppearance(...sources: unknown[]): Partial<AppearanceConfig> {
+  return Object.assign({}, ...sources.map((s) => validAppearanceUpdate(
+    // A stored map keeps its good entries: a hand-edited typo must not cost the rest.
+    s && typeof s === 'object' && 'overrides' in s ? { ...s, overrides: cleanOverrides(s.overrides) } : s,
+  )));
+}
+
 let runtimeConfig: LaymanConfig | null = null;
 
 /** The URL hooks are installed under: `hookUrl` if set, else the listen address. */
@@ -201,9 +206,11 @@ export function setConfig(config: LaymanConfig): void {
   runtimeConfig = config;
 }
 
-export function updateConfig(updates: Partial<LaymanConfig>): LaymanConfig {
+export function updateConfig(updates: ConfigUpdate): LaymanConfig {
   if (!runtimeConfig) throw new Error('Config not initialized.');
-  updates = migrateTheme(updates); // a client from before `appearance` still sends `theme`
+  // No `migrateTheme` here: the dashboard never read `theme`, and a stale tab sending the whole
+  // old config (`theme: 'dark'`, the old default) would overwrite the user's choice. The schema
+  // drops the key.
   runtimeConfig = LaymanConfigSchema.parse({
     ...runtimeConfig,
     ...updates,

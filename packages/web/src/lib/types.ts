@@ -358,6 +358,9 @@ export interface LaymanConfig {
   publicUrl: string;
 }
 
+/** What a Settings update may carry: any fields, and of `appearance` only the choices it changes. */
+export type ConfigUpdate = Omit<Partial<LaymanConfig>, 'appearance'> & { appearance?: Partial<Appearance> };
+
 // Drift monitoring types
 export type DriftLevel = 'green' | 'yellow' | 'orange' | 'red';
 

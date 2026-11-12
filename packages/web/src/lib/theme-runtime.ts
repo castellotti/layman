@@ -76,22 +76,29 @@ export function applyTheme(appearance: unknown, doc: Document = document): Resol
 const STORAGE_KEY = 'layman.appearance';
 
 /**
+ * The page's localStorage, read inside the callers' `try`: with site data blocked or in a
+ * sandboxed iframe, merely reading `window.localStorage` throws, and a default parameter would
+ * throw before any `try` and leave the page blank.
+ */
+const pageStorage = (): Storage | null => (typeof localStorage === 'undefined' ? null : localStorage);
+
+/**
  * The appearance this browser last applied from the config, kept so the next page load starts in
  * it instead of flashing the default until the WebSocket delivers the config. Null when none was
  * kept or storage is unavailable; `applyTheme` normalises whatever comes back.
  */
-export function rememberedAppearance(storage: Storage | null = globalThis.localStorage ?? null): unknown {
+export function rememberedAppearance(storage?: Storage | null): unknown {
   try {
-    const raw = storage?.getItem(STORAGE_KEY);
+    const raw = (storage === undefined ? pageStorage() : storage)?.getItem(STORAGE_KEY);
     return raw ? JSON.parse(raw) : null;
   } catch {
     return null;
   }
 }
 
-export function rememberAppearance(appearance: unknown, storage: Storage | null = globalThis.localStorage ?? null): void {
+export function rememberAppearance(appearance: unknown, storage?: Storage | null): void {
   try {
-    storage?.setItem(STORAGE_KEY, JSON.stringify(appearance));
+    (storage === undefined ? pageStorage() : storage)?.setItem(STORAGE_KEY, JSON.stringify(appearance));
   } catch {
     // Private mode or full storage: the next load shows the default until the config arrives.
   }

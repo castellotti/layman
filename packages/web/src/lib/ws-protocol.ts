@@ -4,6 +4,7 @@ import type {
   LaymansResult,
   PendingApprovalDTO,
   ApprovalDecision,
+  ConfigUpdate,
   LaymanConfig,
   SessionStatus,
   BookmarkFolder,
@@ -77,7 +78,7 @@ export type ClientMessage =
   | { type: 'laymans:request'; eventId: string; depth: 'quick' | 'detailed'; model?: string }
   | { type: 'both:request'; eventId: string; depth: 'quick' | 'detailed'; model?: string }
   | { type: 'analysis:ask'; eventId: string; question: string }
-  | { type: 'config:update'; config: Partial<LaymanConfig> }
+  | { type: 'config:update'; config: ConfigUpdate }
   | { type: 'setup:install'; clients?: string[] }
   | { type: 'bookmarks:get' }
   | { type: 'drift:reset'; sessionId: string }

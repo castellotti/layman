@@ -30,7 +30,7 @@ import type { TimelineEvent } from '../events/types.js';
 import type { AnalysisResult } from '../analysis/types.js';
 import type { PendingApprovalDTO } from '../hooks/pending.js';
 import type { ApprovalDecision } from '../hooks/types.js';
-import type { LaymanConfig } from '../config/schema.js';
+import type { ConfigUpdate, LaymanConfig } from '../config/schema.js';
 import type { LaymansResult } from '../analysis/types.js';
 import type { SessionInfo } from '../events/store.js';
 import type { BookmarkFolder, Bookmark, HighlightFolder, Highlight } from '../db/types.js';
@@ -120,7 +120,7 @@ export type ClientMessage =
   | { type: 'laymans:request'; eventId: string; depth: 'quick' | 'detailed'; model?: string }
   | { type: 'both:request'; eventId: string; depth: 'quick' | 'detailed'; model?: string }
   | { type: 'analysis:ask'; eventId: string; question: string }
-  | { type: 'config:update'; config: Partial<LaymanConfig> }
+  | { type: 'config:update'; config: ConfigUpdate }
   | { type: 'setup:install'; clients?: string[] }
   | { type: 'bookmarks:get' }
   | { type: 'drift:reset'; sessionId: string }
