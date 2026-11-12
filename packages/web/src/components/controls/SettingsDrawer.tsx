@@ -14,6 +14,7 @@ import { DriftMonitoringSection } from './settings/DriftMonitoringSection.js';
 import { RecordingSection } from './settings/RecordingSection.js';
 import { StreamSection } from './settings/StreamSection.js';
 import { TTSSection } from './settings/TTSSection.js';
+import { ActivitySection } from './settings/ActivitySection.js';
 
 export { HarnessSetupSection } from './settings/HarnessSection.js';
 export { PROVIDER_CONFIG } from './settings/AnalysisModelSection.js';
@@ -83,6 +84,11 @@ const SECTIONS: SectionDef[] = [
     key: 'stream', group: 'Stream', label: 'Stream behavior',
     searchTerms: ['full command', 'newest session', 'collapse history', 'auto-scroll', 'idle threshold'],
     render: (config, onSend) => <StreamSection config={config} onSend={onSend} />,
+  },
+  {
+    key: 'stations', group: 'Stream', label: 'Stations',
+    searchTerms: ['stations', 'activity', 'memory', 'memory paths', 'memory servers', 'MCP', 'kind of work'],
+    render: (config, onSend) => <ActivitySection config={config} onSend={onSend} />,
   },
   {
     key: 'glove', group: 'Extensions', label: 'Glove',

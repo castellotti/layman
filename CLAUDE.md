@@ -336,6 +336,26 @@ at all** — never an empty or stuck one:
 | Cline | shell hooks | ✗ | ✗ | post-turn only |
 | Mistral Vibe | 2 s log poll | ✗ | ✗ | post-turn only |
 
+### Activity map
+
+**Stations** (the kind of work a tool call is) are **derived at read time, never stored**:
+`stationOf(toolName, toolInput)` is a pure function of recorded fields, so it covers all history, needs
+no migration and no `SYNC_ENTITIES` entry, and improves without a backfill. It lives twice,
+**byte-identical**: `packages/server/src/events/station.ts` and `packages/web/src/lib/station.ts`
+(no imports, so the copies can match), held to one fixture both suites read
+(`packages/server/src/events/station-fixture.json`); the web suite fails if the files differ. Shell
+lines are scanned (quotes, heredocs, `$(…)`, redirections, wrappers, `bash -c`), never split on
+operators: a quoted `|` or a heredoc body read as commands misfiled most of a real history. A new
+harness tool name goes in the fixture with its harness. The **Guard** station is Layman's own
+decisions (approval, denial, drift reminder/block), not a tool.
+**Memory** is Claude Code's `~/.claude/projects/*/memory/` for everyone, plus `activity.memoryPaths`
+and `activity.memoryServers` (config, deep-merged); `instructions_loaded` is memory *pushed* into the
+context (`isPushedMemory`), counted apart from memory the model asked for. `eventStation()` is the
+one place a recorded event gets its station.
+`safeLabel()` (same file) is the names-only label: a name, never content (no command line, query,
+prompt, search pattern or path beyond its last two parts); `hostOf()` is its URL rule. Add a case to
+the fixture's `labels`/`hosts` with any change.
+
 ### Text to speech
 
 Reads agent responses aloud through a [speaches](https://github.com/speaches-ai/speaches) server

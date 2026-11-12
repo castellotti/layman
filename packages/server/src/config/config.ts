@@ -126,6 +126,13 @@ export async function loadConfig(
       ...runtimeFile.sync,
       ...cliFlags.sync,
     },
+    // Deep-merge so a file setting only memoryServers keeps memoryPaths.
+    activity: {
+      ...envConfig.activity,
+      ...fileConfig.activity,
+      ...runtimeFile.activity,
+      ...cliFlags.activity,
+    },
     appearance: mergeAppearance(envConfig.appearance, fileConfig.appearance, runtimeFile.appearance, cliFlags.appearance),
     // Deep-merge glove and glove.network so a partial config (e.g. only
     // `glove.enabled`) can neither blank `home` nor reset the network block.
@@ -219,6 +226,7 @@ export function updateConfig(updates: ConfigUpdate): LaymanConfig {
     // Deep-merge so a Settings update that omits sync.hostId (or sends only a
     // role change) keeps the persisted identity instead of minting a new one.
     sync: { ...runtimeConfig.sync, ...updates.sync },
+    activity: { ...runtimeConfig.activity, ...updates.activity },
     // Deep-merge so an update carrying one appearance choice keeps the others, and one
     // carrying a value this version does not know keeps the current choice. `overrides`,
     // when sent, replaces the map (so one can be removed).
