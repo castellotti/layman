@@ -159,15 +159,51 @@ export const HEX_COLOR = /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i;
 
 const isOverride = ([k, v]: [string, unknown]): boolean =>
   /^[a-z][a-z-]*$/.test(k) && typeof v === 'string' && HEX_COLOR.test(v);
+const isObject = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
+const isThemeId = (k: string): k is ThemeId => (THEME_IDS as readonly string[]).includes(k);
+export type ThemeId = (typeof THEME_IDS)[number];
 
-/** Per-token colours, each a token-shaped name with a hex value; one bad entry fails the map. */
-const OverridesSchema = z.record(z.string(), z.unknown()).refine((o) => Object.entries(o).every(isOverride))
-  .transform((o) => o as Record<string, string>);
+/** One theme's colours: token-shaped names with hex values. */
+export type ThemeColours = Record<string, string>;
+/** Per-theme colours on top of each theme, by theme id, so one theme's edits never reach another. */
+export type Overrides = Partial<Record<ThemeId, ThemeColours>>;
 
-/** An overrides map with its bad entries dropped (anything else is returned unchanged). */
-export function cleanOverrides(overrides: unknown): unknown {
-  if (!overrides || typeof overrides !== 'object' || Array.isArray(overrides)) return overrides;
-  return Object.fromEntries(Object.entries(overrides).filter(isOverride));
+/** A theme's colours valid as sent: every entry good (one bad entry fails the map). */
+const validColours = (v: unknown): v is ThemeColours => isObject(v) && Object.entries(v).every(isOverride);
+
+/**
+ * Stored overrides with what this version cannot use dropped: unknown themes, bad entries, and
+ * maps left empty. Anything that is not an object (an older flat map's values are strings, so
+ * none of it survives) becomes `{}`.
+ */
+export function cleanOverrides(overrides: unknown): Overrides {
+  if (!isObject(overrides)) return {};
+  const out: Overrides = {};
+  for (const [id, colours] of Object.entries(overrides)) {
+    if (!isThemeId(id) || !isObject(colours)) continue;
+    const kept = Object.fromEntries(Object.entries(colours).filter(isOverride)) as ThemeColours;
+    if (Object.keys(kept).length) out[id] = kept;
+  }
+  return out;
+}
+
+/**
+ * The themes of an overrides *update* that are valid as sent, each replacing that theme's map (an
+ * empty map clears it). A theme whose map holds any bad entry is left out, keeping its current
+ * map whole: applying only the good entries would silently remove the user's others. Null when no
+ * theme survives.
+ */
+function validOverridesUpdate(update: unknown): Overrides | null {
+  if (!isObject(update)) return null;
+  const out = Object.fromEntries(Object.entries(update).filter(([id, v]) => isThemeId(id) && validColours(v))) as Overrides;
+  return Object.keys(out).length ? out : null;
+}
+
+/** `current` with each theme `update` names replaced, and themes left with no colours dropped. */
+export function mergeOverrides(current: Overrides, update: Overrides | undefined): Overrides {
+  const merged: Overrides = { ...current, ...update };
+  for (const id of Object.keys(merged) as ThemeId[]) if (!Object.keys(merged[id] ?? {}).length) delete merged[id];
+  return merged;
 }
 
 /** Each appearance field's valid values, without fallbacks: what an update must hold to be kept. */
@@ -179,7 +215,6 @@ const APPEARANCE_FIELDS = {
   font: z.enum(FONT_CHOICES),
   density: z.enum(DENSITIES),
   motion: z.enum(MOTIONS),
-  overrides: OverridesSchema,
 };
 
 /** A field that takes `fallback` when absent or invalid. */
@@ -199,20 +234,22 @@ export const AppearanceSchema = z.object({
   font: orDefault(APPEARANCE_FIELDS.font, 'sans'),
   density: orDefault(APPEARANCE_FIELDS.density, 'compact'),
   motion: orDefault(APPEARANCE_FIELDS.motion, 'full'),
-  overrides: orDefault(z.preprocess(cleanOverrides, APPEARANCE_FIELDS.overrides), {}),
+  overrides: z.unknown().transform(cleanOverrides),
 });
 
 /**
- * The fields of an appearance update that hold valid values; the rest are dropped. An overrides
- * map with any bad entry is dropped whole: it replaces the current map, so applying only its good
- * entries would silently remove the user's other overrides.
+ * The fields of an appearance update that hold valid values; the rest are dropped. `overrides`
+ * keeps only the themes sent validly (`validOverridesUpdate`); the caller merges them per theme.
  */
 export function validAppearanceUpdate(update: unknown): Partial<AppearanceConfig> {
-  if (!update || typeof update !== 'object') return {};
-  return Object.fromEntries(
+  if (!isObject(update)) return {};
+  const out = Object.fromEntries(
     Object.entries(update).filter(([k, v]) =>
       Object.prototype.hasOwnProperty.call(APPEARANCE_FIELDS, k) && APPEARANCE_FIELDS[k as keyof typeof APPEARANCE_FIELDS].safeParse(v).success),
   ) as Partial<AppearanceConfig>;
+  const overrides = validOverridesUpdate(update.overrides);
+  if (overrides) out.overrides = overrides;
+  return out;
 }
 
 export type AppearanceConfig = z.infer<typeof AppearanceSchema>;

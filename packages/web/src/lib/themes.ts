@@ -63,6 +63,17 @@ export function themeProblems(tokens: TokenMap, allow: ReadonlySet<string> = new
   return out;
 }
 
+/** Every token in the groups Settings → Appearance lists them in; a test holds it to `TOKENS`. */
+export const TOKEN_GROUPS: readonly { name: string; tokens: readonly Token[] }[] = [
+  { name: 'Grounds', tokens: ['bg', 'bg-raised', 'bg-card', 'bg-selected', 'bg-pill', 'bg-code'] },
+  { name: 'Lines', tokens: ['border-subtle', 'border', 'border-strong'] },
+  { name: 'Text', tokens: ['text', 'text-body', 'text-muted', 'text-faint', 'text-on-fill'] },
+  { name: 'Accent and status', tokens: ['accent', 'accent-hot', 'ok', 'warn', 'error', 'severity-major', 'severity-minor'] },
+  { name: 'Kinds', tokens: ['info', 'agent', 'thinking', 'code'] },
+  { name: 'Diffs', tokens: ['diff-add-bg', 'diff-add-text', 'diff-remove-bg', 'diff-remove-text'] },
+  { name: 'Network', tokens: ['net-tunnel', 'net-up', 'net-down', 'net-fanout', 'net-local', 'net-ocean', 'net-land', 'net-landline'] },
+];
+
 export type ThemeId = 'classic' | 'ember' | 'tide' | 'phosphor' | 'paper' | 'daylight' | 'contrast';
 export type Scheme = 'dark' | 'light';
 /** A theme's own type: sans UI with mono code, mono-forward, or mono for everything. */
@@ -204,9 +215,16 @@ export interface Appearance {
   font: FontChoice;
   density: Density;
   motion: Motion;
-  /** Per-token colours on top of the chosen theme. Unknown tokens and non-hex values are dropped. */
-  overrides: Partial<TokenMap>;
+  /**
+   * Per-theme colours on top of each theme, by theme id, so a colour chosen for one theme never
+   * lands on another (under "Follow the OS" both halves show). Unknown themes and tokens and
+   * non-hex values are dropped.
+   */
+  overrides: Overrides;
 }
+
+/** One theme's colours replaced by the user. */
+export type Overrides = Partial<Record<ThemeId, Partial<TokenMap>>>;
 
 export const DEFAULT_APPEARANCE: Appearance = {
   theme: 'classic',
@@ -239,10 +257,15 @@ const themeId = (v: unknown, fallback: ThemeId): ThemeId => (typeof v === 'strin
 export function normalizeAppearance(input: unknown): Appearance {
   const a = (input && typeof input === 'object' ? input : {}) as Record<string, unknown>;
   const d = DEFAULT_APPEARANCE;
-  const overrides: Partial<TokenMap> = {};
+  const overrides: Overrides = {};
   if (a.overrides && typeof a.overrides === 'object') {
-    for (const [k, v] of Object.entries(a.overrides as Record<string, unknown>)) {
-      if (TOKEN_SET.has(k) && typeof v === 'string' && HEX_COLOR.test(v)) overrides[k as Token] = v;
+    for (const [id, colours] of Object.entries(a.overrides as Record<string, unknown>)) {
+      if (!BY_ID.has(id) || !colours || typeof colours !== 'object') continue;
+      const kept: Partial<TokenMap> = {};
+      for (const [k, v] of Object.entries(colours as Record<string, unknown>)) {
+        if (TOKEN_SET.has(k) && typeof v === 'string' && HEX_COLOR.test(v)) kept[k as Token] = v;
+      }
+      if (Object.keys(kept).length) overrides[id as ThemeId] = kept;
     }
   }
   return {
@@ -263,6 +286,11 @@ export function normalizeAppearance(input: unknown): Appearance {
 export function followOsUpdate(a: Appearance, showing: Theme): Partial<Appearance> {
   if (a.theme === 'system') return { theme: showing.id };
   return { theme: 'system', ...(showing.scheme === 'dark' ? { darkTheme: showing.id } : { lightTheme: showing.id }) };
+}
+
+/** A theme's colours with the user's overrides for it laid on top: what it draws with. */
+export function themeColours(theme: Theme, overrides: Overrides): TokenMap {
+  return { ...theme.tokens, ...overrides[theme.id] };
 }
 
 /** What the browser reports, passed in so resolution stays pure. */
@@ -288,7 +316,8 @@ export function resolveAppearance(input: unknown, env: Environment): ResolvedApp
   const mono = a.font === 'mono' || (a.font === 'theme' && theme.type !== 'sans') || theme.type === 'mono-only';
 
   const vars: Record<string, string> = {};
-  for (const token of TOKENS) vars[`--${token}`] = a.overrides[token] ?? theme.tokens[token];
+  const own = a.overrides[theme.id] ?? {};
+  for (const token of TOKENS) vars[`--${token}`] = own[token] ?? theme.tokens[token];
   vars['--font-ui'] = mono ? FONT_MONO : FONT_SANS;
   vars['--font-mono'] = FONT_MONO;
   vars['--radius'] = `${theme.radius}px`;

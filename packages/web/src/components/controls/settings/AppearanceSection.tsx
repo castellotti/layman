@@ -6,6 +6,7 @@ import {
   followOsUpdate, normalizeAppearance, themeById, THEMES,
   type Appearance, type FontChoice, type Motion, type Theme, type ThemeId, type Token,
 } from '../../../lib/themes.js';
+import { ColourOverrides } from './ColourOverrides.js';
 import { SectionTitle, SectionIntro, SegmentRow, ToggleRow, CustomRow } from './primitives.js';
 
 /** The colours a theme card shows beside its name: the accent, then the status and kind colours. */
@@ -94,6 +95,8 @@ export function AppearanceSection({
         value={a.motion}
         onChange={(motion) => update({ motion })}
       />
+
+      <ColourOverrides theme={showing} overrides={a.overrides} onSave={(overrides) => update({ overrides })} />
     </>
   );
 }

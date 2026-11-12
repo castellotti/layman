@@ -519,8 +519,11 @@ Four rules that must not be relaxed casually:
   stored value the server does not know falls back to its default field by field (a stale
   `layman.json` must never stop startup), but an *update* holding one is dropped
   (`validAppearanceUpdate`), keeping the current choice. `appearance` is deep-merged like `sync`,
-  except `overrides`, which an update replaces whole so one can be removed; an update's map with any
-  bad entry is therefore dropped whole, or it would wipe the others. Updates are never migrated: a
+  except `overrides`, which is kept per theme (`{ classic: { bg: … }, daylight: { … } }`) so a colour
+  chosen for one theme never lands on another (under Follow the OS both halves show). An update
+  replaces each theme it names whole, so one colour can be removed and `{}` clears the theme; a
+  theme's map with any bad entry is dropped whole (keeping that theme's current map), or it would
+  wipe the others. Rule breaks in overrides are listed in Settings (`themeProblems`), never refused. Updates are never migrated: a
   stale tab sending its old config (`theme: 'dark'`) must not overwrite the choice. `useAppearance()` applies
   it on every `session:config` and remembers it in `localStorage`, which `main.tsx` applies at load
   so a non-default theme does not flash Classic first. Settings → Appearance (`AppearanceSection`) only sends config updates; it never

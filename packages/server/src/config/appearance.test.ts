@@ -15,7 +15,7 @@ describe('appearance', () => {
   it('keeps every valid choice', () => {
     const a = {
       theme: 'system', darkTheme: 'ember', lightTheme: 'paper',
-      font: 'mono', density: 'comfortable', motion: 'off', overrides: { accent: '#AABBCC', 'bg-card': '#000000' },
+      font: 'mono', density: 'comfortable', motion: 'off', overrides: { ember: { accent: '#AABBCC', 'bg-card': '#000000' }, paper: { bg: '#fff' } },
     };
     expect(AppearanceSchema.parse(a)).toEqual(a);
   });
@@ -28,11 +28,20 @@ describe('appearance', () => {
     expect(LaymanConfigSchema.parse({ appearance: 'dark' }).appearance).toEqual(DEFAULT);
   });
 
-  it('keeps only #rgb and #rrggbb overrides with token-shaped names', () => {
+  it('keeps, per known theme, only #rgb and #rrggbb overrides with token-shaped names', () => {
     expect(AppearanceSchema.parse({
-      overrides: { accent: '#123456', ok: 'red', warn: '#fff', 'Bad Name': '#123456', error: 7, 'net-up': '#abcdef', info: '#1234' },
-    }).overrides).toEqual({ accent: '#123456', warn: '#fff', 'net-up': '#abcdef' });
+      overrides: {
+        classic: { accent: '#123456', ok: 'red', warn: '#fff', 'Bad Name': '#123456', error: 7, 'net-up': '#abcdef', info: '#1234' },
+        slate: { accent: '#123456' },
+        tide: { ok: 'red' },
+        paper: 'none',
+      },
+    }).overrides).toEqual({ classic: { accent: '#123456', warn: '#fff', 'net-up': '#abcdef' } });
     expect(AppearanceSchema.parse({ overrides: ['#123456'] }).overrides).toEqual({});
+  });
+
+  it('an older flat map (one set of colours for every theme) is dropped, not guessed onto a theme', () => {
+    expect(AppearanceSchema.parse({ overrides: { accent: '#123456', bg: '#000' } }).overrides).toEqual({});
   });
 
   it('the schema no longer keeps the old top-level theme', () => {
@@ -72,27 +81,35 @@ describe('merging the config sources', () => {
     )).toEqual({ theme: 'ember', density: 'comfortable', motion: 'off' });
   });
 
-  it('overrides come whole from the highest source, which keeps its good entries', () => {
-    expect(mergeAppearance({ overrides: { ok: '#111111' } }, { overrides: { warn: '#222', error: 'red' } }))
-      .toEqual({ overrides: { warn: '#222' } });
+  it('overrides merge per theme: a higher source\'s map for a theme replaces a lower one\'s, keeping its good entries', () => {
+    expect(mergeAppearance(
+      { overrides: { classic: { ok: '#111111' }, paper: { bg: '#eee' } } },
+      { overrides: { classic: { warn: '#222', error: 'red' } } },
+    )).toEqual({ overrides: { classic: { warn: '#222' }, paper: { bg: '#eee' } } });
   });
 });
 
 describe('updateConfig and appearance', () => {
   const start = () => setConfig(LaymanConfigSchema.parse({
-    appearance: { theme: 'ember', density: 'comfortable', overrides: { accent: '#111111', ok: '#222222' } },
+    appearance: { theme: 'ember', density: 'comfortable', overrides: { ember: { accent: '#111111', ok: '#222222' }, paper: { bg: '#eeeeee' } } },
   }));
 
   it('an update with one choice keeps the others', () => {
     start();
     const next = updateConfig({ appearance: { motion: 'off' } });
     expect(next.appearance).toMatchObject({ theme: 'ember', density: 'comfortable', motion: 'off' });
-    expect(next.appearance.overrides).toEqual({ accent: '#111111', ok: '#222222' });
+    expect(next.appearance.overrides).toEqual({ ember: { accent: '#111111', ok: '#222222' }, paper: { bg: '#eeeeee' } });
   });
 
-  it('overrides, when sent, replace the map, so one can be removed', () => {
+  it('a theme sent replaces that theme\'s map, so one colour can be removed; other themes keep theirs', () => {
     start();
-    expect(updateConfig({ appearance: { overrides: { ok: '#222222' } } }).appearance.overrides).toEqual({ ok: '#222222' });
+    expect(updateConfig({ appearance: { overrides: { ember: { ok: '#222222' } } } }).appearance.overrides)
+      .toEqual({ ember: { ok: '#222222' }, paper: { bg: '#eeeeee' } });
+  });
+
+  it('an empty map clears that theme', () => {
+    start();
+    expect(updateConfig({ appearance: { overrides: { ember: {} } } }).appearance.overrides).toEqual({ paper: { bg: '#eeeeee' } });
   });
 
   it('an update without appearance keeps it whole', () => {
@@ -104,15 +121,14 @@ describe('updateConfig and appearance', () => {
     start();
     const next = updateConfig({ appearance: { theme: 'slate', motion: 'off', overrides: 'none' } } as never).appearance;
     expect(next).toMatchObject({ theme: 'ember', motion: 'off' });
-    expect(next.overrides).toEqual({ accent: '#111111', ok: '#222222' });
+    expect(next.overrides).toEqual({ ember: { accent: '#111111', ok: '#222222' }, paper: { bg: '#eeeeee' } });
   });
 
-  it('an overrides map with any bad entry keeps the current map whole', () => {
+  it('a theme\'s map with any bad entry keeps that theme\'s current map whole, and the other themes sent apply', () => {
     start();
-    expect(updateConfig({ appearance: { overrides: { ok: 'red' } } }).appearance.overrides)
-      .toEqual({ accent: '#111111', ok: '#222222' });
-    expect(updateConfig({ appearance: { overrides: { ok: '#333', warn: 'red' } } }).appearance.overrides)
-      .toEqual({ accent: '#111111', ok: '#222222' });
+    expect(updateConfig({ appearance: { overrides: { ember: { ok: 'red' } } } }).appearance.overrides).toEqual({ ember: { accent: '#111111', ok: '#222222' }, paper: { bg: '#eeeeee' } });
+    expect(updateConfig({ appearance: { overrides: { ember: { ok: '#333', warn: 'red' }, tide: { ok: '#444' }, slate: { ok: '#555' } } } } as never).appearance.overrides)
+      .toEqual({ ...{ ember: { accent: '#111111', ok: '#222222' }, paper: { bg: '#eeeeee' } }, tide: { ok: '#444' } });
   });
 
   it('an update carrying the old theme (a stale tab sending its whole config) leaves appearance alone', () => {

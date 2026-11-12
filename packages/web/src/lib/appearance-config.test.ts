@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { HEX_COLOR } from './color.js';
-import { DEFAULT_APPEARANCE, DENSITIES, FONTS, MOTIONS, THEMES } from './themes.js';
+import { DEFAULT_APPEARANCE, DENSITIES, FONTS, MOTIONS, normalizeAppearance, THEMES } from './themes.js';
 import * as server from '../../../server/src/config/schema.js';
 
 describe('the server validates appearance with the web\'s choices', () => {
@@ -14,6 +14,11 @@ describe('the server validates appearance with the web\'s choices', () => {
   it('the same colour rule for overrides', () => {
     expect(server.HEX_COLOR.source).toBe(HEX_COLOR.source);
     expect(server.HEX_COLOR.flags).toBe(HEX_COLOR.flags);
+  });
+
+  it('the same overrides shape: per theme, bad entries and unknown themes dropped', () => {
+    const stored = { classic: { accent: '#123456', ok: 'red' }, slate: { bg: '#000' }, paper: { bg: '#fff' } };
+    expect(server.cleanOverrides(stored)).toEqual(normalizeAppearance({ overrides: stored }).overrides);
   });
 
   it('the same defaults', () => {
