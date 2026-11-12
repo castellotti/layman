@@ -67,8 +67,6 @@ export function EventStream({ onSend, archived = false, archivedDate, turnRuler 
     stations,
     stationSetup,
   }, sourceOverride);
-  // Counted over the whole session, not the filtered rows, so a picked station never hides the others.
-  const stationCountList = useMemo(() => stationCounts(sessionEvents, stationSetup), [sessionEvents, stationSetup]);
 
   // ─── Display rows ─────────────────────────────────────────────────────────
   // Reasoning is lifted out of each response into a row of its own. Everything
@@ -76,6 +74,9 @@ export function EventStream({ onSend, archived = false, archivedDate, turnRuler 
   // keyboard cursor, the minimap and the rendered order cannot drift apart.
   const displayEvents = useMemo(() => withThinkingRows(events), [events]);
   const displaySessionEvents = useMemo(() => withThinkingRows(sessionEvents), [sessionEvents]);
+  // Counted over the whole session's rows (reasoning rows included, as Model shows them), not the
+  // filtered ones, so a picked station never hides the others and its count matches what it shows.
+  const stationCountList = useMemo(() => stationCounts(displaySessionEvents, stationSetup), [displaySessionEvents, stationSetup]);
 
   // Index map: event ID → position in sessionEvents (stable "#n" row numbers)
   const eventIndexMap = useMemo(() => {

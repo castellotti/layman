@@ -28,7 +28,8 @@ const PATHS: Record<StationId, string> = {
   guard: 'M8 1.5l5.5 2v4.2c0 3.3-2.3 5.7-5.5 6.8C4.8 13.4 2.5 11 2.5 7.7V3.5zM5.5 8l1.8 1.8L10.8 6.3',
 };
 
-export function StationGlyph({ station, size = 12, title }: { station: StationId; size?: number; title?: string }) {
+/** `decorative`: shown beside its own name, so hidden from screen readers rather than read twice. */
+export function StationGlyph({ station, size = 12, title, decorative = false }: { station: StationId; size?: number; title?: string; decorative?: boolean }) {
   const style = STATION_STYLE[station];
   return (
     <svg
@@ -40,11 +41,10 @@ export function StationGlyph({ station, size = 12, title }: { station: StationId
       strokeWidth={1.4}
       strokeLinecap="round"
       strokeLinejoin="round"
-      role="img"
-      aria-label={title ?? style.label}
+      {...(decorative ? { 'aria-hidden': true } : { role: 'img', 'aria-label': title ?? style.label })}
       style={{ color: style.color, flexShrink: 0, display: 'block' }}
     >
-      <title>{title ?? style.label}</title>
+      {!decorative && <title>{title ?? style.label}</title>}
       <path d={PATHS[station]} />
     </svg>
   );
