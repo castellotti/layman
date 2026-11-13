@@ -28,6 +28,8 @@ html:is([data-motion='reduced'], [data-motion='off']) :is(.activity-draw, .activ
 @media print {
   .activity-pulse, .activity-pulse-run { display: none; }
   .activity-draw, .activity-orbit { animation: none; }
+  /* The running ring breathes on screen (index.css); on paper it is drawn whole. */
+  .activity-map .layman-breathe { animation: none; opacity: 1; }
   /* The map is placed absolutely in its pane, so the pane needs a height of its own on paper. */
   .activity-body { flex-direction: column !important; }
   .activity-map-pane { flex: none !important; width: 100% !important; height: 60vh !important; }

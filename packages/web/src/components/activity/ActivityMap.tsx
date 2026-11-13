@@ -69,14 +69,15 @@ export interface ActivityMapProps {
 export const ActivityMap = React.memo(function ActivityMap({ board, stations, width, height, live, title }: ActivityMapProps) {
   // Its own clock, so only the map redraws twice a second, not the feed beside it.
   const now = useNow(live ? 500 : 60_000);
-  const ids = useMemo(() => stations.map((s) => s.id), [stations]);
-  const layout = useMemo(() => layoutMap(ids, { width, height }), [ids, width, height]);
+  // Keyed by the ids themselves: the specs are rebuilt at every event, the ring only when a station comes or goes.
+  const idKey = stations.map((s) => s.id).join('\n');
+  const layout = useMemo(() => layoutMap(idKey.split('\n'), { width, height }), [idKey, width, height]);
   const route = useMemo(() => routeOf(board.entries), [board]);
   const pulses = live ? pulsesOf(board, now) : [];
   const agentsAt = layout.stations[layout.index.get('agents') ?? -1];
 
   return (
-    <svg
+    <svg className="activity-map"
       viewBox={`0 0 ${layout.width} ${layout.height}`}
       width="100%"
       height="100%"
@@ -147,7 +148,7 @@ export const ActivityMap = React.memo(function ActivityMap({ board, stations, wi
         const lit = spec.runs > 0 || (live && now - spec.lastStart < GLOW_MS);
         const corner = layout.node * 0.75;
         return (
-          <g key={`station-${spec.id}`} opacity={spec.amount !== null || spec.runs > 0 ? 1 : 0.55}>
+          <g key={`station-${spec.id}`} opacity={spec.amount !== null || spec.runs > 0 || spec.faults > 0 ? 1 : 0.55}>
             <title>{`${spec.label}${spec.amount ? `: ${spec.amount}` : ''} · ${spec.about}`}</title>
             {lit && (
               // The theme's breath (motion primitives), on a station with a call running.

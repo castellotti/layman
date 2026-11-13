@@ -43,8 +43,14 @@ export default function ActivityMapView() {
   // A session the server no longer lists is over.
   const live = !!session && isSessionLive(session);
   const { board, events, loading } = useActivityBoard(sessionId, !live);
-  // Behind a glove gate, the network stations are the sandbox's own services, worn by real bytes.
-  const glove = useGloveStations(session?.sessionName, live);
+  // Behind a glove gate, the sandbox's own services are stations too, worn by real bytes since the
+  // session began: its first event, by the transcript's own time where a passive watcher kept it.
+  const since = useMemo(() => {
+    let first = Infinity;
+    for (const e of events) first = Math.min(first, e.timestamp, typeof e.data.transcriptAt === 'number' ? e.data.transcriptAt : Infinity);
+    return Number.isFinite(first) ? first : 0;
+  }, [events]);
+  const glove = useGloveStations(loading ? null : session?.sessionName, live, since);
   const stations = useMemo(() => stationSpecs(board, glove), [board, glove]);
   const setup = useStationSetup();
   const [namesOnly, toggleNamesOnly] = useStoredFlag(NAMES_ONLY_KEY, false);

@@ -39,6 +39,18 @@ describe('net REST routes', () => {
     expect(res.json().sessions).toMatchObject([{ token: TEST_ID, harness: 'pi', flows: 15, glove: { filter: 'granted', orphaned: false } }]);
   });
 
+  it("GET /api/net/sessions/:token/gates returns only the services and each destination's traffic", async () => {
+    const res = await app.inject(`/api/net/sessions/${TEST_ID}/gates`);
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { services: unknown[]; destinations: Array<Record<string, unknown>> };
+    expect(body.services.length).toBeGreaterThan(0);
+    expect(body.destinations.length).toBeGreaterThan(0);
+    expect(Object.keys(body.destinations[0]).sort()).toEqual(['blocked', 'bytesDown', 'bytesUp', 'flags', 'flows', 'scope', 'services']);
+    // `since` past every record leaves no destination; an unknown session is a 404.
+    expect((await app.inject(`/api/net/sessions/${TEST_ID}/gates?since=${Date.now() + 3_600_000}`)).json().destinations).toEqual([]);
+    expect((await app.inject('/api/net/sessions/nope/gates')).statusCode).toBe(404);
+  });
+
   it('GET /api/net/sessions/:token returns 15 flows with their states', async () => {
     const res = await app.inject(`/api/net/sessions/${TEST_ID}`);
     expect(res.statusCode).toBe(200);

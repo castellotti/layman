@@ -52,6 +52,23 @@ export function registerNetRoutes(fastify: FastifyInstance, deps: { netObs: NetO
     return snapshot ?? reply.status(404).send(notFound(request.params.token));
   });
 
+  // What the Activity map's gate stations need, and nothing else: the services glove declared and,
+  // per destination, which services reached it and how much. `since` (ms) drops destinations last
+  // reached before it (a Layman session's start), so an earlier run's hosts do not wear its map.
+  fastify.get<{ Params: { token: string }; Querystring: { since?: string } }>('/api/net/sessions/:token/gates', async (request, reply) => {
+    const { token } = request.params;
+    if (!store.has(token)) return reply.status(404).send(notFound(token));
+    const since = Number(request.query.since ?? 0);
+    const from = Number.isFinite(since) ? since : 0;
+    return {
+      services: store.sessionFile(token)?.services ?? [],
+      destinations: store.destinations(token).filter((d) => d.lastSeen >= from).map((d) => ({
+        services: d.services, bytesUp: d.bytesUp, bytesDown: d.bytesDown, flows: d.flows, blocked: d.blocked,
+        scope: d.scope, flags: { hop: d.flags.hop, vpn: d.flags.vpn },
+      })),
+    };
+  });
+
   fastify.get<{ Params: { token: string }; Querystring: { since?: string; limit?: string } }>(
     '/api/net/sessions/:token/flows',
     async (request, reply) => {

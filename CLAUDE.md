@@ -386,11 +386,16 @@ split of the store by session (`bySession` in `useActivityBoard.ts`, cached per 
 selector runs at every store change, not only when events arrive), and `useSessionTimeline` keeps the
 last two lean recordings (each can be tens of MB) so switching back to a session does not download it
 again; it refetches only when the recording is missing or the live slice no longer reaches back to it.
-A gloved session's Network station is replaced by its glove gates (`lib/activity-glove.ts`, pure:
-`fromSandbox` services that are not the model's link; each gate's bytes plus those of the gates it goes
-on through by `next`; a `flags.hop` destination counted once, at the next leg; browser bytes wear
-Browser), read from Layman's REST snapshot (`useGloveStations`), never the network tabs' single
-subscription, which they own.
+A gloved session's glove gates stand after Network (`lib/activity-glove.ts`, pure). Network stays, because
+the board's network calls, their pulses and route legs land there; a gate is what glove saw leave, not a call.
+Which gates: `fromSandbox` services that are not the model's link. A service owns its own bytes first, then
+those of the gates it goes on through by `next`. A `flags.hop` destination is counted once, at the next leg,
+and one reached by several gates counts at each (the aggregate does not say how much each carried, so it is never split by a guess).
+Browser bytes wear Browser. Gates of one name are one, and past `MAX_GATES` the quietest fold into "Other gates".
+A direct gate is red only for `isUntunnelled` flows, never by its route alone.
+They are read from Layman's `/api/net/sessions/:token/gates?since=` (`useGloveStations`: services and each
+destination's traffic only, without the destinations last reached before the session's first event), never the
+network tabs' single subscription, which they own. The bytes are still glove-session totals for those hosts.
 
 ### Text to speech
 

@@ -4,8 +4,7 @@
  */
 import { isFault, type Board, type EntryStatus } from './activity-board.js';
 import { byteWear, lanes, wear } from './activity-map.js';
-import type { GloveStations } from './activity-glove.js';
-import type { RouteId } from './net-topology.js';
+import type { GateStation, GloveStations } from './activity-glove.js';
 import { formatBytes } from './net-format.js';
 import { countLabel } from './format.js';
 import { safeLabel, STATION_IDS, type StationId, type StationSetup } from './station.js';
@@ -156,14 +155,22 @@ export interface StationSpec {
   lastStart: number;
 }
 
-/** A gate's colour, by the route its traffic takes (the Topology tab's). */
-const ROUTE_COLOR: Record<RouteId, string> = {
-  tunnel: 'var(--net-tunnel)', local: 'var(--net-local)', llm: 'var(--net-local)', direct: 'var(--error)',
-};
+/**
+ * A gate's colour, by the route its traffic takes (the Topology tab's). A gate whose route is
+ * direct is red only for flows that really left untunnelled (`isUntunnelled`, through the gate's
+ * `untunnelled` count): all known VPN routes is local, as on Topology, and none yet is muted.
+ */
+function gateColor(g: GateStation): string {
+  if (g.route === 'direct') return g.untunnelled > 0 ? 'var(--error)' : g.flows > 0 ? 'var(--net-local)' : 'var(--text-muted)';
+  return g.route === 'tunnel' ? 'var(--net-tunnel)' : 'var(--net-local)';
+}
 
 /**
- * The stations of a session's map: Layman's own, worn by their counts, with Network replaced by
- * the glove gates when the session is behind one (worn by their bytes), where Network was.
+ * The stations of a session's map: Layman's own, worn by their counts, and when the session is
+ * behind a glove gate, the gates after Network, worn by their bytes. Network stays: it is where the
+ * session's network calls land (and where their pulses and route legs go), and a gate is what
+ * glove saw leave, not a call. A gate's refusals are its faults, so a gate whose every connection
+ * was refused is not drawn as unused.
  */
 export function stationSpecs(board: Board, glove: GloveStations | null): StationSpec[] {
   const running = new Map<string, number>();
@@ -171,17 +178,6 @@ export function stationSpecs(board: Board, glove: GloveStations | null): Station
   const starts = lastStarts(board);
   const out: StationSpec[] = [];
   for (const id of STATION_IDS) {
-    if (id === 'network' && glove) {
-      for (const g of glove.gates) {
-        const refused = g.blocked > 0 ? `, ${g.blocked} refused` : '';
-        out.push({
-          id: g.id, label: g.label, color: ROUTE_COLOR[g.route], glyph: 'network',
-          about: `glove's ${g.service} gate: ${formatBytes(g.bytes)} in ${g.flows} connection${g.flows === 1 ? '' : 's'}${refused}`,
-          amount: g.bytes > 0 ? formatBytes(g.bytes) : null, wear: byteWear(g.bytes), runs: 0, faults: 0, lastStart: 0,
-        });
-      }
-      continue;
-    }
     const style = STATION_STYLE[id];
     const count = board.counts[id] ?? 0;
     const bytes = id === 'browser' && glove ? glove.browserBytes : 0;
@@ -192,6 +188,19 @@ export function stationSpecs(board: Board, glove: GloveStations | null): Station
       wear: Math.max(wear(count), byteWear(bytes)),
       runs: running.get(id) ?? 0, faults: board.faults[id] ?? 0, lastStart: starts.get(id) ?? 0,
     });
+    if (id === 'network' && glove) {
+      for (const g of glove.gates) {
+        const refused = g.blocked > 0 ? `, ${g.blocked} refused` : '';
+        const open = g.untunnelled > 0 ? `, ${g.untunnelled} untunnelled` : '';
+        out.push({
+          id: g.id, label: g.label, color: gateColor(g), glyph: 'network',
+          about: `glove's ${g.service} gate: ${formatBytes(g.bytes)} in ${g.flows} connection${g.flows === 1 ? '' : 's'}${refused}${open}, `
+            + 'to the hosts reached since this session began, counted over the whole glove session',
+          amount: g.bytes > 0 ? formatBytes(g.bytes) : g.blocked > 0 ? `${g.blocked} refused` : null,
+          wear: byteWear(g.bytes), runs: 0, faults: g.blocked, lastStart: 0,
+        });
+      }
+    }
   }
   return out;
 }

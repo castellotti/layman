@@ -59,7 +59,7 @@ The **Activity** tab (`A`) draws a session as a ring of its stations around the 
 
 The list beside the map is the newest work, with calls in a row at one station folded into one row (`+2`); click one to open it in Investigation. **Names only** hides what was typed, read or run and shows only names (a file's last two folders, a host, a command's name), for a shared screen. Link to a session's map with `/s/<session>?view=activity`.
 
-For a session in a glove sandbox, the Network station becomes the sandbox's own services (web search, web fetch, GitHub, SSH…), each spoke as wide as the traffic that really went through it, from glove's own records.
+For a session in a glove sandbox, the sandbox's own services (web search, web fetch, GitHub, SSH…) stand beside the Network station, each spoke as wide as the traffic that really went through it, from glove's own records: the hosts reached since the session began, with their totals over the whole glove session. A service whose connections were refused shows them in red; it turns red itself only for traffic that left outside the tunnel (a known VPN route does not count).
 
 ## Historical session import
 

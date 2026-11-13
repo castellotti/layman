@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { gateLabel, gloveStations } from './activity-glove.js';
+import { gateLabel, gloveStations, MAX_GATES } from './activity-glove.js';
 import { stationSpecs } from './activity-view.js';
 import { reduceBoard } from './activity-board.js';
 import { dest } from './net-test-fixtures.js';
@@ -38,6 +38,38 @@ describe('gloveStations', () => {
     expect(g.gates.map((s) => [s.service, s.bytes, s.flows, s.blocked])).toEqual([['search', 1000, 3, 0], ['proxy', 5010, 2, 1]]);
   });
 
+  it('counts a destination several stations reached at each of them, never split by a guess', () => {
+    const g = gloveStations(PI_SEARCH, [dest('arxiv.org:443', { services: ['searxng-egress', 'proxy'], bytesUp: 0, bytesDown: 700, flows: 2 })]);
+    expect(g.gates.map((s) => [s.service, s.bytes])).toEqual([['search', 700], ['proxy', 700]]);
+  });
+
+  it("keeps a sandbox service's own bytes when another, declared before it, goes on through it", () => {
+    const g = gloveStations([
+      svc('webfetch-mcp', { tool: 'web_fetch_mcp', next: ['proxy'] }),
+      svc('proxy', { tool: 'web_fetch' }),
+    ], [dest('arxiv.org:443', { services: ['proxy'], bytesUp: 0, bytesDown: 50 })]);
+    expect(g.gates.map((s) => [s.service, s.bytes])).toEqual([['webfetch-mcp', 0], ['proxy', 50]]);
+  });
+
+  it("counts a gate's untunnelled flows by isUntunnelled: a known VPN route is not one", () => {
+    const direct = [svc('proxy', { tool: 'web_fetch', route: { kind: 'direct' } as NetService['route'] })];
+    const g = gloveStations(direct, [
+      dest('a.dev:443', { services: ['proxy'], scope: 'direct', flows: 2 }),
+      dest('corp.example:443', { services: ['proxy'], scope: 'direct', flows: 5, flags: { ...dest('x').flags, vpn: 'listed' } }),
+    ]);
+    expect(g.gates[0]).toMatchObject({ route: 'direct', flows: 7, untunnelled: 2 });
+  });
+
+  it('makes one station of services with the same name, and folds the quietest past the most it shows', () => {
+    const same = gloveStations([svc('search', { tool: 'web_search' }), svc('search-mcp', { tool: 'web_search' })],
+      [dest('a.dev:443', { services: ['search-mcp'], bytesUp: 0, bytesDown: 9 })]);
+    expect(same.gates).toMatchObject([{ id: 'gate:search', label: 'Web search', bytes: 9 }]);
+    const many = Array.from({ length: MAX_GATES + 2 }, (_, i) => svc(`s${i}`));
+    const g = gloveStations(many, many.map((s, i) => dest(`h${i}:443`, { services: [s.service], bytesUp: 0, bytesDown: i * 10 })));
+    expect(g.gates).toHaveLength(MAX_GATES);
+    expect(g.gates.at(-1)).toMatchObject({ id: 'gate:*', label: 'Other gates', bytes: 0 + 10 + 20 });
+  });
+
   it("gives a browser service's bytes to the Browser station rather than a station of its own", () => {
     const g = gloveStations(PI_SEARCH, [dest('example.com:443', { services: ['browser-egress'], bytesUp: 40, bytesDown: 60 })]);
     expect(g.browserBytes).toBe(100);
@@ -73,16 +105,32 @@ describe('stationSpecs', () => {
     expect(specs.find((s) => s.id === 'network')).toMatchObject({ amount: '1', glyph: 'network' });
   });
 
-  it('shows the gates, worn and labelled by bytes, in place of Network for a gloved session', () => {
+  it('shows the gates after Network for a gloved session, worn and labelled by bytes', () => {
     const glove = gloveStations(PI_SEARCH, [dest('arxiv.org:443', { services: ['proxy'], bytesUp: 0, bytesDown: 2_500_000, flows: 4 })]);
-    const specs = stationSpecs(reduceBoard([]), glove);
-    // The gates stand where Network was, so the person stays at the top and the network across.
+    const board = reduceBoard([{ id: 'e', type: 'tool_call_completed', timestamp: 1, sessionId: 's', agentType: 'pi', data: { toolName: 'web_fetch', toolInput: { url: 'https://a.dev' }, completedAt: 2 } }]);
+    const specs = stationSpecs(board, glove);
+    // Network stays where the session's calls land; the gates follow it, so the person stays at the top.
     const ids = specs.map((s) => s.id);
-    expect(ids).not.toContain('network');
-    expect(ids.slice(STATION_IDS.indexOf('network'), STATION_IDS.indexOf('network') + 2)).toEqual(['gate:search', 'gate:proxy']);
+    const at = ids.indexOf('network');
+    expect(ids.slice(at, at + 3)).toEqual(['network', 'gate:search', 'gate:proxy']);
+    expect(specs[at]).toMatchObject({ amount: '1' });
     const proxy = specs.find((s) => s.id === 'gate:proxy')!;
     expect(proxy).toMatchObject({ label: 'Web fetch', amount: '2.5 MB', color: 'var(--net-tunnel)', glyph: 'network' });
     expect(proxy.wear).toBeGreaterThan(0.6);
     expect(specs.find((s) => s.id === 'gate:search')).toMatchObject({ amount: null, wear: 0 });
+  });
+
+  it("shows a gate whose every connection was refused by its refusals, as faults", () => {
+    const glove = gloveStations(PI_SEARCH, [dest('evil.dev:443', { services: ['proxy'], bytesUp: 0, bytesDown: 0, flows: 20, blocked: 20 })]);
+    expect(stationSpecs(reduceBoard([]), glove).find((s) => s.id === 'gate:proxy')).toMatchObject({ amount: '20 refused', faults: 20 });
+  });
+
+  it('paints a direct gate red only for untunnelled flows: known VPN routes are local, none yet is muted', () => {
+    const color = (untunnelled: number, flows: number) => stationSpecs(reduceBoard([]), {
+      browserBytes: 0, gates: [{ id: 'gate:p', service: 'p', label: 'P', tool: null, route: 'direct', bytes: 1, flows, blocked: 0, untunnelled }],
+    }).find((s) => s.id === 'gate:p')!.color;
+    expect(color(1, 3)).toBe('var(--error)');
+    expect(color(0, 3)).toBe('var(--net-local)');
+    expect(color(0, 0)).toBe('var(--text-muted)');
   });
 });
