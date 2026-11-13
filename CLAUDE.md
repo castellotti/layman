@@ -380,7 +380,8 @@ pane gets its own height (`activity.css`), and feed rows are not buttons, which 
 honours Settings → Motion (`data-motion` on `<html>`) as well as the OS setting. A row clicked open
 loads the session's full recording into `historicalEvents` first when the store lacks the event:
 the board reads the lean one, which Investigation cannot show. `isSessionView` / `isExclusiveView`
-(`sessionStore.ts`) list the views; a new one goes there.
+(`sessionStore.ts`) list the views; a new one goes there. A Dashboard pane draws the same map compact
+(`MiniActivityMap`, `layoutMap(…, { compact: true })`: no labels, the ring nearly to the edge).
 
 ### Text to speech
 

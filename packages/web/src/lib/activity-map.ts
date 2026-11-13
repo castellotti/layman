@@ -40,6 +40,8 @@ export interface MapLayout {
 
 /** The smallest map that still has room for its labels; a smaller box is drawn at this size, scaled. */
 export const MIN_SIZE = { width: 320, height: 260 } as const;
+/** The least for a compact map (no labels: a Dashboard pane's), drawn smaller by scaling below it. */
+export const MIN_COMPACT = { width: 170, height: 170 } as const;
 const HUB = 18;
 const NODE = 13;
 /**
@@ -79,12 +81,15 @@ export const LANE_GAP = 5;
 const round = (v: number): number => Math.round(v * 10) / 10;
 
 /** The stations placed on the ring for a box of the given size. */
-export function layoutMap(ids: readonly string[], size: { width: number; height: number }): MapLayout {
-  const width = Math.max(MIN_SIZE.width, size.width);
-  const height = Math.max(MIN_SIZE.height, size.height);
+export function layoutMap(ids: readonly string[], size: { width: number; height: number }, options: { compact?: boolean } = {}): MapLayout {
+  // A compact map draws no labels (names are in its tooltips), so its ring runs nearly to the edge.
+  const least = options.compact ? MIN_COMPACT : MIN_SIZE;
+  const room = options.compact ? { x: NODE + 8, y: NODE + 8 } : LABEL_ROOM;
+  const width = Math.max(least.width, size.width);
+  const height = Math.max(least.height, size.height);
   const core = { x: width / 2, y: height / 2 };
-  const rx = width / 2 - LABEL_ROOM.x;
-  const ry = height / 2 - LABEL_ROOM.y;
+  const rx = width / 2 - room.x;
+  const ry = height / 2 - room.y;
   const n = ids.length;
   const stations = ids.map((id, i): MapStation => {
     const angle = (i * 2 * Math.PI) / n;

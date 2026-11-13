@@ -3,6 +3,8 @@ import { StatusDot, Meter, StateChip } from '../primitives/index.js';
 import { useNow } from '../../hooks/useNow.js';
 import { usePrinting } from '../../hooks/usePrinting.js';
 import { fetchRecordedSessionEvents } from '../../stores/sessionStore.js';
+import { MiniActivityMap } from '../activity/MiniActivityMap.js';
+import { useStored } from '../../hooks/useStored.js';
 import { countPrompts, mergeRecordedWithLive } from '../../lib/session-events.js';
 import type { TimelineEvent, DriftState } from '../../lib/types.js';
 import type { SessionInfo } from '../../lib/ws-protocol.js';
@@ -354,6 +356,29 @@ function useHistoryMergedEvents(
 
 // ─── AutoscrollToggle ────────────────────────────────────────────────────────
 
+/** Shows or hides the pane's activity map; one choice for every pane, kept in the browser. */
+function MapToggle({ on, onToggle }: { on: boolean; onToggle: () => void }) {
+  return (
+    <button
+      type="button"
+      aria-pressed={on}
+      onClick={onToggle}
+      onDoubleClick={e => e.stopPropagation()}
+      title={on ? 'Hide the activity map' : 'Show the activity map: what kind of work this session is doing'}
+      style={{
+        display: 'flex', alignItems: 'center', flexShrink: 0, cursor: 'pointer',
+        height: 18, padding: '0 6px', borderRadius: 3,
+        fontFamily: 'var(--font-mono)', fontSize: 10,
+        border: `1px solid ${on ? 'var(--accent)' : 'var(--border)'}`,
+        background: on ? tokenColor('accent', '12%') : 'none',
+        color: on ? 'var(--accent)' : 'var(--text-faint)',
+      }}
+    >
+      map
+    </button>
+  );
+}
+
 function AutoscrollToggle({ on, onToggle }: { on: boolean; onToggle: () => void }) {
   return (
     <button
@@ -411,6 +436,9 @@ export const PreviewPane = React.memo(function PreviewPane({
   // mouse wheel over it scrolls the Dashboard rather than being captured by the pane. Off, the
   // tail scrolls on its own to read back through history.
   const [autoscroll, setAutoscroll] = useState(true);
+  // A remote session's recording is on its own host, so it has no map here.
+  const [showMap, setShowMap] = useStored<'1' | '0'>('layman.dashboard.activityMap', '1', (raw) => (raw === '1' || raw === '0' ? raw : null));
+  const mapShown = showMap === '1' && !session.remote;
   // Remote sessions have no local approvals, and analysing a remote event would
   // run on central's model against central's copy — out of scope for v1. Hide the
   // Investigate/analyze affordance for them (§8.2).
@@ -471,6 +499,7 @@ export const PreviewPane = React.memo(function PreviewPane({
           </div>
         )}
         <StateChip variant={chipVariant} />
+        {!session.remote && <MapToggle on={showMap === '1'} onToggle={() => setShowMap(showMap === '1' ? '0' : '1')} />}
         <AutoscrollToggle on={autoscroll} onToggle={() => setAutoscroll(v => !v)} />
         <button
           onClick={() => onClose(session.sessionId)}
@@ -502,13 +531,18 @@ export const PreviewPane = React.memo(function PreviewPane({
         />
       </div>
 
-      {/* Recent tail */}
-      <RecentTail
-        events={mergedEvents}
-        onOpenInLogs={onOpenEventInLogs}
-        sessionId={session.sessionId}
-        autoscroll={autoscroll}
-      />
+      {/* Recent tail, and the session's activity map beside it */}
+      <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0 }}>
+          <RecentTail
+            events={mergedEvents}
+            onOpenInLogs={onOpenEventInLogs}
+            sessionId={session.sessionId}
+            autoscroll={autoscroll}
+          />
+        </div>
+        {mapShown && <MiniActivityMap sessionId={session.sessionId} name={getSessionDisplayName(session)} live={isActive} />}
+      </div>
     </div>
   );
 });
