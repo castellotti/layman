@@ -47,8 +47,12 @@ const NODE = 13;
  * truncates a longer name to, and how far its baseline sits above the text's foot (descenders).
  */
 export const LABEL_WIDTH = 50;
-const DESCENT = 4;
-const CAP = 9;
+export const DESCENT = 4;
+export const CAP = 9;
+/** A side label's baseline sits this far below its node's centre, so the text is centred on it. */
+const SIDE_DROP = 4;
+/** A label above or below a node, running away from the middle, starts this far back across it. */
+const INSET = 4;
 /** How far a label sits from its node's centre, beside it or above it. */
 const LABEL_GAP = NODE + 9;
 /** Below a node the label's baseline is lower by the text's height. */
@@ -67,6 +71,8 @@ const WEAR_LOG = 11;
 /** The width of an unused spoke, and how much use adds at most. */
 const SPOKE_MIN = 1;
 const SPOKE_GAIN = 2.6;
+/** How far a leg's ends stand off a node's rim. */
+export const LEG_GAP = 4;
 /** From one pulse's lane to the next. */
 export const LANE_GAP = 5;
 
@@ -93,11 +99,11 @@ export function layoutMap(ids: readonly string[], size: { width: number; height:
     const anchor: MapStation['label']['anchor'] = Math.abs(sin) < CENTRED ? 'middle' : sin > 0 ? 'start' : 'end';
     const label = Math.abs(cos) >= VERTICAL
       ? {
-        x: round(anchor === 'middle' ? x : x + (sin > 0 ? -4 : 4)),
+        x: round(anchor === 'middle' ? x : x + (sin > 0 ? -INSET : INSET)),
         y: round(y + (cos > 0 ? -LABEL_GAP : LABEL_BELOW)),
         anchor,
       }
-      : { x: round(x + (sin > 0 ? LABEL_GAP : -LABEL_GAP)), y: round(y + 4), anchor };
+      : { x: round(x + (sin > 0 ? LABEL_GAP : -LABEL_GAP)), y: round(y + SIDE_DROP), anchor };
     return { id, x: round(x), y: round(y), angle, label };
   });
   return { width, height, core, rx, ry, hub: HUB, node: NODE, stations, index: new Map(ids.map((id, i) => [id, i])) };
@@ -137,8 +143,8 @@ export function spoke(layout: MapLayout, id: string): { from: Point; to: Point }
  * bends further out so it does not cut through the core.
  */
 function bendShare(steps: number, n: number): number {
-  const across = n <= 1 ? 0 : Math.abs(steps) / (n / 2); // 0 = same, 1 = opposite
-  return across <= 0.5 ? 0.5 - 0.1 * across * 2 : 0.4 + 0.35 * (across - 0.5) * 2;
+  const across = (2 * Math.abs(steps)) / n; // 0 = same, 1 = opposite
+  return across <= 0.5 ? 0.5 - 0.2 * across : 0.05 + 0.7 * across;
 }
 
 /**
@@ -151,19 +157,20 @@ export function legPath(layout: MapLayout, fromId: string, toId: string): { d: s
   const j = layout.index.get(toId);
   if (i === undefined || j === undefined || i === j) return undefined;
   const n = layout.stations.length;
-  let steps = (((j - i) % n) + n) % n;
+  // Measured from the lower index either way, so a round trip bends through one point (two stations
+  // exactly opposite would otherwise take opposite sides and draw a loop).
+  const lo = Math.min(i, j);
+  let steps = Math.abs(j - i);
   if (steps > n / 2) steps -= n;
-  // Two stations exactly opposite: both ways take the same side, or a round trip draws a loop.
-  if (2 * steps === n && i > j) steps = -steps;
   // Halfway between the two along the shorter way, from the angles the layout placed them at.
-  const angle = layout.stations[i].angle + (steps * Math.PI) / n;
+  const angle = layout.stations[lo].angle + (steps * Math.PI) / n;
   const share = bendShare(steps, n);
   const bend = {
     x: round(layout.core.x + layout.rx * share * Math.sin(angle)),
     y: round(layout.core.y - layout.ry * share * Math.cos(angle)),
   };
-  const start = edge(layout.stations[i], bend, layout.node + 4);
-  const end = edge(layout.stations[j], bend, layout.node + 4);
+  const start = edge(layout.stations[i], bend, layout.node + LEG_GAP);
+  const end = edge(layout.stations[j], bend, layout.node + LEG_GAP);
   return { d: `M${start.x} ${start.y}Q${bend.x} ${bend.y} ${end.x} ${end.y}`, bend, start, end };
 }
 
