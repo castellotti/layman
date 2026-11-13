@@ -95,6 +95,7 @@ export function StatusDot({ state, size = 8 }: StatusDotProps) {
   const glow = state === 'running' || state === 'permission';
   return (
     <span
+      className={state === 'running' ? 'layman-breathe' : undefined}
       style={{
         display: 'inline-block',
         width: size,

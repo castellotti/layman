@@ -1,7 +1,7 @@
 import dagre from '@dagrejs/dagre';
 import type { Node, Edge } from '@xyflow/react';
 import type { TimelineEvent } from './types.js';
-import { NODE_BORDER_COLORS, NODE_BORDER_FADED, EVENT_ICONS } from './event-styles.js';
+import { NODE_BORDER_COLORS, NODE_BORDER_FADED } from './event-styles.js';
 import { tokenColor, type Token } from './tokens.js';
 import { extractToolSpans, detectParallelGroups, getParallelEventIds } from './parallel-detection.js';
 
@@ -10,7 +10,6 @@ export type FlowchartNodeType = 'userPrompt' | 'toolCall' | 'agentResponse' | 's
 export interface FlowchartNodeData {
   event: TimelineEvent;
   isSelected: boolean;
-  icon: string;
   /** The border's token, for a glow derived from it; `borderColor` is it as CSS, faded or not. */
   borderToken: Token;
   borderColor: string;
@@ -131,7 +130,6 @@ export function buildFlowchartGraph(
       data: {
         event,
         isSelected: event.id === selectedEventId,
-        icon: EVENT_ICONS[event.type] ?? '·',
         borderToken,
         borderColor: tokenColor(borderToken, NODE_BORDER_FADED.has(event.type) ? '50%' : undefined),
         label: getLabel(event),
