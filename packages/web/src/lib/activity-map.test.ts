@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { aside, CAP, DESCENT, edge, LABEL_WIDTH, lanes, LEG_GAP, layoutMap, legPath, MIN_SIZE, spoke, spokeWidth, wear, type MapLayout, type Point } from './activity-map.js';
+import { aside, byteWear, CAP, DESCENT, edge, LABEL_WIDTH, lanes, LEG_GAP, layoutMap, legPath, MIN_SIZE, spoke, spokeWidth, wear, type MapLayout, type Point } from './activity-map.js';
 import { STATION_IDS } from './station.js';
 
 const SIZE = { width: 520, height: 400 };
@@ -115,6 +115,16 @@ describe('wear and spokeWidth', () => {
   it('gives an unused spoke a hairline and a worn one at most 3.6', () => {
     expect(spokeWidth(0)).toBe(1);
     expect(spokeWidth(1e6)).toBe(3.6);
+  });
+});
+
+describe('byteWear', () => {
+  it("wears a gate's spoke by the log of its bytes: a third at a kilobyte, two thirds at a megabyte, full at a gigabyte", () => {
+    expect(byteWear(0)).toBe(0);
+    expect(byteWear(1e3)).toBeCloseTo(1 / 3, 2);
+    expect(byteWear(1e6)).toBeCloseTo(2 / 3, 2);
+    expect(byteWear(1e9)).toBeCloseTo(1, 2);
+    expect(byteWear(1e12)).toBe(1);
   });
 });
 

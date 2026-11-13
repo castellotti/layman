@@ -4,10 +4,10 @@ import { fetchRecordedSessionEvents, useSessionStore } from '../../stores/sessio
 import { useActivityBoard } from '../../hooks/useActivityBoard.js';
 import { useStationSetup } from '../../hooks/useStationSetup.js';
 import { foldRows } from '../../lib/activity-board.js';
-import { ENTRY_STATUS, entryLabel, mapTitle, pickSession } from '../../lib/activity-view.js';
+import { ENTRY_STATUS, entryLabel, mapTitle, pickSession, stationSpecs } from '../../lib/activity-view.js';
+import { useGloveStations } from '../../hooks/useGloveStations.js';
 import { useStoredFlag } from '../../hooks/useStored.js';
 import { useElementSize } from '../../hooks/useElementSize.js';
-import { STATION_IDS } from '../../lib/station.js';
 import { STATION_STYLE } from '../../lib/station-style.js';
 import { contextPctColor, getSessionDisplayName, isSessionLive } from '../../lib/session-state.js';
 import { countLabel, formatDuration } from '../../lib/format.js';
@@ -43,6 +43,9 @@ export default function ActivityMapView() {
   // A session the server no longer lists is over.
   const live = !!session && isSessionLive(session);
   const { board, events, loading } = useActivityBoard(sessionId, !live);
+  // Behind a glove gate, the network stations are the sandbox's own services, worn by real bytes.
+  const glove = useGloveStations(session?.sessionName, live);
+  const stations = useMemo(() => stationSpecs(board, glove), [board, glove]);
   const setup = useStationSetup();
   const [namesOnly, toggleNamesOnly] = useStoredFlag(NAMES_ONLY_KEY, false);
   const [bodyRef, body] = useElementSize<HTMLDivElement>();
@@ -112,7 +115,7 @@ export default function ActivityMapView() {
         <div ref={mapRef} className="activity-map-pane" style={{ flex: stacked ? '0 0 55%' : '3 1 0', position: 'relative', minWidth: 0, minHeight: 0 }}>
           {size.width > 0 && size.height > 0 && (
             <div style={{ position: 'absolute', inset: 8 }}>
-              <ActivityMap board={board} stations={STATION_IDS} width={size.width - 16} height={size.height - 16} live={live} title={title} />
+              <ActivityMap board={board} stations={stations} width={size.width - 16} height={size.height - 16} live={live} title={title} />
             </div>
           )}
         </div>

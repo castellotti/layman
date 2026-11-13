@@ -386,6 +386,11 @@ split of the store by session (`bySession` in `useActivityBoard.ts`, cached per 
 selector runs at every store change, not only when events arrive), and `useSessionTimeline` keeps the
 last two lean recordings (each can be tens of MB) so switching back to a session does not download it
 again; it refetches only when the recording is missing or the live slice no longer reaches back to it.
+A gloved session's Network station is replaced by its glove gates (`lib/activity-glove.ts`, pure:
+`fromSandbox` services that are not the model's link; each gate's bytes plus those of the gates it goes
+on through by `next`; a `flags.hop` destination counted once, at the next leg; browser bytes wear
+Browser), read from Layman's REST snapshot (`useGloveStations`), never the network tabs' single
+subscription, which they own.
 
 ### Text to speech
 
