@@ -23,19 +23,19 @@ export type TokenMap = Record<Token, string>;
 const TOKEN_SET: ReadonlySet<string> = new Set(TOKENS);
 
 /** The grounds text is drawn on, and the text tokens that must read on each (WCAG AA). */
-export const CONTRAST_GROUNDS: readonly Token[] = ['bg', 'bg-raised', 'bg-card'];
-export const CONTRAST_TEXTS: readonly Token[] = ['text', 'text-body', 'text-muted'];
-export const MIN_CONTRAST = 4.5;
+const CONTRAST_GROUNDS: readonly Token[] = ['bg', 'bg-raised', 'bg-card'];
+const CONTRAST_TEXTS: readonly Token[] = ['text', 'text-body', 'text-muted'];
+const MIN_CONTRAST = 4.5;
 /** Status colours the accent must stay clear of, and by how much (OKLab ΔE). */
-export const ACCENT_CLEAR_OF: readonly Token[] = ['ok', 'warn', 'error', 'severity-major', 'severity-minor'];
-export const MIN_ACCENT_DISTANCE = 0.12;
+const ACCENT_CLEAR_OF: readonly Token[] = ['ok', 'warn', 'error', 'severity-major', 'severity-minor'];
+const MIN_ACCENT_DISTANCE = 0.12;
 /** Colours components use as text besides the text tokens: statuses, kinds, code. */
-export const STATUS_TEXTS: readonly Token[] = [
+const STATUS_TEXTS: readonly Token[] = [
   'ok', 'warn', 'error', 'info', 'agent', 'thinking', 'code', 'severity-major', 'severity-minor',
 ];
 /** Colours drawn as lines, arcs and fills (WCAG 1.4.11: 3:1). */
-export const GRAPHIC_COLOURS: readonly Token[] = ['net-tunnel', 'net-up', 'net-down', 'net-fanout'];
-export const MIN_GRAPHIC_CONTRAST = 3;
+const GRAPHIC_COLOURS: readonly Token[] = ['net-tunnel', 'net-up', 'net-down', 'net-fanout'];
+const MIN_GRAPHIC_CONTRAST = 3;
 
 /**
  * Every rule a token map breaks, as readable strings (empty when it holds them all). The tests run
@@ -239,7 +239,7 @@ export const DEFAULT_APPEARANCE: Appearance = {
 export const FONT_SANS = "'IBM Plex Sans', system-ui, sans-serif";
 export const FONT_MONO = "'IBM Plex Mono', 'SF Mono', 'Fira Code', monospace";
 /** What `--density` multiplies spacing by. */
-export const DENSITY_SCALE: Record<Density, number> = { comfortable: 1, compact: 0.72 };
+const DENSITY_SCALE: Record<Density, number> = { comfortable: 1, compact: 0.72 };
 
 export const FONTS: readonly FontChoice[] = ['theme', 'sans', 'mono'];
 export const DENSITIES: readonly Density[] = ['comfortable', 'compact'];
@@ -289,7 +289,7 @@ export function followOsUpdate(a: Appearance, showing: Theme): Partial<Appearanc
 }
 
 /** A theme's colours with the user's for it (`overrides[theme.id]`) laid on top: what it draws with. */
-export function themeColours(theme: Theme, colours: Partial<TokenMap> = {}): TokenMap {
+function themeColours(theme: Theme, colours: Partial<TokenMap> = {}): TokenMap {
   return { ...theme.tokens, ...colours };
 }
 

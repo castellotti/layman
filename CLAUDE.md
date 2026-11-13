@@ -489,7 +489,7 @@ Four rules that must not be relaxed casually:
   Each theme defines every colour token components use as `var(--…)`; `applyTheme()` writes the
   resolved one as an `@media screen` stylesheet, never an inline style on `<html>`, which would beat
   the print palette. `themeProblems()` is the one rule check (tests run it on every theme, Settings
-  will run it on overrides): WCAG AA for text/body/muted and the status colours used as text on
+  runs it on a theme with the user's overrides, `themeProblemsWith`): WCAG AA for text/body/muted and the status colours used as text on
   bg/raised/card, 3:1 for network colours, and `--accent`/`--accent-hot` ≥ 0.12 OKLab ΔE from that
   theme's `ok`, `warn`, `error` and severities (`--warn` means MEDIUM risk, so an accent near it
   misleads). Exceptions are named in `KNOWN_PROBLEMS` and a test fails when one goes stale. Stored

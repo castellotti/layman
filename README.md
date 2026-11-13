@@ -84,6 +84,7 @@ Intercept tool calls before they execute and approve, deny, or defer from the da
 
 - **Risk analysis & drift monitoring** - automatic risk classification per action, plus goal-drift and `CLAUDE.md`/`AGENTS.md` rules-drift scoring that can pause the agent -> [docs/features.md](docs/features.md)
 - **Multi-host sync** - run one central instance that collects sessions from many machines; each remote keeps recording locally and pushes to central, with clear host attribution, live remote sessions on the dashboard, and an optional offline mirror -> [docs/features.md](docs/features.md#multi-host-sync)
+- **Themes** - seven dark and light themes, following your OS if you like, with your own colours per theme, checked for readable contrast -> [docs/features.md](docs/features.md#themes-and-appearance)
 - **glove network views** - for glove v3 sessions with the `observe` grant: every connection the sandbox made, on a table, an offline world map, a route diagram and a per-turn trace that joins each tool call to its traffic, with blocking through glove's gate for sessions that also grant `filter` -> [docs/features.md](docs/features.md#glove-network-views)
 - **Session metrics** - model, context %, cost, tokens, rate limits, live per session
 - **Historical import** - pull in past Claude Code sessions from JSONL transcripts, even ones never monitored live

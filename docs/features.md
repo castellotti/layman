@@ -129,6 +129,21 @@ Setup, design and the rules behind each view: [extensions/glove.md → Network](
 
 ![glove Network tab](images/network.png)
 
+## Themes and appearance
+
+Settings → Display → **Appearance** chooses how Layman looks. The choice is saved on the Layman server, so every browser using it changes together.
+
+- **Seven themes**: Classic (the default, cool blue-grey), Ember (warm, one copper accent), Tide (cool, teal accent), Phosphor (one terminal green, mono everywhere), Contrast (black ground, AAA text), and two light ones, Paper (warm paper, umber accent) and Daylight (neutral white). Each card is drawn in its own colours.
+- **Follow the OS** switches between a dark and a light theme (Classic and Daylight by default) when your system's appearance changes, without a reload.
+- **Type**: the theme's own, Sans or Mono. Code is always mono.
+- **Motion**: Full, Reduced (nothing moves on its own, and scrolling jumps) or Off (no transitions either). If your system asks for reduced motion, Full acts as Reduced.
+- **Your own colours**: any colour of the theme showing can be replaced, with a picker or a hex value, and a small sample shows the result. Colours are kept per theme, so an edit to the dark theme never reaches the light one. Colours that make text hard to read, or put the accent too close to a risk colour, are listed with the measured contrast, but still applied. Each colour resets on its own, or all at once.
+
+Every theme is checked by the test suite for WCAG AA text contrast on each background, and for an accent kept clear of the status colours (amber means medium risk). Export to PDF always prints in Daylight, whatever is on screen.
+
+![Appearance settings, Classic](images/appearance.png)
+![Appearance settings, Paper](images/appearance-paper.png)
+
 ## Setup wizard
 
 First-run setup is guided by a wizard that detects installed AI clients and walks through configuration options.
