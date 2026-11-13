@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { aside, edge, lanes, layoutMap, legPath, MIN_SIZE, spoke, spokeWidth, wear, type MapLayout, type Point } from './activity-map.js';
+import { aside, edge, LABEL_WIDTH, lanes, layoutMap, legPath, MIN_SIZE, spoke, spokeWidth, wear, type MapLayout, type Point } from './activity-map.js';
 import { STATION_IDS } from './station.js';
 
 const SIZE = { width: 520, height: 400 };
+const SIZES = [SIZE, MIN_SIZE];
+const COUNTS = Array.from({ length: 15 }, (_, i) => i + 2); // 2..16
+const ids = (n: number) => Array.from({ length: n }, (_, i) => `s${i}`);
 const dist = (a: Point, b: Point) => Math.hypot(a.x - b.x, a.y - b.y);
 /** A point's place on the ring's ellipse: 0 at the core, 1 on the ring. */
 const share = (l: MapLayout, p: Point) => Math.hypot((p.x - l.core.x) / l.rx, (p.y - l.core.y) / l.ry);
@@ -27,8 +30,8 @@ describe('layoutMap', () => {
   });
 
   it('keeps every node and label inside the box, and labels away from the ring', () => {
-    for (const n of [1, 3, 5, 7, 10, 12]) {
-      const l = layoutMap(Array.from({ length: n }, (_, i) => `s${i}`), SIZE);
+    for (const [n, size] of COUNTS.flatMap((c) => SIZES.map((z) => [c, z] as const))) {
+      const l = layoutMap(ids(n), size);
       for (const s of l.stations) {
         expect(s.x - l.node).toBeGreaterThanOrEqual(0);
         expect(s.x + l.node).toBeLessThanOrEqual(l.width);
@@ -36,20 +39,40 @@ describe('layoutMap', () => {
         expect(s.y + l.node).toBeLessThanOrEqual(l.height);
         expect(s.label.x).toBeGreaterThanOrEqual(0);
         expect(s.label.x).toBeLessThanOrEqual(l.width);
-        expect(s.label.y).toBeGreaterThanOrEqual(0);
-        expect(s.label.y).toBeLessThanOrEqual(l.height);
+        // Room for a capital above the baseline and a descender below it.
+        expect(s.label.y).toBeGreaterThanOrEqual(10);
+        expect(s.label.y).toBeLessThanOrEqual(l.height - 4);
         expect(dist(s.label, s)).toBeGreaterThan(l.node);
         expect(share(l, s.label)).toBeGreaterThan(1);
       }
     }
   });
 
-  it('leaves a side label room for a station name (about 50 px at the map\'s font)', () => {
-    for (const n of [5, 10, 12]) {
-      const l = layoutMap(Array.from({ length: n }, (_, i) => `s${i}`), SIZE);
-      for (const s of l.stations) {
-        if (s.label.anchor === 'start') expect(l.width - s.label.x).toBeGreaterThanOrEqual(50);
-        if (s.label.anchor === 'end') expect(s.label.x).toBeGreaterThanOrEqual(50);
+  it('leaves a side label its width of room', () => {
+    for (const [n, size] of COUNTS.flatMap((c) => SIZES.map((z) => [c, z] as const))) {
+      for (const s of layoutMap(ids(n), size).stations) {
+        if (s.label.anchor === 'start') expect(size.width - s.label.x).toBeGreaterThanOrEqual(LABEL_WIDTH);
+        if (s.label.anchor === 'end') expect(s.label.x).toBeGreaterThanOrEqual(LABEL_WIDTH);
+      }
+    }
+  });
+
+  it('never draws one label over another or over a node, at any count, at the least size too', () => {
+    const box = (s: { label: Point & { anchor: string } }) => {
+      const x0 = s.label.anchor === 'middle' ? s.label.x - LABEL_WIDTH / 2 : s.label.anchor === 'start' ? s.label.x : s.label.x - LABEL_WIDTH;
+      return { x0, x1: x0 + LABEL_WIDTH, y0: s.label.y - 9, y1: s.label.y + 4 };
+    };
+    const hit = (a: ReturnType<typeof box>, b: ReturnType<typeof box>) => a.x0 < b.x1 && b.x0 < a.x1 && a.y0 < b.y1 && b.y0 < a.y1;
+    for (const [n, size] of COUNTS.flatMap((c) => SIZES.map((z) => [c, z] as const))) {
+      const l = layoutMap(ids(n), size);
+      const boxes = l.stations.map(box);
+      for (let a = 0; a < n; a++) {
+        for (let b = 0; b < n; b++) {
+          const s = l.stations[b];
+          const node = { x0: s.x - l.node, x1: s.x + l.node, y0: s.y - l.node, y1: s.y + l.node };
+          expect(hit(boxes[a], node), `n=${n} ${size.width}: label ${a} on node ${b}`).toBe(false);
+          if (a < b) expect(hit(boxes[a], boxes[b]), `n=${n} ${size.width}: labels ${a} and ${b}`).toBe(false);
+        }
       }
     }
   });
@@ -60,8 +83,8 @@ describe('layoutMap', () => {
   });
 
   it('never lets two nodes touch, at any count a session has', () => {
-    for (let n = 2; n <= 14; n++) {
-      const l = layoutMap(Array.from({ length: n }, (_, i) => `s${i}`), SIZE);
+    for (const [n, size] of COUNTS.flatMap((c) => SIZES.map((z) => [c, z] as const))) {
+      const l = layoutMap(ids(n), size);
       for (let i = 0; i < n; i++) {
         expect(dist(l.stations[i], l.stations[(i + 1) % n])).toBeGreaterThan(2 * l.node);
       }
@@ -75,10 +98,13 @@ describe('layoutMap', () => {
 });
 
 describe('wear and spokeWidth', () => {
-  it('starts at nothing, grows by the log, and is full at 127', () => {
+  it('starts at nothing, grows by the log, and is full at 2,047', () => {
     expect(wear(0)).toBe(0);
-    expect(wear(1)).toBeCloseTo(1 / 7);
-    expect(wear(127)).toBe(1);
+    expect(wear(1)).toBeCloseTo(1 / 11);
+    expect(wear(2047)).toBe(1);
+    // A long session's busy stations still read as different widths.
+    expect(spokeWidth(150)).toBeLessThan(spokeWidth(400));
+    expect(spokeWidth(400)).toBeLessThan(spokeWidth(2000));
     expect(wear(100_000)).toBe(1);
     for (let c = 1; c < 200; c++) expect(wear(c)).toBeGreaterThanOrEqual(wear(c - 1));
     expect(wear(10) / wear(1000)).toBeGreaterThan(0.3); // a station used 100 times less still shows
@@ -104,8 +130,8 @@ describe('spoke', () => {
 
 describe('legPath', () => {
   it('curves through the room between the core and the ring for every pair, ending on the rims', () => {
-    for (const n of [4, 5, 7, 10, 12]) {
-      const l = layoutMap(Array.from({ length: n }, (_, i) => `s${i}`), SIZE);
+    for (const [n, size] of COUNTS.flatMap((c) => SIZES.map((z) => [c, z] as const))) {
+      const l = layoutMap(ids(n), size);
       for (const a of l.stations) {
         for (const b of l.stations) {
           if (a === b) continue;
@@ -119,6 +145,15 @@ describe('legPath', () => {
           }
         }
       }
+    }
+  });
+
+  it('takes the same side both ways between two stations exactly opposite', () => {
+    for (const n of [2, 4, 10]) {
+      const l = layoutMap(ids(n), SIZE);
+      const there = legPath(l, 's0', `s${n / 2}`)!;
+      const back = legPath(l, `s${n / 2}`, 's0')!;
+      expect(back.bend).toEqual(there.bend);
     }
   });
 

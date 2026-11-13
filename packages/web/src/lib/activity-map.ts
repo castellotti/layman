@@ -34,18 +34,36 @@ export interface MapLayout {
   hub: number;
   node: number;
   stations: MapStation[];
+  /** Each station's place in `stations`, by id. */
+  index: ReadonlyMap<string, number>;
 }
 
 /** The smallest map that still has room for its labels; a smaller box is drawn at this size, scaled. */
 export const MIN_SIZE = { width: 320, height: 260 } as const;
 const HUB = 18;
 const NODE = 13;
-/** Room outside the ring for a label: its height above and below, its width at the sides. */
-const LABEL_ROOM = { x: 74, y: 30 } as const;
-/** How far a label sits from its node's centre. */
+/**
+ * The room a label's text has, at the map's font (about 11 px): its width, which the component
+ * truncates a longer name to, and how far its baseline sits above the text's foot (descenders).
+ */
+export const LABEL_WIDTH = 50;
+const DESCENT = 4;
+const CAP = 9;
+/** How far a label sits from its node's centre, beside it or above it. */
 const LABEL_GAP = NODE + 9;
-/** A count at which a spoke is fully worn (2^7 - 1). */
-const WEAR_LOG = 7;
+/** Below a node the label's baseline is lower by the text's height. */
+const LABEL_BELOW = LABEL_GAP + CAP;
+/** Room outside the ring for a label: its width at the sides, and above and below with a margin. */
+const LABEL_ROOM = { x: LABEL_GAP + LABEL_WIDTH + 2, y: LABEL_BELOW + DESCENT + 2 } as const;
+/** Only a node this near the very top or bottom gets a centred label. */
+const CENTRED = 0.1;
+/** A node within about 37° of the top or bottom has its label above or below it, not beside it. */
+const VERTICAL = 0.8;
+/**
+ * The log of the count at which a spoke is fully worn (2^11 - 1 = 2,047 uses): a long session's
+ * 150 file calls, 400 shell calls and 2,000 model steps still read as three widths.
+ */
+const WEAR_LOG = 11;
 /** The width of an unused spoke, and how much use adds at most. */
 const SPOKE_MIN = 1;
 const SPOKE_GAIN = 2.6;
@@ -63,19 +81,26 @@ export function layoutMap(ids: readonly string[], size: { width: number; height:
   const ry = height / 2 - LABEL_ROOM.y;
   const n = ids.length;
   const stations = ids.map((id, i): MapStation => {
-    const angle = n === 0 ? 0 : (i * 2 * Math.PI) / n;
+    const angle = (i * 2 * Math.PI) / n;
     const sin = Math.sin(angle);
     const cos = Math.cos(angle);
     const x = core.x + rx * sin;
     const y = core.y - ry * cos;
-    // Above and below a node the label is centred; at the sides it runs away from the ring.
-    const anchor: MapStation['label']['anchor'] = Math.abs(sin) < 0.3 ? 'middle' : sin > 0 ? 'start' : 'end';
-    const label = anchor === 'middle'
-      ? { x: round(x), y: round(y + (cos > 0 ? -LABEL_GAP : LABEL_GAP + 8)), anchor }
+    // Near the top or the bottom the label goes above or below its node, centred when the node is
+    // right at the top or bottom and otherwise running away from the middle, so the two nodes either
+    // side of the bottom (an odd count) never put two names on one spot. At the sides it runs away
+    // from the ring.
+    const anchor: MapStation['label']['anchor'] = Math.abs(sin) < CENTRED ? 'middle' : sin > 0 ? 'start' : 'end';
+    const label = Math.abs(cos) >= VERTICAL
+      ? {
+        x: round(anchor === 'middle' ? x : x + (sin > 0 ? -4 : 4)),
+        y: round(y + (cos > 0 ? -LABEL_GAP : LABEL_BELOW)),
+        anchor,
+      }
       : { x: round(x + (sin > 0 ? LABEL_GAP : -LABEL_GAP)), y: round(y + 4), anchor };
     return { id, x: round(x), y: round(y), angle, label };
   });
-  return { width, height, core, rx, ry, hub: HUB, node: NODE, stations };
+  return { width, height, core, rx, ry, hub: HUB, node: NODE, stations, index: new Map(ids.map((id, i) => [id, i])) };
 }
 
 /** How worn a spoke is by `count` uses, 0..1, by the log so the busiest station does not swamp the rest. */
@@ -94,7 +119,10 @@ export function edge(from: Point, to: Point, r: number): Point {
   return { x: round(from.x + ((to.x - from.x) * r) / d), y: round(from.y + ((to.y - from.y) * r) / d) };
 }
 
-const find = (layout: MapLayout, id: string): MapStation | undefined => layout.stations.find((s) => s.id === id);
+const find = (layout: MapLayout, id: string): MapStation | undefined => {
+  const i = layout.index.get(id);
+  return i === undefined ? undefined : layout.stations[i];
+};
 
 /** A spoke: from the core's rim to the station's rim. Undefined for a station not on the map. */
 export function spoke(layout: MapLayout, id: string): { from: Point; to: Point } | undefined {
@@ -119,13 +147,16 @@ function bendShare(steps: number, n: number): number {
  * they are the same station.
  */
 export function legPath(layout: MapLayout, fromId: string, toId: string): { d: string; bend: Point; start: Point; end: Point } | undefined {
-  const i = layout.stations.findIndex((s) => s.id === fromId);
-  const j = layout.stations.findIndex((s) => s.id === toId);
-  if (i < 0 || j < 0 || i === j) return undefined;
+  const i = layout.index.get(fromId);
+  const j = layout.index.get(toId);
+  if (i === undefined || j === undefined || i === j) return undefined;
   const n = layout.stations.length;
   let steps = (((j - i) % n) + n) % n;
   if (steps > n / 2) steps -= n;
-  const angle = ((i + steps / 2) * 2 * Math.PI) / n;
+  // Two stations exactly opposite: both ways take the same side, or a round trip draws a loop.
+  if (2 * steps === n && i > j) steps = -steps;
+  // Halfway between the two along the shorter way, from the angles the layout placed them at.
+  const angle = layout.stations[i].angle + (steps * Math.PI) / n;
   const share = bendShare(steps, n);
   const bend = {
     x: round(layout.core.x + layout.rx * share * Math.sin(angle)),
