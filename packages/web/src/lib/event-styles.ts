@@ -181,34 +181,6 @@ export const DRIFT_COLORS: Record<string, Token> = {
   red: 'error',
 };
 
-export const EVENT_ICONS: Record<string, string> = {
-  tool_call_pending: '⚡',
-  tool_call_approved: '✅',
-  tool_call_denied: '❌',
-  tool_call_delegated: '⏭',
-  tool_call_completed: '✓',
-  tool_call_failed: '✗',
-  permission_request: '🔐',
-  user_prompt: '💬',
-  agent_response: '🤖',
-  agent_thinking: '💭',
-  agent_stop: '—',
-  session_start: '🟢',
-  session_end: '⬜',
-  notification: '🔔',
-  subagent_start: '🔀',
-  subagent_stop: '🔀',
-  stop_failure: '⚠',
-  pre_compact: '📦',
-  post_compact: '📦',
-  elicitation: '📋',
-  elicitation_result: '📋',
-  analysis_result: '🔍',
-  drift_check: '📐',
-  drift_alert: '🚨',
-  web_search: '🔎',
-};
-
 
 /** Flowchart node border colour by event type; see `NODE_BORDER_FADED`. */
 export const NODE_BORDER_COLORS: Record<string, Token> = {

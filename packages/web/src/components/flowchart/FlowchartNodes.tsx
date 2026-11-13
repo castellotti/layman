@@ -2,9 +2,11 @@ import React, { memo } from 'react';
 import { Handle, Position } from '@xyflow/react';
 import type { FlowchartNodeData } from '../../lib/flowchart-graph.js';
 import { tokenColor } from '../../lib/tokens.js';
+import { EventIcon } from '../primitives/EventIcon.js';
+import { Pulse } from '../primitives/motion.js';
 
 function FlowchartNodeComponent({ data }: { data: FlowchartNodeData }) {
-  const { event, isSelected, icon, borderToken, borderColor, label, sublabel, nodeType } = data;
+  const { event, isSelected, borderToken, borderColor, label, sublabel, nodeType } = data;
   const isPending = event.type === 'tool_call_pending';
   const isFailed = event.type === 'tool_call_failed';
   const riskLevel = event.riskLevel;
@@ -31,7 +33,10 @@ function FlowchartNodeComponent({ data }: { data: FlowchartNodeData }) {
       >
         {/* Top row: icon + label + risk */}
         <div className="flex items-center gap-1.5 px-3 pt-2 pb-0.5">
-          <span className="text-[12px] shrink-0">{icon}</span>
+          <span className="relative shrink-0 text-text-muted inline-flex">
+            <EventIcon type={event.type} />
+            {isPending && <Pulse color={borderColor} size={13} />}
+          </span>
           <span
             className={`text-[11px] font-mono font-semibold truncate ${
               nodeType === 'userPrompt' ? 'text-info'
