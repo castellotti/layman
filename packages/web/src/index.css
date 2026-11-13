@@ -122,6 +122,7 @@
   display: inline-block;
   padding: calc(1px * var(--density)) calc(6px * var(--density));
   border-radius: calc(4px * var(--radius-scale));
+  box-shadow: 0 0 0 var(--stroke) color-mix(in srgb, var(--rim) 45%, transparent);
   animation: layman-rim calc(3.2s * var(--motion, 1)) ease-in-out infinite;
 }
 
@@ -183,6 +184,7 @@ html:is([data-motion='reduced'], [data-motion='off']) *::before,
 html:is([data-motion='reduced'], [data-motion='off']) *::after {
   animation-duration: 0.01ms !important;
   animation-iteration-count: 1 !important;
+  animation-delay: 0s !important;
 }
 html:is([data-motion='reduced'], [data-motion='off']), html:is([data-motion='reduced'], [data-motion='off']) * {
   scroll-behavior: auto !important;

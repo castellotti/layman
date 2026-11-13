@@ -7,6 +7,8 @@ const GLYPHS = {
   bolt: 'M9 1.5 3.5 9H8l-1 5.5L12.5 7H8z',
   check: 'M3 8.5 6.5 12 13 4.5',
   cross: 'M4 4l8 8M12 4l-8 8',
+  approved: 'M8 14a6 6 0 1 0 0-12 6 6 0 0 0 0 12zM5.5 8.2 7.3 10 10.7 6',
+  ban: 'M8 14a6 6 0 1 0 0-12 6 6 0 0 0 0 12zM3.8 3.8l8.4 8.4',
   skip: 'M3 4l5 4-5 4zM9 4l5 4-5 4z',
   lock: 'M4.5 7.5h7v6h-7zM6 7.5V5.5a2 2 0 0 1 4 0v2',
   prompt: 'M2.5 3.5h11v7h-6l-3 3v-3h-2z',
@@ -30,8 +32,8 @@ type Glyph = keyof typeof GLYPHS;
 
 export const EVENT_GLYPH: Record<string, Glyph> = {
   tool_call_pending: 'bolt',
-  tool_call_approved: 'check',
-  tool_call_denied: 'cross',
+  tool_call_approved: 'approved',
+  tool_call_denied: 'ban',
   tool_call_delegated: 'skip',
   tool_call_completed: 'check',
   tool_call_failed: 'cross',
@@ -60,7 +62,7 @@ export const EVENT_GLYPH: Record<string, Glyph> = {
 export function EventIcon({ type, size = 13 }: { type: string; size?: number }) {
   return (
     <svg aria-hidden width={size} height={size} viewBox="0 0 16 16" fill="none" stroke="currentColor"
-      strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+      strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, strokeWidth: 'calc(var(--stroke) * 1.2)' }}>
       <path d={GLYPHS[EVENT_GLYPH[type] ?? 'dot']} />
     </svg>
   );

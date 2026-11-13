@@ -3,7 +3,7 @@ import { Handle, Position } from '@xyflow/react';
 import type { FlowchartNodeData } from '../../lib/flowchart-graph.js';
 import { tokenColor } from '../../lib/tokens.js';
 import { EventIcon } from '../primitives/EventIcon.js';
-import { Pulse } from '../primitives/motion.js';
+import { Ripple } from '../primitives/motion.js';
 
 function FlowchartNodeComponent({ data }: { data: FlowchartNodeData }) {
   const { event, isSelected, borderToken, borderColor, label, sublabel, nodeType } = data;
@@ -33,9 +33,9 @@ function FlowchartNodeComponent({ data }: { data: FlowchartNodeData }) {
       >
         {/* Top row: icon + label + risk */}
         <div className="flex items-center gap-1.5 px-3 pt-2 pb-0.5">
-          <span className="relative shrink-0 text-text-muted inline-flex">
+          <span className="relative shrink-0 inline-flex" style={{ color: borderColor }}>
             <EventIcon type={event.type} />
-            {isPending && <Pulse color={borderColor} size={13} />}
+            {isPending && <Ripple color={borderColor} size={13} />}
           </span>
           <span
             className={`text-[11px] font-mono font-semibold truncate ${
