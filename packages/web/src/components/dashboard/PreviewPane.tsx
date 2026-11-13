@@ -3,9 +3,6 @@ import { StatusDot, Meter, StateChip } from '../primitives/index.js';
 import { useNow } from '../../hooks/useNow.js';
 import { usePrinting } from '../../hooks/usePrinting.js';
 import { fetchRecordedSessionEvents } from '../../stores/sessionStore.js';
-import { MINI_MAP_WIDTH, MiniActivityMap } from '../activity/MiniActivityMap.js';
-import { useStoredFlag } from '../../hooks/useStored.js';
-import { useElementSize } from '../../hooks/useElementSize.js';
 import { countPrompts, mergeRecordedWithLive } from '../../lib/session-events.js';
 import type { TimelineEvent, DriftState } from '../../lib/types.js';
 import type { SessionInfo } from '../../lib/ws-protocol.js';
@@ -204,7 +201,7 @@ function RecentTail({ events, onOpenInLogs, sessionId, autoscroll }: {
     // Hidden rather than auto while autoscrolling: a box the user cannot scroll does not capture
     // the wheel, so it goes to the Dashboard. scrollTop can still pin it. Scroll anchoring is off
     // so dropping the oldest row cannot pull the view up off the newest.
-    <div ref={scrollRef} data-print-tail style={{ flex: 1, minWidth: 0, overflowY: autoscroll ? 'hidden' : 'auto', overflowAnchor: 'none', paddingBottom: sp(4) }}>
+    <div ref={scrollRef} data-print-tail style={{ flex: 1, overflowY: autoscroll ? 'hidden' : 'auto', overflowAnchor: 'none', paddingBottom: sp(4) }}>
       {/* One wrapper for both states: the observer above watches this node from the moment the
           pane opens, so swapping "No events yet" for rows must not replace it. */}
       <div style={{ padding: sp('0 4px') }}>
@@ -356,17 +353,18 @@ function useHistoryMergedEvents(
   return useMemo(() => mergeRecordedWithLive(recorded, live), [recorded, live]);
 }
 
-// ─── Pane toggles ─────────────────────────────────────────────────────────────
+// ─── AutoscrollToggle ────────────────────────────────────────────────────────
 
-/** A small on/off button in a pane's header (the map, autoscroll). */
-function PaneToggle({ on, onToggle, title, children }: { on: boolean; onToggle: () => void; title: string; children: React.ReactNode }) {
+function AutoscrollToggle({ on, onToggle }: { on: boolean; onToggle: () => void }) {
   return (
     <button
       type="button"
       aria-pressed={on}
       onClick={onToggle}
       onDoubleClick={e => e.stopPropagation()}
-      title={title}
+      title={on
+        ? 'Autoscroll on: showing the latest lines, and the mouse wheel scrolls the Dashboard. Click to scroll this session yourself.'
+        : 'Autoscroll off: the mouse wheel scrolls this session. Click to follow the latest lines again.'}
       style={{
         display: 'flex', alignItems: 'center', gap: sp(3), flexShrink: 0, cursor: 'pointer',
         height: 18, padding: sp('0 6px'), borderRadius: rad(3),
@@ -376,15 +374,10 @@ function PaneToggle({ on, onToggle, title, children }: { on: boolean; onToggle: 
         color: on ? 'var(--accent)' : 'var(--text-faint)',
       }}
     >
-      {children}
+      <span aria-hidden style={{ fontSize: 11, lineHeight: 1 }}>⤓</span>autoscroll
     </button>
   );
 }
-
-/** Below this width a pane keeps its room for the rows and draws no map. */
-const MAP_MIN_PANE_WIDTH = MINI_MAP_WIDTH + 360;
-/** One choice for every pane (`useStoredFlag` shares it), kept in the browser. */
-const SHOW_MAP_KEY = 'layman.dashboard.activityMap';
 
 // ─── PreviewPane ─────────────────────────────────────────────────────────────
 
@@ -419,11 +412,6 @@ export const PreviewPane = React.memo(function PreviewPane({
   // mouse wheel over it scrolls the Dashboard rather than being captured by the pane. Off, the
   // tail scrolls on its own to read back through history.
   const [autoscroll, setAutoscroll] = useState(true);
-  // A remote session's recording is on its own host, so it has no map here.
-  const canMap = !session.remote;
-  const [showMap, toggleMap] = useStoredFlag(SHOW_MAP_KEY, true);
-  const [bodyRef, body] = useElementSize<HTMLDivElement>();
-  const mapShown = canMap && showMap && body.width >= MAP_MIN_PANE_WIDTH;
   // Remote sessions have no local approvals, and analysing a remote event would
   // run on central's model against central's copy — out of scope for v1. Hide the
   // Investigate/analyze affordance for them (§8.2).
@@ -484,18 +472,7 @@ export const PreviewPane = React.memo(function PreviewPane({
           </div>
         )}
         <StateChip variant={chipVariant} />
-        {canMap && (
-          <PaneToggle on={showMap} onToggle={toggleMap}
-            title={showMap ? 'Hide the activity map in every pane' : 'Show the activity map: what kind of work each session is doing'}>
-            map
-          </PaneToggle>
-        )}
-        <PaneToggle on={autoscroll} onToggle={() => setAutoscroll(v => !v)}
-          title={autoscroll
-            ? 'Autoscroll on: showing the latest lines, and the mouse wheel scrolls the Dashboard. Click to scroll this session yourself.'
-            : 'Autoscroll off: the mouse wheel scrolls this session. Click to follow the latest lines again.'}>
-          <span aria-hidden style={{ fontSize: 11, lineHeight: 1 }}>⤓</span>autoscroll
-        </PaneToggle>
+        <AutoscrollToggle on={autoscroll} onToggle={() => setAutoscroll(v => !v)} />
         <button
           onClick={() => onClose(session.sessionId)}
           style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-faint)', fontSize: 14, lineHeight: 1, padding: sp('0 2px'), flexShrink: 0 }}
@@ -526,16 +503,13 @@ export const PreviewPane = React.memo(function PreviewPane({
         />
       </div>
 
-      {/* Recent tail, and the session's activity map beside it */}
-      <div ref={bodyRef} style={{ display: 'flex', flex: 1, minHeight: 0 }}>
-        <RecentTail
-          events={mergedEvents}
-          onOpenInLogs={onOpenEventInLogs}
-          sessionId={session.sessionId}
-          autoscroll={autoscroll}
-        />
-        {mapShown && <MiniActivityMap sessionId={session.sessionId} name={getSessionDisplayName(session)} live={isActive} />}
-      </div>
+      {/* Recent tail */}
+      <RecentTail
+        events={mergedEvents}
+        onOpenInLogs={onOpenEventInLogs}
+        sessionId={session.sessionId}
+        autoscroll={autoscroll}
+      />
     </div>
   );
 });

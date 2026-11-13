@@ -61,18 +61,16 @@ export interface ActivityMapProps {
   live: boolean;
   /** What the map is of, for a screen reader. */
   title: string;
-  /** A Dashboard pane's: no names or counts on the map (they are in each station's tooltip). */
-  compact?: boolean;
 }
 
 /**
  * The map: stations on a ring around the agent, spokes worn by use, the route, pulses in flight.
  * Memoized: a click or toggle in the feed beside it changes none of its props; its own clock drives it.
  */
-export const ActivityMap = React.memo(function ActivityMap({ board, stations, width, height, live, title, compact = false }: ActivityMapProps) {
+export const ActivityMap = React.memo(function ActivityMap({ board, stations, width, height, live, title }: ActivityMapProps) {
   // Its own clock, so only the map redraws twice a second, not the feed beside it.
   const now = useNow(live ? 500 : 60_000);
-  const layout = useMemo(() => layoutMap(stations, { width, height }, { compact }), [stations, width, height, compact]);
+  const layout = useMemo(() => layoutMap(stations, { width, height }), [stations, width, height]);
   const running = useMemo(() => runningAt(board), [board]);
   const route = useMemo(() => routeOf(board.entries), [board]);
   const lastStart = useMemo(() => lastStarts(board), [board]);
@@ -165,12 +163,10 @@ export const ActivityMap = React.memo(function ActivityMap({ board, stations, wi
             <g transform={`translate(${s.x - 7} ${s.y - 7})`} style={{ color: style.color }}>
               <StationGlyph station={id} size={14} decorative />
             </g>
-            {!compact && (
-              <text x={s.label.x} y={s.label.y} textAnchor={s.label.anchor} style={FONT} fill="var(--text-body)">
-                {style.label}
-              </text>
-            )}
-            {!compact && count > 0 && (
+            <text x={s.label.x} y={s.label.y} textAnchor={s.label.anchor} style={FONT} fill="var(--text-body)">
+              {style.label}
+            </text>
+            {count > 0 && (
               <text x={s.x + layout.node} y={s.y + layout.node + 4} textAnchor="start" style={{ ...FONT, fontSize: 8.5 }} fill="var(--text-faint)">
                 {countLabel(count)}
               </text>

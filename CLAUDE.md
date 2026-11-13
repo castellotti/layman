@@ -380,11 +380,10 @@ pane gets its own height (`activity.css`), and feed rows are not buttons, which 
 honours Settings → Motion (`data-motion` on `<html>`) as well as the OS setting. A row clicked open
 loads the session's full recording into `historicalEvents` first when the store lacks the event:
 the board reads the lean one, which Investigation cannot show. `isSessionView` / `isExclusiveView`
-(`sessionStore.ts`) list the views; a new one goes there. A Dashboard pane draws the same map compact
-(`MiniActivityMap`, `layoutMap(…, { compact: true })`: no labels, the ring nearly to the edge). Every map reads
-its live events from one split of the store by session (`bySession` in `useActivityBoard.ts`, computed
-once per event list, not once per pane), and `useSessionTimeline` keeps the
-last few lean recordings so a re-mounted map does not download a session again; it refetches only when
+(`sessionStore.ts`) list the views; a new one goes there. The map is the Activity tab's only: the
+Dashboard has none (a small one per pane was tried and removed). The map reads its live events from one
+split of the store by session (`bySession` in `useActivityBoard.ts`, computed once per event list), and
+`useSessionTimeline` keeps the last few lean recordings so reopening the tab does not download a session again; it refetches only when
 the recording is missing or the live slice no longer reaches back to it.
 
 ### Text to speech
