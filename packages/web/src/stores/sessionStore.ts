@@ -431,6 +431,8 @@ export interface SessionState {
   navigateFromDashboard: (sessionId: string, eventId: string) => void;
   navigateFromDashboardToLogs: (sessionId: string, eventId: string) => void;
   navigateToLogsForSession: (sessionId: string) => void;
+  /** Open a session's activity map from its Dashboard pane, with the way back (Escape, the banner). */
+  navigateFromDashboardToActivity: (sessionId: string) => void;
   clearScrollToEvent: () => void;
   returnFromDashboardDrilldown: () => void;
   setAccessLogOpen: (open: boolean) => void;
@@ -1197,6 +1199,16 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       };
     }),
   clearScrollToEvent: () => set({ scrollToEventId: null }),
+  // One update, so the address bar never sees the new session with the view still on the Dashboard.
+  // The map takes over the content area, so the way back is always offered.
+  navigateFromDashboardToActivity: (sessionId) => set({
+    viewMode: 'activity',
+    ...viewModeFlags('activity'),
+    returnToDashboard: true,
+    activeSessionId: sessionId,
+    selectedEventId: null,
+    investigationOpen: false,
+  }),
   returnFromDashboardDrilldown: () => set({
     viewMode: 'dashboard',
     ...viewModeFlags('dashboard'),

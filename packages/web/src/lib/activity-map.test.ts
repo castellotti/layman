@@ -99,7 +99,8 @@ describe('layoutMap', () => {
       expect([l.width, l.height]).toEqual([MIN_COMPACT.width, MIN_COMPACT.height]);
       for (let i = 0; i < n; i++) {
         const s = l.stations[i];
-        expect(Math.min(s.x, s.y, l.width - s.x, l.height - s.y)).toBeGreaterThanOrEqual(l.node);
+        // The subagents' orbit (a 2.6 dot, 6 out from the rim) stays inside too.
+        expect(Math.min(s.x, s.y, l.width - s.x, l.height - s.y)).toBeGreaterThanOrEqual(l.node + 6 + 2.6);
         expect(dist(s, l.stations[(i + 1) % n])).toBeGreaterThan(2 * l.node);
       }
     }

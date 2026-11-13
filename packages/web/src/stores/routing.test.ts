@@ -323,6 +323,15 @@ describe('routeForState', () => {
     expect(buildPath(activity.route, activity.opts)).toBe('/s/sess-1?view=activity');
   });
 
+  it("opens a pane's session in the activity map in one step, with the way back to the Dashboard", () => {
+    useSessionStore.setState({ viewMode: 'dashboard', activeSessionId: null, returnToDashboard: false });
+    useSessionStore.getState().navigateFromDashboardToActivity('sess-1');
+    const state = useSessionStore.getState();
+    expect(state).toMatchObject({ viewMode: 'activity', activeSessionId: 'sess-1', returnToDashboard: true });
+    const { route, opts } = routeForState(state);
+    expect(buildPath(route, opts)).toBe('/s/sess-1?view=activity');
+  });
+
   it('opens a session in the activity map from /s/<id>?view=activity', async () => {
     stubFetch({ events: TURN_EVENTS });
     await useSessionStore.getState().hydrateFromRoute({ kind: 'session', sessionId: 'sess-1' }, { view: 'activity' });

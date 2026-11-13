@@ -4,7 +4,7 @@ import { useActivityBoard } from '../../hooks/useActivityBoard.js';
 import { useStationSetup } from '../../hooks/useStationSetup.js';
 import { foldRows } from '../../lib/activity-board.js';
 import { ENTRY_STATUS, entryLabel, mapTitle, pickSession } from '../../lib/activity-view.js';
-import { useStored } from '../../hooks/useStored.js';
+import { useStoredFlag } from '../../hooks/useStored.js';
 import { useElementSize } from '../../hooks/useElementSize.js';
 import { STATION_IDS } from '../../lib/station.js';
 import { STATION_STYLE } from '../../lib/station-style.js';
@@ -43,7 +43,7 @@ export default function ActivityMapView() {
   const live = !!session && isSessionLive(session);
   const { board, events, loading } = useActivityBoard(sessionId, !live);
   const setup = useStationSetup();
-  const [namesOnly, setNamesOnly] = useStored<'0' | '1'>(NAMES_ONLY_KEY, '0', (raw) => (raw === '1' || raw === '0' ? raw : null));
+  const [namesOnly, toggleNamesOnly] = useStoredFlag(NAMES_ONLY_KEY, false);
   const [bodyRef, body] = useElementSize<HTMLDivElement>();
   const [mapRef, size] = useElementSize<HTMLDivElement>();
   const stacked = body.width > 0 && body.width < STACK_BELOW;
@@ -100,7 +100,7 @@ export default function ActivityMapView() {
         <span style={{ flex: 1 }} />
         <label data-print-hide style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: 'var(--text-muted)', cursor: 'pointer' }}
           title="Show only names: a file's last two folders, a host, a command's name. Nothing of what was typed, read or run.">
-          <input type="checkbox" checked={namesOnly === '1'} onChange={() => setNamesOnly(namesOnly === '1' ? '0' : '1')} />
+          <input type="checkbox" checked={namesOnly} onChange={toggleNamesOnly} />
           Names only
         </label>
       </div>
@@ -127,7 +127,7 @@ export default function ActivityMapView() {
           {rows.length === 0 && <div style={{ padding: 16, color: 'var(--text-faint)' }}>{loading ? '' : 'Nothing recorded yet.'}</div>}
           {rows.map(({ entry, times, tookMs }) => {
             const style = STATION_STYLE[entry.station];
-            const label = entryLabel(byId.get(entry.eventId), entry.station, namesOnly === '1', setup);
+            const label = entryLabel(byId.get(entry.eventId), entry.station, namesOnly, setup);
             const selected = entry.eventId === selectedEventId;
             return (
               // Not a <button>: print hides every button, and a row is content. Keyboard reaches it.

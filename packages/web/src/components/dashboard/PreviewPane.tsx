@@ -3,8 +3,9 @@ import { StatusDot, Meter, StateChip } from '../primitives/index.js';
 import { useNow } from '../../hooks/useNow.js';
 import { usePrinting } from '../../hooks/usePrinting.js';
 import { fetchRecordedSessionEvents } from '../../stores/sessionStore.js';
-import { MiniActivityMap } from '../activity/MiniActivityMap.js';
-import { useStored } from '../../hooks/useStored.js';
+import { MINI_MAP_WIDTH, MiniActivityMap } from '../activity/MiniActivityMap.js';
+import { useStoredFlag } from '../../hooks/useStored.js';
+import { useElementSize } from '../../hooks/useElementSize.js';
 import { countPrompts, mergeRecordedWithLive } from '../../lib/session-events.js';
 import type { TimelineEvent, DriftState } from '../../lib/types.js';
 import type { SessionInfo } from '../../lib/ws-protocol.js';
@@ -354,41 +355,17 @@ function useHistoryMergedEvents(
   return useMemo(() => mergeRecordedWithLive(recorded, live), [recorded, live]);
 }
 
-// ─── AutoscrollToggle ────────────────────────────────────────────────────────
+// ─── Pane toggles ─────────────────────────────────────────────────────────────
 
-/** Shows or hides the pane's activity map; one choice for every pane, kept in the browser. */
-function MapToggle({ on, onToggle }: { on: boolean; onToggle: () => void }) {
+/** A small on/off button in a pane's header (the map, autoscroll). */
+function PaneToggle({ on, onToggle, title, children }: { on: boolean; onToggle: () => void; title: string; children: React.ReactNode }) {
   return (
     <button
       type="button"
       aria-pressed={on}
       onClick={onToggle}
       onDoubleClick={e => e.stopPropagation()}
-      title={on ? 'Hide the activity map' : 'Show the activity map: what kind of work this session is doing'}
-      style={{
-        display: 'flex', alignItems: 'center', flexShrink: 0, cursor: 'pointer',
-        height: 18, padding: '0 6px', borderRadius: 3,
-        fontFamily: 'var(--font-mono)', fontSize: 10,
-        border: `1px solid ${on ? 'var(--accent)' : 'var(--border)'}`,
-        background: on ? tokenColor('accent', '12%') : 'none',
-        color: on ? 'var(--accent)' : 'var(--text-faint)',
-      }}
-    >
-      map
-    </button>
-  );
-}
-
-function AutoscrollToggle({ on, onToggle }: { on: boolean; onToggle: () => void }) {
-  return (
-    <button
-      type="button"
-      aria-pressed={on}
-      onClick={onToggle}
-      onDoubleClick={e => e.stopPropagation()}
-      title={on
-        ? 'Autoscroll on: showing the latest lines, and the mouse wheel scrolls the Dashboard. Click to scroll this session yourself.'
-        : 'Autoscroll off: the mouse wheel scrolls this session. Click to follow the latest lines again.'}
+      title={title}
       style={{
         display: 'flex', alignItems: 'center', gap: 3, flexShrink: 0, cursor: 'pointer',
         height: 18, padding: '0 6px', borderRadius: 3,
@@ -398,10 +375,15 @@ function AutoscrollToggle({ on, onToggle }: { on: boolean; onToggle: () => void 
         color: on ? 'var(--accent)' : 'var(--text-faint)',
       }}
     >
-      <span aria-hidden style={{ fontSize: 11, lineHeight: 1 }}>⤓</span>autoscroll
+      {children}
     </button>
   );
 }
+
+/** Below this width a pane keeps its room for the rows and draws no map. */
+const MAP_MIN_PANE_WIDTH = MINI_MAP_WIDTH + 360;
+/** One choice for every pane (`useStoredFlag` shares it), kept in the browser. */
+const SHOW_MAP_KEY = 'layman.dashboard.activityMap';
 
 // ─── PreviewPane ─────────────────────────────────────────────────────────────
 
@@ -437,8 +419,9 @@ export const PreviewPane = React.memo(function PreviewPane({
   // tail scrolls on its own to read back through history.
   const [autoscroll, setAutoscroll] = useState(true);
   // A remote session's recording is on its own host, so it has no map here.
-  const [showMap, setShowMap] = useStored<'1' | '0'>('layman.dashboard.activityMap', '1', (raw) => (raw === '1' || raw === '0' ? raw : null));
-  const mapShown = showMap === '1' && !session.remote;
+  const [showMap, toggleMap] = useStoredFlag(SHOW_MAP_KEY, true);
+  const [bodyRef, body] = useElementSize<HTMLDivElement>();
+  const mapShown = showMap && !session.remote && body.width >= MAP_MIN_PANE_WIDTH;
   // Remote sessions have no local approvals, and analysing a remote event would
   // run on central's model against central's copy — out of scope for v1. Hide the
   // Investigate/analyze affordance for them (§8.2).
@@ -499,8 +482,18 @@ export const PreviewPane = React.memo(function PreviewPane({
           </div>
         )}
         <StateChip variant={chipVariant} />
-        {!session.remote && <MapToggle on={showMap === '1'} onToggle={() => setShowMap(showMap === '1' ? '0' : '1')} />}
-        <AutoscrollToggle on={autoscroll} onToggle={() => setAutoscroll(v => !v)} />
+        {!session.remote && (
+          <PaneToggle on={showMap} onToggle={toggleMap}
+            title={showMap ? 'Hide the activity map in every pane' : 'Show the activity map: what kind of work each session is doing'}>
+            map
+          </PaneToggle>
+        )}
+        <PaneToggle on={autoscroll} onToggle={() => setAutoscroll(v => !v)}
+          title={autoscroll
+            ? 'Autoscroll on: showing the latest lines, and the mouse wheel scrolls the Dashboard. Click to scroll this session yourself.'
+            : 'Autoscroll off: the mouse wheel scrolls this session. Click to follow the latest lines again.'}>
+          <span aria-hidden style={{ fontSize: 11, lineHeight: 1 }}>⤓</span>autoscroll
+        </PaneToggle>
         <button
           onClick={() => onClose(session.sessionId)}
           style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-faint)', fontSize: 14, lineHeight: 1, padding: '0 2px', flexShrink: 0 }}
@@ -532,7 +525,7 @@ export const PreviewPane = React.memo(function PreviewPane({
       </div>
 
       {/* Recent tail, and the session's activity map beside it */}
-      <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
+      <div ref={bodyRef} style={{ display: 'flex', flex: 1, minHeight: 0 }}>
         <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0 }}>
           <RecentTail
             events={mergedEvents}
@@ -541,7 +534,7 @@ export const PreviewPane = React.memo(function PreviewPane({
             autoscroll={autoscroll}
           />
         </div>
-        {mapShown && <MiniActivityMap sessionId={session.sessionId} name={getSessionDisplayName(session)} live={isActive} />}
+        {mapShown && <MiniActivityMap sessionId={session.sessionId} name={getSessionDisplayName(session)} live={isActive} liveEvents={events} />}
       </div>
     </div>
   );
