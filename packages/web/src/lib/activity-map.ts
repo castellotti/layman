@@ -69,7 +69,7 @@ export function layoutMap(ids: readonly string[], size: { width: number; height:
     const x = core.x + rx * sin;
     const y = core.y - ry * cos;
     // Above and below a node the label is centred; at the sides it runs away from the ring.
-    const anchor = Math.abs(sin) < 0.3 ? 'middle' : sin > 0 ? 'start' : 'end';
+    const anchor: MapStation['label']['anchor'] = Math.abs(sin) < 0.3 ? 'middle' : sin > 0 ? 'start' : 'end';
     const label = anchor === 'middle'
       ? { x: round(x), y: round(y + (cos > 0 ? -LABEL_GAP : LABEL_GAP + 8)), anchor }
       : { x: round(x + (sin > 0 ? LABEL_GAP : -LABEL_GAP)), y: round(y + 4), anchor };
