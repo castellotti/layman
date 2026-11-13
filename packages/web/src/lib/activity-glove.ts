@@ -41,7 +41,6 @@ export interface GateStation {
   service: string;
   /** What it is, by its tool: `Web fetch`, `SearXNG`, else glove's service name. */
   label: string;
-  tool: string | null;
   route: RouteId;
   /** Bytes up and down through it and the gates it goes on through. */
   bytes: number;
@@ -127,14 +126,14 @@ export function gloveStations(services: readonly NetService[], destinations: Ite
     if (same) { add(same, sum); continue; }
     // The route its traffic leaves by: a hop to a sidecar is local, the gate it goes on through is not.
     const out = nextServices(s, services)[0] ?? s;
-    byLabel.set(label, { id: `gate:${s.service}`, service: s.service, label, tool: s.tool ?? null, route: serviceRoute(out), ...sum });
+    byLabel.set(label, { id: `gate:${s.service}`, service: s.service, label, route: serviceRoute(out), ...sum });
   }
   let gates = [...byLabel.values()];
   if (gates.length > MAX_GATES) {
     // Keep the busiest in glove's order; the rest are one station.
     const kept = new Set([...gates].sort((a, b) => b.bytes - a.bytes || b.flows - a.flows).slice(0, MAX_GATES - 1));
     const rest = gates.filter((g) => !kept.has(g));
-    const other: GateStation = { id: 'gate:*', service: rest.map((g) => g.service).join(', '), label: 'Other gates', tool: null, route: worst(rest), ...zero() };
+    const other: GateStation = { id: 'gate:*', service: rest.map((g) => g.service).join(', '), label: 'Other gates', route: worst(rest), ...zero() };
     for (const g of rest) add(other, g);
     gates = [...gates.filter((g) => kept.has(g)), other];
   }

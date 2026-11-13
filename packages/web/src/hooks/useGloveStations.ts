@@ -20,10 +20,17 @@ export function useGloveStations(sessionName: string | null | undefined, live: b
   useEffect(() => {
     if (!token || !key) return;
     // A hidden tab skips a refresh, never the first read: a finished session polls only once.
+    // An unchanged read keeps the last state, so an idle sandbox does not redraw the view every poll.
     let loaded = false;
+    let last = '';
     return pollSettled((isLive) => (loaded && document.hidden ? Promise.resolve()
       : getJson<GatesResponse>(`/api/net/sessions/${encodeURIComponent(token)}/gates?since=${since}`)
-        .then((r) => { if (isLive()) setState({ key, stations: gloveStations(r.services, r.destinations) }); })
+        .then((r) => {
+          const read = JSON.stringify(r);
+          if (!isLive() || read === last) return;
+          last = read;
+          setState({ key, stations: gloveStations(r.services, r.destinations) });
+        })
         .catch(() => { /* kept: the last gates read, or none */ })
         .finally(() => { loaded = true; })), live ? REFRESH_MS : 0);
   }, [token, key, since, live]);

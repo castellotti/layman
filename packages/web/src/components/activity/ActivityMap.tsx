@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { useNow } from '../../hooks/useNow.js';
 import type { Board } from '../../lib/activity-board.js';
 import { routeOf } from '../../lib/activity-board.js';
-import { aside, edge, layoutMap, legPath, spoke, spokeWidthFor, type MapLayout, type Point } from '../../lib/activity-map.js';
+import { aside, edge, layoutMap, legPath, spoke, spokeWidth, type MapLayout, type Point } from '../../lib/activity-map.js';
 import { GLOW_MS, legOpacity, pulsesOf, type Pulse, type StationSpec } from '../../lib/activity-view.js';
 import { contextPctColor } from '../../lib/session-state.js';
 import { STATION_STYLE } from '../../lib/station-style.js';
@@ -95,7 +95,7 @@ export const ActivityMap = React.memo(function ActivityMap({ board, stations, wi
       {stations.map((spec) => {
         const sp = spoke(layout, spec.id);
         if (!sp) return null;
-        const w = spokeWidthFor(spec.wear);
+        const w = spokeWidth(spec.wear);
         return (
           <g key={`spoke-${spec.id}`}>
             <line x1={sp.from.x} y1={sp.from.y} x2={sp.to.x} y2={sp.to.y} stroke="var(--border)" strokeWidth={w} strokeLinecap="round" />

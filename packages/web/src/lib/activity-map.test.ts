@@ -105,16 +105,16 @@ describe('wear and spokeWidth', () => {
     expect(wear(1)).toBeCloseTo(1 / 11);
     expect(wear(2047)).toBe(1);
     // A long session's busy stations still read as different widths.
-    expect(spokeWidth(150)).toBeLessThan(spokeWidth(400));
-    expect(spokeWidth(400)).toBeLessThan(spokeWidth(2000));
+    expect(spokeWidth(wear(150))).toBeLessThan(spokeWidth(wear(400)));
+    expect(spokeWidth(wear(400))).toBeLessThan(spokeWidth(wear(2000)));
     expect(wear(100_000)).toBe(1);
     for (let c = 1; c < 200; c++) expect(wear(c)).toBeGreaterThanOrEqual(wear(c - 1));
     expect(wear(10) / wear(1000)).toBeGreaterThan(0.3); // a station used 100 times less still shows
   });
 
   it('gives an unused spoke a hairline and a worn one at most 3.6', () => {
-    expect(spokeWidth(0)).toBe(1);
-    expect(spokeWidth(1e6)).toBe(3.6);
+    expect(spokeWidth(wear(0))).toBe(1);
+    expect(spokeWidth(wear(1e6))).toBe(3.6);
   });
 });
 

@@ -127,7 +127,7 @@ describe('stationSpecs', () => {
 
   it('paints a direct gate red only for untunnelled flows: known VPN routes are local, none yet is muted', () => {
     const color = (untunnelled: number, flows: number) => stationSpecs(reduceBoard([]), {
-      browserBytes: 0, gates: [{ id: 'gate:p', service: 'p', label: 'P', tool: null, route: 'direct', bytes: 1, flows, blocked: 0, untunnelled }],
+      browserBytes: 0, gates: [{ id: 'gate:p', service: 'p', label: 'P', route: 'direct', bytes: 1, flows, blocked: 0, untunnelled }],
     }).find((s) => s.id === 'gate:p')!.color;
     expect(color(1, 3)).toBe('var(--error)');
     expect(color(0, 3)).toBe('var(--net-local)');

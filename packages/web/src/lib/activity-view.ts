@@ -2,10 +2,10 @@
  * What the activity map shows besides its geometry, pure so it is tested in node: which session it
  * follows, the pulses in flight, the words for a row of the feed. `components/activity/` only draws.
  */
-import { isFault, type Board, type EntryStatus } from './activity-board.js';
+import { isFault, runningAt, type Board, type EntryStatus } from './activity-board.js';
 import { byteWear, lanes, wear } from './activity-map.js';
 import type { GateStation, GloveStations } from './activity-glove.js';
-import { formatBytes } from './net-format.js';
+import { formatBytes, plural } from './net-format.js';
 import { countLabel } from './format.js';
 import { safeLabel, STATION_IDS, type StationId, type StationSetup } from './station.js';
 import { STATION_STYLE } from './station-style.js';
@@ -131,7 +131,7 @@ export function legOpacity(k: number, legs: number, age: number, live: boolean):
 }
 
 /** When each station's latest call started. */
-export function lastStarts(board: Board): Map<StationId, number> {
+function lastStarts(board: Board): Map<StationId, number> {
   const out = new Map<StationId, number>();
   for (const e of board.entries) out.set(e.station, Math.max(out.get(e.station) ?? 0, e.startedAt));
   return out;
@@ -173,8 +173,7 @@ function gateColor(g: GateStation): string {
  * was refused is not drawn as unused.
  */
 export function stationSpecs(board: Board, glove: GloveStations | null): StationSpec[] {
-  const running = new Map<string, number>();
-  for (const e of board.entries) if (e.status === 'run') running.set(e.station, (running.get(e.station) ?? 0) + 1);
+  const running = runningAt(board);
   const starts = lastStarts(board);
   const out: StationSpec[] = [];
   for (const id of STATION_IDS) {
@@ -186,7 +185,7 @@ export function stationSpecs(board: Board, glove: GloveStations | null): Station
       about: `${style.about}${bytes > 0 ? ` (${formatBytes(bytes)} through glove's gate)` : ''}`,
       amount: count > 0 ? countLabel(count) : null,
       wear: Math.max(wear(count), byteWear(bytes)),
-      runs: running.get(id) ?? 0, faults: board.faults[id] ?? 0, lastStart: starts.get(id) ?? 0,
+      runs: running[id] ?? 0, faults: board.faults[id] ?? 0, lastStart: starts.get(id) ?? 0,
     });
     if (id === 'network' && glove) {
       for (const g of glove.gates) {
@@ -194,7 +193,7 @@ export function stationSpecs(board: Board, glove: GloveStations | null): Station
         const open = g.untunnelled > 0 ? `, ${g.untunnelled} untunnelled` : '';
         out.push({
           id: g.id, label: g.label, color: gateColor(g), glyph: 'network',
-          about: `glove's ${g.service} gate: ${formatBytes(g.bytes)} in ${g.flows} connection${g.flows === 1 ? '' : 's'}${refused}${open}, `
+          about: `glove's ${g.service} gate: ${formatBytes(g.bytes)} in ${plural(g.flows, 'connection')}${refused}${open}, `
             + 'to the hosts reached since this session began, counted over the whole glove session',
           amount: g.bytes > 0 ? formatBytes(g.bytes) : g.blocked > 0 ? `${g.blocked} refused` : null,
           wear: byteWear(g.bytes), runs: 0, faults: g.blocked, lastStart: 0,
