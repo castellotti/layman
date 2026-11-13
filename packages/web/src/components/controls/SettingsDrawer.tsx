@@ -14,12 +14,13 @@ import { DriftMonitoringSection } from './settings/DriftMonitoringSection.js';
 import { RecordingSection } from './settings/RecordingSection.js';
 import { StreamSection } from './settings/StreamSection.js';
 import { TTSSection } from './settings/TTSSection.js';
+import { AppearanceSection } from './settings/AppearanceSection.js';
 import { ActivitySection } from './settings/ActivitySection.js';
 
 export { HarnessSetupSection } from './settings/HarnessSection.js';
 export { PROVIDER_CONFIG } from './settings/AnalysisModelSection.js';
 
-type Group = 'Connection' | 'Automation' | 'Data' | 'Stream' | 'Extensions';
+type Group = 'Display' | 'Connection' | 'Automation' | 'Data' | 'Stream' | 'Extensions';
 
 interface SectionDef {
   key: string;
@@ -81,6 +82,11 @@ const SECTIONS: SectionDef[] = [
     render: (config, onSend) => <TTSSection config={config} onSend={onSend} />,
   },
   {
+    key: 'appearance', group: 'Display', label: 'Appearance',
+    searchTerms: ['appearance', 'theme', 'dark', 'light', 'colour', 'color', 'Follow the OS', 'system', 'font', 'type', 'mono', 'motion', 'animation', 'Classic', 'Ember', 'Tide', 'Phosphor', 'Paper', 'Daylight', 'Contrast'],
+    render: (config, onSend) => <AppearanceSection config={config} onSend={onSend} />,
+  },
+  {
     key: 'stream', group: 'Stream', label: 'Stream behavior',
     searchTerms: ['full command', 'newest session', 'collapse history', 'auto-scroll', 'idle threshold'],
     render: (config, onSend) => <StreamSection config={config} onSend={onSend} />,
@@ -97,7 +103,7 @@ const SECTIONS: SectionDef[] = [
   },
 ];
 
-const GROUP_ORDER: Group[] = ['Connection', 'Automation', 'Data', 'Stream', 'Extensions'];
+const GROUP_ORDER: Group[] = ['Connection', 'Automation', 'Data', 'Display', 'Stream', 'Extensions'];
 
 interface SettingsDrawerProps {
   onSend: (msg: ClientMessage) => void;

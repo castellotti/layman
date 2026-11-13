@@ -13,6 +13,12 @@ export function parseHex(hex: string): [number, number, number] {
   return [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16) / 255) as [number, number, number];
 }
 
+/** `#rrggbb` in lower case, from `#rgb` or `#rrggbb` (what `<input type="color">` takes). */
+export function longHex(hex: string): string {
+  const [r, g, b] = parseHex(hex).map((c) => Math.round(c * 255).toString(16).padStart(2, '0'));
+  return `#${r}${g}${b}`;
+}
+
 const toLinear = (c: number): number => (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
 
 /** WCAG 2 relative luminance. */

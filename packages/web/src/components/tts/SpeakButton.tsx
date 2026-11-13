@@ -29,12 +29,11 @@ function LoadingRing({ size }: { size: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 16 16" fill="none" aria-hidden>
       <circle cx="8" cy="8" r="6" stroke="currentColor" strokeOpacity="0.25" strokeWidth="2" />
-      <path d="M14 8a6 6 0 0 0-6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-        <animateTransform
-          attributeName="transform" type="rotate"
-          from="0 8 8" to="360 8 8" dur="0.8s" repeatCount="indefinite"
-        />
-      </path>
+      {/* A CSS animation, not SMIL, so Appearance → Motion (html[data-motion]) can stop it. */}
+      <path
+        d="M14 8a6 6 0 0 0-6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"
+        className="animate-spin" style={{ animationDuration: '0.8s', transformOrigin: '8px 8px' }}
+      />
     </svg>
   );
 }
