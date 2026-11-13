@@ -3,7 +3,7 @@ import { StatusDot, Meter, StateChip } from '../primitives/index.js';
 import { useNow } from '../../hooks/useNow.js';
 import { usePrinting } from '../../hooks/usePrinting.js';
 import { fetchRecordedSessionEvents } from '../../stores/sessionStore.js';
-import { mergeRecordedWithLive } from '../../lib/session-events.js';
+import { countPrompts, mergeRecordedWithLive } from '../../lib/session-events.js';
 import type { TimelineEvent, DriftState } from '../../lib/types.js';
 import type { SessionInfo } from '../../lib/ws-protocol.js';
 import type { SessionMetrics } from '../../lib/types.js';
@@ -331,10 +331,7 @@ function useHistoryMergedEvents(
   // recorded since the pane opened, or a late history import finishing). Keying
   // the refetch on turn count — not every event — keeps it bounded, and the
   // fetch itself is capped at MAX_TAIL_EVENTS so it stays flat for long sessions.
-  const promptCount = useMemo(
-    () => live.reduce((n, e) => (e.type === 'user_prompt' ? n + 1 : n), 0),
-    [live],
-  );
+  const promptCount = useMemo(() => countPrompts(live), [live]);
 
   // Clear on session change only (not on refetch), so switching panes never
   // shows the previous session's recorded rows during the async gap — while a
@@ -348,8 +345,7 @@ function useHistoryMergedEvents(
     }
     let cancelled = false;
     void fetchRecordedSessionEvents(sessionId, { limit: MAX_TAIL_EVENTS })
-      .then((events) => { if (!cancelled) setRecorded(events ?? []); })
-      .catch(() => {});
+      .then((events) => { if (!cancelled) setRecorded(events ?? []); });
     return () => { cancelled = true; };
   }, [sessionId, enabled, promptCount]);
 

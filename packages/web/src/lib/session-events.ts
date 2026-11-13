@@ -8,9 +8,9 @@ import type { TimelineEvent } from './types.js';
 // does NOT re-emit already-recorded history on resume (that would double-record it,
 // since the live path mints fresh ids the recorder can't dedupe). So the live tail
 // alone shows just "start" + the new turn, while the Sessions tab, which reads
-// SQLite, shows the whole thread. This hook closes that gap for the preview: it
-// fetches the session's recorded events once and merges them under the live tail,
-// so the pane shows the full continued session and auto-scrolls to the latest.
+// SQLite, shows the whole thread. A reader that needs the whole thread (the
+// Dashboard preview, the activity board) fetches the session's recorded events
+// and merges them under the live tail with this function.
 //
 // The merge dedupes by id (the live copy wins, so an in-place event:update is not
 // lost) and then re-sorts by timestamp. The sort is not cosmetic: it must not
@@ -21,9 +21,8 @@ import type { TimelineEvent } from './types.js';
 // append (recorded-then-live) would order them backwards, mis-numbering the #N
 // badges. Sorting by timestamp is correct for both. Recording-off and brand-new
 // sessions return no recorded rows and fall straight through to the live tail,
-// unchanged. Skipped for remote (multi-host) sessions, whose live presence is
-// deliberately a 10-minute window on central — backfilling their full history onto
-// the Dashboard is out of scope here.
+// unchanged. (The preview skips remote, multi-host sessions, whose live presence
+// is deliberately a 10-minute window on central.)
 //
 // Dedup is by id only, which is safe *because the passive watchers never re-emit
 // already-recorded history on resume* (re-emitting would double-record it; the
@@ -45,4 +44,9 @@ export function mergeRecordedWithLive(
   // Stable sort: equal-timestamp ties keep insertion order (recorded before
   // live-only), matching the natural chronology of a resumed session.
   return [...byId.values()].sort((a, b) => a.timestamp - b.timestamp);
+}
+
+/** The prompts among a session's live events: a reader refetches its recording when this changes. */
+export function countPrompts(events: readonly TimelineEvent[]): number {
+  return events.reduce((n, e) => (e.type === 'user_prompt' ? n + 1 : n), 0);
 }

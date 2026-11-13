@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { shallow } from 'zustand/shallow';
 import { fetchRecordedSessionEvents, useSessionStore, type SessionState } from '../stores/sessionStore.js';
 import { reduceBoard, type Board } from '../lib/activity-board.js';
-import { mergeRecordedWithLive } from '../lib/session-events.js';
+import { countPrompts, mergeRecordedWithLive } from '../lib/session-events.js';
 import type { TimelineEvent } from '../lib/types.js';
 import { useStationSetup } from './useStationSetup.js';
 
@@ -29,7 +29,7 @@ function useLiveEvents(sessionId: string | null): TimelineEvent[] {
 export function useSessionTimeline(sessionId: string | null): { events: TimelineEvent[]; loading: boolean } {
   const live = useLiveEvents(sessionId);
   const lateUpdates = useSessionStore((s) => s.lateUpdates);
-  const prompts = useMemo(() => live.reduce((n, e) => (e.type === 'user_prompt' ? n + 1 : n), 0), [live]);
+  const prompts = useMemo(() => countPrompts(live), [live]);
   const [recorded, setRecorded] = useState<{ sessionId: string; events: TimelineEvent[] | null } | null>(null);
   const ours = recorded && recorded.sessionId === sessionId ? recorded : null;
   const missing = ours !== null && ours.events === null;

@@ -78,13 +78,13 @@ const isFault = (status: EntryStatus): boolean => status === 'err' || status ===
 
 const str = (v: unknown): string | undefined => (typeof v === 'string' ? v : undefined);
 
+const stationCache = new WeakMap<StationSetup, WeakMap<TimelineEvent, StationId>>();
+
 /**
  * The station a tool call works at. `eventStation` files a decided call (approved, denied,
  * delegated) under Guard, which is right for a Logs row; the board counts the call at its tool's
  * station and the decision at Guard, separately.
  */
-const stationCache = new WeakMap<StationSetup, WeakMap<TimelineEvent, StationId>>();
-
 function toolStationOf(event: TimelineEvent, setup: StationSetup): StationId {
   let bySetup = stationCache.get(setup);
   if (!bySetup) { bySetup = new WeakMap(); stationCache.set(setup, bySetup); }
@@ -152,7 +152,8 @@ export function reduceBoard(events: readonly TimelineEvent[], options: BoardOpti
     asking.length = 0;
   };
 
-  for (const event of sortStable([...events])) {
+  const ordered = sortStable(events);
+  for (const event of ordered) {
     const { type, data } = event;
     const from: EntryFrom = data.subagentId ? 'agents' : 'core';
     const at = startOf(event);
@@ -226,8 +227,9 @@ export function reduceBoard(events: readonly TimelineEvent[], options: BoardOpti
     }
     if (type === 'agent_response' && typeof data.model === 'string' && data.model) model = data.model;
 
-    const pushedIn = isPushedMemory(type) || type === 'file_changed';
-    if (isPushedMemory(type)) pushed++;
+    const memoryIn = isPushedMemory(type);
+    if (memoryIn) pushed++;
+    const pushedIn = memoryIn || type === 'file_changed';
     let status: EntryStatus = 'ok';
     if (type === 'stop_failure') status = 'err';
     else if (type === 'permission_denied') status = 'block';
@@ -240,8 +242,7 @@ export function reduceBoard(events: readonly TimelineEvent[], options: BoardOpti
   }
 
   if (options.ended) {
-    const last = events.reduce((m, e) => Math.max(m, e.timestamp), 0);
-    closeAll(last);
+    closeAll(ordered.at(-1)?.timestamp ?? 0);
     alive.clear();
   }
 

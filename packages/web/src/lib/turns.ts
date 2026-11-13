@@ -44,7 +44,11 @@ export function isDuplicatePrompt(candidate: TimelineEvent, openPrompt: Timeline
 }
 
 /** Events in time order, ties kept in the order they came. */
-export function sortStable(events: TimelineEvent[]): TimelineEvent[] {
+export function sortStable(events: readonly TimelineEvent[]): TimelineEvent[] {
+  // Input usually arrives sorted already (`mergeRecordedWithLive` sorts): one pass, no re-sort.
+  let sorted = true;
+  for (let i = 1; i < events.length && sorted; i++) sorted = events[i - 1].timestamp <= events[i].timestamp;
+  if (sorted) return events.slice();
   return events
     .map((event, position) => ({ event, position }))
     .sort((a, b) => a.event.timestamp - b.event.timestamp || a.position - b.position)
