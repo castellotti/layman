@@ -1,0 +1,195 @@
+/**
+ * The activity map's geometry, pure so it is tested in node; `components/activity/` only draws.
+ *
+ * The stations sit on an ellipse around a core (the agent), the first at the top and the rest
+ * clockwise in the order given, so the order of `STATION_IDS` puts the person at the top and the
+ * network across from them. Any number of stations: a gloved session's are its sandbox's services.
+ * A spoke runs from the core's rim to a station's rim and wears wider with use, by the log of its
+ * count so a busy station never swamps the rest. A leg of the route curves through the room between
+ * the core and the ring, never through the core or across the labels outside the ring. Pulses that
+ * share a spoke and a moment fly side by side in lanes.
+ */
+
+export interface Point { x: number; y: number }
+
+export interface MapStation {
+  id: string;
+  /** Where the station's node is centred. */
+  x: number;
+  y: number;
+  /** Its angle, clockwise from the top, in radians. */
+  angle: number;
+  /** Where its label goes, outside the ring, and which way the text runs from there. */
+  label: Point & { anchor: 'start' | 'middle' | 'end' };
+}
+
+export interface MapLayout {
+  width: number;
+  height: number;
+  core: Point;
+  /** The ring's radii. */
+  rx: number;
+  ry: number;
+  /** The core's radius and a node's. */
+  hub: number;
+  node: number;
+  stations: MapStation[];
+  /** Each station's place in `stations`, by id. */
+  index: ReadonlyMap<string, number>;
+}
+
+/** The smallest map that still has room for its labels; a smaller box is drawn at this size, scaled. */
+export const MIN_SIZE = { width: 320, height: 260 } as const;
+/** The least for a compact map (no labels: a Dashboard pane's), drawn smaller by scaling below it. */
+export const MIN_COMPACT = { width: 170, height: 170 } as const;
+const HUB = 18;
+const NODE = 13;
+/**
+ * The room a label's text has, at the map's font (about 11 px): its width, which the component
+ * truncates a longer name to, and how far its baseline sits above the text's foot (descenders).
+ */
+export const LABEL_WIDTH = 50;
+export const DESCENT = 4;
+export const CAP = 9;
+/** A side label's baseline sits this far below its node's centre, so the text is centred on it. */
+const SIDE_DROP = 4;
+/** A label above or below a node, running away from the middle, starts this far back across it. */
+const INSET = 4;
+/** How far a label sits from its node's centre, beside it or above it. */
+const LABEL_GAP = NODE + 9;
+/** Below a node the label's baseline is lower by the text's height. */
+const LABEL_BELOW = LABEL_GAP + CAP;
+/** Room outside the ring for a label: its width at the sides, and above and below with a margin. */
+const LABEL_ROOM = { x: LABEL_GAP + LABEL_WIDTH + 2, y: LABEL_BELOW + DESCENT + 2 } as const;
+/** A compact map's (no labels): room for the subagents' orbit, a dot of 2.6 at NODE + 6 out, wherever Agents sits. */
+const COMPACT_ROOM = { x: NODE + 10, y: NODE + 10 } as const;
+/** Only a node this near the very top or bottom gets a centred label. */
+const CENTRED = 0.1;
+/** A node within about 37° of the top or bottom has its label above or below it, not beside it. */
+const VERTICAL = 0.8;
+/**
+ * The log of the count at which a spoke is fully worn (2^11 - 1 = 2,047 uses): a long session's
+ * 150 file calls, 400 shell calls and 2,000 model steps still read as three widths.
+ */
+const WEAR_LOG = 11;
+/** The width of an unused spoke, and how much use adds at most. */
+const SPOKE_MIN = 1;
+const SPOKE_GAIN = 2.6;
+/** How far a leg's ends stand off a node's rim. */
+export const LEG_GAP = 4;
+/** From one pulse's lane to the next. */
+export const LANE_GAP = 5;
+
+const round = (v: number): number => Math.round(v * 10) / 10;
+
+/** The stations placed on the ring for a box of the given size. */
+export function layoutMap(ids: readonly string[], size: { width: number; height: number }, options: { compact?: boolean } = {}): MapLayout {
+  // A compact map draws no labels (names are in its tooltips), so its ring runs nearly to the edge.
+  const least = options.compact ? MIN_COMPACT : MIN_SIZE;
+  const room = options.compact ? COMPACT_ROOM : LABEL_ROOM;
+  const width = Math.max(least.width, size.width);
+  const height = Math.max(least.height, size.height);
+  const core = { x: width / 2, y: height / 2 };
+  const rx = width / 2 - room.x;
+  const ry = height / 2 - room.y;
+  const n = ids.length;
+  const stations = ids.map((id, i): MapStation => {
+    const angle = (i * 2 * Math.PI) / n;
+    const sin = Math.sin(angle);
+    const cos = Math.cos(angle);
+    const x = core.x + rx * sin;
+    const y = core.y - ry * cos;
+    // Near the top or the bottom the label goes above or below its node, centred when the node is
+    // right at the top or bottom and otherwise running away from the middle, so the two nodes either
+    // side of the bottom (an odd count) never put two names on one spot. At the sides it runs away
+    // from the ring.
+    const anchor: MapStation['label']['anchor'] = Math.abs(sin) < CENTRED ? 'middle' : sin > 0 ? 'start' : 'end';
+    const label = Math.abs(cos) >= VERTICAL
+      ? {
+        x: round(anchor === 'middle' ? x : x + (sin > 0 ? -INSET : INSET)),
+        y: round(y + (cos > 0 ? -LABEL_GAP : LABEL_BELOW)),
+        anchor,
+      }
+      : { x: round(x + (sin > 0 ? LABEL_GAP : -LABEL_GAP)), y: round(y + SIDE_DROP), anchor };
+    return { id, x: round(x), y: round(y), angle, label };
+  });
+  return { width, height, core, rx, ry, hub: HUB, node: NODE, stations, index: new Map(ids.map((id, i) => [id, i])) };
+}
+
+/** How worn a spoke is by `count` uses, 0..1, by the log so the busiest station does not swamp the rest. */
+export function wear(count: number): number {
+  return count <= 0 ? 0 : Math.min(1, Math.log2(1 + count) / WEAR_LOG);
+}
+
+/** A spoke's stroke width for `count` uses. */
+export function spokeWidth(count: number): number {
+  return round(SPOKE_MIN + SPOKE_GAIN * wear(count));
+}
+
+/** Where a straight line from `from` towards `to` leaves the circle of radius `r` around `from`. */
+export function edge(from: Point, to: Point, r: number): Point {
+  const d = Math.hypot(to.x - from.x, to.y - from.y) || 1;
+  return { x: round(from.x + ((to.x - from.x) * r) / d), y: round(from.y + ((to.y - from.y) * r) / d) };
+}
+
+const find = (layout: MapLayout, id: string): MapStation | undefined => {
+  const i = layout.index.get(id);
+  return i === undefined ? undefined : layout.stations[i];
+};
+
+/** A spoke: from the core's rim to the station's rim. Undefined for a station not on the map. */
+export function spoke(layout: MapLayout, id: string): { from: Point; to: Point } | undefined {
+  const s = find(layout, id);
+  if (!s) return undefined;
+  return { from: edge(layout.core, s, layout.hub), to: edge(s, layout.core, layout.node) };
+}
+
+/**
+ * How far out from the core a leg bends, as a share of the ring, by how many stations apart its ends
+ * are: a leg between neighbours bends halfway in (clear of the labels outside), a leg across the map
+ * bends further out so it does not cut through the core.
+ */
+function bendShare(steps: number, n: number): number {
+  const across = (2 * Math.abs(steps)) / n; // 0 = same, 1 = opposite
+  return across <= 0.5 ? 0.5 - 0.2 * across : 0.05 + 0.7 * across;
+}
+
+/**
+ * A leg of the route from one station to another: a quadratic curve through the room between the
+ * core and the ring, ending on the target node's rim. Undefined when either is not on the map or
+ * they are the same station.
+ */
+export function legPath(layout: MapLayout, fromId: string, toId: string): { d: string; bend: Point; start: Point; end: Point } | undefined {
+  const i = layout.index.get(fromId);
+  const j = layout.index.get(toId);
+  if (i === undefined || j === undefined || i === j) return undefined;
+  const n = layout.stations.length;
+  // Measured from the lower index either way, so a round trip bends through one point (two stations
+  // exactly opposite would otherwise take opposite sides and draw a loop).
+  const lo = Math.min(i, j);
+  let steps = Math.abs(j - i);
+  if (steps > n / 2) steps -= n;
+  // Halfway between the two along the shorter way, from the angles the layout placed them at.
+  const angle = layout.stations[lo].angle + (steps * Math.PI) / n;
+  const share = bendShare(steps, n);
+  const bend = {
+    x: round(layout.core.x + layout.rx * share * Math.sin(angle)),
+    y: round(layout.core.y - layout.ry * share * Math.cos(angle)),
+  };
+  const start = edge(layout.stations[i], bend, layout.node + LEG_GAP);
+  const end = edge(layout.stations[j], bend, layout.node + LEG_GAP);
+  return { d: `M${start.x} ${start.y}Q${bend.x} ${bend.y} ${end.x} ${end.y}`, bend, start, end };
+}
+
+/** Sideways offsets for `n` pulses on one spoke at one moment, centred on the spoke. */
+export function lanes(n: number, gap = LANE_GAP): number[] {
+  return Array.from({ length: Math.max(0, n) }, (_, k) => round((k - (n - 1) / 2) * gap));
+}
+
+/** The line from `a` to `b` moved `off` to its side, for a pulse flying in a lane. */
+export function aside(a: Point, b: Point, off: number): [Point, Point] {
+  const d = Math.hypot(b.x - a.x, b.y - a.y) || 1;
+  const dx = (-(b.y - a.y) * off) / d;
+  const dy = ((b.x - a.x) * off) / d;
+  return [{ x: round(a.x + dx), y: round(a.y + dy) }, { x: round(b.x + dx), y: round(b.y + dy) }];
+}

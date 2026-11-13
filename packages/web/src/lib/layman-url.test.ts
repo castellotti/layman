@@ -21,6 +21,7 @@ const ROUTES: LaymanRoute[] = [
 const OPTION_SETS: RouteOptions[] = [
   {},
   { view: 'logs' },
+  { view: 'activity' },
   { play: true },
   { t: 1712345678901 },
   { view: 'prompts', play: true, t: 42 },

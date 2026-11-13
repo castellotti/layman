@@ -224,7 +224,7 @@ store for unrecorded sessions, and memoizes per session until a new event arrive
 /s/{sessionId}/t/{promptEventId}     a turn  ◀ the primary addressable form
 /s/{sessionId}/e/{eventId}           a single event
 /h/{id}  /b/{id}  /f/{id}            highlight / bookmark / bookmark folder
-?view=dashboard|logs|prompts|flow|sessions   ?play=1   ?t=<ms>
+?view=dashboard|logs|prompts|flow|activity|sessions   ?play=1   ?t=<ms>
 ?view=network|map|topology|trace&glove=<token>&dest=<host>   glove network views
   &from=<iso>&to=<iso|now>           …and their time range (pushes: Back returns to the previous one)
 ```
@@ -355,6 +355,37 @@ one place a recorded event gets its station.
 `safeLabel()` (same file) is the names-only label: a name, never content (no command line, query,
 prompt, search pattern or path beyond its last two parts); `hostOf()` is its URL rule. Add a case to
 the fixture's `labels`/`hosts` with any change.
+The **board** (`packages/web/src/lib/activity-board.ts`, pure) reduces one session's events to counts
+per station, faults since the last prompt (the turn rule's duplicate-prompt window, from `lib/turns.ts`),
+running calls, live subagents and the route. A call is counted once: the second event of a call recorded
+in two (a hooks failure; Vibe's approved-then-completed, the only harness whose `tool_call_completed` is
+a separate event) closes the open call with the same tool **and input**, never another: everywhere else
+a completed event *is* the call, and letting it close a sibling hid running calls. A decision adds a
+Guard entry beside the call. A call still open at the next prompt or the session's end is `unended`,
+never a fault, and stays claimable, so a late result closes it without counting twice. Its input is the
+whole recording (`?lean=1`, without outputs) joined with the live store and with `lateUpdates`
+(`useSessionTimeline`), never the live store alone, which holds the WebSocket's last 100 events and what
+arrived since; `lateUpdates` keeps the WebSocket's updates to events the store does not hold, or a
+recorded call that finishes later would run on the board forever.
+The map's geometry is pure (`lib/activity-map.ts`, as for Map and Topology): any number of stations on
+an ellipse, the first at the top, labels outside the ring tested not to overlap a label or node for 2–16 stations at the least size; spokes worn by the log of the count (full at 2,047); route legs that curve between the
+core and the ring (tests sample every leg of every pair and fail if one cuts the core or leaves the ring,
+where the labels are); lanes for pulses that share a spoke.
+The view (`components/activity/`, the **Activity** tab, `ViewMode` `'activity'`, `?view=activity`) only
+draws: what it follows and shows (the session, the pulses in flight, a feed row's words) is pure in
+`lib/activity-view.ts`. Its animation is in `components/activity/activity.css` (not `index.css`), scaled
+by `--motion`, none under reduced motion or in print. The map's box never sizes itself from its content
+(it is absolutely placed in its pane), or a growing feed beside it grows it without end; in print the
+pane gets its own height (`activity.css`), and feed rows are not buttons, which print hides. Motion
+honours Settings → Motion (`data-motion` on `<html>`) as well as the OS setting. A row clicked open
+loads the session's full recording into `historicalEvents` first when the store lacks the event:
+the board reads the lean one, which Investigation cannot show. `isSessionView` / `isExclusiveView`
+(`sessionStore.ts`) list the views; a new one goes there. A Dashboard pane draws the same map compact
+(`MiniActivityMap`, `layoutMap(…, { compact: true })`: no labels, the ring nearly to the edge). Every map reads
+its live events from one split of the store by session (`bySession` in `useActivityBoard.ts`, computed
+once per event list, not once per pane), and `useSessionTimeline` keeps the
+last few lean recordings so a re-mounted map does not download a session again; it refetches only when
+the recording is missing or the live slice no longer reaches back to it.
 
 ### Text to speech
 

@@ -1,0 +1,35 @@
+/* The activity map's motion. Durations scale with the theme's --motion (0 stops them); none at all
+   when the person asks for reduced motion, and a pulse that would only move is then not drawn. */
+.activity-pulse {
+  animation: activity-fly calc(var(--motion) * 0.9s) ease-in-out both;
+  animation-delay: var(--delay, 0s);
+}
+.activity-pulse-run {
+  animation: activity-fly calc(var(--motion) * 1.4s) ease-in-out infinite;
+  animation-delay: var(--delay, 0s);
+}
+@keyframes activity-fly {
+  0%   { transform: translate(0, 0); opacity: 0; }
+  12%  { opacity: 1; }
+  85%  { opacity: 1; }
+  100% { transform: translate(var(--dx), var(--dy)); opacity: 0; }
+}
+/* A station at work breathes; the newest leg of the route draws itself. */
+.activity-lit { animation: activity-breathe calc(var(--motion) * 1.6s) ease-in-out infinite; }
+@keyframes activity-breathe { 50% { opacity: 0.45; } }
+.activity-draw { stroke-dasharray: 1 1; animation: activity-draw calc(var(--motion) * 0.5s) ease-out both; }
+@keyframes activity-draw { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
+/* Subagents still at work circle the Agents station. */
+.activity-orbit { animation: activity-spin calc(var(--motion) * 7s) linear infinite; transform-box: view-box; }
+@keyframes activity-spin { to { transform: rotate(360deg); } }
+/* Settings → Appearance → Motion: Reduced or Off, which the OS's reduced-motion setting also caps
+   it at (`data-motion` on <html>, from `resolveAppearance`). */
+html:is([data-motion='reduced'], [data-motion='off']) :is(.activity-pulse, .activity-pulse-run) { display: none; }
+html:is([data-motion='reduced'], [data-motion='off']) :is(.activity-lit, .activity-draw, .activity-orbit) { animation: none; }
+@media print {
+  .activity-pulse, .activity-pulse-run { display: none; }
+  .activity-lit, .activity-draw, .activity-orbit { animation: none; }
+  /* The map is placed absolutely in its pane, so the pane needs a height of its own on paper. */
+  .activity-body { flex-direction: column !important; }
+  .activity-map-pane { flex: none !important; width: 100% !important; height: 60vh !important; }
+}

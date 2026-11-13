@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
-  bandPath, bandWidth, countLabel, exitSourceHost, layoutTopology, outcomeOf, pathHops, projectTopology, scrollThumb, scrollToDest, spread, thumbDrag, keyScroll, wheelDelta, easeScroll, topologyServices,
+  bandPath, bandWidth, exitSourceHost, layoutTopology, outcomeOf, pathHops, projectTopology, scrollThumb, scrollToDest, spread, thumbDrag, keyScroll, wheelDelta, easeScroll, topologyServices,
   upstreamHost, MIN_WIDTH, type Topology, type TopoBand,
 } from './net-topology.js';
 import { boxDetails, explainBox, TOP_N } from './net-topology-box.js';
+import { countLabel } from './format.js';
 import { dest, rulesView, sessionData } from './net-test-fixtures.js';
 import type { DestinationAggregate, NetSessionFile } from './netobs-types.js';
 import type { NetSessionData } from './net-state.js';

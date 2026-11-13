@@ -53,6 +53,14 @@ Every event in Logs is filed under a **station**, the kind of work it is: **You*
 
 Every harness's tools are covered. A shell command is filed by the commands in it: Network if any reaches the network (`curl`, `ssh`, `git push`, `pnpm add`, an `rsync` to another host…), Files if it only reads, searches, moves or edits files, Shell otherwise. Claude Code's memory folder (`~/.claude/projects/…/memory/`) is always Memory; **Settings → Stations** names more memory paths and MCP servers. Stations are worked out when shown, never stored, so they cover every recorded session, and a settings change re-files past sessions too.
 
+## Activity map
+
+The **Activity** tab (`A`) draws a session as a ring of its stations around the agent: the session open in the app, or the newest live one. A spoke grows wider with use, a red badge counts what failed or was refused since your last prompt, and `×3` means three calls are running there at once. A faint line traces where the agent went last; dots fly out to a station when a call starts and back when it ends, and subagents still at work circle the Agents station. The centre shows how full the context window is.
+
+The list beside the map is the newest work, with calls in a row at one station folded into one row (`+2`); click one to open it in Investigation. **Names only** hides what was typed, read or run and shows only names (a file's last two folders, a host, a command's name), for a shared screen. Link to a session's map with `/s/<session>?view=activity`.
+
+Each Dashboard pane shows a small map beside its recent rows; click it for the full one, or use the pane's **map** toggle to hide them.
+
 ## Historical session import
 
 Layman can discover and import past sessions from JSONL transcript files that were never monitored live - Claude Code (`~/.claude/projects/`) and pi (`~/.pi/agent/sessions/`). **Settings -> Data** provides a scan dialog with per-session results, a Harness column, and an optional auto-import-on-startup flag. Existing live sessions are enriched with missing events without downgrading their live status.

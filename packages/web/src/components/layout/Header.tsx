@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { useSessionStore, isNetworkView, type ViewMode } from '../../stores/sessionStore.js';
+import { useSessionStore, isExclusiveView, isNetworkView, type ViewMode } from '../../stores/sessionStore.js';
 import { useNetStore } from '../../stores/netStore.js';
 import { networkTabSignal, type NetTabSignal } from '../../lib/net-state.js';
 import { NET_TABS } from '../network/tabs.js';
@@ -93,7 +93,7 @@ export function Header() {
   // view is showing — Flow/Sessions/Prompts take over the whole content area, and
   // panelLayout otherwise keeps its last-computed value since the layout hook that
   // updates it unmounts along with the panels themselves.
-  const inLiveMode = viewMode !== 'flowchart' && viewMode !== 'sessions' && viewMode !== 'prompts' && !isNetworkView(viewMode);
+  const inLiveMode = !isExclusiveView(viewMode);
 
   // Clicking Dashboard/Logs (or D/S) while already in live mode toggles that
   // panel's visibility independently; arriving from Flow/Sessions/Prompts shows
@@ -118,6 +118,7 @@ export function Header() {
         case 'd': activateLiveTab('dashboard'); break;
         case 's': activateLiveTab('stream'); break;
         case 'f': setViewMode('flowchart'); break;
+        case 'a': setViewMode('activity'); break;
         case 'n': if (showNetwork) setViewMode('network'); break;
         case 'm': if (showNetwork) setViewMode('map'); break;
         case 'o': if (showNetwork) setViewMode('topology'); break;
@@ -198,6 +199,12 @@ export function Header() {
           shortcut="F"
           isActive={viewMode === 'flowchart'}
           onClick={() => setViewMode('flowchart')}
+        />
+        <NavTabButton
+          label="Activity"
+          shortcut="A"
+          isActive={viewMode === 'activity'}
+          onClick={() => setViewMode('activity')}
         />
       </nav>
 

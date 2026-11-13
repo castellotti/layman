@@ -4,7 +4,7 @@ import type { SessionInfo } from '../lib/ws-protocol.js';
 import type { NetRange } from '../lib/netobs-types.js';
 import { arrivalNetToken, rangeKey, sameRange } from '../lib/net-state.js';
 import { useNetStore } from './netStore.js';
-import type { DashboardSortMode } from '../lib/session-state.js';
+import { newestSession, type DashboardSortMode } from '../lib/session-state.js';
 import type { LaymanRoute, RouteOptions, ViewName } from '../lib/layman-url.js';
 import { extractTurn } from '../lib/turns.js';
 import { pairFor } from '../lib/event-pairing.js';
@@ -20,6 +20,8 @@ function computeHighlightedEventIds(highlights: Highlight[]): Set<string> {
 
 export type ViewMode =
   | 'dashboard' | 'stream' | 'flowchart' | 'sessions' | 'prompts'
+  // The activity map of one session: an exclusive full-content view, like Flow.
+  | 'activity'
   // Network views of glove sessions: exclusive full-content views, like Flow.
   | 'network' | 'map' | 'topology' | 'trace';
 
@@ -27,6 +29,18 @@ export const NETWORK_VIEW_MODES: readonly ViewMode[] = ['network', 'map', 'topol
 
 export function isNetworkView(mode: ViewMode): boolean {
   return (NETWORK_VIEW_MODES as readonly string[]).includes(mode);
+}
+
+/** Views that show one session open in the app (`activeSessionId`), addressed as `/s/<id>?view=…`. */
+const SESSION_VIEW_MODES: readonly ViewMode[] = ['stream', 'flowchart', 'activity'];
+
+export function isSessionView(mode: ViewMode): boolean {
+  return (SESSION_VIEW_MODES as readonly string[]).includes(mode);
+}
+
+/** Views that take over the whole content area, outside the Dashboard/Logs layout. */
+export function isExclusiveView(mode: ViewMode): boolean {
+  return mode === 'flowchart' || mode === 'activity' || mode === 'sessions' || mode === 'prompts' || isNetworkView(mode);
 }
 
 // ─── Expanding-interface layout state ──────────────────────────────────────
@@ -84,6 +98,7 @@ const VIEW_NAME_BY_MODE: Record<ViewMode, ViewName> = {
   dashboard: 'dashboard',
   stream: 'logs',
   flowchart: 'flow',
+  activity: 'activity',
   sessions: 'sessions',
   prompts: 'prompts',
   network: 'network',
@@ -96,6 +111,7 @@ const MODE_BY_VIEW_NAME: Record<ViewName, ViewMode> = {
   dashboard: 'dashboard',
   logs: 'stream',
   flow: 'flowchart',
+  activity: 'activity',
   sessions: 'sessions',
   prompts: 'prompts',
   network: 'network',
@@ -145,26 +161,32 @@ export async function fetchSessionEvents(
 }
 
 /**
- * A session's recorded events only — no time-metrics — capped at the most recent
- * `limit`. `fetchSessionEvents` pairs events with a `/time-metrics` request; the
- * Dashboard preview backfill needs neither the metrics nor the full thread, so it
- * uses this lighter, bounded fetch instead of discarding half of that one.
+ * A session's recorded events only, no time-metrics: the whole session, or with `limit` only the
+ * most recent `limit` (oldest first); `lean` leaves out outputs and transcripts. `fetchSessionEvents`
+ * pairs events with a `/time-metrics` request; the Dashboard preview's bounded tail and the activity
+ * board need neither. `null` when the session is not recorded (yet) or the request failed, so a
+ * caller can try again rather than take it for an empty session.
  */
-export async function fetchRecordedSessionEventsTail(
+export async function fetchRecordedSessionEvents(
   sessionId: string,
-  limit: number,
-): Promise<TimelineEvent[]> {
+  options: { limit?: number; lean?: boolean } = {},
+): Promise<TimelineEvent[] | null> {
   try {
-    const res = await fetch(
-      `/api/bookmarks/sessions/${encodeURIComponent(sessionId)}/events?limit=${limit}`,
-    );
-    if (!res.ok) return [];
+    const params = new URLSearchParams();
+    if (options.limit !== undefined) params.set('limit', String(options.limit));
+    if (options.lean) params.set('lean', '1');
+    const query = params.toString() ? `?${params}` : '';
+    const res = await fetch(`/api/bookmarks/sessions/${encodeURIComponent(sessionId)}/events${query}`);
+    if (!res.ok) return null;
     const data = await res.json() as { events?: TimelineEvent[] };
     return data.events ?? [];
   } catch {
-    return [];
+    return null;
   }
 }
+
+/** How many updates to events the store does not hold it keeps (see `lateUpdates`). */
+const LATE_UPDATES = 500;
 
 interface ResolveOutcome {
   resolved: ResolvedId | null;
@@ -254,6 +276,12 @@ export interface SessionState {
   bookmarks: Bookmark[];
   viewingSessionId: string | null;
   historicalEvents: TimelineEvent[];
+  /**
+   * Updates to events the store does not hold, newest last, at most 500: a call that was already
+   * recorded before this page loaded and finishes now (the WebSocket sends only the change). A
+   * reader that fetched the recording applies them to it (`useSessionTimeline`).
+   */
+  lateUpdates: ReadonlyMap<string, Partial<TimelineEvent>>;
   /** True while a viewed session's recorded events are being fetched. */
   loadingHistorical: boolean;
   sessionTimeMetrics: SessionTimeMetrics | null;
@@ -403,6 +431,8 @@ export interface SessionState {
   navigateFromDashboard: (sessionId: string, eventId: string) => void;
   navigateFromDashboardToLogs: (sessionId: string, eventId: string) => void;
   navigateToLogsForSession: (sessionId: string) => void;
+  /** Open a session's activity map from its Dashboard pane, with the way back (Escape, the banner). */
+  navigateFromDashboardToActivity: (sessionId: string) => void;
   clearScrollToEvent: () => void;
   returnFromDashboardDrilldown: () => void;
   setAccessLogOpen: (open: boolean) => void;
@@ -488,6 +518,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   bookmarks: [],
   viewingSessionId: null,
   historicalEvents: [],
+  lateUpdates: new Map(),
   loadingHistorical: false,
   sessionTimeMetrics: null,
   bookmarksScrollToEventId: null,
@@ -628,6 +659,12 @@ export const useSessionStore = create<SessionState>((set, get) => ({
         newHist[hidx] = { ...newHist[hidx], ...updates };
         result.historicalEvents = newHist;
       }
+      if (idx < 0 && hidx < 0) {
+        const late = new Map(state.lateUpdates);
+        late.set(eventId, { ...late.get(eventId), ...updates });
+        if (late.size > LATE_UPDATES) late.delete(late.keys().next().value as string);
+        result.lateUpdates = late;
+      }
       return result;
     }),
 
@@ -733,8 +770,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
         const existingIds = new Set(state.sessions.map((s) => s.sessionId));
         const newSessions = merged.filter((s) => !existingIds.has(s.sessionId));
         if (newSessions.length > 0) {
-          const newest = newSessions.reduce((a, b) => (b.lastSeen > a.lastSeen ? b : a));
-          return { sessions: merged, activeSessionId: newest.sessionId };
+          return { sessions: merged, activeSessionId: newestSession(newSessions)!.sessionId };
         }
       }
       return { sessions: merged, activeSessionId: state.activeSessionId };
@@ -973,7 +1009,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       // is still set above as a fallback source (see useEventStore.ts) for sessions
       // that aren't present in the live WebSocket-fed store, e.g. a deep link opened
       // after the server restarted or long after the session ended.
-      if (mode === 'stream' || mode === 'flowchart') {
+      if (isSessionView(mode)) {
         done({
           ...base,
           viewMode: mode,
@@ -1163,6 +1199,16 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       };
     }),
   clearScrollToEvent: () => set({ scrollToEventId: null }),
+  // One update, so the address bar never sees the new session with the view still on the Dashboard.
+  // The map takes over the content area, so the way back is always offered.
+  navigateFromDashboardToActivity: (sessionId) => set({
+    viewMode: 'activity',
+    ...viewModeFlags('activity'),
+    returnToDashboard: true,
+    activeSessionId: sessionId,
+    selectedEventId: null,
+    investigationOpen: false,
+  }),
   returnFromDashboardDrilldown: () => set({
     viewMode: 'dashboard',
     ...viewModeFlags('dashboard'),

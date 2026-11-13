@@ -35,14 +35,20 @@ const TOOL_CALL_TYPES: ReadonlySet<string> = new Set([
  */
 const DUPLICATE_PROMPT_WINDOW_MS = 1000;
 
-function isDuplicatePrompt(candidate: TimelineEvent, openPrompt: TimelineEvent): boolean {
+/** True for a re-recorded copy of the open turn's prompt; the activity board uses the same rule. */
+export function isDuplicatePrompt(candidate: TimelineEvent, openPrompt: TimelineEvent): boolean {
   return (
     candidate.timestamp - openPrompt.timestamp < DUPLICATE_PROMPT_WINDOW_MS &&
     (candidate.data.prompt ?? '').trim() === (openPrompt.data.prompt ?? '').trim()
   );
 }
 
-function sortStable(events: TimelineEvent[]): TimelineEvent[] {
+/** Events in time order, ties kept in the order they came. */
+export function sortStable(events: readonly TimelineEvent[]): TimelineEvent[] {
+  // Input usually arrives sorted already (`mergeRecordedWithLive` sorts): one pass, no re-sort.
+  let sorted = true;
+  for (let i = 1; i < events.length && sorted; i++) sorted = events[i - 1].timestamp <= events[i].timestamp;
+  if (sorted) return events.slice();
   return events
     .map((event, position) => ({ event, position }))
     .sort((a, b) => a.event.timestamp - b.event.timestamp || a.position - b.position)

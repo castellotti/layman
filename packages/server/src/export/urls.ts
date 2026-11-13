@@ -21,11 +21,11 @@
  */
 
 export type ViewName =
-  | 'dashboard' | 'logs' | 'prompts' | 'flow' | 'sessions'
+  | 'dashboard' | 'logs' | 'prompts' | 'flow' | 'activity' | 'sessions'
   | 'network' | 'map' | 'topology' | 'trace';
 
 export const VIEW_NAMES: readonly ViewName[] = [
-  'dashboard', 'logs', 'prompts', 'flow', 'sessions',
+  'dashboard', 'logs', 'prompts', 'flow', 'activity', 'sessions',
   'network', 'map', 'topology', 'trace',
 ];
 

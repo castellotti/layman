@@ -1,4 +1,5 @@
 import Fastify from 'fastify';
+import { leanEvent } from './events/lean.js';
 import cors from '@fastify/cors';
 import staticPlugin from '@fastify/static';
 import websocket from '@fastify/websocket';
@@ -1428,7 +1429,7 @@ export function createServer(config: LaymanConfig): LaymanServer {
       return { sessions: sessions.filter((s) => (s.hostId ?? getConfig().sync.hostId) === wanted) };
     });
 
-    fastify.get<{ Params: { sessionId: string }; Querystring: { limit?: string } }>('/api/bookmarks/sessions/:sessionId/events', async (request, reply) => {
+    fastify.get<{ Params: { sessionId: string }; Querystring: { limit?: string; lean?: string } }>('/api/bookmarks/sessions/:sessionId/events', async (request, reply) => {
       const { sessionId } = request.params;
       const session = bookmarkStore.getRecordedSession(sessionId);
       if (!session) return reply.status(404).send({ error: 'Session not found' });
@@ -1436,11 +1437,12 @@ export function createServer(config: LaymanConfig): LaymanServer {
       // Dashboard preview's bounded tail; omitted → the full session.
       const parsedLimit = parseInt(request.query.limit ?? '', 10);
       const limit = Number.isFinite(parsedLimit) && parsedLimit > 0 ? Math.min(10000, parsedLimit) : undefined;
-      return {
-        events: limit
-          ? bookmarkStore.getRecentEventsForSession(sessionId, limit)
-          : bookmarkStore.getEventsForSession(sessionId),
-      };
+      const events = limit
+        ? bookmarkStore.getRecentEventsForSession(sessionId, limit)
+        : bookmarkStore.getEventsForSession(sessionId);
+      // `?lean=1` leaves out outputs and transcripts (`leanEvent`): the activity board reads a whole
+      // session and needs only what happened (about half the bytes of a real session).
+      return { events: request.query.lean === '1' ? events.map(leanEvent) : events };
     });
 
     fastify.get<{ Params: { sessionId: string } }>('/api/bookmarks/sessions/:sessionId/qa', async (request) => {

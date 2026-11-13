@@ -3,6 +3,7 @@ import { Header } from './components/layout/Header.js';
 import { ExpandingLayout } from './components/layout/ExpandingLayout.js';
 import { sp, rad } from './lib/density.js';
 const FlowchartView = lazy(() => import('./components/flowchart/FlowchartView.js').then(m => ({ default: m.FlowchartView })));
+const ActivityMapView = lazy(() => import('./components/activity/ActivityMapView.js'));
 // Network, Map, Topology and Trace (glove): one lazy chunk, fetched only when opened.
 const NetworkView = lazy(() => import('./components/network/NetworkView.js'));
 import { InvestigationPanel } from './components/layout/InvestigationPanel.js';
@@ -213,7 +214,6 @@ export function App() {
   // Applies the config's theme, type, density and motion.
   useAppearance();
   const investigationOpen = useSessionStore((s) => s.investigationOpen);
-  const flowchartOpen = useSessionStore((s) => s.flowchartOpen);
   const bookmarksOpen = useSessionStore((s) => s.bookmarksOpen);
   const promptsOpen = useSessionStore((s) => s.promptsOpen);
   const viewMode = useSessionStore((s) => s.viewMode);
@@ -322,9 +322,9 @@ export function App() {
     </div>
   );
 
-  // Flow view takes over the entire content area (unrelated to the expanding
-  // Dashboard/Logs/Investigation/Settings layout — keeps its own simple split)
-  if (flowchartOpen) {
+  // Flow and the activity map take over the entire content area (unrelated to the expanding
+  // Dashboard/Logs/Investigation/Settings layout — they keep their own simple split)
+  if (viewMode === 'flowchart' || viewMode === 'activity') {
     return (
       <AppShell onSend={send} onInstall={handleSetupInstall}>
         {backBanner}
@@ -334,7 +334,7 @@ export function App() {
             style={{ width: investigationOpen ? `${leftWidthPct}%` : '100%' }}
           >
             <Suspense fallback={<div className="flex items-center justify-center h-full text-text-faint text-xs">Loading...</div>}>
-              <FlowchartView />
+              {viewMode === 'flowchart' ? <FlowchartView /> : <ActivityMapView />}
             </Suspense>
           </div>
 

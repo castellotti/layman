@@ -2,7 +2,11 @@ import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 're
 import { StatusDot, Meter, StateChip } from '../primitives/index.js';
 import { useNow } from '../../hooks/useNow.js';
 import { usePrinting } from '../../hooks/usePrinting.js';
-import { fetchRecordedSessionEventsTail } from '../../stores/sessionStore.js';
+import { fetchRecordedSessionEvents } from '../../stores/sessionStore.js';
+import { MINI_MAP_WIDTH, MiniActivityMap } from '../activity/MiniActivityMap.js';
+import { useStoredFlag } from '../../hooks/useStored.js';
+import { useElementSize } from '../../hooks/useElementSize.js';
+import { countPrompts, mergeRecordedWithLive } from '../../lib/session-events.js';
 import type { TimelineEvent, DriftState } from '../../lib/types.js';
 import type { SessionInfo } from '../../lib/ws-protocol.js';
 import type { SessionMetrics } from '../../lib/types.js';
@@ -200,7 +204,7 @@ function RecentTail({ events, onOpenInLogs, sessionId, autoscroll }: {
     // Hidden rather than auto while autoscrolling: a box the user cannot scroll does not capture
     // the wheel, so it goes to the Dashboard. scrollTop can still pin it. Scroll anchoring is off
     // so dropping the oldest row cannot pull the view up off the newest.
-    <div ref={scrollRef} data-print-tail style={{ flex: 1, overflowY: autoscroll ? 'hidden' : 'auto', overflowAnchor: 'none', paddingBottom: sp(4) }}>
+    <div ref={scrollRef} data-print-tail style={{ flex: 1, minWidth: 0, overflowY: autoscroll ? 'hidden' : 'auto', overflowAnchor: 'none', paddingBottom: sp(4) }}>
       {/* One wrapper for both states: the observer above watches this node from the moment the
           pane opens, so swapping "No events yet" for rows must not replace it. */}
       <div style={{ padding: sp('0 4px') }}>
@@ -319,53 +323,6 @@ function DriftIndicator({
   );
 }
 
-// ─── recorded-history merge ────────────────────────────────────────────────────
-// The Dashboard is fed by the live EventStore, which holds only what the server
-// has seen since it started. A *resumed* session — e.g. a glove pi run picked
-// back up after an idle tombstone, or any session continued across a Layman
-// restart — has its earlier turns only in SQLite: the passive watcher deliberately
-// does NOT re-emit already-recorded history on resume (that would double-record it,
-// since the live path mints fresh ids the recorder can't dedupe). So the live tail
-// alone shows just "start" + the new turn, while the Sessions tab, which reads
-// SQLite, shows the whole thread. This hook closes that gap for the preview: it
-// fetches the session's recorded events once and merges them under the live tail,
-// so the pane shows the full continued session and auto-scrolls to the latest.
-//
-// The merge dedupes by id (the live copy wins, so an in-place event:update is not
-// lost) and then re-sorts by timestamp. The sort is not cosmetic: it must not
-// assume the recorded slice is wholly older than the live-only slice. That holds
-// for a resumed session (recorded = the earlier turns, live = the continuation),
-// but *inverts* if recording is toggled on mid-session — then the recorded snapshot
-// holds only the later turns while the earlier ones are live-only, and an
-// append (recorded-then-live) would order them backwards, mis-numbering the #N
-// badges. Sorting by timestamp is correct for both. Recording-off and brand-new
-// sessions return no recorded rows and fall straight through to the live tail,
-// unchanged. Skipped for remote (multi-host) sessions, whose live presence is
-// deliberately a 10-minute window on central — backfilling their full history onto
-// the Dashboard is out of scope here.
-//
-// Dedup is by id only, which is safe *because the passive watchers never re-emit
-// already-recorded history on resume* (re-emitting would double-record it; the
-// live path mints fresh randomUUIDs the recorder can't dedupe). That is a hard
-// contract this merge depends on — a future harness that re-tails and re-posts
-// earlier turns as fresh live events would give them ids that don't match the
-// recorded rows and wall-clock timestamps far from the originals, so they would
-// survive dedup and show twice. There is no safe content-level dedup here (it
-// would drop legitimately-repeated tool calls), so the invariant must be upheld at
-// the source, not patched over here.
-export function mergeRecordedWithLive(
-  recorded: TimelineEvent[],
-  live: TimelineEvent[],
-): TimelineEvent[] {
-  if (recorded.length === 0) return live;
-  const byId = new Map<string, TimelineEvent>();
-  for (const e of recorded) byId.set(e.id, e);
-  for (const e of live) byId.set(e.id, e); // live copy wins on id collision
-  // Stable sort: equal-timestamp ties keep insertion order (recorded before
-  // live-only), matching the natural chronology of a resumed session.
-  return [...byId.values()].sort((a, b) => a.timestamp - b.timestamp);
-}
-
 function useHistoryMergedEvents(
   sessionId: string,
   live: TimelineEvent[],
@@ -378,10 +335,7 @@ function useHistoryMergedEvents(
   // recorded since the pane opened, or a late history import finishing). Keying
   // the refetch on turn count — not every event — keeps it bounded, and the
   // fetch itself is capped at MAX_TAIL_EVENTS so it stays flat for long sessions.
-  const promptCount = useMemo(
-    () => live.reduce((n, e) => (e.type === 'user_prompt' ? n + 1 : n), 0),
-    [live],
-  );
+  const promptCount = useMemo(() => countPrompts(live), [live]);
 
   // Clear on session change only (not on refetch), so switching panes never
   // shows the previous session's recorded rows during the async gap — while a
@@ -394,27 +348,25 @@ function useHistoryMergedEvents(
       return;
     }
     let cancelled = false;
-    void fetchRecordedSessionEventsTail(sessionId, MAX_TAIL_EVENTS)
-      .then((events) => { if (!cancelled) setRecorded(events); })
-      .catch(() => {});
+    void fetchRecordedSessionEvents(sessionId, { limit: MAX_TAIL_EVENTS })
+      .then((events) => { if (!cancelled) setRecorded(events ?? []); });
     return () => { cancelled = true; };
   }, [sessionId, enabled, promptCount]);
 
   return useMemo(() => mergeRecordedWithLive(recorded, live), [recorded, live]);
 }
 
-// ─── AutoscrollToggle ────────────────────────────────────────────────────────
+// ─── Pane toggles ─────────────────────────────────────────────────────────────
 
-function AutoscrollToggle({ on, onToggle }: { on: boolean; onToggle: () => void }) {
+/** A small on/off button in a pane's header (the map, autoscroll). */
+function PaneToggle({ on, onToggle, title, children }: { on: boolean; onToggle: () => void; title: string; children: React.ReactNode }) {
   return (
     <button
       type="button"
       aria-pressed={on}
       onClick={onToggle}
       onDoubleClick={e => e.stopPropagation()}
-      title={on
-        ? 'Autoscroll on: showing the latest lines, and the mouse wheel scrolls the Dashboard. Click to scroll this session yourself.'
-        : 'Autoscroll off: the mouse wheel scrolls this session. Click to follow the latest lines again.'}
+      title={title}
       style={{
         display: 'flex', alignItems: 'center', gap: sp(3), flexShrink: 0, cursor: 'pointer',
         height: 18, padding: sp('0 6px'), borderRadius: rad(3),
@@ -424,10 +376,15 @@ function AutoscrollToggle({ on, onToggle }: { on: boolean; onToggle: () => void 
         color: on ? 'var(--accent)' : 'var(--text-faint)',
       }}
     >
-      <span aria-hidden style={{ fontSize: 11, lineHeight: 1 }}>⤓</span>autoscroll
+      {children}
     </button>
   );
 }
+
+/** Below this width a pane keeps its room for the rows and draws no map. */
+const MAP_MIN_PANE_WIDTH = MINI_MAP_WIDTH + 360;
+/** One choice for every pane (`useStoredFlag` shares it), kept in the browser. */
+const SHOW_MAP_KEY = 'layman.dashboard.activityMap';
 
 // ─── PreviewPane ─────────────────────────────────────────────────────────────
 
@@ -462,6 +419,11 @@ export const PreviewPane = React.memo(function PreviewPane({
   // mouse wheel over it scrolls the Dashboard rather than being captured by the pane. Off, the
   // tail scrolls on its own to read back through history.
   const [autoscroll, setAutoscroll] = useState(true);
+  // A remote session's recording is on its own host, so it has no map here.
+  const canMap = !session.remote;
+  const [showMap, toggleMap] = useStoredFlag(SHOW_MAP_KEY, true);
+  const [bodyRef, body] = useElementSize<HTMLDivElement>();
+  const mapShown = canMap && showMap && body.width >= MAP_MIN_PANE_WIDTH;
   // Remote sessions have no local approvals, and analysing a remote event would
   // run on central's model against central's copy — out of scope for v1. Hide the
   // Investigate/analyze affordance for them (§8.2).
@@ -522,7 +484,18 @@ export const PreviewPane = React.memo(function PreviewPane({
           </div>
         )}
         <StateChip variant={chipVariant} />
-        <AutoscrollToggle on={autoscroll} onToggle={() => setAutoscroll(v => !v)} />
+        {canMap && (
+          <PaneToggle on={showMap} onToggle={toggleMap}
+            title={showMap ? 'Hide the activity map in every pane' : 'Show the activity map: what kind of work each session is doing'}>
+            map
+          </PaneToggle>
+        )}
+        <PaneToggle on={autoscroll} onToggle={() => setAutoscroll(v => !v)}
+          title={autoscroll
+            ? 'Autoscroll on: showing the latest lines, and the mouse wheel scrolls the Dashboard. Click to scroll this session yourself.'
+            : 'Autoscroll off: the mouse wheel scrolls this session. Click to follow the latest lines again.'}>
+          <span aria-hidden style={{ fontSize: 11, lineHeight: 1 }}>⤓</span>autoscroll
+        </PaneToggle>
         <button
           onClick={() => onClose(session.sessionId)}
           style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-faint)', fontSize: 14, lineHeight: 1, padding: sp('0 2px'), flexShrink: 0 }}
@@ -553,13 +526,16 @@ export const PreviewPane = React.memo(function PreviewPane({
         />
       </div>
 
-      {/* Recent tail */}
-      <RecentTail
-        events={mergedEvents}
-        onOpenInLogs={onOpenEventInLogs}
-        sessionId={session.sessionId}
-        autoscroll={autoscroll}
-      />
+      {/* Recent tail, and the session's activity map beside it */}
+      <div ref={bodyRef} style={{ display: 'flex', flex: 1, minHeight: 0 }}>
+        <RecentTail
+          events={mergedEvents}
+          onOpenInLogs={onOpenEventInLogs}
+          sessionId={session.sessionId}
+          autoscroll={autoscroll}
+        />
+        {mapShown && <MiniActivityMap sessionId={session.sessionId} name={getSessionDisplayName(session)} live={isActive} />}
+      </div>
     </div>
   );
 });

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { mergeRecordedWithLive } from './PreviewPane.js';
-import type { TimelineEvent } from '../../lib/types.js';
+import { mergeRecordedWithLive } from './session-events.js';
+import type { TimelineEvent } from './types.js';
 
 function ev(id: string, type: string, timestamp: number, extra: Partial<TimelineEvent> = {}): TimelineEvent {
   return { id, type, timestamp, sessionId: 's', agentType: 'pi', data: {}, ...extra } as TimelineEvent;
