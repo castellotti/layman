@@ -61,6 +61,8 @@ const LABEL_GAP = NODE + 9;
 const LABEL_BELOW = LABEL_GAP + CAP;
 /** Room outside the ring for a label: its width at the sides, and above and below with a margin. */
 const LABEL_ROOM = { x: LABEL_GAP + LABEL_WIDTH + 2, y: LABEL_BELOW + DESCENT + 2 } as const;
+/** A compact map's (no labels): room for the subagents' orbit, a dot of 2.6 at NODE + 6 out, wherever Agents sits. */
+const COMPACT_ROOM = { x: NODE + 10, y: NODE + 10 } as const;
 /** Only a node this near the very top or bottom gets a centred label. */
 const CENTRED = 0.1;
 /** A node within about 37° of the top or bottom has its label above or below it, not beside it. */
@@ -84,8 +86,7 @@ const round = (v: number): number => Math.round(v * 10) / 10;
 export function layoutMap(ids: readonly string[], size: { width: number; height: number }, options: { compact?: boolean } = {}): MapLayout {
   // A compact map draws no labels (names are in its tooltips), so its ring runs nearly to the edge.
   const least = options.compact ? MIN_COMPACT : MIN_SIZE;
-  // Room for the subagents' orbit too (a dot of 2.6 at NODE + 6 out), wherever Agents sits.
-  const room = options.compact ? { x: NODE + 10, y: NODE + 10 } : LABEL_ROOM;
+  const room = options.compact ? COMPACT_ROOM : LABEL_ROOM;
   const width = Math.max(least.width, size.width);
   const height = Math.max(least.height, size.height);
   const core = { x: width / 2, y: height / 2 };

@@ -5,6 +5,20 @@ import { buildUrl } from '../../lib/layman-url.js';
 import type { LaymanRoute, RouteOptions } from '../../lib/layman-url.js';
 import { tokenColor } from '../../lib/tokens.js';
 
+// ─── asButton ───────────────────────────────────────────────────────────────
+
+/**
+ * Props that make an element (an SVG group, a map) act as a button: a click, Enter or Space activates
+ * it. Not a <button>, which print hides: these are content. `tabIndex` -1 keeps it out of the Tab order.
+ */
+export function asButton(label: string, activate: () => void, tabIndex = 0) {
+  return {
+    role: 'button', tabIndex, 'aria-label': label,
+    onClick: activate,
+    onKeyDown: (e: React.KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); activate(); } },
+  };
+}
+
 // ─── DepthButton ────────────────────────────────────────────────────────────
 // Shared colored icon button for the two analysis depths (Investigation
 // panel's LAYMAN'S TERMS / ANALYSIS / Failure Analysis section headers and

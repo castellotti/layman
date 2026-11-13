@@ -381,8 +381,9 @@ honours Settings → Motion (`data-motion` on `<html>`) as well as the OS settin
 loads the session's full recording into `historicalEvents` first when the store lacks the event:
 the board reads the lean one, which Investigation cannot show. `isSessionView` / `isExclusiveView`
 (`sessionStore.ts`) list the views; a new one goes there. A Dashboard pane draws the same map compact
-(`MiniActivityMap`, `layoutMap(…, { compact: true })`: no labels, the ring nearly to the edge). It takes
-the pane's live events (never a second filter of the store per pane), and `useSessionTimeline` keeps the
+(`MiniActivityMap`, `layoutMap(…, { compact: true })`: no labels, the ring nearly to the edge). Every map reads
+its live events from one split of the store by session (`bySession` in `useActivityBoard.ts`, computed
+once per event list, not once per pane), and `useSessionTimeline` keeps the
 last few lean recordings so a re-mounted map does not download a session again; it refetches only when
 the recording is missing or the live slice no longer reaches back to it.
 

@@ -1,33 +1,38 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useSyncExternalStore } from 'react';
 
+/** Each key's raw value as this page knows it: read from storage once, then kept here on every set. */
+const values = new Map<string, string | null>();
 /** Every mounted user of a key, so a change in one (one Dashboard pane's toggle) reaches them all. */
-const listeners = new Map<string, Set<(raw: string) => void>>();
+const listeners = new Map<string, Set<() => void>>();
+
+function read(key: string): string | null {
+  if (!values.has(key)) {
+    let raw: string | null = null;
+    // Reading throws too where storage is blocked (Safari with storage off, a sandboxed frame).
+    try { raw = typeof localStorage === 'undefined' ? null : localStorage.getItem(key); } catch { /* the default, then */ }
+    values.set(key, raw);
+  }
+  return values.get(key) ?? null;
+}
+
+function subscribe(key: string, listener: () => void): () => void {
+  const set = listeners.get(key) ?? new Set();
+  set.add(listener);
+  listeners.set(key, set);
+  return () => { set.delete(listener); };
+}
 
 /**
  * A setting kept in localStorage, falling back to `initial` where storage is blocked or holds nothing
  * valid. Every component using the same key sees the same value: setting it in one updates the rest.
  */
 export function useStored<T extends string | number>(key: string, initial: T, parse: (raw: string) => T | null): [T, (v: T) => void] {
-  const [value, setValue] = useState<T>(() => {
-    let raw: string | null = null;
-    // Reading throws too where storage is blocked (Safari with storage off, a sandboxed frame).
-    try { raw = typeof localStorage === 'undefined' ? null : localStorage.getItem(key); } catch { /* the default, then */ }
-    return (raw === null ? null : parse(raw)) ?? initial;
-  });
-  useEffect(() => {
-    const hear = (raw: string) => { const v = parse(raw); if (v !== null) setValue(v); };
-    const set = listeners.get(key) ?? new Set();
-    set.add(hear);
-    listeners.set(key, set);
-    return () => { set.delete(hear); };
-    // `parse` is a rule for the key, not state: a new closure each render must not resubscribe.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key]);
+  const raw = useSyncExternalStore(useCallback((l: () => void) => subscribe(key, l), [key]), () => read(key));
+  const value = (raw === null ? null : parse(raw)) ?? initial;
   const set = useCallback((v: T) => {
+    values.set(key, String(v));
     try { localStorage.setItem(key, String(v)); } catch { /* private mode: kept for this page only */ }
-    const heard = listeners.get(key);
-    if (heard && heard.size > 0) for (const hear of heard) hear(String(v));
-    else setValue(v);
+    for (const listener of listeners.get(key) ?? []) listener();
   }, [key]);
   return [value, set];
 }

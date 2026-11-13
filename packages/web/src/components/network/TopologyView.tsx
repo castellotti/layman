@@ -28,6 +28,7 @@ import type { NetRange } from '../../lib/netobs-types.js';
 import { useNetTokens } from '../../hooks/useNetTrace.js';
 import { tipProps } from './NetTip.js';
 import { tokenColor } from '../../lib/tokens.js';
+import { asButton } from '../primitives/index.js';
 
 const BAND: Record<BandKind, { colour: string; opacity: number }> = {
   tunnel: { colour: 'var(--net-tunnel)', opacity: 0.55 },
@@ -89,13 +90,9 @@ export function TopologyLegend() {
   );
 }
 
-/** An SVG group that acts as a button: a click, Enter or Space activates it. `tabIndex` -1 keeps it out of the Tab order. */
+/** An SVG group that acts as a button (`asButton`), with the pointer to say so. */
 function svgButton(label: string, activate: () => void, tabIndex = 0) {
-  return {
-    role: 'button', tabIndex, style: { cursor: 'pointer' }, 'aria-label': label,
-    onClick: activate,
-    onKeyDown: (e: React.KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); activate(); } },
-  };
+  return { ...asButton(label, activate, tabIndex), style: { cursor: 'pointer' } };
 }
 
 function Node({ n, selected, onSelect, tabbable = true }: { n: TopoNode; selected: boolean; onSelect: (n: TopoNode) => void; tabbable?: boolean }) {

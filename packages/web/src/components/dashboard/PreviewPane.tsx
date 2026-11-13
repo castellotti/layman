@@ -203,7 +203,7 @@ function RecentTail({ events, onOpenInLogs, sessionId, autoscroll }: {
     // Hidden rather than auto while autoscrolling: a box the user cannot scroll does not capture
     // the wheel, so it goes to the Dashboard. scrollTop can still pin it. Scroll anchoring is off
     // so dropping the oldest row cannot pull the view up off the newest.
-    <div ref={scrollRef} data-print-tail style={{ flex: 1, overflowY: autoscroll ? 'hidden' : 'auto', overflowAnchor: 'none', paddingBottom: 4 }}>
+    <div ref={scrollRef} data-print-tail style={{ flex: 1, minWidth: 0, overflowY: autoscroll ? 'hidden' : 'auto', overflowAnchor: 'none', paddingBottom: 4 }}>
       {/* One wrapper for both states: the observer above watches this node from the moment the
           pane opens, so swapping "No events yet" for rows must not replace it. */}
       <div style={{ padding: '0 4px' }}>
@@ -419,9 +419,10 @@ export const PreviewPane = React.memo(function PreviewPane({
   // tail scrolls on its own to read back through history.
   const [autoscroll, setAutoscroll] = useState(true);
   // A remote session's recording is on its own host, so it has no map here.
+  const canMap = !session.remote;
   const [showMap, toggleMap] = useStoredFlag(SHOW_MAP_KEY, true);
   const [bodyRef, body] = useElementSize<HTMLDivElement>();
-  const mapShown = showMap && !session.remote && body.width >= MAP_MIN_PANE_WIDTH;
+  const mapShown = canMap && showMap && body.width >= MAP_MIN_PANE_WIDTH;
   // Remote sessions have no local approvals, and analysing a remote event would
   // run on central's model against central's copy — out of scope for v1. Hide the
   // Investigate/analyze affordance for them (§8.2).
@@ -482,7 +483,7 @@ export const PreviewPane = React.memo(function PreviewPane({
           </div>
         )}
         <StateChip variant={chipVariant} />
-        {!session.remote && (
+        {canMap && (
           <PaneToggle on={showMap} onToggle={toggleMap}
             title={showMap ? 'Hide the activity map in every pane' : 'Show the activity map: what kind of work each session is doing'}>
             map
@@ -526,15 +527,13 @@ export const PreviewPane = React.memo(function PreviewPane({
 
       {/* Recent tail, and the session's activity map beside it */}
       <div ref={bodyRef} style={{ display: 'flex', flex: 1, minHeight: 0 }}>
-        <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0 }}>
-          <RecentTail
-            events={mergedEvents}
-            onOpenInLogs={onOpenEventInLogs}
-            sessionId={session.sessionId}
-            autoscroll={autoscroll}
-          />
-        </div>
-        {mapShown && <MiniActivityMap sessionId={session.sessionId} name={getSessionDisplayName(session)} live={isActive} liveEvents={events} />}
+        <RecentTail
+          events={mergedEvents}
+          onOpenInLogs={onOpenEventInLogs}
+          sessionId={session.sessionId}
+          autoscroll={autoscroll}
+        />
+        {mapShown && <MiniActivityMap sessionId={session.sessionId} name={getSessionDisplayName(session)} live={isActive} />}
       </div>
     </div>
   );

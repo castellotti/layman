@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { shallow } from 'zustand/shallow';
 import { fetchRecordedSessionEvents, useSessionStore, type SessionState } from '../stores/sessionStore.js';
 import { reduceBoard, type Board } from '../lib/activity-board.js';
@@ -22,16 +22,27 @@ function remember(sessionId: string, events: TimelineEvent[]): void {
   if (cache.size > CACHED_SESSIONS) cache.delete(cache.keys().next().value as string);
 }
 
-/** This session's live events, filtered again only when the store's event list changes. */
+/**
+ * The store's events split by session, once per event list however many maps read it (a Dashboard
+ * holds one per pane). Weak, so a replaced list's split goes with it.
+ */
+const splits = new WeakMap<TimelineEvent[], Map<string, TimelineEvent[]>>();
+function bySession(all: TimelineEvent[]): Map<string, TimelineEvent[]> {
+  let split = splits.get(all);
+  if (!split) {
+    split = new Map();
+    for (const e of all) {
+      const list = split.get(e.sessionId);
+      if (list) list.push(e); else split.set(e.sessionId, [e]);
+    }
+    splits.set(all, split);
+  }
+  return split;
+}
+
+/** This session's live events; `shallow` keeps the same array while another session's arrive. */
 function useLiveEvents(sessionId: string | null): TimelineEvent[] {
-  const memo = useRef<{ all: TimelineEvent[]; sessionId: string | null; ours: TimelineEvent[] } | null>(null);
-  return useSessionStore((s: SessionState) => {
-    const m = memo.current;
-    if (m && m.all === s.events && m.sessionId === sessionId) return m.ours;
-    const ours = sessionId ? s.events.filter((e) => e.sessionId === sessionId) : NONE;
-    memo.current = { all: s.events, sessionId, ours };
-    return ours;
-  }, shallow);
+  return useSessionStore((s: SessionState) => (sessionId ? bySession(s.events).get(sessionId) ?? NONE : NONE), shallow);
 }
 
 /**
@@ -40,40 +51,44 @@ function useLiveEvents(sessionId: string | null): TimelineEvent[] {
  * live events, and with the late updates of recorded calls that finished since the fetch. A fetch
  * that failed, or found the session not recorded yet, is tried again at the session's next prompt.
  */
-export function useSessionTimeline(sessionId: string | null, liveEvents?: TimelineEvent[]): { events: TimelineEvent[]; loading: boolean } {
-  // A Dashboard pane already holds its session's live events; filtering the store again per pane
-  // would scan every event of every session once per pane, on each event.
-  const own = useLiveEvents(liveEvents ? null : sessionId);
-  const live = liveEvents ?? own;
+export function useSessionTimeline(sessionId: string | null): { events: TimelineEvent[]; loading: boolean } {
+  const live = useLiveEvents(sessionId);
   const lateUpdates = useSessionStore((s) => s.lateUpdates);
   // A deep link has already loaded this session's whole recording (`hydrateFromRoute`); use it
   // rather than fetching it again. The store keeps it current with `event:update`s itself.
   const hydrated = useSessionStore((s) =>
     sessionId && s.historicalEvents.length > 0 && s.historicalEvents[0].sessionId === sessionId ? s.historicalEvents : null);
   const prompts = useMemo(() => countPrompts(live), [live]);
-  const [recorded, setRecorded] = useState<{ sessionId: string; events: TimelineEvent[] | null } | null>(
-    () => (sessionId && cache.has(sessionId) ? { sessionId, events: cache.get(sessionId)! } : null));
-  const ours = recorded && recorded.sessionId === sessionId ? recorded : null;
+  const [recorded, setRecorded] = useState<{ sessionId: string; events: TimelineEvent[] | null } | null>(null);
+  // This session's fetch, or else a recording an earlier map of it fetched.
+  const ours = useMemo(() => {
+    if (recorded && recorded.sessionId === sessionId) return recorded;
+    const kept = sessionId ? cache.get(sessionId) : undefined;
+    return sessionId && kept ? { sessionId, events: kept } : null;
+  }, [recorded, sessionId]);
   const missing = ours !== null && ours.events === null;
   // The live slice no longer reaches back to the recording: the store dropped this session's older
   // live events (it holds 10,000 of all sessions'), so what came between is in neither. Fetch again.
+  // The recording's newest time is scanned once per fetch, not again at every live event.
+  const recordedUntil = useMemo(() => {
+    let newest = -Infinity;
+    for (const e of ours?.events ?? NONE) if (e.timestamp > newest) newest = e.timestamp;
+    return newest;
+  }, [ours]);
   const gap = useMemo(() => {
-    const rec = ours?.events;
-    if (!rec || rec.length === 0 || live.length === 0) return false;
-    let newest = 0;
-    for (const e of rec) if (e.timestamp > newest) newest = e.timestamp;
+    if (recordedUntil === -Infinity || live.length === 0) return false;
     let oldest = Infinity;
     for (const e of live) if (e.timestamp < oldest) oldest = e.timestamp;
-    return oldest > newest;
-  }, [ours, live]);
+    return oldest > recordedUntil;
+  }, [recordedUntil, live]);
   const cached = ours !== null && !missing && !gap;
 
   useEffect(() => {
     // Once the store holds the whole recording, drop the lean copy rather than keep both.
     if (hydrated) { setRecorded(null); return; }
-    if (!sessionId || cached) return;
-    const kept = ours === null ? cache.get(sessionId) : undefined;
-    if (kept) { setRecorded({ sessionId, events: kept }); return; }
+    if (!sessionId) return;
+    // A hit counts as a use, so the cache drops the session least recently mapped.
+    if (cached) { if (ours.events) remember(sessionId, ours.events); return; }
     let cancelled = false;
     void fetchRecordedSessionEvents(sessionId, { lean: true }).then((events) => {
       if (cancelled) return;
@@ -104,8 +119,8 @@ export function useSessionTimeline(sessionId: string | null, liveEvents?: Timeli
 }
 
 /** One session's activity board, recomputed when its events or the Memory settings change. */
-export function useActivityBoard(sessionId: string | null, ended: boolean, liveEvents?: TimelineEvent[]): { board: Board; events: TimelineEvent[]; loading: boolean } {
-  const { events, loading } = useSessionTimeline(sessionId, liveEvents);
+export function useActivityBoard(sessionId: string | null, ended: boolean): { board: Board; events: TimelineEvent[]; loading: boolean } {
+  const { events, loading } = useSessionTimeline(sessionId);
   const setup = useStationSetup();
   const board = useMemo(() => reduceBoard(events, { setup, ended }), [events, setup, ended]);
   return { board, events, loading };
