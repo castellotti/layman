@@ -5,6 +5,7 @@ import { networkTabSignal, type NetTabSignal } from '../../lib/net-state.js';
 import { NET_TABS } from '../network/tabs.js';
 import { sessionDisplayName } from '../../lib/session-state.js';
 import { tokenColor } from '../../lib/tokens.js';
+import { sp, rad } from '../../lib/density.js';
 
 function getSessionName(cwd: string, sessionId: string, agentType?: string, showAgentPrefix?: boolean, sessionName?: string): string {
   const name = sessionDisplayName(sessionName, cwd, sessionId);
@@ -33,7 +34,7 @@ function NavTabButton({ label, shortcut, isActive, onClick, signal }: { label: s
       style={{
         display: 'flex',
         alignItems: 'center',
-        padding: '0 14px',
+        padding: sp('0 14px'),
         fontSize: 12,
         fontWeight: isActive ? 600 : 400,
         fontFamily: 'var(--font-ui)',
@@ -58,7 +59,7 @@ function NavTabButton({ label, shortcut, isActive, onClick, signal }: { label: s
         <span
           title={SIGNAL_DOT[signal].title}
           aria-label={SIGNAL_DOT[signal].title}
-          style={{ marginLeft: 6, width: 6, height: 6, borderRadius: 3, background: SIGNAL_DOT[signal].color, flexShrink: 0 }}
+          style={{ marginLeft: sp(6), width: 6, height: 6, borderRadius: rad(3), background: SIGNAL_DOT[signal].color, flexShrink: 0 }}
         />
       )}
     </button>
@@ -146,10 +147,10 @@ export function Header() {
         display: 'flex',
         alignItems: 'center',
         gap: 0,
-        padding: '0 16px',
+        padding: sp('0 16px'),
         height: 40,
         background: 'var(--bg-raised)',
-        borderBottom: '1px solid var(--border)',
+        borderBottom: 'var(--stroke) solid var(--border)',
         flexShrink: 0,
         fontFamily: 'var(--font-ui)',
       }}
@@ -166,7 +167,7 @@ export function Header() {
           letterSpacing: '0.08em',
           color: 'var(--text)',
           textDecoration: 'none',
-          marginRight: 20,
+          marginRight: sp(20),
           flexShrink: 0,
           userSelect: 'none',
         }}
@@ -203,7 +204,7 @@ export function Header() {
       {/* Network views of glove sessions, between their own dividers */}
       {showNetwork && (
         <>
-          <div style={{ alignSelf: 'center', width: 1, height: 16, background: 'var(--border-strong)', margin: '0 12px' }} />
+          <div style={{ alignSelf: 'center', width: 1, height: 16, background: 'var(--border-strong)', margin: sp('0 12px') }} />
           <nav aria-label="Network" style={{ display: 'flex', alignItems: 'stretch', height: '100%', gap: 0 }}>
             {NET_TABS.map(({ key, label, shortcut }) => (
               <NavTabButton
@@ -220,7 +221,7 @@ export function Header() {
       )}
 
       {/* Live / archive divider */}
-      <div style={{ alignSelf: 'center', width: 1, height: 16, background: 'var(--border-strong)', margin: '0 12px' }} />
+      <div style={{ alignSelf: 'center', width: 1, height: 16, background: 'var(--border-strong)', margin: sp('0 12px') }} />
 
       {/* Nav tabs — archived lookup */}
       <nav style={{ display: 'flex', alignItems: 'stretch', height: '100%', gap: 0 }}>
@@ -238,10 +239,10 @@ export function Header() {
           fontSize: 10,
           color: 'var(--warn)',
           background: tokenColor('warn', '12%'),
-          border: `1px solid ${tokenColor('warn', '30%')}`,
-          padding: '2px 8px',
-          borderRadius: 10,
-          marginRight: 12,
+          border: `var(--stroke) solid ${tokenColor('warn', '30%')}`,
+          padding: sp('2px 8px'),
+          borderRadius: rad(10),
+          marginRight: sp(12),
           fontFamily: 'var(--font-ui)',
         }}>
           Auto-reconnecting…
@@ -250,7 +251,7 @@ export function Header() {
 
       {/* Session picker — hidden on Dashboard (all-sessions view) and the network tabs */}
       {!hideSessionPicker && sessions.length > 0 && (
-        <div style={{ marginRight: 12 }}>
+        <div style={{ marginRight: sp(12) }}>
           {(() => {
             const agentTypes = new Set(sessions.map((s) => s.agentType));
             const showAgentPrefix = agentTypes.size > 1;
@@ -263,10 +264,10 @@ export function Header() {
                   fontSize: 11,
                   fontFamily: 'var(--font-ui)',
                   background: 'var(--bg-card)',
-                  border: '1px solid var(--border-strong)',
+                  border: 'var(--stroke) solid var(--border-strong)',
                   color: 'var(--text)',
-                  borderRadius: 5,
-                  padding: '3px 8px',
+                  borderRadius: rad(5),
+                  padding: sp('3px 8px'),
                   cursor: 'pointer',
                   outline: 'none',
                   maxWidth: 200,
@@ -298,14 +299,14 @@ export function Header() {
         style={{
           display: 'flex',
           alignItems: 'center',
-          gap: 5,
-          padding: '5px 10px',
+          gap: sp(5),
+          padding: sp('5px 10px'),
           fontSize: 11,
           fontFamily: 'var(--font-ui)',
           color: 'var(--text-muted)',
           background: 'transparent',
-          border: '1px solid var(--border-strong)',
-          borderRadius: 5,
+          border: 'var(--stroke) solid var(--border-strong)',
+          borderRadius: rad(5),
           cursor: 'pointer',
           transition: 'color 0.15s, border-color 0.15s',
         }}

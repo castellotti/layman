@@ -10,6 +10,7 @@ import { rowStation, STATION_STYLE } from '../../lib/station-style.js';
 import { useStationSetup } from '../../hooks/useStationSetup.js';
 import { StationGlyph } from '../activity/StationGlyph.js';
 import type { ClientMessage } from '../../lib/ws-protocol.js';
+import { sp, rad } from '../../lib/density.js';
 
 interface LogRowProps {
   event: TimelineEvent;
@@ -45,8 +46,8 @@ export const LogRow = React.memo(function LogRow({ event, index, hasDetail, isEx
       <div
         onClick={() => hasDetail && onSelect(event.id)}
         style={{
-          display: 'flex', alignItems: 'center', gap: 6, padding: '3px 8px', margin: '0 8px',
-          borderRadius: 4, cursor: hasDetail ? 'pointer' : 'default',
+          display: 'flex', alignItems: 'center', gap: sp(6), padding: sp('3px 8px'), margin: sp('0 8px'),
+          borderRadius: rad(4), cursor: hasDetail ? 'pointer' : 'default',
           background: expanded ? 'var(--bg-selected)' : 'transparent',
           boxShadow: isSelected ? 'inset 0 0 0 1px var(--accent)' : 'none',
         }}
@@ -80,10 +81,10 @@ export const LogRow = React.memo(function LogRow({ event, index, hasDetail, isEx
       {expanded && (
         <div
           style={{
-            margin: '2px 8px 8px 52px',
-            border: `1px solid ${highlighted ? tokenColor('warn', '35%') : 'var(--border)'}`,
+            margin: sp('2px 8px 8px 52px'),
+            border: `var(--stroke) solid ${highlighted ? tokenColor('warn', '35%') : 'var(--border)'}`,
             borderLeft: `2px solid ${highlighted ? 'var(--warn)' : color}`,
-            borderRadius: 6,
+            borderRadius: rad(6),
             background: highlighted ? tokenColor('warn', '6%') : 'var(--bg-raised)',
             overflow: 'hidden',
             animation: 'fadeIn 0.15s ease',

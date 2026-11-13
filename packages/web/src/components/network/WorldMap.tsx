@@ -20,6 +20,7 @@ import { NetIcon } from './netui.js';
 import { tipProps } from './NetTip.js';
 import { isUntunnelled, isVpnRoute } from '../../lib/net-vpn.js';
 import { tokenColor } from '../../lib/tokens.js';
+import { sp, rad } from '../../lib/density.js';
 
 type Land = FeatureCollection<Geometry>;
 let landCache: Promise<Land> | null = null;
@@ -221,7 +222,7 @@ export function WorldMap({ data, selected, onSelect, compact = false, sandboxAnc
         <span style={{ ...pill, ...exitLabel.at, color: 'var(--net-tunnel)', borderColor: tokenColor('net-tunnel', '45%') }}>{exitLabel.text}</span>
       )}
       {!compact && (
-        <div style={{ position: 'absolute', right: 12, bottom: 64, display: 'flex', flexDirection: 'column', gap: 4, zIndex: 2 }}>
+        <div style={{ position: 'absolute', right: 12, bottom: 64, display: 'flex', flexDirection: 'column', gap: sp(4), zIndex: 2 }}>
           {([['+', 1.5, 'Zoom in'], ['−', 1 / 1.5, 'Zoom out']] as const).map(([t, f, label]) => (
             <button key={t} type="button" aria-label={label} onClick={() => zoomBy(f)} style={zoomButton}>{t}</button>
           ))}
@@ -237,11 +238,11 @@ export function WorldMap({ data, selected, onSelect, compact = false, sandboxAnc
 }
 
 const pill: React.CSSProperties = {
-  position: 'absolute', transform: 'translateY(-50%)', padding: '1px 7px', borderRadius: 9, fontSize: 10.5, whiteSpace: 'nowrap',
-  color: 'var(--text-body)', background: tokenColor('bg', '82%'), border: '1px solid var(--border-strong)', pointerEvents: 'none',
+  position: 'absolute', transform: 'translateY(-50%)', padding: sp('1px 7px'), borderRadius: rad(9), fontSize: 10.5, whiteSpace: 'nowrap',
+  color: 'var(--text-body)', background: tokenColor('bg', '82%'), border: 'var(--stroke) solid var(--border-strong)', pointerEvents: 'none',
   fontFamily: 'var(--font-ui)',
 };
 const zoomButton: React.CSSProperties = {
-  width: 26, height: 26, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 6, cursor: 'pointer',
-  background: 'var(--bg-card)', border: '1px solid var(--border-strong)', color: 'var(--text)', fontSize: 14, fontFamily: 'var(--font-ui)',
+  width: 26, height: 26, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: rad(6), cursor: 'pointer',
+  background: 'var(--bg-card)', border: 'var(--stroke) solid var(--border-strong)', color: 'var(--text)', fontSize: 14, fontFamily: 'var(--font-ui)',
 };

@@ -12,6 +12,7 @@ import { untunnelledFlows } from '../../lib/net-vpn.js';
 import { ALARM, NetIcon, type NetIconName } from './netui.js';
 import { WorldMap } from './WorldMap.js';
 import { tokenColor } from '../../lib/tokens.js';
+import { sp, rad } from '../../lib/density.js';
 
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 const ROUTE_NAME: Record<string, string> = { vpn: 'the VPN', tor: 'Tor' };
@@ -23,13 +24,13 @@ function Kpi({ icon, iconColour, label, value, valueColour = 'var(--text)', sub,
 }) {
   return (
     <div role={alert ? 'alert' : undefined} style={{
-      flex: '1 1 0', minWidth: 0, padding: '10px 12px', borderRadius: 8,
-      background: alert ? tokenColor('error', '10%') : 'var(--bg-card)', border: `1px solid ${alert ? 'var(--error)' : 'var(--border)'}`,
+      flex: '1 1 0', minWidth: 0, padding: sp('10px 12px'), borderRadius: rad(8),
+      background: alert ? tokenColor('error', '10%') : 'var(--bg-card)', border: `var(--stroke) solid ${alert ? 'var(--error)' : 'var(--border)'}`,
     }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 10, letterSpacing: '0.08em', fontWeight: 600, color: alert ? ALARM.text : 'var(--text-muted)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: sp(6), fontSize: 10, letterSpacing: '0.08em', fontWeight: 600, color: alert ? ALARM.text : 'var(--text-muted)' }}>
         <NetIcon name={icon} size={13} color={iconColour} />{label}
       </div>
-      <div style={{ fontFamily: 'var(--font-mono)', fontSize: 20, fontWeight: 600, color: valueColour, marginTop: 3 }}>{value}</div>
+      <div style={{ fontFamily: 'var(--font-mono)', fontSize: 20, fontWeight: 600, color: valueColour, marginTop: sp(3) }}>{value}</div>
       <div style={{ fontSize: 10.5, color: alert ? ALARM.body : 'var(--text-faint)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} data-tip={sub}>{sub}</div>
     </div>
   );
@@ -50,7 +51,7 @@ export function KpiRow({ data }: { data: NetSessionData }) {
   const route = data.gate.route.kind;
   const liveSub = t.gateLost ? `flows open now · ${t.gateLost} lost with their gate` : 'flows open now';
   return (
-    <div style={{ display: 'flex', gap: 8, padding: '8px 8px 0', flexShrink: 0 }}>
+    <div style={{ display: 'flex', gap: sp(8), padding: sp('8px 8px 0'), flexShrink: 0 }}>
       <Kpi icon="up" iconColour="var(--net-up)" label="SENT" value={formatBytes(t.bytesUp)} valueColour="var(--net-up)" sub="this session" />
       <Kpi icon="down" iconColour="var(--net-down)" label="RECEIVED" value={formatBytes(t.bytesDown)} valueColour="var(--net-down)" sub="this session" />
       <Kpi icon="pulse" iconColour="var(--net-tunnel)" label="LIVE" value={String(t.openFlows)} valueColour="var(--net-tunnel)" sub={liveSub} />
@@ -87,10 +88,10 @@ export function MiniMap({ data }: { data: NetSessionData }) {
       onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setViewMode('map'); }}
       style={{ position: 'relative', width: '100%', height: '100%', minHeight: 150, cursor: 'pointer', overflow: 'hidden' }}>
       <WorldMap data={data} selected={netDest} compact />
-      <span style={{ position: 'absolute', top: 8, right: 8, fontSize: 10, color: 'var(--text-muted)', background: tokenColor('bg', '80%'), border: '1px solid var(--border-strong)', borderRadius: 10, padding: '2px 8px' }}>
+      <span style={{ position: 'absolute', top: 8, right: 8, fontSize: 10, color: 'var(--text-muted)', background: tokenColor('bg', '80%'), border: 'var(--stroke) solid var(--border-strong)', borderRadius: rad(10), padding: sp('2px 8px') }}>
         {placed} mapped · Unknown location · {dests.length - placed}
       </span>
-      <span style={{ position: 'absolute', left: 8, bottom: 8, display: 'flex', alignItems: 'center', gap: 5, fontSize: 10.5, color: 'var(--text-body)', background: tokenColor('bg', '80%'), border: '1px solid var(--border-strong)', borderRadius: 10, padding: '2px 8px' }}>
+      <span style={{ position: 'absolute', left: 8, bottom: 8, display: 'flex', alignItems: 'center', gap: sp(5), fontSize: 10.5, color: 'var(--text-body)', background: tokenColor('bg', '80%'), border: 'var(--stroke) solid var(--border-strong)', borderRadius: rad(10), padding: sp('2px 8px') }}>
         <NetIcon name="tunnel" color="var(--net-tunnel)" /> sandbox → {origin}
       </span>
     </div>
@@ -105,7 +106,7 @@ export function MiniMapExpand() {
 }
 
 const linkStyle: React.CSSProperties = {
-  background: 'transparent', border: 'none', padding: '0 4px', color: 'var(--info)', cursor: 'pointer', fontSize: 10.5, fontFamily: 'var(--font-ui)',
+  background: 'transparent', border: 'none', padding: sp('0 4px'), color: 'var(--info)', cursor: 'pointer', fontSize: 10.5, fontFamily: 'var(--font-ui)',
 };
 
 // ─── Rules ────────────────────────────────────────────────────────────────────
@@ -118,14 +119,14 @@ export function RulesFileLink({ data }: { data: NetSessionData }) {
       <button type="button" aria-expanded={open} onClick={() => setOpen((o) => !o)} style={linkStyle}>{open ? 'Hide file' : 'View file'}</button>
       {open && (
         <div role="dialog" aria-label="rules.json" style={{
-          position: 'fixed', right: 24, top: 120, width: 420, maxHeight: '60vh', overflow: 'auto', zIndex: 50, padding: 10,
-          background: 'var(--bg-card)', border: '1px solid var(--border-strong)', borderRadius: 8, boxShadow: '0 12px 32px rgba(0,0,0,0.5)',
+          position: 'fixed', right: 24, top: 120, width: 420, maxHeight: '60vh', overflow: 'auto', zIndex: 50, padding: sp(10),
+          background: 'var(--bg-card)', border: 'var(--stroke) solid var(--border-strong)', borderRadius: rad(8), boxShadow: '0 12px 32px rgba(0,0,0,0.5)',
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: sp(6), marginBottom: sp(6) }}>
             <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10.5, color: 'var(--text-muted)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} data-tip={data.rules.displayPath}>
               {data.rules.displayPath}
             </span>
-            <button type="button" aria-label="Close" onClick={() => setOpen(false)} style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: 2 }}>
+            <button type="button" aria-label="Close" onClick={() => setOpen(false)} style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: sp(2) }}>
               <NetIcon name="close" size={11} color="var(--text-faint)" />
             </button>
           </div>

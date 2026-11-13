@@ -7,6 +7,7 @@
  */
 import React, { useSyncExternalStore } from 'react';
 import { ttsPlayer } from '../../lib/tts.js';
+import { sp } from '../../lib/density.js';
 
 const buttonStyle: React.CSSProperties = {
   background: 'none',
@@ -34,7 +35,7 @@ export function TTSBar() {
     return (
       <button
         onClick={() => ttsPlayer.setMuted(false)}
-        style={{ ...buttonStyle, color: 'var(--warn)', gap: 4 }}
+        style={{ ...buttonStyle, color: 'var(--warn)', gap: sp(4) }}
         title="Speech is muted — click to unmute"
       >
         🔇 Muted
@@ -46,7 +47,7 @@ export function TTSBar() {
   // tab. It is a prompt, not an error — one click and the queued turn speaks.
   if (state.blocked) {
     return (
-      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: 'var(--warn)' }}>
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: sp(6), color: 'var(--warn)' }}>
         <button
           onClick={() => ttsPlayer.resume()}
           style={{ ...buttonStyle, color: 'var(--warn)', fontWeight: 500 }}
@@ -63,7 +64,7 @@ export function TTSBar() {
 
   if (!speaking && !hasQueue && state.error) {
     return (
-      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: 'var(--error)' }}>
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: sp(6), color: 'var(--error)' }}>
         <span title={state.error} style={{ maxWidth: 320, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           Speech failed: {state.error}
         </span>
@@ -75,7 +76,7 @@ export function TTSBar() {
   }
 
   return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, color: 'var(--text-muted)' }}>
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: sp(8), color: 'var(--text-muted)' }}>
       <span style={{ color: 'var(--accent)' }}>
         {state.status === 'loading' ? '◌' : '▶'}
       </span>

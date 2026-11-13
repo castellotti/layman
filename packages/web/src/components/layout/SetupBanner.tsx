@@ -2,6 +2,7 @@ import { useCallback, useState } from 'react';
 import { useSessionStore } from '../../stores/sessionStore.js';
 import type { SetupStatus } from '../../lib/types.js';
 import { tokenColor } from '../../lib/tokens.js';
+import { sp, rad } from '../../lib/density.js';
 
 export function SetupBanner({ onInstall }: { onInstall: () => void }) {
   const { setupStatus, setupBannerDismissed, dismissSetupBanner } = useSessionStore((s) => ({
@@ -57,30 +58,30 @@ export function SetupBanner({ onInstall }: { onInstall: () => void }) {
       data-print-hide
       style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: '8px 16px',
+        padding: sp('8px 16px'),
         background: tokenColor('warn', '8%'),
-        borderBottom: `1px solid ${tokenColor('warn', '20%')}`,
+        borderBottom: `var(--stroke) solid ${tokenColor('warn', '20%')}`,
         fontSize: 12,
         flexShrink: 0,
       }}
     >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--warn)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: sp(8), color: 'var(--warn)' }}>
         <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
         </svg>
         <span style={{ fontFamily: 'var(--font-ui)' }}>{message}</span>
       </div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: sp(8) }}>
         <button
           onClick={() => void handleInstall()}
           disabled={installing}
-          style={{ padding: '3px 10px', fontSize: 11, fontFamily: 'var(--font-ui)', fontWeight: 500, borderRadius: 5, background: 'var(--ok)', color: 'var(--text-on-fill)', border: 'none', cursor: 'pointer', opacity: installing ? 0.5 : 1 }}
+          style={{ padding: sp('3px 10px'), fontSize: 11, fontFamily: 'var(--font-ui)', fontWeight: 500, borderRadius: rad(5), background: 'var(--ok)', color: 'var(--text-on-fill)', border: 'none', cursor: 'pointer', opacity: installing ? 0.5 : 1 }}
         >
           {buttonLabel}
         </button>
         <button
           onClick={dismissSetupBanner}
-          style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 4, fontSize: 14, lineHeight: 1 }}
+          style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: sp(4), fontSize: 14, lineHeight: 1 }}
           title="Dismiss"
         >
           ✕

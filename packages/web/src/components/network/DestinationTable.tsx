@@ -18,6 +18,7 @@ import { CellLabel, NetToggle, Sparkline } from './cells.js';
 import { ControlPopover } from './ControlPopover.js';
 import { ALARM, NetIcon, TONE } from './netui.js';
 import { tokenColor } from '../../lib/tokens.js';
+import { sp, rad } from '../../lib/density.js';
 
 interface Column {
   key: string;
@@ -48,7 +49,7 @@ const MIN_TABLE_WIDTH = COLUMNS.reduce((a, c) => a + (c.minWidth ?? c.width), 0)
 function cellStyle(c: Column): React.CSSProperties {
   return {
     flex: `${c.grow ? 1 : 0} ${c.shrink ? 1 : 0} ${c.width}px`, minWidth: c.minWidth ?? c.width,
-    display: 'flex', alignItems: 'center', justifyContent: c.align === 'right' ? 'flex-end' : 'flex-start', gap: 6, overflow: 'hidden',
+    display: 'flex', alignItems: 'center', justifyContent: c.align === 'right' ? 'flex-end' : 'flex-start', gap: sp(6), overflow: 'hidden',
   };
 }
 
@@ -61,8 +62,8 @@ const FILTERS: Array<{ key: StateFilter; label: string; tone: ChipTone }> = [
 ];
 
 const selectStyle: React.CSSProperties = {
-  fontSize: 11, background: 'var(--bg-card)', border: '1px solid var(--border-strong)', color: 'var(--text)',
-  borderRadius: 5, padding: '3px 6px', fontFamily: 'var(--font-ui)',
+  fontSize: 11, background: 'var(--bg-card)', border: 'var(--stroke) solid var(--border-strong)', color: 'var(--text)',
+  borderRadius: rad(5), padding: sp('3px 6px'), fontFamily: 'var(--font-ui)',
 };
 
 const mono: React.CSSProperties = { fontFamily: 'var(--font-mono)', fontSize: 11, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' };
@@ -95,8 +96,8 @@ function Row({ row, anchor, selected, onSelect, onExpand, disabledReason, onTogg
       aria-level={row.depth + 1}
       onClick={() => onSelect(row)}
       style={{
-        display: 'flex', alignItems: 'center', gap: 8, height: rowHeight(row), padding: '0 12px',
-        borderBottom: `1px solid ${top ? 'var(--border)' : 'var(--border-subtle)'}`, background,
+        display: 'flex', alignItems: 'center', gap: sp(8), height: rowHeight(row), padding: sp('0 12px'),
+        borderBottom: `var(--stroke) solid ${top ? 'var(--border)' : 'var(--border-subtle)'}`, background,
         boxShadow: selected ? 'inset 2px 0 0 var(--accent)' : row.loud ? 'inset 2px 0 0 var(--error)' : undefined,
         cursor: row.host !== null || row.expandable ? 'pointer' : 'default',
       }}
@@ -107,7 +108,7 @@ function Row({ row, anchor, selected, onSelect, onExpand, disabledReason, onTogg
         )}
       </div>
       <div role="cell" style={cellStyle(COL.dest)}>
-        <span style={{ display: 'flex', alignItems: 'center', gap: 6, paddingLeft: indent, minWidth: 0 }}>
+        <span style={{ display: 'flex', alignItems: 'center', gap: sp(6), paddingLeft: indent, minWidth: 0 }}>
           {row.expandable ? (
             <button
               type="button"
@@ -206,8 +207,8 @@ export function DestinationTable({ data }: { data: NetSessionData }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', borderBottom: '1px solid var(--border)', flexWrap: 'wrap' }}>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 6, height: 26, width: 260, maxWidth: '100%', padding: '0 8px', borderRadius: 6, background: 'var(--bg)', border: '1px solid var(--border)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: sp(8), padding: sp('8px 12px'), borderBottom: 'var(--stroke) solid var(--border)', flexWrap: 'wrap' }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: sp(6), height: 26, width: 260, maxWidth: '100%', padding: sp('0 8px'), borderRadius: rad(6), background: 'var(--bg)', border: 'var(--stroke) solid var(--border)' }}>
           <NetIcon name="search" color="var(--text-faint)" />
           <input
             type="search"
@@ -218,7 +219,7 @@ export function DestinationTable({ data }: { data: NetSessionData }) {
             style={{ flex: 1, minWidth: 0, background: 'transparent', border: 'none', outline: 'none', color: 'var(--text)', fontSize: 11.5, fontFamily: 'var(--font-ui)' }}
           />
         </label>
-        <div role="group" aria-label="Show" style={{ display: 'flex', gap: 6 }}>
+        <div role="group" aria-label="Show" style={{ display: 'flex', gap: sp(6) }}>
           {FILTERS.map((f) => {
             const on = filter === f.key;
             const t = TONE[f.key === 'all' && on ? 'neutral' : f.tone];
@@ -229,10 +230,10 @@ export function DestinationTable({ data }: { data: NetSessionData }) {
                 aria-pressed={on}
                 onClick={() => setFilter(on && f.key !== 'all' ? 'all' : f.key)}
                 style={{
-                  display: 'inline-flex', alignItems: 'center', height: 20, padding: '0 7px', borderRadius: 10, fontSize: 10.5,
+                  display: 'inline-flex', alignItems: 'center', height: 20, padding: sp('0 7px'), borderRadius: rad(10), fontSize: 10.5,
                   fontWeight: on ? 600 : 500, whiteSpace: 'nowrap', cursor: 'pointer', fontFamily: 'var(--font-ui)',
                   color: f.key === 'all' ? 'var(--text)' : t.color, background: t.bg,
-                  border: `1px solid ${on ? t.color : t.border}`, opacity: on || filter === 'all' ? 1 : 0.6,
+                  border: `var(--stroke) solid ${on ? t.color : t.border}`, opacity: on || filter === 'all' ? 1 : 0.6,
                 }}
               >
                 {f.label} {model.counts[f.key]}
@@ -263,7 +264,7 @@ export function DestinationTable({ data }: { data: NetSessionData }) {
         style={{ flex: 1, minHeight: 0, overflow: 'auto' }}
       >
         <div style={{ minWidth: MIN_TABLE_WIDTH }}>
-          <div role="row" style={{ display: 'flex', alignItems: 'center', gap: 8, height: 28, padding: '0 12px', borderBottom: '1px solid var(--border)', position: 'sticky', top: 0, background: 'var(--bg-card)', zIndex: 1 }}>
+          <div role="row" style={{ display: 'flex', alignItems: 'center', gap: sp(8), height: 28, padding: sp('0 12px'), borderBottom: 'var(--stroke) solid var(--border)', position: 'sticky', top: 0, background: 'var(--bg-card)', zIndex: 1 }}>
             {COLUMNS.map((c) => (
               <div key={c.key} role="columnheader" style={cellStyle(c)}>
                 <span style={{ fontSize: 10, letterSpacing: '0.08em', fontWeight: 600, color: 'var(--text-faint)', textTransform: 'uppercase' }}>{c.label}</span>
@@ -278,12 +279,12 @@ export function DestinationTable({ data }: { data: NetSessionData }) {
           ))}
           {range && <div style={{ height: range.padBottom }} />}
           {model.rows.length === 0 && (
-            <div style={{ padding: '24px 12px', fontSize: 11.5, color: 'var(--text-muted)', textAlign: 'center' }}>
+            <div style={{ padding: sp('24px 12px'), fontSize: 11.5, color: 'var(--text-muted)', textAlign: 'center' }}>
               {data.destinations.size === 0 ? 'No traffic recorded for this session yet.' : 'Nothing matches the filter.'}
             </div>
           )}
           {data.emptyFolded > 0 && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 12px', color: 'var(--text-faint)', fontSize: 10.5 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: sp(6), padding: sp('8px 12px'), color: 'var(--text-faint)', fontSize: 10.5 }}>
               <NetIcon name="fold" color="var(--text-faint)" />
               {data.emptyFolded} empty connection{data.emptyFolded === 1 ? '' : 's'} folded (eof / timeout, no host) ·
               <button type="button" onClick={() => setShowEmpty((v) => !v)} style={{ background: 'transparent', border: 'none', padding: 0, color: 'var(--info)', cursor: 'pointer', fontSize: 10.5, fontFamily: 'var(--font-ui)' }}>

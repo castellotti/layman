@@ -27,6 +27,7 @@ import { isUntunnelled, isVpnRoute } from '../../lib/net-vpn.js';
 import { useVpnDomains } from '../../hooks/useVpnDomains.js';
 import { bannerHosts, useDismissedBanner } from '../../lib/net-banner.js';
 import { tokenColor } from '../../lib/tokens.js';
+import { sp, rad } from '../../lib/density.js';
 
 type Corner = 'tl' | 'tc' | 'tr' | 'bl' | 'br';
 const DEFAULT_CORNER: Record<string, Corner> = { talking: 'tl', unknown: 'tc', detail: 'tr', sandbox: 'bl', legend: 'br' };
@@ -58,12 +59,12 @@ function Card({ id, title, icon, count, extra, onHide, onDragStart, width = 300,
 }) {
   return (
     <section aria-label={title} style={{
-      width, maxWidth: '100%', background: tokenColor('bg-card', '94%'), border: '1px solid var(--border)', borderRadius: 8,
+      width, maxWidth: '100%', background: tokenColor('bg-card', '94%'), border: 'var(--stroke) solid var(--border)', borderRadius: rad(8),
       boxShadow: '0 8px 24px rgba(0,0,0,0.35)', backdropFilter: 'blur(4px)', overflow: 'hidden', pointerEvents: 'auto',
       // Shrinks to its corner's share of the height, and scrolls inside.
       display: 'flex', flexDirection: 'column', minHeight: 0, flexShrink: 1,
     }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 7, height: 32, flexShrink: 0, padding: '0 8px', borderBottom: '1px solid var(--border)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: sp(7), height: 32, flexShrink: 0, padding: sp('0 8px'), borderBottom: 'var(--stroke) solid var(--border)' }}>
         <span role="button" tabIndex={-1} aria-label={`Move ${title} to another corner`} data-tip="Drag to another corner"
           onPointerDown={(e) => { e.preventDefault(); onDragStart(id); }} style={{ cursor: 'grab', display: 'flex' }}>
           <NetIcon name="grip" color="var(--text-faint)" />
@@ -73,7 +74,7 @@ function Card({ id, title, icon, count, extra, onHide, onDragStart, width = 300,
         {count !== undefined && <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10.5, color: 'var(--text-faint)' }}>{count}</span>}
         <span style={{ flex: 1 }} />
         {extra}
-        <button type="button" aria-label={`Hide ${title}`} onClick={onHide} style={{ display: 'flex', background: 'transparent', border: 'none', cursor: 'pointer', padding: 3 }}>
+        <button type="button" aria-label={`Hide ${title}`} onClick={onHide} style={{ display: 'flex', background: 'transparent', border: 'none', cursor: 'pointer', padding: sp(3) }}>
           <NetIcon name="close" size={10} color="var(--text-faint)" />
         </button>
       </div>
@@ -101,17 +102,17 @@ function TalkingNow({ data, now, select, selected }: { data: NetSessionData; now
   const list = lists[filter];
   return (
     <div>
-      {list.length === 0 && <div style={{ padding: '10px 12px', fontSize: 11, color: 'var(--text-faint)' }}>{filter === 'live' ? 'Nothing is open right now.' : 'None.'}</div>}
+      {list.length === 0 && <div style={{ padding: sp('10px 12px'), fontSize: 11, color: 'var(--text-faint)' }}>{filter === 'live' ? 'Nothing is open right now.' : 'None.'}</div>}
       {list.map((d) => {
         const row = destinationRow(data, d, now);
         const rate = rateOf(d.spark, anchor);
         const sel = d.host === selected;
         return (
           <div key={d.key} onClick={() => select(sel ? null : d.host)} style={{
-            display: 'flex', alignItems: 'center', gap: 8, padding: '7px 12px', cursor: 'pointer', borderBottom: '1px solid var(--border-subtle)',
+            display: 'flex', alignItems: 'center', gap: sp(8), padding: sp('7px 12px'), cursor: 'pointer', borderBottom: 'var(--stroke) solid var(--border-subtle)',
             background: sel ? 'var(--bg-selected)' : undefined, boxShadow: sel ? 'inset 2px 0 0 var(--accent)' : undefined,
           }}>
-            <span style={{ width: 7, height: 7, borderRadius: 4, flexShrink: 0, background: d.state === 'active' ? 'var(--net-tunnel)' : 'var(--text-faint)' }} />
+            <span style={{ width: 7, height: 7, borderRadius: rad(4), flexShrink: 0, background: d.state === 'active' ? 'var(--net-tunnel)' : 'var(--text-faint)' }} />
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11.5, color: isUntunnelled(d.scope, d.flags) ? ALARM.text : 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{d.host ?? d.endpoint}</div>
               <div style={{ fontSize: 10, color: 'var(--text-faint)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
@@ -123,14 +124,14 @@ function TalkingNow({ data, now, select, selected }: { data: NetSessionData; now
           </div>
         );
       })}
-      <div style={{ padding: '6px 12px' }}>
+      <div style={{ padding: sp('6px 12px') }}>
         {([
           ['finished', 'check', 'var(--text-muted)', `${lists.finished.length} finished`],
           ['guard', 'lock', 'var(--warn)', `${lists.guard.length} refused by glove guard`],
           ['user_rule', 'blocked', 'var(--error)', `${lists.user_rule.length} blocked by the rules`],
           ['broken', 'broken', 'var(--warn)', `${lists.broken.length} path broken (upstream unreachable)`],
         ] as const).filter(([k]) => lists[k].length > 0 || filter === k).map(([k, icon, colour, text]) => (
-          <div key={k} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 10.5, color: colour, padding: '2px 0' }}>
+          <div key={k} style={{ display: 'flex', alignItems: 'center', gap: sp(6), fontSize: 10.5, color: colour, padding: sp('2px 0') }}>
             <NetIcon name={icon} color={colour} size={11} /><span style={{ flex: 1 }}>{text}</span>
             <button type="button" aria-pressed={filter === k} onClick={() => setFilter(filter === k ? 'live' : k)}
               style={{ background: 'transparent', border: 'none', padding: 0, color: 'var(--info)', cursor: 'pointer', fontSize: 10.5 }}>
@@ -148,8 +149,8 @@ function UnknownCard({ data, select }: { data: NetSessionData; select: (h: strin
   const geo = useGeoStatus();
   const unknown = unknownLocation(data.destinations.values());
   return (
-    <div style={{ padding: '8px 12px' }}>
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 10px' }}>
+    <div style={{ padding: sp('8px 12px') }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: sp('4px 10px') }}>
         {unknown.slice(0, 30).map((d) => (
           <button key={d.key} type="button" onClick={() => select(d.host)} style={{ background: 'transparent', border: 'none', padding: 0, cursor: 'pointer', fontFamily: 'var(--font-mono)', fontSize: 11, color: d.state === 'user_rule' ? 'var(--error)' : 'var(--warn)' }}>
             {d.host}
@@ -157,7 +158,7 @@ function UnknownCard({ data, select }: { data: NetSessionData; select: (h: strin
         ))}
         {unknown.length === 0 && <span style={{ fontSize: 11, color: 'var(--text-faint)' }}>Everything that left can be placed.</span>}
       </div>
-      <div style={{ fontSize: 10, color: 'var(--text-faint)', marginTop: 6 }}>
+      <div style={{ fontSize: 10, color: 'var(--text-faint)', marginTop: sp(6) }}>
         {geo && !geo.loaded ? 'No geolocation database: set one in Settings → Glove. ' : ''}Never looked up: glove had no IP, or the database has no place for it.
       </div>
     </div>
@@ -170,14 +171,14 @@ function SandboxCard({ data }: { data: NetSessionData }) {
   const names = [...new Set(locals.map(localLinkName))];
   const unwatched = data.gate.unwatchedServices;
   const chip = (text: string, faint: boolean, icon: NetIconName) => (
-    <span key={text} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, height: 22, padding: '0 8px', borderRadius: 11, fontSize: 10.5, color: faint ? 'var(--text-faint)' : 'var(--text-body)', border: '1px solid var(--border-strong)' }}>
+    <span key={text} style={{ display: 'inline-flex', alignItems: 'center', gap: sp(5), height: 22, padding: sp('0 8px'), borderRadius: rad(11), fontSize: 10.5, color: faint ? 'var(--text-faint)' : 'var(--text-body)', border: 'var(--stroke) solid var(--border-strong)' }}>
       <NetIcon name={icon} size={11} color={faint ? 'var(--text-faint)' : 'var(--text-muted)'} />{text}
     </span>
   );
   return (
-    <div style={{ padding: '8px 12px' }}>
-      <div style={{ fontSize: 10.5, color: 'var(--text-faint)', marginBottom: 8 }}>Not a place on the map. Traffic enters the tunnel here.</div>
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+    <div style={{ padding: sp('8px 12px') }}>
+      <div style={{ fontSize: 10.5, color: 'var(--text-faint)', marginBottom: sp(8) }}>Not a place on the map. Traffic enters the tunnel here.</div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: sp(6) }}>
         {names.map((n) => chip(`${n} · local`, false, 'home'))}
         {unwatched.map((s) => chip(`${s} · not watched`, true, 'eye-off'))}
         {!names.length && !unwatched.length && <span style={{ fontSize: 11, color: 'var(--text-faint)' }}>No local links.</span>}
@@ -192,12 +193,12 @@ function LegendCard() {
     <svg width={28} height={8} aria-hidden="true"><line x1={1} y1={4} x2={27} y2={4} stroke={stroke} strokeWidth={2.2} strokeDasharray={dash} className={cls} /></svg>
   );
   return (
-    <div style={{ padding: '8px 12px', display: 'flex', flexDirection: 'column', gap: 5, fontSize: 10.5, color: 'var(--text-body)' }}>
-      <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>{line('var(--net-tunnel)')}Tunnelled, via the exit</span>
-      <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>{line('var(--net-tunnel)', undefined, 'net-live-dash')}Live</span>
-      <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>{line('var(--net-tunnel)', '6 4')}Route declared, not verified</span>
-      <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>{line('var(--error)', '5 4')}Untunnelled: skips the exit</span>
-      <span style={{ fontSize: 10, color: 'var(--text-faint)', marginTop: 3 }}>
+    <div style={{ padding: sp('8px 12px'), display: 'flex', flexDirection: 'column', gap: sp(5), fontSize: 10.5, color: 'var(--text-body)' }}>
+      <span style={{ display: 'flex', alignItems: 'center', gap: sp(8) }}>{line('var(--net-tunnel)')}Tunnelled, via the exit</span>
+      <span style={{ display: 'flex', alignItems: 'center', gap: sp(8) }}>{line('var(--net-tunnel)', undefined, 'net-live-dash')}Live</span>
+      <span style={{ display: 'flex', alignItems: 'center', gap: sp(8) }}>{line('var(--net-tunnel)', '6 4')}Route declared, not verified</span>
+      <span style={{ display: 'flex', alignItems: 'center', gap: sp(8) }}>{line('var(--error)', '5 4')}Untunnelled: skips the exit</span>
+      <span style={{ fontSize: 10, color: 'var(--text-faint)', marginTop: sp(3) }}>
         {/* Nothing until Layman answers: "no database" is a claim, not a placeholder. */}
         {geo ? geo.attribution ?? 'No geolocation database: destinations are in Unknown location.' : ''}
       </span>
@@ -221,21 +222,21 @@ function Ribbon({ data, now }: { data: NetSessionData; now: number }) {
     l.direct ? 'var(--error)' : l.state === 'guard' ? 'var(--warn)' : l.state === 'user_rule' || l.state === 'default_block' ? 'var(--error)'
       : l.state === 'broken' ? 'var(--warn)' : l.open ? 'var(--net-tunnel)' : 'var(--text-faint)';
   const tile = (label: string, value: string, c: string, icon: 'up' | 'down') => (
-    <div style={{ flex: 1, padding: '6px 10px', borderRadius: 8, border: `1px solid ${c}` }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 9.5, fontWeight: 600, letterSpacing: '0.08em', color: c }}><NetIcon name={icon} size={11} color={c} />{label}</div>
+    <div style={{ flex: 1, padding: sp('6px 10px'), borderRadius: rad(8), border: `var(--stroke) solid ${c}` }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: sp(5), fontSize: 9.5, fontWeight: 600, letterSpacing: '0.08em', color: c }}><NetIcon name={icon} size={11} color={c} />{label}</div>
       <div style={{ fontFamily: 'var(--font-mono)', fontSize: 16, fontWeight: 600, color: 'var(--text)' }}>{value}</div>
     </div>
   );
   return (
     <div style={{ display: 'flex', height: '100%', minHeight: 0 }}>
-      <div style={{ width: 260, padding: '8px 12px', borderRight: '1px solid var(--border)', flexShrink: 0 }}>
-        <div style={{ display: 'flex', gap: 8 }}>
+      <div style={{ width: 260, padding: sp('8px 12px'), borderRight: 'var(--stroke) solid var(--border)', flexShrink: 0 }}>
+        <div style={{ display: 'flex', gap: sp(8) }}>
           {tile('SENT', formatBytes(data.totals.bytesUp), 'var(--net-up)', 'up')}
           {tile('RECEIVED', formatBytes(data.totals.bytesDown), 'var(--net-down)', 'down')}
         </div>
-        <div style={{ fontSize: 10, color: 'var(--text-faint)', marginTop: 6 }}>Session totals. {plural(data.totals.flows, 'flow')}, {plural(data.totals.destinations, 'destination')}.</div>
+        <div style={{ fontSize: 10, color: 'var(--text-faint)', marginTop: sp(6) }}>Session totals. {plural(data.totals.flows, 'flow')}, {plural(data.totals.destinations, 'destination')}.</div>
       </div>
-      <div style={{ flex: 1, position: 'relative', padding: '8px 12px', minWidth: 0 }}>
+      <div style={{ flex: 1, position: 'relative', padding: sp('8px 12px'), minWidth: 0 }}>
         <svg width="100%" height="100%" preserveAspectRatio="none" viewBox={`0 0 1000 ${Math.max(10, lanes.length * 5 + 6)}`} role="img" aria-label={`${lanes.length} flows in the last 60 seconds`}>
           <line x1={0} x2={1000} y1={2} y2={2} stroke="var(--border-strong)" strokeWidth={1} />
           {lanes.map((l, i) => (
@@ -250,7 +251,7 @@ function Ribbon({ data, now }: { data: NetSessionData; now: number }) {
             </g>
           ))}
         </svg>
-        <div style={{ position: 'absolute', right: 12, bottom: 4, fontSize: 10, color: 'var(--text-faint)', background: 'var(--bg-card)', padding: '0 4px' }}>
+        <div style={{ position: 'absolute', right: 12, bottom: 4, fontSize: 10, color: 'var(--text-faint)', background: 'var(--bg-card)', padding: sp('0 4px') }}>
           60 s ago … now{more ? ` · ${more} more not drawn` : ''}{markers.length ? ` · ┊ ${markers.length} tool call${markers.length === 1 ? '' : 's'}` : ''}
         </div>
       </div>
@@ -321,7 +322,7 @@ export function MapView({ data, panels }: { data: NetSessionData; panels: Return
   // Dismissed, it stays away for this glove session until a host it has not seen goes out
   // untunnelled (the strip chip and the KPI still count them). Stacked in the top-centre column so it covers no card.
   const directBanner = direct.length > 0 && !banner.dismissed ? (
-    <div role="alert" style={{ pointerEvents: 'auto', display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', borderRadius: 8, background: ALARM.ground, border: '1px solid var(--error)', maxWidth: 620 }}>
+    <div role="alert" style={{ pointerEvents: 'auto', display: 'flex', alignItems: 'center', gap: sp(12), padding: sp('10px 14px'), borderRadius: rad(8), background: ALARM.ground, border: 'var(--stroke) solid var(--error)', maxWidth: 620 }}>
             <NetIcon name="alert" size={18} color="var(--error)" strokeWidth={1.8} />
             <div style={{ fontSize: 11.5, color: ALARM.body }}>
               <div style={{ fontSize: 12.5, fontWeight: 700, color: ALARM.title }}>Untunnelled traffic</div>
@@ -346,7 +347,7 @@ export function MapView({ data, panels }: { data: NetSessionData; panels: Return
             </TipWrap>
             <button type="button" aria-label="Dismiss" title="Dismiss for this session (it comes back for a new untunnelled host)"
               onClick={banner.dismiss}
-              style={{ pointerEvents: 'auto', display: 'flex', alignItems: 'center', justifyContent: 'center', width: 22, height: 22, background: 'transparent', border: 'none', borderRadius: 4, cursor: 'pointer', flexShrink: 0 }}>
+              style={{ pointerEvents: 'auto', display: 'flex', alignItems: 'center', justifyContent: 'center', width: 22, height: 22, background: 'transparent', border: 'none', borderRadius: rad(4), cursor: 'pointer', flexShrink: 0 }}>
               <NetIcon name="close" size={11} color={ALARM.body} />
             </button>
           </div>
@@ -388,7 +389,7 @@ export function MapView({ data, panels }: { data: NetSessionData; panels: Return
         )}
         {(Object.keys(POS) as Corner[]).map((c) => (
           // Top corners get about 60% of the height, bottom ones 40%, so the two stacks on a side never overlap.
-          <div key={c} style={{ position: 'absolute', display: 'flex', flexDirection: 'column', gap: 8, zIndex: 3, pointerEvents: 'none', maxHeight: c.startsWith('t') ? 'calc(60% - 18px)' : 'calc(40% - 18px)', ...POS[c] }}>
+          <div key={c} style={{ position: 'absolute', display: 'flex', flexDirection: 'column', gap: sp(8), zIndex: 3, pointerEvents: 'none', maxHeight: c.startsWith('t') ? 'calc(60% - 18px)' : 'calc(40% - 18px)', ...POS[c] }}>
             {c === 'tc' && directBanner}
             {at(c).map((x) => <React.Fragment key={x.id}>{x.node}</React.Fragment>)}
           </div>
@@ -396,8 +397,8 @@ export function MapView({ data, panels }: { data: NetSessionData; panels: Return
         {dragging && <div style={{ position: 'absolute', inset: 0, zIndex: 6, cursor: 'grabbing', outline: '2px dashed var(--border-strong)', outlineOffset: -8 }} />}
       </div>
       {panels.isVisible('ribbon') && (
-        <section aria-label="Last 60 seconds" style={{ height: 118, flexShrink: 0, borderTop: '1px solid var(--border)', background: 'var(--bg-card)', display: 'flex', flexDirection: 'column' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 7, height: 28, padding: '0 12px' }}>
+        <section aria-label="Last 60 seconds" style={{ height: 118, flexShrink: 0, borderTop: 'var(--stroke) solid var(--border)', background: 'var(--bg-card)', display: 'flex', flexDirection: 'column' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: sp(7), height: 28, padding: sp('0 12px') }}>
             <NetIcon name="ribbon" color="var(--text-muted)" />
             <h2 style={{ margin: 0, fontSize: 12, fontWeight: 600, color: 'var(--text)' }}>Last 60 seconds</h2>
             <span style={{ flex: 1 }} />

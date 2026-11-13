@@ -58,7 +58,7 @@ describe('Classic is today', () => {
     const r = resolveAppearance(DEFAULT_APPEARANCE, LIGHT);
     expect(r.theme.id).toBe('classic');
     expect(r.vars['--font-ui']).toBe(FONT_SANS);
-    expect(r.vars['--density']).toBe('0.72');
+    expect(r.vars['--density']).toBe('1');
   });
 });
 
@@ -87,7 +87,7 @@ describe('resolveAppearance', () => {
   it('density and motion; the OS reduced-motion setting caps motion at reduced', () => {
     const r = (o: Partial<typeof DEFAULT_APPEARANCE>, reduce = false) =>
       resolveAppearance({ ...DEFAULT_APPEARANCE, ...o }, { prefersDark: true, prefersReducedMotion: reduce });
-    expect(r({ density: 'comfortable' }).vars['--density']).toBe('1');
+    expect(r({ density: 'comfortable' }).vars['--density']).toBe('1.3');
     expect(r({ motion: 'full' }).motion).toBe('full');
     expect(r({ motion: 'full' }, true).motion).toBe('reduced');
     expect(r({ motion: 'off' }, true).motion).toBe('off');
@@ -99,6 +99,8 @@ describe('resolveAppearance', () => {
     const r = resolveAppearance({ ...DEFAULT_APPEARANCE, theme: 'contrast' }, DARK);
     expect(r.vars['--stroke']).toBe('2px');
     expect(r.vars['--radius']).toBe('4px');
+    expect(r.vars['--radius-scale']).toBeCloseTo(4 / 6);
+    expect(resolveAppearance({ ...DEFAULT_APPEARANCE, theme: 'phosphor' }, DARK).vars['--radius-scale']).toBe('0');
   });
 
   it('applies valid overrides on top and ignores unknown tokens and non-hex values', () => {
@@ -170,7 +172,7 @@ describe('normalizeAppearance', () => {
 
   it('so resolving a partial or stale config never throws', () => {
     expect(() => resolveAppearance({ theme: 'paper' }, DARK)).not.toThrow();
-    expect(resolveAppearance({ density: 'airy' }, DARK).vars['--density']).toBe('0.72');
+    expect(resolveAppearance({ density: 'airy' }, DARK).vars['--density']).toBe('1');
     expect(resolveAppearance(null, DARK).theme.id).toBe('classic');
   });
 });

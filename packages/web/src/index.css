@@ -73,7 +73,8 @@
      must equal this block (tested). */
   --radius:  6px;
   --stroke:  1px;
-  --density: 0.72;  /* spacing multiplier: 1 comfortable, 0.72 compact (the default) */
+  --radius-scale: 1;  /* --radius / 6px: corners written in px scale by it */
+  --density: 1;  /* spacing multiplier: 1 compact (the default), 1.3 comfortable */
   --motion:  1;  /* duration multiplier: 0 when motion is off */
 }
 

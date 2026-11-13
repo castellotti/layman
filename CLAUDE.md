@@ -554,8 +554,13 @@ Four rules that must not be relaxed casually:
   sets its theme's `color-scheme`. Motion is applied as `html[data-motion]` (`index.css`), already
   capped by the OS's reduced-motion setting; code that animates itself (eased scrolling,
   `scrollIntoView`) asks `motionIsFull()` / `scrollBehavior()` (`theme-runtime.ts`), never
-  `prefers-reduced-motion`, or Off would not stop it. `--density`, `--radius` and `--stroke` are
-  written but nothing reads them yet (inline px spacing), so Appearance does not offer density.
+  `prefers-reduced-motion`, or Off would not stop it. Spacing, corners and lines follow
+  the appearance: Tailwind's padding/margin/gap/space and `rounded*` scales and `border` width are
+  scaled in `tailwind.config.ts`, and an inline style writes `sp(8)` / `sp('4px 8px')` and `rad(6)`
+  (`lib/density.ts`) and `var(--stroke)` for a 1px line, never a bare px value
+  (`density-literals.test.ts` fails on one). The numbers in the code are the Compact design (the
+  default, `--density: 1`; Comfortable is 1.3) and Classic's 6px corners (`--radius-scale` is the
+  theme's radius over 6). Not yet covered: px values in component `.css` files, SVG geometry.
 
 - **Auto-activate**: The `autoActivateClients` config array (in `~/.local/share/layman/layman.json`) lists client agent types (e.g. `'claude-code'`) whose sessions should auto-activate without requiring `/layman`. When a hook event arrives from a matching agent, `handler.ts` calls `gate.activate()` before the gate check, so events flow immediately. The toggle is in Settings → Client Setup on each client's row. Off by default.
 

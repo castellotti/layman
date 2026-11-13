@@ -4,10 +4,11 @@ import type { LaymanConfig } from '../../../lib/types.js';
 import { useThemeVersion } from '../../../hooks/useThemeVersion.js';
 import {
   followOsUpdate, normalizeAppearance, themeById, THEMES,
-  type Appearance, type FontChoice, type Motion, type Theme, type ThemeId, type Token,
+  type Appearance, type Density, type FontChoice, type Motion, type Theme, type ThemeId, type Token,
 } from '../../../lib/themes.js';
 import { ColourOverrides } from './ColourOverrides.js';
 import { SectionTitle, SectionIntro, SegmentRow, ToggleRow, CustomRow } from './primitives.js';
+import { sp, rad } from '../../../lib/density.js';
 
 /** The colours a theme card shows beside its name: the accent, then the status and kind colours. */
 const SWATCHES: readonly Token[] = ['accent', 'ok', 'warn', 'error', 'info', 'agent'];
@@ -16,6 +17,10 @@ const FONT_OPTIONS: { label: string; value: FontChoice }[] = [
   { label: "Theme's own", value: 'theme' },
   { label: 'Sans', value: 'sans' },
   { label: 'Mono', value: 'mono' },
+];
+const DENSITY_OPTIONS: { label: string; value: Density }[] = [
+  { label: 'Compact', value: 'compact' },
+  { label: 'Comfortable', value: 'comfortable' },
 ];
 const DARK_THEMES = THEMES.filter((t) => t.scheme === 'dark');
 const LIGHT_THEMES = THEMES.filter((t) => t.scheme === 'light');
@@ -89,6 +94,13 @@ export function AppearanceSection({
         onChange={(font) => update({ font })}
       />
       <SegmentRow
+        label="Density"
+        desc="How much room there is between things: padding and gaps. Corner radius and line width come from the theme."
+        options={DENSITY_OPTIONS}
+        value={a.density}
+        onChange={(density) => update({ density })}
+      />
+      <SegmentRow
         label="Motion"
         desc="Reduced stops anything that moves on its own (spinners, pulses, moving dashes) and smooth scrolling; Off also drops transitions. When your system asks for reduced motion, Full acts as Reduced."
         options={MOTION_OPTIONS}
@@ -114,7 +126,7 @@ function ThemePicker({
   return (
     <CustomRow>
       <span style={{ fontSize: 12, color: 'var(--text)' }}>{label}</span>
-      <div role="radiogroup" aria-label={label} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 8 }}>
+      <div role="radiogroup" aria-label={label} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: sp(8) }}>
         {themes.map((t) => (
           <ThemeCard key={t.id} theme={t} selected={t.id === selected} showing={t.id === showing} onPick={() => onPick(t.id)} />
         ))}
@@ -133,22 +145,22 @@ function ThemeCard({ theme, selected, showing, onPick }: { theme: Theme; selecte
       onClick={onPick}
       title={theme.idea}
       style={{
-        display: 'flex', flexDirection: 'column', gap: 6, textAlign: 'left', cursor: 'pointer',
-        padding: '8px 10px', borderRadius: 6, fontFamily: 'inherit',
+        display: 'flex', flexDirection: 'column', gap: sp(6), textAlign: 'left', cursor: 'pointer',
+        padding: sp('8px 10px'), borderRadius: rad(6), fontFamily: 'inherit',
         background: c.bg, color: c.text,
-        border: `1px solid ${c['border-strong']}`,
+        border: `var(--stroke) solid ${c['border-strong']}`,
         // A ring, not an outline: an inline `outline: none` would hide the keyboard focus ring.
         boxShadow: selected ? '0 0 0 2px var(--bg-raised), 0 0 0 4px var(--accent)' : undefined,
       }}
     >
-      <span style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
+      <span style={{ display: 'flex', alignItems: 'baseline', gap: sp(6) }}>
         <span style={{ fontSize: 12, fontWeight: 600 }}>{theme.name}</span>
         <span style={{ fontSize: 9.5, color: c['text-muted'] }}>{theme.scheme}</span>
         {showing && <span style={{ fontSize: 9.5, color: c['text-muted'], marginLeft: 'auto' }}>showing</span>}
       </span>
-      <span style={{ display: 'flex', gap: 4 }} aria-hidden>
+      <span style={{ display: 'flex', gap: sp(4) }} aria-hidden>
         {SWATCHES.map((tok) => (
-          <span key={tok} style={{ width: 14, height: 14, borderRadius: 3, background: c[tok] }} />
+          <span key={tok} style={{ width: 14, height: 14, borderRadius: rad(3), background: c[tok] }} />
         ))}
       </span>
       <span style={{ fontSize: 10, lineHeight: 1.4, color: c['text-body'] }}>{theme.idea}</span>

@@ -9,6 +9,7 @@ import { formatBytes } from '../../lib/net-format.js';
 import type { NetSessionData } from '../../lib/net-state.js';
 import { clockTime, rateOf, sessionAnchor } from '../../lib/net-table.js';
 import type { RateBucket } from '../../lib/netobs-types.js';
+import { sp, rad } from '../../lib/density.js';
 
 type Window = '1m' | '5m' | '1h' | 'session';
 const SPAN: Record<Exclude<Window, 'session'>, number> = { '1m': 60_000, '5m': 300_000, '1h': 3_600_000 };
@@ -54,17 +55,17 @@ export function ActivityChart({ data, now }: { data: NetSessionData; now: number
 
   const H = 100;
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', padding: '8px 12px', gap: 6 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 11, color: 'var(--text-body)' }}>
-        <span><span style={{ display: 'inline-block', width: 8, height: 8, background: 'var(--net-down)', marginRight: 5 }} />Received <b style={{ fontFamily: 'var(--font-mono)' }}>{formatBytes(sums[0])}</b></span>
-        <span><span style={{ display: 'inline-block', width: 8, height: 8, background: 'var(--net-up)', marginRight: 5 }} />Sent <b style={{ fontFamily: 'var(--font-mono)' }}>{formatBytes(sums[1])}</b></span>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', padding: sp('8px 12px'), gap: sp(6) }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: sp(12), fontSize: 11, color: 'var(--text-body)' }}>
+        <span><span style={{ display: 'inline-block', width: 8, height: 8, background: 'var(--net-down)', marginRight: sp(5) }} />Received <b style={{ fontFamily: 'var(--font-mono)' }}>{formatBytes(sums[0])}</b></span>
+        <span><span style={{ display: 'inline-block', width: 8, height: 8, background: 'var(--net-up)', marginRight: sp(5) }} />Sent <b style={{ fontFamily: 'var(--font-mono)' }}>{formatBytes(sums[1])}</b></span>
         <span style={{ color: 'var(--text-faint)', fontFamily: 'var(--font-mono)', fontSize: 10.5 }}>now ↓ {formatBytes(down)}/s · ↑ {formatBytes(up)}/s</span>
         <span style={{ flex: 1 }} />
-        <div role="group" aria-label="Window" style={{ display: 'flex', gap: 2 }}>
+        <div role="group" aria-label="Window" style={{ display: 'flex', gap: sp(2) }}>
           {(['1m', '5m', '1h', 'session'] as const).map((w) => (
             <button key={w} type="button" aria-pressed={win === w} onClick={() => setWin(w)} style={{
-              height: 22, padding: '0 8px', borderRadius: 5, fontSize: 10.5, cursor: 'pointer', fontFamily: 'var(--font-ui)',
-              border: `1px solid ${win === w ? 'var(--border-strong)' : 'transparent'}`, background: win === w ? 'var(--bg-selected)' : 'transparent',
+              height: 22, padding: sp('0 8px'), borderRadius: rad(5), fontSize: 10.5, cursor: 'pointer', fontFamily: 'var(--font-ui)',
+              border: `var(--stroke) solid ${win === w ? 'var(--border-strong)' : 'transparent'}`, background: win === w ? 'var(--bg-selected)' : 'transparent',
               color: win === w ? 'var(--text)' : 'var(--text-faint)',
             }}>{w === 'session' ? 'Session' : w}</button>
           ))}

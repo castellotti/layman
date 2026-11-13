@@ -11,6 +11,7 @@ import { TURN_RANGE_TIP, turnRange, turnSpan, type TurnSpan } from '../../lib/tu
 import type { TimelineEvent } from '../../lib/types.js';
 import { NetIcon } from './netui.js';
 import { tipProps } from './NetTip.js';
+import { sp } from '../../lib/density.js';
 
 /**
  * The glove session a Layman session ran in (its name is the glove token), or null. `name` is
@@ -51,7 +52,7 @@ export function NetworkForTurn({ token, span, size = 11, onOpen }: {
     <button type="button" data-network-for-turn="" aria-label="Network for this turn"
       onClick={(e) => { e.stopPropagation(); void open(); }}
       {...tipProps({ heading: 'Network for this turn', body: `Opens Topology for ${token}, showing only the traffic during this turn. ${TURN_RANGE_TIP}` })}
-      style={{ display: 'inline-flex', alignItems: 'center', padding: 2, border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--text-faint)', flexShrink: 0 }}>
+      style={{ display: 'inline-flex', alignItems: 'center', padding: sp(2), border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--text-faint)', flexShrink: 0 }}>
       <NetIcon name="globe" size={size} />
     </button>
   );

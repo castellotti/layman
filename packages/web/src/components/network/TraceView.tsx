@@ -27,6 +27,7 @@ import { ALARM, EmptyState, NetIcon, type NetIconName } from './netui.js';
 import { TipWrap, tipProps } from './NetTip.js';
 import { NetworkForTurn } from './NetworkForTurn.js';
 import { tokenColor } from '../../lib/tokens.js';
+import { sp, rad } from '../../lib/density.js';
 
 // ─── Shared state ─────────────────────────────────────────────────────────────
 
@@ -93,20 +94,20 @@ export function openInTrace(token: string, promptEventId: string, flowId: string
 function Chip({ tone, icon, children }: { tone: 'neutral' | 'warn' | 'error' | 'info'; icon?: NetIconName; children: React.ReactNode }) {
   const c = { neutral: ['var(--text-body)', 'var(--border-strong)'], warn: ['var(--warn)', tokenColor('warn', '50%')], error: [ALARM.text, tokenColor('error', '55%')], info: ['var(--info)', tokenColor('info', '50%')] }[tone];
   return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, height: 22, padding: '0 8px', borderRadius: 11, fontSize: 11, whiteSpace: 'nowrap', color: c[0], border: `1px solid ${c[1]}`, background: 'var(--bg)' }}>
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: sp(5), height: 22, padding: sp('0 8px'), borderRadius: rad(11), fontSize: 11, whiteSpace: 'nowrap', color: c[0], border: `var(--stroke) solid ${c[1]}`, background: 'var(--bg)' }}>
       {icon && <NetIcon name={icon} size={11} color={c[0]} />}{children}
     </span>
   );
 }
 
-const TURN_NOTE: React.CSSProperties = { margin: '8px 8px 0', padding: '10px 14px', fontSize: 11.5, color: 'var(--text-muted)' };
+const TURN_NOTE: React.CSSProperties = { margin: sp('8px 8px 0'), padding: sp('10px 14px'), fontSize: 11.5, color: 'var(--text-muted)' };
 
 export function TurnBar({ data }: { data: NetSessionData }) {
   useTraceData(data.token, data.range);
   const { view, error, set } = useTrace();
   const nav = view?.nav;
   const go = (turnId: string | null | undefined) => { if (turnId) set({ turnId, selected: null, toggled: new Set() }); };
-  const navStyle: React.CSSProperties = { width: 26, height: 26, borderRadius: 6, border: '1px solid var(--border-strong)', background: 'var(--bg-pill)', color: 'var(--text)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' };
+  const navStyle: React.CSSProperties = { width: 26, height: 26, borderRadius: rad(6), border: 'var(--stroke) solid var(--border-strong)', background: 'var(--bg-pill)', color: 'var(--text)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' };
   if (!view) {
     return <div style={TURN_NOTE}>{error ? `Trace unavailable: ${error}` : 'Loading the trace…'}</div>;
   }
@@ -117,8 +118,8 @@ export function TurnBar({ data }: { data: NetSessionData }) {
   const t = view.turn;
   const c = view.counts;
   return (
-    <div role="region" aria-label="Turn" style={{ display: 'flex', alignItems: 'center', gap: 12, margin: '8px 8px 0', padding: '8px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-card)', minWidth: 0 }}>
-      <div style={{ display: 'flex', gap: 6 }}>
+    <div role="region" aria-label="Turn" style={{ display: 'flex', alignItems: 'center', gap: sp(12), margin: sp('8px 8px 0'), padding: sp('8px 12px'), borderRadius: rad(8), border: 'var(--stroke) solid var(--border)', background: 'var(--bg-card)', minWidth: 0 }}>
+      <div style={{ display: 'flex', gap: sp(6) }}>
         <button type="button" aria-label="Previous turn" disabled={!nav?.prev} onClick={() => go(nav?.prev)} style={{ ...navStyle, opacity: nav?.prev ? 1 : 0.4 }}>
           <span style={{ display: 'inline-block', transform: 'rotate(90deg)' }}><NetIcon name="chevron" size={12} /></span>
         </button>
@@ -127,7 +128,7 @@ export function TurnBar({ data }: { data: NetSessionData }) {
         </button>
       </div>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', fontSize: 10.5 }}>
+        <div style={{ display: 'flex', gap: sp(8), alignItems: 'baseline', fontSize: 10.5 }}>
           <span style={{ color: 'var(--info)', fontWeight: 600, letterSpacing: '0.06em' }}>
             {nav?.outside ? `OUTSIDE THE RANGE · ${nav.count} IN IT` : `TURN ${(nav?.index ?? -1) + 1} OF ${nav?.count ?? 0}${data.range ? ' IN RANGE' : ''}`}
           </span>
@@ -138,7 +139,7 @@ export function TurnBar({ data }: { data: NetSessionData }) {
       </div>
       <NetworkForTurn token={data.token} span={() => t} size={13}
         onOpen={() => set({ keep: t.promptEventId })} />
-      <div style={{ display: 'flex', gap: 6, flexShrink: 0, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+      <div style={{ display: 'flex', gap: sp(6), flexShrink: 0, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
         <Chip tone="neutral">{c.calls} tool call{c.calls === 1 ? '' : 's'}</Chip>
         <Chip tone="neutral">{c.flows} flow{c.flows === 1 ? '' : 's'}</Chip>
         {c.refused > 0 && <Chip tone="warn" icon="shield">{c.refused} refused</Chip>}
@@ -168,7 +169,7 @@ export function TraceActions() {
   const set = useTrace((s) => s.set);
   return (
     <button type="button" aria-pressed={onlyTraffic} onClick={() => set({ onlyTraffic: !onlyTraffic })} style={{
-      ...buttonStyle(onlyTraffic ? 'plain' : 'ghost'), height: 22, fontSize: 10.5, padding: '0 8px',
+      ...buttonStyle(onlyTraffic ? 'plain' : 'ghost'), height: 22, fontSize: 10.5, padding: sp('0 8px'),
     }}>
       <NetIcon name="legend" size={11} />Only calls with traffic
     </button>
@@ -188,10 +189,10 @@ function RowView({ row, data, selected, onSelect, onToggleRow, onPolicy, axisWid
   return (
     <div role="row" aria-selected={selected} data-row={row.id} onClick={onSelect} style={{
       display: 'grid', gridTemplateColumns: GRID, alignItems: 'center', minHeight: 27, cursor: 'pointer',
-      borderBottom: '1px solid var(--border)', borderLeft: `2px solid ${selected ? 'var(--warn)' : 'transparent'}`,
+      borderBottom: 'var(--stroke) solid var(--border)', borderLeft: `2px solid ${selected ? 'var(--warn)' : 'transparent'}`,
       background: selected ? tokenColor('warn', '7%') : isCall ? tokenColor('text', '1.2%') : undefined,
     }}>
-      <div role="cell" style={{ display: 'flex', alignItems: 'center', gap: 7, paddingLeft: pad, minWidth: 0 }}>
+      <div role="cell" style={{ display: 'flex', alignItems: 'center', gap: sp(7), paddingLeft: pad, minWidth: 0 }}>
         {row.expandable ? (
           <button type="button" aria-label={row.expanded ? 'Collapse' : 'Expand'} aria-expanded={row.expanded}
             onClick={(e) => { e.stopPropagation(); onToggleRow(); }}
@@ -208,24 +209,24 @@ function RowView({ row, data, selected, onSelect, onToggleRow, onPolicy, axisWid
         )}
         {row.call?.redacted && (
           <span data-tip="The PII filter redacted this URL's host when Layman recorded the call, so no flow can be joined to it; its traffic is under Unattributed. To keep IP addresses in glove sessions, turn on Settings → glove → Show IP addresses in sandboxed sessions (calls recorded from then on)."
-            style={{ fontSize: 9.5, color: 'var(--warn)', border: `1px solid ${tokenColor('warn', '50%')}`, borderRadius: 4, padding: '0 4px', flexShrink: 0 }}>redacted</span>
+            style={{ fontSize: 9.5, color: 'var(--warn)', border: `var(--stroke) solid ${tokenColor('warn', '50%')}`, borderRadius: rad(4), padding: sp('0 4px'), flexShrink: 0 }}>redacted</span>
         )}
         {row.call?.timing === 'approximate' && (
           <span data-tip="Layman read this call after it ran and did not keep the transcript's own times, so its flows were joined by host alone."
-            style={{ fontSize: 9.5, color: 'var(--warn)', border: `1px solid ${tokenColor('warn', '50%')}`, borderRadius: 4, padding: '0 4px', flexShrink: 0 }}>≈ time</span>
+            style={{ fontSize: 9.5, color: 'var(--warn)', border: `var(--stroke) solid ${tokenColor('warn', '50%')}`, borderRadius: rad(4), padding: sp('0 4px'), flexShrink: 0 }}>≈ time</span>
         )}
       </div>
-      <div role="cell" style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 10.5, color: row.outcome ? TONE[row.outcome.tone] : undefined, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden' }}>
+      <div role="cell" style={{ display: 'flex', alignItems: 'center', gap: sp(5), fontSize: 10.5, color: row.outcome ? TONE[row.outcome.tone] : undefined, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden' }}>
         {row.outcome && <><NetIcon name={ICON[row.outcome.icon]} size={11} color={TONE[row.outcome.tone]} /><span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{row.outcome.text}</span></>}
       </div>
-      <div role="cell" style={{ fontFamily: 'var(--font-mono)', fontSize: 10.5, color: 'var(--text-muted)', textAlign: 'right', paddingRight: 10 }}>
+      <div role="cell" style={{ fontFamily: 'var(--font-mono)', fontSize: 10.5, color: 'var(--text-muted)', textAlign: 'right', paddingRight: sp(10) }}>
         {row.bytes !== null ? formatBytes(row.bytes) : ''}
       </div>
       <div role="cell" style={{ position: 'relative', height: 12 }}>
         {row.bar && (
           <span style={{
             position: 'absolute', top: 2, height: 8, left: `${row.bar.x0 * axisWidthPct}%`, width: `${Math.max(0.6, (row.bar.x1 - row.bar.x0) * axisWidthPct)}%`,
-            background: row.bar.refused ? BAR[row.outcome?.tone ?? 'warn'] : BAR[row.bar.tone], opacity: row.bar.refused ? 1 : 0.8, borderRadius: 2,
+            background: row.bar.refused ? BAR[row.outcome?.tone ?? 'warn'] : BAR[row.bar.tone], opacity: row.bar.refused ? 1 : 0.8, borderRadius: rad(2),
           }} />
         )}
       </div>
@@ -287,10 +288,10 @@ export function TraceWaterfall({ data }: { data: NetSessionData }) {
   const merged = withFlows(data, view);
   return (
     <div style={{ display: 'flex', flexDirection: 'column', minHeight: 0, flex: 1 }}>
-      <div role="row" style={{ display: 'grid', gridTemplateColumns: GRID, alignItems: 'center', height: 26, fontSize: 9.5, letterSpacing: '0.08em', fontWeight: 600, color: 'var(--text-faint)', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
-        <span style={{ paddingLeft: 10 }}>TOOL CALL → FLOWS</span>
+      <div role="row" style={{ display: 'grid', gridTemplateColumns: GRID, alignItems: 'center', height: 26, fontSize: 9.5, letterSpacing: '0.08em', fontWeight: 600, color: 'var(--text-faint)', borderBottom: 'var(--stroke) solid var(--border)', flexShrink: 0 }}>
+        <span style={{ paddingLeft: sp(10) }}>TOOL CALL → FLOWS</span>
         <span>OUTCOME</span>
-        <span style={{ textAlign: 'right', paddingRight: 10 }}>BYTES</span>
+        <span style={{ textAlign: 'right', paddingRight: sp(10) }}>BYTES</span>
         {/* Drag across the axis to make that stretch the range: "Range from selection". */}
         <span data-trace-axis="" style={{ position: 'relative', height: 22, display: 'flex', alignItems: 'center', cursor: 'col-resize', touchAction: 'none' }}
           {...tipProps({ heading: 'Range from selection', body: 'Drag across the time axis to show every tab for just that stretch of time.' })}
@@ -320,7 +321,7 @@ export function TraceWaterfall({ data }: { data: NetSessionData }) {
             <span key={t} style={{ position: 'absolute', left: `${(t / axis.span) * 100}%`, fontFamily: 'var(--font-mono)', fontWeight: 400, letterSpacing: 0, pointerEvents: 'none' }}>{tickLabel(t)}</span>
           ))}
           {brush && (
-            <span data-trace-brush="" style={{ position: 'absolute', top: 2, bottom: 2, ...brushBox(brush), background: tokenColor('info', '25%'), borderRadius: 2, pointerEvents: 'none' }} />
+            <span data-trace-brush="" style={{ position: 'absolute', top: 2, bottom: 2, ...brushBox(brush), background: tokenColor('info', '25%'), borderRadius: rad(2), pointerEvents: 'none' }} />
           )}
         </span>
         <span />
@@ -330,7 +331,7 @@ export function TraceWaterfall({ data }: { data: NetSessionData }) {
           <RowView key={r.id} row={r} data={merged} selected={current === r.id} axisWidthPct={100}
             onSelect={() => set({ selected: r.id })} onToggleRow={() => toggle(r.id)} onPolicy={(flow, anchor) => setPopover({ flow, anchor })} />
         ))}
-        <div style={{ display: 'flex', gap: 6, alignItems: 'center', padding: '10px 12px', fontSize: 10.5, color: 'var(--text-faint)' }}>
+        <div style={{ display: 'flex', gap: sp(6), alignItems: 'center', padding: sp('10px 12px'), fontSize: 10.5, color: 'var(--text-faint)' }}>
           <NetIcon name="trace" size={11} color="var(--text-faint)" />
           Tool calls come from the {data.session?.harness ?? 'harness'} transcript and flows from the glove gate. Layman joins them by host and time; glove never links them.
         </div>
@@ -397,10 +398,10 @@ function CanIAllow({ data, flow }: { data: NetSessionData; flow: FlowView }) {
   return (
     <>
       <SectionHead>Can I allow it?</SectionHead>
-      <div style={{ display: 'flex', gap: 7, fontSize: 11.5, color: 'var(--text-body)', lineHeight: 1.5 }}>
+      <div style={{ display: 'flex', gap: sp(7), fontSize: 11.5, color: 'var(--text-body)', lineHeight: 1.5 }}>
         {(flow.state === 'guard' || !host) && <NetIcon name="lock" size={12} color="var(--warn)" />}<span>{text}</span>
       </div>
-      {action && <div style={{ marginTop: 8 }} data-tip={disabled ?? undefined}>{action}</div>}
+      {action && <div style={{ marginTop: sp(8) }} data-tip={disabled ?? undefined}>{action}</div>}
     </>
   );
 }
@@ -424,7 +425,7 @@ function TurnButtons({ view, label }: { view: TraceView; label: string }) {
     }
   };
   return (
-    <div style={{ display: 'flex', gap: 8, marginTop: 16, alignItems: 'center' }}>
+    <div style={{ display: 'flex', gap: sp(8), marginTop: sp(16), alignItems: 'center' }}>
       <a href={href} onClick={(e) => { if (e.button === 0 && !e.metaKey && !e.ctrlKey) { e.preventDefault(); selectTurn(t.sessionId, t.promptEventId); } }}
         style={{ ...buttonStyle('plain'), textDecoration: 'none' }}>Open turn</a>
       <TipWrap tip={t.responseEventId ? 'Save this turn as a highlight' : 'The turn has no response yet'} disabled={bookmarkDisabled}>
@@ -438,20 +439,20 @@ function TurnButtons({ view, label }: { view: TraceView; label: string }) {
 
 export function TraceDetails({ data }: { data: NetSessionData }) {
   const { view, selected } = useTrace();
-  if (!view?.turn) return <div style={{ padding: 14, fontSize: 11.5, color: 'var(--text-muted)' }}>Details of the selected call or flow appear here.</div>;
+  if (!view?.turn) return <div style={{ padding: sp(14), fontSize: 11.5, color: 'var(--text-muted)' }}>Details of the selected call or flow appear here.</div>;
   const id = selected ?? defaultSelection(view);
   const flows = new Map(view.flows.map((f) => [f.id, f]));
   if (!id) {
-    return <div style={{ padding: 14, fontSize: 11.5, color: 'var(--text-muted)', lineHeight: 1.5 }}>Select a tool call or a flow to see what the agent asked for, what the gate did with it, and whether you can change that.</div>;
+    return <div style={{ padding: sp(14), fontSize: 11.5, color: 'var(--text-muted)', lineHeight: 1.5 }}>Select a tool call or a flow to see what the agent asked for, what the gate did with it, and whether you can change that.</div>;
   }
   if (id.startsWith('call:')) {
     const item = view.items.find((i) => i.kind === 'call' && i.call.eventId === id.slice(5));
     if (!item || item.kind !== 'call') return null;
     const c = item.call;
     return (
-      <div style={{ padding: 12 }}>
+      <div style={{ padding: sp(12) }}>
         <div style={{ fontFamily: 'var(--font-mono)', fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>{c.toolName}</div>
-        <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11.5, color: 'var(--text-body)', wordBreak: 'break-all', marginTop: 4 }}>{c.label}</div>
+        <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11.5, color: 'var(--text-body)', wordBreak: 'break-all', marginTop: sp(4) }}>{c.label}</div>
         <SectionHead>Call</SectionHead>
         <Row k={c.timing === 'exact' ? 'Started' : 'Read'} v={clockTime(c.start)} sub={c.timing === 'exact' ? 'from the transcript' : 'when Layman read it; its own times were not kept'} />
         {c.end !== null && c.timing === 'exact' && <Row k="Ended" v={`${clockTime(c.end)} · ${((c.end - c.start) / 1000).toFixed(1)} s`} />}
@@ -475,24 +476,24 @@ export function TraceDetails({ data }: { data: NetSessionData }) {
   }
   const fid = id.replace(/^(flow|llm):/, '');
   const f = flows.get(fid) ?? data.flows.get(fid);
-  if (!f) return <div style={{ padding: 14, fontSize: 11.5, color: 'var(--text-muted)' }}>Select a tool call or a flow.</div>;
+  if (!f) return <div style={{ padding: sp(14), fontSize: 11.5, color: 'var(--text-muted)' }}>Select a tool call or a flow.</div>;
   const info = NET_STATE_INFO[f.state];
   const call = callForFlow(view, f.id);
   const host = f.dest.host ?? `${f.service} endpoint`;
   return (
-    <div style={{ padding: 12 }}>
-      <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+    <div style={{ padding: sp(12) }}>
+      <div style={{ display: 'flex', gap: sp(8), alignItems: 'flex-start' }}>
         <NetIcon name={info.icon as NetIconName} size={15} color={info.colourVar} />
         <div>
           <div style={{ fontSize: 13, fontWeight: 600, color: info.colourVar }}>{info.label}</div>
           {f.rule && <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10.5, color: 'var(--text-faint)' }}>{f.rule}</div>}
         </div>
       </div>
-      <div style={{ marginTop: 10, padding: '8px 10px', borderRadius: 6, border: '1px solid var(--border-strong)', background: 'var(--bg)' }}>
+      <div style={{ marginTop: sp(10), padding: sp('8px 10px'), borderRadius: rad(6), border: 'var(--stroke) solid var(--border-strong)', background: 'var(--bg)' }}>
         {call ? (
           <>
             <div style={{ fontSize: 10.5, color: 'var(--info)' }}>The agent asked for · {clockTime(call.start)}{call.timing === 'approximate' ? ' (read time)' : ''}</div>
-            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11.5, color: 'var(--text)', wordBreak: 'break-all', marginTop: 2 }}>{call.kind === 'search' ? `${call.toolName} “${call.label}”` : call.label}</div>
+            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11.5, color: 'var(--text)', wordBreak: 'break-all', marginTop: sp(2) }}>{call.kind === 'search' ? `${call.toolName} “${call.label}”` : call.label}</div>
           </>
         ) : (
           <div style={{ fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.5 }}>
@@ -532,14 +533,14 @@ function SavedFile({ d }: { d: TraceDownload }) {
  */
 export function DownloadsList({ data }: { data: NetSessionData }) {
   const { downloads, error } = useNetDownloads(data.token);
-  if (!downloads) return <div style={{ padding: 12, fontSize: 11.5, color: 'var(--text-muted)' }}>{error ? `Downloads unavailable: ${error}` : 'Loading…'}</div>;
-  if (!downloads.length) return <div style={{ padding: 12, fontSize: 11.5, color: 'var(--text-muted)' }}>No web_download has saved a file in this session.</div>;
+  if (!downloads) return <div style={{ padding: sp(12), fontSize: 11.5, color: 'var(--text-muted)' }}>{error ? `Downloads unavailable: ${error}` : 'Loading…'}</div>;
+  if (!downloads.length) return <div style={{ padding: sp(12), fontSize: 11.5, color: 'var(--text-muted)' }}>No web_download has saved a file in this session.</div>;
   return (
-    <div style={{ padding: 12 }}>
+    <div style={{ padding: sp(12) }}>
       <ol aria-label="Downloads" style={{ listStyle: 'none', margin: 0, padding: 0 }}>
         {downloads.map((d) => (
-          <li key={`${d.eventId}:${d.path}`} style={{ marginBottom: 8 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+          <li key={`${d.eventId}:${d.path}`} style={{ marginBottom: sp(8) }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: sp(8) }}>
               <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11.5, color: 'var(--text)', wordBreak: 'break-all' }}>{fileName(d.path)}</span>
               <span style={{ fontSize: 10.5, color: 'var(--text-faint)', whiteSpace: 'nowrap' }}>{d.bytes !== null ? formatBytes(d.bytes) : ''} · {clockTime(d.at)}</span>
             </div>

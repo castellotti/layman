@@ -15,6 +15,7 @@ import { isEditableCuration } from '../../lib/host.js';
 import type { ClientMessage } from '../../lib/ws-protocol.js';
 import type { RecordedSession } from '../../lib/types.js';
 import { tokenColor } from '../../lib/tokens.js';
+import { sp, rad } from '../../lib/density.js';
 
 const FlowchartView = lazy(() =>
   import('../flowchart/FlowchartView.js').then((m) => ({ default: m.FlowchartView }))
@@ -412,13 +413,13 @@ export function SessionsView({ onSend }: SessionsViewProps) {
         style={{
           width: 280, flexShrink: 0,
           background: 'var(--bg-raised)',
-          borderRight: '1px solid var(--border)',
+          borderRight: 'var(--stroke) solid var(--border)',
           display: 'flex', flexDirection: 'column', overflow: 'hidden',
           outline: 'none',
         }}
       >
         {/* Search */}
-        <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--border)', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <div style={{ padding: sp('10px 12px'), borderBottom: 'var(--stroke) solid var(--border)', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: sp(6) }}>
           <SearchInput
             value={sidebarSearch}
             onChange={setSidebarSearch}
@@ -433,8 +434,8 @@ export function SessionsView({ onSend }: SessionsViewProps) {
 
         {/* All / Bookmarked filter */}
         <div style={{
-          display: 'flex', padding: '6px 12px',
-          borderBottom: '1px solid var(--border)', flexShrink: 0,
+          display: 'flex', padding: sp('6px 12px'),
+          borderBottom: 'var(--stroke) solid var(--border)', flexShrink: 0,
         }}>
           <SegmentedControl
             options={[{ value: 'all', label: 'All' }, { value: 'bookmarked', label: 'Bookmarked' }]}
@@ -448,8 +449,8 @@ export function SessionsView({ onSend }: SessionsViewProps) {
               title="Filter by host"
               style={{
                 marginLeft: 'auto', fontSize: 10.5, fontFamily: 'var(--font-mono)',
-                background: 'var(--bg-card)', border: '1px solid var(--border-strong)',
-                borderRadius: 5, color: 'var(--text)', outline: 'none', padding: '2px 6px', maxWidth: 130,
+                background: 'var(--bg-card)', border: 'var(--stroke) solid var(--border-strong)',
+                borderRadius: rad(5), color: 'var(--text)', outline: 'none', padding: sp('2px 6px'), maxWidth: 130,
               }}
             >
               <option value="all">All hosts</option>
@@ -461,7 +462,7 @@ export function SessionsView({ onSend }: SessionsViewProps) {
         </div>
 
         {/* Session list */}
-        <div style={{ flex: 1, overflowY: 'auto', paddingBottom: 8 }}>
+        <div style={{ flex: 1, overflowY: 'auto', paddingBottom: sp(8) }}>
           {/* Bookmark folders (create/rename/delete/reorder + drag sessions in) */}
           {filter === 'all' && (
             <>
@@ -503,7 +504,7 @@ export function SessionsView({ onSend }: SessionsViewProps) {
               <div
                 onDragOver={(e) => { e.preventDefault(); handleDragOverContainer('unfiled'); }}
                 style={{
-                  ...sectionLabel, paddingTop: 4, cursor: 'pointer',
+                  ...sectionLabel, paddingTop: sp(4), cursor: 'pointer',
                   background: dragOverContainerId === 'unfiled' && dragOverItemId === null ? 'var(--bg-selected)' : undefined,
                 }}
                 onClick={() => toggleExpanded(UNFILED_SECTION_KEY)}
@@ -514,8 +515,8 @@ export function SessionsView({ onSend }: SessionsViewProps) {
                 Unfiled
                 <span style={{
                   fontSize: 9.5, fontFamily: 'var(--font-mono)', color: 'var(--text-faint)',
-                  background: 'var(--bg-card)', border: '1px solid var(--border)',
-                  borderRadius: 10, padding: '0 5px',
+                  background: 'var(--bg-card)', border: 'var(--stroke) solid var(--border)',
+                  borderRadius: rad(10), padding: sp('0 5px'),
                 }}>
                   {unfiledBookmarkedSessions.length}
                 </span>
@@ -525,7 +526,7 @@ export function SessionsView({ onSend }: SessionsViewProps) {
                   {unfiledBookmarkedSessions.length === 0 && (
                     <div
                       onDragOver={(e) => { e.preventDefault(); handleDragOverContainer('unfiled'); }}
-                      style={{ padding: '4px 12px', fontSize: 10, color: 'var(--text-faint)', fontStyle: 'italic' }}
+                      style={{ padding: sp('4px 12px'), fontSize: 10, color: 'var(--text-faint)', fontStyle: 'italic' }}
                     >
                       Drop sessions here
                     </div>
@@ -587,7 +588,7 @@ export function SessionsView({ onSend }: SessionsViewProps) {
 
             {filteredSessions.length === 0 && (
               <div style={{
-                padding: '32px 16px', textAlign: 'center',
+                padding: sp('32px 16px'), textAlign: 'center',
                 fontSize: 11, color: 'var(--text-faint)', fontFamily: 'var(--font-ui)',
               }}>
                 {sidebarSearch ? 'No sessions match your search.' : 'No recorded sessions yet.'}
@@ -610,8 +611,8 @@ export function SessionsView({ onSend }: SessionsViewProps) {
               {/* Session header row */}
               <div style={{
                 display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                padding: '5px 12px', borderBottom: '1px solid var(--border)',
-                background: 'var(--bg-raised)', flexShrink: 0, gap: 8,
+                padding: sp('5px 12px'), borderBottom: 'var(--stroke) solid var(--border)',
+                background: 'var(--bg-raised)', flexShrink: 0, gap: sp(8),
               }}>
                 <div style={{ minWidth: 0, flex: 1 }}>
                   <span style={{
@@ -625,7 +626,7 @@ export function SessionsView({ onSend }: SessionsViewProps) {
                   {(viewingSession?.cwd || viewingSession?.sessionModelDisplayName || viewingSession?.sessionModel) && (
                     <span style={{
                       fontSize: 10, color: 'var(--text-faint)', fontFamily: 'var(--font-mono)',
-                      display: 'flex', gap: 6, alignItems: 'center',
+                      display: 'flex', gap: sp(6), alignItems: 'center',
                       overflow: 'hidden', whiteSpace: 'nowrap',
                     }}>
                       {viewingSession?.cwd && (
@@ -642,7 +643,7 @@ export function SessionsView({ onSend }: SessionsViewProps) {
                 </div>
 
                 {/* Copy link + Flowchart button */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: sp(8), flexShrink: 0 }}>
                   <CopyLinkButton
                     route={{ kind: 'session', sessionId: viewingSessionId }}
                     title="Copy link to this session"
@@ -651,12 +652,12 @@ export function SessionsView({ onSend }: SessionsViewProps) {
                     onClick={() => setShowFlowchart((v) => !v)}
                     title={showFlowchart ? 'Show event log' : 'Show flowchart'}
                     style={{
-                      display: 'flex', alignItems: 'center', gap: 4,
-                      padding: '3px 8px', fontSize: 10, borderRadius: 4,
+                      display: 'flex', alignItems: 'center', gap: sp(4),
+                      padding: sp('3px 8px'), fontSize: 10, borderRadius: rad(4),
                       fontFamily: 'var(--font-mono)',
                       color: showFlowchart ? 'var(--text)' : 'var(--text-faint)',
                       background: showFlowchart ? 'var(--bg-selected)' : 'transparent',
-                      border: showFlowchart ? '1px solid var(--border-strong)' : '1px solid var(--border)',
+                      border: showFlowchart ? 'var(--stroke) solid var(--border-strong)' : 'var(--stroke) solid var(--border)',
                       cursor: 'pointer',
                       transition: 'color 0.1s, background 0.1s, border-color 0.1s',
                     }}
@@ -679,7 +680,7 @@ export function SessionsView({ onSend }: SessionsViewProps) {
                   title="Close session"
                   style={{
                     background: 'none', border: 'none', cursor: 'pointer',
-                    color: 'var(--text-faint)', fontSize: 16, lineHeight: 1, padding: '2px 4px',
+                    color: 'var(--text-faint)', fontSize: 16, lineHeight: 1, padding: sp('2px 4px'),
                     flexShrink: 0,
                   }}
                   onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--text)')}
@@ -729,7 +730,7 @@ export function SessionsView({ onSend }: SessionsViewProps) {
           <div style={{
             flex: 1, display: 'flex', flexDirection: 'column',
             alignItems: 'center', justifyContent: 'center',
-            gap: 12, padding: '0 32px', textAlign: 'center',
+            gap: sp(12), padding: sp('0 32px'), textAlign: 'center',
           }}>
             <div style={{ fontSize: 32, opacity: 0.15 }}>◷</div>
             <p style={{ fontFamily: 'var(--font-ui)', fontSize: 13, fontWeight: 500, color: 'var(--text)', margin: 0 }}>
@@ -800,7 +801,7 @@ function SidebarFolder({
       {expanded && items.length === 0 && (
         <div
           onDragOver={(e) => { e.preventDefault(); onItemDragOverContainer(folderId); }}
-          style={{ padding: '4px 20px', fontSize: 10, color: 'var(--text-faint)', fontStyle: 'italic' }}
+          style={{ padding: sp('4px 20px'), fontSize: 10, color: 'var(--text-faint)', fontStyle: 'italic' }}
         >
           Drop sessions here
         </div>
@@ -883,12 +884,12 @@ function SidebarSessionRow({
       onMouseLeave={() => setHovered(false)}
       title={session.cwd || session.sessionId}
       style={{
-        width: '100%', display: 'flex', alignItems: 'center', gap: 6,
+        width: '100%', display: 'flex', alignItems: 'center', gap: sp(6),
         padding: indent ? '5px 12px 5px 20px' : '5px 12px',
         background: isSelected ? 'var(--bg-selected)' : isFocused ? 'var(--bg-card)' : hovered ? 'var(--bg-card)' : 'transparent',
         border: 'none', cursor: 'pointer', textAlign: 'left',
         borderLeft: isSelected ? '2px solid var(--accent)' : isFocused ? '2px solid var(--border-strong)' : '2px solid transparent',
-        outline: isFocused ? '1px solid var(--border-strong)' : 'none',
+        outline: isFocused ? 'var(--stroke) solid var(--border-strong)' : 'none',
         outlineOffset: -1,
         transition: 'background 0.1s',
       }}
@@ -920,7 +921,7 @@ function SidebarSessionRow({
             onChange={setEditName}
             onCommit={commitRename}
             onKeyDown={handleKeyDown}
-            style={{ width: '100%', borderRadius: 3, padding: '1px 4px', boxSizing: 'border-box' }}
+            style={{ width: '100%', borderRadius: rad(3), padding: sp('1px 4px'), boxSizing: 'border-box' }}
           />
         ) : (
           <div style={{
@@ -933,7 +934,7 @@ function SidebarSessionRow({
         )}
         <div style={{
           fontSize: 10, color: 'var(--text-faint)', fontFamily: 'var(--font-mono)',
-          display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap',
+          display: 'flex', gap: sp(4), alignItems: 'center', flexWrap: 'wrap',
         }}>
           <span>{formatDateShort(session.lastSeen)}</span>
           {session.sessionModelDisplayName && (
@@ -955,14 +956,14 @@ function SidebarSessionRow({
 
       {/* Actions (visible on hover) */}
       {!editing && (
-      <div style={{ display: 'flex', gap: 3, flexShrink: 0, opacity: hovered ? 1 : 0, transition: 'opacity 0.1s' }}>
+      <div style={{ display: 'flex', gap: sp(3), flexShrink: 0, opacity: hovered ? 1 : 0, transition: 'opacity 0.1s' }}>
         {onRename && <RenameButton onClick={startEditing} title="Rename" />}
         {!isBookmarked && onBookmark && (
           <span
             role="button"
             onClick={(e) => { e.stopPropagation(); onBookmark(); }}
             title="Bookmark"
-            style={{ fontSize: 10, color: 'var(--text-faint)', cursor: 'pointer', padding: '1px 3px' }}
+            style={{ fontSize: 10, color: 'var(--text-faint)', cursor: 'pointer', padding: sp('1px 3px') }}
           >
             🔖
           </span>
@@ -975,7 +976,7 @@ function SidebarSessionRow({
             role="button"
             onClick={(e) => { e.stopPropagation(); onDelete(); }}
             title="Delete session"
-            style={{ fontSize: 10, color: 'var(--text-faint)', cursor: 'pointer', padding: '1px 3px' }}
+            style={{ fontSize: 10, color: 'var(--text-faint)', cursor: 'pointer', padding: sp('1px 3px') }}
             onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--error)')}
             onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--text-faint)')}
           >

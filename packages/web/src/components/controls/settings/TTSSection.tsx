@@ -10,6 +10,7 @@ import type { ClientMessage } from '../../../lib/ws-protocol.js';
 import type { LaymanConfig } from '../../../lib/types.js';
 import { SectionTitle, SectionIntro, FieldRow, SegmentRow, ToggleRow, CustomRow, ROW_STYLE } from './primitives.js';
 import { ttsPlayer, speechOptionsFrom } from '../../../lib/tts.js';
+import { sp, rad } from '../../../lib/density.js';
 
 const SAMPLE_TEXT =
   'Layman is connected. This is how the agent’s responses will sound while you work.';
@@ -34,7 +35,7 @@ function SliderRow({
 }) {
   return (
     <div style={ROW_STYLE}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: sp(12) }}>
         <span style={{ fontSize: 12, color: 'var(--text)', width: 110, flexShrink: 0 }}>{label}</span>
         <input
           type="range"
@@ -53,7 +54,7 @@ function SliderRow({
         </span>
       </div>
       {desc && (
-        <span style={{ fontSize: 10.5, color: 'var(--text-faint)', lineHeight: 1.5, paddingLeft: 122 }}>
+        <span style={{ fontSize: 10.5, color: 'var(--text-faint)', lineHeight: 1.5, paddingLeft: sp(122) }}>
           {desc}
         </span>
       )}
@@ -170,7 +171,7 @@ export function TTSSection({
       />
       {testResult && (
         <p style={{
-          fontSize: 10.5, margin: '0 0 6px',
+          fontSize: 10.5, margin: sp('0 0 6px'),
           color: testResult.ok ? 'var(--ok)' : 'var(--error)',
         }}>
           {testResult.ok
@@ -216,10 +217,10 @@ export function TTSSection({
         onChange={(v) => update({ voice: v })}
       />
       {listError && (
-        <p style={{ fontSize: 10.5, color: 'var(--error)', margin: '0 0 6px' }}>{listError}</p>
+        <p style={{ fontSize: 10.5, color: 'var(--error)', margin: sp('0 0 6px') }}>{listError}</p>
       )}
       {!listError && tts.enabled && !fetching && models.length === 0 && (
-        <p style={{ fontSize: 10.5, color: 'var(--warn)', margin: '0 0 6px' }}>
+        <p style={{ fontSize: 10.5, color: 'var(--warn)', margin: sp('0 0 6px') }}>
           speaches has no models installed. Download one with{' '}
           <code>curl -X POST {tts.endpoint || 'http://localhost:8000'}/v1/models/speaches-ai/Kokoro-82M-v1.0-ONNX</code>
         </p>
@@ -308,13 +309,13 @@ export function TTSSection({
       />
 
       <CustomRow>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: sp(12) }}>
           <button
             onClick={speakSample}
             style={{
-              padding: '5px 12px', fontSize: 11, fontFamily: 'var(--font-ui)',
+              padding: sp('5px 12px'), fontSize: 11, fontFamily: 'var(--font-ui)',
               color: 'var(--text-body)', background: 'transparent',
-              border: '1px solid var(--border-strong)', borderRadius: 5, cursor: 'pointer',
+              border: 'var(--stroke) solid var(--border-strong)', borderRadius: rad(5), cursor: 'pointer',
               whiteSpace: 'nowrap',
             }}
           >

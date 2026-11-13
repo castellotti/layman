@@ -238,8 +238,10 @@ export const DEFAULT_APPEARANCE: Appearance = {
 
 export const FONT_SANS = "'IBM Plex Sans', system-ui, sans-serif";
 export const FONT_MONO = "'IBM Plex Mono', 'SF Mono', 'Fira Code', monospace";
-/** What `--density` multiplies spacing by. */
-const DENSITY_SCALE: Record<Density, number> = { comfortable: 1, compact: 0.72 };
+/** Classic's corner radius: what `rad(6)` in a component means at scale 1. */
+const BASE_RADIUS = 6;
+/** What `--density` multiplies spacing by; the spacing written in the code is the Compact design. */
+const DENSITY_SCALE: Record<Density, number> = { comfortable: 1.3, compact: 1 };
 
 export const FONTS: readonly FontChoice[] = ['theme', 'sans', 'mono'];
 export const DENSITIES: readonly Density[] = ['comfortable', 'compact'];
@@ -330,6 +332,7 @@ export function resolveAppearance(input: unknown, env: Environment): ResolvedApp
   vars['--font-ui'] = mono ? FONT_MONO : FONT_SANS;
   vars['--font-mono'] = FONT_MONO;
   vars['--radius'] = `${theme.radius}px`;
+  vars['--radius-scale'] = String(theme.radius / BASE_RADIUS);
   vars['--stroke'] = `${theme.stroke}px`;
   vars['--density'] = String(DENSITY_SCALE[a.density]);
   vars['--motion'] = motion === 'off' ? '0' : '1';

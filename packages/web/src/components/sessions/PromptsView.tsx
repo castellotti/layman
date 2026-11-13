@@ -16,6 +16,7 @@ import { useFolderCrud } from '../../hooks/useFolderCrud.js';
 import { useExpandedSections, UNFILED_SECTION_KEY } from '../../hooks/useExpandedSections.js';
 import { useInlineEdit } from '../../hooks/useInlineEdit.js';
 import { SpeakButton } from '../tts/SpeakButton.js';
+import { sp, rad } from '../../lib/density.js';
 
 interface HighlightEventPair {
   promptEvent: TimelineEvent | null;
@@ -32,10 +33,10 @@ function EventBlock({ event, kind }: { event: TimelineEvent; kind: 'prompt' | 'r
   // flexShrink: 0 — this sits in a flex-column scroller, where an overflow-hidden
   // item otherwise shrinks to fit (clipping its text) instead of scrolling.
   return (
-    <div style={{ borderRadius: 8, border: '1px solid var(--border)', overflow: 'hidden', flexShrink: 0 }}>
+    <div style={{ borderRadius: rad(8), border: 'var(--stroke) solid var(--border)', overflow: 'hidden', flexShrink: 0 }}>
       <div style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: '4px 12px', background: 'var(--bg-raised)', borderBottom: '1px solid var(--border)',
+        padding: sp('4px 12px'), background: 'var(--bg-raised)', borderBottom: 'var(--stroke) solid var(--border)',
       }}>
         <span style={{
           fontSize: 9.5, fontFamily: 'var(--font-mono)', textTransform: 'uppercase',
@@ -48,7 +49,7 @@ function EventBlock({ event, kind }: { event: TimelineEvent; kind: 'prompt' | 'r
         </span>
       </div>
       <div style={{
-        padding: 12,
+        padding: sp(12),
         borderLeft: `2px solid ${accent}`,
         background: 'var(--bg-card)',
       }}>
@@ -111,7 +112,7 @@ function SidebarHighlightRow({
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       style={{
-        width: '100%', display: 'flex', alignItems: 'center', gap: 6,
+        width: '100%', display: 'flex', alignItems: 'center', gap: sp(6),
         padding: indent ? '5px 12px 5px 24px' : '5px 12px',
         background: isSelected ? 'var(--bg-selected)' : hovered ? 'var(--bg-card)' : 'transparent',
         border: 'none', cursor: 'pointer', textAlign: 'left',
@@ -135,7 +136,7 @@ function SidebarHighlightRow({
             onChange={setEditName}
             onCommit={commitRename}
             onKeyDown={handleKeyDown}
-            style={{ width: '100%', borderRadius: 3, padding: '1px 4px', boxSizing: 'border-box' }}
+            style={{ width: '100%', borderRadius: rad(3), padding: sp('1px 4px'), boxSizing: 'border-box' }}
           />
         ) : (
           <div style={{
@@ -145,7 +146,7 @@ function SidebarHighlightRow({
             {highlight.name}
           </div>
         )}
-        <div style={{ fontSize: 10, color: 'var(--text-faint)', fontFamily: 'var(--font-mono)', display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap' }}>
+        <div style={{ fontSize: 10, color: 'var(--text-faint)', fontFamily: 'var(--font-mono)', display: 'flex', gap: sp(4), alignItems: 'center', flexWrap: 'wrap' }}>
           <span>{sessionLabel ? `${sessionLabel} · ${date}` : date}</span>
           <HostChip hostId={hostInfo?.hostId} hostName={hostInfo?.hostName} />
         </div>
@@ -218,7 +219,7 @@ function SidebarFolder({
       {expanded && highlights.length === 0 && (
         <div
           onDragOver={(e) => { e.preventDefault(); onItemDragOverContainer(folder.id); }}
-          style={{ padding: '4px 24px', fontSize: 10, color: 'var(--text-faint)', fontStyle: 'italic' }}
+          style={{ padding: sp('4px 24px'), fontSize: 10, color: 'var(--text-faint)', fontStyle: 'italic' }}
         >
           Drop highlights here
         </div>
@@ -436,20 +437,20 @@ export function PromptsView() {
       {/* Left sidebar */}
       <div style={{
         width: 280, flexShrink: 0,
-        background: 'var(--bg-raised)', borderRight: '1px solid var(--border)',
+        background: 'var(--bg-raised)', borderRight: 'var(--stroke) solid var(--border)',
         display: 'flex', flexDirection: 'column', overflow: 'hidden',
       }}>
         {/* Search */}
-        <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
+        <div style={{ padding: sp('10px 12px'), borderBottom: 'var(--stroke) solid var(--border)', flexShrink: 0 }}>
           <SearchInput value={searchQuery} onChange={setSearchQuery} placeholder="Search highlights…" />
         </div>
 
         {/* Highlights tree */}
-        <div style={{ flex: 1, overflowY: 'auto', paddingBottom: 8 }}>
+        <div style={{ flex: 1, overflowY: 'auto', paddingBottom: sp(8) }}>
           {highlights.length === 0 ? (
             <div style={{
               display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-              height: '100%', gap: 12, padding: '32px 16px', textAlign: 'center',
+              height: '100%', gap: sp(12), padding: sp('32px 16px'), textAlign: 'center',
             }}>
               <span style={{ fontSize: 24, opacity: 0.2 }}>✦</span>
               <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: 0 }}>No highlights yet.</p>
@@ -459,7 +460,7 @@ export function PromptsView() {
             </div>
           ) : filteredHighlights !== null ? (
             filteredHighlights.length === 0 ? (
-              <p style={{ padding: '12px 16px', fontSize: 11, color: 'var(--text-faint)', fontStyle: 'italic' }}>
+              <p style={{ padding: sp('12px 16px'), fontSize: 11, color: 'var(--text-faint)', fontStyle: 'italic' }}>
                 No highlights match "{searchQuery}"
               </p>
             ) : (
@@ -519,7 +520,7 @@ export function PromptsView() {
                 onDragOver={(e) => { e.preventDefault(); handleDragOverContainer('unfiled'); }}
                 onClick={() => toggleExpanded(UNFILED_SECTION_KEY)}
                 style={{
-                  ...sectionLabel, paddingTop: 4, cursor: 'pointer',
+                  ...sectionLabel, paddingTop: sp(4), cursor: 'pointer',
                   background: dragOverContainerId === 'unfiled' && dragOverItemId === null ? 'var(--bg-selected)' : undefined,
                 }}
               >
@@ -529,8 +530,8 @@ export function PromptsView() {
                 History <span style={{ fontSize: 9, color: 'var(--text-faint)', textTransform: 'none', letterSpacing: 0, fontWeight: 400 }}>newest first</span>
                 <span style={{
                   fontSize: 9.5, fontFamily: 'var(--font-mono)', color: 'var(--text-faint)',
-                  background: 'var(--bg-card)', border: '1px solid var(--border)',
-                  borderRadius: 10, padding: '0 5px',
+                  background: 'var(--bg-card)', border: 'var(--stroke) solid var(--border)',
+                  borderRadius: rad(10), padding: sp('0 5px'),
                 }}>
                   {unfiledHighlights.length}
                 </span>
@@ -540,7 +541,7 @@ export function PromptsView() {
                   {unfiledHighlights.length === 0 && (
                     <div
                       onDragOver={(e) => { e.preventDefault(); handleDragOverContainer('unfiled'); }}
-                      style={{ padding: '4px 12px', fontSize: 10, color: 'var(--text-faint)', fontStyle: 'italic' }}
+                      style={{ padding: sp('4px 12px'), fontSize: 10, color: 'var(--text-faint)', fontStyle: 'italic' }}
                     >
                       Drop highlights here
                     </div>
@@ -576,7 +577,7 @@ export function PromptsView() {
           <div style={{
             flex: 1, display: 'flex', flexDirection: 'column',
             alignItems: 'center', justifyContent: 'center',
-            gap: 12, padding: '0 32px', textAlign: 'center',
+            gap: sp(12), padding: sp('0 32px'), textAlign: 'center',
           }}>
             <span style={{ fontSize: 28, opacity: 0.15 }}>✦</span>
             <p style={{ fontFamily: 'var(--font-ui)', fontSize: 13, fontWeight: 500, color: 'var(--text)', margin: 0 }}>
@@ -591,7 +592,7 @@ export function PromptsView() {
             {/* Header */}
             <div style={{
               display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-              padding: '8px 16px', borderBottom: '1px solid var(--border)',
+              padding: sp('8px 16px'), borderBottom: 'var(--stroke) solid var(--border)',
               background: 'var(--bg-raised)', flexShrink: 0,
             }}>
               <div style={{ minWidth: 0, flex: 1 }}>
@@ -602,7 +603,7 @@ export function PromptsView() {
                 }}>
                   {selectedHighlight.name}
                 </h3>
-                <p style={{ fontSize: 10, color: 'var(--text-faint)', fontFamily: 'var(--font-mono)', margin: '2px 0 0' }}>
+                <p style={{ fontSize: 10, color: 'var(--text-faint)', fontFamily: 'var(--font-mono)', margin: sp('2px 0 0') }}>
                   {new Date(selectedHighlight.createdAt).toLocaleDateString(undefined, {
                     month: 'short', day: 'numeric', year: 'numeric',
                   })}
@@ -628,13 +629,13 @@ export function PromptsView() {
               <button
                 onClick={handleViewInSession}
                 style={{
-                  display: 'flex', alignItems: 'center', gap: 6,
-                  padding: '4px 10px', borderRadius: 5, fontSize: 11,
+                  display: 'flex', alignItems: 'center', gap: sp(6),
+                  padding: sp('4px 10px'), borderRadius: rad(5), fontSize: 11,
                   fontFamily: 'var(--font-ui)', cursor: 'pointer',
-                  background: 'none', border: '1px solid var(--border)',
+                  background: 'none', border: 'var(--stroke) solid var(--border)',
                   color: 'var(--text-muted)',
                   transition: 'color 0.15s, border-color 0.15s',
-                  flexShrink: 0, marginLeft: 12,
+                  flexShrink: 0, marginLeft: sp(12),
                 }}
                 onMouseEnter={(e) => {
                   e.currentTarget.style.color = 'var(--text)';
@@ -654,7 +655,7 @@ export function PromptsView() {
             </div>
 
             {/* Prompt + Response */}
-            <div style={{ flex: 1, overflowY: 'auto', padding: 16, display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <div style={{ flex: 1, overflowY: 'auto', padding: sp(16), display: 'flex', flexDirection: 'column', gap: sp(16) }}>
               {loadingPair ? (
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 1 }}>
                   <p style={{ fontSize: 11, color: 'var(--text-faint)', fontFamily: 'var(--font-ui)' }}>Loading…</p>
@@ -664,7 +665,7 @@ export function PromptsView() {
                   {eventPair.promptEvent ? (
                     <EventBlock event={eventPair.promptEvent} kind="prompt" />
                   ) : (
-                    <div style={{ borderRadius: 8, border: '1px solid var(--border)', padding: 12 }}>
+                    <div style={{ borderRadius: rad(8), border: 'var(--stroke) solid var(--border)', padding: sp(12) }}>
                       <p style={{ fontSize: 10, color: 'var(--text-faint)', fontStyle: 'italic', margin: 0 }}>
                         Prompt event not found (may have been purged)
                       </p>
@@ -673,7 +674,7 @@ export function PromptsView() {
                   {eventPair.responseEvent ? (
                     <EventBlock event={eventPair.responseEvent} kind="response" />
                   ) : (
-                    <div style={{ borderRadius: 8, border: '1px solid var(--border)', padding: 12 }}>
+                    <div style={{ borderRadius: rad(8), border: 'var(--stroke) solid var(--border)', padding: sp(12) }}>
                       <p style={{ fontSize: 10, color: 'var(--text-faint)', fontStyle: 'italic', margin: 0 }}>
                         Response event not found (may have been purged)
                       </p>
@@ -681,7 +682,7 @@ export function PromptsView() {
                   )}
 
                   {/* Actions */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: sp(14) }}>
                     <span
                       role="button"
                       onClick={handleInvestigate}
@@ -692,15 +693,15 @@ export function PromptsView() {
                       ⌕ investigate
                     </span>
                     {sortedFolders.length > 0 && (
-                      <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 10, color: 'var(--text-faint)', cursor: 'pointer' }}>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: sp(6), fontSize: 10, color: 'var(--text-faint)', cursor: 'pointer' }}>
                         ▸ move to folder
                         <select
                           value={selectedHighlight.folderId ?? ''}
                           onChange={(e) => handleMoveToFolder(e.target.value || null)}
                           style={{
                             fontSize: 10, fontFamily: 'var(--font-mono)', background: 'var(--bg-card)',
-                            border: '1px solid var(--border)', borderRadius: 4, color: 'var(--text-muted)',
-                            padding: '2px 4px', outline: 'none', cursor: 'pointer',
+                            border: 'var(--stroke) solid var(--border)', borderRadius: rad(4), color: 'var(--text-muted)',
+                            padding: sp('2px 4px'), outline: 'none', cursor: 'pointer',
                           }}
                         >
                           <option value="">Unfiled</option>
