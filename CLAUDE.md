@@ -367,6 +367,10 @@ whole recording (`?lean=1`, without outputs) joined with the live store and with
 (`useSessionTimeline`), never the live store alone, which holds the WebSocket's last 100 events and what
 arrived since; `lateUpdates` keeps the WebSocket's updates to events the store does not hold, or a
 recorded call that finishes later would run on the board forever.
+The map's geometry is pure (`lib/activity-map.ts`, as for Map and Topology): any number of stations on
+an ellipse, the first at the top; spokes worn by the log of the count; route legs that curve between the
+core and the ring (tests sample every leg of every pair and fail if one cuts the core or leaves the ring,
+where the labels are); lanes for pulses that share a spoke.
 
 ### Text to speech
 
