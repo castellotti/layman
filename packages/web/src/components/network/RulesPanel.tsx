@@ -20,9 +20,10 @@ import { buttonStyle } from './ControlPopover.js';
 import { ALARM, NetIcon, type NetIconName } from './netui.js';
 import { TipWrap, tipProps } from './NetTip.js';
 import { tokenColor } from '../../lib/tokens.js';
+import { sp, rad } from '../../lib/density.js';
 
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
-const sectionTitle: React.CSSProperties = { fontSize: 10, letterSpacing: '0.08em', fontWeight: 600, color: 'var(--text-muted)', marginBottom: 6 };
+const sectionTitle: React.CSSProperties = { fontSize: 10, letterSpacing: '0.08em', fontWeight: 600, color: 'var(--text-muted)', marginBottom: sp(6) };
 
 type Tone = 'ok' | 'error' | 'warn' | 'neutral';
 const TONES: Record<Tone, { bg: string; border: string; icon: NetIconName; colour: string }> = {
@@ -35,7 +36,7 @@ const TONES: Record<Tone, { bg: string; border: string; icon: NetIconName; colou
 function StatusBox({ tone, title, sub, role }: { tone: Tone; title: React.ReactNode; sub: React.ReactNode; role?: string }) {
   const c = TONES[tone];
   return (
-    <div role={role} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 9px', borderRadius: 6, background: c.bg, border: `1px solid ${c.border}`, marginBottom: 10 }}>
+    <div role={role} style={{ display: 'flex', alignItems: 'center', gap: sp(8), padding: sp('8px 9px'), borderRadius: rad(6), background: c.bg, border: `var(--stroke) solid ${c.border}`, marginBottom: sp(10) }}>
       <NetIcon name={c.icon} color={c.colour} />
       <div style={{ fontSize: 11, color: 'var(--text-body)', minWidth: 0 }}>
         <div style={{ fontWeight: tone === 'neutral' || tone === 'ok' ? 400 : 600, color: tone === 'error' ? ALARM.title : tone === 'warn' ? 'var(--warn)' : undefined }}>{title}</div>
@@ -116,7 +117,7 @@ function RuleRow({ index, rule, hits, locked, unsaved, editable, drag, dropTarge
       onDragOver={drag ? (e) => { e.preventDefault(); drag.onDragOver(); } : undefined}
       onDrop={drag ? (e) => { e.preventDefault(); drag.onDragEnd(); } : undefined}
       style={{
-        display: 'flex', alignItems: 'center', gap: 8, padding: '7px 8px', borderRadius: 6, background: 'var(--bg)',
+        display: 'flex', alignItems: 'center', gap: sp(8), padding: sp('7px 8px'), borderRadius: rad(6), background: 'var(--bg)',
         border: `1px ${unsaved ? 'dashed var(--warn)' : `solid ${dropTarget ? 'var(--accent)' : 'var(--border)'}`}`,
       }}
     >
@@ -139,7 +140,7 @@ function RuleRow({ index, rule, hits, locked, unsaved, editable, drag, dropTarge
       {hits !== null && <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-faint)', whiteSpace: 'nowrap' }}>{unsaved ? '—' : plural(hits, 'hit')}</span>}
       {locked && <span style={{ fontSize: 10, color: 'var(--text-faint)', whiteSpace: 'nowrap' }}>not editable</span>}
       {editable && onDelete && (
-        <button type="button" aria-label={`Delete rule ${match}`} onClick={onDelete} style={{ background: 'transparent', border: 'none', padding: 2, cursor: 'pointer' }}>
+        <button type="button" aria-label={`Delete rule ${match}`} onClick={onDelete} style={{ background: 'transparent', border: 'none', padding: sp(2), cursor: 'pointer' }}>
           <NetIcon name="close" size={11} color="var(--text-faint)" />
         </button>
       )}
@@ -148,14 +149,14 @@ function RuleRow({ index, rule, hits, locked, unsaved, editable, drag, dropTarge
 }
 
 const Badge = ({ children }: { children: React.ReactNode }) => (
-  <span style={{ fontSize: 9.5, fontWeight: 600, letterSpacing: '0.04em', color: 'var(--warn)', border: `1px solid ${tokenColor('warn', '45%')}`, background: tokenColor('warn', '10%'), borderRadius: 4, padding: '1px 5px', whiteSpace: 'nowrap' }}>
+  <span style={{ fontSize: 9.5, fontWeight: 600, letterSpacing: '0.04em', color: 'var(--warn)', border: `var(--stroke) solid ${tokenColor('warn', '45%')}`, background: tokenColor('warn', '10%'), borderRadius: rad(4), padding: sp('1px 5px'), whiteSpace: 'nowrap' }}>
     {children}
   </span>
 );
 
 const MATCH_KEYS: MatchKey[] = ['host', 'ip', 'port', 'service', 'tool', 'scope'];
 const inputStyle: React.CSSProperties = {
-  height: 26, padding: '0 7px', fontSize: 11, borderRadius: 5, background: 'var(--bg)', border: '1px solid var(--border-strong)',
+  height: 26, padding: sp('0 7px'), fontSize: 11, borderRadius: rad(5), background: 'var(--bg)', border: 'var(--stroke) solid var(--border-strong)',
   color: 'var(--text)', outline: 'none', fontFamily: 'var(--font-ui)', minWidth: 0,
 };
 
@@ -168,8 +169,8 @@ function AddRuleForm({ onAdd, onCancel }: { onAdd: (rule: Omit<Rule, 'id'>) => v
   const [note, setNote] = useState('');
   const error = value ? checkMatchValue(key, value) : null;
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: 8, border: '1px solid var(--border-strong)', borderRadius: 6, marginTop: 6 }}>
-      <div style={{ display: 'flex', gap: 6 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: sp(6), padding: sp(8), border: 'var(--stroke) solid var(--border-strong)', borderRadius: rad(6), marginTop: sp(6) }}>
+      <div style={{ display: 'flex', gap: sp(6) }}>
         <select aria-label="Action" value={action} onChange={(e) => setAction(e.target.value as RuleAction)} style={inputStyle}>
           <option value="block">Block</option>
           <option value="allow">Allow</option>
@@ -181,11 +182,11 @@ function AddRuleForm({ onAdd, onCancel }: { onAdd: (rule: Omit<Rule, 'id'>) => v
           style={{ ...inputStyle, flex: 1, fontFamily: 'var(--font-mono)' }} />
       </div>
       <input aria-label="Rule note" value={note} onChange={(e) => setNote(e.target.value)} maxLength={500} placeholder="Note (optional)" style={inputStyle} />
-      <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: 'var(--text-body)' }}>
+      <label style={{ display: 'flex', alignItems: 'center', gap: sp(6), fontSize: 11, color: 'var(--text-body)' }}>
         <input type="checkbox" checked={terminate} onChange={(e) => setTerminate(e.target.checked)} />Also cut matching connections that are open
       </label>
       {error && <div style={{ fontSize: 10.5, color: 'var(--warn)' }}>{error}</div>}
-      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: sp(6) }}>
         <button type="button" onClick={onCancel} style={buttonStyle('ghost')}>Cancel</button>
         <button type="button" disabled={!value || !!error} style={buttonStyle('plain')} onClick={() => onAdd({
           action, match: matchFor(key, value), ...(terminate ? { terminate } : {}), ...(note.trim() ? { note: note.trim() } : {}),
@@ -202,19 +203,19 @@ function KillSwitchDialog({ data, onClose }: { data: NetSessionData; onClose: ()
   return (
     <div role="presentation" onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 70, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       <div role="alertdialog" aria-label={`Cut all traffic for ${data.token}?`} onClick={(e) => e.stopPropagation()} style={{
-        width: 420, padding: 16, borderRadius: 8, background: 'var(--bg-card)', border: '1px solid var(--border-strong)', boxShadow: '0 16px 40px rgba(0,0,0,0.55)',
+        width: 420, padding: sp(16), borderRadius: rad(8), background: 'var(--bg-card)', border: 'var(--stroke) solid var(--border-strong)', boxShadow: '0 16px 40px rgba(0,0,0,0.55)',
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, fontWeight: 600, color: 'var(--text)', marginBottom: 8 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: sp(8), fontSize: 13, fontWeight: 600, color: 'var(--text)', marginBottom: sp(8) }}>
           <NetIcon name="cut" color="var(--error)" size={14} />Cut all traffic for {data.token}?
         </div>
-        <div style={{ fontSize: 11.5, color: 'var(--text-muted)', lineHeight: 1.5, marginBottom: 10 }}>
+        <div style={{ fontSize: 11.5, color: 'var(--text-muted)', lineHeight: 1.5, marginBottom: sp(10) }}>
           Sets the default to block and ends {plural(n, 'open connection')}. Nothing leaves the sandbox until you restore it.
         </div>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11.5, color: 'var(--text-body)', marginBottom: 12, cursor: 'pointer' }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: sp(8), fontSize: 11.5, color: 'var(--text-body)', marginBottom: sp(12), cursor: 'pointer' }}>
           <input type="checkbox" checked={keepLlm} onChange={(e) => setKeepLlm(e.target.checked)} />
           Keep the LLM link open so the agent can still answer
         </label>
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: sp(6) }}>
           <button type="button" onClick={onClose} style={buttonStyle('ghost')}>Cancel</button>
           <button type="button" autoFocus onClick={() => { useNetStore.getState().applyRules({ kind: 'cutAll', keepLlm }); onClose(); }} style={buttonStyle('danger')}>
             <NetIcon name="cut" color={ALARM.text} />Cut all traffic
@@ -276,10 +277,10 @@ export function RulesPanel({ data, now }: { data: NetSessionData; now: number })
   };
 
   return (
-    <div style={{ padding: 10 }}>
+    <div style={{ padding: sp(10) }}>
       {enforcementBox(data, now)}
       {conflict && dirty && (
-        <div role="status" style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 9px', borderRadius: 6, background: tokenColor('warn', '10%'), border: `1px solid ${tokenColor('warn', '45%')}`, marginBottom: 10 }}>
+        <div role="status" style={{ display: 'flex', alignItems: 'center', gap: sp(8), padding: sp('8px 9px'), borderRadius: rad(6), background: tokenColor('warn', '10%'), border: `var(--stroke) solid ${tokenColor('warn', '45%')}`, marginBottom: sp(10) }}>
           <NetIcon name="alert" color="var(--warn)" />
           <div style={{ flex: 1, fontSize: 11, color: 'var(--text-body)' }}>
             <div style={{ fontWeight: 600, color: 'var(--warn)' }}>Your unsaved change conflicts</div>
@@ -289,7 +290,7 @@ export function RulesPanel({ data, now }: { data: NetSessionData; now: number })
         </div>
       )}
       {showFile && (
-        <pre style={{ margin: '0 0 10px', maxHeight: 180, overflow: 'auto', padding: 8, fontSize: 10.5, fontFamily: 'var(--font-mono)', color: 'var(--text-body)', background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 6 }}>
+        <pre style={{ margin: sp('0 0 10px'), maxHeight: 180, overflow: 'auto', padding: sp(8), fontSize: 10.5, fontFamily: 'var(--font-mono)', color: 'var(--text-body)', background: 'var(--bg)', border: 'var(--stroke) solid var(--border)', borderRadius: rad(6) }}>
           {view.file ? JSON.stringify(view.file, null, 2) : 'rules.json is not present.'}
         </pre>
       )}
@@ -297,7 +298,7 @@ export function RulesPanel({ data, now }: { data: NetSessionData; now: number })
       <div style={{ ...sectionTitle, color: rejected && !draft ? 'var(--error)' : sectionTitle.color }}>
         {rejected && !draft ? 'IN RULES.JSON · NOT ENFORCED' : draft ? 'EVALUATION ORDER · DRAFT' : 'EVALUATION ORDER'}
       </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: sp(5) }}>
         <RuleRow index={0} rule={{ action: 'block', match: {} }} hits={data.totals.blocked.guard} locked editable={false} />
         {d.rules.map((r, i) => {
           const isCutRule = r.id.startsWith(CUT_PREFIX);
@@ -324,7 +325,7 @@ export function RulesPanel({ data, now }: { data: NetSessionData; now: number })
               setAdding(false);
             }} />
           )}
-          <div style={{ display: 'flex', gap: 6, margin: '8px 0 12px' }}>
+          <div style={{ display: 'flex', gap: sp(6), margin: sp('8px 0 12px') }}>
             {!adding && <button type="button" onClick={() => setAdding(true)} style={buttonStyle('plain')}>Add rule</button>}
             {dirty && <button type="button" disabled={savingOp !== null} onClick={save} style={buttonStyle('primary')}>Save to gate</button>}
             {draft && <button type="button" onClick={() => { setDraft(null); setConflict(false); setAdding(false); }} style={buttonStyle('ghost')}>Discard</button>}
@@ -336,12 +337,12 @@ export function RulesPanel({ data, now }: { data: NetSessionData; now: number })
       {/* Disabled radios take no focus or pointer: the group carries why, and is focusable while it does. */}
       <div role="radiogroup" aria-label="Default policy"
         {...tipProps(cut ? 'All traffic is cut: restore it first.' : !editable ? disabledReason : null)} tabIndex={!editable || cut ? 0 : undefined}
-        style={{ display: 'flex', border: '1px solid var(--border-strong)', borderRadius: 6, overflow: 'hidden' }}>
+        style={{ display: 'flex', border: 'var(--stroke) solid var(--border-strong)', borderRadius: rad(6), overflow: 'hidden' }}>
         {(['allow', 'block'] as const).map((p, i) => (
           <button key={p} type="button" role="radio" aria-checked={d.default === p} disabled={!editable || cut}
             onClick={() => edit({ default: p })}
             style={{
-              flex: 1, height: 26, border: 'none', borderLeft: i ? '1px solid var(--border-strong)' : 'none', fontSize: 11,
+              flex: 1, height: 26, border: 'none', borderLeft: i ? 'var(--stroke) solid var(--border-strong)' : 'none', fontSize: 11,
               background: d.default === p ? 'var(--bg-selected)' : 'transparent', color: d.default === p ? 'var(--text)' : 'var(--text-muted)',
               fontFamily: 'var(--font-ui)', cursor: editable && !cut ? 'pointer' : 'default',
             }}>
@@ -350,7 +351,7 @@ export function RulesPanel({ data, now }: { data: NetSessionData; now: number })
         ))}
       </div>
 
-      <div style={{ display: 'flex', gap: 6, marginTop: 10 }}>
+      <div style={{ display: 'flex', gap: sp(6), marginTop: sp(10) }}>
         {cut ? (
           <button type="button" disabled={disabledReason !== null} onClick={() => useNetStore.getState().applyRules({ kind: 'restoreAll' })} style={buttonStyle('ok')}>
             <NetIcon name="check" color="var(--net-tunnel)" />Restore all traffic
@@ -364,11 +365,11 @@ export function RulesPanel({ data, now }: { data: NetSessionData; now: number })
           </TipWrap>
         )}
       </div>
-      <div style={{ fontSize: 10, color: 'var(--text-faint)', marginTop: 4 }}>
+      <div style={{ fontSize: 10, color: 'var(--text-faint)', marginTop: sp(4) }}>
         {cut ? 'All traffic is cut. Restoring removes those rules and puts back the previous default.' : 'Blocks by default and ends open connections.'}
       </div>
       {disabledReason && view.write?.state !== 'pending' && (
-        <div style={{ fontSize: 10, color: 'var(--text-faint)', marginTop: 8, lineHeight: 1.5 }}>
+        <div style={{ fontSize: 10, color: 'var(--text-faint)', marginTop: sp(8), lineHeight: 1.5 }}>
           Read-only: {disabledReason} You can still edit <span style={{ fontFamily: 'var(--font-mono)' }}>{view.displayPath}</span>, or use <span style={{ fontFamily: 'var(--font-mono)' }}>glove net block</span>.
         </div>
       )}

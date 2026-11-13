@@ -29,6 +29,7 @@ import type { NetRange } from '../../lib/netobs-types.js';
 import { useNetTokens } from '../../hooks/useNetTrace.js';
 import { tipProps } from './NetTip.js';
 import { tokenColor } from '../../lib/tokens.js';
+import { sp, rad } from '../../lib/density.js';
 
 const BAND: Record<BandKind, { colour: string; opacity: number }> = {
   tunnel: { colour: 'var(--net-tunnel)', opacity: 0.55 },
@@ -79,10 +80,10 @@ function useSize(ref: React.RefObject<HTMLDivElement>): { w: number; h: number }
 
 export function TopologyLegend() {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 10.5, color: 'var(--text-body)', overflow: 'hidden', minWidth: 0 }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: sp(12), fontSize: 10.5, color: 'var(--text-body)', overflow: 'hidden', minWidth: 0 }}>
       {TOPOLOGY_LEGEND.map((l) => (
-        <span key={l.label} {...tipProps({ heading: l.label, body: l.tip })} tabIndex={0} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, whiteSpace: 'nowrap' }}>
-          <span style={{ width: 14, height: 3, borderRadius: 2, background: BAND[l.bands[0]].colour }} />{l.label}
+        <span key={l.label} {...tipProps({ heading: l.label, body: l.tip })} tabIndex={0} style={{ display: 'inline-flex', alignItems: 'center', gap: sp(5), whiteSpace: 'nowrap' }}>
+          <span style={{ width: 14, height: 3, borderRadius: rad(2), background: BAND[l.bands[0]].colour }} />{l.label}
         </span>
       ))}
       <span {...tipProps(TOPOLOGY_BAND_WIDTH_TIP)} tabIndex={0} style={{ color: 'var(--text-faint)', whiteSpace: 'nowrap' }}>Band width: bytes (square root)</span>
@@ -516,7 +517,7 @@ function TokenTiles({ token, range }: { token: string; range: NetRange | null })
   const sums = useNetTokens(token, range, TOKENS_REFRESH_MS);
   if (!sums) return null;
   return (
-    <div aria-label="LLM tokens" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(92px, 1fr))', gap: 8, marginTop: 8 }}>
+    <div aria-label="LLM tokens" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(92px, 1fr))', gap: sp(8), marginTop: sp(8) }}>
       {tokenTiles(sums.tokens, sums.reported).map((t) => (
         <Tile key={t.label} label={t.label} value={t.value} sub={t.sub} tip={`${t.exact}, from the agent's transcript`} colour={t.colour} icon={t.icon} />
       ))}
@@ -534,16 +535,16 @@ function Explanation({ explain }: { explain: BoxExplanation | null }) {
   if (!shown || !explain) return null;
   return (
     <div role="note" data-box-explanation="" style={{
-      display: 'flex', gap: 8, alignItems: 'flex-start', padding: '8px 8px 8px 10px', margin: '14px 0 0', borderRadius: 6,
-      border: `1px solid ${tokenColor('info', '40%')}`, background: tokenColor('info', '7%'),
+      display: 'flex', gap: sp(8), alignItems: 'flex-start', padding: sp('8px 8px 8px 10px'), margin: sp('14px 0 0'), borderRadius: rad(6),
+      border: `var(--stroke) solid ${tokenColor('info', '40%')}`, background: tokenColor('info', '7%'),
     }}>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--text)' }}>{explain.heading}</div>
-        <div style={{ fontSize: 11, color: 'var(--text-body)', lineHeight: 1.45, marginTop: 2 }}>{explain.body}</div>
+        <div style={{ fontSize: 11, color: 'var(--text-body)', lineHeight: 1.45, marginTop: sp(2) }}>{explain.body}</div>
       </div>
       <button type="button" aria-label="Dismiss this explanation" onClick={() => setShown(false)} style={{
         display: 'flex', alignItems: 'center', justifyContent: 'center', width: 20, height: 20, flexShrink: 0,
-        background: 'transparent', border: 'none', borderRadius: 4, cursor: 'pointer',
+        background: 'transparent', border: 'none', borderRadius: rad(4), cursor: 'pointer',
       }}>
         <NetIcon name="close" size={10} color="var(--text-faint)" />
       </button>
@@ -577,16 +578,16 @@ function RouteMix({ parts }: { parts: BoxDetails['mix'] }) {
     <div data-route-mix="">
       <SectionHead>Bytes by route</SectionHead>
       <div role="img" aria-label={parts.map((p) => `${p.label} ${pct(p.bytes, total)}`).join(', ')}
-        style={{ display: 'flex', gap: 2, height: 8, borderRadius: 4, overflow: 'hidden' }}>
+        style={{ display: 'flex', gap: sp(2), height: 8, borderRadius: rad(4), overflow: 'hidden' }}>
         {parts.map((p) => (
           <span key={p.key} {...tipProps({ heading: p.label, body: `${formatBytes(p.bytes)} · ${pct(p.bytes, total)} of the bytes, ${p.destinations} destination${p.destinations === 1 ? '' : 's'}` })}
             style={{ flex: `${p.bytes} 0 0`, minWidth: 3, background: MIX_COLOUR[p.key] }} />
         ))}
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '10px 1fr auto auto', gap: '3px 8px', alignItems: 'center', marginTop: 6, fontSize: 10.5 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '10px 1fr auto auto', gap: sp('3px 8px'), alignItems: 'center', marginTop: sp(6), fontSize: 10.5 }}>
         {parts.map((p) => (
           <React.Fragment key={p.key}>
-            <span style={{ width: 10, height: 3, borderRadius: 2, background: MIX_COLOUR[p.key] }} />
+            <span style={{ width: 10, height: 3, borderRadius: rad(2), background: MIX_COLOUR[p.key] }} />
             <span style={{ color: 'var(--text-body)' }}>{p.label} <span style={{ color: 'var(--text-faint)' }}>· {p.destinations}</span></span>
             <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--text)', textAlign: 'right' }}>{formatBytes(p.bytes)}</span>
             <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-faint)', textAlign: 'right', minWidth: 30 }}>{pct(p.bytes, total)}</span>
@@ -607,7 +608,7 @@ function TopDestinations({ b }: { b: BoxDetails }) {
   return (
     <div data-top-dests="">
       <SectionHead>{byRefusals ? 'Most refused' : 'Busiest destinations'} <span style={{ color: 'var(--text-faint)', fontWeight: 400 }}>{b.totals.destinations}</span></SectionHead>
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 72px', gap: '4px 8px', alignItems: 'center' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 72px', gap: sp('4px 8px'), alignItems: 'center' }}>
         {b.top.map((r) => {
           const host = r.host;
           const inner = (
@@ -615,10 +616,10 @@ function TopDestinations({ b }: { b: BoxDetails }) {
               <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '100%' }}>
                 {r.label}{r.state === 'active' && <span style={{ color: 'var(--net-tunnel)' }}> ●</span>}
               </span>
-              <span style={{ display: 'block', height: 4, width: `${Math.max(2, (100 * value(r)) / max)}%`, borderRadius: 2, background: MIX_COLOUR[r.key] }} />
+              <span style={{ display: 'block', height: 4, width: `${Math.max(2, (100 * value(r)) / max)}%`, borderRadius: rad(2), background: MIX_COLOUR[r.key] }} />
             </>
           );
-          const cell: React.CSSProperties = { display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0, padding: 0, background: 'transparent', border: 'none', textAlign: 'left' };
+          const cell: React.CSSProperties = { display: 'flex', flexDirection: 'column', gap: sp(3), minWidth: 0, padding: 0, background: 'transparent', border: 'none', textAlign: 'left' };
           return (
           <React.Fragment key={r.label}>
             {/* One with no host (a malformed request) has no path to follow: it is not a link. */}
@@ -632,7 +633,7 @@ function TopDestinations({ b }: { b: BoxDetails }) {
           );
         })}
       </div>
-      {b.more > 0 && <div style={{ fontSize: 10.5, color: 'var(--text-faint)', marginTop: 4 }}>+{b.more} more</div>}
+      {b.more > 0 && <div style={{ fontSize: 10.5, color: 'var(--text-faint)', marginTop: sp(4) }}>+{b.more} more</div>}
     </div>
   );
 }
@@ -645,9 +646,9 @@ function ExitHistory({ exits }: { exits: BoxDetails['exits'] }) {
   return (
     <div data-exit-history="">
       <SectionHead>Exit checks <span style={{ color: 'var(--text-faint)', fontWeight: 400 }}>{exits.length} · {ips} address{ips === 1 ? '' : 'es'}</span></SectionHead>
-      <ol style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gap: 3 }}>
+      <ol style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gap: sp(3) }}>
         {shown.map((e, i) => (
-          <li key={`${e.t}-${i}`} style={{ display: 'grid', gridTemplateColumns: '12px minmax(0, 1fr) auto', gap: 6, alignItems: 'center', fontSize: 10.5 }}>
+          <li key={`${e.t}-${i}`} style={{ display: 'grid', gridTemplateColumns: '12px minmax(0, 1fr) auto', gap: sp(6), alignItems: 'center', fontSize: 10.5 }}>
             <NetIcon name={e.healthy ? 'check' : 'alert'} size={10} color={e.healthy ? 'var(--net-tunnel)' : 'var(--warn)'} />
             <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--text)' }}>{e.ip ?? 'no address'}</span>
@@ -657,7 +658,7 @@ function ExitHistory({ exits }: { exits: BoxDetails['exits'] }) {
           </li>
         ))}
       </ol>
-      {exits.length > shown.length && <div style={{ fontSize: 10.5, color: 'var(--text-faint)', marginTop: 4 }}>+{exits.length - shown.length} earlier</div>}
+      {exits.length > shown.length && <div style={{ fontSize: 10.5, color: 'var(--text-faint)', marginTop: sp(4) }}>+{exits.length - shown.length} earlier</div>}
     </div>
   );
 }
@@ -670,20 +671,20 @@ function BoxPanel({ data, id }: { data: NetSessionData; id: string }) {
   const t = useMemo(() => shared ?? layoutTopology(data, MIN_WIDTH, MIN_HEIGHT), [shared, data]);
   const b = useMemo(() => boxDetails(data, t, id), [data, t, id]);
   if (!b) {
-    return <div style={{ padding: 14, fontSize: 11.5, color: 'var(--text-muted)' }}>That box is no longer in the diagram.</div>;
+    return <div style={{ padding: sp(14), fontSize: 11.5, color: 'var(--text-muted)' }}>That box is no longer in the diagram.</div>;
   }
   const { totals } = b;
   const policy = b.kind === 'policy';
   return (
-    <div style={{ padding: 12 }} data-box-details={b.id}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+    <div style={{ padding: sp(12) }} data-box-details={b.id}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: sp(8) }}>
         <NetIcon name={BOX_ICON[b.kind]} size={14} color={policy ? 'var(--error)' : 'var(--text-muted)'} />
         <span style={{ fontFamily: b.mono ? 'var(--font-mono)' : undefined, fontSize: 13, fontWeight: 600, color: 'var(--text)', wordBreak: 'break-all' }}>{b.title}</span>
         {totals.live > 0 && <Badge colour="var(--net-tunnel)">LIVE</Badge>}
       </div>
-      <div style={{ fontSize: 10.5, color: 'var(--text-faint)', margin: '2px 0 10px 22px' }}>{BOX_KIND[b.kind]}</div>
+      <div style={{ fontSize: 10.5, color: 'var(--text-faint)', margin: sp('2px 0 10px 22px') }}>{BOX_KIND[b.kind]}</div>
       {b.facts.length > 0 && (
-        <dl style={{ display: 'grid', gridTemplateColumns: 'max-content minmax(0, 1fr)', gap: '4px 10px', margin: 0, fontSize: 11 }}>
+        <dl style={{ display: 'grid', gridTemplateColumns: 'max-content minmax(0, 1fr)', gap: sp('4px 10px'), margin: 0, fontSize: 11 }}>
           {b.facts.map((f) => (
             <React.Fragment key={f.label}>
               <dt style={{ color: 'var(--text-faint)' }}>{f.label}</dt>
@@ -692,7 +693,7 @@ function BoxPanel({ data, id }: { data: NetSessionData; id: string }) {
           ))}
         </dl>
       )}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(92px, 1fr))', gap: 8, marginTop: 14 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(92px, 1fr))', gap: sp(8), marginTop: sp(14) }}>
         {!policy && <Tile label="SENT" value={formatBytes(totals.up)} colour="var(--net-up)" icon="up" />}
         {!policy && <Tile label="RECEIVED" value={formatBytes(totals.down)} colour="var(--net-down)" icon="down" />}
         {!policy && <Tile label="FLOWS" value={totals.flows.toLocaleString()} colour="var(--text-muted)" icon="activity" />}
@@ -716,7 +717,7 @@ export function SelectedPath({ data }: { data: NetSessionData }) {
   if (box && !netDest) return <BoxPanel key={box} data={data} id={box} />;
   if (!path) {
     return (
-      <div style={{ padding: 14, fontSize: 11.5, color: 'var(--text-muted)', lineHeight: 1.5 }}>
+      <div style={{ padding: sp(14), fontSize: 11.5, color: 'var(--text-muted)', lineHeight: 1.5 }}>
         Select any box in the diagram. A destination or a band follows its path hop by hop, and shows which hops glove verified and which are only declared;
         any other box says what it is for and shows the traffic through it.
       </div>
@@ -728,21 +729,21 @@ export function SelectedPath({ data }: { data: NetSessionData }) {
   const rules = data.rules.enforced?.rules ?? data.rules.file?.rules ?? [];
   const apply = useNetStore.getState().applyRules;
   return (
-    <div style={{ padding: 12 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+    <div style={{ padding: sp(12) }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: sp(8) }}>
         <NetIcon name="globe" size={14} color={directLegend(d)?.colourVar ?? 'var(--net-tunnel)'} />
         <span style={{ fontFamily: 'var(--font-mono)', fontSize: 13, fontWeight: 600, color: 'var(--text)', wordBreak: 'break-all' }}>{d.host}</span>
         {d.state === 'active' && <Badge colour="var(--net-tunnel)">LIVE</Badge>}
       </div>
-      <div style={{ fontSize: 10.5, color: 'var(--text-faint)', margin: '2px 0 10px 22px' }}>
+      <div style={{ fontSize: 10.5, color: 'var(--text-faint)', margin: sp('2px 0 10px 22px') }}>
         {[d.tools.map(toolLabel).join(', '), `${d.flows} flow${d.flows === 1 ? '' : 's'}`, formatBytes(d.bytesUp + d.bytesDown)].filter(Boolean).join(' · ')}
       </div>
       <ol aria-label="Hops" style={{ listStyle: 'none', margin: 0, padding: 0 }}>
         {hops.map((hop, i) => (
-          <li key={hop.id} style={{ display: 'grid', gridTemplateColumns: '18px 1fr', gap: 8, position: 'relative', paddingBottom: i === hops.length - 1 ? 0 : 12 }}>
+          <li key={hop.id} style={{ display: 'grid', gridTemplateColumns: '18px 1fr', gap: sp(8), position: 'relative', paddingBottom: i === hops.length - 1 ? 0 : 12 }}>
             {i < hops.length - 1 && <span style={{ position: 'absolute', left: 8, top: 16, bottom: 0, width: 1, background: 'var(--border-strong)' }} />}
             <span style={{
-              width: 14, height: 14, marginTop: 1, borderRadius: 7, border: `1.5px ${hop.evidence === 'declared' ? 'dashed' : 'solid'} ${EVIDENCE[hop.evidence]}`, background: 'var(--bg)',
+              width: 14, height: 14, marginTop: sp(1), borderRadius: rad(7), border: `1.5px ${hop.evidence === 'declared' ? 'dashed' : 'solid'} ${EVIDENCE[hop.evidence]}`, background: 'var(--bg)',
             }} />
             <div style={{ minWidth: 0 }}>
               <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text)' }}>{hop.title}</div>
@@ -752,12 +753,12 @@ export function SelectedPath({ data }: { data: NetSessionData }) {
           </li>
         ))}
       </ol>
-      <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
+      <div style={{ display: 'flex', gap: sp(8), marginTop: sp(14) }}>
         <Tile label="SENT" value={formatBytes(d.bytesUp)} colour="var(--net-up)" icon="up" />
         <Tile label="RECEIVED" value={formatBytes(d.bytesDown)} colour="var(--net-down)" icon="down" />
       </div>
       {isLlmDestination(d) && <TokenTiles token={data.token} range={data.range} />}
-      <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }} data-tip={disabled ?? undefined}>
+      <div style={{ display: 'flex', gap: sp(8), marginTop: sp(12), flexWrap: 'wrap' }} data-tip={disabled ?? undefined}>
         {d.host && d.state !== 'guard' && v?.action === 'allow' && (
           <button type="button" disabled={!!disabled} onClick={() => apply({ kind: 'blockHost', host: d.host!, terminate: false })} style={buttonStyle('danger')}>
             <NetIcon name="blocked" color={ALARM.text} />Block {d.host}

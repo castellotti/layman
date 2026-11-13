@@ -1,6 +1,7 @@
 import React, { useRef, useState, useCallback, useEffect, Suspense, lazy } from 'react';
 import { Header } from './components/layout/Header.js';
 import { ExpandingLayout } from './components/layout/ExpandingLayout.js';
+import { sp, rad } from './lib/density.js';
 const FlowchartView = lazy(() => import('./components/flowchart/FlowchartView.js').then(m => ({ default: m.FlowchartView })));
 // Network, Map, Topology and Trace (glove): one lazy chunk, fetched only when opened.
 const NetworkView = lazy(() => import('./components/network/NetworkView.js'));
@@ -104,18 +105,18 @@ function StatusBar() {
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          padding: '4px 16px',
+          padding: sp('4px 16px'),
           background: 'var(--bg-raised)',
-          borderTop: '1px solid var(--border)',
+          borderTop: 'var(--stroke) solid var(--border)',
           fontSize: 10,
           color: 'var(--text-faint)',
           fontFamily: 'var(--font-mono)',
           flexShrink: 0,
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: sp(12) }}>
           {count > 0 && (
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: 'var(--warn)', fontWeight: 500 }}>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: sp(4), color: 'var(--warn)', fontWeight: 500 }}>
               <BoltIcon size={10} />
               {count} pending {count === 1 ? 'approval' : 'approvals'}
             </span>
@@ -128,7 +129,7 @@ function StatusBar() {
             </>
           )}
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, color: 'var(--text-faint)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: sp(10), color: 'var(--text-faint)' }}>
           <TTSBar />
           {displayName && (
             <>
@@ -164,7 +165,7 @@ function StatusBar() {
             Layman {serverVersion ? `v${serverVersion}` : ''}
           </button>
           <span style={{ color: 'var(--border)' }}>·</span>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: sp(6) }}>
             <div style={dotStyle} />
             <span style={{ color: wsColor }}>{wsText}</span>
           </div>
@@ -300,17 +301,17 @@ export function App() {
   const backBanner = returnToDashboard && (
     <div
       data-print-hide
-      style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 16px', background: 'var(--bg-raised)', borderBottom: '1px solid var(--border)', flexShrink: 0 }}
+      style={{ display: 'flex', alignItems: 'center', gap: sp(8), padding: sp('4px 16px'), background: 'var(--bg-raised)', borderBottom: 'var(--stroke) solid var(--border)', flexShrink: 0 }}
     >
       <button
         onClick={returnFromDashboardDrilldown}
         style={{
-          display: 'flex', alignItems: 'center', gap: 4,
-          padding: '3px 10px', borderRadius: 4,
+          display: 'flex', alignItems: 'center', gap: sp(4),
+          padding: sp('3px 10px'), borderRadius: rad(4),
           fontFamily: 'var(--font-mono)', fontSize: 10,
           color: 'var(--text)',
           background: 'var(--bg-selected)',
-          border: '1px solid var(--border-strong)',
+          border: 'var(--stroke) solid var(--border-strong)',
           cursor: 'pointer',
         }}
       >

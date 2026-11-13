@@ -8,6 +8,7 @@ import { deriveSessionState, getSessionDisplayName, contextPctColor, isSessionLi
 import { cwdBasename } from '../../lib/format.js';
 import { HostChip } from '../shared/HostChip.js';
 import { tokenColor } from '../../lib/tokens.js';
+import { sp } from '../../lib/density.js';
 
 function getTimeSince(timestamp: number, now: number): string {
   const delta = now - timestamp;
@@ -80,11 +81,11 @@ export const SessionListRow = React.memo(function SessionListRow({
       style={{
         display: 'flex',
         alignItems: 'center',
-        gap: 8,
-        padding: '7px 12px',
+        gap: sp(8),
+        padding: sp('7px 12px'),
         cursor: 'pointer',
         background: isOpen ? 'var(--bg-selected)' : 'transparent',
-        borderBottom: '1px solid var(--border-subtle)',
+        borderBottom: 'var(--stroke) solid var(--border-subtle)',
         borderLeft: isDragOver ? '2px solid var(--info)' : '2px solid transparent',
         opacity: isDragging ? 0.45 : 1,
         transition: 'background 0.15s',
@@ -114,8 +115,8 @@ export const SessionListRow = React.memo(function SessionListRow({
       {/* Two rows. Top: the name across the row, then the link and ctx% (or the time since
           the last event). Bottom: the cwd, the model and the meter; the cwd gives way first,
           then the model, so a long model id never squeezes the name. */}
-      <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+      <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: sp(2) }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: sp(6), minWidth: 0 }}>
           <span title={displayName} style={{
             flex: 1,
             minWidth: 0,
@@ -147,7 +148,7 @@ export const SessionListRow = React.memo(function SessionListRow({
           )}
         </div>
         {(cwdName || hasMetrics) && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: sp(6), minWidth: 0 }}>
             <span style={{
               flex: '1 1 0',
               minWidth: 0,

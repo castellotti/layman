@@ -18,6 +18,7 @@
 import React, { useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { NetTip } from '../../lib/net-format.js';
+import { sp, rad } from '../../lib/density.js';
 
 /** The attributes that give an element a tip (none for an empty one). */
 export function tipProps(tip: NetTip | string | null | undefined): Record<string, string> {
@@ -158,18 +159,18 @@ export function NetTipHost() {
       role="tooltip"
       data-print-hide
       style={{
-        position: 'fixed', left, zIndex: 1000, maxWidth: WIDTH, padding: '8px 10px', borderRadius: 6,
+        position: 'fixed', left, zIndex: 1000, maxWidth: WIDTH, padding: sp('8px 10px'), borderRadius: rad(6),
         ...(below ? { top: rect.bottom + GAP } : { bottom: window.innerHeight - rect.top + GAP }),
         maxHeight: Math.max(60, below ? room.below : room.above), overflow: 'hidden',
-        background: 'var(--bg-elevated, var(--bg-card))', border: '1px solid var(--border-strong)',
+        background: 'var(--bg-elevated, var(--bg-card))', border: 'var(--stroke) solid var(--border-strong)',
         boxShadow: '0 10px 28px rgba(0,0,0,0.45)', fontFamily: 'var(--font-ui)', fontSize: 11.5,
         lineHeight: 1.45, color: 'var(--text-body)', pointerEvents: 'none', whiteSpace: 'pre-line',
       }}
     >
-      {tip.heading && <div style={{ fontWeight: 600, color: 'var(--text)', marginBottom: 2 }}>{tip.heading}</div>}
+      {tip.heading && <div style={{ fontWeight: 600, color: 'var(--text)', marginBottom: sp(2) }}>{tip.heading}</div>}
       <div>{clip(tip.body)}</div>
       {facts && (
-        <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 1, fontFamily: 'var(--font-mono)', fontSize: 10.5, color: 'var(--text-muted)' }}>
+        <div style={{ marginTop: sp(6), display: 'flex', flexDirection: 'column', gap: sp(1), fontFamily: 'var(--font-mono)', fontSize: 10.5, color: 'var(--text-muted)' }}>
           {facts.map((f, i) => <div key={i}>{f}</div>)}
         </div>
       )}

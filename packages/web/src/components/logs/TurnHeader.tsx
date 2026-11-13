@@ -5,6 +5,7 @@ import { formatTime, formatDuration } from '../../lib/format.js';
 import type { Turn } from '../../lib/types.js';
 import type { TurnSpan } from '../../lib/turn-range.js';
 import { NetworkForTurn } from '../network/NetworkForTurn.js';
+import { sp, rad } from '../../lib/density.js';
 
 /** First non-empty line, length-capped — a turn's heading is its prompt's opening. */
 function firstLine(text: string, max = 96): string {
@@ -41,9 +42,9 @@ export const TurnHeader = React.memo(function TurnHeader({
       data-prompt-event-id={turn.promptEventId}
       onClick={onSelect}
       style={{
-        display: 'flex', alignItems: 'center', gap: 8,
-        margin: '6px 8px 2px', padding: '3px 8px',
-        borderRadius: 4, cursor: 'pointer',
+        display: 'flex', alignItems: 'center', gap: sp(8),
+        margin: sp('6px 8px 2px'), padding: sp('3px 8px'),
+        borderRadius: rad(4), cursor: 'pointer',
         background: addressed ? 'var(--bg-selected)' : 'var(--bg-raised)',
         borderLeft: `2px solid ${addressed ? 'var(--accent)' : 'var(--border-strong)'}`,
       }}
@@ -73,7 +74,7 @@ export const TurnHeader = React.memo(function TurnHeader({
 
       <span style={{
         fontFamily: 'var(--font-mono)', fontSize: 9.5, color: 'var(--text-faint)',
-        flexShrink: 0, display: 'flex', gap: 6, alignItems: 'center',
+        flexShrink: 0, display: 'flex', gap: sp(6), alignItems: 'center',
       }}>
         <span>{formatTime(turn.startedAt)}</span>
         {duration && <span>· {duration}</span>}

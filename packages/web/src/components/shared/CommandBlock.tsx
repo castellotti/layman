@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { splitCommandLines, hasSudoLine, copyAllPayload, copyLinePayload } from '../../lib/command-lines.js';
+import { sp, rad } from '../../lib/density.js';
 
 interface CommandBlockProps {
   code: string;
@@ -42,8 +43,8 @@ export function CommandBlock({ code, className = '' }: CommandBlockProps) {
   };
 
   return (
-    <div className={className} style={{ background: 'var(--bg-raised)', border: '1px solid var(--border)', borderRadius: 6, overflow: 'hidden' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '3px 10px', background: 'var(--bg-card)', borderBottom: '1px solid var(--border-subtle)' }}>
+    <div className={className} style={{ background: 'var(--bg-raised)', border: 'var(--stroke) solid var(--border)', borderRadius: rad(6), overflow: 'hidden' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: sp(8), padding: sp('3px 10px'), background: 'var(--bg-card)', borderBottom: 'var(--stroke) solid var(--border-subtle)' }}>
         <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--text-faint)' }}>
           shell{hasSudo ? ' · run in your terminal (requires sudo)' : ''}
         </span>
@@ -57,14 +58,14 @@ export function CommandBlock({ code, className = '' }: CommandBlockProps) {
           {copiedAll ? '✓ Copied' : 'Copy all'}
         </button>
       </div>
-      <div style={{ padding: '6px 0' }}>
+      <div style={{ padding: sp('6px 0') }}>
         {lines.map((line, i) => (
           <div
             key={i}
             onMouseEnter={() => setHoveredLine(i)}
             onMouseLeave={() => setHoveredLine((cur) => (cur === i ? null : cur))}
             style={{
-              display: 'flex', alignItems: 'center', gap: 8, padding: '1px 10px',
+              display: 'flex', alignItems: 'center', gap: sp(8), padding: sp('1px 10px'),
               background: hoveredLine === i ? 'var(--bg-selected)' : 'transparent',
             }}
           >
@@ -78,9 +79,9 @@ export function CommandBlock({ code, className = '' }: CommandBlockProps) {
               onClick={(e) => copyLine(e, i)}
               title="Copy this line"
               style={{
-                display: 'flex', alignItems: 'center', gap: 3, fontSize: 9.5,
+                display: 'flex', alignItems: 'center', gap: sp(3), fontSize: 9.5,
                 color: copiedLine === i ? 'var(--ok)' : 'var(--text-faint)',
-                background: 'none', border: 'none', cursor: 'pointer', padding: '0 2px', flexShrink: 0,
+                background: 'none', border: 'none', cursor: 'pointer', padding: sp('0 2px'), flexShrink: 0,
                 opacity: hoveredLine === i || copiedLine === i ? 1 : 0,
                 transition: 'opacity 0.1s',
               }}

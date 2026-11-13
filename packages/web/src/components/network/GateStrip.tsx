@@ -19,11 +19,12 @@ import { ALARM, Chip, NetIcon, useStored, type NetIconName } from './netui.js';
 import { TipWrap, tipProps } from './NetTip.js';
 import { useNetStore } from '../../stores/netStore.js';
 import { tokenColor } from '../../lib/tokens.js';
+import { sp, rad } from '../../lib/density.js';
 
 const bannerButton: React.CSSProperties = {
-  display: 'inline-flex', alignItems: 'center', gap: 6, height: 26, padding: '0 10px', borderRadius: 6,
+  display: 'inline-flex', alignItems: 'center', gap: sp(6), height: 26, padding: sp('0 10px'), borderRadius: rad(6),
   fontSize: 11.5, fontWeight: 500, whiteSpace: 'nowrap', background: 'var(--bg-pill)',
-  border: '1px solid var(--border-strong)', color: 'var(--text)', cursor: 'pointer', fontFamily: 'var(--font-ui)',
+  border: 'var(--stroke) solid var(--border-strong)', color: 'var(--text)', cursor: 'pointer', fontFamily: 'var(--font-ui)',
 };
 
 function sessionOption(s: NetSessionSummary): string {
@@ -66,15 +67,15 @@ function RangeControl({ token, range, onRange, display, setDisplay }: {
   const close = useCallback(() => setAnchor(null), []);
   const lit = range !== null;
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: sp(4), flexShrink: 0 }}>
       <button type="button" data-range-button="" aria-label={display ? 'Hide the time range' : 'Show the time range'} aria-pressed={display}
         onClick={() => { setDisplay(!display); setAnchor(null); }}
         {...tipProps(range
           ? { heading: 'A time range is set', body: 'Every figure on these tabs is for this range only: bytes are what moved during it.', facts: [`${name ? `${name} · ` : ''}${formatRange(range)}`, rangeTitle(range)] }
           : { heading: 'All records', body: display ? 'Hide the time range, to make room for the gate’s state.' : 'Show the time range, to choose a run, a day or a span of this session.' })}
         style={{
-          display: 'flex', alignItems: 'center', justifyContent: 'center', width: 24, height: 24, borderRadius: 5, cursor: 'pointer',
-          border: `1px solid ${lit ? 'var(--info)' : 'var(--border)'}`,
+          display: 'flex', alignItems: 'center', justifyContent: 'center', width: 24, height: 24, borderRadius: rad(5), cursor: 'pointer',
+          border: `var(--stroke) solid ${lit ? 'var(--info)' : 'var(--border)'}`,
           background: lit ? tokenColor('info', '22%') : 'transparent',
         }}>
         <NetIcon name="calendar" color={lit ? 'var(--info)' : 'var(--text-muted)'} strokeWidth={lit ? 1.8 : 1.4} />
@@ -86,17 +87,17 @@ function RangeControl({ token, range, onRange, display, setDisplay }: {
             onClick={(e) => setAnchor(anchor ? null : e.currentTarget.getBoundingClientRect())}
             {...tipProps(range ? { heading: name ?? 'Time range', body: 'Only the traffic in this range: bytes are what moved during it. Click to choose another.', facts: [rangeTitle(range)] } : 'Choose a run, a day or a span of this session')}
             style={{
-              display: 'flex', alignItems: 'center', gap: 5, height: 24, padding: '0 8px', borderRadius: 5, cursor: 'pointer',
+              display: 'flex', alignItems: 'center', gap: sp(5), height: 24, padding: sp('0 8px'), borderRadius: rad(5), cursor: 'pointer',
               fontSize: 10.5, fontFamily: range ? 'var(--font-mono)' : 'var(--font-ui)', whiteSpace: 'nowrap',
               color: range ? 'var(--text)' : 'var(--text-muted)', background: anchor ? 'var(--bg-selected)' : 'transparent',
-              border: `1px solid ${range ? tokenColor('info', '55%') : 'var(--border)'}`,
+              border: `var(--stroke) solid ${range ? tokenColor('info', '55%') : 'var(--border)'}`,
             }}>
             {range ? <>{name && <span style={{ fontFamily: 'var(--font-ui)', fontWeight: 600 }}>{name} ·</span>}<RangeText range={range} /></> : 'All records'}
             <NetIcon name="chevron" size={10} color="var(--text-faint)" />
           </button>
           {range && (
             <button type="button" aria-label="Show All records" onClick={() => onRange(null)} {...tipProps('Back to All records')} style={{
-              display: 'flex', alignItems: 'center', justifyContent: 'center', width: 20, height: 20, borderRadius: 4, cursor: 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', width: 20, height: 20, borderRadius: rad(4), cursor: 'pointer',
               background: 'transparent', border: 'none',
             }}>
               <NetIcon name="close" size={10} color="var(--text-muted)" />
@@ -134,10 +135,10 @@ export function GateStrip({ sessions, notObservable, token, onPick, range, onRan
   const shown = display === 'on';
   return (
     <div style={{
-      display: 'flex', alignItems: 'center', gap: 6, height: 34, padding: '0 12px', background: 'var(--bg)',
-      borderBottom: '1px solid var(--border)', flexShrink: 0, overflow: 'hidden', fontFamily: 'var(--font-ui)',
+      display: 'flex', alignItems: 'center', gap: sp(6), height: 34, padding: sp('0 12px'), background: 'var(--bg)',
+      borderBottom: 'var(--stroke) solid var(--border)', flexShrink: 0, overflow: 'hidden', fontFamily: 'var(--font-ui)',
     }}>
-      <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 10, letterSpacing: '0.08em', color: 'var(--text-faint)', fontWeight: 600, marginRight: 4, flexShrink: 0 }}>
+      <label style={{ display: 'flex', alignItems: 'center', gap: sp(4), fontSize: 10, letterSpacing: '0.08em', color: 'var(--text-faint)', fontWeight: 600, marginRight: sp(4), flexShrink: 0 }}>
         GLOVE ·
         {sessions.length + notObservable.length > 0 ? (
           <select
@@ -169,7 +170,7 @@ export function GateStrip({ sessions, notObservable, token, onPick, range, onRan
       <div
         className="net-chip-row"
         style={{
-          display: 'flex', alignItems: 'center', gap: 6, flex: '1 1 auto', minWidth: 0, overflowX: 'auto', scrollbarWidth: 'none',
+          display: 'flex', alignItems: 'center', gap: sp(6), flex: '1 1 auto', minWidth: 0, overflowX: 'auto', scrollbarWidth: 'none',
           // Fade the last 16 px, so a clipped chip reads as "more to the right", not as a rendering fault.
           maskImage: 'linear-gradient(to right, black calc(100% - 16px), transparent)',
           WebkitMaskImage: 'linear-gradient(to right, black calc(100% - 16px), transparent)',
@@ -177,10 +178,10 @@ export function GateStrip({ sessions, notObservable, token, onPick, range, onRan
       >
         {data && gateChips(data).map((c) => (
           c.key === 'cut' ? (
-            <span key={c.key} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+            <span key={c.key} style={{ display: 'inline-flex', alignItems: 'center', gap: sp(4), flexShrink: 0 }}>
               <Chip tone={c.tone} icon={c.icon} label={c.label} tip={c.tip} strong />
               <button type="button" disabled={data.rules.control.state !== 'ok'} onClick={() => useNetStore.getState().applyRules({ kind: 'restoreAll' })}
-                style={{ height: 20, padding: '0 8px', borderRadius: 10, fontSize: 10.5, cursor: 'pointer', fontFamily: 'var(--font-ui)', color: 'var(--net-tunnel)', background: tokenColor('net-tunnel', '12%'), border: `1px solid ${tokenColor('net-tunnel', '45%')}` }}>
+                style={{ height: 20, padding: sp('0 8px'), borderRadius: rad(10), fontSize: 10.5, cursor: 'pointer', fontFamily: 'var(--font-ui)', color: 'var(--net-tunnel)', background: tokenColor('net-tunnel', '12%'), border: `var(--stroke) solid ${tokenColor('net-tunnel', '45%')}` }}>
                 Restore
               </button>
             </span>
@@ -188,8 +189,8 @@ export function GateStrip({ sessions, notObservable, token, onPick, range, onRan
         ))}
       </div>
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
-        <span style={{ fontSize: 10, color: 'var(--text-faint)', marginRight: 2 }}>Panels</span>
+      <div style={{ display: 'flex', alignItems: 'center', gap: sp(4), flexShrink: 0 }}>
+        <span style={{ fontSize: 10, color: 'var(--text-faint)', marginRight: sp(2) }}>Panels</span>
         {panels.map((p) => {
           const on = isVisible(p.id);
           return (
@@ -200,8 +201,8 @@ export function GateStrip({ sessions, notObservable, token, onPick, range, onRan
               data-tip={`Show or hide the ${p.chip} panel`}
               onClick={() => onToggle(p.id)}
               style={{
-                display: 'flex', alignItems: 'center', gap: 4, height: 24, padding: '0 7px', fontSize: 10.5,
-                borderRadius: 5, border: `1px solid ${on ? 'var(--border-strong)' : 'var(--border)'}`,
+                display: 'flex', alignItems: 'center', gap: sp(4), height: 24, padding: sp('0 7px'), fontSize: 10.5,
+                borderRadius: rad(5), border: `var(--stroke) solid ${on ? 'var(--border-strong)' : 'var(--border)'}`,
                 background: on ? 'var(--bg-selected)' : 'transparent', color: on ? 'var(--text)' : 'var(--text-faint)',
                 cursor: 'pointer', fontFamily: 'var(--font-ui)',
               }}
@@ -227,14 +228,14 @@ export function RangeBanner({ range }: { range: NetRangeInfo }) {
   if (!gaps.length && !notes) return null;
   return (
     <div role="status" aria-label="Range coverage" style={{
-      display: 'flex', alignItems: 'center', gap: 10, padding: '6px 12px', flexShrink: 0, fontFamily: 'var(--font-ui)',
-      fontSize: 11.5, borderBottom: '1px solid var(--border)',
+      display: 'flex', alignItems: 'center', gap: sp(10), padding: sp('6px 12px'), flexShrink: 0, fontFamily: 'var(--font-ui)',
+      fontSize: 11.5, borderBottom: 'var(--stroke) solid var(--border)',
       background: tokenColor('info', '8%'), color: 'var(--text-body)',
     }}>
       <NetIcon name="calendar" color="var(--info)" />
       {notes && <span style={{ color: 'var(--text-faint)' }}>{notes}</span>}
       {gaps.length > 0 && (
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: 'var(--warn)' }}>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: sp(4), color: 'var(--warn)' }}>
           <NetIcon name="alert" color="var(--warn)" />{gaps.join(' ')}
         </span>
       )}
@@ -263,23 +264,23 @@ export function RulesRejectedBanner({ data }: { data: NetSessionData }) {
     ? data.rules.readError
     : data.rules.file ? JSON.stringify(data.rules.file, null, 2) : 'rules.json is not present.';
   return (
-    <div style={{ padding: '8px 12px 0', flexShrink: 0 }}>
+    <div style={{ padding: sp('8px 12px 0'), flexShrink: 0 }}>
       <div role="alert" style={{
-        display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px', borderRadius: 8,
-        background: ALARM.ground, border: '1px solid var(--error)',
+        display: 'flex', alignItems: 'center', gap: sp(12), padding: sp('12px 14px'), borderRadius: rad(8),
+        background: ALARM.ground, border: 'var(--stroke) solid var(--error)',
       }}>
         <NetIcon name="alert" size={20} color="var(--error)" strokeWidth={1.8} />
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 13, fontWeight: 700, color: ALARM.title }}>
             {unreadable ? 'The gate cannot read your rules file' : REJECTED_TITLE[rejectedAuthor(data.rules)]}
           </div>
-          <div style={{ fontSize: 11.5, color: ALARM.body, marginTop: 2 }}>
+          <div style={{ fontSize: 11.5, color: ALARM.body, marginTop: sp(2) }}>
             {unreadable
               ? <>glove reports <span style={{ fontFamily: 'var(--font-mono)' }}>{rules.error}</span>. That is almost always ownership: the gate runs as your user, and rules.json must be readable by it.</>
               : <>glove rejected rules.json: <span style={{ fontFamily: 'var(--font-mono)' }}>{rules.error ?? 'no reason given'}</span>.</>}
             {' '}The gate is still enforcing the previous {n} rule{n === 1 ? '' : 's'}.
           </div>
-          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-faint)', marginTop: 3 }}>
+          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-faint)', marginTop: sp(3) }}>
             status.json · rules.ok false{rules.loaded_at ? ` · last good load ${rules.loaded_at}` : ''}
           </div>
         </div>
@@ -291,22 +292,22 @@ export function RulesRejectedBanner({ data }: { data: NetSessionData }) {
         </TipWrap>
         <TipWrap tip={canRetry ? 'Write rules.json again, handed to the gate’s user' : control ?? 'The file on disk is invalid'} disabled={!canRetry}>
           <button type="button" disabled={!canRetry}
-            onClick={() => useNetStore.getState().applyRules({ kind: 'rewrite' })} style={{ ...bannerButton, color: ALARM.text, border: `1px solid ${tokenColor('error', '60%')}`, background: 'transparent' }}>
+            onClick={() => useNetStore.getState().applyRules({ kind: 'rewrite' })} style={{ ...bannerButton, color: ALARM.text, border: `var(--stroke) solid ${tokenColor('error', '60%')}`, background: 'transparent' }}>
             Try again
           </button>
         </TipWrap>
         <button type="button" aria-expanded={open} onClick={() => setOpen((o) => !o)} style={{
-          display: 'inline-flex', alignItems: 'center', gap: 6, height: 26, padding: '0 10px', borderRadius: 6,
+          display: 'inline-flex', alignItems: 'center', gap: sp(6), height: 26, padding: sp('0 10px'), borderRadius: rad(6),
           fontSize: 11.5, fontWeight: 500, whiteSpace: 'nowrap', background: 'var(--bg-pill)',
-          border: '1px solid var(--border-strong)', color: 'var(--text)', cursor: 'pointer', fontFamily: 'var(--font-ui)',
+          border: 'var(--stroke) solid var(--border-strong)', color: 'var(--text)', cursor: 'pointer', fontFamily: 'var(--font-ui)',
         }}>
           <NetIcon name="file" />{open ? 'Hide file' : 'Show file'}
         </button>
       </div>
       {open && (
         <pre style={{
-          margin: '6px 0 0', maxHeight: 220, overflow: 'auto', padding: 10, fontSize: 11, fontFamily: 'var(--font-mono)',
-          color: 'var(--text-body)', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 6,
+          margin: sp('6px 0 0'), maxHeight: 220, overflow: 'auto', padding: sp(10), fontSize: 11, fontFamily: 'var(--font-mono)',
+          color: 'var(--text-body)', background: 'var(--bg-card)', border: 'var(--stroke) solid var(--border)', borderRadius: rad(6),
         }}>
           {data.rules.displayPath}{'\n\n'}{fileText}
         </pre>

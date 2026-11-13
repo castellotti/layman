@@ -144,7 +144,7 @@ export function DriftBlockDialog({ onSend }: DriftBlockDialogProps) {
         <div className="px-5 pb-3">
           <div
             className="text-[10px] px-2 py-1 rounded"
-            style={{ background: tokenColor('warn', '10%'), border: `1px solid ${tokenColor('warn', '20%')}` }}
+            style={{ background: tokenColor('warn', '10%'), border: `var(--stroke) solid ${tokenColor('warn', '20%')}` }}
           >
             <span className="text-warn">Blocked tool:</span>{' '}
             <span className="text-text font-mono">{driftBlockApproval.toolName}</span>

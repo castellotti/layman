@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useSessionStore } from '../../stores/sessionStore.js';
+import { sp, rad } from '../../lib/density.js';
 
 /**
  * Shown when a deep link names something this instance does not have.
@@ -44,17 +45,17 @@ export function RouteErrorPanel() {
     }}>
       <div style={{
         width: 460, maxWidth: '92vw',
-        background: 'var(--bg-raised)', border: '1px solid var(--border-strong)',
-        borderRadius: 8, padding: '18px 20px',
-        display: 'flex', flexDirection: 'column', gap: 12,
+        background: 'var(--bg-raised)', border: 'var(--stroke) solid var(--border-strong)',
+        borderRadius: rad(8), padding: sp('18px 20px'),
+        display: 'flex', flexDirection: 'column', gap: sp(12),
         boxShadow: '0 24px 60px rgba(0,0,0,0.5)',
       }}>
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: sp(8) }}>
           <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>Not found on this instance</span>
           <div style={{ flex: 1 }} />
           <button
             onClick={goDashboard}
-            style={{ background: 'none', border: 'none', color: 'var(--text-faint)', fontSize: 16, cursor: 'pointer', lineHeight: 1, padding: '0 2px' }}
+            style={{ background: 'none', border: 'none', color: 'var(--text-faint)', fontSize: 16, cursor: 'pointer', lineHeight: 1, padding: sp('0 2px') }}
             aria-label="Dismiss"
           >
             ×
@@ -73,7 +74,7 @@ export function RouteErrorPanel() {
           The link may point at a different Layman, or the session may have been purged from this one.
         </p>
 
-        <div style={{ display: 'flex', gap: 8 }}>
+        <div style={{ display: 'flex', gap: sp(8) }}>
           <input
             type="text"
             value={query}
@@ -82,16 +83,16 @@ export function RouteErrorPanel() {
             onKeyDown={(e) => { if (e.key === 'Enter') search(); }}
             placeholder="Search sessions and content…"
             style={{
-              flex: 1, padding: '5px 10px', fontSize: 11, fontFamily: 'var(--font-mono)',
-              background: 'var(--bg-card)', border: '1px solid var(--border-strong)',
-              borderRadius: 5, color: 'var(--text)', outline: 'none', boxSizing: 'border-box',
+              flex: 1, padding: sp('5px 10px'), fontSize: 11, fontFamily: 'var(--font-mono)',
+              background: 'var(--bg-card)', border: 'var(--stroke) solid var(--border-strong)',
+              borderRadius: rad(5), color: 'var(--text)', outline: 'none', boxSizing: 'border-box',
             }}
           />
           <button
             onClick={search}
             style={{
-              padding: '5px 12px', fontSize: 11, borderRadius: 5, cursor: 'pointer',
-              background: 'var(--bg-selected)', border: '1px solid var(--border-strong)',
+              padding: sp('5px 12px'), fontSize: 11, borderRadius: rad(5), cursor: 'pointer',
+              background: 'var(--bg-selected)', border: 'var(--stroke) solid var(--border-strong)',
               color: 'var(--text)', fontFamily: 'inherit',
             }}
           >
@@ -99,7 +100,7 @@ export function RouteErrorPanel() {
           </button>
         </div>
 
-        <div style={{ display: 'flex', gap: 14, alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: sp(14), alignItems: 'center' }}>
           <button
             onClick={goDashboard}
             style={{

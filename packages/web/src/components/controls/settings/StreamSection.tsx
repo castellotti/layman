@@ -2,6 +2,7 @@ import React from 'react';
 import type { ClientMessage } from '../../../lib/ws-protocol.js';
 import type { LaymanConfig } from '../../../lib/types.js';
 import { SectionTitle, ToggleRow, CustomRow } from './primitives.js';
+import { sp, rad } from '../../../lib/density.js';
 
 export function StreamSection({
   config, onSend,
@@ -57,7 +58,7 @@ export function StreamSection({
       />
 
       <CustomRow>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: sp(12) }}>
           <span style={{ fontSize: 12, color: 'var(--text)', flex: 1 }}>Idle threshold</span>
           <input
             type="number"
@@ -68,7 +69,7 @@ export function StreamSection({
               const v = parseInt(e.target.value, 10);
               if (v >= 1 && v <= 60) updateConfig({ idleThresholdMinutes: v });
             }}
-            style={{ width: 48, padding: '4px 6px', fontSize: 11, textAlign: 'center', fontFamily: 'var(--font-mono)', background: 'var(--bg-card)', border: '1px solid var(--border-strong)', borderRadius: 5, color: 'var(--text)', outline: 'none' }}
+            style={{ width: 48, padding: sp('4px 6px'), fontSize: 11, textAlign: 'center', fontFamily: 'var(--font-mono)', background: 'var(--bg-card)', border: 'var(--stroke) solid var(--border-strong)', borderRadius: rad(5), color: 'var(--text)', outline: 'none' }}
           />
           <span style={{ fontSize: 10.5, color: 'var(--text-faint)' }}>min</span>
         </div>

@@ -13,6 +13,7 @@ import type { ClientMessage } from '../../lib/ws-protocol.js';
 import type { TimelineEvent } from '../../lib/types.js';
 import { ThinkingBlock } from '../shared/ThinkingBlock.js';
 import { tokenColor } from '../../lib/tokens.js';
+import { sp, rad } from '../../lib/density.js';
 
 type AskPhase = 'connecting' | 'waiting';
 
@@ -184,11 +185,11 @@ export function InvestigationPanel({ onSend, eventId: embeddedEventId, onClose, 
     // Docked with nothing selected yet — hold the reserved layout space with a
     // placeholder rather than collapsing (which would leave a dangling divider).
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', height: '100%', borderLeft: '1px solid var(--border)', background: 'var(--bg)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', padding: '10px 14px', borderBottom: '1px solid var(--border)', background: 'var(--bg-raised)', flexShrink: 0 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', height: '100%', borderLeft: 'var(--stroke) solid var(--border)', background: 'var(--bg)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', padding: sp('10px 14px'), borderBottom: 'var(--stroke) solid var(--border)', background: 'var(--bg-raised)', flexShrink: 0 }}>
           <span style={{ fontFamily: 'var(--font-ui)', fontSize: 12, fontWeight: 600, color: 'var(--text)' }}>Investigation</span>
         </div>
-        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: sp(24) }}>
           <span style={{ fontFamily: 'var(--font-ui)', fontSize: 11, color: 'var(--text-faint)', textAlign: 'center' }}>
             Select an event's Investigate button to explain or analyze it here
           </span>
@@ -309,29 +310,29 @@ export function InvestigationPanel({ onSend, eventId: embeddedEventId, onClose, 
   const closeDrawer = () => { if (onClose) onClose(); else setInvestigationOpen(false); };
 
   const panelContent = (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', borderLeft: presentation === 'docked' ? '1px solid var(--border)' : 'none', background: 'var(--bg)' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', borderLeft: presentation === 'docked' ? 'var(--stroke) solid var(--border)' : 'none', background: 'var(--bg)' }}>
       {/* Header */}
       <div style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: '10px 14px', borderBottom: '1px solid var(--border)',
+        padding: sp('10px 14px'), borderBottom: 'var(--stroke) solid var(--border)',
         background: 'var(--bg-raised)', flexShrink: 0,
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: sp(8) }}>
           <span style={{ fontFamily: 'var(--font-ui)', fontSize: 12, fontWeight: 600, color: 'var(--text)' }}>
             Investigation
           </span>
           {event.riskLevel && <RiskBadge level={event.riskLevel} compact />}
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: sp(6) }}>
           {/* Compact model selector — overrides the model for Explain (laymans/analysis) and Chat */}
           <select
             value={askModel}
             onChange={(e) => setAskModel(e.target.value)}
             title="Analysis model — applies to Explain and Chat"
             style={{
-              maxWidth: 100, padding: '2px 4px', fontSize: 10,
+              maxWidth: 100, padding: sp('2px 4px'), fontSize: 10,
               fontFamily: 'var(--font-mono)', background: 'var(--bg-card)',
-              border: '1px solid var(--border-strong)', borderRadius: 4,
+              border: 'var(--stroke) solid var(--border-strong)', borderRadius: rad(4),
               color: 'var(--text-body)', outline: 'none', cursor: 'pointer',
             }}
           >
@@ -346,7 +347,7 @@ export function InvestigationPanel({ onSend, eventId: embeddedEventId, onClose, 
             onClick={() => { if (onClose) onClose(); else setInvestigationOpen(false); }}
             style={{
               background: 'none', border: 'none', cursor: 'pointer',
-              color: 'var(--text-muted)', fontSize: 18, lineHeight: 1, padding: '0 2px',
+              color: 'var(--text-muted)', fontSize: 18, lineHeight: 1, padding: sp('0 2px'),
             }}
             onMouseEnter={e => (e.currentTarget.style.color = 'var(--text)')}
             onMouseLeave={e => (e.currentTarget.style.color = 'var(--text-muted)')}
@@ -357,7 +358,7 @@ export function InvestigationPanel({ onSend, eventId: embeddedEventId, onClose, 
       </div>
 
       {/* Tabs */}
-      <div style={{ display: 'flex', alignItems: 'stretch', gap: 2, padding: '6px 14px 0', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
+      <div style={{ display: 'flex', alignItems: 'stretch', gap: sp(2), padding: sp('6px 14px 0'), borderBottom: 'var(--stroke) solid var(--border)', flexShrink: 0 }}>
         {(['explain', 'chat'] as const).map((tab) => {
           const active = activeTab === tab;
           return (
@@ -365,7 +366,7 @@ export function InvestigationPanel({ onSend, eventId: embeddedEventId, onClose, 
               key={tab}
               onClick={() => setActiveTab(tab)}
               style={{
-                padding: '7px 12px', fontSize: 11.5, fontFamily: 'var(--font-ui)',
+                padding: sp('7px 12px'), fontSize: 11.5, fontFamily: 'var(--font-ui)',
                 border: 'none', borderRadius: '5px 5px 0 0', cursor: 'pointer',
                 background: active ? 'var(--bg-selected)' : 'transparent',
                 color: active ? 'var(--text)' : 'var(--text-muted)',
@@ -383,9 +384,9 @@ export function InvestigationPanel({ onSend, eventId: embeddedEventId, onClose, 
       </div>
 
       {/* Content */}
-      <div style={{ flex: 1, overflowY: 'auto', padding: '14px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div style={{ flex: 1, overflowY: 'auto', padding: sp('14px'), display: 'flex', flexDirection: 'column', gap: sp(16) }}>
         {/* CONTEXT indicator */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-faint)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: sp(8), fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-faint)' }}>
           <span style={{ color: 'var(--text-muted)', fontWeight: 600, letterSpacing: '0.06em' }}>CONTEXT</span>
           <span>full session · selected item first</span>
         </div>
@@ -393,7 +394,7 @@ export function InvestigationPanel({ onSend, eventId: embeddedEventId, onClose, 
         {activeTab === 'explain' && <>
         {/* INPUT section */}
         <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: sp(8), marginBottom: sp(8) }}>
             <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9.5, fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-faint)' }}>Input</span>
           </div>
 
@@ -412,11 +413,11 @@ export function InvestigationPanel({ onSend, eventId: embeddedEventId, onClose, 
 
         {/* LAYMAN'S TERMS section */}
         <div>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: sp(8) }}>
             <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9.5, fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text)' }}>
               Layman&apos;s Terms
             </span>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: sp(6) }}>
               <DepthButton
                 depth="quick"
                 onClick={() => handleRequestLaymans('quick')}
@@ -435,9 +436,9 @@ export function InvestigationPanel({ onSend, eventId: embeddedEventId, onClose, 
           </div>
 
           {event.laymans ? (
-            <div style={{ background: 'var(--bg-raised)', border: '1px solid var(--border)', borderRadius: 8, padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div style={{ background: 'var(--bg-raised)', border: 'var(--stroke) solid var(--border)', borderRadius: rad(8), padding: sp('10px 12px'), display: 'flex', flexDirection: 'column', gap: sp(8) }}>
               <MarkdownOrText text={event.laymans.explanation} />
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, paddingTop: 6, borderTop: '1px solid var(--border)', fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-faint)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: sp(6), paddingTop: sp(6), borderTop: 'var(--stroke) solid var(--border)', fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-faint)' }}>
                 {event.laymans.latencyMs !== undefined && <span>{event.laymans.latencyMs}ms</span>}
                 {event.laymans.tokens && (
                   <>
@@ -450,18 +451,18 @@ export function InvestigationPanel({ onSend, eventId: embeddedEventId, onClose, 
               </div>
             </div>
           ) : isLaymansLoading ? (
-            <div style={{ background: 'var(--bg-raised)', border: '1px solid var(--border)', borderRadius: 8, padding: '16px', textAlign: 'center' }}>
+            <div style={{ background: 'var(--bg-raised)', border: 'var(--stroke) solid var(--border)', borderRadius: rad(8), padding: sp('16px'), textAlign: 'center' }}>
               <span style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'var(--font-ui)' }}>Explaining in plain language…</span>
             </div>
           ) : laymansError ? (
-            <div style={{ background: 'var(--bg-raised)', border: `1px solid ${tokenColor('error', '40%')}`, borderRadius: 8, padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <div style={{ background: 'var(--bg-raised)', border: `var(--stroke) solid ${tokenColor('error', '40%')}`, borderRadius: rad(8), padding: sp('10px 12px'), display: 'flex', flexDirection: 'column', gap: sp(4) }}>
               <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--error)', fontFamily: 'var(--font-ui)' }}>Explanation failed</span>
               <p style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', wordBreak: 'break-all', margin: 0 }}>{laymansError}</p>
             </div>
           ) : (
             <div style={{
-              background: 'var(--bg-raised)', border: '1px dashed var(--border-strong)', borderRadius: 8,
-              padding: '16px', textAlign: 'center',
+              background: 'var(--bg-raised)', border: '1px dashed var(--border-strong)', borderRadius: rad(8),
+              padding: sp('16px'), textAlign: 'center',
             }}>
               <span style={{ fontSize: 11, color: 'var(--text-faint)', fontFamily: 'var(--font-ui)', fontStyle: 'italic' }}>
                 Explain this request in plain language
@@ -472,11 +473,11 @@ export function InvestigationPanel({ onSend, eventId: embeddedEventId, onClose, 
 
         {/* ANALYSIS section */}
         <div>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: sp(8) }}>
             <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9.5, fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-faint)' }}>
               Analysis
             </span>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: sp(6) }}>
               <DepthButton
                 depth="quick"
                 onClick={() => handleRequestAnalysis('quick')}
@@ -495,25 +496,25 @@ export function InvestigationPanel({ onSend, eventId: embeddedEventId, onClose, 
           </div>
 
           {event.analysis ? (
-            <div style={{ background: 'var(--bg-raised)', border: '1px solid var(--border)', borderRadius: 8, padding: '10px 12px' }}>
+            <div style={{ background: 'var(--bg-raised)', border: 'var(--stroke) solid var(--border)', borderRadius: rad(8), padding: sp('10px 12px') }}>
               <AnalysisCard analysis={event.analysis} />
             </div>
           ) : isAnalyzing ? (
-            <div style={{ background: 'var(--bg-raised)', border: '1px solid var(--border)', borderRadius: 8, padding: '16px', textAlign: 'center' }}>
+            <div style={{ background: 'var(--bg-raised)', border: 'var(--stroke) solid var(--border)', borderRadius: rad(8), padding: sp('16px'), textAlign: 'center' }}>
               <span style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'var(--font-ui)' }}>Analyzing with LLM…</span>
             </div>
           ) : state.analysisError ? (
-            <div style={{ background: 'var(--bg-raised)', border: `1px solid ${tokenColor('error', '40%')}`, borderRadius: 8, padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <div style={{ background: 'var(--bg-raised)', border: `var(--stroke) solid ${tokenColor('error', '40%')}`, borderRadius: rad(8), padding: sp('10px 12px'), display: 'flex', flexDirection: 'column', gap: sp(4) }}>
               <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--error)', fontFamily: 'var(--font-ui)' }}>Analysis failed</span>
               <p style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', wordBreak: 'break-all', margin: 0 }}>{state.analysisError}</p>
-              <p style={{ fontSize: 10, color: 'var(--text-faint)', fontFamily: 'var(--font-ui)', margin: '4px 0 0 0' }}>
+              <p style={{ fontSize: 10, color: 'var(--text-faint)', fontFamily: 'var(--font-ui)', margin: sp('4px 0 0 0') }}>
                 Check Settings → Analysis Model. If using a local model, verify the endpoint is reachable.
               </p>
             </div>
           ) : (
             <div style={{
-              background: 'var(--bg-raised)', border: '1px dashed var(--border-strong)', borderRadius: 8,
-              padding: '16px', textAlign: 'center',
+              background: 'var(--bg-raised)', border: '1px dashed var(--border-strong)', borderRadius: rad(8),
+              padding: sp('16px'), textAlign: 'center',
             }}>
               <span style={{ fontSize: 11, color: 'var(--text-faint)', fontFamily: 'var(--font-ui)' }}>
                 Analyze intent, safety, and risk
@@ -525,11 +526,11 @@ export function InvestigationPanel({ onSend, eventId: embeddedEventId, onClose, 
         {/* Failure Analysis section — only for tool_call_failed events */}
         {event.type === 'tool_call_failed' && (
           <div>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: sp(8) }}>
               <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9.5, fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--error)' }}>
                 Failure Analysis
               </span>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: sp(6) }}>
                 <DepthButton
                   depth="quick"
                   onClick={() => void handleAskWhyFailed('quick')}
@@ -545,8 +546,8 @@ export function InvestigationPanel({ onSend, eventId: embeddedEventId, onClose, 
               </div>
             </div>
             <div style={{
-              background: 'var(--bg-raised)', border: '1px dashed var(--border-strong)', borderRadius: 8,
-              padding: '12px', textAlign: 'center',
+              background: 'var(--bg-raised)', border: '1px dashed var(--border-strong)', borderRadius: rad(8),
+              padding: sp('12px'), textAlign: 'center',
             }}>
               <span style={{ fontSize: 11, color: 'var(--text-faint)', fontFamily: 'var(--font-ui)' }}>
                 Ask why this tool call failed. Results appear in Chat.
@@ -559,17 +560,17 @@ export function InvestigationPanel({ onSend, eventId: embeddedEventId, onClose, 
         {activeTab === 'chat' && <>
         {/* Investigation Q&A */}
         {(state.questions.length > 0 || pendingAsk) && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: sp(10) }}>
             <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9.5, fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-faint)' }}>
               Questions
             </span>
             {pendingAsk && (
-              <div style={{ border: '1px solid var(--border)', borderRadius: 6, padding: 8, background: 'var(--bg-raised)', display: 'flex', flexDirection: 'column', gap: 4 }}>
-                <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+              <div style={{ border: 'var(--stroke) solid var(--border)', borderRadius: rad(6), padding: sp(8), background: 'var(--bg-raised)', display: 'flex', flexDirection: 'column', gap: sp(4) }}>
+                <div style={{ display: 'flex', gap: sp(8), alignItems: 'flex-start' }}>
                   <span style={{ color: 'var(--info)', fontSize: 11, flexShrink: 0, fontFamily: 'var(--font-mono)' }}>Q:</span>
                   <span style={{ fontSize: 11, color: 'var(--text-muted)', flex: 1, minWidth: 0, fontFamily: 'var(--font-ui)' }}>{pendingAsk.question}</span>
                 </div>
-                <div style={{ display: 'flex', gap: 8, marginLeft: 16, alignItems: 'center' }}>
+                <div style={{ display: 'flex', gap: sp(8), marginLeft: sp(16), alignItems: 'center' }}>
                   <span style={{ color: 'var(--ok)', fontSize: 11, flexShrink: 0, fontFamily: 'var(--font-mono)' }}>A:</span>
                   <span style={{ fontSize: 10, color: 'var(--text-faint)', fontFamily: 'var(--font-mono)' }}>
                     {pendingAsk.phase === 'connecting' ? 'Connecting…' : 'Waiting for response…'}
@@ -582,13 +583,13 @@ export function InvestigationPanel({ onSend, eventId: embeddedEventId, onClose, 
             )}
 
             {state.questions.map((qa, i) => (
-              <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+              <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: sp(4) }}>
+                <div style={{ display: 'flex', gap: sp(8), alignItems: 'flex-start' }}>
                   <span style={{ color: 'var(--info)', fontSize: 11, flexShrink: 0, fontFamily: 'var(--font-mono)' }}>Q:</span>
                   <span style={{ fontSize: 11, color: 'var(--text-muted)', flex: 1, minWidth: 0, fontFamily: 'var(--font-ui)' }}>{qa.question}</span>
                   <CopyButton text={qa.question} />
                 </div>
-                <div style={{ display: 'flex', gap: 8, marginLeft: 16, alignItems: 'flex-start' }}>
+                <div style={{ display: 'flex', gap: sp(8), marginLeft: sp(16), alignItems: 'flex-start' }}>
                   <span style={{ color: 'var(--ok)', fontSize: 11, flexShrink: 0, fontFamily: 'var(--font-mono)' }}>A:</span>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <MarkdownOrText text={qa.answer} />
@@ -596,7 +597,7 @@ export function InvestigationPanel({ onSend, eventId: embeddedEventId, onClose, 
                   <CopyButton text={qa.answer} />
                 </div>
                 {(qa.tokens || qa.latencyMs) && (
-                  <div style={{ marginLeft: 16, display: 'flex', alignItems: 'center', gap: 6, fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-faint)' }}>
+                  <div style={{ marginLeft: sp(16), display: 'flex', alignItems: 'center', gap: sp(6), fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-faint)' }}>
                     {qa.latencyMs !== undefined && <span>{qa.latencyMs}ms</span>}
                     {qa.tokens && (
                       <>
@@ -616,13 +617,13 @@ export function InvestigationPanel({ onSend, eventId: embeddedEventId, onClose, 
         {/* Per-event Access Log */}
         {(event.data.fileAccess?.length || event.data.urlAccess?.length) ? (
           <div>
-            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9.5, fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-faint)', display: 'block', marginBottom: 8 }}>
+            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9.5, fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-faint)', display: 'block', marginBottom: sp(8) }}>
               Access Log
             </span>
             {event.data.fileAccess && event.data.fileAccess.length > 0 && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginBottom: 6 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: sp(2), marginBottom: sp(6) }}>
                 {event.data.fileAccess.map((fa, i) => (
-                  <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <div key={i} style={{ display: 'flex', alignItems: 'center', gap: sp(8) }}>
                     <span style={{
                       fontWeight: 600, fontSize: 10, width: 48, flexShrink: 0, fontFamily: 'var(--font-mono)',
                       color: fa.operation === 'read' ? 'var(--agent)' : fa.operation === 'wrote' ? 'var(--ok)' : fa.operation === 'edited' ? 'var(--warn)' : 'var(--error)',
@@ -635,9 +636,9 @@ export function InvestigationPanel({ onSend, eventId: embeddedEventId, onClose, 
               </div>
             )}
             {event.data.urlAccess && event.data.urlAccess.length > 0 && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: sp(2) }}>
                 {event.data.urlAccess.map((ua, i) => (
-                  <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <div key={i} style={{ display: 'flex', alignItems: 'center', gap: sp(8) }}>
                     <span style={{ fontWeight: 600, fontSize: 10, color: 'var(--info)', width: 48, flexShrink: 0, fontFamily: 'var(--font-mono)' }}>URL</span>
                     <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 0 }} title={ua.url}>
                       {ua.url.length > 60 ? ua.url.slice(0, 60) + '…' : ua.url}
@@ -656,11 +657,11 @@ export function InvestigationPanel({ onSend, eventId: embeddedEventId, onClose, 
 
         {/* ASK A QUESTION section */}
         <div>
-          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9.5, fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-faint)', display: 'block', marginBottom: 8 }}>
+          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9.5, fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-faint)', display: 'block', marginBottom: sp(8) }}>
             Ask a question
           </span>
           {fetchModelError && (
-            <p style={{ fontSize: 10, color: 'var(--error)', fontFamily: 'var(--font-ui)', marginBottom: 8, margin: '0 0 8px 0' }}>{fetchModelError}</p>
+            <p style={{ fontSize: 10, color: 'var(--error)', fontFamily: 'var(--font-ui)', marginBottom: sp(8), margin: sp('0 0 8px 0') }}>{fetchModelError}</p>
           )}
           <AskQuestion
             eventId={selectedEventId}
@@ -687,7 +688,7 @@ export function InvestigationPanel({ onSend, eventId: embeddedEventId, onClose, 
             maxWidth: '90vw',
             height: '100%',
             background: 'var(--bg)',
-            borderLeft: '1px solid var(--border-strong)',
+            borderLeft: 'var(--stroke) solid var(--border-strong)',
             boxShadow: '-16px 0 40px rgba(0,0,0,0.5)',
             animation: 'drawerIn 0.22s ease',
           }}

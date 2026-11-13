@@ -16,6 +16,7 @@ import { StreamSection } from './settings/StreamSection.js';
 import { TTSSection } from './settings/TTSSection.js';
 import { AppearanceSection } from './settings/AppearanceSection.js';
 import { ActivitySection } from './settings/ActivitySection.js';
+import { sp, rad } from '../../lib/density.js';
 
 export { HarnessSetupSection } from './settings/HarnessSection.js';
 export { PROVIDER_CONFIG } from './settings/AnalysisModelSection.js';
@@ -133,27 +134,27 @@ export function SettingsDrawer({ onSend }: SettingsDrawerProps) {
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 50, display: 'flex', justifyContent: 'flex-end', fontFamily: 'var(--font-ui)' }}>
       <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.6)' }} onClick={() => setSettingsOpen(false)} />
-      <div style={{ position: 'relative', width: 740, maxWidth: '92vw', height: '100%', background: 'var(--bg-raised)', borderLeft: '1px solid var(--border)', display: 'flex', flexDirection: 'column', boxShadow: '-24px 0 60px rgba(0,0,0,0.5)' }}>
+      <div style={{ position: 'relative', width: 740, maxWidth: '92vw', height: '100%', background: 'var(--bg-raised)', borderLeft: 'var(--stroke) solid var(--border)', display: 'flex', flexDirection: 'column', boxShadow: '-24px 0 60px rgba(0,0,0,0.5)' }}>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: sp(12), padding: sp('12px 16px'), borderBottom: 'var(--stroke) solid var(--border)', flexShrink: 0 }}>
           <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>Settings</span>
           <input
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search settings…"
-            style={{ width: 240, padding: '5px 10px', fontSize: 11, fontFamily: 'var(--font-mono)', background: 'var(--bg-card)', border: '1px solid var(--border-strong)', borderRadius: 5, color: 'var(--text)', outline: 'none', boxSizing: 'border-box' }}
+            style={{ width: 240, padding: sp('5px 10px'), fontSize: 11, fontFamily: 'var(--font-mono)', background: 'var(--bg-card)', border: 'var(--stroke) solid var(--border-strong)', borderRadius: rad(5), color: 'var(--text)', outline: 'none', boxSizing: 'border-box' }}
           />
           <div style={{ flex: 1 }} />
-          <button onClick={() => setSettingsOpen(false)} style={{ background: 'none', border: 'none', color: 'var(--text-faint)', fontSize: 16, cursor: 'pointer', lineHeight: 1, padding: '2px 4px' }}>×</button>
+          <button onClick={() => setSettingsOpen(false)} style={{ background: 'none', border: 'none', color: 'var(--text-faint)', fontSize: 16, cursor: 'pointer', lineHeight: 1, padding: sp('2px 4px') }}>×</button>
         </div>
 
         <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
           {/* Section rail */}
-          <div style={{ width: 180, flexShrink: 0, borderRight: '1px solid var(--border)', overflowY: 'auto', padding: '8px 0' }}>
+          <div style={{ width: 180, flexShrink: 0, borderRight: 'var(--stroke) solid var(--border)', overflowY: 'auto', padding: sp('8px 0') }}>
             {groups.map((g) => (
-              <div key={g.name} style={{ display: 'flex', flexDirection: 'column', marginBottom: 4 }}>
-                <div style={{ fontSize: 9, fontWeight: 600, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--text-faint)', padding: '8px 14px 3px' }}>
+              <div key={g.name} style={{ display: 'flex', flexDirection: 'column', marginBottom: sp(4) }}>
+                <div style={{ fontSize: 9, fontWeight: 600, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--text-faint)', padding: sp('8px 14px 3px') }}>
                   {g.name}
                 </div>
                 {g.items.map((s) => {
@@ -164,7 +165,7 @@ export function SettingsDrawer({ onSend }: SettingsDrawerProps) {
                       onClick={() => setActiveKey(s.key)}
                       style={{
                         display: 'flex', alignItems: 'center', textAlign: 'left',
-                        padding: '6px 14px 6px 12px', fontSize: 11.5, fontFamily: 'inherit',
+                        padding: sp('6px 14px 6px 12px'), fontSize: 11.5, fontFamily: 'inherit',
                         color: active ? 'var(--text)' : 'var(--text-muted)',
                         background: active ? 'var(--bg-selected)' : 'transparent',
                         border: 'none', borderLeft: `2px solid ${active ? 'var(--accent)' : 'transparent'}`,
@@ -178,12 +179,12 @@ export function SettingsDrawer({ onSend }: SettingsDrawerProps) {
               </div>
             ))}
             {visibleSections.length === 0 && (
-              <div style={{ padding: 14, fontSize: 10.5, color: 'var(--text-faint)' }}>No settings match.</div>
+              <div style={{ padding: sp(14), fontSize: 10.5, color: 'var(--text-faint)' }}>No settings match.</div>
             )}
           </div>
 
           {/* Section content */}
-          <div style={{ flex: 1, overflowY: 'auto', padding: '16px 22px 22px', display: 'flex', flexDirection: 'column' }}>
+          <div style={{ flex: 1, overflowY: 'auto', padding: sp('16px 22px 22px'), display: 'flex', flexDirection: 'column' }}>
             {activeSection && activeSection.render(config, onSend)}
           </div>
         </div>

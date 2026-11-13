@@ -5,14 +5,15 @@ import type { SetupStatus } from '../../../lib/types.js';
 import { StatusPip } from './StatusPip.js';
 import { SectionTitle, SectionIntro, ActionRow } from './primitives.js';
 import { SetupWizardManual } from '../../wizard/SetupWizard.js';
+import { sp, rad } from '../../../lib/density.js';
 
 function MiniToggle({ checked, onClick }: { checked: boolean; onClick: () => void }) {
   return (
     <button
       onClick={onClick}
       style={{
-        width: 30, height: 16, borderRadius: 8,
-        border: `1px solid ${checked ? 'var(--accent)' : 'var(--border-strong)'}`,
+        width: 30, height: 16, borderRadius: rad(8),
+        border: `var(--stroke) solid ${checked ? 'var(--accent)' : 'var(--border-strong)'}`,
         background: checked ? 'var(--bg-selected)' : 'var(--bg-card)',
         position: 'relative', cursor: 'pointer', padding: 0, flexShrink: 0, boxSizing: 'border-box',
       }}
@@ -83,8 +84,8 @@ export function HarnessSetupSection({ onSend }: { onSend: (msg: ClientMessage) =
   ) => {
     const clients = config?.[field] ?? [];
     return (
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', minHeight: 24, paddingLeft: 12 }}>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 1, paddingRight: 8 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', minHeight: 24, paddingLeft: sp(12) }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: sp(1), paddingRight: sp(8) }}>
           <span style={{ fontSize: 10.5, color: 'var(--text-faint)' }}>{label}</span>
           {hint && <span style={{ fontSize: 9.5, color: 'var(--text-faint)', opacity: 0.75 }}>{hint}</span>}
         </div>
@@ -129,10 +130,10 @@ export function HarnessSetupSection({ onSend }: { onSend: (msg: ClientMessage) =
   );
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: sp(6) }}>
       {/* Claude Code row */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', minHeight: 26 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: sp(6) }}>
           <span style={{ fontSize: 12, color: 'var(--text)' }}>Claude Code</span>
           {!claudeCodeOk && !!setupStatus?.claudeCodeRecordedSessions && (
             <span
@@ -143,7 +144,7 @@ export function HarnessSetupSection({ onSend }: { onSend: (msg: ClientMessage) =
             </span>
           )}
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: sp(6) }}>
           {setupStatus && claudeCodeOk && (
             <>
               <StatusPip ok={!!setupStatus.hooksInstalled} label="hooks" />
@@ -178,7 +179,7 @@ export function HarnessSetupSection({ onSend }: { onSend: (msg: ClientMessage) =
         return (
           <div key={client.id}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', minHeight: 26 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: sp(6) }}>
                 <span style={{ fontSize: 12, color: client.detected ? 'var(--text)' : 'var(--text-faint)' }}>{client.name}</span>
                 {!client.detected && <span style={{ fontSize: 10.5, color: 'var(--text-faint)' }}>(not detected)</span>}
                 {!client.detected && !!client.recordedSessionCount && (
@@ -190,7 +191,7 @@ export function HarnessSetupSection({ onSend }: { onSend: (msg: ClientMessage) =
                   </span>
                 )}
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: sp(6) }}>
                 {client.detected && client.commandInstalled && (
                   <>
                     <StatusPip ok={commandOk} label={client.id === 'codex' ? '$layman' : '/layman'} />
@@ -219,12 +220,12 @@ export function HarnessSetupSection({ onSend }: { onSend: (msg: ClientMessage) =
 }
 
 const pillButtonStyle: React.CSSProperties = {
-  padding: '2px 8px', fontSize: 10.5, fontWeight: 500, borderRadius: 4,
-  background: 'var(--bg-card)', border: '1px solid var(--border-strong)', color: 'var(--text)', cursor: 'pointer',
+  padding: sp('2px 8px'), fontSize: 10.5, fontWeight: 500, borderRadius: rad(4),
+  background: 'var(--bg-card)', border: 'var(--stroke) solid var(--border-strong)', color: 'var(--text)', cursor: 'pointer',
 };
 const pillButtonStyleMuted: React.CSSProperties = { ...pillButtonStyle, color: 'var(--text-muted)' };
 const pillButtonStyleOk: React.CSSProperties = {
-  padding: '2px 8px', fontSize: 10.5, fontWeight: 500, borderRadius: 4,
+  padding: sp('2px 8px'), fontSize: 10.5, fontWeight: 500, borderRadius: rad(4),
   background: 'var(--ok)', border: 'none', color: 'var(--text-on-fill)', cursor: 'pointer',
 };
 

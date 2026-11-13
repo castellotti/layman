@@ -87,8 +87,8 @@ export function PanelDivider({ value, min, max, direction, onChange, title }: Pa
         flexShrink: 0,
         cursor: 'col-resize',
         background: 'var(--bg-raised)',
-        borderLeft: '1px solid var(--border)',
-        borderRight: '1px solid var(--border)',
+        borderLeft: 'var(--stroke) solid var(--border)',
+        borderRight: 'var(--stroke) solid var(--border)',
         transition: 'background 0.12s',
       }}
       onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.background = tokenColor('info', '40%'))}

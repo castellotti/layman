@@ -11,6 +11,7 @@ import { formatTime, formatDuration as formatElapsed, cwdBasename } from '../../
 import { EVENT_KIND_COLOR, kindLabel, eventDetail, withThinkingRows, baseEventId } from '../../lib/event-styles.js';
 import { tokenColor } from '../../lib/tokens.js';
 import { HostChip } from '../shared/HostChip.js';
+import { sp, rad } from '../../lib/density.js';
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
@@ -47,14 +48,14 @@ function ActivityStrip({
   if (last.type === 'stop_failure' || last.type === 'tool_call_failed') {
     return (
       <div style={{
-        margin: '0 10px 6px',
-        padding: '8px 10px',
-        borderRadius: 6,
+        margin: sp('0 10px 6px'),
+        padding: sp('8px 10px'),
+        borderRadius: rad(6),
         background: tokenColor('error', '8%'),
-        border: `1px solid ${tokenColor('error', '25%')}`,
+        border: `var(--stroke) solid ${tokenColor('error', '25%')}`,
         display: 'flex',
         alignItems: 'center',
-        gap: 8,
+        gap: sp(8),
       }}>
         <span style={{ fontSize: 13 }}>⚠</span>
         <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--error)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -62,7 +63,7 @@ function ActivityStrip({
         </span>
         <button
           onClick={() => onOpenInLogs(sessionId)}
-          style={{ fontSize: 10, color: 'var(--error)', background: tokenColor('error', '12%'), border: `1px solid ${tokenColor('error', '25%')}`, borderRadius: 4, padding: '2px 8px', cursor: 'pointer', fontFamily: 'var(--font-ui)', flexShrink: 0 }}
+          style={{ fontSize: 10, color: 'var(--error)', background: tokenColor('error', '12%'), border: `var(--stroke) solid ${tokenColor('error', '25%')}`, borderRadius: rad(4), padding: sp('2px 8px'), cursor: 'pointer', fontFamily: 'var(--font-ui)', flexShrink: 0 }}
         >
           Open logs
         </button>
@@ -76,14 +77,14 @@ function ActivityStrip({
     const preview = input?.command ? String(input.command).slice(0, 60) : (last.data.toolName ?? '');
     return (
       <div style={{
-        margin: '0 10px 6px',
-        padding: '8px 10px',
-        borderRadius: 6,
+        margin: sp('0 10px 6px'),
+        padding: sp('8px 10px'),
+        borderRadius: rad(6),
         background: tokenColor('warn', '8%'),
-        border: `1px solid ${tokenColor('warn', '30%')}`,
+        border: `var(--stroke) solid ${tokenColor('warn', '30%')}`,
         display: 'flex',
         alignItems: 'center',
-        gap: 8,
+        gap: sp(8),
       }}>
         <span style={{ fontSize: 13 }}>🔒</span>
         <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--warn)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -91,7 +92,7 @@ function ActivityStrip({
         </span>
         <button
           onClick={() => onOpenInLogs(sessionId)}
-          style={{ fontSize: 10, color: 'var(--text-on-fill)', background: 'var(--warn)', border: 'none', borderRadius: 4, padding: '2px 8px', cursor: 'pointer', fontFamily: 'var(--font-ui)', fontWeight: 600, flexShrink: 0 }}
+          style={{ fontSize: 10, color: 'var(--text-on-fill)', background: 'var(--warn)', border: 'none', borderRadius: rad(4), padding: sp('2px 8px'), cursor: 'pointer', fontFamily: 'var(--font-ui)', fontWeight: 600, flexShrink: 0 }}
         >
           Review
         </button>
@@ -104,14 +105,14 @@ function ActivityStrip({
     const detail = eventDetail(last);
     return (
       <div style={{
-        margin: '0 10px 6px',
-        padding: '6px 10px',
-        borderRadius: 6,
+        margin: sp('0 10px 6px'),
+        padding: sp('6px 10px'),
+        borderRadius: rad(6),
         background: tokenColor('ok', '6%'),
-        border: `1px solid ${tokenColor('ok', '15%')}`,
+        border: `var(--stroke) solid ${tokenColor('ok', '15%')}`,
         display: 'flex',
         alignItems: 'center',
-        gap: 8,
+        gap: sp(8),
       }}>
         <span style={{ fontFamily: 'var(--font-ui)', fontSize: 9.5, fontWeight: 600, color: 'var(--ok)', letterSpacing: '0.05em' }}>NOW</span>
         <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-body)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -121,7 +122,7 @@ function ActivityStrip({
         {onSendAnalyze && (
           <button
             onClick={() => onSendAnalyze(last.id)}
-            style={{ fontSize: 10, color: 'var(--text-muted)', background: 'transparent', border: '1px solid var(--border-strong)', borderRadius: 4, padding: '1px 7px', cursor: 'pointer', fontFamily: 'var(--font-ui)', flexShrink: 0 }}
+            style={{ fontSize: 10, color: 'var(--text-muted)', background: 'transparent', border: 'var(--stroke) solid var(--border-strong)', borderRadius: rad(4), padding: sp('1px 7px'), cursor: 'pointer', fontFamily: 'var(--font-ui)', flexShrink: 0 }}
           >
             ⚡ Explain
           </button>
@@ -199,12 +200,12 @@ function RecentTail({ events, onOpenInLogs, sessionId, autoscroll }: {
     // Hidden rather than auto while autoscrolling: a box the user cannot scroll does not capture
     // the wheel, so it goes to the Dashboard. scrollTop can still pin it. Scroll anchoring is off
     // so dropping the oldest row cannot pull the view up off the newest.
-    <div ref={scrollRef} data-print-tail style={{ flex: 1, overflowY: autoscroll ? 'hidden' : 'auto', overflowAnchor: 'none', paddingBottom: 4 }}>
+    <div ref={scrollRef} data-print-tail style={{ flex: 1, overflowY: autoscroll ? 'hidden' : 'auto', overflowAnchor: 'none', paddingBottom: sp(4) }}>
       {/* One wrapper for both states: the observer above watches this node from the moment the
           pane opens, so swapping "No events yet" for rows must not replace it. */}
-      <div style={{ padding: '0 4px' }}>
+      <div style={{ padding: sp('0 4px') }}>
         {tail.length === 0 ? (
-          <div style={{ padding: '8px', color: 'var(--text-faint)', fontSize: 10, fontFamily: 'var(--font-mono)' }}>
+          <div style={{ padding: sp('8px'), color: 'var(--text-faint)', fontSize: 10, fontFamily: 'var(--font-mono)' }}>
             No events yet
           </div>
         ) : (
@@ -235,9 +236,9 @@ function TailRows({ rows, eventIndexById, onOpenInLogs, sessionId }: {
             style={{
               display: 'flex',
               alignItems: 'center',
-              gap: 6,
-              padding: '3px 8px',
-              borderRadius: 4,
+              gap: sp(6),
+              padding: sp('3px 8px'),
+              borderRadius: rad(4),
               cursor: 'pointer',
               transition: 'background 0.1s',
             }}
@@ -273,7 +274,7 @@ function DriftMeter({ label, pct, onClick }: { label: string; pct: number; onCli
     <div
       onClick={onClick}
       title={`${label} drift: ${Math.round(pct)}%`}
-      style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer', flex: 1, minWidth: 0 }}
+      style={{ display: 'flex', alignItems: 'center', gap: sp(5), cursor: 'pointer', flex: 1, minWidth: 0 }}
     >
       <span style={{ fontFamily: 'var(--font-ui)', fontSize: 9.5, color: 'var(--text-faint)', textTransform: 'uppercase', letterSpacing: '0.05em', flexShrink: 0 }}>
         {label}
@@ -311,7 +312,7 @@ function DriftIndicator({
   };
 
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 12, margin: '6px 10px 0' }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: sp(12), margin: sp('6px 10px 0') }}>
       <DriftMeter label="Session" pct={driftState.sessionGoalDriftPct} onClick={() => goToDrift('session_goal')} />
       <DriftMeter label="Rules" pct={driftState.rulesDriftPct} onClick={() => goToDrift('rules')} />
     </div>
@@ -415,10 +416,10 @@ function AutoscrollToggle({ on, onToggle }: { on: boolean; onToggle: () => void 
         ? 'Autoscroll on: showing the latest lines, and the mouse wheel scrolls the Dashboard. Click to scroll this session yourself.'
         : 'Autoscroll off: the mouse wheel scrolls this session. Click to follow the latest lines again.'}
       style={{
-        display: 'flex', alignItems: 'center', gap: 3, flexShrink: 0, cursor: 'pointer',
-        height: 18, padding: '0 6px', borderRadius: 3,
+        display: 'flex', alignItems: 'center', gap: sp(3), flexShrink: 0, cursor: 'pointer',
+        height: 18, padding: sp('0 6px'), borderRadius: rad(3),
         fontFamily: 'var(--font-mono)', fontSize: 10,
-        border: `1px solid ${on ? 'var(--accent)' : 'var(--border)'}`,
+        border: `var(--stroke) solid ${on ? 'var(--accent)' : 'var(--border)'}`,
         background: on ? tokenColor('accent', '12%') : 'none',
         color: on ? 'var(--accent)' : 'var(--text-faint)',
       }}
@@ -475,7 +476,7 @@ export const PreviewPane = React.memo(function PreviewPane({
         flex: '1 1 0',
         minHeight,
         overflow: 'hidden',
-        borderBottom: '1px solid var(--border)',
+        borderBottom: 'var(--stroke) solid var(--border)',
         background: 'var(--bg)',
       }}
     >
@@ -485,10 +486,10 @@ export const PreviewPane = React.memo(function PreviewPane({
         style={{
           display: 'flex',
           alignItems: 'center',
-          gap: 8,
-          padding: '6px 12px',
+          gap: sp(8),
+          padding: sp('6px 12px'),
           background: 'var(--bg-raised)',
-          borderBottom: '1px solid var(--border-subtle)',
+          borderBottom: 'var(--stroke) solid var(--border-subtle)',
           cursor: 'default',
           flexShrink: 0,
         }}
@@ -513,7 +514,7 @@ export const PreviewPane = React.memo(function PreviewPane({
           </span>
         )}
         {ctxPct !== undefined && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: sp(4), flexShrink: 0 }}>
             <Meter value={ctxPct} showTick height={3} width={48} />
             <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, fontVariantNumeric: 'tabular-nums', color: contextPctColor(ctxPct, 'var(--text-faint)') }}>
               {Math.round(ctxPct)}%
@@ -524,7 +525,7 @@ export const PreviewPane = React.memo(function PreviewPane({
         <AutoscrollToggle on={autoscroll} onToggle={() => setAutoscroll(v => !v)} />
         <button
           onClick={() => onClose(session.sessionId)}
-          style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-faint)', fontSize: 14, lineHeight: 1, padding: '0 2px', flexShrink: 0 }}
+          style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-faint)', fontSize: 14, lineHeight: 1, padding: sp('0 2px'), flexShrink: 0 }}
           title="Close pane"
         >
           ✕
@@ -543,7 +544,7 @@ export const PreviewPane = React.memo(function PreviewPane({
       )}
 
       {/* Activity strip */}
-      <div style={{ paddingTop: 6, flexShrink: 0 }}>
+      <div style={{ paddingTop: sp(6), flexShrink: 0 }}>
         <ActivityStrip
           events={mergedEvents}
           onOpenInLogs={onOpenInLogs}

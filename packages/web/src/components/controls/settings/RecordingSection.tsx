@@ -4,6 +4,7 @@ import type { LaymanConfig } from '../../../lib/types.js';
 import { SectionTitle, SectionIntro, ToggleRow, CustomRow } from './primitives.js';
 import { RecoveryDialog, ImportDialog, PurgeDialog } from './RecordingDialogs.js';
 import { tokenColor } from '../../../lib/tokens.js';
+import { sp, rad } from '../../../lib/density.js';
 
 interface PiiCategory {
   id: string;
@@ -159,7 +160,7 @@ export function RecordingSection({
           <span style={{ fontSize: 12, color: 'var(--text)' }}>Import session history</span>
           <button
             onClick={() => setImportDialogOpen(true)}
-            style={{ padding: '4px 10px', fontSize: 10.5, fontWeight: 500, borderRadius: 5, background: 'var(--bg-card)', border: '1px solid var(--border-strong)', color: 'var(--text)', cursor: 'pointer' }}
+            style={{ padding: sp('4px 10px'), fontSize: 10.5, fontWeight: 500, borderRadius: rad(5), background: 'var(--bg-card)', border: 'var(--stroke) solid var(--border-strong)', color: 'var(--text)', cursor: 'pointer' }}
           >
             Scan
           </button>
@@ -179,7 +180,7 @@ export function RecordingSection({
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <button
             onClick={() => setPiiCriteriaOpen(!piiCriteriaOpen)}
-            style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: 'var(--text)', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+            style={{ display: 'flex', alignItems: 'center', gap: sp(4), fontSize: 12, color: 'var(--text)', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
           >
             <span style={{ fontSize: 10, transform: piiCriteriaOpen ? 'rotate(90deg)' : 'none', transition: 'transform 0.1s', display: 'inline-block' }}>▶</span>
             PII filter
@@ -191,42 +192,42 @@ export function RecordingSection({
         </span>
 
         {piiCriteriaOpen && (
-          <div style={{ marginTop: 4, padding: 8, background: 'var(--bg-card)', border: '1px solid var(--border-strong)', borderRadius: 6, maxHeight: 256, overflowY: 'auto' }}>
+          <div style={{ marginTop: sp(4), padding: sp(8), background: 'var(--bg-card)', border: 'var(--stroke) solid var(--border-strong)', borderRadius: rad(6), maxHeight: 256, overflowY: 'auto' }}>
             {(['direct', 'indirect', 'special'] as const).map((group) => (
-              <div key={group} style={{ marginBottom: 8 }}>
-                <h4 style={{ fontSize: 9.5, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', margin: '0 0 4px' }}>
+              <div key={group} style={{ marginBottom: sp(8) }}>
+                <h4 style={{ fontSize: 9.5, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', margin: sp('0 0 4px') }}>
                   {PII_GROUP_LABELS[group]}
                 </h4>
-                <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
+                <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: sp(2) }}>
                   {PII_CATEGORIES.filter((c) => c.group === group).map((cat) => (
-                    <li key={cat.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 6, fontSize: 10.5 }}>
-                      <span style={{ marginTop: 2, flexShrink: 0, color: cat.detected ? 'var(--ok)' : 'var(--text-faint)' }}>{cat.detected ? '●' : '○'}</span>
+                    <li key={cat.id} style={{ display: 'flex', alignItems: 'flex-start', gap: sp(6), fontSize: 10.5 }}>
+                      <span style={{ marginTop: sp(2), flexShrink: 0, color: cat.detected ? 'var(--ok)' : 'var(--text-faint)' }}>{cat.detected ? '●' : '○'}</span>
                       <span style={{ color: 'var(--text)' }}>
                         {cat.label}
-                        <span style={{ color: 'var(--text-faint)', marginLeft: 4 }}>— {cat.description}</span>
+                        <span style={{ color: 'var(--text-faint)', marginLeft: sp(4) }}>— {cat.description}</span>
                       </span>
                     </li>
                   ))}
                 </ul>
               </div>
             ))}
-            <p style={{ fontSize: 10.5, color: 'var(--text-faint)', margin: 0, paddingTop: 8, borderTop: '1px solid var(--border-subtle)' }}>
+            <p style={{ fontSize: 10.5, color: 'var(--text-faint)', margin: 0, paddingTop: sp(8), borderTop: 'var(--stroke) solid var(--border-subtle)' }}>
               <span style={{ color: 'var(--ok)' }}>●</span> Auto-detected via pattern matching
-              <span style={{ color: 'var(--text-faint)', marginLeft: 8 }}>○</span> Listed for awareness
+              <span style={{ color: 'var(--text-faint)', marginLeft: sp(8) }}>○</span> Listed for awareness
             </p>
           </div>
         )}
       </CustomRow>
 
       <CustomRow>
-        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: sp(12) }}>
           <span style={{ fontSize: 10.5, color: 'var(--text-faint)', lineHeight: 1.5 }}>
             Scan stored sessions and bookmarks for PII and redact all matches.
           </span>
           <button
             onClick={() => void handlePurgeScan()}
             disabled={purgeState === 'scanning' || purgeState === 'purging'}
-            style={{ flexShrink: 0, padding: '6px 12px', fontSize: 11, fontWeight: 500, borderRadius: 5, background: tokenColor('error', '12%'), border: '1px solid var(--error)', color: 'var(--error)', cursor: 'pointer', opacity: purgeState === 'scanning' || purgeState === 'purging' ? 0.5 : 1 }}
+            style={{ flexShrink: 0, padding: sp('6px 12px'), fontSize: 11, fontWeight: 500, borderRadius: rad(5), background: tokenColor('error', '12%'), border: 'var(--stroke) solid var(--error)', color: 'var(--error)', cursor: 'pointer', opacity: purgeState === 'scanning' || purgeState === 'purging' ? 0.5 : 1 }}
           >
             {purgeState === 'scanning' ? 'Scanning…' : 'Purge all PII'}
           </button>
@@ -318,8 +319,8 @@ function MiniToggle({ checked, onClick }: { checked: boolean; onClick: () => voi
     <button
       onClick={onClick}
       style={{
-        width: 30, height: 16, borderRadius: 8,
-        border: `1px solid ${checked ? 'var(--accent)' : 'var(--border-strong)'}`,
+        width: 30, height: 16, borderRadius: rad(8),
+        border: `var(--stroke) solid ${checked ? 'var(--accent)' : 'var(--border-strong)'}`,
         background: checked ? 'var(--bg-selected)' : 'var(--bg-card)',
         position: 'relative', cursor: 'pointer', padding: 0, flexShrink: 0, boxSizing: 'border-box',
       }}

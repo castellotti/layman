@@ -3,6 +3,7 @@ import type { StationId } from '../../lib/station.js';
 import { STATION_STYLE } from '../../lib/station-style.js';
 import { StationGlyph } from './StationGlyph.js';
 import { filterChipStyle } from '../primitives/index.js';
+import { sp, rad } from '../../lib/density.js';
 
 /**
  * The Logs filter by station: a chip that opens a list of the stations this session's events fall
@@ -44,7 +45,7 @@ export function StationFilter({
         aria-controls="station-filter-list"
         onClick={() => setOpen((v) => !v)}
         title="Show only the rows at some stations: the kind of work each event is"
-        style={{ ...filterChipStyle(active), gap: 5 }}
+        style={{ ...filterChipStyle(active), gap: sp(5) }}
       >
         {selected.length === 1 && <StationGlyph station={selected[0]} size={11} decorative />}
         {label}
@@ -57,11 +58,11 @@ export function StationFilter({
           aria-label="Show only these stations"
           style={{
             position: 'absolute', top: 'calc(100% + 4px)', left: 0, zIndex: 30, minWidth: 190,
-            padding: 4, borderRadius: 6, background: 'var(--bg-raised)', border: '1px solid var(--border-strong)',
+            padding: sp(4), borderRadius: rad(6), background: 'var(--bg-raised)', border: 'var(--stroke) solid var(--border-strong)',
             boxShadow: '0 6px 20px color-mix(in srgb, var(--bg) 60%, transparent)',
           }}
         >
-          {rows.length === 0 && <div style={{ padding: '6px 8px', fontSize: 11, color: 'var(--text-faint)' }}>No events yet</div>}
+          {rows.length === 0 && <div style={{ padding: sp('6px 8px'), fontSize: 11, color: 'var(--text-faint)' }}>No events yet</div>}
           {rows.map(({ station, count }) => {
             const on = selected.includes(station);
             return (
@@ -72,7 +73,7 @@ export function StationFilter({
                 onClick={() => onToggle(station)}
                 title={STATION_STYLE[station].about}
                 style={{
-                  display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '5px 8px', borderRadius: 4,
+                  display: 'flex', alignItems: 'center', gap: sp(8), width: '100%', padding: sp('5px 8px'), borderRadius: rad(4),
                   border: 'none', cursor: 'pointer', fontSize: 11, fontFamily: 'var(--font-ui)', textAlign: 'left',
                   background: on ? 'var(--bg-selected)' : 'transparent', color: on ? 'var(--text)' : 'var(--text-body)',
                 }}
@@ -88,7 +89,7 @@ export function StationFilter({
             <button
               type="button"
               onClick={onClear}
-              style={{ width: '100%', marginTop: 2, padding: '5px 8px', border: 'none', borderTop: '1px solid var(--border-subtle)', background: 'transparent', color: 'var(--text-faint)', fontSize: 10.5, fontFamily: 'var(--font-ui)', cursor: 'pointer', textAlign: 'left' }}
+              style={{ width: '100%', marginTop: sp(2), padding: sp('5px 8px'), border: 'none', borderTop: 'var(--stroke) solid var(--border-subtle)', background: 'transparent', color: 'var(--text-faint)', fontSize: 10.5, fontFamily: 'var(--font-ui)', cursor: 'pointer', textAlign: 'left' }}
             >
               Show all stations
             </button>

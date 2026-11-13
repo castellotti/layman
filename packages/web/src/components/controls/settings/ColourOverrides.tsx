@@ -6,6 +6,7 @@ import {
 } from '../../../lib/themes.js';
 import { tokenColor } from '../../../lib/tokens.js';
 import { CustomRow } from './primitives.js';
+import { sp, rad } from '../../../lib/density.js';
 
 type Colours = Partial<TokenMap>;
 
@@ -84,7 +85,7 @@ export function ColourOverrides({
 
   return (
     <CustomRow>
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: sp(8) }}>
         <span style={{ fontSize: 12, color: 'var(--text)' }}>Colours of {theme.name}</span>
         <span style={{ fontSize: 10.5, color: 'var(--text-faint)', flex: 1 }}>
           {changed ? `${changed} changed` : "the theme's own"} · kept for this theme only
@@ -97,8 +98,8 @@ export function ColourOverrides({
       <Specimen />
 
       {problems.length > 0 ? (
-        <div role="status" style={{ fontSize: 10.5, lineHeight: 1.5, color: 'var(--warn)', border: `1px solid ${tokenColor('warn', '35%')}`, background: tokenColor('warn', '8%'), borderRadius: 5, padding: '6px 9px' }}>
-          <div style={{ fontWeight: 600, marginBottom: 2 }}>Harder to read: {problems.length} check{problems.length === 1 ? '' : 's'} fail</div>
+        <div role="status" style={{ fontSize: 10.5, lineHeight: 1.5, color: 'var(--warn)', border: `var(--stroke) solid ${tokenColor('warn', '35%')}`, background: tokenColor('warn', '8%'), borderRadius: rad(5), padding: sp('6px 9px') }}>
+          <div style={{ fontWeight: 600, marginBottom: sp(2) }}>Harder to read: {problems.length} check{problems.length === 1 ? '' : 's'} fail</div>
           {problems.map((p) => <div key={p}>{p}</div>)}
         </div>
       ) : (
@@ -107,10 +108,10 @@ export function ColourOverrides({
         </div>
       )}
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(230px, 1fr))', gap: '10px 18px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(230px, 1fr))', gap: sp('10px 18px') }}>
         {TOKEN_GROUPS.map((g) => (
-          <div key={g.name} style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-            <span style={{ fontSize: 9, fontWeight: 600, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--text-faint)', padding: '2px 0' }}>{g.name}</span>
+          <div key={g.name} style={{ display: 'flex', flexDirection: 'column', gap: sp(3) }}>
+            <span style={{ fontSize: 9, fontWeight: 600, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--text-faint)', padding: sp('2px 0') }}>{g.name}</span>
             {g.tokens.map((token) => (
               <ColourRow
                 key={`${theme.id}:${token}`}
@@ -151,13 +152,13 @@ function ColourRow({
     else if (!sameColour(text, value)) onChange(text);
   };
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: sp(6) }}>
       <input
         type="color"
         aria-label={`${token} colour`}
         value={longHex(value)}
         onChange={(e) => onChange(e.target.value)}
-        style={{ width: 22, height: 18, padding: 0, border: '1px solid var(--border-strong)', borderRadius: 3, background: 'none', cursor: 'pointer', flexShrink: 0 }}
+        style={{ width: 22, height: 18, padding: 0, border: 'var(--stroke) solid var(--border-strong)', borderRadius: rad(3), background: 'none', cursor: 'pointer', flexShrink: 0 }}
       />
       <span style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: overridden ? 'var(--text)' : 'var(--text-muted)', fontWeight: overridden ? 600 : 400, flex: 1, minWidth: 0 }}>
         {token}
@@ -171,8 +172,8 @@ function ColourRow({
         onBlur={commit}
         onKeyDown={(e) => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') setText(value); }}
         style={{
-          width: 64, padding: '2px 5px', fontSize: 10.5, fontFamily: 'var(--font-mono)', background: 'var(--bg-card)',
-          border: `1px solid ${HEX_COLOR.test(text) ? 'var(--border-strong)' : 'var(--error)'}`, borderRadius: 4, color: 'var(--text)', outline: 'none',
+          width: 64, padding: sp('2px 5px'), fontSize: 10.5, fontFamily: 'var(--font-mono)', background: 'var(--bg-card)',
+          border: `var(--stroke) solid ${HEX_COLOR.test(text) ? 'var(--border-strong)' : 'var(--error)'}`, borderRadius: rad(4), color: 'var(--text)', outline: 'none',
         }}
       />
       <button
@@ -196,33 +197,33 @@ const NET_LINES: readonly Token[] = ['net-tunnel', 'net-up', 'net-down', 'net-fa
 /** A small piece of the UI in the current colours, so an edit is seen where it matters. */
 function Specimen() {
   const chip = (token: Token, label: string) => (
-    <span style={{ fontSize: 9.5, fontWeight: 600, color: `var(--${token})`, border: `1px solid ${tokenColor(token, '45%')}`, background: tokenColor(token, '12%'), borderRadius: 4, padding: '1px 6px' }}>{label}</span>
+    <span style={{ fontSize: 9.5, fontWeight: 600, color: `var(--${token})`, border: `var(--stroke) solid ${tokenColor(token, '45%')}`, background: tokenColor(token, '12%'), borderRadius: rad(4), padding: sp('1px 6px') }}>{label}</span>
   );
   return (
-    <div aria-hidden style={{ display: 'flex', gap: 10, padding: 10, background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 6 }}>
-      <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 5, background: 'var(--bg-card)', border: '1px solid var(--border-strong)', borderRadius: 5, padding: '8px 10px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+    <div aria-hidden style={{ display: 'flex', gap: sp(10), padding: sp(10), background: 'var(--bg)', border: 'var(--stroke) solid var(--border)', borderRadius: rad(6) }}>
+      <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: sp(5), background: 'var(--bg-card)', border: 'var(--stroke) solid var(--border-strong)', borderRadius: rad(5), padding: sp('8px 10px') }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: sp(6) }}>
           <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text)' }}>Bash</span>
           <span style={{ fontSize: 10.5, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>pnpm test</span>
           <span style={{ flex: 1 }} />
           {chip('ok', 'LOW')}{chip('warn', 'MEDIUM')}{chip('error', 'HIGH')}
         </div>
         <span style={{ fontSize: 11, color: 'var(--text-body)' }}>
-          Runs the tests. <span style={{ color: 'var(--text)', borderBottom: '1px solid var(--accent)' }}>Body text</span> with a link underline.
+          Runs the tests. <span style={{ color: 'var(--text)', borderBottom: 'var(--stroke) solid var(--accent)' }}>Body text</span> with a link underline.
         </span>
         <span style={{ fontSize: 10, color: 'var(--text-faint)' }}>2 min ago · faint text</span>
-        <div style={{ display: 'flex', gap: 8, fontSize: 10.5 }}>
+        <div style={{ display: 'flex', gap: sp(8), fontSize: 10.5 }}>
           {KINDS.map(([token, label]) => <span key={token} style={{ color: `var(--${token})` }}>{label}</span>)}
         </div>
       </div>
-      <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', fontSize: 10.5, fontFamily: 'var(--font-mono)', background: 'var(--bg-code)', border: '1px solid var(--border-subtle)', borderRadius: 5, overflow: 'hidden' }}>
-        <span style={{ color: 'var(--code)', padding: '3px 8px' }}>const ok = run();</span>
-        <span style={{ color: 'var(--diff-remove-text)', background: 'var(--diff-remove-bg)', padding: '1px 8px' }}>- return false;</span>
-        <span style={{ color: 'var(--diff-add-text)', background: 'var(--diff-add-bg)', padding: '1px 8px' }}>+ return ok;</span>
-        <span style={{ display: 'flex', gap: 6, alignItems: 'center', padding: '4px 8px', background: 'var(--bg-raised)', borderTop: '1px solid var(--border-subtle)', marginTop: 'auto' }}>
+      <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', fontSize: 10.5, fontFamily: 'var(--font-mono)', background: 'var(--bg-code)', border: 'var(--stroke) solid var(--border-subtle)', borderRadius: rad(5), overflow: 'hidden' }}>
+        <span style={{ color: 'var(--code)', padding: sp('3px 8px') }}>const ok = run();</span>
+        <span style={{ color: 'var(--diff-remove-text)', background: 'var(--diff-remove-bg)', padding: sp('1px 8px') }}>- return false;</span>
+        <span style={{ color: 'var(--diff-add-text)', background: 'var(--diff-add-bg)', padding: sp('1px 8px') }}>+ return ok;</span>
+        <span style={{ display: 'flex', gap: sp(6), alignItems: 'center', padding: sp('4px 8px'), background: 'var(--bg-raised)', borderTop: 'var(--stroke) solid var(--border-subtle)', marginTop: 'auto' }}>
           {NET_LINES.map((token) => <span key={token} style={{ width: 16, height: 3, background: `var(--${token})` }} />)}
           <span style={{ flex: 1 }} />
-          <span style={{ fontFamily: 'var(--font-ui)', fontSize: 10, fontWeight: 600, color: 'var(--text-on-fill)', background: 'var(--ok)', borderRadius: 4, padding: '1px 7px' }}>Allow</span>
+          <span style={{ fontFamily: 'var(--font-ui)', fontSize: 10, fontWeight: 600, color: 'var(--text-on-fill)', background: 'var(--ok)', borderRadius: rad(4), padding: sp('1px 7px') }}>Allow</span>
         </span>
       </div>
     </div>
