@@ -1,6 +1,8 @@
 import { useMemo } from 'react';
 import { useSessionStore } from '../stores/sessionStore.js';
 import type { TimelineEvent, EventType } from '../lib/types.js';
+import { NO_SETUP, type StationId, type StationSetup } from '../lib/station.js';
+import { rowStation } from '../lib/station-style.js';
 
 export interface EventFilters {
   promptsOnly?: boolean;
@@ -9,6 +11,10 @@ export interface EventFilters {
   searchQuery?: string;
   types?: EventType[];
   agentTypes?: string[];
+  /** Only events at these stations (`lib/station.ts`); empty or absent shows every event. */
+  stations?: StationId[];
+  /** The Memory settings stations are read with. */
+  stationSetup?: StationSetup;
 }
 
 function matchesSearch(event: TimelineEvent, query: string): boolean {
@@ -76,12 +82,21 @@ export function useEventStore(filters?: EventFilters, sourceOverride?: TimelineE
     if (filters?.agentTypes && filters.agentTypes.length > 0) {
       result = result.filter((e) => filters.agentTypes!.includes(e.agentType));
     }
+    if (filters?.stations && filters.stations.length > 0) {
+      const wanted = new Set(filters.stations);
+      const setup = filters.stationSetup ?? NO_SETUP;
+      result = result.filter((e) => {
+        const s = rowStation(e, setup);
+        return s !== undefined && wanted.has(s);
+      });
+    }
 
     return result;
   }, [
     sessionEvents,
     filters?.promptsOnly, filters?.requestsOnly, filters?.responsesOnly,
     filters?.searchQuery, filters?.types, filters?.agentTypes,
+    filters?.stations, filters?.stationSetup,
   ]);
 
   const pendingEvents = useMemo(

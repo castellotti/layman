@@ -1,5 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { SearchInput, FilterChip, LiveChip } from '../primitives/index.js';
+import { StationFilter } from '../activity/StationFilter.js';
+import type { StationId } from '../../lib/station.js';
 
 interface NavigationBarProps {
   // Search
@@ -13,6 +15,11 @@ interface NavigationBarProps {
   onToggleRequestsOnly: () => void;
   onToggleResponsesOnly: () => void;
   onClearFilters: () => void;
+  // Station filter (absent: no station chip)
+  stationCounts?: { station: StationId; count: number }[];
+  stations?: StationId[];
+  onToggleStation?: (station: StationId) => void;
+  onClearStations?: () => void;
   // Live state
   followLatest: boolean;
   archived?: boolean;
@@ -38,6 +45,10 @@ export function NavigationBar({
   onToggleRequestsOnly,
   onToggleResponsesOnly,
   onClearFilters,
+  stationCounts,
+  stations = [],
+  onToggleStation,
+  onClearStations,
   followLatest,
   archived = false,
   archivedDate,
@@ -65,7 +76,7 @@ export function NavigationBar({
     return () => window.removeEventListener('keydown', handleKey);
   }, []);
 
-  const anyFilterActive = promptsOnly || requestsOnly || responsesOnly;
+  const anyFilterActive = promptsOnly || requestsOnly || responsesOnly || stations.length > 0;
 
   const handleBookmarkClick = () => {
     setBookmarkName(defaultBookmarkName);
@@ -116,6 +127,9 @@ export function NavigationBar({
         <FilterChip label="Prompts" active={promptsOnly} onClick={onTogglePromptsOnly} />
         <FilterChip label="Responses" active={responsesOnly} onClick={onToggleResponsesOnly} />
         <FilterChip label="Permissions" active={requestsOnly} onClick={onToggleRequestsOnly} />
+        {stationCounts && onToggleStation && onClearStations && (
+          <StationFilter counts={stationCounts} selected={stations} onToggle={onToggleStation} onClear={onClearStations} />
+        )}
         {anyFilterActive && (
           <button
             onClick={onClearFilters}

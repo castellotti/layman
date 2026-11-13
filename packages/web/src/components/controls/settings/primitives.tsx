@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { SegmentedControl } from '../../primitives/index.js';
 
 export const ROW_STYLE: React.CSSProperties = {
@@ -274,4 +274,71 @@ export function ActionRow({
 
 export function CustomRow({ children }: { children: React.ReactNode }) {
   return <div style={ROW_STYLE}>{children}</div>;
+}
+
+const trimmed = (draft: string) => draft.trim() || null;
+
+/** Inline code in a setting's help text. */
+export function Code({ children }: { children: React.ReactNode }) {
+  return <code style={{ fontFamily: 'var(--font-mono)' }}>{children}</code>;
+}
+
+/**
+ * A setting that is a list of short strings: a field to add one, a chip per entry to remove it, and
+ * a line of help. `normalise` turns the draft into an entry (null refuses it; default: trimmed,
+ * blank refused); `withEntry` adds it (default: appended once).
+ */
+export function StringListRow({
+  label, placeholder, list, onChange, normalise = trimmed, withEntry, help,
+}: {
+  label: string;
+  placeholder: string;
+  list: string[];
+  onChange: (next: string[]) => void;
+  normalise?: (draft: string) => string | null;
+  withEntry?: (list: string[], entry: string) => string[];
+  help: React.ReactNode;
+}) {
+  const [draft, setDraft] = useState('');
+  const entry = normalise(draft);
+  const add = () => {
+    if (!entry) return;
+    onChange(withEntry ? withEntry(list, entry) : list.includes(entry) ? list : [...list, entry]);
+    setDraft('');
+  };
+  return (
+    <CustomRow>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <span style={{ fontSize: 12, color: 'var(--text)', flex: 1 }}>{label}</span>
+        <input
+          type="text"
+          value={draft}
+          placeholder={placeholder}
+          aria-label={`Add to ${label}`}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') add(); }}
+          spellCheck={false}
+          style={{ width: 200, padding: '4px 6px', fontSize: 11, fontFamily: 'var(--font-mono)', background: 'var(--bg-card)', border: '1px solid var(--border-strong)', borderRadius: 5, color: 'var(--text)', outline: 'none' }}
+        />
+        <button type="button" onClick={add} disabled={!entry}
+          style={{ padding: '4px 10px', fontSize: 11, borderRadius: 5, border: '1px solid var(--border-strong)', background: 'var(--bg-card)', color: entry ? 'var(--text)' : 'var(--text-faint)', cursor: entry ? 'pointer' : 'default' }}>
+          Add
+        </button>
+      </div>
+      {list.length > 0 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+          {list.map((d) => (
+            <span key={d} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '1px 4px 1px 8px', fontSize: 11, fontFamily: 'var(--font-mono)', borderRadius: 10, border: '1px solid var(--border-strong)', color: 'var(--text-body)' }}>
+              {d}
+              <button type="button" aria-label={`Remove ${d}`} onClick={() => onChange(list.filter((x) => x !== d))}
+                style={{ background: 'none', border: 'none', padding: '0 3px', cursor: 'pointer', color: 'var(--text-faint)', fontSize: 12, lineHeight: 1 }}>
+                ×
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+      <span style={{ fontSize: 10.5, color: 'var(--text-faint)', lineHeight: 1.5 }}>{help}</span>
+    </CustomRow>
+  );
 }

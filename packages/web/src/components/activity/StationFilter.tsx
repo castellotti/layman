@@ -1,0 +1,100 @@
+import { useEffect, useRef, useState } from 'react';
+import type { StationId } from '../../lib/station.js';
+import { STATION_STYLE } from '../../lib/station-style.js';
+import { StationGlyph } from './StationGlyph.js';
+import { filterChipStyle } from '../primitives/index.js';
+
+/**
+ * The Logs filter by station: a chip that opens a list of the stations this session's events fall
+ * at, with a count each. Picking some shows only their rows; picking none shows everything.
+ */
+export function StationFilter({
+  counts, selected, onToggle, onClear,
+}: {
+  counts: { station: StationId; count: number }[];
+  selected: StationId[];
+  onToggle: (station: StationId) => void;
+  onClear: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const trigger = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: MouseEvent) => { if (!ref.current?.contains(e.target as Node)) setOpen(false); };
+    // Escape returns focus to the chip, so a keyboard user is not dropped onto the page.
+    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') { setOpen(false); trigger.current?.focus(); } };
+    document.addEventListener('mousedown', close);
+    document.addEventListener('keydown', esc);
+    return () => { document.removeEventListener('mousedown', close); document.removeEventListener('keydown', esc); };
+  }, [open]);
+
+  const active = selected.length > 0;
+  // A picked station stays listed (at 0) when the session has none, so it can still be unpicked.
+  const rows = [...counts, ...selected.filter((s) => !counts.some((c) => c.station === s)).map((station) => ({ station, count: 0 }))];
+  const label = selected.length === 1 ? STATION_STYLE[selected[0]].label : active ? `Stations · ${selected.length}` : 'Stations';
+
+  return (
+    <div ref={ref} style={{ position: 'relative' }}>
+      <button
+        ref={trigger}
+        type="button"
+        aria-expanded={open}
+        aria-controls="station-filter-list"
+        onClick={() => setOpen((v) => !v)}
+        title="Show only the rows at some stations: the kind of work each event is"
+        style={{ ...filterChipStyle(active), gap: 5 }}
+      >
+        {selected.length === 1 && <StationGlyph station={selected[0]} size={11} decorative />}
+        {label}
+        <span style={{ fontSize: 8, color: 'var(--text-faint)' }}>▾</span>
+      </button>
+      {open && (
+        <div
+          id="station-filter-list"
+          role="group"
+          aria-label="Show only these stations"
+          style={{
+            position: 'absolute', top: 'calc(100% + 4px)', left: 0, zIndex: 30, minWidth: 190,
+            padding: 4, borderRadius: 6, background: 'var(--bg-raised)', border: '1px solid var(--border-strong)',
+            boxShadow: '0 6px 20px color-mix(in srgb, var(--bg) 60%, transparent)',
+          }}
+        >
+          {rows.length === 0 && <div style={{ padding: '6px 8px', fontSize: 11, color: 'var(--text-faint)' }}>No events yet</div>}
+          {rows.map(({ station, count }) => {
+            const on = selected.includes(station);
+            return (
+              <button
+                key={station}
+                type="button"
+                aria-pressed={on}
+                onClick={() => onToggle(station)}
+                title={STATION_STYLE[station].about}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '5px 8px', borderRadius: 4,
+                  border: 'none', cursor: 'pointer', fontSize: 11, fontFamily: 'var(--font-ui)', textAlign: 'left',
+                  background: on ? 'var(--bg-selected)' : 'transparent', color: on ? 'var(--text)' : 'var(--text-body)',
+                }}
+              >
+                <span aria-hidden style={{ width: 10, fontSize: 10, color: 'var(--text-muted)' }}>{on ? '✓' : ''}</span>
+                <StationGlyph station={station} decorative />
+                <span style={{ flex: 1 }}>{STATION_STYLE[station].label}</span>
+                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-faint)' }}>{count}</span>
+              </button>
+            );
+          })}
+          {active && (
+            <button
+              type="button"
+              onClick={onClear}
+              style={{ width: '100%', marginTop: 2, padding: '5px 8px', border: 'none', borderTop: '1px solid var(--border-subtle)', background: 'transparent', color: 'var(--text-faint)', fontSize: 10.5, fontFamily: 'var(--font-ui)', cursor: 'pointer', textAlign: 'left' }}
+            >
+              Show all stations
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}

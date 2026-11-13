@@ -337,6 +337,8 @@ export interface LaymanConfig {
   approvalClients: string[];
   /** Live token streaming. Mirrors LiveTokensConfigSchema on the server. */
   liveTokens: { enabled: boolean; showThinking: boolean };
+  /** The activity map's Memory station. Mirrors ActivityConfigSchema on the server. */
+  activity: { memoryPaths: string[]; memoryServers: string[] };
   /** Passive monitoring of glove-sandboxed harnesses. Mirrors GloveConfigSchema. */
   glove: {
     enabled: boolean;

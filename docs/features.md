@@ -47,6 +47,12 @@ Sessions can optionally be recorded to a local SQLite database, capturing user p
 
 ![Prompts view](images/prompts.png)
 
+## Stations
+
+Every event in Logs is filed under a **station**, the kind of work it is: **You** (your prompts, and what the agent asked or showed you), **Model** (responses, reasoning, its own planning), **Memory**, **Files**, **Shell**, **Network**, **Browser**, **Agents** (subagents, and work started to run on later), **Skills** and **Guard** (Layman's own decisions: approvals, denials, permission requests, drift checks). A glyph in the station's colour sits on each row, and its tooltip names the call without its content (a file by its last two path parts, an address by its host, a command by the agent's description of it). The **Stations** chip beside Prompts, Responses and Permissions shows how many events each station has in the session and filters Logs to the ones you pick.
+
+Every harness's tools are covered. A shell command is filed by the commands in it: Network if any reaches the network (`curl`, `ssh`, `git push`, `pnpm add`, an `rsync` to another host…), Files if it only reads, searches, moves or edits files, Shell otherwise. Claude Code's memory folder (`~/.claude/projects/…/memory/`) is always Memory; **Settings → Stations** names more memory paths and MCP servers. Stations are worked out when shown, never stored, so they cover every recorded session, and a settings change re-files past sessions too.
+
 ## Historical session import
 
 Layman can discover and import past sessions from JSONL transcript files that were never monitored live - Claude Code (`~/.claude/projects/`) and pi (`~/.pi/agent/sessions/`). **Settings -> Data** provides a scan dialog with per-session results, a Harness column, and an optional auto-import-on-startup flag. Existing live sessions are enriched with missing events without downgrading their live status.
