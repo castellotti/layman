@@ -2,7 +2,7 @@ import { useCallback, useSyncExternalStore } from 'react';
 
 /** Each key's raw value as this page knows it: read from storage once, then kept here on every set. */
 const values = new Map<string, string | null>();
-/** Every mounted user of a key, so a change in one (one Dashboard pane's toggle) reaches them all. */
+/** Every mounted user of a key, so a change in one reaches them all. */
 const listeners = new Map<string, Set<() => void>>();
 
 function read(key: string): string | null {

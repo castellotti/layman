@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { aside, CAP, DESCENT, edge, LABEL_WIDTH, lanes, LEG_GAP, layoutMap, legPath, MIN_COMPACT, MIN_SIZE, spoke, spokeWidth, wear, type MapLayout, type Point } from './activity-map.js';
+import { aside, CAP, DESCENT, edge, LABEL_WIDTH, lanes, LEG_GAP, layoutMap, legPath, MIN_SIZE, spoke, spokeWidth, wear, type MapLayout, type Point } from './activity-map.js';
 import { STATION_IDS } from './station.js';
 
 const SIZE = { width: 520, height: 400 };
@@ -89,19 +89,6 @@ describe('layoutMap', () => {
       const l = layoutMap(ids(n), size);
       for (let i = 0; i < n; i++) {
         expect(dist(l.stations[i], l.stations[(i + 1) % n])).toBeGreaterThan(2 * l.node);
-      }
-    }
-  });
-
-  it('runs a compact ring nearly to the edge, its nodes inside the box and apart, for up to 12 stations', () => {
-    for (let n = 2; n <= 12; n++) {
-      const l = layoutMap(ids(n), MIN_COMPACT, { compact: true });
-      expect([l.width, l.height]).toEqual([MIN_COMPACT.width, MIN_COMPACT.height]);
-      for (let i = 0; i < n; i++) {
-        const s = l.stations[i];
-        // The subagents' orbit (a 2.6 dot, 6 out from the rim) stays inside too.
-        expect(Math.min(s.x, s.y, l.width - s.x, l.height - s.y)).toBeGreaterThanOrEqual(l.node + 6 + 2.6);
-        expect(dist(s, l.stations[(i + 1) % n])).toBeGreaterThan(2 * l.node);
       }
     }
   });

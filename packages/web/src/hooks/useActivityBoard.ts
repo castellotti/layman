@@ -9,13 +9,12 @@ import { useStationSetup } from './useStationSetup.js';
 const NONE: TimelineEvent[] = [];
 
 /**
- * The last lean recordings fetched, by session, so a map that re-mounts (a Dashboard pane's map
- * toggled, the Activity tab reopened) does not download a whole session again. The live events
- * joined to it cover what came after.
+ * The last lean recordings fetched, by session, so reopening the Activity tab does not download a
+ * whole session again. The live events joined to it cover what came after.
  */
 const cache = new Map<string, TimelineEvent[]>();
-/** Few: a long session's recording is tens of megabytes in memory. */
-const CACHED_SESSIONS = 4;
+/** Two (the session mapped and the one before it): a long session's recording is tens of megabytes in memory. */
+const CACHED_SESSIONS = 2;
 function remember(sessionId: string, events: TimelineEvent[]): void {
   cache.delete(sessionId);
   cache.set(sessionId, events);
@@ -23,8 +22,8 @@ function remember(sessionId: string, events: TimelineEvent[]): void {
 }
 
 /**
- * The store's events split by session, once per event list however many maps read it (a Dashboard
- * holds one per pane). Weak, so a replaced list's split goes with it.
+ * The store's events split by session, once per event list, not at every store change the selector
+ * runs on. Weak, so a replaced list's split goes with it.
  */
 const splits = new WeakMap<TimelineEvent[], Map<string, TimelineEvent[]>>();
 function bySession(all: TimelineEvent[]): Map<string, TimelineEvent[]> {

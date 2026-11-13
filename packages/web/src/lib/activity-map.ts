@@ -40,8 +40,6 @@ export interface MapLayout {
 
 /** The smallest map that still has room for its labels; a smaller box is drawn at this size, scaled. */
 export const MIN_SIZE = { width: 320, height: 260 } as const;
-/** The least for a compact map (no labels: a Dashboard pane's), drawn smaller by scaling below it. */
-export const MIN_COMPACT = { width: 170, height: 170 } as const;
 const HUB = 18;
 const NODE = 13;
 /**
@@ -61,8 +59,6 @@ const LABEL_GAP = NODE + 9;
 const LABEL_BELOW = LABEL_GAP + CAP;
 /** Room outside the ring for a label: its width at the sides, and above and below with a margin. */
 const LABEL_ROOM = { x: LABEL_GAP + LABEL_WIDTH + 2, y: LABEL_BELOW + DESCENT + 2 } as const;
-/** A compact map's (no labels): room for the subagents' orbit, a dot of 2.6 at NODE + 6 out, wherever Agents sits. */
-const COMPACT_ROOM = { x: NODE + 10, y: NODE + 10 } as const;
 /** Only a node this near the very top or bottom gets a centred label. */
 const CENTRED = 0.1;
 /** A node within about 37° of the top or bottom has its label above or below it, not beside it. */
@@ -83,15 +79,12 @@ export const LANE_GAP = 5;
 const round = (v: number): number => Math.round(v * 10) / 10;
 
 /** The stations placed on the ring for a box of the given size. */
-export function layoutMap(ids: readonly string[], size: { width: number; height: number }, options: { compact?: boolean } = {}): MapLayout {
-  // A compact map draws no labels (names are in its tooltips), so its ring runs nearly to the edge.
-  const least = options.compact ? MIN_COMPACT : MIN_SIZE;
-  const room = options.compact ? COMPACT_ROOM : LABEL_ROOM;
-  const width = Math.max(least.width, size.width);
-  const height = Math.max(least.height, size.height);
+export function layoutMap(ids: readonly string[], size: { width: number; height: number }): MapLayout {
+  const width = Math.max(MIN_SIZE.width, size.width);
+  const height = Math.max(MIN_SIZE.height, size.height);
   const core = { x: width / 2, y: height / 2 };
-  const rx = width / 2 - room.x;
-  const ry = height / 2 - room.y;
+  const rx = width / 2 - LABEL_ROOM.x;
+  const ry = height / 2 - LABEL_ROOM.y;
   const n = ids.length;
   const stations = ids.map((id, i): MapStation => {
     const angle = (i * 2 * Math.PI) / n;

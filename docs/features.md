@@ -59,8 +59,6 @@ The **Activity** tab (`A`) draws a session as a ring of its stations around the 
 
 The list beside the map is the newest work, with calls in a row at one station folded into one row (`+2`); click one to open it in Investigation. **Names only** hides what was typed, read or run and shows only names (a file's last two folders, a host, a command's name), for a shared screen. Link to a session's map with `/s/<session>?view=activity`.
 
-Each Dashboard pane shows a small map beside its recent rows; click it for the full one, or use the pane's **map** toggle to hide them.
-
 ## Historical session import
 
 Layman can discover and import past sessions from JSONL transcript files that were never monitored live - Claude Code (`~/.claude/projects/`) and pi (`~/.pi/agent/sessions/`). **Settings -> Data** provides a scan dialog with per-session results, a Harness column, and an optional auto-import-on-startup flag. Existing live sessions are enriched with missing events without downgrading their live status.
