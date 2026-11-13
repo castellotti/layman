@@ -59,7 +59,21 @@ describe('pulsesOf', () => {
     const b = board(Array.from({ length: 30 }, (_, i) => entry('files', i, { status: 'run', endedAt: undefined })));
     const p = pulsesOf(b, 100);
     expect(p).toHaveLength(14);
-    expect(p[13].key).toBe('e29files:run');
+    expect(p[13].key).toBe('e29files:files:run');
+  });
+
+  it('keeps a running call\'s pulse however many short ones follow it', () => {
+    const long = entry('shell', 0, { status: 'run', endedAt: undefined });
+    const b = board([long, ...Array.from({ length: 20 }, (_, i) => entry('files', 100 + i, { endedAt: 100 + i }))]);
+    const p = pulsesOf(b, 150);
+    expect(p).toHaveLength(14);
+    expect(p[0]).toMatchObject({ station: 'shell', kind: 'run' });
+  });
+
+  it('gives a decision and its call different keys though they share an event', () => {
+    const b = board([entry('guard', 1000, { eventId: 'x' }), entry('network', 1000, { eventId: 'x', status: 'block' })]);
+    const keys = pulsesOf(b, 1050).map((p) => p.key);
+    expect(new Set(keys).size).toBe(keys.length);
   });
 });
 

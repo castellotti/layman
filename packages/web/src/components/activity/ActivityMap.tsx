@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import { useNow } from '../../hooks/useNow.js';
 import type { Board } from '../../lib/activity-board.js';
 import { routeOf, runningAt } from '../../lib/activity-board.js';
 import { aside, edge, layoutMap, legPath, spoke, spokeWidth, wear, type MapLayout, type Point } from '../../lib/activity-map.js';
@@ -27,12 +28,16 @@ function pulseEnds(layout: MapLayout, p: Pulse): [Point, Point] | undefined {
   return s && [s.from, s.to];
 }
 
-/** One pulse. Its delay is taken once, when it appears, so a redraw never restarts its flight. */
+/**
+ * One pulse. Its delay and lane are taken once, when it appears, so a redraw never restarts its
+ * flight or moves it sideways when another pulse joins its spoke.
+ */
 function PulseDot({ layout, pulse }: { layout: MapLayout; pulse: Pulse }) {
   const [delay] = useState(() => -pulse.age / 1000);
+  const [lane] = useState(pulse.lane);
   const ends = pulseEnds(layout, pulse);
   if (!ends) return null;
-  const [a, b] = aside(ends[0], ends[1], pulse.lane);
+  const [a, b] = aside(ends[0], ends[1], lane);
   const [from, to] = pulse.kind === 'in' ? [b, a] : [a, b];
   const color = pulse.bad ? 'var(--error)' : STATION_STYLE[pulse.station].color;
   const style = { '--dx': `${to.x - from.x}px`, '--dy': `${to.y - from.y}px`, '--delay': `${delay}s` } as React.CSSProperties;
@@ -55,8 +60,6 @@ export interface ActivityMapProps {
   stations: readonly StationId[];
   width: number;
   height: number;
-  /** The clock pulses and fading legs are drawn at. */
-  now: number;
   /** The session is still going: pulses fly and old legs fade. A finished one shows its whole route still. */
   live: boolean;
   /** What the map is of, for a screen reader. */
@@ -64,7 +67,9 @@ export interface ActivityMapProps {
 }
 
 /** The map: stations on a ring around the agent, spokes worn by use, the route, pulses in flight. */
-export function ActivityMap({ board, stations, width, height, now, live, title }: ActivityMapProps) {
+export function ActivityMap({ board, stations, width, height, live, title }: ActivityMapProps) {
+  // Its own clock, so only the map redraws twice a second, not the feed beside it.
+  const now = useNow(live ? 500 : 60_000);
   const layout = useMemo(() => layoutMap(stations, { width, height }), [stations, width, height]);
   const running = useMemo(() => runningAt(board), [board]);
   const route = useMemo(() => routeOf(board.entries), [board]);
@@ -120,7 +125,9 @@ export function ActivityMap({ board, stations, width, height, now, live, title }
         const opacity = (0.15 + (0.55 * (k + 1)) / Math.max(1, route.length - 1)) * fade;
         return (
           <path
-            key={`leg-${k}-${to.at}`}
+            // By its stations, not its time: a call repeated at one station moves the stop's time,
+            // and must not re-mount the leg and replay its drawing.
+            key={`leg-${k}-${from.station}-${to.station}`}
             d={leg.d}
             fill="none"
             stroke="var(--text-faint)"

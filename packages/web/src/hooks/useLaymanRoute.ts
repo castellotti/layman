@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { useSessionStore, viewNameForMode, instanceUrlOf, isNetworkView } from '../stores/sessionStore.js';
+import { useSessionStore, viewNameForMode, instanceUrlOf, isNetworkView, isSessionView } from '../stores/sessionStore.js';
 import type { SessionState } from '../stores/sessionStore.js';
 import { buildPath, parsePath } from '../lib/layman-url.js';
 import { rangeKey } from '../lib/net-state.js';
@@ -84,7 +84,7 @@ export function routeForState(state: SessionState): { route: LaymanRoute; opts: 
       : { route: { kind: 'session', sessionId }, opts: {} };
   }
 
-  if ((state.viewMode === 'stream' || state.viewMode === 'flowchart' || state.viewMode === 'activity') && state.activeSessionId) {
+  if (isSessionView(state.viewMode) && state.activeSessionId) {
     return {
       route: { kind: 'session', sessionId: state.activeSessionId },
       opts: { view: viewNameForMode(state.viewMode) },

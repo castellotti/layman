@@ -29,13 +29,17 @@ function useLiveEvents(sessionId: string | null): TimelineEvent[] {
 export function useSessionTimeline(sessionId: string | null): { events: TimelineEvent[]; loading: boolean } {
   const live = useLiveEvents(sessionId);
   const lateUpdates = useSessionStore((s) => s.lateUpdates);
+  // A deep link has already loaded this session's whole recording (`hydrateFromRoute`); use it
+  // rather than fetching it again. The store keeps it current with `event:update`s itself.
+  const hydrated = useSessionStore((s) =>
+    sessionId && s.historicalEvents.length > 0 && s.historicalEvents[0].sessionId === sessionId ? s.historicalEvents : null);
   const prompts = useMemo(() => countPrompts(live), [live]);
   const [recorded, setRecorded] = useState<{ sessionId: string; events: TimelineEvent[] | null } | null>(null);
   const ours = recorded && recorded.sessionId === sessionId ? recorded : null;
   const missing = ours !== null && ours.events === null;
 
   useEffect(() => {
-    if (!sessionId) return;
+    if (!sessionId || hydrated) return;
     let cancelled = false;
     void fetchRecordedSessionEvents(sessionId, { lean: true }).then((events) => {
       if (!cancelled) setRecorded({ sessionId, events });
@@ -43,11 +47,12 @@ export function useSessionTimeline(sessionId: string | null): { events: Timeline
     return () => { cancelled = true; };
     // `prompts` only while the recording is missing: a retry, never a refresh of one we have.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionId, missing ? prompts : -1]);
+  }, [sessionId, hydrated !== null, missing ? prompts : -1]);
 
-  const base = ours?.events ?? NONE;
+  const base = hydrated ?? ours?.events ?? NONE;
   const patched = useMemo(() => {
-    if (lateUpdates.size === 0 || base.length === 0) return base;
+    // The hydrated recording is in the store, which applies updates to it already.
+    if (hydrated || lateUpdates.size === 0 || base.length === 0) return base;
     let changed = false;
     const out = base.map((e) => {
       const u = lateUpdates.get(e.id);
@@ -56,9 +61,9 @@ export function useSessionTimeline(sessionId: string | null): { events: Timeline
       return { ...e, ...u, data: { ...e.data, ...u.data } };
     });
     return changed ? out : base;
-  }, [base, lateUpdates]);
+  }, [base, hydrated, lateUpdates]);
   const events = useMemo(() => mergeRecordedWithLive(patched, live), [patched, live]);
-  return { events, loading: sessionId !== null && ours === null };
+  return { events, loading: sessionId !== null && !hydrated && ours === null };
 }
 
 /** One session's activity board, recomputed when its events or the Memory settings change. */

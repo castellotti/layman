@@ -26,7 +26,15 @@
   .activity-pulse, .activity-pulse-run { display: none; }
   .activity-lit, .activity-draw, .activity-orbit { animation: none; }
 }
+/* The same for Settings → Appearance → Motion: Reduced or Off (`data-motion` on <html>). */
+html[data-motion='reduced'] .activity-pulse, html[data-motion='reduced'] .activity-pulse-run,
+html[data-motion='off'] .activity-pulse, html[data-motion='off'] .activity-pulse-run { display: none; }
+html[data-motion='reduced'] .activity-lit, html[data-motion='reduced'] .activity-draw, html[data-motion='reduced'] .activity-orbit,
+html[data-motion='off'] .activity-lit, html[data-motion='off'] .activity-draw, html[data-motion='off'] .activity-orbit { animation: none; }
 @media print {
   .activity-pulse, .activity-pulse-run { display: none; }
   .activity-lit, .activity-draw, .activity-orbit { animation: none; }
+  /* The map is placed absolutely in its pane, so the pane needs a height of its own on paper. */
+  .activity-body { flex-direction: column !important; }
+  .activity-map-pane { flex: none !important; width: 100% !important; height: 60vh !important; }
 }

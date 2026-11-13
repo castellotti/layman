@@ -375,7 +375,12 @@ The view (`components/activity/`, the **Activity** tab, `ViewMode` `'activity'`,
 draws: what it follows and shows (the session, the pulses in flight, a feed row's words) is pure in
 `lib/activity-view.ts`. Its animation is in `components/activity/activity.css` (not `index.css`), scaled
 by `--motion`, none under reduced motion or in print. The map's box never sizes itself from its content
-(it is absolutely placed in its pane), or a growing feed beside it grows it without end.
+(it is absolutely placed in its pane), or a growing feed beside it grows it without end; in print the
+pane gets its own height (`activity.css`), and feed rows are not buttons, which print hides. Motion
+honours Settings → Motion (`data-motion` on `<html>`) as well as the OS setting. A row clicked open
+loads the session's full recording into `historicalEvents` first when the store lacks the event:
+the board reads the lean one, which Investigation cannot show. `isSessionView` / `isExclusiveView`
+(`sessionStore.ts`) list the views; a new one goes there.
 
 ### Text to speech
 

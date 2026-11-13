@@ -1,8 +1,7 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { useSessionStore } from '../../stores/sessionStore.js';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { fetchRecordedSessionEvents, useSessionStore } from '../../stores/sessionStore.js';
 import { useActivityBoard } from '../../hooks/useActivityBoard.js';
 import { useStationSetup } from '../../hooks/useStationSetup.js';
-import { useNow } from '../../hooks/useNow.js';
 import { foldRows, type FeedRow } from '../../lib/activity-board.js';
 import { entryLabel, pickSession, shortCount } from '../../lib/activity-view.js';
 import { STATION_IDS } from '../../lib/station.js';
@@ -22,12 +21,14 @@ function readNamesOnly(): boolean {
   try { return localStorage.getItem(NAMES_ONLY_KEY) === '1'; } catch { return false; }
 }
 
-/** The size of an element, as it changes. */
-function useSize<T extends HTMLElement>(): [React.RefObject<T>, { width: number; height: number }] {
-  const ref = useRef<T>(null);
+/**
+ * The size of an element, as it changes. A callback ref, so an element that mounts later (after the
+ * "No session yet" placeholder) is still observed.
+ */
+function useSize<T extends HTMLElement>(): [(el: T | null) => void, { width: number; height: number }] {
+  const [el, setEl] = useState<T | null>(null);
   const [size, setSize] = useState({ width: 0, height: 0 });
   useEffect(() => {
-    const el = ref.current;
     if (!el) return;
     const ro = new ResizeObserver(([entry]) => {
       const { width, height } = entry.contentRect;
@@ -35,8 +36,8 @@ function useSize<T extends HTMLElement>(): [React.RefObject<T>, { width: number;
     });
     ro.observe(el);
     return () => ro.disconnect();
-  }, []);
-  return [ref, size];
+  }, [el]);
+  return [setEl, size];
 }
 
 const STATUS_COLOR: Record<FeedRow['entry']['status'], string> = {
@@ -70,7 +71,6 @@ export default function ActivityMapView() {
   const live = !!session && isSessionLive(session);
   const { board, events, loading } = useActivityBoard(sessionId, !live);
   const setup = useStationSetup();
-  const now = useNow(live ? 500 : 60_000);
   const [namesOnly, setNamesOnly] = useState(readNamesOnly);
   const [bodyRef, body] = useSize<HTMLDivElement>();
   const [mapRef, size] = useSize<HTMLDivElement>();
@@ -79,6 +79,22 @@ export default function ActivityMapView() {
   const byId = useMemo(() => new Map<string, TimelineEvent>(events.map((e) => [e.id, e])), [events]);
   const rows = useMemo(() => foldRows(board.entries, FEED_ROWS), [board]);
 
+  /**
+   * Opens a row in Investigation, which reads events from the store. The board's copy is the lean
+   * recording (no outputs), so an event the store does not hold loads the session's full recording
+   * into it first, as opening the session by link does.
+   */
+  const open = useCallback(async (eventId: string) => {
+    if (eventId === selectedEventId) { setSelectedEvent(null); return; }
+    const { events: liveEvents, historicalEvents, setHistoricalEvents } = useSessionStore.getState();
+    const held = liveEvents.some((e) => e.id === eventId) || historicalEvents.some((e) => e.id === eventId);
+    if (!held && sessionId) {
+      const full = await fetchRecordedSessionEvents(sessionId);
+      if (!full?.some((e) => e.id === eventId)) return;
+      setHistoricalEvents(full);
+    }
+    setSelectedEvent(eventId);
+  }, [selectedEventId, sessionId, setSelectedEvent]);
   const toggleNamesOnly = () => {
     setNamesOnly((v) => {
       try { localStorage.setItem(NAMES_ONLY_KEY, v ? '0' : '1'); } catch { /* private mode */ }
@@ -114,13 +130,13 @@ export default function ActivityMapView() {
         </label>
       </div>
 
-      <div ref={bodyRef} className="flex flex-1 min-h-0" style={{ flexDirection: stacked ? 'column' : 'row' }}>
+      <div ref={bodyRef} className="activity-body flex flex-1 min-h-0" style={{ flexDirection: stacked ? 'column' : 'row' }}>
         {/* The map takes the room it is given and never sizes its box itself, or a growing feed
             beside it would grow the map, which would grow the box. */}
-        <div ref={mapRef} style={{ flex: stacked ? '0 0 55%' : '3 1 0', position: 'relative', minWidth: 0, minHeight: 0 }}>
+        <div ref={mapRef} className="activity-map-pane" style={{ flex: stacked ? '0 0 55%' : '3 1 0', position: 'relative', minWidth: 0, minHeight: 0 }}>
           {size.width > 0 && size.height > 0 && (
             <div style={{ position: 'absolute', inset: 8 }}>
-              <ActivityMap board={board} stations={STATION_IDS} width={size.width - 16} height={size.height - 16} now={now} live={live} title={title} />
+              <ActivityMap board={board} stations={STATION_IDS} width={size.width - 16} height={size.height - 16} live={live} title={title} />
             </div>
           )}
         </div>
@@ -139,10 +155,14 @@ export default function ActivityMapView() {
             const label = entryLabel(byId.get(entry.eventId), entry.station, namesOnly, setup);
             const selected = entry.eventId === selectedEventId;
             return (
-              <button
+              // Not a <button>: print hides every button, and a row is content. Keyboard reaches it.
+              <div
                 key={`${entry.eventId}:${entry.station}`}
                 role="listitem"
-                onClick={() => setSelectedEvent(selected ? null : entry.eventId)}
+                tabIndex={0}
+                aria-current={selected || undefined}
+                onClick={() => void open(entry.eventId)}
+                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); void open(entry.eventId); } }}
                 style={{
                   display: 'grid', gridTemplateColumns: '14px 64px 1fr auto', alignItems: 'center', gap: 8,
                   width: '100%', padding: '5px 12px', textAlign: 'left', cursor: 'pointer',
@@ -160,7 +180,7 @@ export default function ActivityMapView() {
                 <span style={{ color: STATUS_COLOR[entry.status], fontFamily: 'var(--font-mono)', fontSize: 10, whiteSpace: 'nowrap' }}>
                   {STATUS_WORD[entry.status] || (tookMs > 0 ? formatDuration(tookMs) : '')}
                 </span>
-              </button>
+              </div>
             );
           })}
         </div>

@@ -28,7 +28,9 @@ export const PULSE_MS = 900;
 /**
  * A pulse: `out` from the core (or the Agents station, for a subagent's call) to a station, `in`
  * from a station to the core (something pushed in, or a call's answer coming back), `run` looping
- * out while a call is still going. `lane` is its sideways offset from its spoke's centre line.
+ * out while a call is still going. `lane` is its sideways offset from its spoke's centre line, for
+ * the moment it appears (the component keeps it, so a dot never jumps sideways mid-flight). A key
+ * names the station too: a decision's Guard entry shares its call's event.
  */
 export interface Pulse {
   key: string;
@@ -53,22 +55,25 @@ export function pulsesOf(board: Board, now: number): Pulse[] {
   for (const e of board.entries) {
     const from = e.from === 'agents' ? 'agents' : 'core';
     if (e.status === 'run') {
-      out.push({ key: `${e.eventId}:run`, station: e.station, from, kind: 'run', hollow: false, bad: false, age: Math.max(0, now - e.startedAt) });
+      out.push({ key: `${e.eventId}:${e.station}:run`, station: e.station, from, kind: 'run', hollow: false, bad: false, age: Math.max(0, now - e.startedAt) });
       continue;
     }
     const sinceStart = now - e.startedAt;
     if (sinceStart >= 0 && sinceStart < PULSE_MS) {
       const inbound = e.from === 'inbound';
-      out.push({ key: `${e.eventId}:${inbound ? 'in' : 'out'}`, station: e.station, from, kind: inbound ? 'in' : 'out', hollow: inbound, bad: bad(e), age: sinceStart });
+      out.push({ key: `${e.eventId}:${e.station}:${inbound ? 'in' : 'out'}`, station: e.station, from, kind: inbound ? 'in' : 'out', hollow: inbound, bad: bad(e), age: sinceStart });
     }
     if (e.from !== 'inbound' && e.endedAt !== undefined && e.endedAt > e.startedAt) {
       const sinceEnd = now - e.endedAt;
       if (sinceEnd >= 0 && sinceEnd < PULSE_MS) {
-        out.push({ key: `${e.eventId}:back`, station: e.station, from, kind: 'in', hollow: false, bad: bad(e), age: sinceEnd });
+        out.push({ key: `${e.eventId}:${e.station}:back`, station: e.station, from, kind: 'in', hollow: false, bad: bad(e), age: sinceEnd });
       }
     }
   }
-  const recent = out.slice(-MAX_PULSES);
+  // A running call keeps its pulse however many short ones follow it; the newest of the rest fill up.
+  const runs = out.filter((p) => p.kind === 'run').slice(-MAX_PULSES);
+  const rest = out.filter((p) => p.kind !== 'run');
+  const recent = [...runs, ...rest.slice(rest.length - (MAX_PULSES - runs.length))];
   // Pulses that share a spoke, a direction and a moment fly side by side.
   const groups = new Map<string, number[]>();
   recent.forEach((p, i) => {

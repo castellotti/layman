@@ -31,6 +31,18 @@ export function isNetworkView(mode: ViewMode): boolean {
   return (NETWORK_VIEW_MODES as readonly string[]).includes(mode);
 }
 
+/** Views that show one session open in the app (`activeSessionId`), addressed as `/s/<id>?view=…`. */
+export const SESSION_VIEW_MODES: readonly ViewMode[] = ['stream', 'flowchart', 'activity'];
+
+export function isSessionView(mode: ViewMode): boolean {
+  return (SESSION_VIEW_MODES as readonly string[]).includes(mode);
+}
+
+/** Views that take over the whole content area, outside the Dashboard/Logs layout. */
+export function isExclusiveView(mode: ViewMode): boolean {
+  return mode === 'flowchart' || mode === 'activity' || mode === 'sessions' || mode === 'prompts' || isNetworkView(mode);
+}
+
 // ─── Expanding-interface layout state ──────────────────────────────────────
 
 export interface SplitOverrides {
@@ -996,7 +1008,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       // is still set above as a fallback source (see useEventStore.ts) for sessions
       // that aren't present in the live WebSocket-fed store, e.g. a deep link opened
       // after the server restarted or long after the session ended.
-      if (mode === 'stream' || mode === 'flowchart' || mode === 'activity') {
+      if (isSessionView(mode)) {
         done({
           ...base,
           viewMode: mode,
