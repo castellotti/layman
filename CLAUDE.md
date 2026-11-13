@@ -224,7 +224,7 @@ store for unrecorded sessions, and memoizes per session until a new event arrive
 /s/{sessionId}/t/{promptEventId}     a turn  ◀ the primary addressable form
 /s/{sessionId}/e/{eventId}           a single event
 /h/{id}  /b/{id}  /f/{id}            highlight / bookmark / bookmark folder
-?view=dashboard|logs|prompts|flow|sessions   ?play=1   ?t=<ms>
+?view=dashboard|logs|prompts|flow|activity|sessions   ?play=1   ?t=<ms>
 ?view=network|map|topology|trace&glove=<token>&dest=<host>   glove network views
   &from=<iso>&to=<iso|now>           …and their time range (pushes: Back returns to the previous one)
 ```
@@ -371,6 +371,11 @@ The map's geometry is pure (`lib/activity-map.ts`, as for Map and Topology): any
 an ellipse, the first at the top, labels outside the ring tested not to overlap a label or node for 2–16 stations at the least size; spokes worn by the log of the count (full at 2,047); route legs that curve between the
 core and the ring (tests sample every leg of every pair and fail if one cuts the core or leaves the ring,
 where the labels are); lanes for pulses that share a spoke.
+The view (`components/activity/`, the **Activity** tab, `ViewMode` `'activity'`, `?view=activity`) only
+draws: what it follows and shows (the session, the pulses in flight, a feed row's words) is pure in
+`lib/activity-view.ts`. Its animation is in `components/activity/activity.css` (not `index.css`), scaled
+by `--motion`, none under reduced motion or in print. The map's box never sizes itself from its content
+(it is absolutely placed in its pane), or a growing feed beside it grows it without end.
 
 ### Text to speech
 

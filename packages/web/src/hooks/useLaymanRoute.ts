@@ -84,7 +84,7 @@ export function routeForState(state: SessionState): { route: LaymanRoute; opts: 
       : { route: { kind: 'session', sessionId }, opts: {} };
   }
 
-  if ((state.viewMode === 'stream' || state.viewMode === 'flowchart') && state.activeSessionId) {
+  if ((state.viewMode === 'stream' || state.viewMode === 'flowchart' || state.viewMode === 'activity') && state.activeSessionId) {
     return {
       route: { kind: 'session', sessionId: state.activeSessionId },
       opts: { view: viewNameForMode(state.viewMode) },

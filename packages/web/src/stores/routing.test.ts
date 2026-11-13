@@ -317,6 +317,19 @@ describe('routeForState', () => {
     useSessionStore.setState({ viewMode: 'flowchart', activeSessionId: 'sess-1' });
     const flow = routeForState(useSessionStore.getState());
     expect(buildPath(flow.route, flow.opts)).toBe('/s/sess-1?view=flow');
+
+    useSessionStore.setState({ viewMode: 'activity', activeSessionId: 'sess-1' });
+    const activity = routeForState(useSessionStore.getState());
+    expect(buildPath(activity.route, activity.opts)).toBe('/s/sess-1?view=activity');
+  });
+
+  it('opens a session in the activity map from /s/<id>?view=activity', async () => {
+    stubFetch({ events: TURN_EVENTS });
+    await useSessionStore.getState().hydrateFromRoute({ kind: 'session', sessionId: 'sess-1' }, { view: 'activity' });
+    const state = useSessionStore.getState();
+    expect(state.viewMode).toBe('activity');
+    expect(state.activeSessionId).toBe('sess-1');
+    expect(state.flowchartOpen).toBe(false);
   });
 
   it('emits the folder address while a folder is open', () => {

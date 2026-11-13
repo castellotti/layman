@@ -62,9 +62,9 @@ export function useSessionTimeline(sessionId: string | null): { events: Timeline
 }
 
 /** One session's activity board, recomputed when its events or the Memory settings change. */
-export function useActivityBoard(sessionId: string | null, ended: boolean): { board: Board; loading: boolean } {
+export function useActivityBoard(sessionId: string | null, ended: boolean): { board: Board; events: TimelineEvent[]; loading: boolean } {
   const { events, loading } = useSessionTimeline(sessionId);
   const setup = useStationSetup();
   const board = useMemo(() => reduceBoard(events, { setup, ended }), [events, setup, ended]);
-  return { board, loading };
+  return { board, events, loading };
 }

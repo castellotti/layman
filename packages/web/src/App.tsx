@@ -2,6 +2,7 @@ import React, { useRef, useState, useCallback, useEffect, Suspense, lazy } from 
 import { Header } from './components/layout/Header.js';
 import { ExpandingLayout } from './components/layout/ExpandingLayout.js';
 const FlowchartView = lazy(() => import('./components/flowchart/FlowchartView.js').then(m => ({ default: m.FlowchartView })));
+const ActivityMapView = lazy(() => import('./components/activity/ActivityMapView.js'));
 // Network, Map, Topology and Trace (glove): one lazy chunk, fetched only when opened.
 const NetworkView = lazy(() => import('./components/network/NetworkView.js'));
 import { InvestigationPanel } from './components/layout/InvestigationPanel.js';
@@ -321,9 +322,9 @@ export function App() {
     </div>
   );
 
-  // Flow view takes over the entire content area (unrelated to the expanding
-  // Dashboard/Logs/Investigation/Settings layout — keeps its own simple split)
-  if (flowchartOpen) {
+  // Flow and the activity map take over the entire content area (unrelated to the expanding
+  // Dashboard/Logs/Investigation/Settings layout — they keep their own simple split)
+  if (flowchartOpen || viewMode === 'activity') {
     return (
       <AppShell onSend={send} onInstall={handleSetupInstall}>
         {backBanner}
@@ -333,7 +334,7 @@ export function App() {
             style={{ width: investigationOpen ? `${leftWidthPct}%` : '100%' }}
           >
             <Suspense fallback={<div className="flex items-center justify-center h-full text-text-faint text-xs">Loading...</div>}>
-              <FlowchartView />
+              {flowchartOpen ? <FlowchartView /> : <ActivityMapView />}
             </Suspense>
           </div>
 

@@ -20,6 +20,8 @@ function computeHighlightedEventIds(highlights: Highlight[]): Set<string> {
 
 export type ViewMode =
   | 'dashboard' | 'stream' | 'flowchart' | 'sessions' | 'prompts'
+  // The activity map of one session: an exclusive full-content view, like Flow.
+  | 'activity'
   // Network views of glove sessions: exclusive full-content views, like Flow.
   | 'network' | 'map' | 'topology' | 'trace';
 
@@ -84,6 +86,7 @@ const VIEW_NAME_BY_MODE: Record<ViewMode, ViewName> = {
   dashboard: 'dashboard',
   stream: 'logs',
   flowchart: 'flow',
+  activity: 'activity',
   sessions: 'sessions',
   prompts: 'prompts',
   network: 'network',
@@ -96,6 +99,7 @@ const MODE_BY_VIEW_NAME: Record<ViewName, ViewMode> = {
   dashboard: 'dashboard',
   logs: 'stream',
   flow: 'flowchart',
+  activity: 'activity',
   sessions: 'sessions',
   prompts: 'prompts',
   network: 'network',
@@ -992,7 +996,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       // is still set above as a fallback source (see useEventStore.ts) for sessions
       // that aren't present in the live WebSocket-fed store, e.g. a deep link opened
       // after the server restarted or long after the session ended.
-      if (mode === 'stream' || mode === 'flowchart') {
+      if (mode === 'stream' || mode === 'flowchart' || mode === 'activity') {
         done({
           ...base,
           viewMode: mode,
