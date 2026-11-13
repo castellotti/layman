@@ -20,9 +20,14 @@ export function sp(value: number | string): string {
     .join(' ');
 }
 
-/** A corner radius, scaled by the theme's `--radius-scale` (Classic 1, Phosphor 0). */
+/** A corner radius (or several, `'5px 5px 0 0'`), scaled by the theme's `--radius-scale` (Classic 1, Phosphor 0). */
 export function rad(value: number | string): string {
-  const n = typeof value === 'number' ? value : LENGTH.exec(value)?.[1];
-  if (n === undefined) return String(value);
-  return Number(n) === 0 ? '0' : `calc(${Number(n)}px * var(--radius-scale))`;
+  return String(value)
+    .split(/\s+/)
+    .map((part) => {
+      const m = LENGTH.exec(part);
+      if (!m) return part;
+      return Number(m[1]) === 0 ? '0' : `calc(${Number(m[1])}px * var(--radius-scale))`;
+    })
+    .join(' ');
 }

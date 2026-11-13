@@ -238,9 +238,9 @@ export const DEFAULT_APPEARANCE: Appearance = {
 
 export const FONT_SANS = "'IBM Plex Sans', system-ui, sans-serif";
 export const FONT_MONO = "'IBM Plex Mono', 'SF Mono', 'Fira Code', monospace";
-/** What `--density` multiplies spacing by; the spacing written in the code is the Compact design. */
 /** Classic's corner radius: what `rad(6)` in a component means at scale 1. */
 const BASE_RADIUS = 6;
+/** What `--density` multiplies spacing by; the spacing written in the code is the Compact design. */
 const DENSITY_SCALE: Record<Density, number> = { comfortable: 1.3, compact: 1 };
 
 export const FONTS: readonly FontChoice[] = ['theme', 'sans', 'mono'];

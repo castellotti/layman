@@ -367,7 +367,7 @@ export function InvestigationPanel({ onSend, eventId: embeddedEventId, onClose, 
               onClick={() => setActiveTab(tab)}
               style={{
                 padding: sp('7px 12px'), fontSize: 11.5, fontFamily: 'var(--font-ui)',
-                border: 'none', borderRadius: '5px 5px 0 0', cursor: 'pointer',
+                border: 'none', borderRadius: rad('5px 5px 0 0'), cursor: 'pointer',
                 background: active ? 'var(--bg-selected)' : 'transparent',
                 color: active ? 'var(--text)' : 'var(--text-muted)',
                 borderBottom: active ? '2px solid var(--accent)' : '2px solid transparent',
