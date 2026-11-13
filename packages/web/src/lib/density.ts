@@ -5,29 +5,21 @@
  * (density 1) and Classic's corners (scale 1), so the default look is exactly what they say.
  */
 
-const px = (n: number): string => `calc(${n}px * var(--density))`;
 const LENGTH = /^(-?\d*\.?\d+)(px)?$/;
 
-/** A padding, margin or gap, as a number (px) or a CSS string of px values, scaled by `--density`. */
-export function sp(value: number | string): string {
-  if (typeof value === 'number') return value === 0 ? '0' : px(value);
-  return value
-    .split(/\s+/)
-    .map((part) => {
-      const m = LENGTH.exec(part);
-      return m && Number(m[1]) !== 0 ? px(Number(m[1])) : part;
-    })
-    .join(' ');
-}
-
-/** A corner radius (or several, `'5px 5px 0 0'`), scaled by the theme's `--radius-scale` (Classic 1, Phosphor 0). */
-export function rad(value: number | string): string {
+/** Rewrite each bare px length in a space-separated CSS value; zero and non-lengths pass through. */
+function scale(value: number | string, to: (n: number) => string): string {
   return String(value)
     .split(/\s+/)
     .map((part) => {
       const m = LENGTH.exec(part);
-      if (!m) return part;
-      return Number(m[1]) === 0 ? '0' : `calc(${Number(m[1])}px * var(--radius-scale))`;
+      return m && Number(m[1]) !== 0 ? to(Number(m[1])) : m ? '0' : part;
     })
     .join(' ');
 }
+
+/** A padding, margin or gap, as a number (px) or a CSS string of px values, scaled by `--density`. */
+export const sp = (value: number | string): string => scale(value, (n) => `calc(${n}px * var(--density))`);
+
+/** A corner radius (or several, `'5px 5px 0 0'`), scaled by the theme's `--radius-scale` (Classic 1, Phosphor 0). */
+export const rad = (value: number | string): string => scale(value, (n) => `calc(${n}px * var(--radius-scale))`);
