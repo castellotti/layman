@@ -1,13 +1,15 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useMemo } from 'react';
 import { fetchRecordedSessionEvents, useSessionStore } from '../../stores/sessionStore.js';
 import { useActivityBoard } from '../../hooks/useActivityBoard.js';
 import { useStationSetup } from '../../hooks/useStationSetup.js';
-import { foldRows, type FeedRow } from '../../lib/activity-board.js';
-import { entryLabel, pickSession, shortCount } from '../../lib/activity-view.js';
+import { foldRows } from '../../lib/activity-board.js';
+import { ENTRY_STATUS, entryLabel, mapTitle, pickSession } from '../../lib/activity-view.js';
+import { useStored } from '../../hooks/useStored.js';
+import { useElementSize } from '../../hooks/useElementSize.js';
 import { STATION_IDS } from '../../lib/station.js';
 import { STATION_STYLE } from '../../lib/station-style.js';
-import { getSessionDisplayName, isSessionLive } from '../../lib/session-state.js';
-import { formatDuration } from '../../lib/format.js';
+import { contextPctColor, getSessionDisplayName, isSessionLive } from '../../lib/session-state.js';
+import { countLabel, formatDuration } from '../../lib/format.js';
 import type { TimelineEvent } from '../../lib/types.js';
 import { ActivityMap } from './ActivityMap.js';
 import { StationGlyph } from './StationGlyph.js';
@@ -17,41 +19,11 @@ const FEED_ROWS = 40;
 /** Below this width the feed goes under the map rather than beside it. */
 const STACK_BELOW = 760;
 
-function readNamesOnly(): boolean {
-  try { return localStorage.getItem(NAMES_ONLY_KEY) === '1'; } catch { return false; }
-}
-
-/**
- * The size of an element, as it changes. A callback ref, so an element that mounts later (after the
- * "No session yet" placeholder) is still observed.
- */
-function useSize<T extends HTMLElement>(): [(el: T | null) => void, { width: number; height: number }] {
-  const [el, setEl] = useState<T | null>(null);
-  const [size, setSize] = useState({ width: 0, height: 0 });
-  useEffect(() => {
-    if (!el) return;
-    const ro = new ResizeObserver(([entry]) => {
-      const { width, height } = entry.contentRect;
-      setSize((s) => (s.width === Math.round(width) && s.height === Math.round(height) ? s : { width: Math.round(width), height: Math.round(height) }));
-    });
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [el]);
-  return [setEl, size];
-}
-
-const STATUS_COLOR: Record<FeedRow['entry']['status'], string> = {
-  run: 'var(--accent)', ok: 'var(--text-faint)', err: 'var(--error)', block: 'var(--warn)', unended: 'var(--text-faint)',
-};
-const STATUS_WORD: Record<FeedRow['entry']['status'], string> = {
-  run: 'running', ok: '', err: 'failed', block: 'refused', unended: 'no end',
-};
-
-function Fact({ label, value }: { label: string; value: React.ReactNode }) {
+function Fact({ label, value, color = 'var(--text-body)' }: { label: string; value: React.ReactNode; color?: string }) {
   return (
     <span style={{ display: 'inline-flex', gap: 5, alignItems: 'baseline' }}>
       <span style={{ color: 'var(--text-faint)' }}>{label}</span>
-      <span style={{ color: 'var(--text-body)', fontFamily: 'var(--font-mono)' }}>{value}</span>
+      <span style={{ color, fontFamily: 'var(--font-mono)' }}>{value}</span>
     </span>
   );
 }
@@ -71,13 +43,22 @@ export default function ActivityMapView() {
   const live = !!session && isSessionLive(session);
   const { board, events, loading } = useActivityBoard(sessionId, !live);
   const setup = useStationSetup();
-  const [namesOnly, setNamesOnly] = useState(readNamesOnly);
-  const [bodyRef, body] = useSize<HTMLDivElement>();
-  const [mapRef, size] = useSize<HTMLDivElement>();
+  const [namesOnly, setNamesOnly] = useStored<'0' | '1'>(NAMES_ONLY_KEY, '0', (raw) => (raw === '1' || raw === '0' ? raw : null));
+  const [bodyRef, body] = useElementSize<HTMLDivElement>();
+  const [mapRef, size] = useElementSize<HTMLDivElement>();
   const stacked = body.width > 0 && body.width < STACK_BELOW;
 
-  const byId = useMemo(() => new Map<string, TimelineEvent>(events.map((e) => [e.id, e])), [events]);
   const rows = useMemo(() => foldRows(board.entries, FEED_ROWS), [board]);
+  // Only the rows' own events, walked from the newest end (where the feed's rows are): a session can
+  // hold 10,000 events, and this runs on each new one.
+  const byId = useMemo(() => {
+    const wanted = new Set(rows.map((r) => r.entry.eventId));
+    const out = new Map<string, TimelineEvent>();
+    for (let i = events.length - 1; i >= 0 && out.size < wanted.size; i--) {
+      if (wanted.has(events[i].id)) out.set(events[i].id, events[i]);
+    }
+    return out;
+  }, [rows, events]);
 
   /**
    * Opens a row in Investigation, which reads events from the store. The board's copy is the lean
@@ -95,19 +76,13 @@ export default function ActivityMapView() {
     }
     setSelectedEvent(eventId);
   }, [selectedEventId, sessionId, setSelectedEvent]);
-  const toggleNamesOnly = () => {
-    setNamesOnly((v) => {
-      try { localStorage.setItem(NAMES_ONLY_KEY, v ? '0' : '1'); } catch { /* private mode */ }
-      return !v;
-    });
-  };
 
   if (!sessionId) {
     return <div className="flex items-center justify-center h-full text-text-faint text-xs">No session yet.</div>;
   }
 
   const name = session ? getSessionDisplayName(session) : sessionId.slice(0, 8);
-  const title = `Activity of ${name}: ${STATION_IDS.filter((s) => board.counts[s]).map((s) => `${STATION_STYLE[s].label} ${board.counts[s]}`).join(', ') || 'nothing yet'}`;
+  const title = mapTitle(name, board);
 
   return (
     <div className="flex flex-col h-full min-w-0" style={{ background: 'var(--bg)' }}>
@@ -118,14 +93,14 @@ export default function ActivityMapView() {
         <span style={{ color: live ? 'var(--ok)' : 'var(--text-faint)' }}>{live ? 'live' : 'ended'}</span>
         <Fact label="turns" value={board.turns} />
         {board.model && <Fact label="model" value={board.model} />}
-        {board.context !== undefined && <Fact label="context" value={`${Math.round(board.context)}%`} />}
-        {board.pushed > 0 && <Fact label="memory pushed" value={shortCount(board.pushed)} />}
+        {board.context !== undefined && <Fact label="context" value={`${Math.round(board.context)}%`} color={contextPctColor(board.context, 'var(--text-body)')} />}
+        {board.pushed > 0 && <Fact label="memory pushed" value={countLabel(board.pushed)} />}
         {board.agents > 0 && <Fact label="subagents" value={board.agents} />}
         {loading && <span style={{ color: 'var(--text-faint)' }}>loading the recording…</span>}
         <span style={{ flex: 1 }} />
         <label data-print-hide style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: 'var(--text-muted)', cursor: 'pointer' }}
           title="Show only names: a file's last two folders, a host, a command's name. Nothing of what was typed, read or run.">
-          <input type="checkbox" checked={namesOnly} onChange={toggleNamesOnly} />
+          <input type="checkbox" checked={namesOnly === '1'} onChange={() => setNamesOnly(namesOnly === '1' ? '0' : '1')} />
           Names only
         </label>
       </div>
@@ -152,7 +127,7 @@ export default function ActivityMapView() {
           {rows.length === 0 && <div style={{ padding: 16, color: 'var(--text-faint)' }}>{loading ? '' : 'Nothing recorded yet.'}</div>}
           {rows.map(({ entry, times, tookMs }) => {
             const style = STATION_STYLE[entry.station];
-            const label = entryLabel(byId.get(entry.eventId), entry.station, namesOnly, setup);
+            const label = entryLabel(byId.get(entry.eventId), entry.station, namesOnly === '1', setup);
             const selected = entry.eventId === selectedEventId;
             return (
               // Not a <button>: print hides every button, and a row is content. Keyboard reaches it.
@@ -177,8 +152,8 @@ export default function ActivityMapView() {
                   {label}
                   {times > 1 && <span style={{ color: 'var(--text-faint)' }}>{` +${times - 1}`}</span>}
                 </span>
-                <span style={{ color: STATUS_COLOR[entry.status], fontFamily: 'var(--font-mono)', fontSize: 10, whiteSpace: 'nowrap' }}>
-                  {STATUS_WORD[entry.status] || (tookMs > 0 ? formatDuration(tookMs) : '')}
+                <span style={{ color: ENTRY_STATUS[entry.status].color, fontFamily: 'var(--font-mono)', fontSize: 10, whiteSpace: 'nowrap' }}>
+                  {ENTRY_STATUS[entry.status].word || (tookMs > 0 ? formatDuration(tookMs) : '')}
                 </span>
               </div>
             );

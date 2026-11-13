@@ -22,15 +22,10 @@
 /* Subagents still at work circle the Agents station. */
 .activity-orbit { animation: activity-spin calc(var(--motion) * 7s) linear infinite; transform-box: view-box; }
 @keyframes activity-spin { to { transform: rotate(360deg); } }
-@media (prefers-reduced-motion: reduce) {
-  .activity-pulse, .activity-pulse-run { display: none; }
-  .activity-lit, .activity-draw, .activity-orbit { animation: none; }
-}
-/* The same for Settings → Appearance → Motion: Reduced or Off (`data-motion` on <html>). */
-html[data-motion='reduced'] .activity-pulse, html[data-motion='reduced'] .activity-pulse-run,
-html[data-motion='off'] .activity-pulse, html[data-motion='off'] .activity-pulse-run { display: none; }
-html[data-motion='reduced'] .activity-lit, html[data-motion='reduced'] .activity-draw, html[data-motion='reduced'] .activity-orbit,
-html[data-motion='off'] .activity-lit, html[data-motion='off'] .activity-draw, html[data-motion='off'] .activity-orbit { animation: none; }
+/* Settings → Appearance → Motion: Reduced or Off, which the OS's reduced-motion setting also caps
+   it at (`data-motion` on <html>, from `resolveAppearance`). */
+html:is([data-motion='reduced'], [data-motion='off']) :is(.activity-pulse, .activity-pulse-run) { display: none; }
+html:is([data-motion='reduced'], [data-motion='off']) :is(.activity-lit, .activity-draw, .activity-orbit) { animation: none; }
 @media print {
   .activity-pulse, .activity-pulse-run { display: none; }
   .activity-lit, .activity-draw, .activity-orbit { animation: none; }

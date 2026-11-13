@@ -39,7 +39,9 @@ export function useSessionTimeline(sessionId: string | null): { events: Timeline
   const missing = ours !== null && ours.events === null;
 
   useEffect(() => {
-    if (!sessionId || hydrated) return;
+    // Once the store holds the whole recording, drop the lean copy rather than keep both.
+    if (hydrated) { setRecorded(null); return; }
+    if (!sessionId) return;
     let cancelled = false;
     void fetchRecordedSessionEvents(sessionId, { lean: true }).then((events) => {
       if (!cancelled) setRecorded({ sessionId, events });

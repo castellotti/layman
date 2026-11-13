@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { entryLabel, pickSession, pulsesOf, PULSE_MS, shortCount } from './activity-view.js';
+import { entryLabel, LEG_FADE_MS, LEG_HOLD_MS, legOpacity, mapTitle, pickSession, pulsesOf, PULSE_MS } from './activity-view.js';
 import type { Board, BoardEntry } from './activity-board.js';
 import { NO_SETUP } from './station.js';
 import type { TimelineEvent } from './types.js';
@@ -77,9 +77,17 @@ describe('pulsesOf', () => {
   });
 });
 
-describe('shortCount', () => {
-  it('fits a count in a few characters', () => {
-    expect([0, 999, 1000, 1250, 9999, 12_345].map(shortCount)).toEqual(['0', '999', '1k', '1.3k', '10k', '12k']);
+describe('legOpacity', () => {
+  it('draws newer legs stronger, and fades old ones only while the session is live', () => {
+    expect(legOpacity(2, 3, 0, true)).toBeGreaterThan(legOpacity(0, 3, 0, true));
+    expect(legOpacity(0, 3, LEG_HOLD_MS + LEG_FADE_MS, true)).toBe(0);
+    expect(legOpacity(0, 3, LEG_HOLD_MS + LEG_FADE_MS, false)).toBeGreaterThan(0);
+  });
+});
+
+describe('mapTitle', () => {
+  it('names each station that saw work, or says nothing yet', () => {
+    expect(mapTitle('s', { counts: {} } as Parameters<typeof mapTitle>[1])).toBe('Activity of s: nothing yet');
   });
 });
 

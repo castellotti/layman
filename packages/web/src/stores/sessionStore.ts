@@ -4,7 +4,7 @@ import type { SessionInfo } from '../lib/ws-protocol.js';
 import type { NetRange } from '../lib/netobs-types.js';
 import { arrivalNetToken, rangeKey, sameRange } from '../lib/net-state.js';
 import { useNetStore } from './netStore.js';
-import type { DashboardSortMode } from '../lib/session-state.js';
+import { newestSession, type DashboardSortMode } from '../lib/session-state.js';
 import type { LaymanRoute, RouteOptions, ViewName } from '../lib/layman-url.js';
 import { extractTurn } from '../lib/turns.js';
 import { pairFor } from '../lib/event-pairing.js';
@@ -32,7 +32,7 @@ export function isNetworkView(mode: ViewMode): boolean {
 }
 
 /** Views that show one session open in the app (`activeSessionId`), addressed as `/s/<id>?view=…`. */
-export const SESSION_VIEW_MODES: readonly ViewMode[] = ['stream', 'flowchart', 'activity'];
+const SESSION_VIEW_MODES: readonly ViewMode[] = ['stream', 'flowchart', 'activity'];
 
 export function isSessionView(mode: ViewMode): boolean {
   return (SESSION_VIEW_MODES as readonly string[]).includes(mode);
@@ -768,8 +768,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
         const existingIds = new Set(state.sessions.map((s) => s.sessionId));
         const newSessions = merged.filter((s) => !existingIds.has(s.sessionId));
         if (newSessions.length > 0) {
-          const newest = newSessions.reduce((a, b) => (b.lastSeen > a.lastSeen ? b : a));
-          return { sessions: merged, activeSessionId: newest.sessionId };
+          return { sessions: merged, activeSessionId: newestSession(newSessions)!.sessionId };
         }
       }
       return { sessions: merged, activeSessionId: state.activeSessionId };

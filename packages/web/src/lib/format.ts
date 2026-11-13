@@ -26,6 +26,13 @@ export function formatTokens(n: number): string {
   return String(n);
 }
 
+/** `13601` → `13.6k`: a count in a few characters, so it fits a box or a map label. */
+export function countLabel(n: number): string {
+  if (n < 1000) return String(n);
+  if (n < 1_000_000) return `${(n / 1000).toFixed(n < 100_000 ? 1 : 0).replace(/\.0$/, '')}k`;
+  return `${(n / 1_000_000).toFixed(1).replace(/\.0$/, '')}M`;
+}
+
 /** Thinking's share of output, as a whole percent, or null when there was no output. Thinking is a part of output. */
 export function thinkingShare(thinking: number, output: number): number | null {
   return output > 0 ? Math.round((thinking / output) * 100) : null;

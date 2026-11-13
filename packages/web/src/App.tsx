@@ -213,7 +213,6 @@ export function App() {
   // Applies the config's theme, type, density and motion.
   useAppearance();
   const investigationOpen = useSessionStore((s) => s.investigationOpen);
-  const flowchartOpen = useSessionStore((s) => s.flowchartOpen);
   const bookmarksOpen = useSessionStore((s) => s.bookmarksOpen);
   const promptsOpen = useSessionStore((s) => s.promptsOpen);
   const viewMode = useSessionStore((s) => s.viewMode);
@@ -324,7 +323,7 @@ export function App() {
 
   // Flow and the activity map take over the entire content area (unrelated to the expanding
   // Dashboard/Logs/Investigation/Settings layout — they keep their own simple split)
-  if (flowchartOpen || viewMode === 'activity') {
+  if (viewMode === 'flowchart' || viewMode === 'activity') {
     return (
       <AppShell onSend={send} onInstall={handleSetupInstall}>
         {backBanner}
@@ -334,7 +333,7 @@ export function App() {
             style={{ width: investigationOpen ? `${leftWidthPct}%` : '100%' }}
           >
             <Suspense fallback={<div className="flex items-center justify-center h-full text-text-faint text-xs">Loading...</div>}>
-              {flowchartOpen ? <FlowchartView /> : <ActivityMapView />}
+              {viewMode === 'flowchart' ? <FlowchartView /> : <ActivityMapView />}
             </Suspense>
           </div>
 

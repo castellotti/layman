@@ -28,6 +28,11 @@ export function isSessionLive(session: SessionInfo): boolean {
   return session.active !== false;
 }
 
+/** The session seen most recently, or null for an empty list. */
+export function newestSession<T extends Pick<SessionInfo, 'lastSeen'>>(list: readonly T[]): T | null {
+  return list.reduce<T | null>((best, s) => (!best || s.lastSeen > best.lastSeen ? s : best), null);
+}
+
 /** How the Dashboard orders its sessions: by last activity, or as the user dragged them. */
 export type DashboardSortMode = 'recent' | 'custom';
 

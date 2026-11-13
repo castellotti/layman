@@ -2,12 +2,12 @@
  * What the activity map shows besides its geometry, pure so it is tested in node: which session it
  * follows, the pulses in flight, the words for a row of the feed. `components/activity/` only draws.
  */
-import type { Board, BoardEntry } from './activity-board.js';
+import { isFault, type Board, type EntryStatus } from './activity-board.js';
 import { lanes } from './activity-map.js';
-import { safeLabel, type StationId, type StationSetup } from './station.js';
+import { safeLabel, STATION_IDS, type StationId, type StationSetup } from './station.js';
 import { STATION_STYLE } from './station-style.js';
 import { eventDetail, kindLabel } from './event-styles.js';
-import { isSessionLive } from './session-state.js';
+import { isSessionLive, newestSession } from './session-state.js';
 import type { SessionInfo } from './ws-protocol.js';
 import type { TimelineEvent } from './types.js';
 
@@ -17,9 +17,7 @@ import type { TimelineEvent } from './types.js';
  */
 export function pickSession(activeSessionId: string | null, sessions: readonly SessionInfo[]): string | null {
   if (activeSessionId) return activeSessionId;
-  const newest = (list: readonly SessionInfo[]) =>
-    list.reduce<SessionInfo | null>((best, s) => (!best || s.lastSeen > best.lastSeen ? s : best), null);
-  return (newest(sessions.filter(isSessionLive)) ?? newest(sessions))?.sessionId ?? null;
+  return (newestSession(sessions.filter(isSessionLive)) ?? newestSession(sessions))?.sessionId ?? null;
 }
 
 /** How long a pulse takes along a spoke, and how long after it a finished call's return still flies. */
@@ -51,7 +49,6 @@ const MAX_PULSES = 14;
 /** The pulses to draw at `now`: calls still running, and the start and end of recent ones. */
 export function pulsesOf(board: Board, now: number): Pulse[] {
   const out: Omit<Pulse, 'lane'>[] = [];
-  const bad = (e: BoardEntry) => e.status === 'err' || e.status === 'block';
   for (const e of board.entries) {
     const from = e.from === 'agents' ? 'agents' : 'core';
     if (e.status === 'run') {
@@ -61,12 +58,12 @@ export function pulsesOf(board: Board, now: number): Pulse[] {
     const sinceStart = now - e.startedAt;
     if (sinceStart >= 0 && sinceStart < PULSE_MS) {
       const inbound = e.from === 'inbound';
-      out.push({ key: `${e.eventId}:${e.station}:${inbound ? 'in' : 'out'}`, station: e.station, from, kind: inbound ? 'in' : 'out', hollow: inbound, bad: bad(e), age: sinceStart });
+      out.push({ key: `${e.eventId}:${e.station}:${inbound ? 'in' : 'out'}`, station: e.station, from, kind: inbound ? 'in' : 'out', hollow: inbound, bad: isFault(e.status), age: sinceStart });
     }
     if (e.from !== 'inbound' && e.endedAt !== undefined && e.endedAt > e.startedAt) {
       const sinceEnd = now - e.endedAt;
       if (sinceEnd >= 0 && sinceEnd < PULSE_MS) {
-        out.push({ key: `${e.eventId}:${e.station}:back`, station: e.station, from, kind: 'in', hollow: false, bad: bad(e), age: sinceEnd });
+        out.push({ key: `${e.eventId}:${e.station}:back`, station: e.station, from, kind: 'in', hollow: false, bad: isFault(e.status), age: sinceEnd });
       }
     }
   }
@@ -78,7 +75,8 @@ export function pulsesOf(board: Board, now: number): Pulse[] {
   const groups = new Map<string, number[]>();
   recent.forEach((p, i) => {
     const k = `${p.station}|${p.from}|${p.kind === 'in' ? 'in' : 'out'}`;
-    groups.set(k, [...(groups.get(k) ?? []), i]);
+    const group = groups.get(k);
+    if (group) group.push(i); else groups.set(k, [i]);
   });
   const laneOf = new Array<number>(recent.length).fill(0);
   for (const idx of groups.values()) {
@@ -88,13 +86,6 @@ export function pulsesOf(board: Board, now: number): Pulse[] {
   return recent.map((p, i) => ({ ...p, lane: laneOf[i] }));
 }
 
-/** A count in a few characters: 999, 1.2k, 12k. */
-export function shortCount(n: number): string {
-  if (n < 1000) return String(n);
-  if (n < 10_000) return `${(n / 1000).toFixed(1).replace(/\.0$/, '')}k`;
-  return `${Math.round(n / 1000)}k`;
-}
-
 /**
  * The words for a feed row. In full, what the Logs row says (the command, the path, the query); with
  * names only, `safeLabel`'s name and nothing of the content, for a shared screen.
@@ -102,8 +93,43 @@ export function shortCount(n: number): string {
 export function entryLabel(event: TimelineEvent | undefined, station: StationId, namesOnly: boolean, setup: StationSetup): string {
   if (!event) return STATION_STYLE[station].label;
   const tool = event.data.toolName;
-  if (tool) return namesOnly ? safeLabel(tool, event.data.toolInput, setup) : eventDetail(event);
-  if (namesOnly) return kindLabel(event.type);
-  const detail = eventDetail(event);
-  return detail || kindLabel(event.type);
+  if (namesOnly) return tool ? safeLabel(tool, event.data.toolInput, setup) : kindLabel(event.type);
+  return eventDetail(event) || kindLabel(event.type);
+}
+
+/** How a feed row's status reads: a word (none for a plain success, which shows its duration) and its colour. */
+export const ENTRY_STATUS: Record<EntryStatus, { word: string; color: string }> = {
+  run: { word: 'running', color: 'var(--accent)' },
+  ok: { word: '', color: 'var(--text-faint)' },
+  err: { word: 'failed', color: 'var(--error)' },
+  block: { word: 'refused', color: 'var(--warn)' },
+  unended: { word: 'no end', color: 'var(--text-faint)' },
+};
+
+/** The map's summary for a screen reader: each station that saw work, with its count. */
+export function mapTitle(name: string, board: Board): string {
+  const counts = STATION_IDS.filter((s) => board.counts[s]).map((s) => `${STATION_STYLE[s].label} ${board.counts[s]}`);
+  return `Activity of ${name}: ${counts.join(', ') || 'nothing yet'}`;
+}
+
+/** A station lights up for this long after its last call started. */
+export const GLOW_MS = 3000;
+/** A leg of the route holds this long after it was drawn, then fades over the next. */
+export const LEG_HOLD_MS = 40_000;
+export const LEG_FADE_MS = 20_000;
+
+/**
+ * How visible a leg of the route is: the newer legs stronger (`k` of `legs`, oldest first), and on
+ * a live session one older than `LEG_HOLD_MS` fading out. A finished session shows its whole route.
+ */
+export function legOpacity(k: number, legs: number, age: number, live: boolean): number {
+  const fade = live ? Math.max(0, Math.min(1, 1 - (age - LEG_HOLD_MS) / LEG_FADE_MS)) : 1;
+  return (0.15 + (0.55 * (k + 1)) / Math.max(1, legs)) * fade;
+}
+
+/** When each station's latest call started. */
+export function lastStarts(board: Board): Map<StationId, number> {
+  const out = new Map<StationId, number>();
+  for (const e of board.entries) out.set(e.station, Math.max(out.get(e.station) ?? 0, e.startedAt));
+  return out;
 }

@@ -74,7 +74,8 @@ function inputKey(event: TimelineEvent): string {
 /** Events that report on work already counted elsewhere (the Agent call itself; the task list). */
 const NOT_WORK = new Set(['subagent_start', 'subagent_stop', 'task_created', 'task_completed', 'teammate_idle', 'post_compact', 'elicitation_result']);
 
-const isFault = (status: EntryStatus): boolean => status === 'err' || status === 'block';
+/** Refused or failed. */
+export const isFault = (status: EntryStatus): boolean => status === 'err' || status === 'block';
 
 const str = (v: unknown): string | undefined => (typeof v === 'string' ? v : undefined);
 

@@ -17,6 +17,7 @@
 import type { NetSessionData } from './net-state.js';
 import { isInferenceScope, isLlmUpstream, nextServices, type DestinationAggregate, type FlowView, type NetService, type Rule } from './netobs-types.js';
 import { BLOCK_STATES, formatBytes } from './net-format.js';
+import { countLabel } from './format.js';
 import { guardReason, hostLabel, toolLabel } from './net-table.js';
 import { isLlmDestination } from './net-tokens.js';
 
@@ -447,12 +448,6 @@ export function ruleLabel(id: string, rules: readonly Rule[]): string {
 
 const nodeH = (lines: number) => 26 + 13 * lines;
 
-/** `13601` → `13.6k`, so a busy service's counts fit its box. */
-export function countLabel(n: number): string {
-  if (n < 1000) return String(n);
-  if (n < 1_000_000) return `${(n / 1000).toFixed(n < 100_000 ? 1 : 0).replace(/\.0$/, '')}k`;
-  return `${(n / 1_000_000).toFixed(1).replace(/\.0$/, '')}M`;
-}
 
 // ─── The layout ───────────────────────────────────────────────────────────────
 

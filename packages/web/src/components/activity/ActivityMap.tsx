@@ -3,17 +3,14 @@ import { useNow } from '../../hooks/useNow.js';
 import type { Board } from '../../lib/activity-board.js';
 import { routeOf, runningAt } from '../../lib/activity-board.js';
 import { aside, edge, layoutMap, legPath, spoke, spokeWidth, wear, type MapLayout, type Point } from '../../lib/activity-map.js';
-import { pulsesOf, shortCount, type Pulse } from '../../lib/activity-view.js';
+import { GLOW_MS, lastStarts, legOpacity, pulsesOf, type Pulse } from '../../lib/activity-view.js';
+import { countLabel } from '../../lib/format.js';
+import { contextPctColor } from '../../lib/session-state.js';
 import type { StationId } from '../../lib/station.js';
 import { STATION_STYLE } from '../../lib/station-style.js';
 import { StationGlyph } from './StationGlyph.js';
 import './activity.css';
 
-/** A station lights up for this long after its last call started. */
-const GLOW_MS = 3000;
-/** A leg of the route holds this long after it was drawn, then fades over the next. */
-const LEG_HOLD_MS = 40_000;
-const LEG_FADE_MS = 20_000;
 const FONT = { fontFamily: 'var(--font-ui)', fontSize: 10.5 } as const;
 
 /** The ends of a pulse's path: the core's rim (or the Agents station's) and the station's rim. */
@@ -66,18 +63,17 @@ export interface ActivityMapProps {
   title: string;
 }
 
-/** The map: stations on a ring around the agent, spokes worn by use, the route, pulses in flight. */
-export function ActivityMap({ board, stations, width, height, live, title }: ActivityMapProps) {
+/**
+ * The map: stations on a ring around the agent, spokes worn by use, the route, pulses in flight.
+ * Memoized: a click or toggle in the feed beside it changes none of its props; its own clock drives it.
+ */
+export const ActivityMap = React.memo(function ActivityMap({ board, stations, width, height, live, title }: ActivityMapProps) {
   // Its own clock, so only the map redraws twice a second, not the feed beside it.
   const now = useNow(live ? 500 : 60_000);
   const layout = useMemo(() => layoutMap(stations, { width, height }), [stations, width, height]);
   const running = useMemo(() => runningAt(board), [board]);
   const route = useMemo(() => routeOf(board.entries), [board]);
-  const lastStart = useMemo(() => {
-    const out = new Map<StationId, number>();
-    for (const e of board.entries) out.set(e.station, Math.max(out.get(e.station) ?? 0, e.startedAt));
-    return out;
-  }, [board]);
+  const lastStart = useMemo(() => lastStarts(board), [board]);
   const pulses = live ? pulsesOf(board, now) : [];
   const agentsAt = layout.stations[layout.index.get('agents') ?? -1];
 
@@ -119,10 +115,9 @@ export function ActivityMap({ board, stations, width, height, live, title }: Act
         const leg = legPath(layout, from.station, to.station);
         if (!leg) return null;
         const age = now - to.at;
-        const fade = live ? Math.max(0, Math.min(1, 1 - (age - LEG_HOLD_MS) / LEG_FADE_MS)) : 1;
-        if (fade <= 0) return null;
+        const opacity = legOpacity(k, route.length - 1, age, live);
+        if (opacity <= 0) return null;
         const isHead = k === route.length - 2;
-        const opacity = (0.15 + (0.55 * (k + 1)) / Math.max(1, route.length - 1)) * fade;
         return (
           <path
             // By its stations, not its time: a call repeated at one station moves the stop's time,
@@ -143,7 +138,8 @@ export function ActivityMap({ board, stations, width, height, live, title }: Act
 
       {/* The core: the agent, with its context window's fill when the harness reports one. */}
       <circle cx={layout.core.x} cy={layout.core.y} r={layout.hub} fill="var(--bg-raised)" stroke="var(--border-strong)" />
-      <text x={layout.core.x} y={layout.core.y + 3.5} textAnchor="middle" style={{ ...FONT, fontSize: 10 }} fill="var(--text-body)">
+      <text x={layout.core.x} y={layout.core.y + 3.5} textAnchor="middle" style={{ ...FONT, fontSize: 10 }}
+        fill={board.context !== undefined ? contextPctColor(board.context, 'var(--text-body)') : 'var(--text-body)'}>
         {board.context !== undefined ? `${Math.round(board.context)}%` : board.turns > 0 ? `#${board.turns}` : ''}
       </text>
 
@@ -172,7 +168,7 @@ export function ActivityMap({ board, stations, width, height, live, title }: Act
             </text>
             {count > 0 && (
               <text x={s.x + layout.node} y={s.y + layout.node + 4} textAnchor="start" style={{ ...FONT, fontSize: 8.5 }} fill="var(--text-faint)">
-                {shortCount(count)}
+                {countLabel(count)}
               </text>
             )}
             {runs > 1 && (
@@ -201,4 +197,4 @@ export function ActivityMap({ board, stations, width, height, live, title }: Act
       ))}
     </svg>
   );
-}
+});
