@@ -1,6 +1,7 @@
 import React from 'react';
 import { useSessionStore } from '../../stores/sessionStore.js';
 import { hostAccent, isRemoteHost } from '../../lib/host.js';
+import { sp, rad } from '../../lib/density.js';
 
 interface HostChipProps {
   hostId?: string;
@@ -40,10 +41,10 @@ export function HostChip({ hostId, hostName, className }: HostChipProps) {
         fontFamily: 'var(--font-mono, monospace)',
         fontSize: 10,
         lineHeight: '16px',
-        padding: '0 6px',
-        borderRadius: 4,
+        padding: sp('0 6px'),
+        borderRadius: rad(4),
         background: 'var(--bg-card)',
-        border: '1px solid var(--border)',
+        border: 'var(--stroke) solid var(--border)',
         borderLeft: `2px solid ${accent}`,
         color: 'var(--text-muted)',
       }}

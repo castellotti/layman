@@ -2,6 +2,7 @@ import React from 'react';
 import { useSessionStore } from '../../stores/sessionStore.js';
 import type { LiveStream } from '../../lib/types.js';
 import { formatTokens } from '../../lib/format.js';
+import { sp } from '../../lib/density.js';
 
 /**
  * How much of each buffer to show. The store keeps 32 KB so a stream can be
@@ -22,7 +23,7 @@ function Cursor() {
         display: 'inline-block',
         width: 6,
         height: 12,
-        marginLeft: 2,
+        marginLeft: sp(2),
         verticalAlign: 'text-bottom',
         background: 'var(--accent)',
         animation: 'layman-blink 1s steps(2, start) infinite',
@@ -61,8 +62,8 @@ export function LiveStreamRow({ sessionId }: { sessionId: string | null }) {
       style={{
         display: 'flex',
         flexDirection: 'column',
-        gap: 4,
-        padding: '6px 10px',
+        gap: sp(4),
+        padding: sp('6px 10px'),
         borderLeft: '2px solid var(--accent)',
         background: 'var(--bg-card)',
         fontFamily: 'var(--font-mono)',
@@ -70,7 +71,7 @@ export function LiveStreamRow({ sessionId }: { sessionId: string | null }) {
         lineHeight: 1.55,
       }}
     >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--text-faint)', fontSize: 10 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: sp(8), color: 'var(--text-faint)', fontSize: 10 }}>
         <span style={{ color: 'var(--accent)' }}>
           {stream.phase === 'thinking' ? 'thinking' : 'responding'}
         </span>

@@ -1,4 +1,5 @@
 import React, { useCallback, useMemo } from 'react';
+import { sp } from '../../lib/density.js';
 import { fetchRecordedSessionEvents, useSessionStore } from '../../stores/sessionStore.js';
 import { useActivityBoard } from '../../hooks/useActivityBoard.js';
 import { useStationSetup } from '../../hooks/useStationSetup.js';
@@ -21,7 +22,7 @@ const STACK_BELOW = 760;
 
 function Fact({ label, value, color = 'var(--text-body)' }: { label: string; value: React.ReactNode; color?: string }) {
   return (
-    <span style={{ display: 'inline-flex', gap: 5, alignItems: 'baseline' }}>
+    <span style={{ display: 'inline-flex', gap: sp(5), alignItems: 'baseline' }}>
       <span style={{ color: 'var(--text-faint)' }}>{label}</span>
       <span style={{ color, fontFamily: 'var(--font-mono)' }}>{value}</span>
     </span>
@@ -87,7 +88,7 @@ export default function ActivityMapView() {
   return (
     <div className="flex flex-col h-full min-w-0" style={{ background: 'var(--bg)' }}>
       <div
-        style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap', padding: '8px 16px', borderBottom: '1px solid var(--border)', fontSize: 11, fontFamily: 'var(--font-ui)' }}
+        style={{ display: 'flex', alignItems: 'center', gap: sp(16), flexWrap: 'wrap', padding: sp('8px 16px'), borderBottom: 'var(--stroke) solid var(--border)', fontSize: 11, fontFamily: 'var(--font-ui)' }}
       >
         <span style={{ color: 'var(--text)', fontWeight: 600 }}>{name}</span>
         <span style={{ color: live ? 'var(--ok)' : 'var(--text-faint)' }}>{live ? 'live' : 'ended'}</span>
@@ -98,7 +99,7 @@ export default function ActivityMapView() {
         {board.agents > 0 && <Fact label="subagents" value={board.agents} />}
         {loading && <span style={{ color: 'var(--text-faint)' }}>loading the recording…</span>}
         <span style={{ flex: 1 }} />
-        <label data-print-hide style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: 'var(--text-muted)', cursor: 'pointer' }}
+        <label data-print-hide style={{ display: 'inline-flex', alignItems: 'center', gap: sp(6), color: 'var(--text-muted)', cursor: 'pointer' }}
           title="Show only names: a file's last two folders, a host, a command's name. Nothing of what was typed, read or run.">
           <input type="checkbox" checked={namesOnly} onChange={toggleNamesOnly} />
           Names only
@@ -121,10 +122,10 @@ export default function ActivityMapView() {
           aria-label="Recent activity"
           style={{
             flex: stacked ? '1 1 0' : '2 1 0', minWidth: 0, minHeight: 0, overflowY: 'auto', fontSize: 11, fontFamily: 'var(--font-ui)',
-            ...(stacked ? { borderTop: '1px solid var(--border-subtle)' } : { borderLeft: '1px solid var(--border-subtle)' }),
+            ...(stacked ? { borderTop: 'var(--stroke) solid var(--border-subtle)' } : { borderLeft: 'var(--stroke) solid var(--border-subtle)' }),
           }}
         >
-          {rows.length === 0 && <div style={{ padding: 16, color: 'var(--text-faint)' }}>{loading ? '' : 'Nothing recorded yet.'}</div>}
+          {rows.length === 0 && <div style={{ padding: sp(16), color: 'var(--text-faint)' }}>{loading ? '' : 'Nothing recorded yet.'}</div>}
           {rows.map(({ entry, times, tookMs }) => {
             const style = STATION_STYLE[entry.station];
             const label = entryLabel(byId.get(entry.eventId), entry.station, namesOnly, setup);
@@ -139,10 +140,10 @@ export default function ActivityMapView() {
                 onClick={() => void open(entry.eventId)}
                 onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); void open(entry.eventId); } }}
                 style={{
-                  display: 'grid', gridTemplateColumns: '14px 64px 1fr auto', alignItems: 'center', gap: 8,
-                  width: '100%', padding: '5px 12px', textAlign: 'left', cursor: 'pointer',
+                  display: 'grid', gridTemplateColumns: '14px 64px 1fr auto', alignItems: 'center', gap: sp(8),
+                  width: '100%', padding: sp('5px 12px'), textAlign: 'left', cursor: 'pointer',
                   background: selected ? 'var(--bg-selected)' : 'transparent',
-                  border: 'none', borderBottom: '1px solid var(--border-subtle)', color: 'var(--text-body)',
+                  border: 'none', borderBottom: 'var(--stroke) solid var(--border-subtle)', color: 'var(--text-body)',
                 }}
               >
                 <span style={{ color: style.color, display: 'inline-flex' }}><StationGlyph station={entry.station} size={12} decorative /></span>

@@ -14,12 +14,14 @@ import { saveAndBookmarkSession } from '../../lib/bookmarks-api.js';
 import { pairFor, hasLogDetail } from '../../lib/event-pairing.js';
 import { extractTurns } from '../../lib/turns.js';
 import { turnSpan } from '../../lib/turn-range.js';
+import { scrollBehavior } from '../../lib/theme-runtime.js';
 import { gloveLive, useGloveToken } from '../network/NetworkForTurn.js';
 import { sessionDisplayName } from '../../lib/session-state.js';
 import { useStationSetup } from '../../hooks/useStationSetup.js';
 import { stationCounts } from '../../lib/station-style.js';
 import type { StationId } from '../../lib/station.js';
 import type { ClientMessage } from '../../lib/ws-protocol.js';
+import { sp, rad } from '../../lib/density.js';
 
 interface EventStreamProps {
   onSend: (msg: ClientMessage) => void;
@@ -226,7 +228,7 @@ export function EventStream({ onSend, archived = false, archivedDate, turnRuler 
       const cards = scrollRef.current?.querySelectorAll('[data-event-card]');
       if (cards) {
         const target = Array.from(cards).find((c) => c.getAttribute('data-event-id') === pendingScrollEventId);
-        if (target) target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        if (target) target.scrollIntoView({ behavior: scrollBehavior(), block: 'center' });
       }
     });
   }, [pendingScrollEventId, events, sessionEvents, clearPendingScroll, setExpandedLogEventIds]);
@@ -284,7 +286,7 @@ export function EventStream({ onSend, archived = false, archivedDate, turnRuler 
     const containerRect = container.getBoundingClientRect();
     const cardRect = card.getBoundingClientRect();
     const delta = (cardRect.top - containerRect.top) - (container.clientHeight / 2 - cardRect.height / 2);
-    container.scrollTo({ top: container.scrollTop + delta, behavior: 'smooth' });
+    container.scrollTo({ top: container.scrollTop + delta, behavior: scrollBehavior() });
   }, []);
 
   const goToPrevMatch = useCallback(() => {
@@ -306,7 +308,7 @@ export function EventStream({ onSend, archived = false, archivedDate, turnRuler 
     setSelectedIndex(clamped);
     const cards = scrollRef.current?.querySelectorAll('[data-event-card]');
     if (cards && cards[clamped]) {
-      cards[clamped].scrollIntoView({ behavior: 'smooth', block: 'center' });
+      cards[clamped].scrollIntoView({ behavior: scrollBehavior(), block: 'center' });
     }
   }, [displayEvents]);
 
@@ -429,9 +431,9 @@ export function EventStream({ onSend, archived = false, archivedDate, turnRuler 
       {/* Search match navigation bar */}
       {hasSearchQuery && (
         <div style={{
-          display: 'flex', alignItems: 'center', gap: 10,
-          padding: '6px 14px', background: 'var(--bg-selected)',
-          borderBottom: '1px solid var(--border)', flexShrink: 0,
+          display: 'flex', alignItems: 'center', gap: sp(10),
+          padding: sp('6px 14px'), background: 'var(--bg-selected)',
+          borderBottom: 'var(--stroke) solid var(--border)', flexShrink: 0,
         }}>
           <span style={{ fontSize: 11, color: 'var(--text)', fontFamily: 'var(--font-mono)' }}>
             {matchCount === 0 ? 'No matches' : `${matchCount} match${matchCount === 1 ? '' : 'es'} · ${matchIndex + 1}/${matchCount}`}
@@ -440,9 +442,9 @@ export function EventStream({ onSend, archived = false, archivedDate, turnRuler 
             onClick={goToPrevMatch}
             disabled={matchCount === 0}
             style={{
-              padding: '1px 8px', fontSize: 11, fontFamily: 'inherit',
+              padding: sp('1px 8px'), fontSize: 11, fontFamily: 'inherit',
               background: 'transparent', color: 'var(--text-muted)',
-              border: '1px solid var(--border-strong)', borderRadius: 4,
+              border: 'var(--stroke) solid var(--border-strong)', borderRadius: rad(4),
               cursor: matchCount === 0 ? 'default' : 'pointer',
             }}
           >
@@ -452,9 +454,9 @@ export function EventStream({ onSend, archived = false, archivedDate, turnRuler 
             onClick={goToNextMatch}
             disabled={matchCount === 0}
             style={{
-              padding: '1px 8px', fontSize: 11, fontFamily: 'inherit',
+              padding: sp('1px 8px'), fontSize: 11, fontFamily: 'inherit',
               background: 'transparent', color: 'var(--text-muted)',
-              border: '1px solid var(--border-strong)', borderRadius: 4,
+              border: 'var(--stroke) solid var(--border-strong)', borderRadius: rad(4),
               cursor: matchCount === 0 ? 'default' : 'pointer',
             }}
           >
@@ -479,13 +481,13 @@ export function EventStream({ onSend, archived = false, archivedDate, turnRuler 
           ref={scrollRef}
           onScroll={handleScroll}
           data-print-stream
-          style={{ flex: 1, overflowY: 'auto', paddingTop: 4, paddingBottom: 4 }}
+          style={{ flex: 1, overflowY: 'auto', paddingTop: sp(4), paddingBottom: sp(4) }}
         >
           {!hasEvents ? (
             <div style={{
               display: 'flex', flexDirection: 'column', alignItems: 'center',
-              justifyContent: 'center', height: '100%', gap: 12, textAlign: 'center',
-              padding: '0 32px',
+              justifyContent: 'center', height: '100%', gap: sp(12), textAlign: 'center',
+              padding: sp('0 32px'),
             }}>
               {archived ? (
                 // An archived/recorded session: its events already exist, they're
@@ -494,8 +496,8 @@ export function EventStream({ onSend, archived = false, archivedDate, turnRuler 
                 // here — show a clean loading indicator or an empty note instead.
                 loadingHistorical ? (
                   <>
-                    <div style={{ width: 180, height: 3, borderRadius: 3, overflow: 'hidden', background: 'var(--bg-card)' }}>
-                      <div className="layman-indeterminate" style={{ height: '100%', width: '40%', background: 'var(--accent)', borderRadius: 3 }} />
+                    <div style={{ width: 180, height: 3, borderRadius: rad(3), overflow: 'hidden', background: 'var(--bg-card)' }}>
+                      <div className="layman-indeterminate" style={{ height: '100%', width: '40%', background: 'var(--accent)', borderRadius: rad(3) }} />
                     </div>
                     <p style={{ fontFamily: 'var(--font-ui)', fontSize: 12, color: 'var(--text-muted)', margin: 0 }}>
                       Loading session…
@@ -516,11 +518,11 @@ export function EventStream({ onSend, archived = false, archivedDate, turnRuler 
                     Hooks are installed. Start a Claude Code, Codex, Cline, OpenCode, or Mistral Vibe session to see events here.
                   </p>
                   <div style={{
-                    marginTop: 8, fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-faint)',
-                    background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 6,
-                    padding: '10px 16px', textAlign: 'left',
+                    marginTop: sp(8), fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-faint)',
+                    background: 'var(--bg-card)', border: 'var(--stroke) solid var(--border)', borderRadius: rad(6),
+                    padding: sp('10px 16px'), textAlign: 'left',
                   }}>
-                    <p style={{ color: 'var(--text-muted)', margin: '0 0 4px 0' }}># In your AI agent:</p>
+                    <p style={{ color: 'var(--text-muted)', margin: sp('0 0 4px 0') }}># In your AI agent:</p>
                     <p style={{ margin: 0 }}>type /layman to begin</p>
                   </div>
                 </>

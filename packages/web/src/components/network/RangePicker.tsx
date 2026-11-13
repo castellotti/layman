@@ -20,6 +20,7 @@ import { buttonStyle } from './ControlPopover.js';
 import { NetIcon } from './netui.js';
 import { tipProps } from './NetTip.js';
 import { tokenColor } from '../../lib/tokens.js';
+import { sp, rad } from '../../lib/density.js';
 
 const WIDTH = 520;
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
@@ -28,12 +29,12 @@ type Tab = 'segments' | 'calendar' | 'timeline';
 type Kind = 'runs' | 'bursts' | 'agents';
 
 const tabStyle = (on: boolean): React.CSSProperties => ({
-  height: 26, padding: '0 10px', fontSize: 11.5, borderRadius: 6, cursor: 'pointer', fontFamily: 'var(--font-ui)',
-  border: `1px solid ${on ? 'var(--border-strong)' : 'transparent'}`, background: on ? 'var(--bg-selected)' : 'transparent',
+  height: 26, padding: sp('0 10px'), fontSize: 11.5, borderRadius: rad(6), cursor: 'pointer', fontFamily: 'var(--font-ui)',
+  border: `var(--stroke) solid ${on ? 'var(--border-strong)' : 'transparent'}`, background: on ? 'var(--bg-selected)' : 'transparent',
   color: on ? 'var(--text)' : 'var(--text-muted)',
 });
 
-const EMPTY_STYLE: React.CSSProperties = { padding: 12, fontSize: 11.5, color: 'var(--text-muted)' };
+const EMPTY_STYLE: React.CSSProperties = { padding: sp(12), fontSize: 11.5, color: 'var(--text-muted)' };
 const Empty = ({ children }: { children: React.ReactNode }) => <div style={EMPTY_STYLE}>{children}</div>;
 const NO_HOURS: HourActivity[] = [];
 
@@ -50,11 +51,11 @@ function SegmentRow({ title, range, detail, set, onPick, now }: {
   const on = sameRange(range, set);
   return (
     <button type="button" aria-pressed={on} onClick={() => onPick(range)} {...tipProps(rangeTitle(range))} style={{
-      display: 'flex', flexDirection: 'column', alignItems: 'stretch', gap: 2, width: '100%', textAlign: 'left', padding: '6px 9px',
-      borderRadius: 6, cursor: 'pointer', fontFamily: 'var(--font-ui)', background: on ? tokenColor('info', '10%') : 'transparent',
-      border: `1px solid ${on ? 'var(--info)' : 'transparent'}`, color: 'var(--text)',
+      display: 'flex', flexDirection: 'column', alignItems: 'stretch', gap: sp(2), width: '100%', textAlign: 'left', padding: sp('6px 9px'),
+      borderRadius: rad(6), cursor: 'pointer', fontFamily: 'var(--font-ui)', background: on ? tokenColor('info', '10%') : 'transparent',
+      border: `var(--stroke) solid ${on ? 'var(--info)' : 'transparent'}`, color: 'var(--text)',
     }}>
-      <span style={{ display: 'flex', gap: 8, alignItems: 'baseline', fontSize: 11.5 }}>
+      <span style={{ display: 'flex', gap: sp(8), alignItems: 'baseline', fontSize: 11.5 }}>
         <span style={{ fontWeight: 600 }}>{title}</span>
         <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10.5, color: 'var(--text-body)' }}>{formatRange(range, now)}</span>
       </span>
@@ -73,16 +74,16 @@ function SegmentsTab({ segments, range, onPick, gapHours, setGapHours, now }: {
   }), [segments]);
   return (
     <>
-      <div role="group" aria-label="Kind" style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 8 }}>
+      <div role="group" aria-label="Kind" style={{ display: 'flex', alignItems: 'center', gap: sp(4), marginBottom: sp(8) }}>
         {([['runs', `Runs ${runs.length}`], ['bursts', `Bursts ${bursts.length}`], ['agents', `Agent sessions ${agents.length}`]] as const).map(([k, label]) => (
           <button key={k} type="button" aria-pressed={kind === k} onClick={() => setKind(k)} style={tabStyle(kind === k)}>{label}</button>
         ))}
         {kind === 'bursts' && (
           <label {...tipProps({ heading: 'Burst gap', body: 'A burst is the agent at work: model calls with no pause this long or longer, inside one run. A gate left up for days holds several jobs, which a run alone lumps together.' })}
-            style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 4, fontSize: 10.5, color: 'var(--text-muted)' }}>
+            style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: sp(4), fontSize: 10.5, color: 'var(--text-muted)' }}>
             split at
             <select aria-label="Burst gap" value={gapHours} onChange={(e) => setGapHours(Number(e.target.value))} style={{
-              fontSize: 10.5, background: 'var(--bg)', color: 'var(--text)', border: '1px solid var(--border-strong)', borderRadius: 4,
+              fontSize: 10.5, background: 'var(--bg)', color: 'var(--text)', border: 'var(--stroke) solid var(--border-strong)', borderRadius: rad(4),
             }}>
               {[1, 2, 3, 4, 6, 8, 12, 24].map((h) => <option key={h} value={h}>{h} h</option>)}
             </select>
@@ -90,7 +91,7 @@ function SegmentsTab({ segments, range, onPick, gapHours, setGapHours, now }: {
           </label>
         )}
       </div>
-      <div role="list" aria-label={kind} style={{ maxHeight: 300, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 2 }}>
+      <div role="list" aria-label={kind} style={{ maxHeight: 300, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: sp(2) }}>
         {kind === 'runs' && (runs.length ? runs.map((r) => (
           <div role="listitem" key={r.run}>
             <SegmentRow title={`Run ${runNumber(segments, r)}`} range={segmentRange(r)} set={range} onPick={onPick} now={now}
@@ -114,7 +115,7 @@ function SegmentsTab({ segments, range, onPick, gapHours, setGapHours, now }: {
         )) : <Empty>No Layman session is named after this glove session.</Empty>)}
       </div>
       {kind === 'bursts' && segments.burstBasis === 'traffic' && (
-        <div style={{ fontSize: 10.5, color: 'var(--text-faint)', marginTop: 6 }}>No model calls were seen, so bursts are split on all traffic.</div>
+        <div style={{ fontSize: 10.5, color: 'var(--text-faint)', marginTop: sp(6) }}>No model calls were seen, so bursts are split on all traffic.</div>
       )}
     </>
   );
@@ -155,22 +156,22 @@ function CalendarTab({ segments, range, onPick, now, openedAt }: {
   const t = to.trim() === '' ? null : fromLocalInput(to);
   const valid = f !== null && (to.trim() === '' || (t !== null && t > f));
   const field: React.CSSProperties = {
-    fontSize: 11, fontFamily: 'var(--font-mono)', background: 'var(--bg)', color: 'var(--text)', border: '1px solid var(--border-strong)',
-    borderRadius: 4, padding: '3px 5px', colorScheme: 'dark',
+    fontSize: 11, fontFamily: 'var(--font-mono)', background: 'var(--bg)', color: 'var(--text)', border: 'var(--stroke) solid var(--border-strong)',
+    borderRadius: rad(4), padding: sp('3px 5px'), colorScheme: 'dark',
   };
   return (
     <>
-      <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 10 }}>
+      <div style={{ display: 'flex', gap: sp(4), flexWrap: 'wrap', marginBottom: sp(10) }}>
         {presets(openedAt, segments).map((p) => (
           <button key={p.key} type="button" aria-pressed={sameRange(p.range, range)} onClick={() => onPick(p.range)} style={tabStyle(sameRange(p.range, range))}>{p.label}</button>
         ))}
       </div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: sp(6), marginBottom: sp(6) }}>
         <button type="button" aria-label="Previous month" onClick={() => step(-1)} style={buttonStyle('ghost')}><span style={{ transform: 'rotate(90deg)', display: 'inline-block' }}><NetIcon name="chevron" /></span></button>
         <span style={{ flex: 1, textAlign: 'center', fontSize: 12, fontWeight: 600, color: 'var(--text)' }}>{MONTHS[month.month]} {month.year}</span>
         <button type="button" aria-label="Next month" onClick={() => step(1)} style={buttonStyle('ghost')}><span style={{ transform: 'rotate(-90deg)', display: 'inline-block' }}><NetIcon name="chevron" /></span></button>
       </div>
-      <div role="grid" aria-label={`${MONTHS[month.month]} ${month.year}`} style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 3 }}>
+      <div role="grid" aria-label={`${MONTHS[month.month]} ${month.year}`} style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: sp(3) }}>
         {WEEKDAYS.map((d) => <div key={d} role="columnheader" style={{ fontSize: 10, textAlign: 'center', color: 'var(--text-faint)' }}>{d}</div>)}
         {weeks.flat().map((c) => {
           const inRange = range !== null && c.day < (range.to ?? now) && nextDay(c.day) > range.from;
@@ -180,10 +181,10 @@ function CalendarTab({ segments, range, onPick, now, openedAt }: {
               onClick={(e) => pickDay(c.day, e.shiftKey)}
               {...tipProps(c.flows ? `${traffic({ flows: c.flows, bytesUp: c.bytes, bytesDown: 0 })}. Shift-click to extend the range to this day.` : 'No traffic recorded')}
               style={{
-                height: 30, borderRadius: 5, fontSize: 11, fontFamily: 'var(--font-mono)', cursor: future ? 'default' : 'pointer',
+                height: 30, borderRadius: rad(5), fontSize: 11, fontFamily: 'var(--font-mono)', cursor: future ? 'default' : 'pointer',
                 color: c.inMonth ? (future ? 'var(--text-faint)' : 'var(--text)') : 'var(--text-faint)',
                 background: c.level ? tokenColor('net-tunnel', `${8 + c.level * 14}%`) : 'transparent',
-                border: `1px solid ${inRange ? 'var(--info)' : c.day === today ? 'var(--border-strong)' : 'var(--border)'}`,
+                border: `var(--stroke) solid ${inRange ? 'var(--info)' : c.day === today ? 'var(--border-strong)' : 'var(--border)'}`,
                 opacity: c.inMonth ? 1 : 0.55,
               }}>
               {c.date}
@@ -192,11 +193,11 @@ function CalendarTab({ segments, range, onPick, now, openedAt }: {
         })}
       </div>
       <form onSubmit={(e) => { e.preventDefault(); if (valid) onPick({ from: f!, to: t }); }}
-        style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 10, flexWrap: 'wrap', fontSize: 10.5, color: 'var(--text-muted)' }}>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 4 }}>From
+        style={{ display: 'flex', alignItems: 'center', gap: sp(6), marginTop: sp(10), flexWrap: 'wrap', fontSize: 10.5, color: 'var(--text-muted)' }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: sp(4) }}>From
           <input type="datetime-local" step={1} aria-label="Range start" value={from} onChange={(e) => setFrom(e.target.value)} style={field} />
         </label>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 4 }}>to
+        <label style={{ display: 'flex', alignItems: 'center', gap: sp(4) }}>to
           <input type="datetime-local" step={1} aria-label="Range end" value={to} onChange={(e) => setTo(e.target.value)} placeholder="now" style={field} />
         </label>
         <span style={{ color: 'var(--text-faint)' }}>{to.trim() === '' ? '(empty: now)' : ''}</span>
@@ -252,12 +253,12 @@ function TimelineTab({ segments, range, onPick, now }: { segments: NetSegments; 
   const shown = drag ? { from: Math.min(drag.a, drag.b), to: Math.max(drag.a, drag.b) } : range ? { from: range.from, to: range.to ?? now } : null;
   return (
     <>
-      <div style={{ fontSize: 10.5, color: 'var(--text-muted)', marginBottom: 6 }}>
+      <div style={{ fontSize: 10.5, color: 'var(--text-muted)', marginBottom: sp(6) }}>
         Drag across the timeline to set a range. Edges snap to runs (ticks) and agent sessions (dots).
       </div>
       <svg ref={svg} width={TL_W} height={TL_H} role="slider" aria-label="Timeline"
         aria-valuetext={shown ? formatRange({ from: shown.from, to: shown.to }, now) : 'All records'}
-        style={{ display: 'block', cursor: 'crosshair', touchAction: 'none', background: 'var(--bg)', borderRadius: 5, border: '1px solid var(--border)' }}
+        style={{ display: 'block', cursor: 'crosshair', touchAction: 'none', background: 'var(--bg)', borderRadius: rad(5), border: 'var(--stroke) solid var(--border)' }}
         onPointerDown={(e) => { (e.target as Element).setPointerCapture?.(e.pointerId); const t = at(e); setDrag({ a: t, b: t }); }}
         onPointerMove={(e) => { const t = at(e); setHover(t); if (drag) setDrag({ ...drag, b: t }); }}
         onPointerLeave={() => setHover(null)}
@@ -276,7 +277,7 @@ function TimelineTab({ segments, range, onPick, now }: { segments: NetSegments; 
         <line x1={0} x2={TL_W} y1={TL_H - 12} y2={TL_H - 12} stroke="var(--border-strong)" />
         {hover !== null && <line x1={x(hover)} x2={x(hover)} y1={0} y2={TL_H - 12} stroke="var(--text-muted)" strokeDasharray="1 2" />}
       </svg>
-      <div style={{ display: 'flex', justifyContent: 'space-between', fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-faint)', marginTop: 3 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-faint)', marginTop: sp(3) }}>
         <span>{formatStamp(span.from)}</span>
         <span>{hover !== null ? formatStamp(hover) : formatSpan(span.to - span.from)}</span>
         <span>{live ? 'now' : formatStamp(span.to)}</span>
@@ -316,12 +317,12 @@ export function RangePicker({ anchor, range, segments, segmentsError, gapHours, 
   // Picking (`onPick`) keeps the picker open: the reader often compares a few ranges in a row.
   return createPortal(
     <div ref={ref} role="dialog" aria-label="Time range" data-print-hide="" style={{
-      position: 'fixed', left: pos.left, top: pos.top, width: WIDTH, zIndex: 60, padding: 12, borderRadius: 8,
-      background: 'var(--bg-card)', border: '1px solid var(--border-strong)', boxShadow: '0 16px 40px rgba(0,0,0,0.55)',
+      position: 'fixed', left: pos.left, top: pos.top, width: WIDTH, zIndex: 60, padding: sp(12), borderRadius: rad(8),
+      background: 'var(--bg-card)', border: 'var(--stroke) solid var(--border-strong)', boxShadow: '0 16px 40px rgba(0,0,0,0.55)',
       fontFamily: 'var(--font-ui)',
     }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 10 }}>
-        <div role="tablist" aria-label="Pick by" style={{ display: 'flex', gap: 4 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: sp(4), marginBottom: sp(10) }}>
+        <div role="tablist" aria-label="Pick by" style={{ display: 'flex', gap: sp(4) }}>
           {([['segments', 'Runs & sessions'], ['calendar', 'Calendar'], ['timeline', 'Timeline']] as const).map(([k, label]) => (
             <button key={k} type="button" role="tab" aria-selected={tab === k} onClick={() => setTab(k)} style={tabStyle(tab === k)}>{label}</button>
           ))}
@@ -329,7 +330,7 @@ export function RangePicker({ anchor, range, segments, segmentsError, gapHours, 
         <button type="button" aria-pressed={range === null} onClick={() => onPick(null)} style={{ ...tabStyle(range === null), marginLeft: 'auto' }}>All records</button>
         <button type="button" aria-label="Close" onClick={onClose} style={{ ...buttonStyle('ghost'), width: 26, padding: 0 }}><NetIcon name="close" size={11} /></button>
       </div>
-      {segmentsError && !segments && <div role="alert" style={{ fontSize: 11.5, color: 'var(--warn)', marginBottom: 8 }}>Could not read this session’s runs: {segmentsError}</div>}
+      {segmentsError && !segments && <div role="alert" style={{ fontSize: 11.5, color: 'var(--warn)', marginBottom: sp(8) }}>Could not read this session’s runs: {segmentsError}</div>}
       {tab === 'calendar' ? <CalendarTab segments={segments} range={range} onPick={onPick} now={now} openedAt={openedAt} />
         : !segments ? <Empty>{segmentsError ? '' : 'Loading…'}</Empty>
           : tab === 'segments' ? <SegmentsTab segments={segments} range={range} onPick={onPick} gapHours={gapHours} setGapHours={setGapHours} now={now} />

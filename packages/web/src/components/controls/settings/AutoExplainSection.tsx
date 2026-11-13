@@ -3,6 +3,7 @@ import type { ClientMessage } from '../../../lib/ws-protocol.js';
 import type { LaymanConfig } from '../../../lib/types.js';
 import { SectionTitle, SectionIntro, CustomRow } from './primitives.js';
 import { RiskLevelPicker, DepthPicker } from './RiskLevelPicker.js';
+import { sp, rad } from '../../../lib/density.js';
 
 export function AutoExplainSection({
   config, onSend,
@@ -43,12 +44,12 @@ export function AutoExplainSection({
           placeholder="Explain what the AI is doing here in absolute layman's terms..."
           style={{
             width: '100%',
-            padding: '8px 10px',
+            padding: sp('8px 10px'),
             fontSize: 11,
             fontFamily: 'var(--font-ui)',
             background: 'var(--bg-card)',
-            border: '1px solid var(--border-strong)',
-            borderRadius: 5,
+            border: 'var(--stroke) solid var(--border-strong)',
+            borderRadius: rad(5),
             color: 'var(--text)',
             outline: 'none',
             resize: 'vertical',

@@ -22,7 +22,7 @@ export function MiniActivityMap({ sessionId, name, live }: { sessionId: string; 
       ref={ref}
       {...asButton(`Open the activity map of ${name}`, open)}
       title="Open the activity map"
-      style={{ position: 'relative', width: MINI_MAP_WIDTH, flexShrink: 0, borderLeft: '1px solid var(--border-subtle)', cursor: 'pointer' }}
+      style={{ position: 'relative', width: MINI_MAP_WIDTH, flexShrink: 0, borderLeft: 'var(--stroke) solid var(--border-subtle)', cursor: 'pointer' }}
     >
       {size.width > 0 && size.height > 0 && (
         <div style={{ position: 'absolute', inset: 4 }}>

@@ -1,11 +1,16 @@
 import { describe, expect, it } from 'vitest';
-import { contrast, deltaE, luminance, oklab, parseHex } from './color.js';
+import { contrast, deltaE, longHex, luminance, oklab, parseHex } from './color.js';
 
 describe('color', () => {
   it('parses #rgb and #rrggbb and refuses anything else', () => {
     expect(parseHex('#fff')).toEqual([1, 1, 1]);
     expect(parseHex('#FF0000')).toEqual([1, 0, 0]);
     for (const bad of ['fff', '#ffff', 'red', 'rgb(0,0,0)', '#gggggg']) expect(() => parseHex(bad)).toThrow();
+  });
+
+  it('longHex writes #rrggbb in lower case', () => {
+    expect(longHex('#AbC')).toBe('#aabbcc');
+    expect(longHex('#0B0E14')).toBe('#0b0e14');
   });
 
   it('WCAG contrast: black on white is 21, order does not matter, same is 1', () => {

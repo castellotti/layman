@@ -21,6 +21,7 @@ import { openInTrace } from './TraceView.js';
 import { useVpnDomains } from '../../hooks/useVpnDomains.js';
 import { isVpnRoute, vpnEntryFor, vpnParentDomain } from '../../lib/net-vpn.js';
 import { tokenColor } from '../../lib/tokens.js';
+import { sp, rad } from '../../lib/density.js';
 
 type SectionId = 'totals' | 'asked' | 'connection' | 'flows';
 const SECTIONS: Array<{ id: SectionId; label: string; on: boolean }> = [
@@ -54,7 +55,7 @@ const RESOLUTION: Record<string, string> = {
 
 export function Row({ k, v, sub, mono = true, colour }: { k: string; v: React.ReactNode; sub?: React.ReactNode; mono?: boolean; colour?: string }) {
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '72px 1fr', gap: 10, padding: '3px 0' }}>
+    <div style={{ display: 'grid', gridTemplateColumns: '72px 1fr', gap: sp(10), padding: sp('3px 0') }}>
       <span style={{ fontSize: 11, color: 'var(--text-faint)', textAlign: 'right' }}>{k}</span>
       <span style={{ minWidth: 0 }}>
         <span style={{ fontSize: 11.5, color: colour ?? 'var(--text-body)', fontFamily: mono ? 'var(--font-mono)' : 'var(--font-ui)', wordBreak: 'break-all' }}>{v}</span>
@@ -65,7 +66,7 @@ export function Row({ k, v, sub, mono = true, colour }: { k: string; v: React.Re
 }
 
 export function SectionHead({ children }: { children: React.ReactNode }) {
-  return <div style={{ fontSize: 10, letterSpacing: '0.08em', fontWeight: 600, color: 'var(--text-muted)', margin: '12px 0 6px', textTransform: 'uppercase' }}>{children}</div>;
+  return <div style={{ fontSize: 10, letterSpacing: '0.08em', fontWeight: 600, color: 'var(--text-muted)', margin: sp('12px 0 6px'), textTransform: 'uppercase' }}>{children}</div>;
 }
 
 export function Tile({ label, value, colour, icon, sub, tip }: {
@@ -75,11 +76,11 @@ export function Tile({ label, value, colour, icon, sub, tip }: {
   tip?: string;
 }) {
   return (
-    <div data-tip={tip} style={{ flex: 1, minWidth: 0, padding: '8px 10px', borderRadius: 8, border: `1px solid ${colour}`, background: 'var(--bg)' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 9.5, letterSpacing: '0.08em', fontWeight: 600, color: colour, whiteSpace: 'nowrap' }}>
+    <div data-tip={tip} style={{ flex: 1, minWidth: 0, padding: sp('8px 10px'), borderRadius: rad(8), border: `var(--stroke) solid ${colour}`, background: 'var(--bg)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: sp(5), fontSize: 9.5, letterSpacing: '0.08em', fontWeight: 600, color: colour, whiteSpace: 'nowrap' }}>
         <NetIcon name={icon} color={colour} size={11} />{label}
       </div>
-      <div style={{ fontFamily: 'var(--font-mono)', fontSize: 15, fontWeight: 600, color: 'var(--text)', marginTop: 2 }}>{value}</div>
+      <div style={{ fontFamily: 'var(--font-mono)', fontSize: 15, fontWeight: 600, color: 'var(--text)', marginTop: sp(2) }}>{value}</div>
       {sub && <div style={{ fontSize: 10, color: 'var(--text-faint)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{sub}</div>}
     </div>
   );
@@ -140,14 +141,14 @@ function Policy({ data, d }: { data: NetSessionData; d: DestinationAggregate }) 
   return (
     <>
       <SectionHead>Policy</SectionHead>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, height: 22, padding: '0 8px', borderRadius: 11, fontSize: 11, color: badge.colour, border: `1px solid ${badge.colour}`, background: 'var(--bg)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: sp(8), marginBottom: sp(8), flexWrap: 'wrap' }}>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: sp(5), height: 22, padding: sp('0 8px'), borderRadius: rad(11), fontSize: 11, color: badge.colour, border: `var(--stroke) solid ${badge.colour}`, background: 'var(--bg)' }}>
           <NetIcon name={v?.action === 'allow' ? 'check' : d.state === 'guard' ? 'lock' : 'blocked'} color={badge.colour} size={11} />{badge.text}
         </span>
         <span style={{ fontSize: 10.5, color: 'var(--text-faint)' }}>{pending ? 'waiting for the gate' : badge.sub}</span>
       </div>
       {d.state !== 'guard' && host && v && (
-        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }} data-tip={disabled ?? undefined}>
+        <div style={{ display: 'flex', gap: sp(6), flexWrap: 'wrap' }} data-tip={disabled ?? undefined}>
           {v.action === 'allow' && (
             <>
               <button type="button" disabled={!!disabled} onClick={() => apply({ kind: 'blockHost', host, terminate: false })} style={buttonStyle('danger')}>
@@ -213,15 +214,15 @@ function AskedFor({ data, host, port, flows }: { data: NetSessionData; host: str
     <>
       <SectionHead>Agent asked for</SectionHead>
       {call && found?.view.turn ? (
-        <div style={{ padding: '7px 9px', borderRadius: 6, border: '1px solid var(--border-strong)', background: 'var(--bg)' }}>
+        <div style={{ padding: sp('7px 9px'), borderRadius: rad(6), border: 'var(--stroke) solid var(--border-strong)', background: 'var(--bg)' }}>
           <div style={{ fontSize: 10.5, color: 'var(--info)' }}>
             {call.toolName} · {clockTime(call.start)}{call.timing === 'approximate' ? ' (read time)' : ''}{earlierNote}
           </div>
-          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11.5, color: 'var(--text)', wordBreak: 'break-all', marginTop: 2 }}>
+          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11.5, color: 'var(--text)', wordBreak: 'break-all', marginTop: sp(2) }}>
             {call.kind === 'search' ? `“${call.label}”` : call.label}
           </div>
           <button type="button" onClick={() => openInTrace(data.token, found.view.turn!.promptEventId, found.flowId)}
-            style={{ background: 'none', border: 'none', padding: 0, marginTop: 4, color: 'var(--info)', cursor: 'pointer', fontSize: 10.5, fontFamily: 'var(--font-ui)' }}>
+            style={{ background: 'none', border: 'none', padding: 0, marginTop: sp(4), color: 'var(--info)', cursor: 'pointer', fontSize: 10.5, fontFamily: 'var(--font-ui)' }}>
             Open in Trace
           </button>
         </div>
@@ -249,7 +250,7 @@ export function DetailCard({ data, host, onClose, docked = false }: {
 
   if (!host || !d) {
     return (
-      <div style={{ padding: 14, fontSize: 11.5, color: 'var(--text-muted)', lineHeight: 1.5 }}>
+      <div style={{ padding: sp(14), fontSize: 11.5, color: 'var(--text-muted)', lineHeight: 1.5 }}>
         Select a destination in the table or on the map to see where it went, what the agent asked for, and what the gate did.
       </div>
     );
@@ -261,15 +262,15 @@ export function DetailCard({ data, host, onClose, docked = false }: {
   const leg = directLegend(d);
   return (
     <div style={{ padding: docked ? 12 : 14, position: 'relative' }}>
-      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: sp(8) }}>
         <NetIcon name="globe" size={14} color={leg?.colourVar ?? 'var(--net-tunnel)'} />
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: sp(6), flexWrap: 'wrap' }}>
             <span style={{ fontFamily: 'var(--font-mono)', fontSize: 13, fontWeight: 600, color: 'var(--text)', wordBreak: 'break-all' }}>{d.host}</span>
             {live && <Badge colour="var(--net-tunnel)">LIVE</Badge>}
             {leg && <Badge colour={leg.colourVar}>{leg.badge}</Badge>}
           </div>
-          <div style={{ fontSize: 10.5, color: 'var(--text-faint)', marginTop: 2 }}>
+          <div style={{ fontSize: 10.5, color: 'var(--text-faint)', marginTop: sp(2) }}>
             {[d.ips[0], d.geo?.city, d.tools.map(toolLabel).join(', '), `${d.flows} flow${d.flows === 1 ? '' : 's'}`].filter(Boolean).join(' · ')}
           </div>
         </div>
@@ -279,20 +280,20 @@ export function DetailCard({ data, host, onClose, docked = false }: {
         {onClose && <button type="button" aria-label="Close details" onClick={onClose} style={iconButton}><NetIcon name="close" size={11} color="var(--text-faint)" /></button>}
       </div>
       {menu && (
-        <div role="menu" style={{ position: 'absolute', right: 12, top: 40, zIndex: 5, padding: 6, borderRadius: 6, background: 'var(--bg-card)', border: '1px solid var(--border-strong)', boxShadow: '0 8px 24px rgba(0,0,0,0.5)' }}>
+        <div role="menu" style={{ position: 'absolute', right: 12, top: 40, zIndex: 5, padding: sp(6), borderRadius: rad(6), background: 'var(--bg-card)', border: 'var(--stroke) solid var(--border-strong)', boxShadow: '0 8px 24px rgba(0,0,0,0.5)' }}>
           {SECTIONS.map((s) => (
-            <label key={s.id} role="menuitemcheckbox" aria-checked={shown(s.id)} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11.5, color: 'var(--text-body)', padding: '3px 6px', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+            <label key={s.id} role="menuitemcheckbox" aria-checked={shown(s.id)} style={{ display: 'flex', alignItems: 'center', gap: sp(6), fontSize: 11.5, color: 'var(--text-body)', padding: sp('3px 6px'), cursor: 'pointer', whiteSpace: 'nowrap' }}>
               <input type="checkbox" checked={shown(s.id)} onChange={() => flips.toggle(s.id)} />{s.label}
             </label>
           ))}
-          <div style={{ fontSize: 10, color: 'var(--text-faint)', padding: '3px 6px' }}>Policy is always shown.</div>
+          <div style={{ fontSize: 10, color: 'var(--text-faint)', padding: sp('3px 6px') }}>Policy is always shown.</div>
         </div>
       )}
 
       {d.scope === 'direct' && d.host && <VpnMark host={d.host} vpn={d.flags.vpn} />}
 
       {shown('totals') && (
-        <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+        <div style={{ display: 'flex', gap: sp(8), marginTop: sp(12) }}>
           <Tile label="SENT" value={formatBytes(d.bytesUp)} colour="var(--net-up)" icon="up" />
           <Tile label="RECEIVED" value={formatBytes(d.bytesDown)} colour="var(--net-down)" icon="down" />
         </div>
@@ -321,7 +322,7 @@ export function DetailCard({ data, host, onClose, docked = false }: {
         <>
           <SectionHead>Flows · {flows.length}</SectionHead>
           {flows.slice(0, 12).map((x) => (
-            <div key={x.id} style={{ display: 'flex', gap: 8, fontSize: 11, padding: '2px 0' }}>
+            <div key={x.id} style={{ display: 'flex', gap: sp(8), fontSize: 11, padding: sp('2px 0') }}>
               <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-body)' }}>{flowLabel(x.id).replace('flow ', '')}</span>
               <span style={{ color: 'var(--text-faint)', flex: 1 }}>{x.phase === 'close' ? x.closeReason ?? 'closed' : `open · ${formatAge(Date.now() - x.tOpen)}`}</span>
               <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-muted)' }}>{formatBytes(x.bytes.down)}</span>
@@ -346,16 +347,16 @@ function VpnMark({ host, vpn }: { host: string; vpn: DestinationAggregate['flags
   const entry = vpnEntryFor(host, list);
   const domain = vpnParentDomain(host);
   const off = writable ? undefined : 'Open the network views with a live connection to change this';
-  const note = <div style={{ fontSize: 10.5, color: 'var(--text-faint)', lineHeight: 1.5, marginTop: 4 }}>
+  const note = <div style={{ fontSize: 10.5, color: 'var(--text-faint)', lineHeight: 1.5, marginTop: sp(4) }}>
     A view setting: the gate and its rules are unchanged. The list is in Settings → Glove.
   </div>;
   if (vpn === 'listed' || entry) {
     return (
-      <div style={{ marginTop: 10, padding: '7px 9px', borderRadius: 6, border: '1px solid var(--border-strong)', background: 'var(--bg)' }}>
+      <div style={{ marginTop: sp(10), padding: sp('7px 9px'), borderRadius: rad(6), border: 'var(--stroke) solid var(--border-strong)', background: 'var(--bg)' }}>
         <div style={{ fontSize: 11, color: 'var(--text-body)' }}>
           On your VPN: listed as <span style={{ fontFamily: 'var(--font-mono)' }}>{entry ?? host}</span>.
         </div>
-        <button type="button" disabled={!writable} title={off} onClick={() => unmark(host)} style={{ ...buttonStyle('ghost'), marginTop: 6 }}>
+        <button type="button" disabled={!writable} title={off} onClick={() => unmark(host)} style={{ ...buttonStyle('ghost'), marginTop: sp(6) }}>
           Not on my VPN
         </button>
         {note}
@@ -363,11 +364,11 @@ function VpnMark({ host, vpn }: { host: string; vpn: DestinationAggregate['flags
     );
   }
   return (
-    <div style={{ marginTop: 10, padding: '7px 9px', borderRadius: 6, border: `1px solid ${tokenColor('error', '40%')}`, background: 'var(--bg)' }}>
+    <div style={{ marginTop: sp(10), padding: sp('7px 9px'), borderRadius: rad(6), border: `var(--stroke) solid ${tokenColor('error', '40%')}`, background: 'var(--bg)' }}>
       <div style={{ fontSize: 11, color: 'var(--text-body)', lineHeight: 1.5 }}>
         Is this host on your corporate network? Traffic that reaches it over your own VPN is expected, not a leak.
       </div>
-      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 6 }}>
+      <div style={{ display: 'flex', gap: sp(6), flexWrap: 'wrap', marginTop: sp(6) }}>
         <button type="button" disabled={!writable} title={off} onClick={() => mark([host])} style={buttonStyle('ghost')}>
           Mark {host} as VPN
         </button>
@@ -383,9 +384,9 @@ function VpnMark({ host, vpn }: { host: string; vpn: DestinationAggregate['flags
 }
 
 export const Badge = ({ colour, children }: { colour: string; children: React.ReactNode }) => (
-  <span style={{ fontSize: 9.5, fontWeight: 600, letterSpacing: '0.05em', color: colour, border: `1px solid ${colour}`, borderRadius: 4, padding: '0 5px' }}>{children}</span>
+  <span style={{ fontSize: 9.5, fontWeight: 600, letterSpacing: '0.05em', color: colour, border: `var(--stroke) solid ${colour}`, borderRadius: rad(4), padding: sp('0 5px') }}>{children}</span>
 );
-const iconButton: React.CSSProperties = { display: 'flex', alignItems: 'center', justifyContent: 'center', width: 22, height: 22, background: 'transparent', border: 'none', borderRadius: 4, cursor: 'pointer' };
+const iconButton: React.CSSProperties = { display: 'flex', alignItems: 'center', justifyContent: 'center', width: 22, height: 22, background: 'transparent', border: 'none', borderRadius: rad(4), cursor: 'pointer' };
 
 /** Close = deselect. */
 export function useCloseDetail(): () => void {

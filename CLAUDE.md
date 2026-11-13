@@ -539,8 +539,9 @@ Four rules that must not be relaxed casually:
 - **Themes are data** (`packages/web/src/lib/themes.ts`, pure; DOM side in `lib/theme-runtime.ts`).
   Each theme defines every colour token components use as `var(--…)`; `applyTheme()` writes the
   resolved one as an `@media screen` stylesheet, never an inline style on `<html>`, which would beat
-  the print palette. `themeProblems()` is the one rule check (tests run it on every theme, Settings
-  will run it on overrides): WCAG AA for text/body/muted and the status colours used as text on
+  the print palette. `themeProblems()` is the one rule check (tests run it on every theme;
+  Settings uses `themeProblemsWith`, which lays the user's overrides on the theme and drops a
+  `KNOWN_PROBLEMS` exception once either of its colours is the user's): WCAG AA for text/body/muted and the status colours used as text on
   bg/raised/card, 3:1 for network colours, and `--accent`/`--accent-hot` ≥ 0.12 OKLab ΔE from that
   theme's `ok`, `warn`, `error` and severities (`--warn` means MEDIUM risk, so an accent near it
   misleads). Exceptions are named in `KNOWN_PROBLEMS` and a test fails when one goes stale. Stored
@@ -570,11 +571,27 @@ Four rules that must not be relaxed casually:
   stored value the server does not know falls back to its default field by field (a stale
   `layman.json` must never stop startup), but an *update* holding one is dropped
   (`validAppearanceUpdate`), keeping the current choice. `appearance` is deep-merged like `sync`,
-  except `overrides`, which an update replaces whole so one can be removed; an update's map with any
-  bad entry is therefore dropped whole, or it would wipe the others. Updates are never migrated: a
+  except `overrides`, which is kept per theme (`{ classic: { bg: … }, daylight: { … } }`) so a colour
+  chosen for one theme never lands on another (under Follow the OS both halves show). An update
+  replaces each theme it names whole, so one colour can be removed and `{}` clears the theme; a
+  theme's map with any bad entry is dropped whole (keeping that theme's current map), or it would
+  wipe the others. Config sources (`mergeAppearance`) take `overrides` whole from the highest that holds
+  an overrides object, even `{}`, never per theme, or colours cleared in Settings would return from a
+  lower source. Rule breaks in overrides are listed in Settings (`themeProblems`), never refused. Updates are never migrated: a
   stale tab sending its old config (`theme: 'dark'`) must not overwrite the choice. `useAppearance()` applies
   it on every `session:config` and remembers it in `localStorage`, which `main.tsx` applies at load
-  so a non-default theme does not flash Classic first.
+  so a non-default theme does not flash Classic first. Settings → Appearance (`AppearanceSection`) only sends config updates; it never
+  applies a theme itself, so every tab changes from the same `session:config`. Each stylesheet block
+  sets its theme's `color-scheme`. Motion is applied as `html[data-motion]` (`index.css`), already
+  capped by the OS's reduced-motion setting; code that animates itself (eased scrolling,
+  `scrollIntoView`) asks `motionIsFull()` / `scrollBehavior()` (`theme-runtime.ts`), never
+  `prefers-reduced-motion`, or Off would not stop it. Spacing, corners and lines follow
+  the appearance: Tailwind's padding/margin/gap/space and `rounded*` scales and `border` width are
+  scaled in `tailwind.config.ts`, and an inline style writes `sp(8)` / `sp('4px 8px')` and `rad(6)`
+  (`lib/density.ts`) and `var(--stroke)` for a 1px line, never a bare px value
+  (`density-literals.test.ts` fails on one). The numbers in the code are the Compact design (the
+  default, `--density: 1`; Comfortable is 1.3) and Classic's 6px corners (`--radius-scale` is the
+  theme's radius over 6). Not yet covered: px values in component `.css` files, SVG geometry.
 
 - **Auto-activate**: The `autoActivateClients` config array (in `~/.local/share/layman/layman.json`) lists client agent types (e.g. `'claude-code'`) whose sessions should auto-activate without requiring `/layman`. When a hook event arrives from a matching agent, `handler.ts` calls `gate.activate()` before the gate check, so events flow immediately. The toggle is in Settings → Client Setup on each client's row. Off by default.
 

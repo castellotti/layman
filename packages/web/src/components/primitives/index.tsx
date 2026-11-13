@@ -4,6 +4,7 @@ import { useSessionStore, instanceUrlOf } from '../../stores/sessionStore.js';
 import { buildUrl } from '../../lib/layman-url.js';
 import type { LaymanRoute, RouteOptions } from '../../lib/layman-url.js';
 import { tokenColor } from '../../lib/tokens.js';
+import { sp, rad } from '../../lib/density.js';
 
 // ─── asButton ───────────────────────────────────────────────────────────────
 
@@ -50,8 +51,8 @@ interface DepthButtonProps {
 }
 
 const DEPTH_BUTTON_STYLES = {
-  quick:    { color: 'var(--ok)',   bg: tokenColor('ok', '12%'), bgHover: tokenColor('ok', '20%'), border: `1px solid ${tokenColor('ok', '30%')}`,  label: 'Quick' },
-  detailed: { color: 'var(--info)', bg: tokenColor('info', '12%'), bgHover: tokenColor('info', '20%'),  border: `1px solid ${tokenColor('info', '25%')}`, label: 'Detailed' },
+  quick:    { color: 'var(--ok)',   bg: tokenColor('ok', '12%'), bgHover: tokenColor('ok', '20%'), border: `var(--stroke) solid ${tokenColor('ok', '30%')}`,  label: 'Quick' },
+  detailed: { color: 'var(--info)', bg: tokenColor('info', '12%'), bgHover: tokenColor('info', '20%'),  border: `var(--stroke) solid ${tokenColor('info', '25%')}`, label: 'Detailed' },
 } as const;
 
 export function DepthButton({ depth, onClick, disabled, loading, loadingLabel = 'Working…' }: DepthButtonProps) {
@@ -61,7 +62,7 @@ export function DepthButton({ depth, onClick, disabled, loading, loadingLabel = 
       onClick={onClick}
       disabled={disabled}
       style={{
-        display: 'flex', alignItems: 'center', gap: 4, padding: '3px 9px', fontSize: 10, borderRadius: 4,
+        display: 'flex', alignItems: 'center', gap: sp(4), padding: sp('3px 9px'), fontSize: 10, borderRadius: rad(4),
         fontWeight: 500, fontFamily: 'var(--font-ui)', cursor: disabled ? 'not-allowed' : 'pointer',
         opacity: disabled ? 0.6 : 1, background: bg, color, border, transition: 'background 0.15s',
       }}
@@ -81,8 +82,8 @@ export function DepthButton({ depth, onClick, disabled, loading, loadingLabel = 
 export const SECTION_LABEL_STYLE: React.CSSProperties = {
   fontSize: 9.5, fontWeight: 600, letterSpacing: '0.08em',
   textTransform: 'uppercase', color: 'var(--text-muted)',
-  fontFamily: 'var(--font-ui)', padding: '8px 12px 4px',
-  display: 'flex', alignItems: 'center', gap: 6,
+  fontFamily: 'var(--font-ui)', padding: sp('8px 12px 4px'),
+  display: 'flex', alignItems: 'center', gap: sp(6),
 };
 
 // ─── StatusDot ───────────────────────────────────────────────────────────────
@@ -108,6 +109,7 @@ export function StatusDot({ state, size = 8 }: StatusDotProps) {
   const glow = state === 'running' || state === 'permission';
   return (
     <span
+      className={state === 'running' ? 'layman-breathe' : undefined}
       style={{
         display: 'inline-block',
         width: size,
@@ -134,9 +136,9 @@ const STATE_CHIP_STYLES: Record<StateChipVariant, { bg: string; color: string; b
   error:      { bg: 'var(--error)',             color: 'var(--text-on-fill)',           border: 'none' },
   idle:       { bg: 'var(--border)',            color: 'var(--text-muted)', border: 'none' },
   ended:      { bg: 'var(--border)',            color: 'var(--text-muted)', border: 'none' },
-  live:       { bg: tokenColor('ok', '15%'),   color: 'var(--ok)',   border: `1px solid ${tokenColor('ok', '30%')}` },
-  paused:     { bg: tokenColor('warn', '15%'), color: 'var(--warn)', border: `1px solid ${tokenColor('warn', '30%')}` },
-  archived:   { bg: 'var(--bg-card)',           color: 'var(--text-muted)', border: '1px solid var(--border-strong)' },
+  live:       { bg: tokenColor('ok', '15%'),   color: 'var(--ok)',   border: `var(--stroke) solid ${tokenColor('ok', '30%')}` },
+  paused:     { bg: tokenColor('warn', '15%'), color: 'var(--warn)', border: `var(--stroke) solid ${tokenColor('warn', '30%')}` },
+  archived:   { bg: 'var(--bg-card)',           color: 'var(--text-muted)', border: 'var(--stroke) solid var(--border-strong)' },
 };
 
 interface StateChipProps {
@@ -162,8 +164,8 @@ export function StateChip({ variant, label }: StateChipProps) {
       style={{
         display: 'inline-flex',
         alignItems: 'center',
-        padding: '2px 7px',
-        borderRadius: 4,
+        padding: sp('2px 7px'),
+        borderRadius: rad(4),
         fontSize: 9.5,
         fontWeight: 600,
         letterSpacing: '0.06em',
@@ -212,7 +214,7 @@ export function InlineRenameInput({
       onKeyDown={(e) => { e.stopPropagation(); onKeyDown(e); }}
       style={{
         fontSize: 11, fontFamily: 'var(--font-ui)', background: 'var(--bg-card)',
-        border: '1px solid var(--border-strong)', color: 'var(--text)', outline: 'none',
+        border: 'var(--stroke) solid var(--border-strong)', color: 'var(--text)', outline: 'none',
         ...style,
       }}
     />
@@ -233,7 +235,7 @@ export function RenameButton({ onClick, title = 'Rename', style }: RenameButtonP
       role="button"
       onClick={(e) => { e.stopPropagation(); onClick(); }}
       title={title}
-      style={{ fontSize: 10, color: 'var(--text-faint)', cursor: 'pointer', padding: '1px 3px', ...style }}
+      style={{ fontSize: 10, color: 'var(--text-faint)', cursor: 'pointer', padding: sp('1px 3px'), ...style }}
       onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--text)')}
       onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--text-faint)')}
     >
@@ -284,8 +286,8 @@ export function CollapsibleFolderHeader({
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       style={{
-        display: 'flex', alignItems: 'center', gap: 6,
-        padding: '5px 12px', color: 'var(--text-muted)', fontFamily: 'var(--font-ui)', fontSize: 11,
+        display: 'flex', alignItems: 'center', gap: sp(6),
+        padding: sp('5px 12px'), color: 'var(--text-muted)', fontFamily: 'var(--font-ui)', fontSize: 11,
         background: isDragOver ? 'var(--bg-selected)' : 'transparent',
         outline: isDragOver ? '1px dashed var(--info)' : 'none',
         outlineOffset: -1,
@@ -295,7 +297,7 @@ export function CollapsibleFolderHeader({
       <button
         onClick={onToggle}
         style={{
-          flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 6,
+          flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: sp(6),
           background: 'none', border: 'none', cursor: 'pointer', padding: 0,
           color: 'inherit', font: 'inherit', textAlign: 'left',
         }}
@@ -308,7 +310,7 @@ export function CollapsibleFolderHeader({
             onChange={setEditName}
             onCommit={commitRename}
             onKeyDown={handleKeyDown}
-            style={{ flex: 1, minWidth: 0, borderRadius: 3, padding: '1px 4px' }}
+            style={{ flex: 1, minWidth: 0, borderRadius: rad(3), padding: sp('1px 4px') }}
           />
         ) : (
           <span
@@ -321,8 +323,8 @@ export function CollapsibleFolderHeader({
         {!editing && (
           <span style={{
             fontSize: 9.5, fontFamily: 'var(--font-mono)', color: 'var(--text-faint)',
-            background: 'var(--bg-card)', border: '1px solid var(--border)',
-            borderRadius: 10, padding: '0 5px', flexShrink: 0,
+            background: 'var(--bg-card)', border: 'var(--stroke) solid var(--border)',
+            borderRadius: rad(10), padding: sp('0 5px'), flexShrink: 0,
           }}>
             {count}
           </span>
@@ -330,14 +332,14 @@ export function CollapsibleFolderHeader({
       </button>
 
       {!editing && (onRename || onDelete) && (
-        <div style={{ display: 'flex', gap: 2, flexShrink: 0, opacity: hovered ? 1 : 0, transition: 'opacity 0.1s' }}>
+        <div style={{ display: 'flex', gap: sp(2), flexShrink: 0, opacity: hovered ? 1 : 0, transition: 'opacity 0.1s' }}>
           {onRename && <RenameButton onClick={startEditing} title="Rename folder" />}
           {onDelete && (
             <span
               role="button"
               onClick={(e) => { e.stopPropagation(); onDelete(); }}
               title="Delete folder"
-              style={{ fontSize: 10, color: 'var(--text-faint)', cursor: 'pointer', padding: '1px 3px' }}
+              style={{ fontSize: 10, color: 'var(--text-faint)', cursor: 'pointer', padding: sp('1px 3px') }}
               onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--error)')}
               onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--text-faint)')}
             >
@@ -369,7 +371,7 @@ export function FolderSectionHeader({ label, onCreate }: FolderSectionHeaderProp
   return (
     <>
       <div style={{ ...SECTION_LABEL_STYLE, justifyContent: 'space-between' }}>
-        <span style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>{label}</span>
+        <span style={{ display: 'flex', alignItems: 'center', gap: sp(6), minWidth: 0 }}>{label}</span>
         <button
           onClick={() => setEditing(true)}
           title="New folder"
@@ -386,7 +388,7 @@ export function FolderSectionHeader({ label, onCreate }: FolderSectionHeaderProp
         </button>
       </div>
       {editing && (
-        <div style={{ padding: '4px 12px' }}>
+        <div style={{ padding: sp('4px 12px') }}>
           <InlineRenameInput
             inputRef={inputRef}
             value={editName}
@@ -394,7 +396,7 @@ export function FolderSectionHeader({ label, onCreate }: FolderSectionHeaderProp
             onCommit={commitRename}
             onKeyDown={handleKeyDown}
             placeholder="Folder name…"
-            style={{ width: '100%', borderRadius: 4, padding: '3px 6px', boxSizing: 'border-box' }}
+            style={{ width: '100%', borderRadius: rad(4), padding: sp('3px 6px'), boxSizing: 'border-box' }}
           />
         </div>
       )}
@@ -422,20 +424,20 @@ export function ConfirmDialog({ title, body, confirmLabel = 'Delete', onCancel, 
       background: 'rgba(0,0,0,0.6)',
     }}>
       <div style={{
-        background: 'var(--bg-card)', border: '1px solid var(--border)',
-        borderRadius: 10, padding: 24, maxWidth: 360, width: '100%', margin: '0 16px',
+        background: 'var(--bg-card)', border: 'var(--stroke) solid var(--border)',
+        borderRadius: rad(10), padding: sp(24), maxWidth: 360, width: '100%', margin: sp('0 16px'),
         boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
       }}>
-        <h3 style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', margin: '0 0 8px' }}>{title}</h3>
-        <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: '0 0 20px', lineHeight: 1.5 }}>
+        <h3 style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', margin: sp('0 0 8px') }}>{title}</h3>
+        <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: sp('0 0 20px'), lineHeight: 1.5 }}>
           {body}
         </p>
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: sp(8) }}>
           <button
             onClick={onCancel}
             style={{
-              padding: '5px 12px', fontSize: 11, borderRadius: 5,
-              background: 'var(--bg-raised)', border: '1px solid var(--border)',
+              padding: sp('5px 12px'), fontSize: 11, borderRadius: rad(5),
+              background: 'var(--bg-raised)', border: 'var(--stroke) solid var(--border)',
               color: 'var(--text-muted)', cursor: 'pointer',
             }}
           >
@@ -444,8 +446,8 @@ export function ConfirmDialog({ title, body, confirmLabel = 'Delete', onCancel, 
           <button
             onClick={onConfirm}
             style={{
-              padding: '5px 12px', fontSize: 11, borderRadius: 5,
-              background: 'var(--error)', border: '1px solid var(--error)',
+              padding: sp('5px 12px'), fontSize: 11, borderRadius: rad(5),
+              background: 'var(--error)', border: 'var(--stroke) solid var(--error)',
               color: 'var(--text-on-fill)', cursor: 'pointer',
             }}
           >
@@ -509,7 +511,7 @@ export function Meter({ value, showTick = false, height = 4, width = '100%' }: M
             width: 1,
             height: height + 2,
             background: 'var(--text-faint)',
-            borderRadius: 1,
+            borderRadius: rad(1),
           }}
         />
       )}
@@ -536,7 +538,7 @@ interface RiskTagProps {
 export function RiskTag({ level, dot = false }: RiskTagProps) {
   const color = RISK_COLORS[level];
   return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color, fontSize: 10, fontFamily: 'var(--font-mono)', fontWeight: 500 }}>
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: sp(4), color, fontSize: 10, fontFamily: 'var(--font-mono)', fontWeight: 500 }}>
       {dot && <span style={{ width: 6, height: 6, borderRadius: '50%', background: color, display: 'inline-block' }} />}
       {level.toUpperCase()}
     </span>
@@ -558,8 +560,8 @@ export function filterChipStyle(active: boolean, riskOutline = false): React.CSS
   return {
     display: 'inline-flex',
     alignItems: 'center',
-    padding: '3px 9px',
-    borderRadius: 5,
+    padding: sp('3px 9px'),
+    borderRadius: rad(5),
     fontSize: 11,
     fontWeight: active ? 500 : 400,
     fontFamily: 'var(--font-ui)',
@@ -569,9 +571,9 @@ export function filterChipStyle(active: boolean, riskOutline = false): React.CSS
     color: active ? 'var(--text)' : 'var(--text-muted)',
     border: active
       ? riskOutline
-        ? `1px solid var(--warn)`
-        : `1px solid var(--border-strong)`
-      : '1px solid transparent',
+        ? `var(--stroke) solid var(--warn)`
+        : `var(--stroke) solid var(--border-strong)`
+      : 'var(--stroke) solid transparent',
     userSelect: 'none',
   };
 }
@@ -596,7 +598,7 @@ interface SegmentedControlProps<T extends string> {
 
 export function SegmentedControl<T extends string>({ options, value, onChange }: SegmentedControlProps<T>) {
   return (
-    <div style={{ display: 'inline-flex', background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 6, padding: 2, gap: 2 }}>
+    <div style={{ display: 'inline-flex', background: 'var(--bg)', border: 'var(--stroke) solid var(--border)', borderRadius: rad(6), padding: sp(2), gap: sp(2) }}>
       {options.map((opt) => {
         const active = opt.value === value;
         return (
@@ -606,8 +608,8 @@ export function SegmentedControl<T extends string>({ options, value, onChange }:
             style={{
               fontFamily: 'var(--font-ui)',
               fontSize: 10.5,
-              padding: '3px 9px',
-              borderRadius: 4,
+              padding: sp('3px 9px'),
+              borderRadius: rad(4),
               border: 'none',
               background: active ? 'var(--bg-selected)' : 'transparent',
               color: active ? 'var(--text)' : 'var(--text-muted)',
@@ -656,8 +658,8 @@ export function SearchInput({ value, onChange, placeholder = 'Search  +include  
         fontSize,
         fontFamily: 'var(--font-mono)',
         background: 'var(--bg-card)',
-        border: '1px solid var(--border-strong)',
-        borderRadius: 6,
+        border: 'var(--stroke) solid var(--border-strong)',
+        borderRadius: rad(6),
         color: 'var(--text)',
         outline: 'none',
         transition: 'border-color 0.15s',
@@ -684,12 +686,12 @@ export function LiveChip({ state, buffered, archivedDate }: LiveChipProps) {
   if (state === 'live') {
     return (
       <span style={{
-        display: 'inline-flex', alignItems: 'center', gap: 6,
-        padding: '3px 9px', borderRadius: 5, fontSize: 11,
+        display: 'inline-flex', alignItems: 'center', gap: sp(6),
+        padding: sp('3px 9px'), borderRadius: rad(5), fontSize: 11,
         fontFamily: 'var(--font-ui)', fontWeight: 500,
         background: tokenColor('ok', '12%'),
         color: 'var(--ok)',
-        border: `1px solid ${tokenColor('ok', '25%')}`,
+        border: `var(--stroke) solid ${tokenColor('ok', '25%')}`,
       }}>
         <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--ok)', boxShadow: `0 0 6px ${tokenColor('ok', '80%')}`, display: 'inline-block' }} />
         LIVE · following
@@ -699,12 +701,12 @@ export function LiveChip({ state, buffered, archivedDate }: LiveChipProps) {
   if (state === 'paused') {
     return (
       <span style={{
-        display: 'inline-flex', alignItems: 'center', gap: 6,
-        padding: '3px 9px', borderRadius: 5, fontSize: 11,
+        display: 'inline-flex', alignItems: 'center', gap: sp(6),
+        padding: sp('3px 9px'), borderRadius: rad(5), fontSize: 11,
         fontFamily: 'var(--font-ui)', fontWeight: 500,
         background: tokenColor('warn', '12%'),
         color: 'var(--warn)',
-        border: `1px solid ${tokenColor('warn', '25%')}`,
+        border: `var(--stroke) solid ${tokenColor('warn', '25%')}`,
       }}>
         ⏸ PAUSED{buffered ? ` · ${buffered} buffered` : ''}
       </span>
@@ -712,12 +714,12 @@ export function LiveChip({ state, buffered, archivedDate }: LiveChipProps) {
   }
   return (
     <span style={{
-      display: 'inline-flex', alignItems: 'center', gap: 6,
-      padding: '3px 9px', borderRadius: 5, fontSize: 11,
+      display: 'inline-flex', alignItems: 'center', gap: sp(6),
+      padding: sp('3px 9px'), borderRadius: rad(5), fontSize: 11,
       fontFamily: 'var(--font-ui)',
       background: 'var(--bg-card)',
       color: 'var(--text-muted)',
-      border: '1px solid var(--border-strong)',
+      border: 'var(--stroke) solid var(--border-strong)',
     }}>
       ◷ ARCHIVED{archivedDate ? ` · ${archivedDate}` : ''}
     </span>
@@ -737,12 +739,12 @@ export function JumpToLatest({ count, onClick }: JumpToLatestProps) {
     <button
       onClick={onClick}
       style={{
-        display: 'inline-flex', alignItems: 'center', gap: 6,
-        padding: '5px 12px', borderRadius: 20,
+        display: 'inline-flex', alignItems: 'center', gap: sp(6),
+        padding: sp('5px 12px'), borderRadius: rad(20),
         fontSize: 11, fontFamily: 'var(--font-ui)', fontWeight: 500,
         background: 'var(--bg-pill)',
         color: 'var(--text)',
-        border: '1px solid var(--border-strong)',
+        border: 'var(--stroke) solid var(--border-strong)',
         cursor: 'pointer',
         boxShadow: '0 2px 12px rgba(0,0,0,0.4)',
         transition: 'background 0.15s',
@@ -831,7 +833,7 @@ export function CopyLinkButton({
       title={copied ? 'Copied' : title}
       aria-label={title}
       style={{
-        display: 'inline-flex', alignItems: 'center', gap: 4,
+        display: 'inline-flex', alignItems: 'center', gap: sp(4),
         background: 'none', border: 'none', padding: 0, cursor: 'pointer',
         fontFamily: 'var(--font-mono)', fontSize: 10, lineHeight: 1,
         color: copied ? 'var(--ok)' : 'var(--text-faint)',

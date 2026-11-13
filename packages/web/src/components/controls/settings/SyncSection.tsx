@@ -6,6 +6,7 @@ import { formatContentBytes } from '../../../lib/host.js';
 import {
   SectionTitle, SectionIntro, FieldRow, InfoRow, SegmentRow, ActionRow, ToggleRow, CustomRow,
 } from './primitives.js';
+import { sp, rad } from '../../../lib/density.js';
 
 type Role = 'standalone' | 'central' | 'remote';
 
@@ -243,13 +244,13 @@ function CentralPanel({ hosts }: { hosts: HostStats[] }) {
 
       {peers.length > 0 && (
         <CustomRow>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, width: '100%' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: sp(6), width: '100%' }}>
             {peers.map((p) => {
               const h = hostFor(p.hostId);
               const online = p.lastSeenAt && Date.now() - p.lastSeenAt < (p.intervalSeconds ?? 5) * 3000;
               const color = p.revokedAt ? 'var(--error)' : online ? 'var(--ok)' : 'var(--text-faint)';
               return (
-                <div key={p.tokenHash} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11 }}>
+                <div key={p.tokenHash} style={{ display: 'flex', alignItems: 'center', gap: sp(8), fontSize: 11 }}>
                   <span style={{ width: 6, height: 6, borderRadius: '50%', background: color, flexShrink: 0 }} />
                   <span style={{ flex: 1, color: 'var(--text)' }}>{p.name}</span>
                   <span style={{ color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', fontSize: 10 }}>
@@ -267,12 +268,12 @@ function CentralPanel({ hosts }: { hosts: HostStats[] }) {
       )}
 
       <CustomRow>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: sp(8), width: '100%' }}>
           <input
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
             placeholder="New remote host name"
-            style={{ flex: 1, padding: '5px 10px', fontSize: 11, background: 'var(--bg-card)', border: '1px solid var(--border-strong)', borderRadius: 5, color: 'var(--text)', outline: 'none' }}
+            style={{ flex: 1, padding: sp('5px 10px'), fontSize: 11, background: 'var(--bg-card)', border: 'var(--stroke) solid var(--border-strong)', borderRadius: rad(5), color: 'var(--text)', outline: 'none' }}
           />
           <button onClick={() => void addPeer()} style={pillBtn('var(--info)')}>Add remote host</button>
         </div>
@@ -280,13 +281,13 @@ function CentralPanel({ hosts }: { hosts: HostStats[] }) {
 
       {issuedToken && (
         <CustomRow>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 4, width: '100%' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: sp(4), width: '100%' }}>
             <span style={{ fontSize: 10.5, color: 'var(--warn)' }}>
               Copy this token now — it is shown only once. On the remote: Settings → Multi-host sync →
               role Remote → paste this URL and token → Test connection.
             </span>
-            <div style={{ display: 'flex', gap: 6 }}>
-              <code style={{ flex: 1, fontSize: 10, fontFamily: 'var(--font-mono)', color: 'var(--text)', background: 'var(--bg-card)', padding: '4px 8px', borderRadius: 4, overflow: 'hidden', textOverflow: 'ellipsis' }}>{issuedToken}</code>
+            <div style={{ display: 'flex', gap: sp(6) }}>
+              <code style={{ flex: 1, fontSize: 10, fontFamily: 'var(--font-mono)', color: 'var(--text)', background: 'var(--bg-card)', padding: sp('4px 8px'), borderRadius: rad(4), overflow: 'hidden', textOverflow: 'ellipsis' }}>{issuedToken}</code>
               <button onClick={() => void navigator.clipboard?.writeText(issuedToken)} style={pillBtn('var(--info)')}>Copy</button>
               <button onClick={() => setIssuedToken(null)} style={pillBtn('var(--text-muted)')}>Done</button>
             </div>
@@ -307,9 +308,9 @@ function HostsPanel({ hosts }: { hosts: HostStats[] }) {
     <>
       <SectionIntro>Hosts</SectionIntro>
       <CustomRow>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, width: '100%', fontSize: 11 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: sp(4), width: '100%', fontSize: 11 }}>
           {hosts.map((h) => (
-            <div key={h.hostId} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div key={h.hostId} style={{ display: 'flex', alignItems: 'center', gap: sp(8) }}>
               <span style={{ flex: 1, color: 'var(--text)' }}>
                 {h.name}{h.kind === 'local' ? ' (this host)' : ''}
               </span>
@@ -318,7 +319,7 @@ function HostsPanel({ hosts }: { hosts: HostStats[] }) {
               </span>
             </div>
           ))}
-          <div style={{ display: 'flex', gap: 8, borderTop: '1px solid var(--border-subtle)', paddingTop: 4, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', fontSize: 10 }}>
+          <div style={{ display: 'flex', gap: sp(8), borderTop: 'var(--stroke) solid var(--border-subtle)', paddingTop: sp(4), color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', fontSize: 10 }}>
             <span style={{ flex: 1 }}>Total</span>
             <span>{totalSessions} sess · {formatContentBytes(totalBytes)}</span>
           </div>
@@ -331,7 +332,7 @@ function HostsPanel({ hosts }: { hosts: HostStats[] }) {
 
 function pillBtn(color: string): React.CSSProperties {
   return {
-    padding: '2px 8px', fontSize: 10, color, background: 'transparent',
-    border: `1px solid ${color}`, borderRadius: 4, cursor: 'pointer', whiteSpace: 'nowrap',
+    padding: sp('2px 8px'), fontSize: 10, color, background: 'transparent',
+    border: `var(--stroke) solid ${color}`, borderRadius: rad(4), cursor: 'pointer', whiteSpace: 'nowrap',
   };
 }

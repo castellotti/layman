@@ -2,10 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
-import { HEX_COLOR } from './color.js';
+import { contrast, HEX_COLOR } from './color.js';
 import {
-  appearanceCss, DEFAULT_APPEARANCE, FONT_MONO, FONT_SANS, KNOWN_PROBLEMS, normalizeAppearance,
-  PRINT_THEME, resolveAppearance, themeById, themeProblems, THEMES, TOKENS,
+  appearanceCss, DEFAULT_APPEARANCE, followOsUpdate, TOKEN_GROUPS, FONT_MONO, FONT_SANS, KNOWN_PROBLEMS, normalizeAppearance,
+  PRINT_THEME, resolveAppearance, themeById, themeProblems, themeProblemsWith, THEMES, TOKENS,
 } from './themes.js';
 
 const DARK = { prefersDark: true, prefersReducedMotion: false };
@@ -58,7 +58,7 @@ describe('Classic is today', () => {
     const r = resolveAppearance(DEFAULT_APPEARANCE, LIGHT);
     expect(r.theme.id).toBe('classic');
     expect(r.vars['--font-ui']).toBe(FONT_SANS);
-    expect(r.vars['--density']).toBe('0.72');
+    expect(r.vars['--density']).toBe('1');
   });
 });
 
@@ -87,7 +87,7 @@ describe('resolveAppearance', () => {
   it('density and motion; the OS reduced-motion setting caps motion at reduced', () => {
     const r = (o: Partial<typeof DEFAULT_APPEARANCE>, reduce = false) =>
       resolveAppearance({ ...DEFAULT_APPEARANCE, ...o }, { prefersDark: true, prefersReducedMotion: reduce });
-    expect(r({ density: 'comfortable' }).vars['--density']).toBe('1');
+    expect(r({ density: 'comfortable' }).vars['--density']).toBe('1.3');
     expect(r({ motion: 'full' }).motion).toBe('full');
     expect(r({ motion: 'full' }, true).motion).toBe('reduced');
     expect(r({ motion: 'off' }, true).motion).toBe('off');
@@ -99,17 +99,52 @@ describe('resolveAppearance', () => {
     const r = resolveAppearance({ ...DEFAULT_APPEARANCE, theme: 'contrast' }, DARK);
     expect(r.vars['--stroke']).toBe('2px');
     expect(r.vars['--radius']).toBe('4px');
+    expect(r.vars['--radius-scale']).toBeCloseTo(4 / 6);
+    expect(resolveAppearance({ ...DEFAULT_APPEARANCE, theme: 'phosphor' }, DARK).vars['--radius-scale']).toBe('0');
   });
 
   it('applies valid overrides on top and ignores unknown tokens and non-hex values', () => {
     const r = resolveAppearance(
-      { ...DEFAULT_APPEARANCE, overrides: { accent: '#abc', warn: 'red', nope: '#000000', ok: 'url(x)' } },
+      { ...DEFAULT_APPEARANCE, overrides: { classic: { accent: '#abc', warn: 'red', nope: '#000000', ok: 'url(x)' } } },
       DARK,
     );
     expect(r.vars['--accent']).toBe('#abc');
     expect(r.vars['--warn']).toBe('#E5A83B');
     expect(r.vars['--ok']).toBe('#4CC38A');
     expect(r.vars).not.toHaveProperty('--nope');
+  });
+
+  it('a theme draws with its own overrides only, so Follow the OS never mixes them', () => {
+    const a = { ...DEFAULT_APPEARANCE, theme: 'system' as const, overrides: { classic: { bg: '#010203' }, daylight: { bg: '#FAFAFA' } } };
+    expect(resolveAppearance(a, DARK).vars['--bg']).toBe('#010203');
+    expect(resolveAppearance(a, LIGHT).vars['--bg']).toBe('#FAFAFA');
+    expect(resolveAppearance({ ...a, theme: 'ember' }, DARK).vars['--bg']).toBe(themeById('ember').tokens.bg);
+  });
+});
+
+describe('TOKEN_GROUPS', () => {
+  it('lists every token exactly once, so Settings can override any of them', () => {
+    const listed = TOKEN_GROUPS.flatMap((g) => g.tokens);
+    expect([...listed].sort()).toEqual([...TOKENS].sort());
+    expect(new Set(listed).size).toBe(listed.length);
+  });
+});
+
+describe('themeProblemsWith (what Settings shows)', () => {
+  it("skips a theme's known break only while neither of its colours is the user's", () => {
+    const classic = themeById('classic');
+    expect(themeProblemsWith(classic, {})).toEqual([]);
+    expect(themeProblemsWith(classic, { thinking: '#2A2440' })).toContainEqual(expect.stringMatching(/^thinking on bg is/));
+    expect(themeProblemsWith(classic, { bg: '#1A1F2B' }).some((p) => p.startsWith('thinking on bg is'))).toBe(true);
+  });
+});
+
+describe('the Contrast theme', () => {
+  it('keeps its promise: text, body and muted text reach AAA (7:1) on every main ground', () => {
+    const t = themeById('contrast').tokens;
+    for (const fg of ['text', 'text-body', 'text-muted'] as const) {
+      for (const bg of ['bg', 'bg-raised', 'bg-card'] as const) expect(contrast(t[fg], t[bg]), `${fg}/${bg}`).toBeGreaterThanOrEqual(7);
+    }
   });
 });
 
@@ -129,14 +164,15 @@ describe('normalizeAppearance', () => {
     expect(normalizeAppearance({ theme: 'paper' })).toEqual({ ...DEFAULT_APPEARANCE, theme: 'paper' });
     expect(normalizeAppearance({
       theme: 'slate', darkTheme: 'nope', lightTheme: 7, font: 'serif', density: 'airy', motion: 'wild',
-      overrides: { accent: '#abc', warn: 'red', nope: '#000000', ok: 3 },
-    })).toEqual({ ...DEFAULT_APPEARANCE, overrides: { accent: '#abc' } });
+      overrides: { classic: { accent: '#abc', warn: 'red', nope: '#000000', ok: 3 }, slate: { bg: '#000' }, tide: { ok: 'red' }, paper: 'x' },
+    })).toEqual({ ...DEFAULT_APPEARANCE, overrides: { classic: { accent: '#abc' } } });
+    expect(normalizeAppearance({ overrides: { accent: '#abc' } }).overrides).toEqual({});
     expect(normalizeAppearance({ theme: 'system' }).theme).toBe('system');
   });
 
   it('so resolving a partial or stale config never throws', () => {
     expect(() => resolveAppearance({ theme: 'paper' }, DARK)).not.toThrow();
-    expect(resolveAppearance({ density: 'airy' }, DARK).vars['--density']).toBe('0.72');
+    expect(resolveAppearance({ density: 'airy' }, DARK).vars['--density']).toBe('1');
     expect(resolveAppearance(null, DARK).theme.id).toBe('classic');
   });
 });
@@ -151,14 +187,35 @@ describe('appearanceCss', () => {
     expect(screen).toContain('--warn: #E5A83B;');
     expect(PRINT_THEME).toBe('daylight');
     const daylight = themeById('daylight').tokens;
-    expect(print.split('\n')).toEqual(TOKENS.map((t) => `  --${t}: ${daylight[t]};`));
+    expect(print.split('\n')).toEqual([...TOKENS.map((t) => `  --${t}: ${daylight[t]};`), '  color-scheme: light;']);
+  });
+
+  it("sets each block's color-scheme from its theme, so native controls match", () => {
+    expect(blocks(appearanceCss(resolveAppearance(DEFAULT_APPEARANCE, DARK))).screen).toMatch(/ {2}color-scheme: dark;$/);
+    const paper = { ...DEFAULT_APPEARANCE, theme: 'paper' };
+    expect(blocks(appearanceCss(resolveAppearance(paper, DARK))).screen).toMatch(/ {2}color-scheme: light;$/);
+    const system = { ...DEFAULT_APPEARANCE, theme: 'system' };
+    expect(blocks(appearanceCss(resolveAppearance(system, LIGHT))).screen).toMatch(/ {2}color-scheme: light;$/);
   });
 
   it('prints the same whatever the screen shows: another theme or overrides do not reach print', () => {
     const plain = blocks(appearanceCss(resolveAppearance(DEFAULT_APPEARANCE, DARK))).print;
-    const custom = { ...DEFAULT_APPEARANCE, theme: 'ember', overrides: { bg: '#123456' } };
+    const custom = { ...DEFAULT_APPEARANCE, theme: 'ember', overrides: { ember: { bg: '#123456' } } };
     const { screen, print } = blocks(appearanceCss(resolveAppearance(custom, DARK)));
     expect(screen).toContain('--bg: #123456;');
     expect(print).toBe(plain);
+  });
+});
+
+describe('followOsUpdate', () => {
+  it('turning it on keeps the theme on screen, as its scheme\'s half of the pair', () => {
+    expect(followOsUpdate({ ...DEFAULT_APPEARANCE, theme: 'ember' }, themeById('ember'))).toEqual({ theme: 'system', darkTheme: 'ember' });
+    expect(followOsUpdate({ ...DEFAULT_APPEARANCE, theme: 'paper' }, themeById('paper'))).toEqual({ theme: 'system', lightTheme: 'paper' });
+  });
+
+  it('turning it off keeps whichever half is showing', () => {
+    const system = { ...DEFAULT_APPEARANCE, theme: 'system' as const, darkTheme: 'tide' as const };
+    expect(followOsUpdate(system, themeById('tide'))).toEqual({ theme: 'tide' });
+    expect(followOsUpdate(system, themeById('daylight'))).toEqual({ theme: 'daylight' });
   });
 });

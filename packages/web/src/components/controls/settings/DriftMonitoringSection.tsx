@@ -2,6 +2,7 @@ import React from 'react';
 import type { ClientMessage } from '../../../lib/ws-protocol.js';
 import type { DriftThresholds, LaymanConfig } from '../../../lib/types.js';
 import { SectionTitle, SectionIntro, ToggleRow, ThresholdRow, CustomRow } from './primitives.js';
+import { sp, rad } from '../../../lib/density.js';
 
 function thresholdOutOfOrder(t: DriftThresholds): boolean {
   return t.green >= t.yellow || t.yellow >= t.orange;
@@ -37,7 +38,7 @@ export function DriftMonitoringSection({
       {drift.enabled && (
         <>
           <CustomRow>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: sp(12) }}>
               <span style={{ fontSize: 12, color: 'var(--text)', flex: 1 }}>Check interval</span>
               <input
                 type="number"
@@ -48,7 +49,7 @@ export function DriftMonitoringSection({
                   const v = parseInt(e.target.value, 10);
                   if (v >= 1 && v <= 100) updateDrift({ checkIntervalToolCalls: v });
                 }}
-                style={{ width: 48, padding: '4px 6px', fontSize: 11, textAlign: 'center', fontFamily: 'var(--font-mono)', background: 'var(--bg-card)', border: '1px solid var(--border-strong)', borderRadius: 5, color: 'var(--text)', outline: 'none' }}
+                style={{ width: 48, padding: sp('4px 6px'), fontSize: 11, textAlign: 'center', fontFamily: 'var(--font-mono)', background: 'var(--bg-card)', border: 'var(--stroke) solid var(--border-strong)', borderRadius: rad(5), color: 'var(--text)', outline: 'none' }}
               />
               <span style={{ fontSize: 10.5, color: 'var(--text-faint)' }}>tools</span>
               <input
@@ -60,7 +61,7 @@ export function DriftMonitoringSection({
                   const v = parseInt(e.target.value, 10);
                   if (v >= 1 && v <= 60) updateDrift({ checkIntervalMinutes: v });
                 }}
-                style={{ width: 48, padding: '4px 6px', fontSize: 11, textAlign: 'center', fontFamily: 'var(--font-mono)', background: 'var(--bg-card)', border: '1px solid var(--border-strong)', borderRadius: 5, color: 'var(--text)', outline: 'none' }}
+                style={{ width: 48, padding: sp('4px 6px'), fontSize: 11, textAlign: 'center', fontFamily: 'var(--font-mono)', background: 'var(--bg-card)', border: 'var(--stroke) solid var(--border-strong)', borderRadius: rad(5), color: 'var(--text)', outline: 'none' }}
               />
               <span style={{ fontSize: 10.5, color: 'var(--text-faint)' }}>min</span>
             </div>

@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { SearchInput, FilterChip, LiveChip } from '../primitives/index.js';
 import { StationFilter } from '../activity/StationFilter.js';
 import type { StationId } from '../../lib/station.js';
+import { sp, rad } from '../../lib/density.js';
 
 interface NavigationBarProps {
   // Search
@@ -99,10 +100,10 @@ export function NavigationBar({
       style={{
         display: 'flex',
         alignItems: 'center',
-        gap: 8,
-        padding: '5px 12px',
+        gap: sp(8),
+        padding: sp('5px 12px'),
         background: 'var(--bg-raised)',
-        borderBottom: '1px solid var(--border)',
+        borderBottom: 'var(--stroke) solid var(--border)',
         flexShrink: 0,
         flexWrap: 'wrap',
       }}
@@ -123,7 +124,7 @@ export function NavigationBar({
       {divider}
 
       {/* Filter chips */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 3, flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: sp(3), flexWrap: 'wrap' }}>
         <FilterChip label="Prompts" active={promptsOnly} onClick={onTogglePromptsOnly} />
         <FilterChip label="Responses" active={responsesOnly} onClick={onToggleResponsesOnly} />
         <FilterChip label="Permissions" active={requestsOnly} onClick={onToggleRequestsOnly} />
@@ -134,11 +135,11 @@ export function NavigationBar({
           <button
             onClick={onClearFilters}
             style={{
-              padding: '4px 8px',
+              padding: sp('4px 8px'),
               fontSize: 10.5,
               fontFamily: 'var(--font-ui)',
               border: 'none',
-              borderRadius: 5,
+              borderRadius: rad(5),
               cursor: 'pointer',
               background: 'transparent',
               color: 'var(--text-faint)',
@@ -162,8 +163,8 @@ export function NavigationBar({
           title="Toggle expand/collapse for all rows (E)"
           style={{
             fontFamily: 'var(--font-mono)', fontSize: 9.5, color: 'var(--text-muted)',
-            background: 'transparent', border: '1px solid var(--border-strong)', borderRadius: 4,
-            padding: '2px 8px', cursor: 'pointer', flexShrink: 0, whiteSpace: 'nowrap',
+            background: 'transparent', border: 'var(--stroke) solid var(--border-strong)', borderRadius: rad(4),
+            padding: sp('2px 8px'), cursor: 'pointer', flexShrink: 0, whiteSpace: 'nowrap',
           }}
           onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--text)'; e.currentTarget.style.borderColor = 'var(--text-faint)'; }}
           onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-muted)'; e.currentTarget.style.borderColor = 'var(--border-strong)'; }}
@@ -182,7 +183,7 @@ export function NavigationBar({
           <button
             onClick={onAccessLog}
             style={{
-              display: 'flex', alignItems: 'center', gap: 4,
+              display: 'flex', alignItems: 'center', gap: sp(4),
               background: 'none', border: 'none', cursor: 'pointer',
               color: 'var(--text-muted)', fontSize: 11, fontFamily: 'var(--font-ui)',
             }}
@@ -201,7 +202,7 @@ export function NavigationBar({
         <>
           {divider}
           {showBookmarkInput ? (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: sp(4) }}>
               <input
                 autoFocus
                 type="text"
@@ -214,8 +215,8 @@ export function NavigationBar({
                 placeholder="Bookmark name…"
                 style={{
                   fontSize: 11, fontFamily: 'var(--font-ui)',
-                  background: 'var(--bg-card)', border: '1px solid var(--accent)',
-                  borderRadius: 5, padding: '2px 8px', color: 'var(--text)',
+                  background: 'var(--bg-card)', border: 'var(--stroke) solid var(--accent)',
+                  borderRadius: rad(5), padding: sp('2px 8px'), color: 'var(--text)',
                   outline: 'none', width: 140,
                 }}
               />
@@ -226,7 +227,7 @@ export function NavigationBar({
             <button
               onClick={handleBookmarkClick}
               style={{
-                display: 'flex', alignItems: 'center', gap: 4,
+                display: 'flex', alignItems: 'center', gap: sp(4),
                 background: 'none', border: 'none', cursor: 'pointer',
                 color: 'var(--text-muted)', fontSize: 11, fontFamily: 'var(--font-ui)',
               }}
@@ -248,7 +249,7 @@ export function NavigationBar({
           <button
             onClick={onPrint}
             style={{
-              display: 'flex', alignItems: 'center', gap: 4,
+              display: 'flex', alignItems: 'center', gap: sp(4),
               background: 'none', border: 'none', cursor: 'pointer',
               color: 'var(--text-muted)', fontSize: 11, fontFamily: 'var(--font-ui)',
             }}

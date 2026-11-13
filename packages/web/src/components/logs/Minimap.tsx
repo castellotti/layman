@@ -170,7 +170,7 @@ export function Minimap({ events, scrollRef, highlightedEventIds }: MinimapProps
         width: CANVAS_W,
         flexShrink: 0,
         background: 'var(--bg-raised)',
-        borderRight: '1px solid var(--border)',
+        borderRight: 'var(--stroke) solid var(--border)',
         position: 'relative',
         userSelect: 'none',
       }}

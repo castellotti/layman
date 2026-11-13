@@ -3,6 +3,7 @@ import type { ClientMessage } from '../../../lib/ws-protocol.js';
 import type { LaymanConfig } from '../../../lib/types.js';
 import { SectionTitle, ToggleRow, CustomRow, StringListRow, Code } from './primitives.js';
 import { normaliseVpnDomain, withVpnEntry } from '../../../lib/net-vpn.js';
+import { sp, rad } from '../../../lib/density.js';
 
 const DEFAULT_HOME = '~/.glove';
 const DEFAULT_NETWORK = { enabled: true, controlEnabled: true, geoipDbPath: '', vpnDomains: [] as string[] };
@@ -28,7 +29,7 @@ export function GloveSection({
 
   return (
     <>
-      <SectionTitle><a href="https://github.com/castellotti/glove" target="_blank" rel="noopener noreferrer" style={{ color: 'inherit', textDecoration: 'none', borderBottom: '1px solid currentColor' }}>Glove</a></SectionTitle>
+      <SectionTitle><a href="https://github.com/castellotti/glove" target="_blank" rel="noopener noreferrer" style={{ color: 'inherit', textDecoration: 'none', borderBottom: 'var(--stroke) solid currentColor' }}>Glove</a></SectionTitle>
 
       <ToggleRow
         label="Monitor sandboxed sessions"
@@ -38,20 +39,20 @@ export function GloveSection({
       />
 
       <CustomRow>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: sp(12) }}>
           <span style={{ fontSize: 12, color: 'var(--text)', flex: 1 }}>glove home</span>
           <input
             type="text"
             value={glove.home ?? DEFAULT_HOME}
             onChange={(e) => updateConfig({ glove: { ...glove, home: e.target.value } })}
             spellCheck={false}
-            style={{ width: 220, padding: '4px 6px', fontSize: 11, fontFamily: 'var(--font-mono)', background: 'var(--bg-card)', border: '1px solid var(--border-strong)', borderRadius: 5, color: 'var(--text)', outline: 'none' }}
+            style={{ width: 220, padding: sp('4px 6px'), fontSize: 11, fontFamily: 'var(--font-mono)', background: 'var(--bg-card)', border: 'var(--stroke) solid var(--border-strong)', borderRadius: rad(5), color: 'var(--text)', outline: 'none' }}
           />
         </div>
         <span style={{ fontSize: 10.5, color: 'var(--text-faint)', lineHeight: 1.5 }}>
           glove's home: its <code style={{ fontFamily: 'var(--font-mono)' }}>registry.json</code>, and what each session's grants export under
-          <code style={{ margin: '0 3px', fontFamily: 'var(--font-mono)' }}>observe/&lt;id&gt;/</code> and
-          <code style={{ margin: '0 3px', fontFamily: 'var(--font-mono)' }}>control/&lt;id&gt;/</code>.
+          <code style={{ margin: sp('0 3px'), fontFamily: 'var(--font-mono)' }}>observe/&lt;id&gt;/</code> and
+          <code style={{ margin: sp('0 3px'), fontFamily: 'var(--font-mono)' }}>control/&lt;id&gt;/</code>.
           Layman follows this setting, not <code style={{ fontFamily: 'var(--font-mono)' }}>$GLOVE_HOME</code>; in Docker only <code style={{ fontFamily: 'var(--font-mono)' }}>~/.glove</code> is mounted.
         </span>
       </CustomRow>
@@ -140,7 +141,7 @@ function GeoDatabaseRow({ path, onChange }: { path: string; onChange: (p: string
         : `Not loaded: ${status.error ?? 'unknown error'}.`;
   return (
     <CustomRow>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: sp(12) }}>
         <span style={{ fontSize: 12, color: 'var(--text)', flex: 1 }}>Geolocation database</span>
         <input
           type="text"
@@ -151,7 +152,7 @@ function GeoDatabaseRow({ path, onChange }: { path: string; onChange: (p: string
           onBlur={() => { if (draft !== path) onChange(draft.trim()); }}
           onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
           spellCheck={false}
-          style={{ width: 260, padding: '4px 6px', fontSize: 11, fontFamily: 'var(--font-mono)', background: 'var(--bg-card)', border: '1px solid var(--border-strong)', borderRadius: 5, color: 'var(--text)', outline: 'none' }}
+          style={{ width: 260, padding: sp('4px 6px'), fontSize: 11, fontFamily: 'var(--font-mono)', background: 'var(--bg-card)', border: 'var(--stroke) solid var(--border-strong)', borderRadius: rad(5), color: 'var(--text)', outline: 'none' }}
         />
       </div>
       <span style={{ fontSize: 10.5, color: status?.loaded ? 'var(--ok)' : status?.configured ? 'var(--warn)' : 'var(--text-faint)', lineHeight: 1.5 }}>{line}</span>

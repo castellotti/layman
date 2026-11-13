@@ -1,17 +1,18 @@
 import React, { useState } from 'react';
 import { SegmentedControl } from '../../primitives/index.js';
+import { sp, rad } from '../../../lib/density.js';
 
 export const ROW_STYLE: React.CSSProperties = {
   display: 'flex',
   flexDirection: 'column',
-  gap: 6,
-  padding: '11px 0',
-  borderBottom: '1px solid var(--border-subtle)',
+  gap: sp(6),
+  padding: sp('11px 0'),
+  borderBottom: 'var(--stroke) solid var(--border-subtle)',
 };
 
 export function SectionTitle({ children }: { children: React.ReactNode }) {
   return (
-    <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', paddingBottom: 4 }}>
+    <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', paddingBottom: sp(4) }}>
       {children}
     </div>
   );
@@ -19,7 +20,7 @@ export function SectionTitle({ children }: { children: React.ReactNode }) {
 
 export function SectionIntro({ children }: { children: React.ReactNode }) {
   return (
-    <p style={{ fontSize: 10.5, color: 'var(--text-faint)', lineHeight: 1.5, margin: '0 0 4px' }}>
+    <p style={{ fontSize: 10.5, color: 'var(--text-faint)', lineHeight: 1.5, margin: sp('0 0 4px') }}>
       {children}
     </p>
   );
@@ -35,8 +36,8 @@ export function ToggleRow({
 }) {
   return (
     <div style={ROW_STYLE}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-        <span style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: sp(12) }}>
+        <span style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: sp(2) }}>
           <span style={{ fontSize: 12, color: 'var(--text)' }}>{label}</span>
           {desc && <span style={{ fontSize: 10.5, color: 'var(--text-faint)', lineHeight: 1.5 }}>{desc}</span>}
         </span>
@@ -45,8 +46,8 @@ export function ToggleRow({
           style={{
             width: 34,
             height: 18,
-            borderRadius: 9,
-            border: `1px solid ${checked ? 'var(--accent)' : 'var(--border-strong)'}`,
+            borderRadius: rad(9),
+            border: `var(--stroke) solid ${checked ? 'var(--accent)' : 'var(--border-strong)'}`,
             background: checked ? 'var(--bg-selected)' : 'var(--bg-card)',
             position: 'relative',
             cursor: 'pointer',
@@ -87,7 +88,7 @@ export function SegmentRow<T extends string>({
 }) {
   return (
     <div style={ROW_STYLE}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: sp(12) }}>
         <span style={{ fontSize: 12, color: 'var(--text)', width: labelWidth, flexShrink: 0 }}>{label}</span>
         <SegmentedControl options={options} value={value} onChange={onChange} />
       </div>
@@ -118,19 +119,19 @@ export function FieldRow({
   const fieldStyle: React.CSSProperties = {
     flex: 1,
     maxWidth: 300,
-    padding: '5px 10px',
+    padding: sp('5px 10px'),
     fontSize: 11,
     fontFamily: 'var(--font-mono)',
     background: 'var(--bg-card)',
-    border: '1px solid var(--border-strong)',
-    borderRadius: 5,
+    border: 'var(--stroke) solid var(--border-strong)',
+    borderRadius: rad(5),
     color: isReadOnly ? 'var(--text-body)' : 'var(--text)',
     outline: 'none',
     boxSizing: 'border-box',
   };
   return (
     <div style={ROW_STYLE}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: sp(12) }}>
         <span style={{ fontSize: 12, color: 'var(--text)', width: labelWidth, flexShrink: 0 }}>{label}</span>
         {selectOptions ? (
           <select
@@ -167,7 +168,7 @@ export function InfoRow({
 }) {
   return (
     <div style={ROW_STYLE}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: sp(8) }}>
         <span style={{ fontSize: 12, color: 'var(--text)' }}>{label}</span>
         <div style={{ flex: 1 }} />
         {action}
@@ -189,18 +190,18 @@ export function ThresholdRow({ label, stops }: { label: string; stops: Threshold
   return (
     <div style={ROW_STYLE}>
       <span style={{ fontSize: 12, color: 'var(--text)' }}>{label}</span>
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', gap: sp(8), flexWrap: 'wrap' }}>
         {stops.map((s) => (
           <span
             key={s.name}
             style={{
               display: 'inline-flex',
               alignItems: 'center',
-              gap: 6,
-              padding: '3px 9px',
-              borderRadius: 5,
+              gap: sp(6),
+              padding: sp('3px 9px'),
+              borderRadius: rad(5),
               background: 'var(--bg-card)',
-              border: '1px solid var(--border)',
+              border: 'var(--stroke) solid var(--border)',
               fontSize: 10.5,
               fontFamily: 'var(--font-mono)',
             }}
@@ -247,18 +248,18 @@ export function ActionRow({
 }) {
   return (
     <div style={ROW_STYLE}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: sp(12) }}>
         <button
           onClick={onClick}
           disabled={disabled}
           style={{
-            padding: '5px 12px',
+            padding: sp('5px 12px'),
             fontSize: 11,
             fontFamily: 'var(--font-ui)',
             color: variant === 'danger' ? 'var(--error)' : 'var(--text-body)',
             background: 'transparent',
-            border: `1px solid ${variant === 'danger' ? 'var(--error)' : 'var(--border-strong)'}`,
-            borderRadius: 5,
+            border: `var(--stroke) solid ${variant === 'danger' ? 'var(--error)' : 'var(--border-strong)'}`,
+            borderRadius: rad(5),
             cursor: disabled ? 'default' : 'pointer',
             whiteSpace: 'nowrap',
             opacity: disabled ? 0.5 : 1,
@@ -308,7 +309,7 @@ export function StringListRow({
   };
   return (
     <CustomRow>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: sp(12) }}>
         <span style={{ fontSize: 12, color: 'var(--text)', flex: 1 }}>{label}</span>
         <input
           type="text"
@@ -318,20 +319,20 @@ export function StringListRow({
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter') add(); }}
           spellCheck={false}
-          style={{ width: 200, padding: '4px 6px', fontSize: 11, fontFamily: 'var(--font-mono)', background: 'var(--bg-card)', border: '1px solid var(--border-strong)', borderRadius: 5, color: 'var(--text)', outline: 'none' }}
+          style={{ width: 200, padding: sp('4px 6px'), fontSize: 11, fontFamily: 'var(--font-mono)', background: 'var(--bg-card)', border: 'var(--stroke) solid var(--border-strong)', borderRadius: rad(5), color: 'var(--text)', outline: 'none' }}
         />
         <button type="button" onClick={add} disabled={!entry}
-          style={{ padding: '4px 10px', fontSize: 11, borderRadius: 5, border: '1px solid var(--border-strong)', background: 'var(--bg-card)', color: entry ? 'var(--text)' : 'var(--text-faint)', cursor: entry ? 'pointer' : 'default' }}>
+          style={{ padding: sp('4px 10px'), fontSize: 11, borderRadius: rad(5), border: 'var(--stroke) solid var(--border-strong)', background: 'var(--bg-card)', color: entry ? 'var(--text)' : 'var(--text-faint)', cursor: entry ? 'pointer' : 'default' }}>
           Add
         </button>
       </div>
       {list.length > 0 && (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: sp(6) }}>
           {list.map((d) => (
-            <span key={d} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '1px 4px 1px 8px', fontSize: 11, fontFamily: 'var(--font-mono)', borderRadius: 10, border: '1px solid var(--border-strong)', color: 'var(--text-body)' }}>
+            <span key={d} style={{ display: 'inline-flex', alignItems: 'center', gap: sp(4), padding: sp('1px 4px 1px 8px'), fontSize: 11, fontFamily: 'var(--font-mono)', borderRadius: rad(10), border: 'var(--stroke) solid var(--border-strong)', color: 'var(--text-body)' }}>
               {d}
               <button type="button" aria-label={`Remove ${d}`} onClick={() => onChange(list.filter((x) => x !== d))}
-                style={{ background: 'none', border: 'none', padding: '0 3px', cursor: 'pointer', color: 'var(--text-faint)', fontSize: 12, lineHeight: 1 }}>
+                style={{ background: 'none', border: 'none', padding: sp('0 3px'), cursor: 'pointer', color: 'var(--text-faint)', fontSize: 12, lineHeight: 1 }}>
                 ×
               </button>
             </span>

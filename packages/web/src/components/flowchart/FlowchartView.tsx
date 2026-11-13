@@ -18,6 +18,7 @@ import type { TimelineEvent } from '../../lib/types.js';
 import { buildFlowchartGraph, type FlowchartNodeData } from '../../lib/flowchart-graph.js';
 import { FlowchartNode } from './FlowchartNodes.js';
 import { tokenColor } from '../../lib/tokens.js';
+import { sp, rad } from '../../lib/density.js';
 
 const nodeTypes: NodeTypes = { flowchartNode: FlowchartNode };
 const FOLLOW_MIN_ZOOM = 0.75;
@@ -197,9 +198,9 @@ function FlowchartToolbar({
     <div
       data-print-hide
       style={{
-        display: 'flex', alignItems: 'center', gap: 10,
-        padding: '8px 14px', background: 'var(--bg-raised)',
-        borderBottom: '1px solid var(--border)', flexShrink: 0,
+        display: 'flex', alignItems: 'center', gap: sp(10),
+        padding: sp('8px 14px'), background: 'var(--bg-raised)',
+        borderBottom: 'var(--stroke) solid var(--border)', flexShrink: 0,
       }}
     >
       <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-faint)' }}>
@@ -209,12 +210,12 @@ function FlowchartToolbar({
       <button
         onClick={onToggleFollow}
         style={{
-          display: 'inline-flex', alignItems: 'center', gap: 6,
-          padding: '4px 10px', fontSize: 11, fontFamily: 'var(--font-ui)', fontWeight: 500,
-          borderRadius: 5, cursor: 'pointer', whiteSpace: 'nowrap',
+          display: 'inline-flex', alignItems: 'center', gap: sp(6),
+          padding: sp('4px 10px'), fontSize: 11, fontFamily: 'var(--font-ui)', fontWeight: 500,
+          borderRadius: rad(5), cursor: 'pointer', whiteSpace: 'nowrap',
           background: followLatest ? tokenColor('ok', '12%') : 'transparent',
           color: followLatest ? 'var(--ok)' : 'var(--text-muted)',
-          border: followLatest ? `1px solid ${tokenColor('ok', '30%')}` : '1px solid var(--border-strong)',
+          border: followLatest ? `var(--stroke) solid ${tokenColor('ok', '30%')}` : 'var(--stroke) solid var(--border-strong)',
         }}
       >
         <span style={{ width: 6, height: 6, borderRadius: '50%', background: followLatest ? 'var(--ok)' : 'var(--text-muted)' }} />
@@ -223,9 +224,9 @@ function FlowchartToolbar({
       <button
         onClick={onFitAll}
         style={{
-          padding: '4px 10px', fontSize: 11, fontFamily: 'var(--font-ui)',
+          padding: sp('4px 10px'), fontSize: 11, fontFamily: 'var(--font-ui)',
           color: 'var(--text-muted)', background: 'transparent',
-          border: '1px solid var(--border-strong)', borderRadius: 5, cursor: 'pointer', whiteSpace: 'nowrap',
+          border: 'var(--stroke) solid var(--border-strong)', borderRadius: rad(5), cursor: 'pointer', whiteSpace: 'nowrap',
         }}
         onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--text)'; }}
         onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-muted)'; }}

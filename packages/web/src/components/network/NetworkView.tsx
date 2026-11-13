@@ -30,6 +30,7 @@ import { DownloadsList, TraceActions, TraceDetails, TraceWaterfall, TurnBar } fr
 import { useNow } from '../../hooks/useNow.js';
 import { EmptyState, PanelFrame } from './netui.js';
 import { TAB_PANELS, type NetTab } from './tabs.js';
+import { sp, rad } from '../../lib/density.js';
 
 
 interface PanelContent {
@@ -58,8 +59,8 @@ function RangeLoading({ range, progress }: { range: NetRange; progress: { scanne
 
 /** The button an empty state offers (open Settings, show All records). */
 const actionButton: React.CSSProperties = {
-  fontSize: 11.5, padding: '5px 12px', borderRadius: 6, background: 'var(--bg-pill)',
-  border: '1px solid var(--border-strong)', color: 'var(--text)', cursor: 'pointer',
+  fontSize: 11.5, padding: sp('5px 12px'), borderRadius: rad(6), background: 'var(--bg-pill)',
+  border: 'var(--stroke) solid var(--border-strong)', color: 'var(--text)', cursor: 'pointer',
 };
 
 /** A built panel's content, or null for one still to come. */
@@ -138,12 +139,12 @@ function Board({ tab, panels, data }: { tab: NetTab; panels: ReturnType<typeof u
     return <EmptyState title="Every panel is hidden">Turn panels back on with the Panels chips above.</EmptyState>;
   }
   return (
-    <div style={{ display: 'flex', gap: 8, padding: 8, flex: 1, minHeight: 0 }}>
+    <div style={{ display: 'flex', gap: sp(8), padding: sp(8), flex: 1, minHeight: 0 }}>
       {main.length > 0 && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, flex: 1, minWidth: 0, minHeight: 0 }}>{column(main)}</div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: sp(8), flex: 1, minWidth: 0, minHeight: 0 }}>{column(main)}</div>
       )}
       {side.length > 0 && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, width: main.length ? 'clamp(300px, 26vw, 380px)' : undefined, flex: main.length ? undefined : 1, minWidth: 0, minHeight: 0 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: sp(8), width: main.length ? 'clamp(300px, 26vw, 380px)' : undefined, flex: main.length ? undefined : 1, minWidth: 0, minHeight: 0 }}>
           {column(side)}
         </div>
       )}

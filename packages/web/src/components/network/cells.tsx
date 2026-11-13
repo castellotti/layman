@@ -9,6 +9,7 @@ import type { RateBucket } from '../../lib/netobs-types.js';
 import { NetIcon, type NetIconName } from './netui.js';
 import { TipWrap } from './NetTip.js';
 import { tokenColor } from '../../lib/tokens.js';
+import { sp, rad } from '../../lib/density.js';
 
 const VERB: Record<ToggleKind, (target: string) => string> = {
   allow: (t) => `Block ${t}`,
@@ -40,26 +41,26 @@ export function NetToggle({ kind, target, disabledReason, onClick }: {
   const on = kind === 'allow';
   const red = kind === 'block' || kind === 'default';
   const base: React.CSSProperties = {
-    position: 'relative', width: 30, height: 16, borderRadius: 8, flexShrink: 0, padding: 0,
+    position: 'relative', width: 30, height: 16, borderRadius: rad(8), flexShrink: 0, padding: 0,
     cursor: disabledReason === null && kind !== 'locked' && kind !== 'pending' ? 'pointer' : 'default',
   };
   let style: React.CSSProperties;
-  let knob: React.CSSProperties | null = { position: 'absolute', top: 1, width: 12, height: 12, borderRadius: 6 };
+  let knob: React.CSSProperties | null = { position: 'absolute', top: 1, width: 12, height: 12, borderRadius: rad(6) };
   switch (kind) {
     case 'allow':
-      style = { ...base, border: '1px solid var(--net-tunnel)', background: tokenColor('net-tunnel', '90%') };
+      style = { ...base, border: 'var(--stroke) solid var(--net-tunnel)', background: tokenColor('net-tunnel', '90%') };
       knob = { ...knob, left: 15, background: 'var(--bg)' };
       break;
     case 'block':
-      style = { ...base, border: '1px solid var(--error)', background: tokenColor('error', '90%') };
+      style = { ...base, border: 'var(--stroke) solid var(--error)', background: tokenColor('error', '90%') };
       knob = { ...knob, left: 1, background: 'var(--bg)' };
       break;
     case 'default':
-      style = { ...base, border: '1px solid var(--error)', background: 'transparent' };
+      style = { ...base, border: 'var(--stroke) solid var(--error)', background: 'transparent' };
       knob = { ...knob, left: 1, background: 'var(--error)' };
       break;
     case 'pending':
-      style = { ...base, border: '1px solid var(--warn)',
+      style = { ...base, border: 'var(--stroke) solid var(--warn)',
         background: `repeating-linear-gradient(135deg, ${tokenColor('warn', '35%')} 0 3px, transparent 3px 6px)` };
       knob = { ...knob, left: 8, background: 'var(--warn)' };
       break;
@@ -121,7 +122,7 @@ export function Sparkline({ spark, anchor, width = 64, height = 16, colour = 'va
 /** A state or route: icon and text in the cell's colour. */
 export function CellLabel({ cell, size = 11 }: { cell: CellText; size?: number }) {
   return (
-    <span style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: size, color: cell.colourVar, whiteSpace: 'nowrap', minWidth: 0 }}>
+    <span style={{ display: 'flex', alignItems: 'center', gap: sp(5), fontSize: size, color: cell.colourVar, whiteSpace: 'nowrap', minWidth: 0 }}>
       {cell.icon && <NetIcon name={cell.icon as NetIconName} color={cell.colourVar} />}
       <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{cell.text}</span>
     </span>

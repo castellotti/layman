@@ -6,6 +6,7 @@ import React from 'react';
 import type { ChipIcon, ChipTone, NetTip } from '../../lib/net-format.js';
 import { tipProps } from './NetTip.js';
 import { tokenColor } from '../../lib/tokens.js';
+import { sp, rad } from '../../lib/density.js';
 
 export type NetIconName =
   | ChipIcon
@@ -102,8 +103,8 @@ export function Chip({ tone, icon, label, tip, strong, compact }: {
     return (
       // What the label said leads the facts, so the tip says all the chip would have.
       <span {...tipProps(typeof tip === 'object' ? { ...tip, facts: [label, ...(tip.facts ?? [])] } : { heading: label, body: tip ?? '' })} role="img" aria-label={label} tabIndex={0} data-chip-compact="" style={{
-        display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 20, height: 20, borderRadius: 10,
-        background: t.bg, border: `1px solid ${t.border}`, flexShrink: 0,
+        display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 20, height: 20, borderRadius: rad(10),
+        background: t.bg, border: `var(--stroke) solid ${t.border}`, flexShrink: 0,
       }}>
         <NetIcon name={icon} size={11} color={t.color} />
       </span>
@@ -112,8 +113,8 @@ export function Chip({ tone, icon, label, tip, strong, compact }: {
   return (
     // Focusable, so a keyboard user can read its tip too.
     <span {...tipProps(tip)} tabIndex={tip ? 0 : undefined} style={{
-      display: 'inline-flex', alignItems: 'center', gap: 5, height: 20, padding: '0 7px', borderRadius: 10,
-      fontSize: 10.5, color: t.color, background: t.bg, border: `1px solid ${t.border}`, whiteSpace: 'nowrap',
+      display: 'inline-flex', alignItems: 'center', gap: sp(5), height: 20, padding: sp('0 7px'), borderRadius: rad(10),
+      fontSize: 10.5, color: t.color, background: t.bg, border: `var(--stroke) solid ${t.border}`, whiteSpace: 'nowrap',
       fontWeight: strong ? 700 : 500, letterSpacing: strong ? '0.02em' : undefined, flexShrink: 0,
     }}>
       {icon && <NetIcon name={icon} color={t.color} />}
@@ -148,11 +149,11 @@ export function PanelFrame({ title, count, actions, onHide, drag, dropTarget, ch
       onDrop={drag ? (e) => { e.preventDefault(); drag.onDragEnd(); } : undefined}
       style={{
         display: 'flex', flexDirection: 'column', background: 'var(--bg-card)',
-        border: `1px solid ${dropTarget ? 'var(--accent)' : 'var(--border)'}`, borderRadius: 8,
+        border: `var(--stroke) solid ${dropTarget ? 'var(--accent)' : 'var(--border)'}`, borderRadius: rad(8),
         overflow: 'hidden', minHeight: 0, minWidth: 0, flex, maxHeight,
       }}
     >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 7, height: 32, padding: '0 8px', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: sp(7), height: 32, padding: sp('0 8px'), borderBottom: 'var(--stroke) solid var(--border)', flexShrink: 0 }}>
         {drag && (
           <span
             draggable
@@ -173,7 +174,7 @@ export function PanelFrame({ title, count, actions, onHide, drag, dropTarget, ch
         {onHide && (
           <button type="button" aria-label={`Hide ${title} panel`} onClick={onHide} style={{
             display: 'flex', alignItems: 'center', justifyContent: 'center', width: 22, height: 22,
-            background: 'transparent', border: 'none', borderRadius: 4, cursor: 'pointer',
+            background: 'transparent', border: 'none', borderRadius: rad(4), cursor: 'pointer',
           }}>
             <NetIcon name="close" size={11} color="var(--text-faint)" />
           </button>
@@ -187,7 +188,7 @@ export function PanelFrame({ title, count, actions, onHide, drag, dropTarget, ch
 /** Centred explanatory text for an empty panel or view. */
 export function EmptyState({ title, children, action }: { title: string; children?: React.ReactNode; action?: React.ReactNode }) {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8, height: '100%', padding: 24, textAlign: 'center' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: sp(8), height: '100%', padding: sp(24), textAlign: 'center' }}>
       <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>{title}</div>
       {children && <div style={{ fontSize: 11.5, color: 'var(--text-muted)', maxWidth: 520, lineHeight: 1.5 }}>{children}</div>}
       {action}

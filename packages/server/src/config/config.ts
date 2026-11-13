@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs';
 import { dirname } from 'path';
 import { cosmiconfig } from 'cosmiconfig';
-import { cleanOverrides, LaymanConfigSchema, validAppearanceUpdate } from './schema.js';
+import { cleanOverrides, LaymanConfigSchema, mergeOverrides, validAppearanceUpdate } from './schema.js';
 import { laymanConfigPath } from './paths.js';
 import type { AppearanceConfig, ConfigUpdate, LaymanConfig } from './schema.js';
 
@@ -188,13 +188,21 @@ export function migrateTheme<T extends object>(config: T): T {
  * The config sources' appearance blocks, lowest precedence first, merged field by field so a
  * partial block (only `theme`) keeps the other choices. Each source's invalid fields are dropped
  * first, so one falls back to a lower source's valid choice rather than straight to the default.
- * `overrides` is replaced whole: merging it would make a removed override impossible.
+ * `overrides` is taken whole from the highest source that holds an overrides object, even an
+ * empty one: merging per theme, or skipping an empty map, would bring back colours the user
+ * cleared in Settings from a lower source on the next start.
  */
 export function mergeAppearance(...sources: unknown[]): Partial<AppearanceConfig> {
-  return Object.assign({}, ...sources.map((s) => validAppearanceUpdate(
-    // A stored map keeps its good entries: a hand-edited typo must not cost the rest.
-    s && typeof s === 'object' && 'overrides' in s ? { ...s, overrides: cleanOverrides(s.overrides) } : s,
-  )));
+  const out: Partial<AppearanceConfig> = {};
+  for (const s of sources) {
+    Object.assign(out, validAppearanceUpdate(s));
+    // A source holding an overrides object wins whole, even an empty one: that is how the
+    // runtime file records "the user cleared them". A stored map keeps its good entries: a
+    // hand-edited typo must not cost the rest.
+    const o = s && typeof s === 'object' ? (s as { overrides?: unknown }).overrides : undefined;
+    if (o && typeof o === 'object' && !Array.isArray(o)) out.overrides = cleanOverrides(o);
+  }
+  return out;
 }
 
 let runtimeConfig: LaymanConfig | null = null;
@@ -213,6 +221,11 @@ export function setConfig(config: LaymanConfig): void {
   runtimeConfig = config;
 }
 
+function appearanceAfter(current: AppearanceConfig, update: unknown): AppearanceConfig {
+  const valid = validAppearanceUpdate(update);
+  return { ...current, ...valid, overrides: mergeOverrides(current.overrides, valid.overrides) };
+}
+
 export function updateConfig(updates: ConfigUpdate): LaymanConfig {
   if (!runtimeConfig) throw new Error('Config not initialized.');
   // No `migrateTheme` here: the dashboard never read `theme`, and a stale tab sending the whole
@@ -228,9 +241,10 @@ export function updateConfig(updates: ConfigUpdate): LaymanConfig {
     sync: { ...runtimeConfig.sync, ...updates.sync },
     activity: { ...runtimeConfig.activity, ...updates.activity },
     // Deep-merge so an update carrying one appearance choice keeps the others, and one
-    // carrying a value this version does not know keeps the current choice. `overrides`,
-    // when sent, replaces the map (so one can be removed).
-    appearance: { ...runtimeConfig.appearance, ...validAppearanceUpdate(updates.appearance) },
+    // carrying a value this version does not know keeps the current choice. `overrides` merge
+    // per theme: a theme sent replaces that theme's map (so one colour can be removed, and an
+    // empty map clears the theme); themes not sent keep theirs.
+    appearance: appearanceAfter(runtimeConfig.appearance, updates.appearance),
     // Deep-merge so a Settings update carrying only `glove.enabled` keeps
     // `home` and the network block (and one carrying only a network
     // toggle keeps the rest of it).

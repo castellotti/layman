@@ -9,6 +9,7 @@ import { orderDashboardSessions } from '../../lib/session-state.js';
 import { useDragReorder } from '../../hooks/useDragReorder.js';
 import type { ClientMessage } from '../../lib/ws-protocol.js';
 import './dashboard.css';
+import { sp } from '../../lib/density.js';
 
 const SESSION_LIST_WIDTH_DEFAULT = 410;
 const SESSION_LIST_MIN = 220;
@@ -160,13 +161,13 @@ export function DashboardView({ onSend, sessionListWidth, onResizeSessionList }:
           flexShrink: 0,
           display: 'flex',
           flexDirection: 'column',
-          borderRight: onResizeSessionList ? undefined : '1px solid var(--border)',
+          borderRight: onResizeSessionList ? undefined : 'var(--stroke) solid var(--border)',
           background: 'var(--bg-raised)',
           overflow: 'hidden',
         }}
       >
         {/* List header */}
-        <div style={{ padding: '10px 12px 8px', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
+        <div style={{ padding: sp('10px 12px 8px'), borderBottom: 'var(--stroke) solid var(--border)', flexShrink: 0 }}>
           <SearchInput
             value={filter}
             onChange={setFilter}
@@ -251,7 +252,7 @@ export function DashboardView({ onSend, sessionListWidth, onResizeSessionList }:
 
 function EmptyState() {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: 12, padding: 24 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: sp(12), padding: sp(24) }}>
       <svg width="40" height="40" viewBox="0 0 56 56" fill="none" style={{ opacity: 0.12, color: 'var(--accent)' }}>
         <circle cx="28" cy="28" r="24" stroke="currentColor" strokeWidth="1.5"/>
         <circle cx="28" cy="28" r="15" stroke="currentColor" strokeWidth="1"/>
