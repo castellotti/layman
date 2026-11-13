@@ -80,7 +80,7 @@ const round = (v: number): number => Math.round(v * 10) / 10;
 
 /** The stations placed on the ring for a box of the given size. */
 export function layoutMap(ids: readonly string[], size: { width: number; height: number }): MapLayout {
-    const width = Math.max(MIN_SIZE.width, size.width);
+  const width = Math.max(MIN_SIZE.width, size.width);
   const height = Math.max(MIN_SIZE.height, size.height);
   const core = { x: width / 2, y: height / 2 };
   const rx = width / 2 - LABEL_ROOM.x;

@@ -382,9 +382,10 @@ loads the session's full recording into `historicalEvents` first when the store 
 the board reads the lean one, which Investigation cannot show. `isSessionView` / `isExclusiveView`
 (`sessionStore.ts`) list the views; a new one goes there. The map is the Activity tab's only: the
 Dashboard has none (a small one per pane was tried and removed). The map reads its live events from one
-split of the store by session (`bySession` in `useActivityBoard.ts`, computed once per event list), and
-`useSessionTimeline` keeps the last few lean recordings so reopening the tab does not download a session again; it refetches only when
-the recording is missing or the live slice no longer reaches back to it.
+split of the store by session (`bySession` in `useActivityBoard.ts`, cached per event list, because the
+selector runs at every store change, not only when events arrive), and `useSessionTimeline` keeps the
+last two lean recordings (each can be tens of MB) so switching back to a session does not download it
+again; it refetches only when the recording is missing or the live slice no longer reaches back to it.
 
 ### Text to speech
 
