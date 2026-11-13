@@ -137,12 +137,12 @@ Settings → Display → **Appearance** chooses how Layman looks. The choice is 
 - **Follow the OS** switches between a dark and a light theme (Classic and Daylight by default) when your system's appearance changes, without a reload.
 - **Type**: the theme's own, Sans or Mono. Code is always mono.
 - **Motion**: Full, Reduced (nothing moves on its own, and scrolling jumps) or Off (no transitions either). If your system asks for reduced motion, Full acts as Reduced.
-- **Your own colours**: any colour of the theme showing can be replaced, with a picker or a hex value, and a small sample shows the result. Colours are kept per theme, so an edit to the dark theme never reaches the light one. Colours that make text hard to read, or put the accent too close to a risk colour, are listed with the measured contrast, but still applied. Each colour resets on its own, or all at once.
+- **Your own colours**: any colour of the theme showing can be replaced, with a picker or a hex value, and a small sample shows the result. Colours are kept per theme, so an edit to the dark theme never reaches the light one. Colours that make text hard to read, or put the accent too close to a status colour, are listed with the measured contrast or colour distance, but still applied. Each colour resets on its own, or all at once.
 
-Every theme is checked by the test suite for WCAG AA text contrast on each background, and for an accent kept clear of the status colours (amber means medium risk). Export to PDF always prints in Daylight, whatever is on screen.
+The test suite checks every theme for WCAG AA contrast of its text and status colours on the main backgrounds (Classic's thinking violet is a known exception, kept from before themes), 7:1 for Contrast's text, and an accent kept clear of the status colours (the warning colour means medium risk). Export to PDF always prints in Daylight, whatever is on screen.
 
 ![Appearance settings, Classic](images/appearance.png)
-![Appearance settings, Paper](images/appearance-paper.png)
+![Your own colours, under Paper](images/appearance-paper.png)
 
 ## Setup wizard
 

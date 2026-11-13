@@ -2,10 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
-import { HEX_COLOR } from './color.js';
+import { contrast, HEX_COLOR } from './color.js';
 import {
   appearanceCss, DEFAULT_APPEARANCE, followOsUpdate, TOKEN_GROUPS, FONT_MONO, FONT_SANS, KNOWN_PROBLEMS, normalizeAppearance,
-  PRINT_THEME, resolveAppearance, themeById, themeProblems, THEMES, TOKENS,
+  PRINT_THEME, resolveAppearance, themeById, themeProblems, themeProblemsWith, THEMES, TOKENS,
 } from './themes.js';
 
 const DARK = { prefersDark: true, prefersReducedMotion: false };
@@ -125,6 +125,24 @@ describe('TOKEN_GROUPS', () => {
     const listed = TOKEN_GROUPS.flatMap((g) => g.tokens);
     expect([...listed].sort()).toEqual([...TOKENS].sort());
     expect(new Set(listed).size).toBe(listed.length);
+  });
+});
+
+describe('themeProblemsWith (what Settings shows)', () => {
+  it("skips a theme's known break only while neither of its colours is the user's", () => {
+    const classic = themeById('classic');
+    expect(themeProblemsWith(classic, {})).toEqual([]);
+    expect(themeProblemsWith(classic, { thinking: '#2A2440' })).toContainEqual(expect.stringMatching(/^thinking on bg is/));
+    expect(themeProblemsWith(classic, { bg: '#1A1F2B' }).some((p) => p.startsWith('thinking on bg is'))).toBe(true);
+  });
+});
+
+describe('the Contrast theme', () => {
+  it('keeps its promise: text, body and muted text reach AAA (7:1) on every main ground', () => {
+    const t = themeById('contrast').tokens;
+    for (const fg of ['text', 'text-body', 'text-muted'] as const) {
+      for (const bg of ['bg', 'bg-raised', 'bg-card'] as const) expect(contrast(t[fg], t[bg]), `${fg}/${bg}`).toBeGreaterThanOrEqual(7);
+    }
   });
 });
 
