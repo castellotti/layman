@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  thinkingRowFor, eventDetail, kindLabel, withThinkingRows, baseEventId, isThinkingRow,
+  thinkingRowFor, eventDetail, eventHeading, kindLabel, withThinkingRows, baseEventId, isThinkingRow,
   THINKING_ROW_SUFFIX,
 } from './event-styles.js';
 import type { TimelineEvent } from './types.js';
@@ -206,5 +206,20 @@ describe('isThinkingRow', () => {
 
   it('rejects a real response', () => {
     expect(isThinkingRow(ev())).toBe(false);
+  });
+});
+
+describe('eventHeading', () => {
+  it('is the tool name for a tool event', () => {
+    expect(eventHeading(ev({ type: 'tool_call_completed', data: { toolName: 'Bash', toolInput: { command: 'ls' } } }))).toBe('Bash');
+  });
+
+  it('names the file of an Edit or Write', () => {
+    expect(eventHeading(ev({ type: 'tool_call_completed', data: { toolName: 'Edit', toolInput: { file_path: '/a/b/foo.ts', old_string: 'x', new_string: 'y' } } }))).toContain('foo.ts');
+    expect(eventHeading(ev({ type: 'tool_call_completed', data: { toolName: 'Write', toolInput: { file_path: '/a/b/bar.ts', content: 'z' } } }))).toContain('bar.ts');
+  });
+
+  it('is empty for a prompt', () => {
+    expect(eventHeading(ev({ type: 'user_prompt', data: { prompt: 'hi' } }))).toBe('');
   });
 });

@@ -1,56 +1,6 @@
 import React, { useMemo } from 'react';
 import { usePrintExpandable } from '../../hooks/usePrinting.js';
-
-interface DiffLine {
-  type: 'same' | 'remove' | 'add';
-  line: string;
-  oldNum?: number;
-  newNum?: number;
-}
-
-/** Myers-style LCS line diff */
-function computeDiff(oldText: string, newText: string): DiffLine[] {
-  const oldLines = oldText.split('\n');
-  const newLines = newText.split('\n');
-  const m = oldLines.length;
-  const n = newLines.length;
-
-  // LCS DP table
-  const dp: number[][] = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
-  for (let i = 1; i <= m; i++) {
-    for (let j = 1; j <= n; j++) {
-      dp[i][j] = oldLines[i - 1] === newLines[j - 1]
-        ? dp[i - 1][j - 1] + 1
-        : Math.max(dp[i - 1][j], dp[i][j - 1]);
-    }
-  }
-
-  // Backtrack
-  const result: Array<{ type: 'same' | 'remove' | 'add'; line: string }> = [];
-  let i = m, j = n;
-  while (i > 0 || j > 0) {
-    if (i > 0 && j > 0 && oldLines[i - 1] === newLines[j - 1]) {
-      result.unshift({ type: 'same', line: oldLines[i - 1] });
-      i--; j--;
-    } else if (j > 0 && (i === 0 || dp[i][j - 1] >= dp[i - 1][j])) {
-      result.unshift({ type: 'add', line: newLines[j - 1] });
-      j--;
-    } else {
-      result.unshift({ type: 'remove', line: oldLines[i - 1] });
-      i--;
-    }
-  }
-
-  // Attach line numbers
-  let oldNum = 1, newNum = 1;
-  return result.map((r) => {
-    const entry: DiffLine = { ...r };
-    if (r.type === 'remove') { entry.oldNum = oldNum++; }
-    else if (r.type === 'add') { entry.newNum = newNum++; }
-    else { entry.oldNum = oldNum++; entry.newNum = newNum++; }
-    return entry;
-  });
-}
+import { diffLines, diffPrefix } from '../../lib/line-diff.js';
 
 interface DiffBlockProps {
   filePath?: string;
@@ -59,27 +9,18 @@ interface DiffBlockProps {
   /** For Write (new file): show entire content as added */
   addedText?: string;
   maxLines?: number;
+  /** Unboxed, for Logs: no border, no file-name bar (the row names the file), no code background. */
+  flat?: boolean;
 }
 
-export function DiffBlock({ filePath, oldText, newText, addedText, maxLines = 40 }: DiffBlockProps) {
+export function DiffBlock({ filePath, oldText, newText, addedText, maxLines = 40, flat = false }: DiffBlockProps) {
   const [expanded, setExpanded] = usePrintExpandable();
 
   // computeDiff is O(m×n); memoized so a re-render that only changes what is shown (expanding,
   // or every block at once on beforeprint) does not recompute it.
   const diff = useMemo(() => {
-    let lines: DiffLine[];
-    if (addedText !== undefined) {
-      // Write / new file — all lines are added
-      lines = addedText.split('\n').map((line, i) => ({
-        type: 'add' as const,
-        line,
-        newNum: i + 1,
-      }));
-    } else if (oldText !== undefined && newText !== undefined) {
-      lines = computeDiff(oldText, newText);
-    } else {
-      return null;
-    }
+    const lines = diffLines({ oldText, newText, addedText });
+    if (!lines) return null;
     let added = 0;
     let removed = 0;
     for (const l of lines) {
@@ -96,9 +37,9 @@ export function DiffBlock({ filePath, oldText, newText, addedText, maxLines = 40
   const visible = truncated ? lines.slice(0, maxLines) : lines;
 
   return (
-    <div className="rounded-md overflow-hidden border border-[var(--border-strong)] text-[11px] font-mono">
+    <div className={`${flat ? 'min-w-0' : 'rounded-md overflow-hidden border border-[var(--border-strong)]'} text-[11px] font-mono`}>
       {/* Header */}
-      {filePath && (
+      {!flat && filePath && (
         <div className="flex items-center justify-between px-3 py-1.5 bg-[var(--bg-card)] border-b border-[var(--border-strong)]">
           <span className="text-[var(--text-muted)] truncate">{filePath}</span>
           {added + removed > 0 && (
@@ -115,7 +56,7 @@ export function DiffBlock({ filePath, oldText, newText, addedText, maxLines = 40
       )}
 
       {/* Diff lines */}
-      <div className="overflow-x-auto bg-[var(--bg-code)]">
+      <div className={flat ? 'overflow-x-auto' : 'overflow-x-auto bg-[var(--bg-code)]'}>
         <table className="w-full border-collapse">
           <tbody>
             {visible.map((entry, idx) => {
@@ -123,10 +64,7 @@ export function DiffBlock({ filePath, oldText, newText, addedText, maxLines = 40
                 entry.type === 'add' ? 'bg-[var(--diff-add-bg)]' :
                 entry.type === 'remove' ? 'bg-[var(--diff-remove-bg)]' :
                 '';
-              const prefix =
-                entry.type === 'add' ? '+' :
-                entry.type === 'remove' ? '-' :
-                ' ';
+              const prefix = diffPrefix(entry.type);
               const textColor =
                 entry.type === 'add' ? 'text-[var(--diff-add-text)]' :
                 entry.type === 'remove' ? 'text-[var(--diff-remove-text)]' :
@@ -161,12 +99,21 @@ export function DiffBlock({ filePath, oldText, newText, addedText, maxLines = 40
         </table>
 
         {truncated && (
-          <button
-            onClick={(e) => { e.stopPropagation(); setExpanded(true); }}
-            className="w-full py-1.5 text-[10px] text-[var(--info)] hover:text-[var(--code)] bg-[var(--bg-card)] border-t border-[var(--border-strong)] transition-colors"
-          >
-            ↓ Show {lines.length - maxLines} more lines
-          </button>
+          flat ? (
+            <button
+              onClick={(e) => { e.stopPropagation(); setExpanded(true); }}
+              className="text-[10px] text-[var(--accent)] hover:opacity-80"
+            >
+              Show {lines.length - maxLines} more lines
+            </button>
+          ) : (
+            <button
+              onClick={(e) => { e.stopPropagation(); setExpanded(true); }}
+              className="w-full py-1.5 text-[10px] text-[var(--info)] hover:text-[var(--code)] bg-[var(--bg-card)] border-t border-[var(--border-strong)] transition-colors"
+            >
+              ↓ Show {lines.length - maxLines} more lines
+            </button>
+          )
         )}
       </div>
     </div>

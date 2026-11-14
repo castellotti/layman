@@ -5,6 +5,8 @@ import { sp, rad } from '../../lib/density.js';
 interface CommandBlockProps {
   code: string;
   className?: string;
+  /** Unboxed, for Logs: no border, title bar or Copy all (the row's Copy copies everything). */
+  flat?: boolean;
 }
 
 function CopyIcon() {
@@ -16,24 +18,36 @@ function CopyIcon() {
   );
 }
 
+function CopyAllButton({ lines }: { lines: string[] }) {
+  const [copied, setCopied] = useState(false);
+  const copy = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    navigator.clipboard.writeText(copyAllPayload(lines)).catch(() => {});
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  };
+  return (
+    <button
+      onClick={copy}
+      style={{ fontSize: 10, color: 'var(--text-muted)', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+      onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--text)')}
+      onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--text-muted)')}
+    >
+      {copied ? '✓ Copied' : 'Copy all'}
+    </button>
+  );
+}
+
 /**
  * Shell command block for detail cards — copy-all, per-line copy (so a user can
  * grab one `sudo` line into a terminal), and a header notice when sudo is
  * detected. Lines are copied verbatim (source text), never the rendered DOM.
  */
-export function CommandBlock({ code, className = '' }: CommandBlockProps) {
+export function CommandBlock({ code, className = '', flat = false }: CommandBlockProps) {
   const lines = useMemo(() => splitCommandLines(code), [code]);
-  const [copiedAll, setCopiedAll] = useState(false);
   const [copiedLine, setCopiedLine] = useState<number | null>(null);
   const [hoveredLine, setHoveredLine] = useState<number | null>(null);
   const hasSudo = useMemo(() => hasSudoLine(lines), [lines]);
-
-  const copyAll = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    navigator.clipboard.writeText(copyAllPayload(lines)).catch(() => {});
-    setCopiedAll(true);
-    setTimeout(() => setCopiedAll(false), 1500);
-  };
 
   const copyLine = (e: React.MouseEvent, i: number) => {
     e.stopPropagation();
@@ -43,34 +57,38 @@ export function CommandBlock({ code, className = '' }: CommandBlockProps) {
   };
 
   return (
-    <div className={className} style={{ background: 'var(--bg-raised)', border: 'var(--stroke) solid var(--border)', borderRadius: rad(6), overflow: 'hidden' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: sp(8), padding: sp('3px 10px'), background: 'var(--bg-card)', borderBottom: 'var(--stroke) solid var(--border-subtle)' }}>
-        <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--text-faint)' }}>
-          shell{hasSudo ? ' · run in your terminal (requires sudo)' : ''}
-        </span>
-        <div style={{ flex: 1 }} />
-        <button
-          onClick={copyAll}
-          style={{ fontSize: 10, color: 'var(--text-muted)', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
-          onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--text)')}
-          onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--text-muted)')}
-        >
-          {copiedAll ? '✓ Copied' : 'Copy all'}
-        </button>
-      </div>
-      <div style={{ padding: sp('6px 0') }}>
+    <div
+      className={className}
+      style={flat ? undefined : { background: 'var(--bg-raised)', border: 'var(--stroke) solid var(--border)', borderRadius: rad(6), overflow: 'hidden' }}
+    >
+      {flat ? (
+        hasSudo && (
+          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--warn)' }}>
+            requires sudo · run in your terminal
+          </div>
+        )
+      ) : (
+        <div style={{ display: 'flex', alignItems: 'center', gap: sp(8), padding: sp('3px 10px'), background: 'var(--bg-card)', borderBottom: 'var(--stroke) solid var(--border-subtle)' }}>
+          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--text-faint)' }}>
+            shell{hasSudo ? ' · run in your terminal (requires sudo)' : ''}
+          </span>
+          <div style={{ flex: 1 }} />
+          <CopyAllButton lines={lines} />
+        </div>
+      )}
+      <div style={flat ? { margin: sp('0 -4px') } : { padding: sp('6px 0') }}>
         {lines.map((line, i) => (
           <div
             key={i}
             onMouseEnter={() => setHoveredLine(i)}
             onMouseLeave={() => setHoveredLine((cur) => (cur === i ? null : cur))}
             style={{
-              display: 'flex', alignItems: 'center', gap: sp(8), padding: sp('1px 10px'),
+              display: 'flex', alignItems: 'center', gap: sp(8), padding: flat ? sp('0 4px') : sp('1px 10px'),
               background: hoveredLine === i ? 'var(--bg-selected)' : 'transparent',
             }}
           >
             <span style={{
-              fontFamily: 'var(--font-mono)', fontSize: 11, lineHeight: 1.8, color: 'var(--info)',
+              fontFamily: 'var(--font-mono)', fontSize: 11, lineHeight: flat ? 1.6 : 1.8, color: 'var(--info)',
               flex: 1, minWidth: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-all',
             }}>
               {line}

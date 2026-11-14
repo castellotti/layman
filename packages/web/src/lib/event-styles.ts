@@ -72,6 +72,21 @@ export function eventDetail(event: TimelineEvent): string {
 }
 
 /**
+ * What an expanded row's first line says. A tool call: its name, plus the file for a file edit
+ * (the flat diff has no title bar of its own). The body shows the rest (the command, the prompt),
+ * so the line never repeats it. An event with no tool has none: its body is the prompt or prose.
+ */
+export function eventHeading(event: TimelineEvent): string {
+  const { toolName, toolInput } = event.data;
+  if (!toolName) return '';
+  if (toolName === 'Edit' || toolName === 'MultiEdit' || toolName === 'Write') {
+    const path = toolPathWithRange(toolInput as Record<string, unknown> | undefined, toolName);
+    if (path) return `${toolName} — ${path}`;
+  }
+  return toolName;
+}
+
+/**
  * Suffix marking a derived thinking row's id, so expand/collapse state for the
  * two rows never collides.
  *

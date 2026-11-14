@@ -4,180 +4,43 @@ import type { TimelineEvent, SubagentTranscriptEntry } from '../../lib/types.js'
 import type { ClientMessage } from '../../lib/ws-protocol.js';
 import { ApprovalBar } from '../controls/ApprovalBar.js';
 import { AnalysisCard } from '../analysis/AnalysisCard.js';
-import { CodeBlock } from '../shared/CodeBlock.js';
+import { CommandBlock } from '../shared/CommandBlock.js';
+import { PlainBlock } from '../shared/PlainBlock.js';
 import { DiffBlock } from '../shared/DiffBlock.js';
+import { toolInputText, eventCopyText, editDiffs, valueText } from '../../lib/event-copy.js';
 import { usePendingApprovals } from '../../hooks/usePendingApprovals.js';
 import { usePrintExpandable } from '../../hooks/usePrinting.js';
 import { useSessionStore } from '../../stores/sessionStore.js';
-import { DRIFT_COLORS, baseEventId, eventDetail } from '../../lib/event-styles.js';
+import { DRIFT_COLORS, baseEventId } from '../../lib/event-styles.js';
 import { tokenColor } from '../../lib/tokens.js';
 import { MagnifierIcon, CopyButton, CopyLinkButton } from '../primitives/index.js';
 import { RiskBadge } from '../shared/RiskBadge.js';
 import { SpeakButton } from '../tts/SpeakButton.js';
-import { toolFilePath, toolLineRange } from '../../lib/tool-input.js';
+import { toolFilePath } from '../../lib/tool-input.js';
 import { MARKDOWN_PROSE, REMARK_PLUGINS } from '../../lib/markdown.js';
 import { getEffectiveAgentContent } from '../../lib/reasoning.js';
 
 export { ThinkingBlock } from '../shared/ThinkingBlock.js';
 
-function formatToolInput(toolInput: Record<string, unknown>, toolName?: string): string {
-  // Special handling for Bash command
-  if ('command' in toolInput) {
-    return String(toolInput.command);
-  }
-  // File path tools. The path key differs per harness (pi uses `path`), and a
-  // windowed read carries offset/limit that say which part of the file was read.
-  // `toolName` is what keeps Grep/Glob out of this branch — their `path` is the
-  // directory searched, and the pattern below is the identifying argument.
-  const filePath = toolFilePath(toolInput, toolName);
-  if (filePath) {
-    const path = `${filePath}${toolLineRange(toolInput)}`;
-    if ('content' in toolInput) {
-      return `${path}\n${String(toolInput.content).slice(0, 500)}`;
-    }
-    if ('old_string' in toolInput) {
-      return `${path}\n- ${String(toolInput.old_string).slice(0, 100)}\n+ ${String(toolInput.new_string ?? '').slice(0, 100)}`;
-    }
-    return path;
-  }
-  // Pattern tools
-  if ('pattern' in toolInput) {
-    return String(toolInput.pattern);
-  }
-  if ('query' in toolInput) {
-    return String(toolInput.query);
-  }
-  if ('url' in toolInput) {
-    return String(toolInput.url);
-  }
-  if ('prompt' in toolInput) {
-    return String(toolInput.prompt).slice(0, 200);
-  }
-  return JSON.stringify(toolInput, null, 2).slice(0, 500);
-}
-
-/** Copies the raw source text for an event's detail — never the rendered DOM. */
-function sourceTextFor(event: TimelineEvent): string {
-  if (event.type === 'agent_response') return getEffectiveAgentContent(event).response;
-  // The derived reasoning row carries its text in `prompt` (see thinkingRowFor).
-  if (event.type === 'agent_thinking') return event.data.prompt ?? '';
-  if (event.data.prompt) return event.data.prompt;
-  if (event.data.toolInput) {
-    const input = event.data.toolInput;
-    if ('command' in input) return String(input.command);
-    return JSON.stringify(input, null, 2);
-  }
-  if (event.data.error) return event.data.error;
-  return eventDetail(event);
-}
-
 const ACTION_CLASS = 'text-[10px] text-[var(--text-muted)] hover:text-[var(--text)] transition-colors';
 
 /**
- * The one action bar of an expanded row: Copy and Link everywhere, Speak on a
- * response, Highlight on a prompt or response (the pair Prompts keeps), and
- * Investigate. It used to be split over two bars, the row's and the prose
- * block's, each with its own Highlight and Copy, and the row's Highlight was
- * a minimap-only mark that looked like the real one and did nothing else.
+ * The one action bar of an expanded row, on its first line, left of the time:
+ * Copy and Link everywhere, Speak on a response, Highlight on a prompt or
+ * response (the pair Prompts keeps), and Investigate. Copy copies everything
+ * the body shows (`eventCopyText`). It owns the highlight state so the row can
+ * mount it without the body's help.
  */
-function EventActions({ event, highlightable, isHighlighted, highlighting, onHighlight }: {
-  event: TimelineEvent;
-  highlightable: boolean;
-  isHighlighted: boolean;
-  highlighting: boolean;
-  onHighlight: (e: React.MouseEvent) => void;
-}) {
+export function EventActions({ event }: { event: TimelineEvent }) {
   const setSelectedEvent = useSessionStore((s) => s.setSelectedEvent);
+  const isHighlighted = useSessionStore((s) => s.highlightedEventIds.has(event.id));
+  const [highlighting, setHighlighting] = useState(false);
+  const highlightable = event.type === 'user_prompt' || event.type === 'agent_response';
+  const isUserPrompt = event.type === 'user_prompt';
   // A derived reasoning row has a suffixed id; the server knows its message by the real one.
   const realId = baseEventId(event.id);
 
-  return (
-    <div className="flex items-center gap-2.5" data-print-hide>
-      {highlightable && (
-        <button
-          onClick={onHighlight}
-          disabled={highlighting}
-          className={`text-[10px] transition-colors ${isHighlighted ? 'text-[var(--warn)]' : 'text-[var(--text-muted)] hover:text-[var(--warn)]'}`}
-          title={isHighlighted ? 'Remove highlight' : 'Highlight this prompt–response pair (kept in Prompts, marked on the minimap)'}
-        >
-          {highlighting ? '…' : isHighlighted ? 'Highlighted' : 'Highlight'}
-        </button>
-      )}
-      <CopyButton text={() => sourceTextFor(event)} className={ACTION_CLASS} title="Copy the text" />
-      {event.type === 'agent_response' && (
-        <SpeakButton id={event.id} text={getEffectiveAgentContent(event).response} title="Speak this response aloud" />
-      )}
-      <CopyLinkButton
-        route={{ kind: 'event', sessionId: event.sessionId, eventId: realId }}
-        title="Copy link to this event"
-        label="Link"
-      />
-      {event.riskLevel && event.riskLevel !== 'low' && <RiskBadge level={event.riskLevel} compact />}
-      <button
-        onClick={(e) => { e.stopPropagation(); setSelectedEvent(realId); }}
-        title="Investigate this event, with the session's context"
-        className="flex items-center gap-1 text-[10px] text-[var(--accent)] rounded px-2 py-px border border-[color-mix(in_srgb,var(--accent)_25%,transparent)] bg-[color-mix(in_srgb,var(--accent)_10%,transparent)] hover:bg-[color-mix(in_srgb,var(--accent)_18%,transparent)]"
-      >
-        <MagnifierIcon strokeWidth={1.6} />
-        Investigate
-      </button>
-    </div>
-  );
-}
-
-interface EventDetailBodyProps {
-  event: TimelineEvent;
-  onSend: (msg: ClientMessage) => void;
-}
-
-/**
- * The expanded detail content for a single event — tool input/output, diffs,
- * prompt/response, drift detail + approval controls, analysis, subagent
- * transcript. Extracted from the former EventCard's exchange-tree row so the
- * flat Logs single-line rows (LogRow) can reuse the exact same rich, per-type
- * rendering (including live Approve/Deny controls) inside the new card chrome.
- */
-export function EventDetailBody({ event, onSend }: EventDetailBodyProps) {
-  const [highlighting, setHighlighting] = useState(false);
-  const { approvals } = usePendingApprovals();
-  const highlightedEventIds = useSessionStore((s) => s.highlightedEventIds);
-
-  const isHighlighted = highlightedEventIds.has(event.id);
-
-  const isPending = event.type === 'tool_call_pending' || event.type === 'permission_request';
-  const isAgentResponse = event.type === 'agent_response';
-  const isWebSearch = event.type === 'web_search';
-
-  const { thinking: effectiveThinking, response: agentResponse } = useMemo(
-    () => getEffectiveAgentContent(event),
-    [event.type, event.data.thinking, event.data.prompt]
-  );
-  const effectivePrompt = agentResponse.trim() ? agentResponse : undefined;
-  const isUserPrompt = event.type === 'user_prompt';
-  // The derived reasoning row (see thinkingRowFor). Renders as prose like a
-  // response does — reasoning is markdown, not a tool payload.
-  const isAgentThinking = event.type === 'agent_thinking';
-
-  // Find matching pending approval
-  const pendingApproval = isPending
-    ? approvals.find(
-        (a) => a.toolName === event.data.toolName && Math.abs(a.timestamp - event.timestamp) < 5000
-      )
-    : undefined;
-
-  // Actions sit in the prose block's header when there is one, else in a strip of their own.
-  const proseBlock = !!effectivePrompt;
-  const actions = (
-    <EventActions
-      event={event}
-      highlightable={isUserPrompt || isAgentResponse}
-      isHighlighted={isHighlighted}
-      highlighting={highlighting}
-      onHighlight={(e) => void handleHighlight(e)}
-    />
-  );
-
-  const handleHighlight = async (e: React.MouseEvent) => {
+  const onHighlight = async (e: React.MouseEvent) => {
     e.stopPropagation();
     if (highlighting) return;
     setHighlighting(true);
@@ -224,22 +87,88 @@ export function EventDetailBody({ event, onSend }: EventDetailBodyProps) {
   };
 
   return (
-        <div className="px-3 py-3 space-y-2">
-          {!proseBlock && <div className="flex justify-end">{actions}</div>}
+    <div className="flex items-center gap-2.5 shrink-0" data-print-hide>
+      {highlightable && (
+        <button
+          onClick={(e) => void onHighlight(e)}
+          disabled={highlighting}
+          className={`text-[10px] transition-colors ${isHighlighted ? 'text-[var(--warn)]' : 'text-[var(--text-muted)] hover:text-[var(--warn)]'}`}
+          title={isHighlighted ? 'Remove highlight' : 'Highlight this prompt–response pair (kept in Prompts, marked on the minimap)'}
+        >
+          {highlighting ? '…' : isHighlighted ? 'Highlighted' : 'Highlight'}
+        </button>
+      )}
+      <CopyButton text={() => eventCopyText(event)} className={ACTION_CLASS} title="Copy everything shown for this event" />
+      {event.type === 'agent_response' && (
+        <SpeakButton id={event.id} text={getEffectiveAgentContent(event).response} title="Speak this response aloud" />
+      )}
+      <CopyLinkButton
+        route={{ kind: 'event', sessionId: event.sessionId, eventId: realId }}
+        title="Copy link to this event"
+        label="Link"
+      />
+      {event.riskLevel && event.riskLevel !== 'low' && <RiskBadge level={event.riskLevel} compact />}
+      <button
+        onClick={(e) => { e.stopPropagation(); setSelectedEvent(realId); }}
+        title="Investigate this event, with the session's context"
+        className="flex items-center gap-1 text-[10px] text-[var(--accent)] rounded px-2 py-0 leading-[14px] border border-[color-mix(in_srgb,var(--accent)_25%,transparent)] bg-[color-mix(in_srgb,var(--accent)_10%,transparent)] hover:bg-[color-mix(in_srgb,var(--accent)_18%,transparent)]"
+      >
+        <MagnifierIcon strokeWidth={1.6} />
+        Investigate
+      </button>
+    </div>
+  );
+}
 
-          {/* Tool input — diff view for Edit/Write, code (or CommandBlock for shell) otherwise */}
+interface EventDetailBodyProps {
+  event: TimelineEvent;
+  onSend: (msg: ClientMessage) => void;
+}
+
+/**
+ * The expanded detail content for a single event — tool input/output, diffs,
+ * prompt/response, drift detail + approval controls, analysis, subagent
+ * transcript. Extracted from the former EventCard's exchange-tree row so the
+ * flat Logs single-line rows (LogRow) can reuse the exact same rich, per-type
+ * rendering (including live Approve/Deny controls) inside the new card chrome.
+ */
+export function EventDetailBody({ event, onSend }: EventDetailBodyProps) {
+  const { approvals } = usePendingApprovals();
+
+  const isPending = event.type === 'tool_call_pending' || event.type === 'permission_request';
+  const isAgentResponse = event.type === 'agent_response';
+  const isWebSearch = event.type === 'web_search';
+
+  const { thinking: effectiveThinking, response: agentResponse } = useMemo(
+    () => getEffectiveAgentContent(event),
+    [event.type, event.data.thinking, event.data.prompt]
+  );
+  const effectivePrompt = agentResponse.trim() ? agentResponse : undefined;
+  const isUserPrompt = event.type === 'user_prompt';
+  // The derived reasoning row (see thinkingRowFor). Renders as prose like a
+  // response does — reasoning is markdown, not a tool payload.
+  const isAgentThinking = event.type === 'agent_thinking';
+
+  // Find matching pending approval
+  const pendingApproval = isPending
+    ? approvals.find(
+        (a) => a.toolName === event.data.toolName && Math.abs(a.timestamp - event.timestamp) < 5000
+      )
+    : undefined;
+
+  return (
+        <div className="py-1 space-y-1.5">
+          {/* Tool input — diff view for Edit/Write, a flat command block for shell, plain text otherwise */}
           {event.data.toolInput && (() => {
             const input = event.data.toolInput;
             const tool = event.data.toolName;
 
-            if ((tool === 'Edit' || tool === 'MultiEdit') && 'old_string' in input) {
+            const edits = editDiffs(input, tool);
+            if (edits.length > 0) {
               return (
-                <DiffBlock
-                  filePath={toolFilePath(input) ?? ''}
-                  oldText={String(input.old_string ?? '')}
-                  newText={String(input.new_string ?? '')}
-                  maxLines={30}
-                />
+                edits.map((e, i) => (
+                  <DiffBlock key={i} filePath={e.filePath} oldText={e.oldText} newText={e.newText} maxLines={30} flat />
+                ))
               );
             }
 
@@ -249,22 +178,14 @@ export function EventDetailBody({ event, onSend }: EventDetailBodyProps) {
                   filePath={toolFilePath(input) ?? ''}
                   addedText={String(input.content ?? '')}
                   maxLines={30}
+                  flat
                 />
               );
             }
 
-            const isShell = tool === 'Bash';
-            return (
-              <div>
-                {!isShell && <p className="text-[10px] text-[var(--text-faint)] mb-1 font-mono uppercase">Input</p>}
-                <CodeBlock
-                  code={formatToolInput(input, tool)}
-                  language={isShell ? 'bash' : 'text'}
-                  maxLines={10}
-                  showWrapToggle
-                />
-              </div>
-            );
+            // A shell call is any tool whose input has a command (pi's bash, Codex's shell), not only `Bash`.
+            if (typeof input.command === 'string') return <CommandBlock code={input.command} flat />;
+            return <PlainBlock text={toolInputText(input, tool)} tone="input" maxLines={10} />;
           })()}
 
           {/* Permission request details */}
@@ -301,49 +222,26 @@ export function EventDetailBody({ event, onSend }: EventDetailBodyProps) {
           {/* Prompt text — user_prompt and agent_response: markdown; others: plain */}
           {effectivePrompt && (
             (isAgentResponse || isUserPrompt || isAgentThinking) ? (
-              <div className={`rounded-md border border-[var(--border-strong)] overflow-hidden`}>
-                <div className="flex items-center justify-between px-3 py-1 bg-[var(--bg-card)] border-b border-[var(--border-strong)]">
-                  <span className="text-[10px] text-[var(--text-faint)] font-mono uppercase">{isUserPrompt ? 'Prompt' : isAgentThinking ? 'Thinking' : 'Response'}</span>
-                  {actions}
-                </div>
-                <div className={`p-3 border-l-2 ${isUserPrompt ? 'border-[var(--accent)]' : isAgentThinking ? 'border-[color-mix(in_srgb,var(--thinking)_50%,transparent)]' : 'border-[color-mix(in_srgb,var(--ok)_50%,transparent)]'} ${MARKDOWN_PROSE}`}>
-                  <ReactMarkdown remarkPlugins={REMARK_PLUGINS}>{effectivePrompt!}</ReactMarkdown>
-                </div>
+              <div className={MARKDOWN_PROSE}>
+                <ReactMarkdown remarkPlugins={REMARK_PLUGINS}>{effectivePrompt!}</ReactMarkdown>
               </div>
             ) : (
-              <div className="rounded-md border border-[var(--border-strong)] overflow-hidden">
-                <div className="flex items-center justify-between px-3 py-1 bg-[var(--bg-card)] border-b border-[var(--border-strong)]">
-                  <span className="text-[10px] text-[var(--text-faint)] font-mono uppercase">Prompt</span>
-                  {actions}
-                </div>
-                <pre className="p-3 text-xs text-[var(--text)] leading-relaxed whitespace-pre-wrap break-words font-sans border-l-2 border-[var(--accent)]">
-                  {effectivePrompt!}
-                </pre>
-              </div>
+              <pre className="text-xs text-[var(--text)] leading-relaxed whitespace-pre-wrap break-words font-sans">
+                {effectivePrompt!}
+              </pre>
             )
           )}
 
           {/* Error */}
-          {event.data.error && (
-            <div>
-              <p className="text-[10px] text-[var(--error)] mb-1 font-mono uppercase">Error</p>
-              <CodeBlock code={event.data.error} maxLines={15} className="border-[color-mix(in_srgb,var(--error)_30%,transparent)]" />
-            </div>
-          )}
+          {event.data.error && <PlainBlock text={event.data.error} tone="error" maxLines={15} />}
 
           {/* Tool output (for completed events) */}
           {event.data.toolOutput !== undefined && (
-            <div>
-              <p className="text-[10px] text-[var(--text-faint)] mb-1 font-mono uppercase">Output</p>
-              <CodeBlock
-                code={
-                  typeof event.data.toolOutput === 'string'
-                    ? event.data.toolOutput
-                    : JSON.stringify(event.data.toolOutput, null, 2)
-                }
-                maxLines={8}
-              />
-            </div>
+            <PlainBlock
+              text={valueText(event.data.toolOutput)}
+              tone="output"
+              maxLines={8}
+            />
           )}
 
           {/* Denial reason */}
@@ -434,7 +332,7 @@ export function EventDetailBody({ event, onSend }: EventDetailBodyProps) {
 
           {/* Analysis card */}
           {event.analysis && (
-            <div className="bg-[var(--bg)] border border-[var(--border-strong)] rounded-md p-3">
+            <div>
               <p className="text-[10px] text-[var(--text-faint)] font-mono uppercase mb-2">Analysis</p>
               <AnalysisCard analysis={event.analysis} compact />
             </div>
@@ -665,9 +563,9 @@ function SubagentTranscriptView({ entries }: { entries: SubagentTranscriptEntry[
   const toolCount = entries.filter(e => e.role === 'tool').length;
 
   return (
-    <div className="rounded-md border border-[var(--border-strong)] overflow-hidden">
+    <div>
       <button
-        className="w-full flex items-center gap-2 px-3 py-1.5 bg-[var(--bg-card)] hover:bg-[var(--bg-selected)] transition-colors text-left"
+        className="w-full flex items-center gap-2 py-1.5 hover:bg-[var(--bg-selected)] transition-colors text-left"
         onClick={(e) => { e.stopPropagation(); setExpanded(v => !v); }}
       >
         <span className="text-[10px] text-[var(--text-faint)] font-mono uppercase">Sub-agent transcript</span>
@@ -677,9 +575,9 @@ function SubagentTranscriptView({ entries }: { entries: SubagentTranscriptEntry[
         <span className="ml-auto text-[var(--text-faint)] text-[10px]">{expanded ? '▲' : '▼'}</span>
       </button>
       {expanded && (
-        <div className="divide-y divide-[color-mix(in_srgb,var(--border-strong)_50%,transparent)] bg-[var(--bg)]">
+        <div className="divide-y divide-[color-mix(in_srgb,var(--border-strong)_50%,transparent)]">
           {entries.map((entry, i) => (
-            <div key={i} className="px-3 py-2 space-y-1">
+            <div key={i} className="py-2 space-y-1">
               {entry.role === 'assistant' && entry.text && (
                 <p className="text-[11px] text-[var(--text-muted)] italic leading-relaxed">{entry.text}</p>
               )}
@@ -695,8 +593,9 @@ function SubagentTranscriptView({ entries }: { entries: SubagentTranscriptEntry[
                     })()}
                   </div>
                   {entry.toolOutput !== undefined && (
-                    <CodeBlock
-                      code={typeof entry.toolOutput === 'string' ? entry.toolOutput : JSON.stringify(entry.toolOutput, null, 2)}
+                    <PlainBlock
+                      text={valueText(entry.toolOutput)}
+                      tone="output"
                       maxLines={5}
                     />
                   )}

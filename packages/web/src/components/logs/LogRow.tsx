@@ -1,9 +1,9 @@
 import React, { useMemo } from 'react';
 import { useSessionStore } from '../../stores/sessionStore.js';
-import { EVENT_KIND_COLOR, kindLabel, eventDetail } from '../../lib/event-styles.js';
+import { EVENT_KIND_COLOR, kindLabel, eventDetail, eventHeading } from '../../lib/event-styles.js';
 import { tokenColor } from '../../lib/tokens.js';
 import { formatTime } from '../../lib/format.js';
-import { EventDetailBody } from '../events/EventCard.js';
+import { EventDetailBody, EventActions } from '../events/EventCard.js';
 import type { TimelineEvent } from '../../lib/types.js';
 import { safeLabel } from '../../lib/station.js';
 import { rowStation, STATION_STYLE } from '../../lib/station-style.js';
@@ -24,8 +24,8 @@ interface LogRowProps {
 }
 
 export const LogRow = React.memo(function LogRow({ event, index, hasDetail, isExpanded, isSelected, onSelect, onCaretToggle, onSend }: LogRowProps) {
-  // The card is tinted by the real highlight (the prompt–response pair kept in
-  // Prompts), the one its Highlight button sets and the minimap marks.
+  // The body is tinted, and its left rule coloured, by the real highlight (the
+  // prompt–response pair kept in Prompts), the one its Highlight button sets and the minimap marks.
   const highlighted = useSessionStore((s) => s.highlightedEventIds.has(event.id));
 
   const setup = useStationSetup();
@@ -46,7 +46,7 @@ export const LogRow = React.memo(function LogRow({ event, index, hasDetail, isEx
       <div
         onClick={() => hasDetail && onSelect(event.id)}
         style={{
-          display: 'flex', alignItems: 'center', gap: sp(6), padding: sp('3px 8px'), margin: sp('0 8px'),
+          display: 'flex', alignItems: 'center', flexWrap: expanded ? 'wrap' : 'nowrap', gap: sp(6), padding: sp('3px 8px'), margin: sp('0 8px'),
           borderRadius: rad(4), cursor: hasDetail ? 'pointer' : 'default',
           background: expanded ? 'var(--bg-selected)' : 'transparent',
           boxShadow: isSelected ? 'inset 0 0 0 1px var(--accent)' : 'none',
@@ -70,9 +70,13 @@ export const LogRow = React.memo(function LogRow({ event, index, hasDetail, isEx
         <span style={{ fontFamily: 'var(--font-ui)', fontSize: 10, fontWeight: 500, color, flexShrink: 0, minWidth: 68 }}>
           {kindLabel(event.type)}
         </span>
-        <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-body)', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {eventDetail(event)}
+        <span style={{
+          fontFamily: 'var(--font-mono)', fontSize: 10, flex: 1, minWidth: expanded ? 120 : 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          color: expanded ? 'var(--text)' : 'var(--text-body)', fontWeight: expanded ? 500 : undefined,
+        }}>
+          {expanded ? eventHeading(event) : eventDetail(event)}
         </span>
+        {expanded && <EventActions event={event} />}
         <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9.5, color: 'var(--text-faint)', flexShrink: 0 }}>
           {formatTime(event.timestamp)}
         </span>
@@ -81,12 +85,11 @@ export const LogRow = React.memo(function LogRow({ event, index, hasDetail, isEx
       {expanded && (
         <div
           style={{
-            margin: sp('2px 8px 8px 52px'),
-            border: `var(--stroke) solid ${highlighted ? tokenColor('warn', '35%') : 'var(--border)'}`,
+            margin: sp('1px 8px 6px 52px'),
+            paddingLeft: sp(10),
             borderLeft: `2px solid ${highlighted ? 'var(--warn)' : color}`,
-            borderRadius: rad(6),
-            background: highlighted ? tokenColor('warn', '6%') : 'var(--bg-raised)',
-            overflow: 'hidden',
+            background: highlighted ? tokenColor('warn', '6%') : 'transparent',
+            minWidth: 0,
             animation: 'fadeIn 0.15s ease',
           }}
         >
