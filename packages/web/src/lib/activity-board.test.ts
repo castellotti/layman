@@ -14,7 +14,18 @@ describe('reduceBoard', () => {
   it('counts a call that completed in place at its tool station, with its own times', () => {
     const b = reduceBoard([call('tool_call_completed', 100, 'Read', { file_path: '/a/b/c.ts' }, { completedAt: 160 })]);
     expect(b.counts).toEqual({ files: 1 });
-    expect(b.entries).toEqual([{ eventId: expect.any(String), station: 'files', from: 'core', status: 'ok', startedAt: 100, endedAt: 160 }]);
+    expect(b.entries).toEqual([{ eventId: expect.any(String), station: 'files', on: 'files', from: 'core', status: 'ok', startedAt: 100, endedAt: 160 }]);
+  });
+
+  it('draws a call where `place` puts it, and counts, faults and the route by that station', () => {
+    const b = reduceBoard([
+      call('tool_call_completed', 100, 'web_fetch', { url: 'https://a.dev' }),
+      call('tool_call_failed', 200, 'web_fetch', { url: 'https://b.dev' }),
+    ], { place: (_e, station) => (station === 'network' ? 'gate:proxy' : null) });
+    expect(b.entries.map((e) => [e.station, e.on])).toEqual([['network', 'gate:proxy'], ['network', 'gate:proxy']]);
+    expect(b.counts).toEqual({ 'gate:proxy': 2 });
+    expect(b.faults).toEqual({ 'gate:proxy': 1 });
+    expect(routeOf(b.entries).map((s) => s.station)).toEqual(['gate:proxy']);
   });
 
   it('closes the open call with the same input when its failure arrives as a separate event', () => {
@@ -227,7 +238,7 @@ describe('reduceBoard', () => {
 });
 
 const entry = (station: BoardEntry['station'], startedAt: number, extra: Partial<BoardEntry> = {}): BoardEntry => ({
-  eventId: `x${startedAt}`, station, from: 'core', status: 'ok', startedAt, endedAt: startedAt + 10, ...extra,
+  eventId: `x${startedAt}`, station, on: station, from: 'core', status: 'ok', startedAt, endedAt: startedAt + 10, ...extra,
 });
 
 describe('routeOf', () => {

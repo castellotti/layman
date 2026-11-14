@@ -120,7 +120,7 @@ linked above.
    in `docs/extensions/glove.md` → Network): tails each gloved session's `net/` (flows, exit, status) into a
    dedicated `NetStore` and `net:*` frames — **never `EventStore`** (same reason as live streaming).
    Rotated files are identified by content, not inode (Docker Desktop's bind mount changes inodes on
-   rename). **Never make a network call keyed on gloved flow data**; tests in both packages enforce it.
+   rename). **Never make a network call keyed on gloved flow data**; tests in both packages enforce it (the web one also covers the Activity map's files, and `getJson` refuses anything but a `/api/` path when it runs).
    Client: data in `stores/netStore.ts` (never `sessionStore`, which must not re-render per delta);
    the selection (`netToken`, `netDest`) in `sessionStore` because the URL reads it. Which flows a
    dead gate left open is glove's rule (`ended_runs`, glove v3 `extensions/observe/netview.py`), ported in `NetStore` and held to it
@@ -386,6 +386,29 @@ split of the store by session (`bySession` in `useActivityBoard.ts`, cached per 
 selector runs at every store change, not only when events arrive), and `useSessionTimeline` keeps the
 last two lean recordings (each can be tens of MB) so switching back to a session does not download it
 again; it refetches only when the recording is missing or the live slice no longer reaches back to it.
+A gloved session's glove gates stand after the stations (`lib/activity-glove.ts`, pure), and its network calls
+are drawn on them: each `BoardEntry` has `on`, the map station it is drawn at (its station, or a gate), set by
+`BoardOptions.place` (`placeCalls`); counts, faults, the route, running calls and the fold are keyed by `on`.
+A `network` call goes to the first gate its flows went through (Trace's join), else to the gate glove declared
+for its tool (`WebFetch` → `web_fetch`), else stays on **Network, which is shown only while some call joined no
+gate**. Only a `network` call moves (an install that downloads stays Shell's). Which gates: `fromSandbox` services
+that are not the model's link. A service owns its own bytes first, then those of the gates it goes on through by
+`next`. A `flags.hop` destination is counted once, at the next leg, and one reached by several gates counts at
+each (the aggregate does not say how much each carried, so it is never split by a guess). Browser bytes wear
+Browser. Gates of one name are one, and past `MAX_GATES` the quietest fold into "Other gates". A direct gate is red
+only for `isUntunnelled` flows, never by its route alone.
+They are read from Layman's `/api/net/sessions/:token/gates` (`useGloveMap`), never the network tabs' single
+subscription, which they own. Params: `since` (ms; drops destinations last reached before it, so an earlier run
+does not wear the map), `session` (a Layman session id: its calls joined to their flows by `sessionJoins`, built
+from `trace.ts`'s `turnsOf`/`joinTurn`, which Trace also uses, plus the last `LOOSE_FLOW_MS` of flows no call
+claimed), and `from`/`to` (a turn's span: destinations are then that span's flows, `trafficOf`, never the
+glove-session totals). The response (`GatesView`) carries the exit's kind, place and health **without its
+address**. A refused call's pulse is red; Tool egress (`egress`, SearXNG's fan-out) and unattributed flows are
+hollow pulses. The **exit ring** is the map's frame, solid for a verified tunnel, dashed when unverified, red only
+through `isUntunnelled` (`exitRing`). **This turn** (map header) draws one turn: the one of the feed row last
+opened (`selectedEventId`), else the last; `mapTurn` and `turnSpan` are the same rule as the turn rule, and
+an ended turn's gates are read once. Everything here is a read of Layman's own records: never a network call keyed
+on flow data.
 
 ### Text to speech
 

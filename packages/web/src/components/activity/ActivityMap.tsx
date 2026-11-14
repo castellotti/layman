@@ -1,12 +1,11 @@
 import React, { useMemo, useState } from 'react';
 import { useNow } from '../../hooks/useNow.js';
 import type { Board } from '../../lib/activity-board.js';
-import { routeOf, runningAt } from '../../lib/activity-board.js';
-import { aside, edge, layoutMap, legPath, spoke, spokeWidth, wear, type MapLayout, type Point } from '../../lib/activity-map.js';
-import { GLOW_MS, lastStarts, legOpacity, pulsesOf, type Pulse } from '../../lib/activity-view.js';
-import { countLabel } from '../../lib/format.js';
+import { routeOf } from '../../lib/activity-board.js';
+import { aside, edge, layoutMap, legPath, spoke, spokeWidth, type MapLayout, type Point } from '../../lib/activity-map.js';
+import { GLOW_MS, legOpacity, PULSE_MS, pulsesOf, type Pulse, type StationSpec } from '../../lib/activity-view.js';
+import { glovePulses, type GloveMap } from '../../lib/activity-glove.js';
 import { contextPctColor } from '../../lib/session-state.js';
-import type { StationId } from '../../lib/station.js';
 import { STATION_STYLE } from '../../lib/station-style.js';
 import { StationGlyph } from './StationGlyph.js';
 import './activity.css';
@@ -29,14 +28,14 @@ function pulseEnds(layout: MapLayout, p: Pulse): [Point, Point] | undefined {
  * One pulse. Its delay and lane are taken once, when it appears, so a redraw never restarts its
  * flight or moves it sideways when another pulse joins its spoke.
  */
-function PulseDot({ layout, pulse }: { layout: MapLayout; pulse: Pulse }) {
+function PulseDot({ layout, pulse, tint }: { layout: MapLayout; pulse: Pulse; tint: string }) {
   const [delay] = useState(() => -pulse.age / 1000);
   const [lane] = useState(pulse.lane);
   const ends = pulseEnds(layout, pulse);
   if (!ends) return null;
   const [a, b] = aside(ends[0], ends[1], lane);
   const [from, to] = pulse.kind === 'in' ? [b, a] : [a, b];
-  const color = pulse.bad ? 'var(--error)' : STATION_STYLE[pulse.station].color;
+  const color = pulse.bad ? 'var(--error)' : tint;
   const style = { '--dx': `${to.x - from.x}px`, '--dy': `${to.y - from.y}px`, '--delay': `${delay}s` } as React.CSSProperties;
   return (
     <circle
@@ -54,31 +53,37 @@ function PulseDot({ layout, pulse }: { layout: MapLayout; pulse: Pulse }) {
 
 export interface ActivityMapProps {
   board: Board;
-  stations: readonly StationId[];
+  /** What each station shows (`stationSpecs`): Layman's own, or a gloved session's gates in Network's place. */
+  stations: readonly StationSpec[];
   width: number;
   height: number;
   /** The session is still going: pulses fly and old legs fade. A finished one shows its whole route still. */
   live: boolean;
   /** What the map is of, for a screen reader. */
   title: string;
+  /** A gloved session's gates, joins and loose flows: the pulses glove's records add. */
+  glove?: GloveMap | null;
+  /** The ring around the whole map: where the sandbox's traffic leaves (`exitRing`), or none. */
+  ring?: { color: string; dashed: boolean; title: string } | null;
 }
 
 /**
  * The map: stations on a ring around the agent, spokes worn by use, the route, pulses in flight.
  * Memoized: a click or toggle in the feed beside it changes none of its props; its own clock drives it.
  */
-export const ActivityMap = React.memo(function ActivityMap({ board, stations, width, height, live, title }: ActivityMapProps) {
+export const ActivityMap = React.memo(function ActivityMap({ board, stations, width, height, live, title, glove, ring }: ActivityMapProps) {
   // Its own clock, so only the map redraws twice a second, not the feed beside it.
   const now = useNow(live ? 500 : 60_000);
-  const layout = useMemo(() => layoutMap(stations, { width, height }), [stations, width, height]);
-  const running = useMemo(() => runningAt(board), [board]);
+  // Keyed by the ids themselves: the specs are rebuilt at every event, the ring only when a station comes or goes.
+  const idKey = stations.map((s) => s.id).join('\n');
+  const layout = useMemo(() => layoutMap(idKey.split('\n'), { width, height }), [idKey, width, height]);
   const route = useMemo(() => routeOf(board.entries), [board]);
-  const lastStart = useMemo(() => lastStarts(board), [board]);
-  const pulses = live ? pulsesOf(board, now) : [];
+  const pulses = live ? pulsesOf(board, now, glove ? glovePulses(glove, board, now, PULSE_MS) : undefined) : [];
+  const tint = useMemo(() => new Map(stations.map((s) => [s.id, s.color])), [stations]);
   const agentsAt = layout.stations[layout.index.get('agents') ?? -1];
 
   return (
-    <svg
+    <svg className="activity-map"
       viewBox={`0 0 ${layout.width} ${layout.height}`}
       width="100%"
       height="100%"
@@ -86,6 +91,13 @@ export const ActivityMap = React.memo(function ActivityMap({ board, stations, wi
       role="img"
       aria-label={title}
     >
+      {/* The exit ring: the whole map is inside the sandbox, and this is where its traffic leaves. */}
+      {ring && (
+        <rect x={1} y={1} width={Math.max(0, layout.width - 2)} height={Math.max(0, layout.height - 2)} rx={10}
+          fill="none" stroke={ring.color} strokeWidth={1.5} strokeDasharray={ring.dashed ? '5 4' : undefined} opacity={0.7}>
+          <title>{ring.title}</title>
+        </rect>
+      )}
       {/* Contours around the core. */}
       {[0.35, 0.62].map((f) => (
         <ellipse key={f} cx={layout.core.x} cy={layout.core.y} rx={layout.rx * f} ry={layout.ry * f}
@@ -93,17 +105,16 @@ export const ActivityMap = React.memo(function ActivityMap({ board, stations, wi
       ))}
 
       {/* Spokes, worn by use. */}
-      {layout.stations.map((s) => {
-        const sp = spoke(layout, s.id);
+      {stations.map((spec) => {
+        const sp = spoke(layout, spec.id);
         if (!sp) return null;
-        const count = board.counts[s.id as StationId] ?? 0;
-        const w = spokeWidth(count);
+        const w = spokeWidth(spec.wear);
         return (
-          <g key={`spoke-${s.id}`}>
+          <g key={`spoke-${spec.id}`}>
             <line x1={sp.from.x} y1={sp.from.y} x2={sp.to.x} y2={sp.to.y} stroke="var(--border)" strokeWidth={w} strokeLinecap="round" />
-            {count > 0 && (
+            {spec.wear > 0 && (
               <line x1={sp.from.x} y1={sp.from.y} x2={sp.to.x} y2={sp.to.y}
-                stroke={STATION_STYLE[s.id as StationId].color} strokeOpacity={0.15 + 0.5 * wear(count)} strokeWidth={w} strokeLinecap="round" />
+                stroke={spec.color} strokeOpacity={0.15 + 0.5 * spec.wear} strokeWidth={w} strokeLinecap="round" />
             )}
           </g>
         );
@@ -134,7 +145,7 @@ export const ActivityMap = React.memo(function ActivityMap({ board, stations, wi
         );
       })}
 
-      {pulses.map((p) => <PulseDot key={p.key} layout={layout} pulse={p} />)}
+      {pulses.map((p) => <PulseDot key={p.key} layout={layout} pulse={p} tint={tint.get(p.station) ?? 'var(--text-muted)'} />)}
 
       {/* The core: the agent, with its context window's fill when the harness reports one. */}
       <circle cx={layout.core.x} cy={layout.core.y} r={layout.hub} fill="var(--bg-raised)" stroke="var(--border-strong)" />
@@ -144,43 +155,41 @@ export const ActivityMap = React.memo(function ActivityMap({ board, stations, wi
       </text>
 
       {/* The stations. */}
-      {layout.stations.map((s) => {
-        const id = s.id as StationId;
-        const style = STATION_STYLE[id];
-        const count = board.counts[id] ?? 0;
-        const runs = running[id] ?? 0;
-        const faults = board.faults[id] ?? 0;
-        const lit = runs > 0 || (live && now - (lastStart.get(id) ?? -Infinity) < GLOW_MS);
+      {stations.map((spec) => {
+        const s = layout.stations[layout.index.get(spec.id) ?? -1];
+        if (!s) return null;
+        const lit = spec.runs > 0 || (live && now - spec.lastStart < GLOW_MS);
         const corner = layout.node * 0.75;
         return (
-          <g key={`station-${s.id}`} opacity={count > 0 || runs > 0 ? 1 : 0.55}>
-            <title>{`${style.label}: ${count} · ${style.about}`}</title>
+          <g key={`station-${spec.id}`} opacity={spec.amount !== null || spec.runs > 0 || spec.faults > 0 ? 1 : 0.55}>
+            <title>{`${spec.label}${spec.amount ? `: ${spec.amount}` : ''} · ${spec.about}`}</title>
             {lit && (
-              <circle cx={s.x} cy={s.y} r={layout.node + 4} fill="none" stroke={style.color} strokeOpacity={0.5}
-                className={runs > 0 ? 'activity-lit' : undefined} />
+              // The theme's breath (motion primitives), on a station with a call running.
+              <circle cx={s.x} cy={s.y} r={layout.node + 4} fill="none" stroke={spec.color} strokeOpacity={0.5}
+                className={spec.runs > 0 ? 'layman-breathe' : undefined} />
             )}
-            <circle cx={s.x} cy={s.y} r={layout.node} fill="var(--bg-card)" stroke={style.color} strokeWidth={lit ? 1.8 : 1.1} />
-            <g transform={`translate(${s.x - 7} ${s.y - 7})`} style={{ color: style.color }}>
-              <StationGlyph station={id} size={14} decorative />
+            <circle cx={s.x} cy={s.y} r={layout.node} fill="var(--bg-card)" stroke={spec.color} strokeWidth={lit ? 1.8 : 1.1} />
+            <g transform={`translate(${s.x - 7} ${s.y - 7})`} style={{ color: spec.color }}>
+              <StationGlyph station={spec.glyph} size={14} decorative />
             </g>
             <text x={s.label.x} y={s.label.y} textAnchor={s.label.anchor} style={FONT} fill="var(--text-body)">
-              {style.label}
+              {spec.label}
             </text>
-            {count > 0 && (
+            {spec.amount !== null && (
               <text x={s.x + layout.node} y={s.y + layout.node + 4} textAnchor="start" style={{ ...FONT, fontSize: 8.5 }} fill="var(--text-faint)">
-                {countLabel(count)}
+                {spec.amount}
               </text>
             )}
-            {runs > 1 && (
-              <text x={s.x + corner} y={s.y - corner + 3} textAnchor="middle" style={{ ...FONT, fontSize: 8.5, fontWeight: 600 }} fill={style.color}>
-                ×{runs}
+            {spec.runs > 1 && (
+              <text x={s.x + corner} y={s.y - corner + 3} textAnchor="middle" style={{ ...FONT, fontSize: 8.5, fontWeight: 600 }} fill={spec.color}>
+                ×{spec.runs}
               </text>
             )}
-            {faults > 0 && (
+            {spec.faults > 0 && (
               <g>
                 <circle cx={s.x - corner} cy={s.y - corner} r={6.5} fill="var(--error)" />
                 <text x={s.x - corner} y={s.y - corner + 3} textAnchor="middle" style={{ ...FONT, fontSize: 8.5, fontWeight: 700 }} fill="var(--text-on-fill)">
-                  {faults > 99 ? '99+' : faults}
+                  {spec.faults > 99 ? '99+' : spec.faults}
                 </text>
               </g>
             )}

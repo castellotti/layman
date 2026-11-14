@@ -9,7 +9,7 @@ import { extractTurns } from '../turns/extract.js';
 import { NetObs } from './index.js';
 import { TEST_ID, addGloveSession } from './testing/glove-home.js';
 import { registerNetRoutes } from './routes.js';
-import { buildTrace, callsBetween, type TraceDeps } from './trace.js';
+import { buildTrace, callsBetween, sessionJoins, trafficOf, type TraceDeps } from './trace.js';
 import type { TraceView } from './types.js';
 
 const FIXTURE = join(dirname(fileURLToPath(import.meta.url)), '__fixtures__');
@@ -208,5 +208,55 @@ describe('GET /api/net/sessions/:token/trace', () => {
     registerNetRoutes(app, { netObs });
     await app.ready();
     expect((await app.inject(`/api/net/sessions/${TOKEN}/trace`)).statusCode).toBe(501);
+  });
+});
+
+describe('sessionJoins', () => {
+  it("gives each of a session's calls the gate services its flows went through, by Trace's join", () => {
+    const { calls, loose } = sessionJoins(netObs.store, TOKEN, deps, 'run1', at('14:48.000'));
+    const tool = (id: string) => deps.events('run1').find((e) => e.id === id)!.data.toolName;
+    expect(calls.map((c) => [tool(c.eventId), c.services, c.refused, c.egress])).toEqual([
+      // The search's flows are SearXNG's fan-out (Tool egress); the metadata fetch was refused by the guard.
+      ['web_search', ['fanout'], 0, 4], ['web_fetch', ['proxy'], 0, 0], ['web_fetch', ['proxy'], 1, 0], ['web_fetch', ['proxy'], 0, 0],
+    ]);
+    // What no call claimed in the last minute is drawn apart, never given to a call.
+    expect(loose.length).toBeGreaterThan(0);
+    expect(loose.every((f) => f.t >= at('14:48.000') - 60_000)).toBe(true);
+  });
+
+  it("joins nothing for a session the glove session does not hold, or one whose flows are all older than a minute's loose window", () => {
+    expect(sessionJoins(netObs.store, TOKEN, deps, 'elsewhere', at('14:48.000'))).toEqual({ calls: [], loose: [] });
+    expect(sessionJoins(netObs.store, TOKEN, deps, 'run1', at('15:48.000')).loose).toEqual([]);
+  });
+});
+
+describe("a turn's gates", () => {
+  it("joins only the calls of a turn's span, and gives every flow in it no call claimed", () => {
+    const range = { from: at('14:43.350') - 1, to: at('14:43.360') };
+    const { calls, loose } = sessionJoins(netObs.store, TOKEN, deps, 'run1', at('15:48.000'), range);
+    const url = (id: string) => (deps.events('run1').find((e) => e.id === id)!.data.toolInput as { url: string }).url;
+    // The two fetches started at 14:43.350; the search (14:43.300) and the later fetch are outside it.
+    expect(calls.map((c) => url(c.eventId))).toEqual(['https://arxiv.org/abs/2403.01234', 'http://169.254.169.254/latest/meta-data/']);
+    expect(loose.every((f) => f.t >= range.from && f.t <= range.to)).toBe(true);
+  });
+
+  it('counts the flows that opened in a span by destination, a refusal as blocked', () => {
+    const flows = netObs.store.flowsBetween(TOKEN, at('14:40.000'), at('14:48.000'))!;
+    const traffic = trafficOf(flows);
+    expect(traffic.reduce((n, d) => n + d.flows, 0)).toBe(flows.length);
+    expect(traffic.reduce((n, d) => n + d.blocked, 0)).toBe(flows.filter((f) => ['guard', 'user_rule', 'default_block'].includes(f.state)).length);
+    expect(traffic.reduce((n, d) => n + d.bytesUp + d.bytesDown, 0)).toBe(flows.reduce((n, f) => n + f.bytes.up + f.bytes.down, 0));
+  });
+
+  it('is a hop only when every flow to the destination was one', () => {
+    const [a] = netObs.store.flowsBetween(TOKEN, at('14:40.000'), at('14:48.000'))!;
+    const f = (hop: boolean) => ({ ...a, destKey: 'same:1', flags: { ...a.flags, hop } });
+    expect(trafficOf([f(true), f(false)])[0].flags.hop).toBe(false);
+    expect(trafficOf([f(true), f(true)])[0].flags.hop).toBe(true);
+  });
+
+  it('joins nothing for a range no turn can reach', () => {
+    const range = { from: at('16:00.000'), to: at('16:01.000') };
+    expect(sessionJoins(netObs.store, TOKEN, deps, 'run1', at('16:02.000'), range)).toEqual({ calls: [], loose: [] });
   });
 });

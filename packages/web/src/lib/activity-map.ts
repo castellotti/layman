@@ -114,9 +114,17 @@ export function wear(count: number): number {
   return count <= 0 ? 0 : Math.min(1, Math.log2(1 + count) / WEAR_LOG);
 }
 
-/** A spoke's stroke width for `count` uses. */
-export function spokeWidth(count: number): number {
-  return round(SPOKE_MIN + SPOKE_GAIN * wear(count));
+/**
+ * How worn a gate's spoke is by the bytes through it, 0..1, by the log so a download does not swamp
+ * a search: a kilobyte is a third worn, a megabyte two thirds, a gigabyte fully.
+ */
+export function byteWear(bytes: number): number {
+  return bytes <= 0 ? 0 : Math.min(1, Math.log10(1 + bytes) / 9);
+}
+
+/** A spoke's stroke width for a wear of 0..1 (`wear` of a count, `byteWear` of a gate's bytes). */
+export function spokeWidth(worn: number): number {
+  return round(SPOKE_MIN + SPOKE_GAIN * Math.max(0, Math.min(1, worn)));
 }
 
 /** Where a straight line from `from` towards `to` leaves the circle of radius `r` around `from`. */

@@ -2,8 +2,14 @@
  * What the activity map shows besides its geometry, pure so it is tested in node: which session it
  * follows, the pulses in flight, the words for a row of the feed. `components/activity/` only draws.
  */
-import { isFault, type Board, type EntryStatus } from './activity-board.js';
-import { lanes } from './activity-map.js';
+import { isFault, runningAt, type Board, type EntryStatus } from './activity-board.js';
+import { byteWear, lanes, wear } from './activity-map.js';
+import type { GateStation, GloveStations, GlovePulse } from './activity-glove.js';
+import { formatBytes, plural } from './net-format.js';
+import { extractTurns, sortStable } from './turns.js';
+import { turnRange, turnSpan } from './turn-range.js';
+import type { NetRange } from './netobs-types.js';
+import { countLabel } from './format.js';
 import { safeLabel, STATION_IDS, type StationId, type StationSetup } from './station.js';
 import { STATION_STYLE } from './station-style.js';
 import { eventDetail, kindLabel } from './event-styles.js';
@@ -32,7 +38,8 @@ export const PULSE_MS = 900;
  */
 export interface Pulse {
   key: string;
-  station: StationId;
+  /** The map station it flies to or from (`BoardEntry.on`). */
+  station: string;
   from: 'core' | 'agents';
   kind: 'out' | 'in' | 'run';
   /** Hollow: a signal nobody asked for (pushed into the context). */
@@ -47,26 +54,27 @@ export interface Pulse {
 const MAX_PULSES = 14;
 
 /** The pulses to draw at `now`: calls still running, and the start and end of recent ones. */
-export function pulsesOf(board: Board, now: number): Pulse[] {
+export function pulsesOf(board: Board, now: number, glove?: { extra: readonly GlovePulse[]; refused: ReadonlySet<string> }): Pulse[] {
   const out: Omit<Pulse, 'lane'>[] = [];
   for (const e of board.entries) {
     const from = e.from === 'agents' ? 'agents' : 'core';
     if (e.status === 'run') {
-      out.push({ key: `${e.eventId}:${e.station}:run`, station: e.station, from, kind: 'run', hollow: false, bad: false, age: Math.max(0, now - e.startedAt) });
+      out.push({ key: `${e.eventId}:${e.on}:run`, station: e.on, from, kind: 'run', hollow: false, bad: false, age: Math.max(0, now - e.startedAt) });
       continue;
     }
     const sinceStart = now - e.startedAt;
     if (sinceStart >= 0 && sinceStart < PULSE_MS) {
       const inbound = e.from === 'inbound';
-      out.push({ key: `${e.eventId}:${e.station}:${inbound ? 'in' : 'out'}`, station: e.station, from, kind: inbound ? 'in' : 'out', hollow: inbound, bad: isFault(e.status), age: sinceStart });
+      out.push({ key: `${e.eventId}:${e.on}:${inbound ? 'in' : 'out'}`, station: e.on, from, kind: inbound ? 'in' : 'out', hollow: inbound, bad: isFault(e.status) || !!glove?.refused.has(e.eventId), age: sinceStart });
     }
     if (e.from !== 'inbound' && e.endedAt !== undefined && e.endedAt > e.startedAt) {
       const sinceEnd = now - e.endedAt;
       if (sinceEnd >= 0 && sinceEnd < PULSE_MS) {
-        out.push({ key: `${e.eventId}:${e.station}:back`, station: e.station, from, kind: 'in', hollow: false, bad: isFault(e.status), age: sinceEnd });
+        out.push({ key: `${e.eventId}:${e.on}:back`, station: e.on, from, kind: 'in', hollow: false, bad: isFault(e.status) || !!glove?.refused.has(e.eventId), age: sinceEnd });
       }
     }
   }
+  for (const p of glove?.extra ?? []) out.push({ ...p, from: 'core', kind: 'out' });
   // A running call keeps its pulse however many short ones follow it; the newest of the rest fill up.
   const runs = out.filter((p) => p.kind === 'run').slice(-MAX_PULSES);
   const rest = out.filter((p) => p.kind !== 'run');
@@ -128,8 +136,112 @@ export function legOpacity(k: number, legs: number, age: number, live: boolean):
 }
 
 /** When each station's latest call started. */
-export function lastStarts(board: Board): Map<StationId, number> {
-  const out = new Map<StationId, number>();
-  for (const e of board.entries) out.set(e.station, Math.max(out.get(e.station) ?? 0, e.startedAt));
+function lastStarts(board: Board): Map<string, number> {
+  const out = new Map<string, number>();
+  for (const e of board.entries) out.set(e.on, Math.max(out.get(e.on) ?? 0, e.startedAt));
   return out;
+}
+
+/** One station as the map draws it: Layman's own (a `StationId`) or a glove gate (`gate:<service>`). */
+export interface StationSpec {
+  id: string;
+  label: string;
+  /** Its tooltip: what lands there, and what it amounts to. */
+  about: string;
+  color: string;
+  glyph: StationId;
+  /** The figure beside it (a count of calls, or bytes for a gate), null with nothing yet. */
+  amount: string | null;
+  /** How worn its spoke is, 0..1. */
+  wear: number;
+  runs: number;
+  faults: number;
+  /** When its latest call started (0: never), for the glow after a call. */
+  lastStart: number;
+}
+
+/**
+ * A gate's colour, by the route its traffic takes (the Topology tab's). A gate whose route is
+ * direct is red only for flows that really left untunnelled (`isUntunnelled`, through the gate's
+ * `untunnelled` count): all known VPN routes is local, as on Topology, and none yet is muted.
+ */
+function gateColor(g: GateStation): string {
+  if (g.route === 'direct') return g.untunnelled > 0 ? 'var(--error)' : g.flows > 0 ? 'var(--net-local)' : 'var(--text-muted)';
+  return g.route === 'tunnel' ? 'var(--net-tunnel)' : 'var(--net-local)';
+}
+
+/**
+ * The stations of a session's map: Layman's own, worn by their counts, and when the session is
+ * behind a glove gate, its gates where Network stands, worn by their bytes. A gloved session's
+ * network calls are drawn on the gate their connections went through (`BoardOptions.place`), so
+ * Network is shown only while some network call joined none (it holds what is left). A gate's calls
+ * give it its running count, its faults since the last prompt and its glow; a gate whose
+ * connections were all refused says so beside it rather than look unused.
+ */
+export function stationSpecs(board: Board, glove: GloveStations | null): StationSpec[] {
+  const running = runningAt(board);
+  const starts = lastStarts(board);
+  const out: StationSpec[] = [];
+  const at = (id: string) => ({ runs: running[id] ?? 0, faults: board.faults[id] ?? 0, lastStart: starts.get(id) ?? 0 });
+  for (const id of STATION_IDS) {
+    const style = STATION_STYLE[id];
+    const count = board.counts[id] ?? 0;
+    const bytes = id === 'browser' && glove ? glove.browserBytes : 0;
+    if (id !== 'network' || !glove || count > 0 || (running[id] ?? 0) > 0) {
+      out.push({
+        id, label: style.label, color: style.color, glyph: id,
+        about: `${style.about}${bytes > 0 ? ` (${formatBytes(bytes)} through glove's gate)` : ''}${id === 'network' && glove ? ' (the calls no glove gate could be joined to)' : ''}`,
+        amount: count > 0 ? countLabel(count) : null,
+        wear: Math.max(wear(count), byteWear(bytes)),
+        ...at(id),
+      });
+    }
+    if (id === 'network' && glove) {
+      for (const g of glove.gates) {
+        const calls = board.counts[g.id] ?? 0;
+        const refused = g.blocked > 0 ? `, ${g.blocked} refused` : '';
+        const open = g.untunnelled > 0 ? `, ${g.untunnelled} untunnelled` : '';
+        out.push({
+          id: g.id, label: g.label, color: gateColor(g), glyph: 'network',
+          about: `glove's ${g.service} gate: ${calls > 0 ? `${plural(calls, 'call')}, ` : ''}${formatBytes(g.bytes)} in ${plural(g.flows, 'connection')}${refused}${open}, `
+            + 'to the hosts reached since this session began, counted over the whole glove session',
+          amount: g.bytes > 0 ? formatBytes(g.bytes) : g.blocked > 0 ? `${g.blocked} refused` : calls > 0 ? countLabel(calls) : null,
+          wear: Math.max(byteWear(g.bytes), wear(calls)), ...at(g.id),
+        });
+      }
+    }
+  }
+  return out;
+}
+
+/** One turn of a session, as the map's "This turn" shows it. */
+export interface MapTurn {
+  /** 0-based, of `count`. */
+  index: number;
+  count: number;
+  promptEventId: string;
+  /** The turn's own events, the board's input. */
+  events: TimelineEvent[];
+  /** Its span as a time range (`turnSpan`, `turnRange`), for the gates' traffic: no `to` while it runs. */
+  range: NetRange;
+  /** It is the session's last turn. */
+  last: boolean;
+}
+
+/**
+ * The turn "This turn" shows: the one holding `eventId` (a feed row clicked open), else the last.
+ * `gateLive` is the glove gate's, as for "Network for this turn" (`turnSpan`).
+ */
+export function mapTurn(events: readonly TimelineEvent[], eventId: string | null, gateLive: boolean): MapTurn | null {
+  const turns = extractTurns([...events]);
+  if (!turns.length) return null;
+  const found = eventId ? turns.findIndex((t) => t.eventIds.includes(eventId)) : -1;
+  const index = found >= 0 ? found : turns.length - 1;
+  const turn = turns[index];
+  const ids = new Set(turn.eventIds);
+  const owned = sortStable(events.filter((e) => ids.has(e.id)));
+  const last = index === turns.length - 1;
+  const span = turnSpan(owned, { last, live: gateLive });
+  if (!span) return null;
+  return { index, count: turns.length, promptEventId: turn.promptEventId, events: owned, range: turnRange(span), last };
 }

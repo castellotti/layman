@@ -24,7 +24,14 @@ export type EntryFrom = 'core' | 'agents' | 'inbound';
 export interface BoardEntry {
   /** The event this entry stands for. A Guard entry shares its call's event. */
   eventId: string;
+  /** The kind of work: its glyph and colour in the feed. */
   station: StationId;
+  /**
+   * The map station it is drawn on: its `station`, or for a gloved session's network call the
+   * glove gate its connections went through (`BoardOptions.place`). Counts, faults, the route and
+   * pulses are by this.
+   */
+  on: string;
   from: EntryFrom;
   status: EntryStatus;
   startedAt: number;
@@ -34,12 +41,12 @@ export interface BoardEntry {
 export interface Board {
   /** The newest entries, oldest first, and every entry still running however old. */
   entries: BoardEntry[];
-  /** Entries per station over the whole session: what wears a spoke. */
-  counts: Partial<Record<StationId, number>>;
+  /** Entries per map station (`on`) over the whole session: what wears a spoke. */
+  counts: Partial<Record<string, number>>;
   /** Memory pushed into the context unasked (`isPushedMemory`), also counted in `counts.memory`. */
   pushed: number;
-  /** Failed or refused entries per station since the person's last prompt. */
-  faults: Partial<Record<StationId, number>>;
+  /** Failed or refused entries per map station since the person's last prompt. */
+  faults: Partial<Record<string, number>>;
   /** Subagents started and not yet stopped. */
   agents: number;
   /** Prompts so far, duplicates of one prompt counted once (the turn rule). */
@@ -56,6 +63,11 @@ export interface BoardOptions {
   ended?: boolean;
   /** How many finished entries to keep (running ones are always kept). */
   keep?: number;
+  /**
+   * Where a tool call is drawn when not on its own station: a gloved session's network call on
+   * the gate its connections went through (`lib/activity-glove.ts` `placeCalls`). Null keeps it.
+   */
+  place?: (event: TimelineEvent, station: StationId) => string | null;
 }
 
 const KEEP = 200;
@@ -105,8 +117,8 @@ export function reduceBoard(events: readonly TimelineEvent[], options: BoardOpti
   const setup = options.setup ?? NO_SETUP;
   const keep = options.keep ?? KEEP;
   const all: BoardEntry[] = [];
-  const counts: Partial<Record<StationId, number>> = {};
-  let faults: Partial<Record<StationId, number>> = {};
+  const counts: Partial<Record<string, number>> = {};
+  let faults: Partial<Record<string, number>> = {};
   let pushed = 0;
   let turns = 0;
   let context: number | undefined;
@@ -130,14 +142,15 @@ export function reduceBoard(events: readonly TimelineEvent[], options: BoardOpti
   /** Entries still running, so closing them does not walk the whole session. */
   const running = new Set<BoardEntry>();
 
-  const fault = (station: StationId): void => {
-    if (station !== 'you') faults[station] = (faults[station] ?? 0) + 1;
+  const fault = (on: string): void => {
+    if (on !== 'you') faults[on] = (faults[on] ?? 0) + 1;
   };
-  const add = (entry: BoardEntry): BoardEntry => {
+  const add = (draft: Omit<BoardEntry, 'on'> & { on?: string }): BoardEntry => {
+    const entry: BoardEntry = { ...draft, on: draft.on ?? draft.station };
     all.push(entry);
     if (entry.status === 'run') running.add(entry);
-    counts[entry.station] = (counts[entry.station] ?? 0) + 1;
-    if (isFault(entry.status)) fault(entry.station);
+    counts[entry.on] = (counts[entry.on] ?? 0) + 1;
+    if (isFault(entry.status)) fault(entry.on);
     return entry;
   };
   const close = (entry: BoardEntry, status: EntryStatus, at: number): void => {
@@ -145,7 +158,7 @@ export function reduceBoard(events: readonly TimelineEvent[], options: BoardOpti
     const wasRunning = running.delete(entry);
     entry.status = status;
     entry.endedAt = Math.max(entry.startedAt, at);
-    if (wasRunning && isFault(status)) fault(entry.station);
+    if (wasRunning && isFault(status)) fault(entry.on);
   };
   /** Everything still running is over without a word: the session ended or a new prompt began. */
   const closeAll = (at: number): void => {
@@ -195,11 +208,12 @@ export function reduceBoard(events: readonly TimelineEvent[], options: BoardOpti
 
     if (type.startsWith('tool_call_')) {
       const station = toolStationOf(event, setup);
+      const on = options.place?.(event, station) ?? station;
       const decided = data.decision !== undefined;
       if (decided) add({ eventId: event.id, station: 'guard', from, status: 'ok', startedAt: at, endedAt: at });
       if (type === 'tool_call_delegated') continue; // the call itself arrives as its own event
       if (type === 'tool_call_pending' || type === 'tool_call_approved') {
-        const entry = add({ eventId: event.id, station, from, status: 'run', startedAt: at });
+        const entry = add({ eventId: event.id, station, on, from, status: 'run', startedAt: at });
         const key = inputKey(event);
         const queue = open.get(key);
         if (queue) queue.push(entry); else open.set(key, [entry]);
@@ -208,7 +222,7 @@ export function reduceBoard(events: readonly TimelineEvent[], options: BoardOpti
       if (type === 'tool_call_failed') {
         const call = claim(inputKey(event));
         if (call) { call.eventId = event.id; close(call, 'err', at); }
-        else add({ eventId: event.id, station, from, status: 'err', startedAt: at, endedAt: at });
+        else add({ eventId: event.id, station, on, from, status: 'err', startedAt: at, endedAt: at });
         continue;
       }
       if (type === 'tool_call_completed' && !decided && RESULT_APART.has(event.agentType)) {
@@ -216,7 +230,7 @@ export function reduceBoard(events: readonly TimelineEvent[], options: BoardOpti
         if (call) { call.eventId = event.id; close(call, 'ok', endOf(event)); continue; }
       }
       const status: EntryStatus = type === 'tool_call_denied' ? 'block' : 'ok';
-      add({ eventId: event.id, station, from, status, startedAt: at, endedAt: Math.max(at, endOf(event)) });
+      add({ eventId: event.id, station, on, from, status, startedAt: at, endedAt: Math.max(at, endOf(event)) });
       continue;
     }
 
@@ -255,13 +269,14 @@ export function reduceBoard(events: readonly TimelineEvent[], options: BoardOpti
 }
 
 /** How many entries run at once at each station: the map's `×3`. */
-export function runningAt(board: Board): Partial<Record<StationId, number>> {
-  const out: Partial<Record<StationId, number>> = {};
-  for (const e of board.entries) if (e.status === 'run') out[e.station] = (out[e.station] ?? 0) + 1;
+export function runningAt(board: Board): Partial<Record<string, number>> {
+  const out: Partial<Record<string, number>> = {};
+  for (const e of board.entries) if (e.status === 'run') out[e.on] = (out[e.on] ?? 0) + 1;
   return out;
 }
 
-export interface RouteStop { station: StationId; at: number }
+/** A stop of the route, at a map station (`BoardEntry.on`). */
+export interface RouteStop { station: string; at: number }
 
 /**
  * The stations the main loop went through, oldest first, the last `max` of them. Left out: model
@@ -275,8 +290,8 @@ export function routeOf(entries: readonly BoardEntry[], max = 7): RouteStop[] {
     if (e.from === 'agents' || e.station === 'model' || e.station === 'guard') continue;
     if (e.from === 'inbound' && e.station !== 'you') continue;
     const last = stops[stops.length - 1];
-    if (last && last.station === e.station) last.at = e.startedAt;
-    else stops.push({ station: e.station, at: e.startedAt });
+    if (last && last.station === e.on) last.at = e.startedAt;
+    else stops.push({ station: e.on, at: e.startedAt });
   }
   return stops.slice(-max);
 }
@@ -296,7 +311,7 @@ export function foldRows(entries: readonly BoardEntry[], max = 16): FeedRow[] {
     const e = entries[i];
     const took = e.endedAt === undefined ? 0 : Math.max(0, e.endedAt - e.startedAt);
     const last = rows[rows.length - 1];
-    if (last && isPlain(e) && isPlain(last.entry) && last.entry.station === e.station && last.entry.from === e.from) {
+    if (last && isPlain(e) && isPlain(last.entry) && last.entry.on === e.on && last.entry.from === e.from) {
       last.times++;
       last.tookMs += took;
       continue;
