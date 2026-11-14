@@ -72,6 +72,14 @@ export function eventDetail(event: TimelineEvent): string {
 }
 
 /**
+ * What an expanded row's first line says: the tool's name, or nothing. The body under it shows
+ * the rest (the command, the path, the prompt), so the line never repeats the body.
+ */
+export function eventHeading(event: TimelineEvent): string {
+  return event.data.toolName ?? '';
+}
+
+/**
  * Suffix marking a derived thinking row's id, so expand/collapse state for the
  * two rows never collides.
  *

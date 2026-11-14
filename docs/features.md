@@ -41,7 +41,7 @@ Sessions can optionally be recorded to a local SQLite database, capturing user p
 
 - **Sessions view** - bookmark folders above a newest-first **History** list, with keyboard navigation (↑/↓/Enter/Esc) and drag-to-reorder within folders.
 - **Search** covers session names, working directories, and full event content. Matching sessions show match counts; inside a session, matched events are highlighted with ‹ › navigation between them.
-- **Prompts view** - bookmark individual prompt/response pairs as Highlights, organized in the same folders + History structure, with a reading pane, **Open session** navigation and **delete**. A highlighted pair is also marked on the Logs minimap. In Logs and a session's transcript, an expanded row has one action bar: **Copy** and **Link** on every event, **Highlight** on a prompt or response, **Investigate**, and the speaker on a response.
+- **Prompts view** - bookmark individual prompt/response pairs as Highlights, organized in the same folders + History structure, with a reading pane, **Open session** navigation and **delete**. A highlighted pair is also marked on the Logs minimap. In Logs and a session's transcript, an expanded row has one action bar on its first line, left of the time: **Copy** (everything the row shows, whole) and **Link** on every event, **Highlight** on a prompt or response, **Investigate**, and the speaker on a response. The body under it is unboxed text: commands and paths in blue, output in the larger monospace, errors in red.
 
 ![Sessions view](images/sessions.png)
 
