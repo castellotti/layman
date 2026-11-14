@@ -20,8 +20,7 @@ const files = [
   // The Activity map reads gloved sessions' gates, so it is held to the same rule.
   ...readdirSync(join(src, 'components', 'activity')).map((f) => join('components', 'activity', f)),
   ...readdirSync(join(src, 'lib')).filter((f) => f.startsWith('activity-')).map((f) => join('lib', f)),
-  join('hooks', 'useGloveMap.ts'),
-  join('hooks', 'useActivityBoard.ts'),
+  ...readdirSync(join(src, 'hooks')).filter((f) => /^use(Activity|Glove|StationSetup|NetSegments)/.test(f)).map((f) => join('hooks', f)),
 ].filter((f) => /\.tsx?$/.test(f) && !f.includes('.test.'));
 
 const BANNED: Array<[string, RegExp]> = [
@@ -54,5 +53,13 @@ describe('no-network guard (web network views)', () => {
       }
     } finally { globalThis.fetch = real; }
     expect(called).toBe(false);
+  });
+  it('getJson still requests a Layman API path', async () => {
+    const real = globalThis.fetch;
+    let asked = '';
+    globalThis.fetch = ((u: string) => { asked = u; return Promise.resolve(new Response('{"ok":1}')); }) as typeof fetch;
+    try { await expect(getJson('/api/net/sessions/t/gates?x=1')).resolves.toEqual({ ok: 1 }); }
+    finally { globalThis.fetch = real; }
+    expect(asked).toBe('/api/net/sessions/t/gates?x=1');
   });
 });
