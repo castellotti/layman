@@ -336,8 +336,8 @@ let laymanEventNames: Set<string> | null = null;
 function getLaymanEventNames(): Set<string> {
   if (!laymanEventNames) {
     laymanEventNames = new Set(Object.keys(buildLaymanHooks('http://placeholder', 10)));
-    // Not currently registered (needs claude-code >= 2.1.89) but may exist in an
-    // older settings file — recognise it so cleanup still removes it.
+    // Registered only on newer builds (see buildLaymanHooks) but may exist in a
+    // settings file from one — recognise them so cleanup still removes them.
     laymanEventNames.add('PermissionDenied');
     laymanEventNames.add('PostModelSwitch');
     for (const name of RETIRED_HOOK_EVENTS) laymanEventNames.add(name);

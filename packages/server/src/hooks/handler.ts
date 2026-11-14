@@ -914,7 +914,6 @@ async function readTranscriptContent(transcriptPath: string): Promise<string | n
   }
 }
 
-/** Snapshot the current last assistant UUID so future calls only emit new messages */
 /**
  * The model of the last assistant message read from each transcript, so a step on another model
  * (`/model`, a fallback) is noticed on builds without the PostModelSwitch hook. Steps are not
@@ -930,6 +929,7 @@ function stepModel(obj: Record<string, unknown>): string | undefined {
   return typeof m === 'string' && m && !m.startsWith('<') ? m : undefined;
 }
 
+/** Snapshot the current last assistant UUID so future calls only emit new messages */
 async function initTranscriptWatermark(transcriptPath: string): Promise<void> {
   if (transcriptWatermarks.has(transcriptPath)) return;
   const content = await readTranscriptContent(transcriptPath);
