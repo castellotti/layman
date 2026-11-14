@@ -7,7 +7,7 @@ import { AnalysisCard } from '../analysis/AnalysisCard.js';
 import { CommandBlock } from '../shared/CommandBlock.js';
 import { PlainBlock } from '../shared/PlainBlock.js';
 import { DiffBlock } from '../shared/DiffBlock.js';
-import { toolInputText, eventCopyText, editDiffs } from '../../lib/event-copy.js';
+import { toolInputText, eventCopyText, editDiffs, valueText } from '../../lib/event-copy.js';
 import { usePendingApprovals } from '../../hooks/usePendingApprovals.js';
 import { usePrintExpandable } from '../../hooks/usePrinting.js';
 import { useSessionStore } from '../../stores/sessionStore.js';
@@ -166,11 +166,9 @@ export function EventDetailBody({ event, onSend }: EventDetailBodyProps) {
             const edits = editDiffs(input, tool);
             if (edits.length > 0) {
               return (
-                <>
-                  {edits.map((e, i) => (
-                    <DiffBlock key={i} filePath={e.filePath} oldText={e.oldText} newText={e.newText} maxLines={30} flat />
-                  ))}
-                </>
+                edits.map((e, i) => (
+                  <DiffBlock key={i} filePath={e.filePath} oldText={e.oldText} newText={e.newText} maxLines={30} flat />
+                ))
               );
             }
 
@@ -240,11 +238,7 @@ export function EventDetailBody({ event, onSend }: EventDetailBodyProps) {
           {/* Tool output (for completed events) */}
           {event.data.toolOutput !== undefined && (
             <PlainBlock
-              text={
-                typeof event.data.toolOutput === 'string'
-                  ? event.data.toolOutput
-                  : JSON.stringify(event.data.toolOutput, null, 2)
-              }
+              text={valueText(event.data.toolOutput)}
               tone="output"
               maxLines={8}
             />
@@ -600,7 +594,7 @@ function SubagentTranscriptView({ entries }: { entries: SubagentTranscriptEntry[
                   </div>
                   {entry.toolOutput !== undefined && (
                     <PlainBlock
-                      text={typeof entry.toolOutput === 'string' ? entry.toolOutput : JSON.stringify(entry.toolOutput, null, 2)}
+                      text={valueText(entry.toolOutput)}
                       tone="output"
                       maxLines={5}
                     />

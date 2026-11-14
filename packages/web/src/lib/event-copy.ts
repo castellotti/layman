@@ -38,7 +38,8 @@ export function editDiffs(input: Record<string, unknown>, toolName?: string): Ed
   return [];
 }
 
-function valueText(v: unknown): string {
+/** A tool output as text: a string as is, anything else as JSON. */
+export function valueText(v: unknown): string {
   return typeof v === 'string' ? v : JSON.stringify(v, null, 2);
 }
 
