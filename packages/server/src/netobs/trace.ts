@@ -221,6 +221,7 @@ export function sessionJoins(store: NetStore, token: string, deps: TraceDeps, se
   const span = store.span(token);
   const calls: GateCallJoin[] = [];
   const loose: GateLooseFlow[] = [];
+  const inRange = (t: number) => !range || (t >= range.from && t <= (range.to ?? now));
   all.forEach((t, i) => {
     if (t.turn.sessionId !== sessionId) return;
     // A window that ends before the oldest flow in memory has nothing to join.
@@ -231,7 +232,6 @@ export function sessionJoins(store: NetStore, token: string, deps: TraceDeps, se
     const owned = t.turn.eventIds.map((id) => byId.get(id)).filter((e): e is TimelineEvent => !!e);
     const { flows, earlier, services, items, unattributed } = joinTurn(store, token, all, i, owned, now, span);
     const flow = new Map([...flows, ...earlier].map((f) => [f.id, f]));
-    const inRange = (t: number) => !range || (t >= range.from && t <= (range.to ?? now));
     for (const item of items) {
       if (item.kind !== 'call' || !inRange(item.call.start)) continue;
       const mine = [...item.flowIds, ...item.fanoutIds, ...item.openIds].flatMap((id) => flow.get(id) ?? []);

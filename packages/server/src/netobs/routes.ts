@@ -34,7 +34,7 @@ function queryRange(from: string | undefined, to: string | undefined): NetRange 
   const ms = (v: string) => (v.trim() === '' ? NaN : Number(v));
   // `to` alone is refused, not read as no range: a lost `from` must not widen the answer to everything.
   if (from === undefined) return undefined;
-  return (parseRange({ from: ms(from), to: to === undefined ? null : ms(to) })) ?? undefined;
+  return parseRange({ from: ms(from), to: to === undefined ? null : ms(to) }) ?? undefined;
 }
 
 export function registerNetRoutes(fastify: FastifyInstance, deps: { netObs: NetObs; trace?: TraceDeps; tokens?: TokenDeps }): void {
