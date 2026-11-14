@@ -46,7 +46,7 @@ export const LogRow = React.memo(function LogRow({ event, index, hasDetail, isEx
       <div
         onClick={() => hasDetail && onSelect(event.id)}
         style={{
-          display: 'flex', alignItems: 'center', gap: sp(6), padding: sp('3px 8px'), margin: sp('0 8px'),
+          display: 'flex', alignItems: 'center', flexWrap: expanded ? 'wrap' : 'nowrap', gap: sp(6), padding: sp('3px 8px'), margin: sp('0 8px'),
           borderRadius: rad(4), cursor: hasDetail ? 'pointer' : 'default',
           background: expanded ? 'var(--bg-selected)' : 'transparent',
           boxShadow: isSelected ? 'inset 0 0 0 1px var(--accent)' : 'none',
@@ -71,7 +71,7 @@ export const LogRow = React.memo(function LogRow({ event, index, hasDetail, isEx
           {kindLabel(event.type)}
         </span>
         <span style={{
-          fontFamily: 'var(--font-mono)', fontSize: 10, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          fontFamily: 'var(--font-mono)', fontSize: 10, flex: 1, minWidth: expanded ? 120 : 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
           color: expanded ? 'var(--text)' : 'var(--text-body)', fontWeight: expanded ? 500 : undefined,
         }}>
           {expanded ? eventHeading(event) : eventDetail(event)}

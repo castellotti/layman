@@ -15,7 +15,6 @@ export function toolInputText(input: Record<string, unknown>, toolName?: string)
   if (filePath) {
     const path = `${filePath}${toolLineRange(input)}`;
     if ('content' in input) return `${path}\n${String(input.content)}`;
-    if ('old_string' in input) return `${path}\n- ${String(input.old_string)}\n+ ${String(input.new_string ?? '')}`;
     return path;
   }
   if ('pattern' in input) return String(input.pattern);
@@ -23,6 +22,20 @@ export function toolInputText(input: Record<string, unknown>, toolName?: string)
   if ('url' in input) return String(input.url);
   if ('prompt' in input) return String(input.prompt);
   return JSON.stringify(input, null, 2);
+}
+
+export interface EditDiff { filePath: string; oldText: string; newText: string }
+
+/** The diffs an Edit or MultiEdit input holds (one, or one per entry of `edits`), shared by the body and Copy. Empty for anything else. */
+export function editDiffs(input: Record<string, unknown>, toolName?: string): EditDiff[] {
+  if (toolName !== 'Edit' && toolName !== 'MultiEdit') return [];
+  const filePath = toolFilePath(input, toolName) ?? '';
+  const one = (e: Record<string, unknown>): EditDiff => ({ filePath, oldText: String(e.old_string ?? ''), newText: String(e.new_string ?? '') });
+  if ('old_string' in input) return [one(input)];
+  if (Array.isArray(input.edits)) {
+    return input.edits.filter((e): e is Record<string, unknown> => !!e && typeof e === 'object' && 'old_string' in e).map(one);
+  }
+  return [];
 }
 
 function valueText(v: unknown): string {
@@ -40,9 +53,12 @@ export function eventCopyText(event: TimelineEvent): string {
 
   if (d.toolInput) {
     const input = d.toolInput as Record<string, unknown>;
-    if ((d.toolName === 'Edit' || d.toolName === 'MultiEdit') && 'old_string' in input) {
-      const lines = diffLines({ oldText: String(input.old_string ?? ''), newText: String(input.new_string ?? '') }) ?? [];
-      sections.push([toolFilePath(input) ?? '', ...lines.map((l) => diffPrefix(l.type) + l.line)].join('\n'));
+    const edits = editDiffs(input, d.toolName);
+    if (edits.length > 0) {
+      for (const e of edits) {
+        const lines = diffLines({ oldText: e.oldText, newText: e.newText }) ?? [];
+        sections.push([e.filePath, ...lines.map((l) => diffPrefix(l.type) + l.line)].join('\n'));
+      }
     } else {
       sections.push(toolInputText(input, d.toolName));
     }

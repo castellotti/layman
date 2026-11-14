@@ -26,6 +26,14 @@ describe('eventCopyText', () => {
     expect(t).toBe('foo');
   });
 
+  it('copies every edit of a MultiEdit, not just the path', () => {
+    const t = eventCopyText(ev('tool_call_completed', { toolName: 'MultiEdit', toolInput: { file_path: '/f.ts', edits: [{ old_string: 'a', new_string: 'b' }, { old_string: 'c', new_string: 'd' }] } }));
+    expect(t).toContain('-a');
+    expect(t).toContain('+b');
+    expect(t).toContain('-c');
+    expect(t).toContain('+d');
+  });
+
   it('copies an Edit as a prefixed diff', () => {
     const t = eventCopyText(ev('tool_call_completed', { toolName: 'Edit', toolInput: { file_path: '/f.ts', old_string: 'a\nb', new_string: 'a\nc' } }));
     expect(t).toBe('/f.ts\n a\n-b\n+c');

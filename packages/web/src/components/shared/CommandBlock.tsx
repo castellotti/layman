@@ -18,6 +18,26 @@ function CopyIcon() {
   );
 }
 
+function CopyAllButton({ lines }: { lines: string[] }) {
+  const [copied, setCopied] = useState(false);
+  const copy = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    navigator.clipboard.writeText(copyAllPayload(lines)).catch(() => {});
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  };
+  return (
+    <button
+      onClick={copy}
+      style={{ fontSize: 10, color: 'var(--text-muted)', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+      onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--text)')}
+      onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--text-muted)')}
+    >
+      {copied ? '✓ Copied' : 'Copy all'}
+    </button>
+  );
+}
+
 /**
  * Shell command block for detail cards — copy-all, per-line copy (so a user can
  * grab one `sudo` line into a terminal), and a header notice when sudo is
@@ -25,17 +45,9 @@ function CopyIcon() {
  */
 export function CommandBlock({ code, className = '', flat = false }: CommandBlockProps) {
   const lines = useMemo(() => splitCommandLines(code), [code]);
-  const [copiedAll, setCopiedAll] = useState(false);
   const [copiedLine, setCopiedLine] = useState<number | null>(null);
   const [hoveredLine, setHoveredLine] = useState<number | null>(null);
   const hasSudo = useMemo(() => hasSudoLine(lines), [lines]);
-
-  const copyAll = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    navigator.clipboard.writeText(copyAllPayload(lines)).catch(() => {});
-    setCopiedAll(true);
-    setTimeout(() => setCopiedAll(false), 1500);
-  };
 
   const copyLine = (e: React.MouseEvent, i: number) => {
     e.stopPropagation();
@@ -51,7 +63,7 @@ export function CommandBlock({ code, className = '', flat = false }: CommandBloc
     >
       {flat ? (
         hasSudo && (
-          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--text-faint)' }}>
+          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--warn)' }}>
             requires sudo · run in your terminal
           </div>
         )
@@ -61,14 +73,7 @@ export function CommandBlock({ code, className = '', flat = false }: CommandBloc
             shell{hasSudo ? ' · run in your terminal (requires sudo)' : ''}
           </span>
           <div style={{ flex: 1 }} />
-          <button
-            onClick={copyAll}
-            style={{ fontSize: 10, color: 'var(--text-muted)', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
-            onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--text)')}
-            onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--text-muted)')}
-          >
-            {copiedAll ? '✓ Copied' : 'Copy all'}
-          </button>
+          <CopyAllButton lines={lines} />
         </div>
       )}
       <div style={flat ? { margin: sp('0 -4px') } : { padding: sp('6px 0') }}>

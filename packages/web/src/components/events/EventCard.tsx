@@ -7,7 +7,7 @@ import { AnalysisCard } from '../analysis/AnalysisCard.js';
 import { CommandBlock } from '../shared/CommandBlock.js';
 import { PlainBlock } from '../shared/PlainBlock.js';
 import { DiffBlock } from '../shared/DiffBlock.js';
-import { toolInputText, eventCopyText } from '../../lib/event-copy.js';
+import { toolInputText, eventCopyText, editDiffs } from '../../lib/event-copy.js';
 import { usePendingApprovals } from '../../hooks/usePendingApprovals.js';
 import { usePrintExpandable } from '../../hooks/usePrinting.js';
 import { useSessionStore } from '../../stores/sessionStore.js';
@@ -163,15 +163,14 @@ export function EventDetailBody({ event, onSend }: EventDetailBodyProps) {
             const input = event.data.toolInput;
             const tool = event.data.toolName;
 
-            if ((tool === 'Edit' || tool === 'MultiEdit') && 'old_string' in input) {
+            const edits = editDiffs(input, tool);
+            if (edits.length > 0) {
               return (
-                <DiffBlock
-                  filePath={toolFilePath(input) ?? ''}
-                  oldText={String(input.old_string ?? '')}
-                  newText={String(input.new_string ?? '')}
-                  maxLines={30}
-                  flat
-                />
+                <>
+                  {edits.map((e, i) => (
+                    <DiffBlock key={i} filePath={e.filePath} oldText={e.oldText} newText={e.newText} maxLines={30} flat />
+                  ))}
+                </>
               );
             }
 

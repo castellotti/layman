@@ -214,6 +214,11 @@ describe('eventHeading', () => {
     expect(eventHeading(ev({ type: 'tool_call_completed', data: { toolName: 'Bash', toolInput: { command: 'ls' } } }))).toBe('Bash');
   });
 
+  it('names the file of an Edit or Write', () => {
+    expect(eventHeading(ev({ type: 'tool_call_completed', data: { toolName: 'Edit', toolInput: { file_path: '/a/b/foo.ts', old_string: 'x', new_string: 'y' } } }))).toContain('foo.ts');
+    expect(eventHeading(ev({ type: 'tool_call_completed', data: { toolName: 'Write', toolInput: { file_path: '/a/b/bar.ts', content: 'z' } } }))).toContain('bar.ts');
+  });
+
   it('is empty for a prompt', () => {
     expect(eventHeading(ev({ type: 'user_prompt', data: { prompt: 'hi' } }))).toBe('');
   });

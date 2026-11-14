@@ -72,11 +72,18 @@ export function eventDetail(event: TimelineEvent): string {
 }
 
 /**
- * What an expanded row's first line says: the tool's name, or nothing. The body under it shows
- * the rest (the command, the path, the prompt), so the line never repeats the body.
+ * What an expanded row's first line says. A tool call: its name, plus the file for a file edit
+ * (the flat diff has no title bar of its own). The body shows the rest (the command, the prompt),
+ * so the line never repeats it. An event with no tool has none: its body is the prompt or prose.
  */
 export function eventHeading(event: TimelineEvent): string {
-  return event.data.toolName ?? '';
+  const { toolName, toolInput } = event.data;
+  if (!toolName) return '';
+  if (toolName === 'Edit' || toolName === 'MultiEdit' || toolName === 'Write') {
+    const path = toolPathWithRange(toolInput as Record<string, unknown> | undefined, toolName);
+    if (path) return `${toolName} — ${path}`;
+  }
+  return toolName;
 }
 
 /**
