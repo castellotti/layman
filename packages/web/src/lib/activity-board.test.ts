@@ -320,3 +320,46 @@ describe('reduceBoard: a call and its result recorded apart', () => {
     expect(b.entries[1]).toMatchObject({ status: 'err', endedAt: 30 });
   });
 });
+
+describe('reduceBoard: background tasks', () => {
+  const notice = (t: number, id: string, status = 'completed') =>
+    ev('user_prompt', t, { prompt: `<task-notification>\n<task-id>${id}</task-id>\n<status>${status}</status>\n</task-notification>` });
+  const launch = (t: number, id: string) =>
+    call('tool_call_completed', t, 'Bash', { command: 'sleep 99', run_in_background: true }, { backgroundTaskId: id });
+
+  it('keeps a background call running until its notice, across prompts', () => {
+    const board = reduceBoard([ev('user_prompt', 0, { prompt: 'go' }), launch(10, 'b1'), ev('user_prompt', 20, { prompt: 'next' })]);
+    const bg = board.entries.find((e) => e.station === 'shell');
+    expect(bg?.status).toBe('run');
+    expect(board.turns).toBe(2);
+    const after = reduceBoard([ev('user_prompt', 0, { prompt: 'go' }), launch(10, 'b1'), ev('user_prompt', 20, { prompt: 'next' }), notice(30, 'b1')]);
+    const done = after.entries.find((e) => e.station === 'shell');
+    expect(done?.status).toBe('ok');
+    expect(done?.endedAt).toBe(30);
+    expect(after.turns).toBe(2);
+    expect(after.entries.filter((e) => e.station === 'you')).toHaveLength(2);
+  });
+
+  it('marks a failed task, and a notice for an unknown task changes nothing', () => {
+    const failed = reduceBoard([launch(10, 'b1'), notice(20, 'b1', 'failed'), notice(21, 'zzz')]);
+    expect(failed.entries.find((e) => e.station === 'shell')?.status).toBe('err');
+    expect(failed.faults.shell).toBe(1);
+    expect(failed.entries.some((e) => e.station === 'you')).toBe(false);
+  });
+
+  it('never ended when the session is over', () => {
+    const board = reduceBoard([launch(10, 'b1')], { ended: true });
+    expect(board.entries.find((e) => e.station === 'shell')?.status).toBe('unended');
+  });
+
+  it('a call without a task id is done at once', () => {
+    const board = reduceBoard([call('tool_call_completed', 10, 'Bash', { command: 'ls' })]);
+    expect(board.entries[0].status).toBe('ok');
+  });
+
+  it('names the model a change moved to', () => {
+    const board = reduceBoard([ev('model_change', 5, { fromModel: 'a', toModel: 'claude-sonnet-5-5' })]);
+    expect(board.model).toBe('claude-sonnet-5-5');
+    expect(board.entries).toHaveLength(0);
+  });
+});

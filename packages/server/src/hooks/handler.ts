@@ -1,4 +1,5 @@
 import { readFile } from 'node:fs/promises';
+import { backgroundTaskIdOf, isTaskNotification } from '../events/task-notification.js';
 import type { FastifyInstance } from 'fastify';
 import type { SubagentTranscriptEntry } from '../events/types.js';
 import { parseTranscriptLines } from './transcript.js';
@@ -25,6 +26,7 @@ import type {
   StopFailureInput,
   PreCompactInput,
   PostCompactInput,
+  PostModelSwitchInput,
   ElicitationInput,
   ElicitationResultInput,
   PermissionDeniedInput,
@@ -279,6 +281,10 @@ export function registerHookHandler(
           }
           case 'ElicitationResult': {
             await handleElicitationResult(body as unknown as ElicitationResultInput, eventStore, agentType);
+            return reply.status(200).send({});
+          }
+          case 'PostModelSwitch': {
+            handlePostModelSwitch(body as unknown as PostModelSwitchInput, eventStore, agentType);
             return reply.status(200).send({});
           }
           case 'PermissionDenied': {
@@ -685,6 +691,7 @@ async function handlePostToolUse(
     eventStore.updateType(pendingEvent.id, 'tool_call_completed');
     eventStore.updateData(pendingEvent.id, {
       toolOutput: input.tool_output,
+      backgroundTaskId: backgroundTaskIdOf(input.tool_input, input.tool_output),
       completedAt,
       fileAccess: access.files.length > 0 ? access.files.map(f => ({ ...f, eventId: pendingEvent.id })) : undefined,
       urlAccess: access.urls.length > 0 ? access.urls.map(u => ({ ...u, eventId: pendingEvent.id })) : undefined,
@@ -703,6 +710,7 @@ async function handlePostToolUse(
       toolName: input.tool_name,
       toolInput: input.tool_input,
       toolOutput: input.tool_output,
+      backgroundTaskId: backgroundTaskIdOf(input.tool_input, input.tool_output),
       completedAt,
       fileAccess: filesWithId,
       urlAccess: urlsWithId,
@@ -907,6 +915,21 @@ async function readTranscriptContent(transcriptPath: string): Promise<string | n
 }
 
 /** Snapshot the current last assistant UUID so future calls only emit new messages */
+/**
+ * The model of the last assistant message read from each transcript, so a step on another model
+ * (`/model`, a fallback) is noticed on builds without the PostModelSwitch hook. Steps are not
+ * recorded as events of their own: one per assistant message roughly doubles a turn's events for
+ * nothing the timeline shows; only a change is.
+ */
+const transcriptModels = new Map<string, string>();
+
+/** A model id of a real step: the harness writes `<synthetic>` for messages it made itself. */
+function stepModel(obj: Record<string, unknown>): string | undefined {
+  if (obj.isSidechain === true) return undefined; // a subagent's loop runs its own model
+  const m = (obj.message as Record<string, unknown> | undefined)?.model;
+  return typeof m === 'string' && m && !m.startsWith('<') ? m : undefined;
+}
+
 async function initTranscriptWatermark(transcriptPath: string): Promise<void> {
   if (transcriptWatermarks.has(transcriptPath)) return;
   const content = await readTranscriptContent(transcriptPath);
@@ -920,6 +943,8 @@ async function initTranscriptWatermark(transcriptPath: string): Promise<void> {
       const obj = JSON.parse(lines[i]) as Record<string, unknown>;
       if (obj.type === 'assistant' && typeof obj.uuid === 'string') {
         transcriptWatermarks.set(transcriptPath, obj.uuid);
+        const model = stepModel(obj);
+        if (model) transcriptModels.set(transcriptPath, model);
         return;
       }
     } catch { /* skip */ }
@@ -971,6 +996,16 @@ async function emitNewAssistantMessages(
       }
 
       const msg = obj.message as Record<string, unknown> | undefined;
+      const model = stepModel(obj);
+      if (model) {
+        const before = transcriptModels.get(transcriptPath);
+        transcriptModels.set(transcriptPath, model);
+        // PostModelSwitch, where the build has it, already recorded this change.
+        const known = eventStore.findLast((e) => e.type === 'model_change' && e.sessionId === sessionId);
+        if (before && before !== model && known?.data.toModel !== model) {
+          eventStore.add('model_change', sessionId, { fromModel: before, toModel: model }, undefined, agentType);
+        }
+      }
       const blocks = msg?.content;
       if (!Array.isArray(blocks)) continue;
 
@@ -1020,8 +1055,9 @@ async function handleUserPromptSubmit(
     prompt: input.prompt,
   }, undefined, agentType);
 
-  // Notify drift monitor of user prompt
-  if (driftMonitor && getConfig?.().driftMonitoring?.enabled) {
+  // Notify drift monitor of user prompt. A background task's notice is the harness, not an ask:
+  // taken as one, the agent's own result would widen the goal it is judged against.
+  if (driftMonitor && !isTaskNotification(input.prompt) && getConfig?.().driftMonitoring?.enabled) {
     driftMonitor.onUserPrompt(input.session_id, input.prompt);
   }
 }
@@ -1162,6 +1198,19 @@ function handlePostCompact(
   eventStore.add('post_compact', input.session_id, {
     compactTrigger: input.trigger,
     compactSummary: input.compact_summary,
+  }, undefined, agentType);
+}
+
+function handlePostModelSwitch(
+  input: PostModelSwitchInput,
+  eventStore: EventStore,
+  agentType: string = 'claude-code'
+): void {
+  // Needs a destination to say anything; a payload without one is not a change.
+  if (!input.to_model) return;
+  eventStore.add('model_change', input.session_id, {
+    fromModel: input.from_model,
+    toModel: input.to_model,
   }, undefined, agentType);
 }
 

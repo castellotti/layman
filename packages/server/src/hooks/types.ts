@@ -118,6 +118,12 @@ export interface PostCompactInput extends HookInputBase {
   compact_summary?: string;
 }
 
+export interface PostModelSwitchInput extends HookInputBase {
+  hook_event_name: 'PostModelSwitch';
+  from_model?: string;
+  to_model?: string;
+}
+
 export interface ElicitationInput extends HookInputBase {
   hook_event_name: 'Elicitation';
   request_id?: string;
@@ -286,6 +292,7 @@ export type AnyHookInput =
   | StopFailureInput
   | PreCompactInput
   | PostCompactInput
+  | PostModelSwitchInput
   | ElicitationInput
   | ElicitationResultInput;
 

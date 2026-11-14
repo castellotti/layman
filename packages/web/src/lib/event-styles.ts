@@ -44,6 +44,7 @@ const KIND_LABELS: Record<string, string> = {
   stop_failure:        'stop-fail',
   pre_compact:         'compact',
   post_compact:        'compacted',
+  model_change:        'model',
 };
 
 export function kindLabel(type: string): string {
@@ -202,6 +203,7 @@ export const NODE_BORDER_COLORS: Record<string, Token> = {
   stop_failure: 'error',
   pre_compact: 'text-muted',
   post_compact: 'text-muted',
+  model_change: 'info',
   elicitation: 'info',
   elicitation_result: 'info',
   analysis_result: 'text-muted',

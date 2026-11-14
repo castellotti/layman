@@ -410,6 +410,17 @@ opened (`selectedEventId`), else the last; `mapTurn` and `turnSpan` are the same
 an ended turn's gates are read once. Everything here is a read of Layman's own records: never a network call keyed
 on flow data.
 
+**Background tasks and model changes (round 4).** A call that asked to run in the background records
+`data.backgroundTaskId` (`backgroundTaskIdOf`, parsed at ingest from the response's prose: `agentId:` /
+`with ID:`), and the board keeps it running, across prompts, until its end arrives. That arrives as a
+`UserPromptSubmit` whose text starts `<task-notification>` (observed, undocumented; `task-notification.ts`,
+**byte-identical** in `packages/server/src/events/` and `packages/web/src/lib/`, a web test holds them). It
+is the harness, not the person: it opens no turn (`isTaskNotification` in **both** turn-rule copies, which
+must agree), adds no `you` entry on the board, and never reaches the drift monitor. History has no task id,
+so an old background call finishes at once. `model_change` (`fromModel`, `toModel`) comes from
+`PostModelSwitch` and from the Stop-time transcript reader (`transcriptModels`), once between them; it sets
+the board's `model` and is not work. Steps are not events.
+
 ### Text to speech
 
 Reads agent responses aloud through a [speaches](https://github.com/speaches-ai/speaches) server

@@ -12,6 +12,7 @@
  */
 import type { TimelineEvent, Turn } from './types.js';
 import { getEffectiveAgentContent } from './reasoning.js';
+import { isTaskNotification } from './task-notification.js';
 
 /**
  * A tool call is a single event whose `type` mutates in place as it progresses,
@@ -107,7 +108,9 @@ export function extractTurns(events: TimelineEvent[]): Turn[] {
 
   let owned: TimelineEvent[] | null = null;
   for (const event of ordered) {
-    if (event.type === 'user_prompt') {
+    // A finished background task is reported as a prompt but is the harness, not the person: it
+    // belongs to the turn it arrives in, and opens none (events/task-notification.ts).
+    if (event.type === 'user_prompt' && !isTaskNotification(event.data.prompt)) {
       // A re-recorded duplicate joins the open turn instead of starting one.
       if (owned && isDuplicatePrompt(event, owned[0])) {
         owned.push(event);

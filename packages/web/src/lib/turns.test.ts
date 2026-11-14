@@ -170,3 +170,27 @@ describe('turnForEvent', () => {
     expect(turnForEvent([preamble, prompt('go')], preamble.id)).toBeNull();
   });
 });
+
+describe('a background task notice is not a prompt', () => {
+  const notice = (id: string) => prompt(`<task-notification>\n<task-id>${id}</task-id>\n<status>completed</status>\n</task-notification>`);
+
+  it('belongs to the open turn and starts none', () => {
+    const p1 = prompt('build it');
+    const n = notice('b1');
+    const r = response('done');
+    const turns = extractTurns([p1, n, r]);
+    expect(turns).toHaveLength(1);
+    expect(turns[0].eventIds).toContain(n.id);
+    expect(turns[0].promptText).toBe('build it');
+    expect(turns[0].responseText).toBe('done');
+  });
+
+  it('leaves the next real prompt its own turn, and an early notice no turn', () => {
+    const early = notice('b0');
+    const p1 = prompt('one');
+    const p2 = prompt('two');
+    const turns = extractTurns([early, p1, notice('b1'), p2]);
+    expect(turns.map((t) => t.promptText)).toEqual(['one', 'two']);
+    expect(turns.every((t) => !t.eventIds.includes(early.id))).toBe(true);
+  });
+});

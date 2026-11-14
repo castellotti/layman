@@ -14,6 +14,7 @@
 import type { TimelineEvent } from './types.js';
 import { eventStation, isPushedMemory, NO_SETUP, stationOf, type StationId, type StationSetup } from './station.js';
 import { isDuplicatePrompt, sortStable } from './turns.js';
+import { parseTaskNotification } from './task-notification.js';
 
 /** `run` is still going; `err` failed; `block` was refused; `unended` never reported an end. */
 export type EntryStatus = 'run' | 'ok' | 'err' | 'block' | 'unended';
@@ -84,7 +85,7 @@ function inputKey(event: TimelineEvent): string {
 }
 
 /** Events that report on work already counted elsewhere (the Agent call itself; the task list). */
-const NOT_WORK = new Set(['subagent_start', 'subagent_stop', 'task_created', 'task_completed', 'teammate_idle', 'post_compact', 'elicitation_result']);
+const NOT_WORK = new Set(['subagent_start', 'subagent_stop', 'task_created', 'task_completed', 'teammate_idle', 'post_compact', 'model_change', 'elicitation_result']);
 
 /** Refused or failed. */
 export const isFault = (status: EntryStatus): boolean => status === 'err' || status === 'block';
@@ -141,6 +142,11 @@ export function reduceBoard(events: readonly TimelineEvent[], options: BoardOpti
   const asking: BoardEntry[] = [];
   /** Entries still running, so closing them does not walk the whole session. */
   const running = new Set<BoardEntry>();
+  /**
+   * Calls started in the background, by the task id their completion notice carries. They outlive
+   * the prompt they began in (the notice arrives as a later prompt), so a new prompt leaves them be.
+   */
+  const background = new Map<string, BoardEntry>();
 
   const fault = (on: string): void => {
     if (on !== 'you') faults[on] = (faults[on] ?? 0) + 1;
@@ -161,9 +167,11 @@ export function reduceBoard(events: readonly TimelineEvent[], options: BoardOpti
     if (wasRunning && isFault(status)) fault(entry.on);
   };
   /** Everything still running is over without a word: the session ended or a new prompt began. */
-  const closeAll = (at: number): void => {
-    for (const e of [...running]) close(e, 'unended', at);
+  const closeAll = (at: number, sessionOver = false): void => {
+    const waiting = new Set(background.values());
+    for (const e of [...running]) if (sessionOver || !waiting.has(e)) close(e, 'unended', at);
     asking.length = 0;
+    if (sessionOver) background.clear();
   };
 
   const ordered = sortStable(events);
@@ -178,7 +186,7 @@ export function reduceBoard(events: readonly TimelineEvent[], options: BoardOpti
       continue;
     }
     if (type === 'session_end') {
-      closeAll(event.timestamp);
+      closeAll(event.timestamp, true);
       alive.clear();
       continue;
     }
@@ -196,6 +204,17 @@ export function reduceBoard(events: readonly TimelineEvent[], options: BoardOpti
     }
 
     if (type === 'user_prompt') {
+      // A finished background task is the harness reporting, not the person: it ends its call and
+      // starts no turn (the turn rule does the same, `lib/turns.ts`).
+      const note = parseTaskNotification(str(data.prompt));
+      if (note) {
+        const call = background.get(note.taskId);
+        if (call) {
+          background.delete(note.taskId);
+          close(call, note.status === 'failed' || note.status === 'killed' ? 'err' : 'ok', at);
+        }
+        continue;
+      }
       if (openPrompt && isDuplicatePrompt(event, openPrompt)) continue;
       openPrompt = event;
       turns++;
@@ -229,11 +248,21 @@ export function reduceBoard(events: readonly TimelineEvent[], options: BoardOpti
         const call = claim(inputKey(event));
         if (call) { call.eventId = event.id; close(call, 'ok', endOf(event)); continue; }
       }
+      const taskId = type === 'tool_call_completed' ? str(data.backgroundTaskId) : undefined;
+      if (taskId) {
+        // Started, not done: it runs until its notice arrives.
+        background.set(taskId, add({ eventId: event.id, station, on, from, status: 'run', startedAt: at }));
+        continue;
+      }
       const status: EntryStatus = type === 'tool_call_denied' ? 'block' : 'ok';
       add({ eventId: event.id, station, on, from, status, startedAt: at, endedAt: Math.max(at, endOf(event)) });
       continue;
     }
 
+    if (type === 'model_change') {
+      model = str(data.toModel) ?? model;
+      continue;
+    }
     if (NOT_WORK.has(type)) continue;
     const station = eventStation(type, data as Record<string, unknown>, setup);
     if (station === undefined) {
@@ -257,7 +286,7 @@ export function reduceBoard(events: readonly TimelineEvent[], options: BoardOpti
   }
 
   if (options.ended) {
-    closeAll(ordered.at(-1)?.timestamp ?? 0);
+    closeAll(ordered.at(-1)?.timestamp ?? 0, true);
     alive.clear();
   }
 
