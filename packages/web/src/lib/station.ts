@@ -787,7 +787,7 @@ const TOOL_EVENTS = new Set(['tool_call_pending', 'tool_call_completed', 'tool_c
  */
 const EVENT_STATIONS: Record<string, StationId> = {
   user_prompt: 'you', elicitation: 'you', elicitation_result: 'you',
-  agent_response: 'model', pre_compact: 'model', post_compact: 'model', stop_failure: 'model',
+  agent_response: 'model', pre_compact: 'model', post_compact: 'model', model_change: 'model', stop_failure: 'model',
   instructions_loaded: 'memory',
   file_changed: 'files',
   web_search: 'network',

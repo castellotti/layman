@@ -4,6 +4,7 @@ import { homedir } from 'os';
 import { createHash } from 'crypto';
 import { fileURLToPath } from 'url';
 import { laymanDataDir } from '../config/paths.js';
+import { atLeast, claudeCodeVersion, UNKNOWN_HOOK_SAFE, type Version } from './claude-version.js';
 
 interface HookEntry {
   type: 'http';
@@ -225,7 +226,7 @@ function writeSettings(filePath: string, settings: Settings): void {
   writeFileSync(filePath, JSON.stringify(settings, null, 2) + '\n', 'utf-8');
 }
 
-function buildLaymanHooks(serverUrl: string, hookTimeout: number): SettingsHooks {
+function buildLaymanHooks(serverUrl: string, hookTimeout: number, version: Version | null = null): SettingsHooks {
   const asyncHook = (eventName: string): HookMatcher => ({
     matcher: '',
     hooks: [
@@ -251,7 +252,14 @@ function buildLaymanHooks(serverUrl: string, hookTimeout: number): SettingsHooks
     ],
   });
 
+  // Events newer than the oldest build Layman supports are registered only on a
+  // build known to ignore an event name it does not know (UNKNOWN_HOOK_SAFE).
+  const newer: SettingsHooks = atLeast(version, UNKNOWN_HOOK_SAFE)
+    ? { PermissionDenied: [asyncHook('PermissionDenied')], PostModelSwitch: [asyncHook('PostModelSwitch')] }
+    : {};
+
   return {
+    ...newer,
     PreToolUse: [blockingHook('PreToolUse', 'Layman is analyzing this action...')],
     PostToolUse: [asyncHook('PostToolUse')],
     PostToolUseFailure: [asyncHook('PostToolUseFailure')],
@@ -295,7 +303,8 @@ function buildLaymanHooks(serverUrl: string, hookTimeout: number): SettingsHooks
     Elicitation: [asyncHook('Elicitation')],
     ElicitationResult: [asyncHook('ElicitationResult')],
     // Phase 3: New hook events
-    // PermissionDenied requires claude-code >= 2.1.89; omitted for compatibility
+    // PermissionDenied (2.1.89) and PostModelSwitch (2.1.251) are added above, only on a build
+    // that ignores unknown event names (2.1.101): an older one dropped the whole settings file.
     Setup: [asyncHook('Setup')],
     ConfigChange: [asyncHook('ConfigChange')],
     InstructionsLoaded: [asyncHook('InstructionsLoaded')],
@@ -327,9 +336,10 @@ let laymanEventNames: Set<string> | null = null;
 function getLaymanEventNames(): Set<string> {
   if (!laymanEventNames) {
     laymanEventNames = new Set(Object.keys(buildLaymanHooks('http://placeholder', 10)));
-    // Not currently registered (needs claude-code >= 2.1.89) but may exist in an
-    // older settings file — recognise it so cleanup still removes it.
+    // Registered only on newer builds (see buildLaymanHooks) but may exist in a
+    // settings file from one — recognise them so cleanup still removes them.
     laymanEventNames.add('PermissionDenied');
+    laymanEventNames.add('PostModelSwitch');
     for (const name of RETIRED_HOOK_EVENTS) laymanEventNames.add(name);
   }
   return laymanEventNames;
@@ -650,7 +660,7 @@ export class HookInstaller {
 
   install(): void {
     const settings = readSettings(GLOBAL_SETTINGS_PATH);
-    const laymanHooks = buildLaymanHooks(this.options.serverUrl, this.options.hookTimeout);
+    const laymanHooks = buildLaymanHooks(this.options.serverUrl, this.options.hookTimeout, claudeCodeVersion());
 
     if (!settings.hooks) {
       settings.hooks = {};
@@ -1434,7 +1444,7 @@ export class HookInstaller {
       // This catches both URL changes (e.g. server moved to a different port) and
       // structural changes (e.g. new hook event types added in a Layman update).
       const settings = readSettings(GLOBAL_SETTINGS_PATH);
-      const expectedHooks = buildLaymanHooks(this.options.serverUrl, this.options.hookTimeout);
+      const expectedHooks = buildLaymanHooks(this.options.serverUrl, this.options.hookTimeout, claudeCodeVersion());
       // A Layman hook on an event no longer registered (e.g. a retired one) is stale too.
       const hasStale = Object.entries(settings.hooks ?? {}).some(([eventName, matchers]) =>
         !(eventName in expectedHooks) && hasLaymanHook(matchers, this.options.serverUrl),

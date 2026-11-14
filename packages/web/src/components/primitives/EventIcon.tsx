@@ -50,6 +50,7 @@ export const EVENT_GLYPH: Record<string, Glyph> = {
   stop_failure: 'warn',
   pre_compact: 'box',
   post_compact: 'box',
+  model_change: 'box',
   elicitation: 'form',
   elicitation_result: 'form',
   analysis_result: 'search',

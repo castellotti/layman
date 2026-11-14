@@ -37,8 +37,17 @@ events: `PreToolUse`, `PostToolUse`, `PostToolUseFailure`, `PermissionRequest`, 
 `SessionStart`, `SessionEnd`, `Stop`, `UserPromptSubmit`, `SubagentStart`, `SubagentStop`,
 `StopFailure`, `PreCompact`, `PostCompact`, `Elicitation`, `ElicitationResult`, `Setup`,
 `ConfigChange`, `InstructionsLoaded`, `TaskCreated`, `TaskCompleted`, `TeammateIdle`,
-`CwdChanged`, `FileChanged`. (`PermissionDenied` requires claude-code ≥ 2.1.89 and is not yet
-registered.) The hook handler in
+`CwdChanged`, `FileChanged`. `PermissionDenied` (claude-code ≥ 2.1.89) and `PostModelSwitch`
+(≥ 2.1.251) are registered only when a build of **2.1.101 or newer** has been seen: before 2.1.101 an
+event name Claude Code did not know made it ignore the whole settings file. Layman reads the version from
+the `version` Claude Code writes on every transcript line under `~/.claude/projects`
+(`hooks/claude-version.ts`; it cannot run `claude` from a container), and an unknown version registers
+neither. `PostModelSwitch` records a `model_change` (from, to); the transcript reader that already runs at
+`Stop` records one too when an assistant message names another model (not a subagent's, not
+`<synthetic>`), unless the hook already did. Steps (one assistant message each) are not events: only the
+change is. A background task's end arrives as a `UserPromptSubmit` whose text is a
+`<task-notification>` (observed, not documented): see "Background tasks" in `CLAUDE.md` → Activity map.
+The hook handler in
 `packages/server/src/hooks/handler.ts` processes each event type, calls `EventStore.add()`, and for
 blocking hooks (`PreToolUse`, `PermissionRequest`) calls `PendingApprovalManager.createAndWait()`
 which suspends until the user decides. Claude Code's blocking-hook timeout is 300s (configurable).

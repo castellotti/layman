@@ -30,6 +30,7 @@ export type EventType =
   | 'stop_failure'
   | 'pre_compact'
   | 'post_compact'
+  | 'model_change'
   | 'elicitation'
   | 'elicitation_result'
   | 'analysis_result'
@@ -139,7 +140,11 @@ export interface EventData {
   fileAccess?: FileAccess[];
   urlAccess?: UrlAccess[];
   // Phase 1: Previously discarded fields
+  /** A call started in the background: the task id its completion notice will carry. */
+  backgroundTaskId?: string;
   compactTrigger?: 'manual' | 'auto';
+  fromModel?: string;
+  toModel?: string;
   compactSummary?: string;
   compactCustomInstructions?: string | null;
   permissionMode?: string;

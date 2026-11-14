@@ -21,6 +21,7 @@ export type EventType =
   | 'stop_failure'
   | 'pre_compact'
   | 'post_compact'
+  | 'model_change'
   | 'elicitation'
   | 'elicitation_result'
   | 'analysis_result'
@@ -94,7 +95,12 @@ export interface EventData {
   permissionSuggestions?: PermissionSuggestion[];
   fileAccess?: FileAccess[];
   urlAccess?: UrlAccess[];
+  /** A call started in the background: the task id its completion notice will carry. */
+  backgroundTaskId?: string;
   compactTrigger?: 'manual' | 'auto';
+  /** `model_change`: the model the session moved from and to (canonical names). */
+  fromModel?: string;
+  toModel?: string;
   compactSummary?: string;
   compactCustomInstructions?: string | null;
   permissionMode?: string;
