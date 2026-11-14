@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react';
 import { useNetStore } from '../stores/netStore.js';
-import { gloveMap, type GloveMap } from '../lib/activity-glove.js';
+import { gloveMap, GLOVE_READ_MS, type GloveMap } from '../lib/activity-glove.js';
 import type { GatesView, NetRange } from '../lib/netobs-types.js';
 import { getJson, pollSettled } from './useNetTrace.js';
 
 /** How often a live gloved session's gates are read again while the map is visible. */
-const REFRESH_MS = 10_000;
+const REFRESH_MS = GLOVE_READ_MS;
 
 /**
  * What the map shows of the glove session a Layman session runs in, or null when it runs in none.

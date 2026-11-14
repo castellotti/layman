@@ -177,6 +177,15 @@ describe('glovePulses', () => {
   });
 });
 
+describe('glovePulses, late reads', () => {
+  it('draws a loose flow the poll delivers seconds late, replayed from its start, and not one older than that', () => {
+    const g = gloveMap(view({ loose: [{ service: 'proxy', t: 1000, refused: false, egress: false }, { service: 'proxy', t: 0, refused: false, egress: false }] }));
+    const { extra } = glovePulses(g, reduceBoard([], {}), 6000, 900);
+    expect(extra.map((p) => p.age)).toEqual([0, 0]);
+    expect(glovePulses(g, reduceBoard([], {}), 30000, 900).extra).toEqual([]);
+  });
+});
+
 describe('exitRing', () => {
   it('raises the alarm only for untunnelled flows, and says where a verified tunnel leaves', () => {
     const exit = { kind: 'vpn', country: 'Switzerland', city: null, healthy: true };

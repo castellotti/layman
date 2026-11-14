@@ -247,4 +247,16 @@ describe("a turn's gates", () => {
     expect(traffic.reduce((n, d) => n + d.blocked, 0)).toBe(flows.filter((f) => ['guard', 'user_rule', 'default_block'].includes(f.state)).length);
     expect(traffic.reduce((n, d) => n + d.bytesUp + d.bytesDown, 0)).toBe(flows.reduce((n, f) => n + f.bytes.up + f.bytes.down, 0));
   });
+
+  it('is a hop only when every flow to the destination was one', () => {
+    const [a] = netObs.store.flowsBetween(TOKEN, at('14:40.000'), at('14:48.000'))!;
+    const f = (hop: boolean) => ({ ...a, destKey: 'same:1', flags: { ...a.flags, hop } });
+    expect(trafficOf([f(true), f(false)])[0].flags.hop).toBe(false);
+    expect(trafficOf([f(true), f(true)])[0].flags.hop).toBe(true);
+  });
+
+  it('joins nothing for a range no turn can reach', () => {
+    const range = { from: at('16:00.000'), to: at('16:01.000') };
+    expect(sessionJoins(netObs.store, TOKEN, deps, 'run1', at('16:02.000'), range)).toEqual({ calls: [], loose: [] });
+  });
 });

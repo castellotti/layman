@@ -32,7 +32,9 @@ function queryRange(from: string | undefined, to: string | undefined): NetRange 
   if (from === undefined && to === undefined) return null;
   // `Number('')` is 0, the epoch: an empty value is refused, not read as a range from 1970.
   const ms = (v: string) => (v.trim() === '' ? NaN : Number(v));
-  return (from === undefined ? null : parseRange({ from: ms(from), to: to === undefined ? null : ms(to) })) ?? undefined;
+  // `to` alone is refused, not read as no range: a lost `from` must not widen the answer to everything.
+  if (from === undefined) return undefined;
+  return (parseRange({ from: ms(from), to: to === undefined ? null : ms(to) })) ?? undefined;
 }
 
 export function registerNetRoutes(fastify: FastifyInstance, deps: { netObs: NetObs; trace?: TraceDeps; tokens?: TokenDeps }): void {

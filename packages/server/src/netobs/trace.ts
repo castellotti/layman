@@ -226,6 +226,8 @@ export function sessionJoins(store: NetStore, token: string, deps: TraceDeps, se
     // A window that ends before the oldest flow in memory has nothing to join.
     const next = all[i + 1];
     if (next && windowStart(next) < oldest) return;
+    // With a range, a turn whose window cannot hold a call that started in it is not joined.
+    if (range && (windowStart(t) > (range.to ?? now) || (next && windowStart(next) < range.from))) return;
     const owned = t.turn.eventIds.map((id) => byId.get(id)).filter((e): e is TimelineEvent => !!e);
     const { flows, earlier, services, items, unattributed } = joinTurn(store, token, all, i, owned, now, span);
     const flow = new Map([...flows, ...earlier].map((f) => [f.id, f]));
@@ -259,6 +261,9 @@ export function trafficOf(flows: readonly FlowView[]): GateTraffic[] {
   for (const f of flows) {
     const key = f.destKey ?? f.id;
     const d = out.get(key) ?? { services: [], bytesUp: 0, bytesDown: 0, flows: 0, blocked: 0, scope: f.scope, flags: { hop: f.flags.hop, vpn: f.flags.vpn } };
+    // A destination is a hop only if every flow to it was; a route is kept once any flow had one.
+    d.flags.hop = d.flags.hop && f.flags.hop;
+    d.flags.vpn = d.flags.vpn ?? f.flags.vpn;
     if (!d.services.includes(f.service)) d.services.push(f.service);
     d.bytesUp += f.bytes.up;
     d.bytesDown += f.bytes.down;

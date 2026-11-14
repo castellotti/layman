@@ -53,6 +53,7 @@ describe('net REST routes', () => {
     // `since` past every record leaves no destination; an unknown session is a 404.
     expect((await app.inject(`/api/net/sessions/${TEST_ID}/gates?since=${Date.now() + 3_600_000}`)).json().destinations).toEqual([]);
     expect((await app.inject('/api/net/sessions/nope/gates')).statusCode).toBe(404);
+    expect((await app.inject(`/api/net/sessions/${TEST_ID}/gates?to=2000`)).statusCode).toBe(400);
   });
 
   it('GET /api/net/sessions/:token returns 15 flows with their states', async () => {

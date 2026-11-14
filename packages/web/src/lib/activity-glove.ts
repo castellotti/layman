@@ -206,6 +206,11 @@ export interface GlovePulse {
   age: number;
 }
 
+/** How long after it happened glove's data is read (the gates are polled every 10 s): a pulse is still drawn that late. */
+export const GLOVE_READ_MS = 10_000;
+/** A pulse that arrived late plays from its start when first drawn, not from where it would have been. */
+const replayAge = (age: number, pulseMs: number): number => (age < pulseMs ? age : 0);
+
 /**
  * The pulses glove's records add to the board's: Tool egress a call set off (SearXNG's fan-out),
  * hollow, out along the call's gate; and each flow no call claimed, hollow, red when refused.
@@ -219,12 +224,12 @@ export function glovePulses(g: GloveMap, board: Board, now: number, pulseMs: num
     if (!join) continue;
     if (join.refused > 0) refused.add(e.eventId);
     const age = now - e.startedAt;
-    if (join.egress > 0 && age >= 0 && age < pulseMs) extra.push({ key: `${e.eventId}:egress`, station: e.on, hollow: true, bad: false, age });
+    if (join.egress > 0 && age >= 0 && age < pulseMs + GLOVE_READ_MS) extra.push({ key: `${e.eventId}:egress`, station: e.on, hollow: true, bad: false, age: replayAge(age, pulseMs) });
   }
   g.loose.forEach((f, i) => {
     const station = g.stations.stationOf.get(f.service);
     const age = now - f.t;
-    if (station && age >= 0 && age < pulseMs) extra.push({ key: `loose:${f.service}:${f.t}:${i}`, station, hollow: true, bad: f.refused, age });
+    if (station && age >= 0 && age < pulseMs + GLOVE_READ_MS) extra.push({ key: `loose:${f.service}:${f.t}:${i}`, station, hollow: true, bad: f.refused, age: replayAge(age, pulseMs) });
   });
   return { extra, refused };
 }
