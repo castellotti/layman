@@ -120,7 +120,7 @@ linked above.
    in `docs/extensions/glove.md` → Network): tails each gloved session's `net/` (flows, exit, status) into a
    dedicated `NetStore` and `net:*` frames — **never `EventStore`** (same reason as live streaming).
    Rotated files are identified by content, not inode (Docker Desktop's bind mount changes inodes on
-   rename). **Never make a network call keyed on gloved flow data**; tests in both packages enforce it.
+   rename). **Never make a network call keyed on gloved flow data**; tests in both packages enforce it (the web one also covers the Activity map's files, and `getJson` refuses anything but a `/api/` path when it runs).
    Client: data in `stores/netStore.ts` (never `sessionStore`, which must not re-render per delta);
    the selection (`netToken`, `netDest`) in `sessionStore` because the URL reads it. Which flows a
    dead gate left open is glove's rule (`ended_runs`, glove v3 `extensions/observe/netview.py`), ported in `NetStore` and held to it

@@ -11,6 +11,8 @@ export type TraceQuery = { turn: string } | { at: number } | null;
 
 /** GET a Layman API path, throwing its `error` (else the status) when it fails. */
 export async function getJson<T>(url: string): Promise<T> {
+  // Layman's own API only: the network views and the Activity map never request anything keyed on flow data.
+  if (!url.startsWith('/api/')) throw new Error('getJson reads Layman\'s API only');
   const r = await fetch(url);
   if (!r.ok) throw new Error((await r.json().catch(() => null))?.error ?? `HTTP ${r.status}`);
   return r.json() as Promise<T>;
