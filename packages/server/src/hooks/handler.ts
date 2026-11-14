@@ -685,13 +685,14 @@ async function handlePostToolUse(
   );
 
   const completedAt = Date.now();
+  const backgroundTaskId = backgroundTaskIdOf(input.tool_input, input.tool_output);
   const access = extractAccess(input.tool_name, input.tool_input, input.tool_output, '', completedAt);
 
   if (pendingEvent && pendingEvent.type !== 'tool_call_completed') {
     eventStore.updateType(pendingEvent.id, 'tool_call_completed');
     eventStore.updateData(pendingEvent.id, {
       toolOutput: input.tool_output,
-      backgroundTaskId: backgroundTaskIdOf(input.tool_input, input.tool_output),
+      backgroundTaskId,
       completedAt,
       fileAccess: access.files.length > 0 ? access.files.map(f => ({ ...f, eventId: pendingEvent.id })) : undefined,
       urlAccess: access.urls.length > 0 ? access.urls.map(u => ({ ...u, eventId: pendingEvent.id })) : undefined,
@@ -710,7 +711,7 @@ async function handlePostToolUse(
       toolName: input.tool_name,
       toolInput: input.tool_input,
       toolOutput: input.tool_output,
-      backgroundTaskId: backgroundTaskIdOf(input.tool_input, input.tool_output),
+      backgroundTaskId,
       completedAt,
       fileAccess: filesWithId,
       urlAccess: urlsWithId,
