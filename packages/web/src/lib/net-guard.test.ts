@@ -49,7 +49,7 @@ describe('no-network guard (web network views)', () => {
     const real = globalThis.fetch;
     globalThis.fetch = (() => { called = true; return Promise.reject(new Error('no')); }) as typeof fetch;
     try {
-      for (const url of ['https://example.com/x', '//example.com/x', 'http://127.0.0.1/api/x', '/other']) {
+      for (const url of ['https://example.com/x', '//example.com/x', 'http://127.0.0.1/api/x', '/other', '/api/../x', '/api/%2e%2e/x', '/api/\\evil.com', '/api//x/../y']) {
         await expect(getJson(url)).rejects.toThrow(/Layman's API only/);
       }
     } finally { globalThis.fetch = real; }
