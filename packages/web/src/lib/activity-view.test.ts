@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { entryLabel, LEG_FADE_MS, LEG_HOLD_MS, legOpacity, mapTitle, pickSession, pulsesOf, PULSE_MS } from './activity-view.js';
+import { entryLabel, LEG_FADE_MS, LEG_HOLD_MS, legOpacity, mapTitle, mapTurn, pickSession, pulsesOf, PULSE_MS } from './activity-view.js';
+import type { TimelineEvent } from './types.js';
 import type { Board, BoardEntry } from './activity-board.js';
 import { NO_SETUP } from './station.js';
-import type { TimelineEvent } from './types.js';
 import type { SessionInfo } from './ws-protocol.js';
 
 const session = (sessionId: string, lastSeen: number, active = true): SessionInfo => ({ sessionId, cwd: '/', lastSeen, agentType: 'pi', active });
@@ -19,7 +19,7 @@ describe('pickSession', () => {
 
 const board = (entries: BoardEntry[]): Board => ({ entries, counts: {}, pushed: 0, faults: {}, agents: 0, turns: 0 });
 const entry = (station: BoardEntry['station'], startedAt: number, extra: Partial<BoardEntry> = {}): BoardEntry => ({
-  eventId: `e${startedAt}${station}`, station, from: 'core', status: 'ok', startedAt, endedAt: startedAt + 300, ...extra,
+  eventId: `e${startedAt}${station}`, station, on: station, from: 'core', status: 'ok', startedAt, endedAt: startedAt + 300, ...extra,
 });
 
 describe('pulsesOf', () => {
@@ -106,5 +106,32 @@ describe('entryLabel', () => {
 
   it("falls back to the station's name for an event it no longer has", () => {
     expect(entryLabel(undefined, 'guard', false, NO_SETUP)).toBe('Guard');
+  });
+});
+
+describe('mapTurn', () => {
+  const e = (id: string, type: TimelineEvent['type'], t: number, data: TimelineEvent['data'] = {}): TimelineEvent =>
+    ({ id, type, timestamp: t, sessionId: 's', agentType: 'pi', data });
+  const events = [
+    e('p1', 'user_prompt', 1000, { prompt: 'one', transcriptAt: 1000 }),
+    e('c1', 'tool_call_completed', 1100, { toolName: 'web_fetch', toolInput: { url: 'https://a.dev' } }),
+    e('r1', 'agent_response', 1500, { prompt: 'done' }),
+    e('p2', 'user_prompt', 5000, { prompt: 'two' }),
+    e('c2', 'tool_call_approved', 5100, { toolName: 'web_fetch', toolInput: { url: 'https://b.dev' } }),
+  ];
+
+  it("is the turn of the row opened, with its own events and its span as Network for this turn's range", () => {
+    const t = mapTurn(events, 'c1', true)!;
+    expect([t.index, t.count, t.promptEventId, t.last]).toEqual([0, 2, 'p1', false]);
+    expect(t.events.map((x) => x.id)).toEqual(['p1', 'c1', 'r1']);
+    expect(t.range).toEqual({ from: 1000 - 1000, to: 1500 + 2000 });
+  });
+
+  it('is the last turn with no row opened, open-ended while it runs behind a live gate', () => {
+    const t = mapTurn(events, null, true)!;
+    expect([t.index, t.last, t.range.to]).toEqual([1, true, null]);
+    // Known only by when it was read: 3 s of lead.
+    expect(t.range.from).toBe(5000 - 3000);
+    expect(mapTurn([], null, true)).toBeNull();
   });
 });

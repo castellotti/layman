@@ -3,7 +3,8 @@ import { useNow } from '../../hooks/useNow.js';
 import type { Board } from '../../lib/activity-board.js';
 import { routeOf } from '../../lib/activity-board.js';
 import { aside, edge, layoutMap, legPath, spoke, spokeWidth, type MapLayout, type Point } from '../../lib/activity-map.js';
-import { GLOW_MS, legOpacity, pulsesOf, type Pulse, type StationSpec } from '../../lib/activity-view.js';
+import { GLOW_MS, legOpacity, PULSE_MS, pulsesOf, type Pulse, type StationSpec } from '../../lib/activity-view.js';
+import { glovePulses, type GloveMap } from '../../lib/activity-glove.js';
 import { contextPctColor } from '../../lib/session-state.js';
 import { STATION_STYLE } from '../../lib/station-style.js';
 import { StationGlyph } from './StationGlyph.js';
@@ -27,14 +28,14 @@ function pulseEnds(layout: MapLayout, p: Pulse): [Point, Point] | undefined {
  * One pulse. Its delay and lane are taken once, when it appears, so a redraw never restarts its
  * flight or moves it sideways when another pulse joins its spoke.
  */
-function PulseDot({ layout, pulse }: { layout: MapLayout; pulse: Pulse }) {
+function PulseDot({ layout, pulse, tint }: { layout: MapLayout; pulse: Pulse; tint: string }) {
   const [delay] = useState(() => -pulse.age / 1000);
   const [lane] = useState(pulse.lane);
   const ends = pulseEnds(layout, pulse);
   if (!ends) return null;
   const [a, b] = aside(ends[0], ends[1], lane);
   const [from, to] = pulse.kind === 'in' ? [b, a] : [a, b];
-  const color = pulse.bad ? 'var(--error)' : STATION_STYLE[pulse.station].color;
+  const color = pulse.bad ? 'var(--error)' : tint;
   const style = { '--dx': `${to.x - from.x}px`, '--dy': `${to.y - from.y}px`, '--delay': `${delay}s` } as React.CSSProperties;
   return (
     <circle
@@ -60,20 +61,25 @@ export interface ActivityMapProps {
   live: boolean;
   /** What the map is of, for a screen reader. */
   title: string;
+  /** A gloved session's gates, joins and loose flows: the pulses glove's records add. */
+  glove?: GloveMap | null;
+  /** The ring around the whole map: where the sandbox's traffic leaves (`exitRing`), or none. */
+  ring?: { color: string; dashed: boolean; title: string } | null;
 }
 
 /**
  * The map: stations on a ring around the agent, spokes worn by use, the route, pulses in flight.
  * Memoized: a click or toggle in the feed beside it changes none of its props; its own clock drives it.
  */
-export const ActivityMap = React.memo(function ActivityMap({ board, stations, width, height, live, title }: ActivityMapProps) {
+export const ActivityMap = React.memo(function ActivityMap({ board, stations, width, height, live, title, glove, ring }: ActivityMapProps) {
   // Its own clock, so only the map redraws twice a second, not the feed beside it.
   const now = useNow(live ? 500 : 60_000);
   // Keyed by the ids themselves: the specs are rebuilt at every event, the ring only when a station comes or goes.
   const idKey = stations.map((s) => s.id).join('\n');
   const layout = useMemo(() => layoutMap(idKey.split('\n'), { width, height }), [idKey, width, height]);
   const route = useMemo(() => routeOf(board.entries), [board]);
-  const pulses = live ? pulsesOf(board, now) : [];
+  const pulses = live ? pulsesOf(board, now, glove ? glovePulses(glove, board, now, PULSE_MS) : undefined) : [];
+  const tint = useMemo(() => new Map(stations.map((s) => [s.id, s.color])), [stations]);
   const agentsAt = layout.stations[layout.index.get('agents') ?? -1];
 
   return (
@@ -85,6 +91,13 @@ export const ActivityMap = React.memo(function ActivityMap({ board, stations, wi
       role="img"
       aria-label={title}
     >
+      {/* The exit ring: the whole map is inside the sandbox, and this is where its traffic leaves. */}
+      {ring && (
+        <rect x={1} y={1} width={Math.max(0, layout.width - 2)} height={Math.max(0, layout.height - 2)} rx={10}
+          fill="none" stroke={ring.color} strokeWidth={1.5} strokeDasharray={ring.dashed ? '5 4' : undefined} opacity={0.7}>
+          <title>{ring.title}</title>
+        </rect>
+      )}
       {/* Contours around the core. */}
       {[0.35, 0.62].map((f) => (
         <ellipse key={f} cx={layout.core.x} cy={layout.core.y} rx={layout.rx * f} ry={layout.ry * f}
@@ -132,7 +145,7 @@ export const ActivityMap = React.memo(function ActivityMap({ board, stations, wi
         );
       })}
 
-      {pulses.map((p) => <PulseDot key={p.key} layout={layout} pulse={p} />)}
+      {pulses.map((p) => <PulseDot key={p.key} layout={layout} pulse={p} tint={tint.get(p.station) ?? 'var(--text-muted)'} />)}
 
       {/* The core: the agent, with its context window's fill when the harness reports one. */}
       <circle cx={layout.core.x} cy={layout.core.y} r={layout.hub} fill="var(--bg-raised)" stroke="var(--border-strong)" />

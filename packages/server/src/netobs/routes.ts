@@ -6,10 +6,10 @@
 import { randomUUID } from 'crypto';
 import type { FastifyInstance } from 'fastify';
 import type { NetObs, RulesOp } from './index.js';
-import { buildTrace, callsBetween, downloadsIn, type TraceDeps } from './trace.js';
+import { buildTrace, callsBetween, downloadsIn, sessionJoins, trafficOf, type TraceDeps } from './trace.js';
 import { DEFAULT_BURST_GAP_MS, agentSegment, buildSegments } from './segments.js';
 import { parseRange } from './range.js';
-import type { NetRange } from './types.js';
+import type { GatesView, NetRange } from './types.js';
 import type { TokenSums } from '../pi/usage.js';
 
 const OP_KINDS = new Set([
@@ -55,18 +55,36 @@ export function registerNetRoutes(fastify: FastifyInstance, deps: { netObs: NetO
   // What the Activity map's gate stations need, and nothing else: the services glove declared and,
   // per destination, which services reached it and how much. `since` (ms) drops destinations last
   // reached before it (a Layman session's start), so an earlier run's hosts do not wear its map.
-  fastify.get<{ Params: { token: string }; Querystring: { since?: string } }>('/api/net/sessions/:token/gates', async (request, reply) => {
+  // `session` (a Layman session id) adds its calls joined to their flows (Trace's join) and the
+  // last minute's flows no call claimed. `from`/`to` (ms; no `to`: until now) is a turn's span
+  // (the web's `turnRange`): the destinations are then the flows in memory that opened in it, as
+  // Trace counts a turn, and the calls and loose flows those in it. The exit is given without its address.
+  fastify.get<{ Params: { token: string }; Querystring: { since?: string; session?: string; from?: string; to?: string } }>('/api/net/sessions/:token/gates', async (request, reply) => {
     const { token } = request.params;
     if (!store.has(token)) return reply.status(404).send(notFound(token));
     const since = Number(request.query.since ?? 0);
     const from = Number.isFinite(since) ? since : 0;
-    return {
-      services: store.sessionFile(token)?.services ?? [],
-      destinations: store.destinations(token).filter((d) => d.lastSeen >= from).map((d) => ({
+    const range = queryRange(request.query.from, request.query.to);
+    if (range === undefined) return reply.status(400).send({ error: 'from and to must be ms since the epoch, from ≤ to' });
+    const now = Date.now();
+    const session = request.query.session;
+    const joins = session && deps.trace ? sessionJoins(store, token, deps.trace, session, now, range) : { calls: [], loose: [] };
+    const destinations = range
+      ? trafficOf(store.flowsBetween(token, range.from, range.to ?? now) ?? [])
+      : store.destinations(token).filter((d) => d.lastSeen >= from).map((d) => ({
         services: d.services, bytesUp: d.bytesUp, bytesDown: d.bytesDown, flows: d.flows, blocked: d.blocked,
         scope: d.scope, flags: { hop: d.flags.hop, vpn: d.flags.vpn },
-      })),
+      }));
+    const exit = store.exit(token);
+    const gate = store.gate(token);
+    const view: GatesView = {
+      services: store.sessionFile(token)?.services ?? [],
+      destinations,
+      ...joins,
+      exit: exit ? { kind: exit.kind, country: exit.country, city: exit.city, healthy: exit.healthy } : null,
+      route: gate ? { kind: gate.route.kind, verified: gate.route.verified } : null,
     };
+    return view;
   });
 
   fastify.get<{ Params: { token: string }; Querystring: { since?: string; limit?: string } }>(

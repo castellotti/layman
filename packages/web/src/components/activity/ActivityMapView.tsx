@@ -1,11 +1,15 @@
-import React, { useCallback, useMemo } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
+import { useNetStore } from '../../stores/netStore.js';
 import { sp } from '../../lib/density.js';
 import { fetchRecordedSessionEvents, useSessionStore } from '../../stores/sessionStore.js';
-import { useActivityBoard } from '../../hooks/useActivityBoard.js';
+import { useSessionTimeline } from '../../hooks/useActivityBoard.js';
+import { reduceBoard } from '../../lib/activity-board.js';
 import { useStationSetup } from '../../hooks/useStationSetup.js';
 import { foldRows } from '../../lib/activity-board.js';
-import { ENTRY_STATUS, entryLabel, mapTitle, pickSession, stationSpecs } from '../../lib/activity-view.js';
-import { useGloveStations } from '../../hooks/useGloveStations.js';
+import { ENTRY_STATUS, entryLabel, mapTitle, mapTurn, pickSession, stationSpecs } from '../../lib/activity-view.js';
+import { useGloveMap } from '../../hooks/useGloveMap.js';
+import { exitRing, placeCalls, type ExitTone } from '../../lib/activity-glove.js';
+import { ALARM } from '../network/netui.js';
 import { useStoredFlag } from '../../hooks/useStored.js';
 import { useElementSize } from '../../hooks/useElementSize.js';
 import { STATION_STYLE } from '../../lib/station-style.js';
@@ -29,6 +33,11 @@ function Fact({ label, value, color = 'var(--text-body)' }: { label: string; val
   );
 }
 
+/** The exit ring's colour by its tone: the network views' own (the alarm's is `ALARM`). */
+const EXIT_COLOR: Record<ExitTone, string> = {
+  alarm: ALARM.text, tunnel: 'var(--net-tunnel)', unverified: 'var(--warn)', local: 'var(--net-local)', none: 'var(--text-faint)',
+};
+
 /**
  * The activity map of one session: what kind of work it did, where, and what is running now. The
  * session is the one open in the app (the header's picker), else the newest live one.
@@ -42,17 +51,27 @@ export default function ActivityMapView() {
   const session = sessions.find((s) => s.sessionId === sessionId);
   // A session the server no longer lists is over.
   const live = !!session && isSessionLive(session);
-  const { board, events, loading } = useActivityBoard(sessionId, !live);
   // Behind a glove gate, the sandbox's own services are stations too, worn by real bytes since the
-  // session began: its first event, by the transcript's own time where a passive watcher kept it.
+  // session began (its first event, by the transcript's own time where a passive watcher kept it),
+  // and its network calls are drawn on the gate their connections went through.
+  const { events, loading } = useSessionTimeline(sessionId);
   const since = useMemo(() => {
     let first = Infinity;
     for (const e of events) first = Math.min(first, e.timestamp, typeof e.data.transcriptAt === 'number' ? e.data.transcriptAt : Infinity);
     return Number.isFinite(first) ? first : 0;
   }, [events]);
-  const glove = useGloveStations(loading ? null : session?.sessionName, live, since);
-  const stations = useMemo(() => stationSpecs(board, glove), [board, glove]);
+  // "This turn": the map, the feed and the gates of one turn, the one a feed row clicked open
+  // belongs to, else the last; its gates' traffic is what opened in its span (`turnSpan`).
+  const [thisTurn, setThisTurn] = useState(false);
+  const gateLive = useNetStore((s) => s.sessions.find((x) => x.token === session?.sessionName)?.live ?? false);
+  const turn = useMemo(() => (thisTurn ? mapTurn(events, selectedEventId, gateLive) : null), [thisTurn, events, selectedEventId, gateLive]);
+  const glove = useGloveMap(sessionId, loading ? null : session?.sessionName, live, since, turn?.range ?? null);
   const setup = useStationSetup();
+  const board = useMemo(() => reduceBoard(turn ? turn.events : events, {
+    setup, ended: !live || (turn !== null && !turn.last), place: glove ? placeCalls(glove) : undefined,
+  }), [turn, events, setup, live, glove]);
+  const stations = useMemo(() => stationSpecs(board, glove?.stations ?? null), [board, glove]);
+  const exit = useMemo(() => (glove ? exitRing(glove) : null), [glove]);
   const [namesOnly, toggleNamesOnly] = useStoredFlag(NAMES_ONLY_KEY, false);
   const [bodyRef, body] = useElementSize<HTMLDivElement>();
   const [mapRef, size] = useElementSize<HTMLDivElement>();
@@ -101,13 +120,20 @@ export default function ActivityMapView() {
       >
         <span style={{ color: 'var(--text)', fontWeight: 600 }}>{name}</span>
         <span style={{ color: live ? 'var(--ok)' : 'var(--text-faint)' }}>{live ? 'live' : 'ended'}</span>
-        <Fact label="turns" value={board.turns} />
+        {turn ? <Fact label="turn" value={`${turn.index + 1} of ${turn.count}`} /> : <Fact label="turns" value={board.turns} />}
         {board.model && <Fact label="model" value={board.model} />}
         {board.context !== undefined && <Fact label="context" value={`${Math.round(board.context)}%`} color={contextPctColor(board.context, 'var(--text-body)')} />}
         {board.pushed > 0 && <Fact label="memory pushed" value={countLabel(board.pushed)} />}
         {board.agents > 0 && <Fact label="subagents" value={board.agents} />}
+        {exit && <span title="Where the glove sandbox's traffic leaves: the ring around the map" style={{ color: EXIT_COLOR[exit.tone] }}>{exit.words}</span>}
+        {exit?.alarm && <span style={{ color: ALARM.text, fontWeight: 600 }}>{exit.alarm}</span>}
         {loading && <span style={{ color: 'var(--text-faint)' }}>loading the recording…</span>}
         <span style={{ flex: 1 }} />
+        <label data-print-hide style={{ display: 'inline-flex', alignItems: 'center', gap: sp(6), color: 'var(--text-muted)', cursor: 'pointer' }}
+          title="Show one turn: the one of the row you last opened, else the last. A gloved session's gates then count only the connections that turn opened.">
+          <input type="checkbox" checked={thisTurn} onChange={() => setThisTurn((v) => !v)} />
+          This turn
+        </label>
         <label data-print-hide style={{ display: 'inline-flex', alignItems: 'center', gap: sp(6), color: 'var(--text-muted)', cursor: 'pointer' }}
           title="Show only names: a file's last two folders, a host, a command's name. Nothing of what was typed, read or run.">
           <input type="checkbox" checked={namesOnly} onChange={toggleNamesOnly} />
@@ -121,7 +147,8 @@ export default function ActivityMapView() {
         <div ref={mapRef} className="activity-map-pane" style={{ flex: stacked ? '0 0 55%' : '3 1 0', position: 'relative', minWidth: 0, minHeight: 0 }}>
           {size.width > 0 && size.height > 0 && (
             <div style={{ position: 'absolute', inset: 8 }}>
-              <ActivityMap board={board} stations={stations} width={size.width - 16} height={size.height - 16} live={live} title={title} />
+              <ActivityMap board={board} stations={stations} width={size.width - 16} height={size.height - 16} live={live} title={title}
+                glove={glove} ring={exit && exit.tone !== 'none' ? { color: EXIT_COLOR[exit.tone], dashed: exit.tone === 'unverified', title: [exit.words, exit.alarm].filter(Boolean).join(': ') } : null} />
             </div>
           )}
         </div>

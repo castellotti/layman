@@ -960,3 +960,47 @@ export interface NetSegments {
   agentSessions: AgentSegment[];
   hours: HourActivity[];
 }
+
+// ─── The Activity map's gates (`GET /api/net/sessions/:token/gates`) ──────────
+
+/** A destination as the Activity map's gate stations need it: who reached it, and how much. */
+export interface GateTraffic {
+  services: string[];
+  bytesUp: number;
+  bytesDown: number;
+  flows: number;
+  blocked: number;
+  scope: string;
+  flags: Pick<FlowFlags, 'hop' | 'vpn'>;
+}
+
+/** One tool call of a Layman session and the gate services its flows went through (Trace's join). */
+export interface GateCallJoin {
+  eventId: string;
+  /** Services of the flows it claimed or rode (kept-alive), glove's order of first use. */
+  services: string[];
+  /** Of those flows, refused by glove's guard, a rule or the default. */
+  refused: number;
+  /** Flows a gate's egress made on its behalf (SearXNG's fan-out): Tool egress. */
+  egress: number;
+}
+
+/** A flow of the last minute that no call claimed: drawn, never given to a call. */
+export interface GateLooseFlow {
+  service: string;
+  t: number;
+  refused: boolean;
+  /** An egress gate's (`harness: false`): Tool egress, not the agent's own. */
+  egress: boolean;
+}
+
+export interface GatesView {
+  services: NetService[];
+  destinations: GateTraffic[];
+  /** The Layman session's calls joined to their flows; empty without `session` or Trace. */
+  calls: GateCallJoin[];
+  loose: GateLooseFlow[];
+  /** Where traffic leaves (no address: the map does not show one). */
+  exit: { kind: string; country: string | null; city: string | null; healthy: boolean } | null;
+  route: { kind: string | null; verified: boolean } | null;
+}

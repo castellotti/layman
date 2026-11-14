@@ -1,13 +1,17 @@
 import { describe, expect, it } from 'vitest';
-import { gateLabel, gloveStations, MAX_GATES } from './activity-glove.js';
+import { exitRing, gateLabel, gloveMap, glovePulses, gloveStations, MAX_GATES, placeCalls } from './activity-glove.js';
 import { stationSpecs } from './activity-view.js';
 import { reduceBoard } from './activity-board.js';
 import { dest } from './net-test-fixtures.js';
-import type { NetService } from './netobs-types.js';
+import type { GatesView, NetService } from './netobs-types.js';
+import type { TimelineEvent } from './types.js';
 import { STATION_IDS } from './station.js';
 
 const svc = (service: string, over: Partial<NetService> = {}): NetService => ({ service, listen: ':1', observed: true, ...over });
 const hop = { scope: 'local', hop: true } as const;
+const fetchCall = (id: string, type: TimelineEvent['type'], t: number, toolName = 'web_fetch'): TimelineEvent =>
+  ({ id, type, timestamp: t, sessionId: 's', agentType: 'pi', data: { toolName, toolInput: { url: `https://${id}.dev` } } });
+const view = (over: Partial<GatesView> = {}): GatesView => ({ services: PI_SEARCH, destinations: [], calls: [], loose: [], exit: null, route: null, ...over });
 
 /** pi-search as glove renders it: the model's link, search through SearXNG, a fetch proxy, a browser. */
 const PI_SEARCH: NetService[] = [
@@ -120,17 +124,68 @@ describe('stationSpecs', () => {
     expect(specs.find((s) => s.id === 'gate:search')).toMatchObject({ amount: null, wear: 0 });
   });
 
-  it("shows a gate whose every connection was refused by its refusals, as faults", () => {
+  it('shows a gate whose every connection was refused by its refusals, not as unused', () => {
     const glove = gloveStations(PI_SEARCH, [dest('evil.dev:443', { services: ['proxy'], bytesUp: 0, bytesDown: 0, flows: 20, blocked: 20 })]);
-    expect(stationSpecs(reduceBoard([]), glove).find((s) => s.id === 'gate:proxy')).toMatchObject({ amount: '20 refused', faults: 20 });
+    expect(stationSpecs(reduceBoard([]), glove).find((s) => s.id === 'gate:proxy')).toMatchObject({ amount: '20 refused' });
+  });
+
+  it("drops Network once every network call is on a gate, and gives a gate its calls' runs, faults and glow", () => {
+    const glove = gloveStations(PI_SEARCH, []);
+    const board = reduceBoard([
+      fetchCall('a', 'tool_call_approved', 10),
+      fetchCall('b', 'tool_call_failed', 20),
+    ], { place: () => 'gate:proxy' });
+    const specs = stationSpecs(board, glove);
+    expect(specs.map((s) => s.id)).not.toContain('network');
+    expect(specs.find((s) => s.id === 'gate:proxy')).toMatchObject({ runs: 1, faults: 1, lastStart: 20, amount: '2' });
+    // A call no gate took keeps Network on the ring.
+    const left = stationSpecs(reduceBoard([fetchCall('c', 'tool_call_completed', 30)]), glove);
+    expect(left.map((s) => s.id)).toContain('network');
   });
 
   it('paints a direct gate red only for untunnelled flows: known VPN routes are local, none yet is muted', () => {
     const color = (untunnelled: number, flows: number) => stationSpecs(reduceBoard([]), {
-      browserBytes: 0, gates: [{ id: 'gate:p', service: 'p', label: 'P', route: 'direct', bytes: 1, flows, blocked: 0, untunnelled }],
+      browserBytes: 0, stationOf: new Map(), toolStation: new Map(), untunnelled: 0, gates: [{ id: 'gate:p', service: 'p', label: 'P', route: 'direct', bytes: 1, flows, blocked: 0, untunnelled }],
     }).find((s) => s.id === 'gate:p')!.color;
     expect(color(1, 3)).toBe('var(--error)');
     expect(color(0, 3)).toBe('var(--net-local)');
     expect(color(0, 0)).toBe('var(--text-muted)');
+  });
+});
+
+describe('placeCalls', () => {
+  it("puts a network call on its join's gate, else on its tool's gate, else leaves it on Network", () => {
+    const place = placeCalls(gloveMap(view({ calls: [{ eventId: 'j', services: ['searxng-egress'], refused: 0, egress: 3 }] })));
+    expect(place(fetchCall('j', 'tool_call_completed', 1, 'bash'), 'network')).toBe('gate:search');
+    expect(place(fetchCall('t', 'tool_call_completed', 1, 'WebFetch'), 'network')).toBe('gate:proxy');
+    expect(place(fetchCall('u', 'tool_call_completed', 1, 'bash'), 'network')).toBeNull();
+    // A shell command that downloads (an install) stays Shell's.
+    expect(place(fetchCall('j', 'tool_call_completed', 1, 'bash'), 'shell')).toBeNull();
+  });
+});
+
+describe('glovePulses', () => {
+  it('reds a call with a refused connection, sends Tool egress hollow along its gate, and draws loose flows hollow', () => {
+    const g = gloveMap(view({
+      calls: [{ eventId: 'j', services: ['searxng-egress'], refused: 1, egress: 2 }],
+      loose: [{ service: 'proxy', t: 950, refused: true, egress: false }, { service: 'nowhere', t: 950, refused: false, egress: false }],
+    }));
+    const board = reduceBoard([fetchCall('j', 'tool_call_completed', 900, 'web_search')], { place: placeCalls(g) });
+    const { extra, refused } = glovePulses(g, board, 1000, 900);
+    expect([...refused]).toEqual(['j']);
+    expect(extra.map((p) => [p.station, p.hollow, p.bad])).toEqual([['gate:search', true, false], ['gate:proxy', true, true]]);
+  });
+});
+
+describe('exitRing', () => {
+  it('raises the alarm only for untunnelled flows, and says where a verified tunnel leaves', () => {
+    const exit = { kind: 'vpn', country: 'Switzerland', city: null, healthy: true };
+    expect(exitRing(gloveMap(view({ exit, route: { kind: 'vpn', verified: true } })))).toEqual({ tone: 'tunnel', words: 'exit Switzerland · vpn', alarm: null });
+    expect(exitRing(gloveMap(view({ exit, route: { kind: 'vpn', verified: false } }))).tone).toBe('unverified');
+    // A direct route whose traffic all rode a known VPN route is local, not an alarm.
+    const vpn = dest('corp:443', { services: ['proxy'], scope: 'direct', flags: { ...dest('x').flags, vpn: 'corporate' } });
+    expect(exitRing(gloveMap(view({ route: { kind: 'direct', verified: false }, destinations: [vpn] })))).toMatchObject({ tone: 'local', alarm: null });
+    const leak = dest('a.dev:443', { services: ['proxy'], scope: 'direct', flows: 2 });
+    expect(exitRing(gloveMap(view({ route: { kind: 'direct', verified: false }, destinations: [leak] })))).toMatchObject({ tone: 'alarm', alarm: '2 untunnelled connections' });
   });
 });

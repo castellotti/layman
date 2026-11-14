@@ -46,6 +46,10 @@ describe('net REST routes', () => {
     expect(body.services.length).toBeGreaterThan(0);
     expect(body.destinations.length).toBeGreaterThan(0);
     expect(Object.keys(body.destinations[0]).sort()).toEqual(['blocked', 'bytesDown', 'bytesUp', 'flags', 'flows', 'scope', 'services']);
+    // The exit says where traffic leaves, never from which address.
+    expect(res.json().exit).toMatchObject({ kind: 'vpn', country: 'Switzerland' });
+    expect(res.json().exit).not.toHaveProperty('ip');
+    expect(res.json().calls).toEqual([]);
     // `since` past every record leaves no destination; an unknown session is a 404.
     expect((await app.inject(`/api/net/sessions/${TEST_ID}/gates?since=${Date.now() + 3_600_000}`)).json().destinations).toEqual([]);
     expect((await app.inject('/api/net/sessions/nope/gates')).statusCode).toBe(404);

@@ -14,7 +14,7 @@ import type { TimelineEvent } from '../events/types.js';
 import type { Turn } from '../turns/types.js';
 import { callsFrom, correlate, JOIN_BEFORE_MS } from './correlate.js';
 import type { NetStore } from './store.js';
-import type { NetRange, SessionDownload, TraceCall, TraceCounts, TraceNav, TraceTurn, TraceView } from './types.js';
+import type { FlowView, GateCallJoin, GateTraffic, GateLooseFlow, NetRange, NetService, SessionDownload, TraceCall, TraceCounts, TraceNav, TraceTurn, TraceView } from './types.js';
 
 export interface TraceDeps {
   /** Layman session ids whose `sessionName` is this token. */
@@ -60,15 +60,11 @@ export function turnEnd(owned: readonly TimelineEvent[], { last, live }: { last:
 /** Which turn: by a prompt (or any) event id, the one in progress at a moment, or the latest. */
 export type TraceSelect = { turn: string } | { at: number } | null;
 
-/**
- * With a `range`, the turns counted and stepped through are those that began in it, and the
- * latest is the range's latest; a turn asked for by id is still shown when it began outside
- * (`nav.outside`), its arrows leading to the range's nearest turns. Which flows a turn owns
- * does not change: its window still ends at the next prompt, in the range or not.
- */
-export function buildTrace(store: NetStore, token: string, deps: TraceDeps, select: TraceSelect, now = Date.now(), range: NetRange | null = null): TraceView | null {
-  if (!store.has(token)) return null;
-  const sessionIds = deps.sessionsNamed(token);
+/** The window a turn's flows are joined in starts this much before its prompt. */
+const windowStart = (t: TurnAt) => t.start - (t.exact ? JOIN_BEFORE_MS : READ_LAG_MS);
+
+/** Every turn of the glove session's Layman sessions within its records, oldest first, and their events by id. */
+function turnsOf(store: NetStore, token: string, deps: TraceDeps, sessionIds: readonly string[]): { all: TurnAt[]; events: Map<string, Map<string, TimelineEvent>> } {
   const span = store.span(token);
   const events = new Map<string, Map<string, TimelineEvent>>();
   const all: TurnAt[] = [];
@@ -85,6 +81,35 @@ export function buildTrace(store: NetStore, token: string, deps: TraceDeps, sele
     });
   }
   all.sort((a, b) => a.start - b.start);
+  return { all, events };
+}
+
+/**
+ * Turn `i`'s calls joined to its flows. The turn owns the flows from its prompt until the next
+ * prompt of any of the glove session's runs (or now, for the last).
+ */
+function joinTurn(store: NetStore, token: string, all: readonly TurnAt[], i: number, owned: readonly TimelineEvent[], now: number, span = store.span(token)) {
+  const from = windowStart(all[i]);
+  const next = all[i + 1];
+  const to = next ? windowStart(next) : Math.max(now, span?.last ?? now);
+  const calls = callsFrom(owned);
+  const flows = store.flowsBetween(token, from, to) ?? [];
+  const services = store.sessionFile(token)?.services ?? [];
+  const earlier = store.flowsOpenAt(token, from) ?? [];
+  return { from, to, calls, flows, earlier, services, ...correlate({ calls, flows, earlier, services, from }) };
+}
+
+/**
+ * With a `range`, the turns counted and stepped through are those that began in it, and the
+ * latest is the range's latest; a turn asked for by id is still shown when it began outside
+ * (`nav.outside`), its arrows leading to the range's nearest turns. Which flows a turn owns
+ * does not change: its window still ends at the next prompt, in the range or not.
+ */
+export function buildTrace(store: NetStore, token: string, deps: TraceDeps, select: TraceSelect, now = Date.now(), range: NetRange | null = null): TraceView | null {
+  if (!store.has(token)) return null;
+  const sessionIds = deps.sessionsNamed(token);
+  const span = store.span(token);
+  const { all, events } = turnsOf(store, token, deps, sessionIds);
   const live = store.live(token);
   const ownedBy = (t: TurnAt) => t.turn.eventIds.map((id) => events.get(t.turn.sessionId)?.get(id)).filter((e): e is TimelineEvent => !!e);
   const view = (t: TurnAt): TraceTurn => ({
@@ -111,7 +136,6 @@ export function buildTrace(store: NetStore, token: string, deps: TraceDeps, sele
       next: listed.find((t) => t.start > start)?.turn.promptEventId ?? null,
     };
   };
-  const windowStart = (t: TurnAt) => t.start - (t.exact ? JOIN_BEFORE_MS : READ_LAG_MS);
   let i: number;
   if (select === null) i = listed.length ? all.indexOf(listed[listed.length - 1]) : -1;
   else if ('turn' in select) i = all.findIndex((t) => t.turn.promptEventId === select.turn || t.turn.eventIds.includes(select.turn));
@@ -123,17 +147,7 @@ export function buildTrace(store: NetStore, token: string, deps: TraceDeps, sele
   if (i < 0) return { ...base, turn: null, window: null, items: [], unattributed: [], flows: [], counts: empty };
 
   const cur = all[i];
-  // The turn owns the flows from its prompt until the next prompt of any of the glove session's runs.
-  const from = windowStart(cur);
-  const next = all[i + 1];
-  const to = next ? windowStart(next) : Math.max(now, span?.last ?? now);
-  const byId = events.get(cur.turn.sessionId)!;
-  const turnEvents = cur.turn.eventIds.map((id) => byId.get(id)).filter((e): e is TimelineEvent => !!e);
-  const calls = callsFrom(turnEvents);
-  const flows = store.flowsBetween(token, from, to) ?? [];
-  const services = store.sessionFile(token)?.services ?? [];
-  const earlier = store.flowsOpenAt(token, from) ?? [];
-  const { items, unattributed } = correlate({ calls, flows, earlier, services, from });
+  const { from, to, calls, flows, earlier, items, unattributed } = joinTurn(store, token, all, i, ownedBy(cur), now, span);
   // Name what `openIds` point at: the view's flows are the turn's own plus those still open from before it.
   const named = new Set(items.flatMap((i) => (i.kind === 'call' ? i.openIds : [])));
   const shown = [...flows, ...earlier.filter((f) => named.has(f.id))];
@@ -179,4 +193,78 @@ export function callsBetween(store: NetStore, token: string, deps: TraceDeps, fr
     .flatMap((sid) => callsFrom(deps.events(sid)))
     .filter((c) => c.start >= from && c.start <= to)
     .sort((a, b) => a.start - b.start);
+}
+
+/** How far back a flow no call claimed is still drawn on the Activity map. */
+export const LOOSE_FLOW_MS = 60_000;
+
+const REFUSED = new Set(['guard', 'user_rule', 'default_block']);
+/** Tool egress: a gate that goes out on the agent's behalf (`harness: false`), or SearXNG's fan-out. */
+const isEgress = (f: FlowView, services: readonly NetService[]) =>
+  f.flags.fanout || services.find((s) => s.service === f.service)?.harness === false;
+
+/**
+ * One Layman session's tool calls joined to the flows they made, turn by turn, by the same join
+ * Trace shows (`joinTurn`, `correlate`), for the Activity map's gate stations; and the flows of the
+ * last minute that no call claimed. Only turns whose window still has flows in memory are joined:
+ * an older call has nothing to join (the web places it by its tool, or on Network). With a `range`
+ * (a turn's span, the web's `turnRange`), only calls that started in it, and every flow in it no
+ * call claimed rather than the last minute's.
+ */
+export function sessionJoins(store: NetStore, token: string, deps: TraceDeps, sessionId: string, now = Date.now(), range: NetRange | null = null): { calls: GateCallJoin[]; loose: GateLooseFlow[] } {
+  const sessionIds = deps.sessionsNamed(token);
+  if (!sessionIds.includes(sessionId)) return { calls: [], loose: [] };
+  const oldest = store.flows(token, 0, 1)?.[0]?.tOpen;
+  if (oldest === undefined) return { calls: [], loose: [] };
+  const { all, events } = turnsOf(store, token, deps, sessionIds);
+  const byId = events.get(sessionId)!;
+  const span = store.span(token);
+  const calls: GateCallJoin[] = [];
+  const loose: GateLooseFlow[] = [];
+  all.forEach((t, i) => {
+    if (t.turn.sessionId !== sessionId) return;
+    // A window that ends before the oldest flow in memory has nothing to join.
+    const next = all[i + 1];
+    if (next && windowStart(next) < oldest) return;
+    const owned = t.turn.eventIds.map((id) => byId.get(id)).filter((e): e is TimelineEvent => !!e);
+    const { flows, earlier, services, items, unattributed } = joinTurn(store, token, all, i, owned, now, span);
+    const flow = new Map([...flows, ...earlier].map((f) => [f.id, f]));
+    const inRange = (t: number) => !range || (t >= range.from && t <= (range.to ?? now));
+    for (const item of items) {
+      if (item.kind !== 'call' || !inRange(item.call.start)) continue;
+      const mine = [...item.flowIds, ...item.fanoutIds, ...item.openIds].flatMap((id) => flow.get(id) ?? []);
+      if (!mine.length) continue;
+      calls.push({
+        eventId: item.call.eventId,
+        services: [...new Set(mine.map((f) => f.service))],
+        refused: mine.filter((f) => REFUSED.has(f.state)).length,
+        egress: mine.filter((f) => isEgress(f, services)).length,
+      });
+    }
+    for (const id of unattributed) {
+      const f = flow.get(id);
+      if (!f || (range ? !inRange(f.tOpen) : f.tOpen < now - LOOSE_FLOW_MS)) continue;
+      loose.push({ service: f.service, t: f.tOpen, refused: REFUSED.has(f.state), egress: isEgress(f, services) });
+    }
+  });
+  return { calls, loose };
+}
+
+/**
+ * Flows as the gate stations' destinations, one per destination key: a turn's traffic (what
+ * opened in its span), counted as All records counts it, a hop once, at its next leg (`flags.hop`).
+ */
+export function trafficOf(flows: readonly FlowView[]): GateTraffic[] {
+  const out = new Map<string, GateTraffic>();
+  for (const f of flows) {
+    const key = f.destKey ?? f.id;
+    const d = out.get(key) ?? { services: [], bytesUp: 0, bytesDown: 0, flows: 0, blocked: 0, scope: f.scope, flags: { hop: f.flags.hop, vpn: f.flags.vpn } };
+    if (!d.services.includes(f.service)) d.services.push(f.service);
+    d.bytesUp += f.bytes.up;
+    d.bytesDown += f.bytes.down;
+    d.flows++;
+    if (REFUSED.has(f.state)) d.blocked++;
+    out.set(key, d);
+  }
+  return [...out.values()];
 }
