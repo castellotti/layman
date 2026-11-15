@@ -11,6 +11,8 @@ import { deriveSessionState, getSessionDisplayName, contextPctColor, isSessionLi
 import { formatTime, formatDuration as formatElapsed, cwdBasename } from '../../lib/format.js';
 import { EVENT_KIND_COLOR, kindLabel, eventDetail, withThinkingRows, baseEventId } from '../../lib/event-styles.js';
 import { tokenColor } from '../../lib/tokens.js';
+import { subagentLanes, type SubagentLane } from '../../lib/subagent-lanes.js';
+import { SubagentChip } from '../shared/SubagentChip.js';
 import { HostChip } from '../shared/HostChip.js';
 import { sp, rad } from '../../lib/density.js';
 
@@ -173,6 +175,8 @@ function RecentTail({ events, onOpenInLogs, sessionId, autoscroll }: {
     events.forEach((e, i) => map.set(e.id, i));
     return map;
   }, [events]);
+  // From the whole session, not the tail, so a subagent keeps its number and colour as rows scroll off.
+  const lanes = useMemo(() => subagentLanes(events), [events]);
 
   // Autoscroll pins the tail to its newest row: on every new row, and whenever the pane or its
   // content changes size (a resized window, a pane squeezed by another opening). Turned off, the
@@ -210,7 +214,7 @@ function RecentTail({ events, onOpenInLogs, sessionId, autoscroll }: {
             No events yet
           </div>
         ) : (
-          <TailRows rows={shown} eventIndexById={eventIndexById} onOpenInLogs={onOpenInLogs} sessionId={sessionId} />
+          <TailRows rows={shown} eventIndexById={eventIndexById} lanes={lanes} onOpenInLogs={onOpenInLogs} sessionId={sessionId} />
         )}
       </div>
     </div>
@@ -218,17 +222,19 @@ function RecentTail({ events, onOpenInLogs, sessionId, autoscroll }: {
 }
 
 /**
- * A subagent's work is shaded in the agent colour, with a bar at its left edge, so the orchestrating
- * agent's own rows read apart from what it delegated. Claude Code subagents report into their
+ * A subagent's work is shaded in the agent colour, so the orchestrating agent's own rows read apart
+ * from what it delegated, with a bar at its left edge in that subagent's own colour, so two running
+ * at once read apart from each other (`subagentLanes`). Claude Code subagents report into their
  * parent's session; the server tags their events `subagentId` (`hooks/handler.ts`, `subagentScoped`).
  */
 function restingBackground(event: TimelineEvent): string {
   return event.data.subagentId ? tokenColor('agent', '8%') : 'transparent';
 }
 
-function TailRows({ rows, eventIndexById, onOpenInLogs, sessionId }: {
+function TailRows({ rows, eventIndexById, lanes, onOpenInLogs, sessionId }: {
   rows: TimelineEvent[];
   eventIndexById: Map<string, number>;
+  lanes: Map<string, SubagentLane>;
   onOpenInLogs: (sessionId: string, eventId: string) => void;
   sessionId: string;
 }) {
@@ -240,11 +246,12 @@ function TailRows({ rows, eventIndexById, onOpenInLogs, sessionId }: {
         const realId = baseEventId(event.id);
         const globalIdx = eventIndexById.get(realId) ?? -1;
         const rest = restingBackground(event);
+        const lane = event.data.subagentId ? lanes.get(event.data.subagentId) : undefined;
         return (
           <div
             key={event.id}
             onClick={() => onOpenInLogs(sessionId, realId)}
-            title={event.data.subagentId ? `Subagent${event.data.agentType ? `: ${event.data.agentType}` : ''}` : undefined}
+            title={lane?.label}
             style={{
               display: 'flex',
               alignItems: 'center',
@@ -254,7 +261,7 @@ function TailRows({ rows, eventIndexById, onOpenInLogs, sessionId }: {
               cursor: 'pointer',
               transition: 'background 0.1s',
               background: rest,
-              boxShadow: event.data.subagentId ? `inset 2px 0 0 ${tokenColor('agent', '55%')}` : undefined,
+              boxShadow: lane ? `inset 3px 0 0 ${tokenColor(lane.token, '80%')}` : undefined,
             }}
             onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.background = 'var(--bg-selected)')}
             onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.background = rest)}
@@ -265,6 +272,7 @@ function TailRows({ rows, eventIndexById, onOpenInLogs, sessionId }: {
             <span style={{ fontFamily: 'var(--font-ui)', fontSize: 10, fontWeight: 500, color, flexShrink: 0, minWidth: 64 }}>
               {kindLabel(event.type)}
             </span>
+            {lane && <SubagentChip lane={lane} />}
             <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-body)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {detail}
             </span>

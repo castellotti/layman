@@ -11,6 +11,8 @@ import { useStationSetup } from '../../hooks/useStationSetup.js';
 import { StationGlyph } from '../activity/StationGlyph.js';
 import type { ClientMessage } from '../../lib/ws-protocol.js';
 import { sp, rad } from '../../lib/density.js';
+import type { SubagentLane } from '../../lib/subagent-lanes.js';
+import { SubagentChip } from '../shared/SubagentChip.js';
 
 interface LogRowProps {
   event: TimelineEvent;
@@ -21,9 +23,15 @@ interface LogRowProps {
   onSelect: (eventId: string) => void;
   onCaretToggle: (eventId: string) => void;
   onSend: (msg: ClientMessage) => void;
+  /** The subagent this row belongs to (`subagentLanes`), if any: shaded, barred and chipped in its colour. */
+  lane?: SubagentLane;
+  /** Logs is showing only this row's subagent. */
+  laneActive?: boolean;
+  /** The chip was clicked: show only this subagent's rows, or all again. */
+  onLaneClick?: (subagentId: string) => void;
 }
 
-export const LogRow = React.memo(function LogRow({ event, index, hasDetail, isExpanded, isSelected, onSelect, onCaretToggle, onSend }: LogRowProps) {
+export const LogRow = React.memo(function LogRow({ event, index, hasDetail, isExpanded, isSelected, onSelect, onCaretToggle, onSend, lane, laneActive, onLaneClick }: LogRowProps) {
   // The body is tinted, and its left rule coloured, by the real highlight (the
   // prompt–response pair kept in Prompts), the one its Highlight button sets and the minimap marks.
   const highlighted = useSessionStore((s) => s.highlightedEventIds.has(event.id));
@@ -40,6 +48,13 @@ export const LogRow = React.memo(function LogRow({ event, index, hasDetail, isEx
 
   const color = tokenColor(EVENT_KIND_COLOR[event.type] ?? 'text-muted');
   const expanded = hasDetail && isExpanded;
+  // A subagent's row rests on the agent shade with a bar in its own colour, as in a Dashboard pane.
+  const rest = lane ? tokenColor('agent', '8%') : 'transparent';
+  const shadows = [
+    lane && `inset 3px 0 0 ${tokenColor(lane.token, '80%')}`,
+    isSelected && 'inset 0 0 0 1px var(--accent)',
+  ].filter(Boolean).join(', ');
+  const subagentId = event.data.subagentId;
 
   return (
     <div data-event-card data-event-id={event.id}>
@@ -48,11 +63,11 @@ export const LogRow = React.memo(function LogRow({ event, index, hasDetail, isEx
         style={{
           display: 'flex', alignItems: 'center', flexWrap: expanded ? 'wrap' : 'nowrap', gap: sp(6), padding: sp('3px 8px'), margin: sp('0 8px'),
           borderRadius: rad(4), cursor: hasDetail ? 'pointer' : 'default',
-          background: expanded ? 'var(--bg-selected)' : 'transparent',
-          boxShadow: isSelected ? 'inset 0 0 0 1px var(--accent)' : 'none',
+          background: expanded ? 'var(--bg-selected)' : rest,
+          boxShadow: shadows || 'none',
         }}
         onMouseEnter={(e) => { if (!expanded) (e.currentTarget as HTMLElement).style.background = 'var(--bg-card)'; }}
-        onMouseLeave={(e) => { if (!expanded) (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
+        onMouseLeave={(e) => { if (!expanded) (e.currentTarget as HTMLElement).style.background = rest; }}
       >
         <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9.5, color: 'var(--text-faint)', width: 34, textAlign: 'right', flexShrink: 0 }}>
           #{index + 1}
@@ -70,6 +85,9 @@ export const LogRow = React.memo(function LogRow({ event, index, hasDetail, isEx
         <span style={{ fontFamily: 'var(--font-ui)', fontSize: 10, fontWeight: 500, color, flexShrink: 0, minWidth: 68 }}>
           {kindLabel(event.type)}
         </span>
+        {lane && subagentId && (
+          <SubagentChip lane={lane} active={laneActive} onClick={onLaneClick ? () => onLaneClick(subagentId) : undefined} />
+        )}
         <span style={{
           fontFamily: 'var(--font-mono)', fontSize: 10, flex: 1, minWidth: expanded ? 120 : 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
           color: expanded ? 'var(--text)' : 'var(--text-body)', fontWeight: expanded ? 500 : undefined,

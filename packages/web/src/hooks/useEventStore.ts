@@ -13,6 +13,8 @@ export interface EventFilters {
   agentTypes?: string[];
   /** Only events at these stations (`lib/station.ts`); empty or absent shows every event. */
   stations?: StationId[];
+  /** Only this subagent's events (`data.subagentId`); absent shows every event. */
+  subagentId?: string;
   /** The Memory settings stations are read with. */
   stationSetup?: StationSetup;
 }
@@ -91,12 +93,16 @@ export function useEventStore(filters?: EventFilters, sourceOverride?: TimelineE
       });
     }
 
+    if (filters?.subagentId) {
+      result = result.filter((e) => e.data.subagentId === filters.subagentId);
+    }
+
     return result;
   }, [
     sessionEvents,
     filters?.promptsOnly, filters?.requestsOnly, filters?.responsesOnly,
     filters?.searchQuery, filters?.types, filters?.agentTypes,
-    filters?.stations, filters?.stationSetup,
+    filters?.stations, filters?.stationSetup, filters?.subagentId,
   ]);
 
   const pendingEvents = useMemo(
