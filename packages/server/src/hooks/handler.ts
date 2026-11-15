@@ -1169,18 +1169,18 @@ async function handleSubagentStop(
         stack.splice(idx, 1);
         if (stack.length === 0) activeSubagents.delete(input.session_id);
 
-        // Tag tool-call events that fall within the sub-agent's time window and
-        // belong to this session but have no subagentId yet. Scan the last 500
-        // events — sub-agents run for seconds/minutes, not hours, so recent
-        // events are sufficient and avoids a full 10k-entry walk.
-        const stopTs = Date.now();
-        const recentEvents = eventStore.getLast(500);
         // A Claude Code that sends `agent_id` on the subagent's own hooks has tagged its calls as
         // they arrived (`subagentScoped`); guessing by time window then would only add the
         // parent's calls made meanwhile. The window is for a harness that does not. Known per
         // session, not from this subagent's own rows: one that called no tool has none.
-        const taggedAtIngest = sessionsTaggingSubagents.has(input.session_id);
-        for (const ev of taggedAtIngest ? [] : recentEvents) {
+        //
+        // Otherwise, tag tool-call events that fall within the sub-agent's time window and
+        // belong to this session but have no subagentId yet. Scan the last 500
+        // events — sub-agents run for seconds/minutes, not hours, so recent
+        // events are sufficient and avoids a full 10k-entry walk.
+        const stopTs = Date.now();
+        const recentEvents = sessionsTaggingSubagents.has(input.session_id) ? [] : eventStore.getLast(500);
+        for (const ev of recentEvents) {
           if (
             ev.sessionId === input.session_id &&
             ev.timestamp >= entry.startTs &&
