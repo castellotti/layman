@@ -174,6 +174,8 @@ export class EventStore extends EventEmitter {
   clear(): void {
     this.events = [];
     this.eventById.clear();
+    // A session's "not quiet" is kept: clearing the timeline does not undo what the session did,
+    // and its recording (the history probe) would say the same on the next restart.
     this.emit('store:cleared');
   }
 

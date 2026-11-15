@@ -294,6 +294,7 @@ export function createServer(config: LaymanConfig): LaymanServer {
         agentType: s.agentType,
         sessionName: s.sessionName,
         lastSeen: s.lastSeen,
+        ...(s.quiet ? { quiet: true } : {}),
       })),
     };
   }

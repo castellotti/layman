@@ -148,6 +148,15 @@ describe('Dashboard panes', () => {
     expect([...st().dashboardOpenPanes].sort()).toEqual(['b', 'c']);
   });
 
+  it('a dismissed session comes back with its pane closed', () => {
+    const st = useSessionStore.getState;
+    st().autoOpenDashboardPanes(['a']);
+    st().dismissDashboardSession('a');
+    expect(st().dashboardOpenPanes.has('a')).toBe(false);
+    st().autoOpenDashboardPanes(['b'].filter((id) => !st().dashboardSettledPanes.has(id)));
+    expect(st().dashboardOpenPanes.has('a')).toBe(false);
+  });
+
   it('an empty pass is no update', () => {
     const before = useSessionStore.getState();
     before.autoOpenDashboardPanes([]);

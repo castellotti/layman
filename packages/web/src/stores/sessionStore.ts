@@ -1166,7 +1166,12 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     set((state) => {
       const newDismissed = new Set(state.dashboardDismissedSessions);
       newDismissed.add(sessionId);
-      return { dashboardDismissedSessions: newDismissed };
+      // Its pane closes (and stays settled), so a session restored by new activity comes back
+      // with its pane closed rather than reopening one the user put away.
+      if (!state.dashboardOpenPanes.has(sessionId)) return { dashboardDismissedSessions: newDismissed };
+      const dashboardOpenPanes = new Set(state.dashboardOpenPanes);
+      dashboardOpenPanes.delete(sessionId);
+      return { dashboardDismissedSessions: newDismissed, dashboardOpenPanes };
     }),
   setDashboardPaneOpen: (sessionId, open) =>
     set((state) => {

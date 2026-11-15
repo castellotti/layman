@@ -7,21 +7,25 @@ import { EventStore } from '../events/store.js';
 import { AnalysisEngine } from '../analysis/engine.js';
 import { LaymanConfigSchema } from '../config/schema.js';
 
+// The handler keeps per-session state at module level (which sessions' harness tags subagents),
+// so each harness gets its own session id.
+let sessionSeq = 0;
 function harness() {
+  const sessionId = `s${++sessionSeq}`;
   const app = Fastify();
   const store = new EventStore();
   const gate = new SessionGate();
   const config = LaymanConfigSchema.parse({ autoApprove: 'all' });
   registerHookHandler(app, new PendingApprovalManager(1), store, new AnalysisEngine(), () => config, gate);
-  gate.activate('s1');
-  return { app, store };
+  gate.activate(sessionId);
+  return { app, store, sessionId };
 }
 
 const post = (h: ReturnType<typeof harness>, eventName: string, extra: Record<string, unknown> = {}) =>
   h.app.inject({
     method: 'POST',
     url: `/hooks/${eventName}`,
-    payload: { session_id: 's1', cwd: '/p', hook_event_name: eventName, transcript_path: '/tmp/none.jsonl', permission_mode: 'default', ...extra },
+    payload: { session_id: h.sessionId, cwd: '/p', hook_event_name: eventName, transcript_path: '/tmp/none.jsonl', permission_mode: 'default', ...extra },
   });
 
 const tool = (name: string, extra: Record<string, unknown> = {}) => ({ tool_name: name, tool_input: { command: name }, tool_response: 'ok', ...extra });
@@ -61,8 +65,34 @@ describe('a hook fired inside a subagent', () => {
   });
 });
 
+describe('a parent and a subagent calling the same tool at once', () => {
+  it("each result completes its own agent's call", async () => {
+    const h = harness();
+    await post(h, 'SubagentStart', { agent_type: 'general-purpose', agent_id: 'bg' });
+    await post(h, 'PreToolUse', { tool_name: 'Read', tool_input: { file_path: '/p/parent' } });
+    await post(h, 'PreToolUse', { tool_name: 'Read', tool_input: { file_path: '/p/sub' }, agent_type: 'general-purpose', agent_id: 'bg' });
+    await post(h, 'PostToolUse', { tool_name: 'Read', tool_input: { file_path: '/p/parent' }, tool_response: 'parent', tool_output: 'parent' });
+    await post(h, 'PostToolUse', { tool_name: 'Read', tool_input: { file_path: '/p/sub' }, tool_output: 'sub', agent_type: 'general-purpose', agent_id: 'bg' });
+    const reads = h.store.getAll().filter((e) => e.data.toolName === 'Read');
+    expect(reads.map((e) => [e.type, e.data.toolInput?.file_path, e.data.toolOutput, e.data.subagentId])).toEqual([
+      ['tool_call_completed', '/p/parent', 'parent', undefined],
+      ['tool_call_completed', '/p/sub', 'sub', 'bg'],
+    ]);
+  });
+
+  it("does not tag the parent's calls by time window when the subagent itself called nothing", async () => {
+    const h = harness();
+    await post(h, 'PostToolUse', tool('Grep', { agent_type: 'Explore', agent_id: 'first' })); // the harness tags subagents
+    await post(h, 'SubagentStart', { agent_type: 'Explore', agent_id: 'idle' });
+    await post(h, 'PostToolUse', tool('Edit')); // the parent, meanwhile
+    await post(h, 'SubagentStop', { agent_type: 'Explore', agent_id: 'idle' });
+    const [edit] = h.store.getAll().filter((e) => e.data.toolName === 'Edit');
+    expect(edit.data.subagentId).toBeUndefined();
+  });
+});
+
 describe('a quiet session', () => {
-  const quiet = (h: ReturnType<typeof harness>) => h.store.getSessions().find((s) => s.sessionId === 's1')?.quiet;
+  const quiet = (h: ReturnType<typeof harness>) => h.store.getSessions().find((s) => s.sessionId === h.sessionId)?.quiet;
 
   it('stays quiet through start-up noise and stops being quiet at its first real event', async () => {
     const h = harness();

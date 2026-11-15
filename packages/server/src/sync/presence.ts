@@ -24,6 +24,7 @@ interface PresenceSessionState {
   agentType: string;
   sessionName?: string;
   lastSeen: number;
+  quiet?: boolean;
   ring: TimelineEvent[];
 }
 
@@ -107,6 +108,7 @@ export class RemoteSessionRegistry {
           agentType: s.agentType,
           sessionName: s.sessionName,
           lastSeen: s.lastSeen,
+          quiet: s.quiet === true ? true : undefined,
           ring: existing?.ring ?? [],
         });
       }
@@ -141,6 +143,7 @@ export class RemoteSessionRegistry {
           hostName: host.hostName,
           remote: true,
           active: fresh && host.activeSessionIds.has(sessionId),
+          ...(s.quiet ? { quiet: true } : {}),
         });
       }
     }

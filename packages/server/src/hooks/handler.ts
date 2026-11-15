@@ -72,6 +72,19 @@ interface ActiveSubagent {
 }
 const activeSubagents = new Map<string, ActiveSubagent[]>();
 
+// Sessions whose harness has sent `agent_id` on a subagent's own hooks, so its subagents' events
+// are tagged as they arrive (`subagentScoped`) and SubagentStop's time-window guess must not run:
+// it would only add the parent's calls made meanwhile, and a subagent that called no tool, or
+// whose calls left the recent-events window, would otherwise look like one from an older harness.
+const sessionsTaggingSubagents = new Set<string>();
+
+/** The subagent a hook fired inside, or undefined for the parent's own hooks and the start/stop markers. */
+function subagentIdOf(body: Record<string, unknown>, eventName: string): string | undefined {
+  const agentId = body.agent_id;
+  if (typeof agentId !== 'string' || !agentId || eventName === 'SubagentStart' || eventName === 'SubagentStop') return undefined;
+  return agentId;
+}
+
 /** Detect activation command in a Bash call (echo marker or legacy curl) */
 const ACTIVATION_PATTERN = /echo\s+["']?layman:activate["']?|curl\b.*\/api\/activate/;
 
@@ -373,12 +386,15 @@ export function registerHookHandler(
  * window that also caught the parent's own calls whenever the two ran at once (a background
  * agent). `SubagentStart` and `SubagentStop` carry the same field to say *which* subagent started
  * or stopped; they are the parent's markers and stay untagged.
+ *
+ * Only `add` is rewritten: a handler that finds and updates an event it added earlier (PostToolUse
+ * completing its PreToolUse row) must match it by subagent too (`subagentIdOf`), or one agent's
+ * result would complete the other's call of the same tool.
  */
 function subagentScoped(eventStore: EventStore, body: Record<string, unknown>, eventName: string): EventStore {
-  const agentId = body.agent_id;
-  if (typeof agentId !== 'string' || !agentId || eventName === 'SubagentStart' || eventName === 'SubagentStop') {
-    return eventStore;
-  }
+  const agentId = subagentIdOf(body, eventName);
+  if (!agentId) return eventStore;
+  if (typeof body.session_id === 'string') sessionsTaggingSubagents.add(body.session_id);
   const tag: Pick<EventData, 'subagentId' | 'agentType'> = { subagentId: agentId };
   if (typeof body.agent_type === 'string' && body.agent_type) tag.agentType = body.agent_type;
   return new Proxy(eventStore, {
@@ -709,11 +725,15 @@ async function handlePostToolUse(
   driftMonitor?: DriftMonitor,
   getConfig?: () => LaymanConfig
 ): Promise<void> {
+  // The parent and a subagent may run the same tool at once: a result completes only its own
+  // agent's call (the subagent's rows were tagged at ingest, the parent's are untagged).
+  const subagentId = subagentIdOf(input as unknown as Record<string, unknown>, 'PostToolUse');
   const pendingEvent = eventStore.findLast(
     (e) =>
       (e.type === 'tool_call_pending' || e.type === 'tool_call_approved') &&
       e.data.toolName === input.tool_name &&
-      e.sessionId === input.session_id
+      e.sessionId === input.session_id &&
+      e.data.subagentId === subagentId
   );
 
   const completedAt = Date.now();
@@ -887,6 +907,7 @@ function handleSessionEnd(
   gate.deactivate(input.session_id);
   transcriptWatermarks.delete(input.transcript_path);
   activeSubagents.delete(input.session_id);
+  sessionsTaggingSubagents.delete(input.session_id);
   if (driftMonitor) driftMonitor.reset(input.session_id);
 }
 
@@ -1156,8 +1177,9 @@ async function handleSubagentStop(
         const recentEvents = eventStore.getLast(500);
         // A Claude Code that sends `agent_id` on the subagent's own hooks has tagged its calls as
         // they arrived (`subagentScoped`); guessing by time window then would only add the
-        // parent's calls made meanwhile. The window is for a harness that does not.
-        const taggedAtIngest = recentEvents.some((ev) => ev.sessionId === input.session_id && ev.data.subagentId === subagentId);
+        // parent's calls made meanwhile. The window is for a harness that does not. Known per
+        // session, not from this subagent's own rows: one that called no tool has none.
+        const taggedAtIngest = sessionsTaggingSubagents.has(input.session_id);
         for (const ev of taggedAtIngest ? [] : recentEvents) {
           if (
             ev.sessionId === input.session_id &&
