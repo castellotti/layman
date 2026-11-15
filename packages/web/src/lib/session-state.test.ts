@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { orderDashboardSessions } from './session-state.js';
+import { orderDashboardSessions, panesToOpen } from './session-state.js';
 import type { SessionInfo } from './ws-protocol.js';
 
 const s = (sessionId: string, over: Partial<SessionInfo> = {}): SessionInfo => ({ sessionId, cwd: `/w/${sessionId}`, lastSeen: 0, agentType: 'pi', ...over });
@@ -17,5 +17,18 @@ describe('orderDashboardSessions', () => {
     const named = [...all, s('e', { sessionName: 'pi-search-abc123', lastSeen: 9 })];
     expect(ids(orderDashboardSessions(named, { dismissed: new Set(), sortMode: 'recent', order: [], filter: ' SEARCH ' }))).toEqual(['e']);
     expect(ids(orderDashboardSessions(named, { dismissed: new Set(), sortMode: 'recent', order: [], filter: '/w/a' }))).toEqual(['a']);
+  });
+});
+
+describe('panesToOpen', () => {
+  const list = [s('new'), s('settled'), s('quiet', { quiet: true })];
+  it('opens unsettled sessions and holds a quiet one', () => {
+    expect(panesToOpen(list, new Set(['settled']), true)).toEqual(['new']);
+  });
+  it('opens a quiet one too when holding is off', () => {
+    expect(panesToOpen(list, new Set(['settled']), false)).toEqual(['new', 'quiet']);
+  });
+  it('opens a held session once it is no longer quiet', () => {
+    expect(panesToOpen([s('quiet')], new Set(), true)).toEqual(['quiet']);
   });
 });

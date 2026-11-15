@@ -132,3 +132,34 @@ describe('updateEvent: an event the store does not hold', () => {
     expect(useSessionStore.getState().events[0].type).toBe('tool_call_completed');
   });
 });
+
+// The Dashboard unmounts when another view is shown, so its panes live in the store: a pane the
+// user closed must still be closed on the way back, and never reopen by itself.
+describe('Dashboard panes', () => {
+  beforeEach(() => useSessionStore.setState({ dashboardOpenPanes: new Set(), dashboardSettledPanes: new Set() }));
+
+  it('a closed pane stays closed when the auto-open pass runs again', () => {
+    const st = useSessionStore.getState;
+    st().autoOpenDashboardPanes(['a', 'b']);
+    st().setDashboardPaneOpen('a', false);
+    // What the Dashboard does on mount: open only the panes that are not settled.
+    const unsettled = ['a', 'b', 'c'].filter((id) => !st().dashboardSettledPanes.has(id));
+    st().autoOpenDashboardPanes(unsettled);
+    expect([...st().dashboardOpenPanes].sort()).toEqual(['b', 'c']);
+  });
+
+  it('a dismissed session comes back with its pane closed', () => {
+    const st = useSessionStore.getState;
+    st().autoOpenDashboardPanes(['a']);
+    st().dismissDashboardSession('a');
+    expect(st().dashboardOpenPanes.has('a')).toBe(false);
+    st().autoOpenDashboardPanes(['b'].filter((id) => !st().dashboardSettledPanes.has(id)));
+    expect(st().dashboardOpenPanes.has('a')).toBe(false);
+  });
+
+  it('an empty pass is no update', () => {
+    const before = useSessionStore.getState();
+    before.autoOpenDashboardPanes([]);
+    expect(useSessionStore.getState()).toBe(before);
+  });
+});

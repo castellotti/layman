@@ -29,6 +29,12 @@ export function StreamSection({
         onChange={() => updateConfig({ switchToNewestSession: !config.switchToNewestSession })}
       />
       <ToggleRow
+        label="Keep quiet sessions closed"
+        desc="In Dashboard, a session that has only loaded its instructions or changed a setting is listed with its pane closed, and opens once it does something"
+        checked={config.dashboardHoldQuiet ?? true}
+        onChange={() => updateConfig({ dashboardHoldQuiet: !(config.dashboardHoldQuiet ?? true) })}
+      />
+      <ToggleRow
         label="Collapse history"
         desc="Collapse all event entries by default; click to expand"
         checked={config.collapseHistory}

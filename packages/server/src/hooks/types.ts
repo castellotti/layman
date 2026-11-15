@@ -7,6 +7,11 @@ export interface HookInputBase {
   transcript_path: string;
   permission_mode: 'default' | 'plan' | 'acceptEdits' | 'dontAsk' | 'bypassPermissions';
   agent_type?: 'claude-code' | 'opencode' | 'codex' | string;
+  /**
+   * Claude Code: set on every hook fired inside a subagent (and on SubagentStart/Stop, naming
+   * which one). Absent on the parent's own hooks. See `subagentScoped` in `handler.ts`.
+   */
+  agent_id?: string;
 }
 
 export interface PreToolUseInput extends HookInputBase {

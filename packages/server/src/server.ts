@@ -37,7 +37,7 @@ import { registerSyncRoutes } from './sync/routes.js';
 import { hostsWithStats, updateHostStats } from './sync/stats.js';
 import { RemoteSessionRegistry } from './sync/presence.js';
 import type { PresencePayload } from './sync/protocol.js';
-import { SessionRecorder, countRecordedSessionsByAgentType } from './db/recorder.js';
+import { SessionRecorder, countRecordedSessionsByAgentType, recordedActivityProbe } from './db/recorder.js';
 import { BookmarkStore } from './db/bookmarks.js';
 import { HighlightStore } from './db/highlights.js';
 import { TurnStore } from './turns/store.js';
@@ -266,6 +266,7 @@ export function createServer(config: LaymanConfig): LaymanServer {
     () => getConfig().piiFilter,
   );
   recorder.attach(eventStore);
+  eventStore.setHistoryProbe(recordedActivityProbe(db));
   // History import and JSON import write straight to SQLite, never through EventStore,
   // so they get the store's redaction here. History import marks a glove root's sessions gloved.
   recorder.setImportFilter((event) => {
@@ -293,6 +294,7 @@ export function createServer(config: LaymanConfig): LaymanServer {
         agentType: s.agentType,
         sessionName: s.sessionName,
         lastSeen: s.lastSeen,
+        ...(s.quiet ? { quiet: true } : {}),
       })),
     };
   }

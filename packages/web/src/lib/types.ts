@@ -330,6 +330,8 @@ export interface LaymanConfig {
   piiFilter: boolean;
   showFullCommand: boolean;
   switchToNewestSession: boolean;
+  /** Dashboard: keep a quiet session's pane closed until it does something. Mirrors the server schema. */
+  dashboardHoldQuiet: boolean;
   collapseHistory: boolean;
   autoScroll: boolean;
   idleThresholdMinutes: number;

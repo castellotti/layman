@@ -307,6 +307,11 @@ export const LaymanConfigSchema = z.object({
   piiFilter: z.boolean().default(true),
   showFullCommand: z.boolean().default(false),
   switchToNewestSession: z.boolean().default(false),
+  /**
+   * Dashboard: a quiet session (`SessionInfo.quiet`: instructions loaded, a setting changed,
+   * nothing more) is listed with its pane closed, and opens by itself once it does something.
+   */
+  dashboardHoldQuiet: z.boolean().default(true),
   collapseHistory: z.boolean().default(true),
   autoScroll: z.boolean().default(true),
   declinedClients: z.array(z.string()).default([]),

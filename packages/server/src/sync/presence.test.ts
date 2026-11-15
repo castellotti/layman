@@ -119,4 +119,14 @@ describe('RemoteSessionRegistry', () => {
     reg.ingestPush('h2', 'B', { hostId: 'h2', entries: [], live: { activeSessionIds: ['new'], sessions: [{ sessionId: 'new', cwd: '', agentType: 'pi', lastSeen: now }] } });
     expect(reg.list().map((s) => s.sessionId)).toEqual(['new', 'old']);
   });
+
+  it("carries a session's quiet flag, so central holds its pane closed as its origin does", () => {
+    const now = 1_000_000;
+    const reg = new RemoteSessionRegistry(() => now);
+    reg.ingestPush(HOST, NAME, { hostId: HOST, entries: [], live: { activeSessionIds: ['q', 'w'], sessions: [
+      { sessionId: 'q', cwd: '', agentType: 'claude-code', lastSeen: now, quiet: true },
+      { sessionId: 'w', cwd: '', agentType: 'claude-code', lastSeen: now - 1 },
+    ] } });
+    expect(reg.list().map((s) => [s.sessionId, s.quiet])).toEqual([['q', true], ['w', undefined]]);
+  });
 });

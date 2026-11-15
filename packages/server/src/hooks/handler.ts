@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { backgroundTaskIdOf, isTaskNotification } from '../events/task-notification.js';
 import type { FastifyInstance } from 'fastify';
-import type { SubagentTranscriptEntry } from '../events/types.js';
+import type { SubagentTranscriptEntry, EventData, EventType } from '../events/types.js';
 import { parseTranscriptLines } from './transcript.js';
 import { recoverPreActivationHistory } from './recovery.js';
 import { PendingApprovalManager } from './pending.js';
@@ -71,6 +71,19 @@ interface ActiveSubagent {
   startTs: number;
 }
 const activeSubagents = new Map<string, ActiveSubagent[]>();
+
+// Sessions whose harness has sent `agent_id` on a subagent's own hooks, so its subagents' events
+// are tagged as they arrive (`subagentScoped`) and SubagentStop's time-window guess must not run:
+// it would only add the parent's calls made meanwhile, and a subagent that called no tool, or
+// whose calls left the recent-events window, would otherwise look like one from an older harness.
+const sessionsTaggingSubagents = new Set<string>();
+
+/** The subagent a hook fired inside, or undefined for the parent's own hooks and the start/stop markers. */
+function subagentIdOf(body: Record<string, unknown>, eventName: string): string | undefined {
+  const agentId = body.agent_id;
+  if (typeof agentId !== 'string' || !agentId || eventName === 'SubagentStart' || eventName === 'SubagentStop') return undefined;
+  return agentId;
+}
 
 /** Detect activation command in a Bash call (echo marker or legacy curl) */
 const ACTIVATION_PATTERN = /echo\s+["']?layman:activate["']?|curl\b.*\/api\/activate/;
@@ -205,31 +218,34 @@ export function registerHookHandler(
           eventStore.trackSession(sessionId, cwd, agentType, opencodeUrl);
         }
 
+        // Events a hook fired inside a subagent are that subagent's (see `subagentScoped`).
+        const store = subagentScoped(eventStore, body, eventName);
+
         switch (eventName) {
           case 'PreToolUse': {
             const input = body as unknown as PreToolUseInput;
-            const response = await handlePreToolUse(input, pendingManager, eventStore, analysisEngine, getConfig, agentType, driftMonitor);
+            const response = await handlePreToolUse(input, pendingManager, store, analysisEngine, getConfig, agentType, driftMonitor);
             return reply.send(response);
           }
           case 'PostToolUse': {
-            await handlePostToolUse(body as unknown as PostToolUseInput, eventStore, agentType, driftMonitor, getConfig);
+            await handlePostToolUse(body as unknown as PostToolUseInput, store, agentType, driftMonitor, getConfig);
             return reply.status(200).send({});
           }
           case 'PostToolUseFailure': {
-            await handlePostToolUseFailure(body as unknown as PostToolUseFailureInput, eventStore, agentType);
+            await handlePostToolUseFailure(body as unknown as PostToolUseFailureInput, store, agentType);
             return reply.status(200).send({});
           }
           case 'PermissionRequest': {
             const input = body as unknown as PermissionRequestInput;
-            const response = await handlePermissionRequest(input, pendingManager, eventStore, analysisEngine, getConfig, agentType);
+            const response = await handlePermissionRequest(input, pendingManager, store, analysisEngine, getConfig, agentType);
             return reply.send(response);
           }
           case 'Notification': {
-            await handleNotification(body as unknown as NotificationInput, eventStore, agentType);
+            await handleNotification(body as unknown as NotificationInput, store, agentType);
             return reply.status(200).send({});
           }
           case 'SessionStart': {
-            await handleSessionStart(body as unknown as SessionStartInput, eventStore, agentType);
+            await handleSessionStart(body as unknown as SessionStartInput, store, agentType);
             return reply.status(200).send({});
           }
           case 'SessionEnd': {
@@ -240,99 +256,99 @@ export function registerHookHandler(
             // is exiting — so without this the dashboard shows a "responding…"
             // row with a blinking caret until the 60 s idle sweep.
             liveStreams?.finish((body as unknown as SessionEndInput).session_id);
-            await handleSessionEnd(body as unknown as SessionEndInput, eventStore, gate, agentType, driftMonitor);
+            await handleSessionEnd(body as unknown as SessionEndInput, store, gate, agentType, driftMonitor);
             return reply.status(200).send({});
           }
           case 'Stop': {
-            await handleStop(body as unknown as StopInput, eventStore, agentType);
+            await handleStop(body as unknown as StopInput, store, agentType);
             return reply.status(200).send({});
           }
           case 'UserPromptSubmit': {
-            await handleUserPromptSubmit(body as unknown as UserPromptSubmitInput, eventStore, agentType, driftMonitor, getConfig);
+            await handleUserPromptSubmit(body as unknown as UserPromptSubmitInput, store, agentType, driftMonitor, getConfig);
             return reply.status(200).send({});
           }
           case 'SubagentStart': {
-            await handleSubagentStart(body as unknown as SubagentStartInput, eventStore, agentType);
+            await handleSubagentStart(body as unknown as SubagentStartInput, store, agentType);
             return reply.status(200).send({});
           }
           case 'SubagentStop': {
-            await handleSubagentStop(body as unknown as SubagentStopInput, eventStore, agentType);
+            await handleSubagentStop(body as unknown as SubagentStopInput, store, agentType);
             return reply.status(200).send({});
           }
           case 'AgentResponse': {
-            await handleAgentResponse(body as unknown as AgentResponseInput, eventStore, agentType);
+            await handleAgentResponse(body as unknown as AgentResponseInput, store, agentType);
             return reply.status(200).send({});
           }
           case 'StopFailure': {
-            await handleStopFailure(body as unknown as StopFailureInput, eventStore, agentType);
+            await handleStopFailure(body as unknown as StopFailureInput, store, agentType);
             return reply.status(200).send({});
           }
           case 'PreCompact': {
-            await handlePreCompact(body as unknown as PreCompactInput, eventStore, agentType);
+            await handlePreCompact(body as unknown as PreCompactInput, store, agentType);
             return reply.status(200).send({});
           }
           case 'PostCompact': {
-            await handlePostCompact(body as unknown as PostCompactInput, eventStore, agentType);
+            await handlePostCompact(body as unknown as PostCompactInput, store, agentType);
             return reply.status(200).send({});
           }
           case 'Elicitation': {
-            await handleElicitation(body as unknown as ElicitationInput, eventStore, agentType);
+            await handleElicitation(body as unknown as ElicitationInput, store, agentType);
             return reply.status(200).send({});
           }
           case 'ElicitationResult': {
-            await handleElicitationResult(body as unknown as ElicitationResultInput, eventStore, agentType);
+            await handleElicitationResult(body as unknown as ElicitationResultInput, store, agentType);
             return reply.status(200).send({});
           }
           case 'PostModelSwitch': {
-            handlePostModelSwitch(body as unknown as PostModelSwitchInput, eventStore, agentType);
+            handlePostModelSwitch(body as unknown as PostModelSwitchInput, store, agentType);
             return reply.status(200).send({});
           }
           case 'PermissionDenied': {
-            await handlePermissionDenied(body as unknown as PermissionDeniedInput, eventStore, agentType);
+            await handlePermissionDenied(body as unknown as PermissionDeniedInput, store, agentType);
             return reply.status(200).send({});
           }
           case 'Setup': {
-            await handleSetup(body as unknown as SetupInput, eventStore, agentType);
+            await handleSetup(body as unknown as SetupInput, store, agentType);
             return reply.status(200).send({});
           }
           case 'ConfigChange': {
-            await handleConfigChange(body as unknown as ConfigChangeInput, eventStore, agentType);
+            await handleConfigChange(body as unknown as ConfigChangeInput, store, agentType);
             return reply.status(200).send({});
           }
           case 'InstructionsLoaded': {
-            await handleInstructionsLoaded(body as unknown as InstructionsLoadedInput, eventStore, agentType, driftMonitor, getConfig);
+            await handleInstructionsLoaded(body as unknown as InstructionsLoadedInput, store, agentType, driftMonitor, getConfig);
             return reply.status(200).send({});
           }
           case 'TaskCreated': {
-            await handleTaskCreated(body as unknown as TaskCreatedInput, eventStore, agentType);
+            await handleTaskCreated(body as unknown as TaskCreatedInput, store, agentType);
             return reply.status(200).send({});
           }
           case 'TaskCompleted': {
-            await handleTaskCompleted(body as unknown as TaskCompletedInput, eventStore, agentType);
+            await handleTaskCompleted(body as unknown as TaskCompletedInput, store, agentType);
             return reply.status(200).send({});
           }
           case 'TeammateIdle': {
-            await handleTeammateIdle(body as unknown as TeammateIdleInput, eventStore, agentType);
+            await handleTeammateIdle(body as unknown as TeammateIdleInput, store, agentType);
             return reply.status(200).send({});
           }
           case 'WorktreeCreate': {
-            await handleWorktreeCreate(body as unknown as WorktreeCreateInput, eventStore, agentType);
+            await handleWorktreeCreate(body as unknown as WorktreeCreateInput, store, agentType);
             return reply.status(200).send({});
           }
           case 'WorktreeRemove': {
-            await handleWorktreeRemove(body as unknown as WorktreeRemoveInput, eventStore, agentType);
+            await handleWorktreeRemove(body as unknown as WorktreeRemoveInput, store, agentType);
             return reply.status(200).send({});
           }
           case 'CwdChanged': {
-            await handleCwdChanged(body as unknown as CwdChangedInput, eventStore, agentType);
+            await handleCwdChanged(body as unknown as CwdChangedInput, store, agentType);
             return reply.status(200).send({});
           }
           case 'FileChanged': {
-            await handleFileChanged(body as unknown as FileChangedInput, eventStore, agentType);
+            await handleFileChanged(body as unknown as FileChangedInput, store, agentType);
             return reply.status(200).send({});
           }
           case 'StatusLine': {
-            await handleStatusLine(body as unknown as StatusLineInput, eventStore, agentType);
+            await handleStatusLine(body as unknown as StatusLineInput, store, agentType);
             return reply.status(200).send({});
           }
           case 'StreamDelta': {
@@ -359,6 +375,38 @@ export function registerHookHandler(
       }
     }
   );
+}
+
+/**
+ * The store a hook's handler writes through: for a hook fired inside a subagent, one that tags
+ * every event it adds with the subagent (`subagentId`, and its name as `agentType`).
+ *
+ * Claude Code puts `agent_id` on every hook that fires inside a subagent or an in-process
+ * teammate, so a subagent's calls are known as they arrive, not guessed afterwards from a time
+ * window that also caught the parent's own calls whenever the two ran at once (a background
+ * agent). `SubagentStart` and `SubagentStop` carry the same field to say *which* subagent started
+ * or stopped; they are the parent's markers and stay untagged.
+ *
+ * Only `add` is rewritten: a handler that finds and updates an event it added earlier (PostToolUse
+ * completing its PreToolUse row) must match it by subagent too (`subagentIdOf`), or one agent's
+ * result would complete the other's call of the same tool.
+ */
+function subagentScoped(eventStore: EventStore, body: Record<string, unknown>, eventName: string): EventStore {
+  const agentId = subagentIdOf(body, eventName);
+  if (!agentId) return eventStore;
+  if (typeof body.session_id === 'string') sessionsTaggingSubagents.add(body.session_id);
+  const tag: Pick<EventData, 'subagentId' | 'agentType'> = { subagentId: agentId };
+  if (typeof body.agent_type === 'string' && body.agent_type) tag.agentType = body.agent_type;
+  return new Proxy(eventStore, {
+    get(target, prop, receiver) {
+      if (prop === 'add') {
+        return (type: EventType, sessionId: string, data: EventData, riskLevel?: 'low' | 'medium' | 'high', agentType?: string) =>
+          target.add(type, sessionId, { ...data, ...tag }, riskLevel, agentType);
+      }
+      const value = Reflect.get(target, prop, receiver);
+      return typeof value === 'function' ? value.bind(target) : value;
+    },
+  });
 }
 
 /**
@@ -677,11 +725,15 @@ async function handlePostToolUse(
   driftMonitor?: DriftMonitor,
   getConfig?: () => LaymanConfig
 ): Promise<void> {
+  // The parent and a subagent may run the same tool at once: a result completes only its own
+  // agent's call (the subagent's rows were tagged at ingest, the parent's are untagged).
+  const subagentId = subagentIdOf(input as unknown as Record<string, unknown>, 'PostToolUse');
   const pendingEvent = eventStore.findLast(
     (e) =>
       (e.type === 'tool_call_pending' || e.type === 'tool_call_approved') &&
       e.data.toolName === input.tool_name &&
-      e.sessionId === input.session_id
+      e.sessionId === input.session_id &&
+      e.data.subagentId === subagentId
   );
 
   const completedAt = Date.now();
@@ -855,6 +907,7 @@ function handleSessionEnd(
   gate.deactivate(input.session_id);
   transcriptWatermarks.delete(input.transcript_path);
   activeSubagents.delete(input.session_id);
+  sessionsTaggingSubagents.delete(input.session_id);
   if (driftMonitor) driftMonitor.reset(input.session_id);
 }
 
@@ -1116,12 +1169,17 @@ async function handleSubagentStop(
         stack.splice(idx, 1);
         if (stack.length === 0) activeSubagents.delete(input.session_id);
 
-        // Tag tool-call events that fall within the sub-agent's time window and
+        // A Claude Code that sends `agent_id` on the subagent's own hooks has tagged its calls as
+        // they arrived (`subagentScoped`); guessing by time window then would only add the
+        // parent's calls made meanwhile. The window is for a harness that does not. Known per
+        // session, not from this subagent's own rows: one that called no tool has none.
+        //
+        // Otherwise, tag tool-call events that fall within the sub-agent's time window and
         // belong to this session but have no subagentId yet. Scan the last 500
         // events — sub-agents run for seconds/minutes, not hours, so recent
         // events are sufficient and avoids a full 10k-entry walk.
         const stopTs = Date.now();
-        const recentEvents = eventStore.getLast(500);
+        const recentEvents = sessionsTaggingSubagents.has(input.session_id) ? [] : eventStore.getLast(500);
         for (const ev of recentEvents) {
           if (
             ev.sessionId === input.session_id &&

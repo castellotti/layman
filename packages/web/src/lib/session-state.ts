@@ -55,6 +55,20 @@ export function orderDashboardSessions(
   return shown.sort((a, b) => b.lastSeen - a.lastSeen);
 }
 
+/**
+ * The Dashboard panes to open by themselves: those of sessions whose pane is not yet settled
+ * (opened once by itself, or opened or closed by the user). A quiet session (`SessionInfo.quiet`:
+ * it loaded its instructions or changed a setting, nothing more) waits, unsettled, while
+ * `holdQuiet` is on, and opens when its first real event makes it no longer quiet.
+ */
+export function panesToOpen(
+  sessions: readonly SessionInfo[],
+  settled: ReadonlySet<string>,
+  holdQuiet: boolean,
+): string[] {
+  return sessions.filter((s) => !settled.has(s.sessionId) && !(holdQuiet && s.quiet)).map((s) => s.sessionId);
+}
+
 /** Color for a context-window-usage percentage, shared by the dashboard row and pane header. */
 export function contextPctColor(pct: number, fallback: string): string {
   if (pct >= 75) return 'var(--error)';

@@ -40,6 +40,8 @@ export interface PresenceSession {
   agentType: string;
   sessionName?: string;
   lastSeen: number;
+  /** `SessionInfo.quiet`, so central holds a quiet remote session's pane closed as its origin does. */
+  quiet?: boolean;
 }
 
 export interface PresencePayload {

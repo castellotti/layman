@@ -3,6 +3,7 @@ import type { Database } from './database.js';
 import type { TimelineEvent } from '../events/types.js';
 import type { EventStore } from '../events/store.js';
 import { redactString } from '../pii/filter.js';
+import { QUIET_EVENT_TYPES } from '../events/quiet.js';
 
 export interface QARecord {
   question: string;
@@ -29,6 +30,19 @@ export function countRecordedSessionsByAgentType(db: Database): Record<string, n
   const counts: Record<string, number> = {};
   for (const { agent_type, n } of rows) counts[agent_type] = n;
   return counts;
+}
+
+/**
+ * A probe for `EventStore.setHistoryProbe`: whether a session's recording holds anything other
+ * than quiet events (`events/quiet.ts`), so a session already at work before a restart is not
+ * listed as quiet when its first hook after it is a status-line update.
+ */
+export function recordedActivityProbe(db: Database): (sessionId: string) => boolean {
+  const quiet = [...QUIET_EVENT_TYPES];
+  const stmt = db.prepare(
+    `SELECT 1 FROM recorded_events WHERE session_id = ? AND type NOT IN (${quiet.map(() => '?').join(', ')}) LIMIT 1`,
+  );
+  return (sessionId) => stmt.get(sessionId, ...quiet) !== undefined;
 }
 
 export class SessionRecorder {
