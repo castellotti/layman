@@ -22,6 +22,9 @@ import { stationCounts } from '../../lib/station-style.js';
 import type { StationId } from '../../lib/station.js';
 import type { ClientMessage } from '../../lib/ws-protocol.js';
 import { sp, rad } from '../../lib/density.js';
+import { tokenColor } from '../../lib/tokens.js';
+import { subagentLanes, type SubagentLane } from '../../lib/subagent-lanes.js';
+import { SubagentChip } from '../shared/SubagentChip.js';
 
 interface EventStreamProps {
   onSend: (msg: ClientMessage) => void;
@@ -41,6 +44,8 @@ export function EventStream({ onSend, archived = false, archivedDate, turnRuler 
   const [requestsOnly, setRequestsOnly] = useState(false);
   const [responsesOnly, setResponsesOnly] = useState(false);
   const [stations, setStations] = useState<StationId[]>([]);
+  // One subagent's rows only, set from the chip on its rows.
+  const [subagentFilter, setSubagentFilter] = useState<string | undefined>(undefined);
   const stationSetup = useStationSetup();
   const [searchQuery, setSearchQuery] = useState('');
   const [matchIndex, setMatchIndex] = useState(0);
@@ -68,7 +73,24 @@ export function EventStream({ onSend, archived = false, archivedDate, turnRuler 
     searchQuery,
     stations,
     stationSetup,
+    subagentId: subagentFilter,
   }, sourceOverride);
+
+  // Numbered over the whole session, unfiltered, so a subagent's number and colour are the same here
+  // as in its Dashboard pane and do not change with a filter. The last result is handed back so an
+  // unchanged lane keeps its object and the memoized rows do not all re-render at every event.
+  const lanesRef = useRef<Map<string, SubagentLane>>();
+  const lanes = useMemo(() => {
+    lanesRef.current = subagentLanes(sessionEvents, lanesRef.current);
+    return lanesRef.current;
+  }, [sessionEvents]);
+  // Another session has no such subagent: drop the filter on a session change rather than show an
+  // empty list. Not on "no lane for it", which a session still loading also is.
+  useEffect(() => { setSubagentFilter(undefined); }, [activeSessionId]);
+  const handleLaneClick = useCallback((id: string) => {
+    setSubagentFilter((cur) => (cur === id ? undefined : id));
+  }, []);
+  const filteredLane = subagentFilter ? lanes.get(subagentFilter) : undefined;
 
   // ─── Display rows ─────────────────────────────────────────────────────────
   // Reasoning is lifted out of each response into a row of its own. Everything
@@ -409,6 +431,7 @@ export function EventStream({ onSend, archived = false, archivedDate, turnRuler 
           setRequestsOnly(false);
           setResponsesOnly(false);
           setStations([]);
+          setSubagentFilter(undefined);
         }}
         stationCounts={stationCountList}
         stations={stations}
@@ -427,6 +450,25 @@ export function EventStream({ onSend, archived = false, archivedDate, turnRuler 
       />
 
       {!archived && <SessionMetricsBar />}
+
+      {filteredLane && (
+        <div data-print-hide style={{
+          display: 'flex', alignItems: 'center', gap: sp(8),
+          padding: sp('5px 14px'), background: tokenColor(filteredLane.token, '8%'),
+          borderBottom: 'var(--stroke) solid var(--border)', flexShrink: 0,
+          fontSize: 11, fontFamily: 'var(--font-ui)', color: 'var(--text-body)',
+        }}>
+          <SubagentChip lane={filteredLane} active />
+          <span>Showing only {filteredLane.label}</span>
+          <button
+            type="button"
+            onClick={() => setSubagentFilter(undefined)}
+            style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--accent)', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+          >
+            Show all
+          </button>
+        </div>
+      )}
 
       {/* Search match navigation bar */}
       {hasSearchQuery && (
@@ -563,6 +605,9 @@ export function EventStream({ onSend, archived = false, archivedDate, turnRuler 
                       onSelect={handleSelectRow}
                       onCaretToggle={handleCaretToggle}
                       onSend={onSend}
+                      lane={event.data.subagentId ? lanes.get(event.data.subagentId) : undefined}
+                      laneActive={!!subagentFilter && event.data.subagentId === subagentFilter}
+                      onLaneClick={handleLaneClick}
                     />
                   )}
                 </React.Fragment>

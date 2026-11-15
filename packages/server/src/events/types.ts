@@ -69,6 +69,12 @@ export interface EventData {
   agentType?: string;
   /** ID of the sub-agent that triggered this tool call event (retroactively tagged). */
   subagentId?: string;
+  /**
+   * The subagent's number in its session, 1-based, in the order subagents first appeared
+   * (`EventStore`, which stamps it on every event carrying `subagentId`). Every view labels and
+   * colours a subagent by it, so none depends on how much of the session it holds.
+   */
+  subagentN?: number;
   /** Ordered tool calls + text responses from the sub-agent's sidechain transcript. */
   subagentTranscript?: SubagentTranscriptEntry[];
   notificationType?: string;

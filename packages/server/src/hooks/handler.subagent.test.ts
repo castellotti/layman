@@ -125,3 +125,34 @@ describe('EventStore history probe', () => {
     expect(quiet).toEqual({ busy: false, new: true });
   });
 });
+
+describe('subagent numbers', () => {
+  it('numbers each subagent of a session by first appearance, on every event it adds', async () => {
+    const h = harness();
+    await post(h, 'PostToolUse', tool('Read', { agent_type: 'Explore', agent_id: 'a' }));
+    await post(h, 'PostToolUse', tool('Grep', { agent_type: 'Explore', agent_id: 'b' }));
+    await post(h, 'PostToolUse', tool('Bash')); // the parent: no number
+    await post(h, 'PostToolUse', tool('Glob', { agent_type: 'Explore', agent_id: 'a' }));
+    const calls = h.store.getAll().filter((e) => e.type === 'tool_call_completed');
+    expect(calls.map((e) => e.data.subagentN)).toEqual([1, 2, undefined, 1]);
+  });
+
+  it('numbers a call tagged after the fact by the time window', async () => {
+    const h = harness();
+    await post(h, 'SubagentStart', { agent_type: 'Explore', agent_id: 'old' });
+    await post(h, 'PostToolUse', tool('Read'));
+    await post(h, 'SubagentStop', { agent_type: 'Explore', agent_id: 'old' });
+    const [call] = h.store.getAll().filter((e) => e.type === 'tool_call_completed');
+    expect([call.data.subagentId, call.data.subagentN]).toEqual(['old', 1]);
+  });
+});
+
+describe('EventStore subagent probe', () => {
+  it('carries the numbering on from the recording after a restart', () => {
+    const store = new EventStore();
+    store.setSubagentProbe((id) => (id === 's' ? ['x', 'y'] : []));
+    expect(store.add('tool_call_completed', 's', { subagentId: 'y' }).data.subagentN).toBe(2);
+    expect(store.add('tool_call_completed', 's', { subagentId: 'z' }).data.subagentN).toBe(3);
+    expect(store.add('tool_call_completed', 'other', { subagentId: 'z' }).data.subagentN).toBe(1);
+  });
+});
