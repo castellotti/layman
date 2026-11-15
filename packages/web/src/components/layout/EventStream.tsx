@@ -84,10 +84,9 @@ export function EventStream({ onSend, archived = false, archivedDate, turnRuler 
     lanesRef.current = subagentLanes(sessionEvents, lanesRef.current);
     return lanesRef.current;
   }, [sessionEvents]);
-  // Another session has no such subagent: drop the filter rather than show an empty list.
-  useEffect(() => {
-    if (subagentFilter && !lanes.has(subagentFilter)) setSubagentFilter(undefined);
-  }, [subagentFilter, lanes]);
+  // Another session has no such subagent: drop the filter on a session change rather than show an
+  // empty list. Not on "no lane for it", which a session still loading also is.
+  useEffect(() => { setSubagentFilter(undefined); }, [activeSessionId]);
   const handleLaneClick = useCallback((id: string) => {
     setSubagentFilter((cur) => (cur === id ? undefined : id));
   }, []);

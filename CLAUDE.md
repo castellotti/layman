@@ -505,7 +505,9 @@ Four rules that must not be relaxed casually:
 - **Subagent events are tagged at ingest** (`subagentScoped` in `hooks/handler.ts`, from the
   `agent_id` Claude Code puts on every hook fired inside a subagent). The old time-window tagging at
   `SubagentStop` stays only as a fallback: it also caught the parent's own calls whenever a
-  background agent ran beside it. Detail in `docs/harnesses/claude-code.md` → Hooks.
+  background agent ran beside it. A subagent's number (`data.subagentN`, which its chip and colour
+  follow) is stamped by `EventStore`, never counted by a view: each view holds a different window
+  of a long session. Detail in `docs/harnesses/claude-code.md` → Hooks.
 
 - **Blocking hooks**: `PreToolUse` and `PermissionRequest` (Claude Code) and `PreToolUse` (Cline) suspend the agent process until `PendingApprovalManager.resolveApproval()` is called. Claude Code's timeout is 300s (configurable); Cline's is 25s (Cline hardcodes 30s).
 

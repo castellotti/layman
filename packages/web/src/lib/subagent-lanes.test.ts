@@ -3,11 +3,11 @@ import { subagentLanes, SUBAGENT_TOKENS } from './subagent-lanes.js';
 import type { TimelineEvent } from './types.js';
 
 let seq = 0;
-function ev(subagentId?: string, agentType?: string): TimelineEvent {
+function ev(subagentId?: string, agentType?: string, subagentN?: number): TimelineEvent {
   seq += 1;
   return {
     id: `e${seq}`, sessionId: 's', timestamp: seq, type: 'tool_call_completed', agentType: 'claude-code',
-    data: { toolName: 'Read', ...(subagentId ? { subagentId, agentType } : {}) },
+    data: { toolName: 'Read', ...(subagentId ? { subagentId, agentType, ...(subagentN ? { subagentN } : {}) } : {}) },
   } as TimelineEvent;
 }
 
@@ -31,11 +31,29 @@ describe('subagentLanes', () => {
     expect(subagentLanes([ev('x')]).get('x')?.chip).toBe('sub 1');
   });
 
+  it('takes the type from the first event that names one', () => {
+    expect(subagentLanes([ev('x'), ev('x', 'Plan')]).get('x')?.label).toBe('Subagent 1 · Plan');
+  });
+
   it('reuses an unchanged lane from the last result, so memoized rows keep their props', () => {
     const early = [ev('a', 'Explore')];
     const prev = subagentLanes(early);
     const next = subagentLanes([...early, ev('b'), ev('a', 'Explore')], prev);
     expect(next.get('a')).toBe(prev.get('a'));
+  });
+
+  it('takes the server\'s number, whatever window of the session it is given', () => {
+    // Subagent 1 has scrolled out of this window; 2 and 3 keep their numbers and colours.
+    const lanes = subagentLanes([ev('b', 'Explore', 2), ev('c', 'Plan', 3)]);
+    expect(lanes.get('b')).toMatchObject({ n: 2, token: SUBAGENT_TOKENS[1], chip: '2 Explore' });
+    expect(lanes.get('c')).toMatchObject({ n: 3, token: SUBAGENT_TOKENS[2] });
+  });
+
+  it('gives unnumbered (older) subagents the lowest numbers no numbered one holds', () => {
+    const lanes = subagentLanes([ev('old1'), ev('new', 'Explore', 1), ev('old2')]);
+    expect(lanes.get('new')?.n).toBe(1);
+    expect(lanes.get('old1')?.n).toBe(2);
+    expect(lanes.get('old2')?.n).toBe(3);
   });
 
   it('cycles the colours past the last one', () => {

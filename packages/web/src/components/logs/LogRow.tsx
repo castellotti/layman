@@ -51,8 +51,8 @@ export const LogRow = React.memo(function LogRow({ event, index, hasDetail, isEx
   // A subagent's row rests on the agent shade with a bar in its own colour, as in a Dashboard pane.
   const rest = lane ? tokenColor('agent', '8%') : 'transparent';
   const shadows = [
-    lane && `inset 3px 0 0 ${tokenColor(lane.token, '80%')}`,
     isSelected && 'inset 0 0 0 1px var(--accent)',
+    lane && `inset 3px 0 0 ${tokenColor(lane.token, '80%')}`,
   ].filter(Boolean).join(', ');
   const subagentId = event.data.subagentId;
 

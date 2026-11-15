@@ -20,23 +20,41 @@ export interface SubagentLane {
 
 /**
  * Tells a session's subagents apart. They all report into the parent's session (Claude Code gives a
- * subagent no session of its own), so two running at once interleave; each gets a number, in the
- * order it first appears, and a colour by that number. Numbering by appearance rather than hashing
- * the id means two subagents never share a colour until there are more than
- * `SUBAGENT_TOKENS.length` of them, and a subagent keeps its number as events arrive, because new
- * events only ever add subagents after the ones already seen.
+ * subagent no session of its own), so two running at once interleave; each gets a number and a
+ * colour by that number, so two never share a colour until there are more than
+ * `SUBAGENT_TOKENS.length` of them.
+ *
+ * The number is the server's (`data.subagentN`, by first appearance in the whole session), never
+ * counted here: a view holds a window of the session, and counting within it renumbered (and
+ * recoloured) a subagent once earlier ones left the window, and numbered it differently in the
+ * Dashboard and Logs, which hold different windows. Rows recorded before the server numbered
+ * subagents have none; those take the lowest numbers no numbered subagent holds, in the order they
+ * appear here.
  */
 export function subagentLanes(
   events: readonly TimelineEvent[],
   /** The last result: an unchanged lane keeps its object, so a memoized row given it does not re-render. */
   prev?: Map<string, SubagentLane>,
 ): Map<string, SubagentLane> {
-  const lanes = new Map<string, SubagentLane>();
+  // A subagent's type is the first one any of its events names: its opening event may not carry it.
+  const types = new Map<string, string | undefined>();
+  const numbered = new Map<string, number>();
   for (const event of events) {
     const id = event.data.subagentId;
-    if (!id || lanes.has(id)) continue;
-    const n = lanes.size + 1;
-    const type = event.data.agentType;
+    if (!id) continue;
+    if (!types.get(id)) types.set(id, event.data.agentType);
+    if (event.data.subagentN !== undefined && !numbered.has(id)) numbered.set(id, event.data.subagentN);
+  }
+  const taken = new Set(numbered.values());
+  let next = 1;
+  const lanes = new Map<string, SubagentLane>();
+  for (const [id, type] of types) {
+    let n = numbered.get(id);
+    if (n === undefined) {
+      while (taken.has(next)) next++;
+      n = next;
+      taken.add(n);
+    }
     const lane: SubagentLane = {
       n,
       token: SUBAGENT_TOKENS[(n - 1) % SUBAGENT_TOKENS.length],

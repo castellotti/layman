@@ -45,6 +45,21 @@ export function recordedActivityProbe(db: Database): (sessionId: string) => bool
   return (sessionId) => stmt.get(sessionId, ...quiet) !== undefined;
 }
 
+/**
+ * A session's recorded subagents, oldest first (by each one's first event): the order `EventStore`
+ * numbers them in, so a restart carries on the numbering and history recorded before numbering
+ * existed is numbered the same way.
+ */
+export function recordedSubagentsProbe(db: Database): (sessionId: string) => string[] {
+  const stmt = db.prepare(
+    `SELECT json_extract(data_json, '$.subagentId') AS sid, MIN(timestamp) AS first
+       FROM recorded_events
+      WHERE session_id = ? AND json_extract(data_json, '$.subagentId') IS NOT NULL
+      GROUP BY sid ORDER BY first`,
+  );
+  return (sessionId) => (stmt.all(sessionId) as { sid: string }[]).map((r) => r.sid);
+}
+
 export class SessionRecorder {
   private upsertSession: BetterSqlite3.Statement<unknown[]>;
   private insertEvent: BetterSqlite3.Statement<unknown[]>;

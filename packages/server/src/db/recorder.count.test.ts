@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import BetterSqlite3 from 'better-sqlite3';
-import { countRecordedSessionsByAgentType, recordedActivityProbe } from './recorder.js';
+import { countRecordedSessionsByAgentType, recordedActivityProbe, recordedSubagentsProbe } from './recorder.js';
 
 function makeDb() {
   const db = new BetterSqlite3(':memory:');
@@ -59,5 +59,21 @@ describe('recordedActivityProbe', () => {
     insert.run('5', 'busy', 'user_prompt');
     const probe = recordedActivityProbe(db);
     expect([probe('quiet'), probe('busy'), probe('unknown')]).toEqual([false, true, false]);
+  });
+});
+
+describe('recordedSubagentsProbe', () => {
+  it("lists a session's subagents by their first event, oldest first", () => {
+    const db = new BetterSqlite3(':memory:');
+    db.exec('CREATE TABLE recorded_events (id TEXT PRIMARY KEY, session_id TEXT NOT NULL, timestamp INTEGER NOT NULL, data_json TEXT NOT NULL)');
+    const insert = db.prepare('INSERT INTO recorded_events (id, session_id, timestamp, data_json) VALUES (?, ?, ?, ?)');
+    insert.run('1', 's', 10, JSON.stringify({ toolName: 'Read' }));
+    insert.run('2', 's', 20, JSON.stringify({ subagentId: 'b' }));
+    insert.run('3', 's', 30, JSON.stringify({ subagentId: 'a' }));
+    insert.run('4', 's', 40, JSON.stringify({ subagentId: 'b' }));
+    insert.run('5', 'other', 5, JSON.stringify({ subagentId: 'c' }));
+    const probe = recordedSubagentsProbe(db);
+    expect(probe('s')).toEqual(['b', 'a']);
+    expect(probe('none')).toEqual([]);
   });
 });

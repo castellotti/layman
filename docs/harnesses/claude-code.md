@@ -58,8 +58,12 @@ an in-process teammate) has no session of its own: its hooks carry the parent's 
 every event it adds with `subagentId` (and the subagent's name as `data.agentType`)
 (`subagentScoped` in `hooks/handler.ts`), and the Dashboard and Logs shade those rows, with a chip
 (`2 Explore`) and a left bar in each subagent's own colour, so two running at once (which interleave
-in the parent's session) read apart (`subagentLanes` in `packages/web/src/lib/subagent-lanes.ts`,
-numbered by first appearance over the whole session; in Logs the chip filters to that subagent). `SubagentStart` and
+in the parent's session) read apart; in Logs the chip filters to that subagent. The number is
+assigned once, by `EventStore`, which stamps `data.subagentN` on every event naming a subagent and
+after a restart carries on from the recording (`recordedSubagentsProbe`), never by a view: each view
+holds a different window of a long session and would number differently, and renumber as early
+subagents left its window (`subagentLanes` in `packages/web/src/lib/subagent-lanes.ts` only reads
+it, and numbers history recorded before it with the lowest numbers free). `SubagentStart` and
 `SubagentStop` carry the same fields to say which subagent started or stopped; they are the
 parent's markers and are not tagged. Before this, a subagent's calls were tagged only at
 `SubagentStop`, by time window, which also tagged the parent's own calls whenever the two ran at

@@ -35,6 +35,10 @@ export class EventStore extends EventEmitter {
   private stirred = new Set<string>();
   /** Asked once per session newly tracked: did it do something before this server started? */
   private historyProbe?: (sessionId: string) => boolean;
+  /** Each session's subagents, numbered in the order they first appeared (`data.subagentN`). */
+  private subagentNumbers = new Map<string, Map<string, number>>();
+  /** A session's recorded subagent ids, oldest first: seeds the numbering after a restart. */
+  private subagentProbe?: (sessionId: string) => string[];
   private accessLogs: Map<string, { files: FileAccess[]; urls: UrlAccess[] }> = new Map();
   private dataFilter?: (data: EventData, sessionId: string) => EventData;
   private stringFilter?: (text: string, sessionId: string) => string;
@@ -52,6 +56,40 @@ export class EventStore extends EventEmitter {
     this.historyProbe = probe;
   }
 
+  /**
+   * Tells the store which subagents a session already had before this server started (from its
+   * recording, oldest first), so numbering carries on from them rather than starting again at 1.
+   */
+  setSubagentProbe(probe: (sessionId: string) => string[]): void {
+    this.subagentProbe = probe;
+  }
+
+  /**
+   * A subagent's number in its session: the next one when it is new. Numbered here, once, rather
+   * than by each view from the events it holds, because a view holds a window of the session and
+   * would renumber (and recolour) a subagent as earlier ones left it.
+   */
+  private subagentNumber(sessionId: string, subagentId: string): number {
+    let numbers = this.subagentNumbers.get(sessionId);
+    if (!numbers) {
+      numbers = new Map();
+      for (const id of this.subagentProbe?.(sessionId) ?? []) if (!numbers.has(id)) numbers.set(id, numbers.size + 1);
+      this.subagentNumbers.set(sessionId, numbers);
+    }
+    let n = numbers.get(subagentId);
+    if (n === undefined) {
+      n = numbers.size + 1;
+      numbers.set(subagentId, n);
+    }
+    return n;
+  }
+
+  /** `data` with its subagent's number, when it names a subagent and has none yet. */
+  private numberSubagent(data: EventData, sessionId: string): EventData {
+    if (!data.subagentId || data.subagentN !== undefined) return data;
+    return { ...data, subagentN: this.subagentNumber(sessionId, data.subagentId) };
+  }
+
   /** Applied to freeform text that bypasses EventData, e.g. layman's-terms explanations. */
   setStringFilter(filter: (text: string, sessionId: string) => string): void {
     this.stringFilter = filter;
@@ -64,7 +102,7 @@ export class EventStore extends EventEmitter {
     riskLevel?: 'low' | 'medium' | 'high',
     agentType: string = 'claude-code'
   ): TimelineEvent {
-    const filteredData = this.dataFilter ? this.dataFilter(data, sessionId) : data;
+    const filteredData = this.numberSubagent(this.dataFilter ? this.dataFilter(data, sessionId) : data, sessionId);
     const event: TimelineEvent = {
       id: randomUUID(),
       type,
@@ -88,7 +126,9 @@ export class EventStore extends EventEmitter {
   }
 
   addRaw(event: TimelineEvent): void {
-    const filteredEvent = this.dataFilter ? { ...event, data: this.dataFilter(event.data, event.sessionId) } : event;
+    const filtered = this.dataFilter ? this.dataFilter(event.data, event.sessionId) : event.data;
+    const data = this.numberSubagent(filtered, event.sessionId);
+    const filteredEvent = data === event.data ? event : { ...event, data };
     if (this.events.length >= this.maxEvents) {
       const evicted = this.events.shift()!;
       this.eventById.delete(evicted.id);
@@ -167,6 +207,10 @@ export class EventStore extends EventEmitter {
     if (event) {
       const filtered = this.dataFilter ? this.dataFilter(dataUpdates as EventData, event.sessionId) : dataUpdates;
       Object.assign(event.data, filtered);
+      // Tagged after the fact (SubagentStop's time window): numbered then.
+      if (event.data.subagentId && event.data.subagentN === undefined) {
+        event.data.subagentN = this.subagentNumber(event.sessionId, event.data.subagentId);
+      }
       this.emit('event:update', event);
     }
   }
