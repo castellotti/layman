@@ -89,7 +89,7 @@ const SECTIONS: SectionDef[] = [
   },
   {
     key: 'stream', group: 'Stream', label: 'Stream behavior',
-    searchTerms: ['full command', 'newest session', 'collapse history', 'auto-scroll', 'idle threshold'],
+    searchTerms: ['full command', 'newest session', 'quiet sessions', 'Dashboard', 'pane', 'collapse history', 'auto-scroll', 'idle threshold'],
     render: (config, onSend) => <StreamSection config={config} onSend={onSend} />,
   },
   {

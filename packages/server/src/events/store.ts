@@ -2,6 +2,7 @@ import { EventEmitter } from 'events';
 import { randomUUID } from 'crypto';
 import type { TimelineEvent, EventType, EventData, FileAccess, UrlAccess, SessionAccessLog } from './types.js';
 import type { AnalysisResult, LaymansResult } from '../analysis/types.js';
+import { isQuietEvent } from './quiet.js';
 
 export interface SessionInfo {
   sessionId: string;
@@ -16,6 +17,11 @@ export interface SessionInfo {
   hostName?: string;
   /** True for sessions surfaced from a remote via central's presence registry. */
   remote?: boolean;
+  /**
+   * True while the session has recorded only quiet events (`events/quiet.ts`): it loaded its
+   * instructions or changed a setting and nothing more. Absent once it has done something.
+   */
+  quiet?: boolean;
 }
 
 export class EventStore extends EventEmitter {
@@ -25,12 +31,25 @@ export class EventStore extends EventEmitter {
   private sessions: Map<string, { cwd: string; lastSeen: number; agentType: string; opencodeUrl?: string; sessionName?: string }> = new Map();
   /** Sessions a passive watcher found under a glove sandbox root (see `markGloved`). */
   private gloved = new Set<string>();
+  /** Sessions that have recorded something other than a quiet event (see `SessionInfo.quiet`). */
+  private stirred = new Set<string>();
+  /** Asked once per session newly tracked: did it do something before this server started? */
+  private historyProbe?: (sessionId: string) => boolean;
   private accessLogs: Map<string, { files: FileAccess[]; urls: UrlAccess[] }> = new Map();
   private dataFilter?: (data: EventData, sessionId: string) => EventData;
   private stringFilter?: (text: string, sessionId: string) => string;
 
   setDataFilter(filter: (data: EventData, sessionId: string) => EventData): void {
     this.dataFilter = filter;
+  }
+
+  /**
+   * Tells the store whether a session it has just met already did something before this server
+   * started (its recording), so a long session whose first hook after a restart is a status-line
+   * update is not listed as quiet.
+   */
+  setHistoryProbe(probe: (sessionId: string) => boolean): void {
+    this.historyProbe = probe;
   }
 
   /** Applied to freeform text that bypasses EventData, e.g. layman's-terms explanations. */
@@ -64,6 +83,7 @@ export class EventStore extends EventEmitter {
     this.events.push(event);
     this.eventById.set(event.id, event);
     this.emit('event:new', event);
+    this.noteActivity(event);
     return event;
   }
 
@@ -76,6 +96,14 @@ export class EventStore extends EventEmitter {
     this.events.push(filteredEvent);
     this.eventById.set(filteredEvent.id, filteredEvent);
     this.emit('event:new', filteredEvent);
+    this.noteActivity(filteredEvent);
+  }
+
+  /** The first event that is not quiet stirs its session, and the list says so. */
+  private noteActivity(event: TimelineEvent): void {
+    if (isQuietEvent(event.type) || this.stirred.has(event.sessionId)) return;
+    this.stirred.add(event.sessionId);
+    if (this.sessions.has(event.sessionId)) this.emit('sessions:changed', this.getSessions());
   }
 
   get(id: string): TimelineEvent | undefined {
@@ -152,6 +180,7 @@ export class EventStore extends EventEmitter {
   trackSession(sessionId: string, cwd: string, agentType: string = 'claude-code', opencodeUrl?: string, sessionName?: string): void {
     const existing = this.sessions.get(sessionId);
     const isNew = !existing;
+    if (isNew && !this.stirred.has(sessionId) && this.historyProbe?.(sessionId)) this.stirred.add(sessionId);
     const cwdChanged = existing && existing.cwd !== cwd;
     // Preserve existing values if none are provided (they may have been set from a previous event)
     const resolvedUrl = opencodeUrl ?? existing?.opencodeUrl;
@@ -186,12 +215,16 @@ export class EventStore extends EventEmitter {
         }
       }
       return Array.from(seen.entries())
-        .map(([sessionId, lastSeen]) => ({ sessionId, cwd: '', lastSeen, agentType: 'claude-code' }))
+        .map(([sessionId, lastSeen]) => ({ sessionId, cwd: '', lastSeen, agentType: 'claude-code', ...this.quietFlag(sessionId) }))
         .sort((a, b) => b.lastSeen - a.lastSeen);
     }
     return Array.from(this.sessions.entries())
-      .map(([sessionId, info]) => ({ sessionId, ...info }))
+      .map(([sessionId, info]) => ({ sessionId, ...info, ...this.quietFlag(sessionId) }))
       .sort((a, b) => b.lastSeen - a.lastSeen);
+  }
+
+  private quietFlag(sessionId: string): { quiet?: true } {
+    return this.stirred.has(sessionId) ? {} : { quiet: true };
   }
 
   recordAccess(sessionId: string, files: FileAccess[], urls: UrlAccess[]): void {

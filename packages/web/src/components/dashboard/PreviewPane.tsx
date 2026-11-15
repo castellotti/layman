@@ -217,6 +217,15 @@ function RecentTail({ events, onOpenInLogs, sessionId, autoscroll }: {
   );
 }
 
+/**
+ * A subagent's work is shaded in the agent colour, with a bar at its left edge, so the orchestrating
+ * agent's own rows read apart from what it delegated. Claude Code subagents report into their
+ * parent's session; the server tags their events `subagentId` (`hooks/handler.ts`, `subagentScoped`).
+ */
+function restingBackground(event: TimelineEvent): string {
+  return event.data.subagentId ? tokenColor('agent', '8%') : 'transparent';
+}
+
 function TailRows({ rows, eventIndexById, onOpenInLogs, sessionId }: {
   rows: TimelineEvent[];
   eventIndexById: Map<string, number>;
@@ -230,10 +239,12 @@ function TailRows({ rows, eventIndexById, onOpenInLogs, sessionId }: {
         const detail = eventDetail(event);
         const realId = baseEventId(event.id);
         const globalIdx = eventIndexById.get(realId) ?? -1;
+        const rest = restingBackground(event);
         return (
           <div
             key={event.id}
             onClick={() => onOpenInLogs(sessionId, realId)}
+            title={event.data.subagentId ? `Subagent${event.data.agentType ? `: ${event.data.agentType}` : ''}` : undefined}
             style={{
               display: 'flex',
               alignItems: 'center',
@@ -242,9 +253,11 @@ function TailRows({ rows, eventIndexById, onOpenInLogs, sessionId }: {
               borderRadius: rad(4),
               cursor: 'pointer',
               transition: 'background 0.1s',
+              background: rest,
+              boxShadow: event.data.subagentId ? `inset 2px 0 0 ${tokenColor('agent', '55%')}` : undefined,
             }}
             onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.background = 'var(--bg-selected)')}
-            onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.background = 'transparent')}
+            onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.background = rest)}
           >
             <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9.5, fontVariantNumeric: 'tabular-nums', color: 'var(--text-faint)', width: 26, textAlign: 'right', flexShrink: 0 }}>
               #{globalIdx + 1}

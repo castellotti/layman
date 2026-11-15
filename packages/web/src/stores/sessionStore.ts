@@ -327,6 +327,14 @@ export interface SessionState {
   /** Kept here, not in the Dashboard, so the glove picker can follow the same order. */
   dashboardSortMode: DashboardSortMode;
   dashboardDismissedSessions: Set<string>;
+  /**
+   * The Dashboard's open panes, and the sessions whose pane is settled (opened once by itself, or
+   * opened or closed by the user). Kept here rather than in the Dashboard, which unmounts when
+   * another view is shown: in the component, every session was new again on the way back and a
+   * closed pane reopened. See `panesToOpen` (`lib/session-state.ts`).
+   */
+  dashboardOpenPanes: Set<string>;
+  dashboardSettledPanes: Set<string>;
   returnToDashboard: boolean;
   scrollToEventId: string | null;
 
@@ -428,6 +436,10 @@ export interface SessionState {
   setDashboardFocusedSession: (id: string | null) => void;
   setDashboardSessionOrder: (order: string[]) => void;
   dismissDashboardSession: (sessionId: string) => void;
+  /** Opens a closed pane or closes an open one, and settles it: it never opens by itself again. */
+  setDashboardPaneOpen: (sessionId: string, open: boolean) => void;
+  /** Opens these panes by themselves (`panesToOpen`) and settles them. */
+  autoOpenDashboardPanes: (sessionIds: readonly string[]) => void;
   navigateFromDashboard: (sessionId: string, eventId: string) => void;
   navigateFromDashboardToLogs: (sessionId: string, eventId: string) => void;
   navigateToLogsForSession: (sessionId: string) => void;
@@ -543,6 +555,8 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   dashboardSessionOrder: [],
   dashboardSortMode: 'recent',
   dashboardDismissedSessions: new Set<string>(),
+  dashboardOpenPanes: new Set<string>(),
+  dashboardSettledPanes: new Set<string>(),
   returnToDashboard: false,
   scrollToEventId: null,
 
@@ -1153,6 +1167,22 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       const newDismissed = new Set(state.dashboardDismissedSessions);
       newDismissed.add(sessionId);
       return { dashboardDismissedSessions: newDismissed };
+    }),
+  setDashboardPaneOpen: (sessionId, open) =>
+    set((state) => {
+      if (state.dashboardOpenPanes.has(sessionId) === open && state.dashboardSettledPanes.has(sessionId)) return state;
+      const dashboardOpenPanes = new Set(state.dashboardOpenPanes);
+      if (open) dashboardOpenPanes.add(sessionId);
+      else dashboardOpenPanes.delete(sessionId);
+      return { dashboardOpenPanes, dashboardSettledPanes: new Set(state.dashboardSettledPanes).add(sessionId) };
+    }),
+  autoOpenDashboardPanes: (sessionIds) =>
+    set((state) => {
+      if (sessionIds.length === 0) return state; // the same state is no update, so no re-render
+      const dashboardOpenPanes = new Set(state.dashboardOpenPanes);
+      const dashboardSettledPanes = new Set(state.dashboardSettledPanes);
+      for (const id of sessionIds) { dashboardOpenPanes.add(id); dashboardSettledPanes.add(id); }
+      return { dashboardOpenPanes, dashboardSettledPanes };
     }),
   navigateFromDashboard: (sessionId, eventId) => set({
     viewMode: 'flowchart',

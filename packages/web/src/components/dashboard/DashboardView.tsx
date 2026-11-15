@@ -5,7 +5,7 @@ import { PreviewPane } from './PreviewPane.js';
 import { SearchInput } from '../primitives/index.js';
 import { PanelDivider } from '../layout/PanelDivider.js';
 import { saveAndBookmarkSession } from '../../lib/bookmarks-api.js';
-import { orderDashboardSessions } from '../../lib/session-state.js';
+import { orderDashboardSessions, panesToOpen } from '../../lib/session-state.js';
 import { useDragReorder } from '../../hooks/useDragReorder.js';
 import type { ClientMessage } from '../../lib/ws-protocol.js';
 import './dashboard.css';
@@ -39,13 +39,12 @@ export function DashboardView({ onSend, sessionListWidth, onResizeSessionList }:
     navigateToLogsForSession,
     driftState,
     config,
+    dashboardOpenPanes: openPanes,
+    dashboardSettledPanes,
+    setDashboardPaneOpen,
+    autoOpenDashboardPanes,
   } = useSessionStore();
 
-  // Which sessions have their preview pane open
-  const [openPanes, setOpenPanes] = useState<Set<string>>(new Set());
-  // Sessions we've already auto-opened at least once — prevents reopening a pane
-  // the user explicitly closed when orderedSessions merely reorders.
-  const autoOpenedRef = useRef<Set<string>>(new Set());
   // Filter (the sort is in the store: the glove picker follows the Dashboard's order)
   const [filter, setFilter] = useState('');
   // As when the sort was this view's own state: opening the Dashboard starts at most recent.
@@ -69,46 +68,21 @@ export function DashboardView({ onSend, sessionListWidth, onResizeSessionList }:
     [sessions, dashboardSessionOrder, dashboardDismissedSessions, sortMode, filter],
   );
 
-  // Auto-open pane for newly detected sessions (only the first time each session is seen —
-  // reordering orderedSessions, e.g. via attention sort, must not reopen a pane the user closed).
+  // A new session's pane opens by itself, once: after that it is the user's to open or close, and
+  // the store remembers which, so leaving the Dashboard and coming back reopens nothing. A quiet
+  // session waits until it does something (Settings → Stream behavior).
+  const holdQuiet = config?.dashboardHoldQuiet ?? true;
   useEffect(() => {
-    const newSessions = orderedSessions.filter(s => !autoOpenedRef.current.has(s.sessionId));
-    if (newSessions.length > 0) {
-      newSessions.forEach(s => autoOpenedRef.current.add(s.sessionId));
-      setOpenPanes(prev => {
-        const next = new Set(prev);
-        newSessions.forEach(s => next.add(s.sessionId));
-        return next;
-      });
-    }
-  }, [orderedSessions]);
-
-  // Auto-close panes for ended/dismissed sessions
-  useEffect(() => {
-    const activeIds = new Set(orderedSessions.map(s => s.sessionId));
-    setOpenPanes(prev => {
-      const next = new Set<string>();
-      prev.forEach(id => { if (activeIds.has(id)) next.add(id); });
-      return next.size === prev.size ? prev : next;
-    });
-  }, [orderedSessions]);
+    autoOpenDashboardPanes(panesToOpen(orderedSessions, dashboardSettledPanes, holdQuiet));
+  }, [orderedSessions, dashboardSettledPanes, holdQuiet, autoOpenDashboardPanes]);
 
   const handleToggle = useCallback((sessionId: string) => {
-    setOpenPanes(prev => {
-      const next = new Set(prev);
-      if (next.has(sessionId)) next.delete(sessionId);
-      else next.add(sessionId);
-      return next;
-    });
-  }, []);
+    setDashboardPaneOpen(sessionId, !useSessionStore.getState().dashboardOpenPanes.has(sessionId));
+  }, [setDashboardPaneOpen]);
 
   const handleClosePane = useCallback((sessionId: string) => {
-    setOpenPanes(prev => {
-      const next = new Set(prev);
-      next.delete(sessionId);
-      return next;
-    });
-  }, []);
+    setDashboardPaneOpen(sessionId, false);
+  }, [setDashboardPaneOpen]);
 
   const handleOpenInLogs = useCallback((sessionId: string) => {
     navigateToLogsForSession(sessionId);

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import BetterSqlite3 from 'better-sqlite3';
-import { countRecordedSessionsByAgentType } from './recorder.js';
+import { countRecordedSessionsByAgentType, recordedActivityProbe } from './recorder.js';
 
 function makeDb() {
   const db = new BetterSqlite3(':memory:');
@@ -44,5 +44,20 @@ describe('countRecordedSessionsByAgentType', () => {
       pi: 3,
       'open-webui': 1,
     });
+  });
+});
+
+describe('recordedActivityProbe', () => {
+  it('is true only for a session that recorded something other than start-up noise', () => {
+    const db = new BetterSqlite3(':memory:');
+    db.exec('CREATE TABLE recorded_events (id TEXT PRIMARY KEY, session_id TEXT NOT NULL, type TEXT NOT NULL)');
+    const insert = db.prepare('INSERT INTO recorded_events (id, session_id, type) VALUES (?, ?, ?)');
+    insert.run('1', 'quiet', 'instructions_loaded');
+    insert.run('2', 'quiet', 'session_metrics');
+    insert.run('3', 'quiet', 'config_change');
+    insert.run('4', 'busy', 'instructions_loaded');
+    insert.run('5', 'busy', 'user_prompt');
+    const probe = recordedActivityProbe(db);
+    expect([probe('quiet'), probe('busy'), probe('unknown')]).toEqual([false, true, false]);
   });
 });

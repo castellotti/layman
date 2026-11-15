@@ -492,6 +492,21 @@ Four rules that must not be relaxed casually:
 
 - **An expanded Logs row has one Copy, and what it copies is `eventCopyText()`** (`lib/event-copy.ts`): the body's sections in the order shown, whole, as source text (a new body section goes there too). Its text is unboxed so the first line carries the actions and the body repeats nothing: `PlainBlock`, and `flat` on `CommandBlock` / `DiffBlock` (the Investigation panel keeps the boxed forms). Anything cut behind "show more" uses `usePrintExpandable()`, since print hides the button.
 
+- **Dashboard panes live in the store, not the Dashboard** (`dashboardOpenPanes` /
+  `dashboardSettledPanes` in `sessionStore.ts`): the Dashboard unmounts whenever another view is
+  shown, and with the panes in component state every session was new again on the way back, so a
+  closed pane reopened. A pane opens by itself once (`panesToOpen` in `lib/session-state.ts`); after
+  that it is the user's. A **quiet** session (`SessionInfo.quiet`: only `events/quiet.ts` types,
+  e.g. `instructions_loaded`, `config_change`) is held unsettled while `dashboardHoldQuiet` is on and
+  opens when its first real event clears the flag. The flag is the server's (`EventStore`), seeded
+  for a session first seen after a restart from its recording (`recordedActivityProbe`), because the
+  client holds only the last 100 events and would call a busy session quiet.
+
+- **Subagent events are tagged at ingest** (`subagentScoped` in `hooks/handler.ts`, from the
+  `agent_id` Claude Code puts on every hook fired inside a subagent). The old time-window tagging at
+  `SubagentStop` stays only as a fallback: it also caught the parent's own calls whenever a
+  background agent ran beside it. Detail in `docs/harnesses/claude-code.md` → Hooks.
+
 - **Blocking hooks**: `PreToolUse` and `PermissionRequest` (Claude Code) and `PreToolUse` (Cline) suspend the agent process until `PendingApprovalManager.resolveApproval()` is called. Claude Code's timeout is 300s (configurable); Cline's is 25s (Cline hardcodes 30s).
 
 - **`permission_request` vs `tool_call_pending`**: Both create pending approvals server-side (needed for blocking), but `usePendingApprovals` filters out `PermissionRequest` from the UI count since the browser can't act on them — the user must respond in their terminal.

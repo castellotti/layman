@@ -31,6 +31,8 @@ export interface SessionInfo {
   hostName?: string;
   /** True for a session surfaced from a remote via central's presence registry. */
   remote?: boolean;
+  /** True while the session has recorded only start-up noise (instructions, settings). Server: `events/quiet.ts`. */
+  quiet?: boolean;
 }
 
 export type ServerMessage =

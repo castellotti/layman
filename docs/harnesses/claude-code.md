@@ -52,6 +52,17 @@ The hook handler in
 blocking hooks (`PreToolUse`, `PermissionRequest`) calls `PendingApprovalManager.createAndWait()`
 which suspends until the user decides. Claude Code's blocking-hook timeout is 300s (configurable).
 
+**Subagents report into their parent's session.** A subagent (the Agent tool, a background agent,
+an in-process teammate) has no session of its own: its hooks carry the parent's `session_id`, plus
+`agent_id` and `agent_type` naming the subagent. The handler gives such a hook a store that tags
+every event it adds with `subagentId` (and the subagent's name as `data.agentType`)
+(`subagentScoped` in `hooks/handler.ts`), and the Dashboard shades those rows. `SubagentStart` and
+`SubagentStop` carry the same fields to say which subagent started or stopped; they are the
+parent's markers and are not tagged. Before this, a subagent's calls were tagged only at
+`SubagentStop`, by time window, which also tagged the parent's own calls whenever the two ran at
+once. That window is kept for a harness that sends no `agent_id`, and skipped for a subagent
+already tagged as its events arrived.
+
 **`WorktreeCreate` and `WorktreeRemove` must never be registered.** They look like notifications
 but are not: any hook registered for them *replaces* claude-code's own git worktree handling. A
 `WorktreeCreate` hook has to create the worktree and return its path
