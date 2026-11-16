@@ -282,6 +282,8 @@ describe('the glove fixture', () => {
   }
   const flows = store.flows('pi-search', 0, 5000)!;
   const at = (s: string) => Date.parse(`2026-10-16T19:07:${s}Z`);
+  // Call times sit relative to the fixture's flows (first open 40.99, the batch closes at 44.03, the second
+  // arxiv flow opens at 44.03): after a regeneration, move them with the flows.
   // The design's turn: one search, then a fetch per host, the arxiv PDF three seconds later.
   const events = [
     call('web_search', { query: 'history of onion routing' }, at('40.950'), at('44.500')),
