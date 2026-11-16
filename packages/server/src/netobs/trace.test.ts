@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import Fastify, { type FastifyInstance } from 'fastify';
-import { copyFileSync, mkdirSync, mkdtempSync, rmSync } from 'fs';
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
@@ -13,7 +13,12 @@ import { buildTrace, callsBetween, sessionJoins, trafficOf, type TraceDeps } fro
 import type { TraceView } from './types.js';
 
 const FIXTURE = join(dirname(fileURLToPath(import.meta.url)), '__fixtures__');
-const at = (s: string) => Date.parse(`2026-09-23T14:${s}Z`);
+// The tests' timeline was written against the first fixture (first call 2026-09-23T14:14:43.300);
+// SHIFT moves it onto the fixture's own first flow (less 44 ms), keeping every offset, so a
+// regeneration only needs the fixture copied.
+const FIRST_FLOW = Date.parse(JSON.parse(readFileSync(join(FIXTURE, 'flows.ndjson'), 'utf8').split('\n')[0]).t_open);
+const SHIFT = FIRST_FLOW - 44 - Date.parse('2026-09-23T14:14:43.300Z');
+const at = (s: string) => Date.parse(`2026-09-23T14:${s}Z`) + SHIFT;
 
 let n = 0;
 const ev = (sessionId: string, type: TimelineEvent['type'], t: number, data: TimelineEvent['data']): TimelineEvent => ({

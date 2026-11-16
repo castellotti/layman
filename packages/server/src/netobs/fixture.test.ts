@@ -15,7 +15,7 @@ import type { DestinationAggregate, FlowView, NetSnapshot } from './types.js';
 const FIXTURE = join(dirname(fileURLToPath(import.meta.url)), '__fixtures__');
 const GLOVE_FIXTURE = join(dirname(fileURLToPath(import.meta.url)), '../../../../../glove/tests/fixtures/netobs');
 const TOKEN = TEST_ID;
-const STATUS_T = Date.parse('2026-09-23T14:14:47.625Z');
+const STATUS_T = Date.parse('2026-10-16T19:07:45.226Z');
 
 const FLOW_LINES = readFileSync(join(FIXTURE, 'flows.ndjson'), 'utf8').split('\n').filter(Boolean);
 
@@ -133,7 +133,7 @@ describe('glove netobs fixture', () => {
   });
 
   it('an open flow is live: stop the file before arxiv flow 2 closes', () => {
-    const id = 'f_01M379WXCQWJBBQKXQKNJS4JWE';
+    const id = 'f_01M531SW0T3TZ3CW10TDXP3VN4';
     const closeAt = FLOW_LINES.findIndex((l) => l.includes(id) && l.includes('"phase":"close"'));
     expect(closeAt).toBeGreaterThan(0);
     const partial = FLOW_LINES.slice(0, closeAt);
@@ -158,8 +158,8 @@ describe('glove netobs fixture', () => {
     expect(snap.gate.record).toBe('metadata');
     expect(snap.gate.telemetry).toMatchObject({ written: 83, dropped: 0 });
     expect(snap.gate.unwatchedServices).toEqual(['browser']);
-    expect(snap.exit).toMatchObject({ country: 'Switzerland', city: null, ip: '195.177.93.17', healthy: true });
-    expect(snap.exit!.source).toBe('via-proxy:am.i.mullvad.net');
+    expect(snap.exit).toMatchObject({ country: null, city: null, ip: '198.51.100.17', healthy: true });
+    expect(snap.exit!.source).toBe('vpn-endpoint');
     expect(snap.session!.services.map((s) => s.service)).toEqual(['llm', 'search', 'proxy', 'fanout', 'browser']);
   });
 

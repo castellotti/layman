@@ -25,11 +25,8 @@ glove creates `control/` in every home; git cannot keep an empty directory, so i
 (as it is in glove's repository) and the tests create it in their temporary copy. Read by
 `../v3.test.ts`, `../../monitor/sources.test.ts` and `../../claude/watcher.test.ts`.
 
-- Copied: 2026-10-15
-- From glove branch `layman-netobs-round-10` at `22013f3` (glove's round 13, not yet merged to glove
-  `main`; re-copy from `main` once it lands). Every existing scenario changed (`next` on each service,
-  the image tag, a literal's `dest.ip`, per-gate `run`, distinct flow times, `telemetry.written`);
-  the last five scenarios are new.
+- Copied: 2026-11-16
+- From glove `main` at `c5bd863` (`session.json` lists the session's `models`; `webfetch` hops).
 
 Do not edit these files (this one excepted). To refresh:
 

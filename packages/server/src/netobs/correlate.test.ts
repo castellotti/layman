@@ -274,24 +274,26 @@ describe('MCP sidecar hops (Vibe, Claude Code)', () => {
 describe('the glove fixture', () => {
   // Every flow in the fixture, as NetStore sees it.
   const store = new NetStore();
+  const at = (s: string) => Date.parse(`2026-10-16T19:07:${s}Z`);
   store.ensure({ token: 'pi-search', netDir: '/n', controlDir: '/c', rulesPath: '/c/rules.json' });
   for (const line of readFileSync(join(FIXTURE, 'flows.ndjson'), 'utf8').split('\n').filter(Boolean)) {
     const p = parseLine(line);
-    if (p.kind === 'flow') store.ingestFlow('pi-search', p.record, Date.parse('2026-09-23T14:14:48Z'));
-    else if (p.kind === 'gate') store.ingestGate('pi-search', p.record, Date.parse('2026-09-23T14:14:48Z'));
+    if (p.kind === 'flow') store.ingestFlow('pi-search', p.record, at('48'));
+    else if (p.kind === 'gate') store.ingestGate('pi-search', p.record, at('48'));
   }
   const flows = store.flows('pi-search', 0, 5000)!;
-  const at = (s: string) => Date.parse(`2026-09-23T14:14:${s}Z`);
+  // Call times sit relative to the fixture's flows (first open 40.99, the batch closes at 44.03, the second
+  // arxiv flow opens at 44.03): after a regeneration, move them with the flows.
   // The design's turn: one search, then a fetch per host, the arxiv PDF three seconds later.
   const events = [
-    call('web_search', { query: 'history of onion routing' }, at('43.300'), at('44.500')),
+    call('web_search', { query: 'history of onion routing' }, at('40.950'), at('44.500')),
     ...['https://en.wikipedia.org/wiki/Onion_routing', 'https://arxiv.org/abs/2403.01234', 'https://www.nature.com/articles/x',
       'https://duckduckgo.com/html/?q=tor', 'http://example.org/', 'http://169.254.169.254/latest/meta-data/',
       'http://gluetun:8000/v1/publicip/ip', 'https://ads.tracker.example/p.gif']
-      .map((url) => call('web_fetch', { url }, at('43.350'), at('45.000'))),
-    call('web_fetch', { url: 'https://arxiv.org/pdf/2403.01234' }, at('46.400'), at('47.000')),
+      .map((url) => call('web_fetch', { url }, at('40.960'), at('45.000'))),
+    call('web_fetch', { url: 'https://arxiv.org/pdf/2403.01234' }, at('44.020'), at('45.500')),
   ];
-  const r = correlate({ calls: callsFrom(events), flows, services: SERVICES, from: at('43.000') });
+  const r = correlate({ calls: callsFrom(events), flows, services: SERVICES, from: at('40.000') });
   const host = (id: string) => flows.find((f) => f.id === id)!.dest.host;
   const byLabel = Object.fromEntries(r.items.flatMap((i) => (i.kind === 'call' ? [[i.call.label, [...i.flowIds, ...i.fanoutIds].map(host)]] : [])));
 

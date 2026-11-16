@@ -4,8 +4,8 @@ A byte-for-byte copy of glove's `tests/fixtures/netobs/`: a `net/` directory pro
 gate code, covering every fixture-marked state in glove's state table. It is the cross-repo contract
 test for Layman's reader (`../fixture.test.ts`).
 
-- Copied: 2026-09-25
-- From glove commit `7d8b2c9e63557f81000b557fec5ce42b400e248d` (merge of glove PR #10, `network-observability`)
+- Copied: 2026-11-16
+- From glove `main` at `c5bd863` (regenerated 2026-10-16: the exit is `vpn-endpoint`, no country; the services are `webfetch-mcp`/`webfetch-egress`)
 
 Do not edit these files. To refresh:
 

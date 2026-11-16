@@ -78,5 +78,13 @@
     "filter": {
       "granted": false
     }
-  }
+  },
+  "models": [
+    {
+      "id": "claude-test",
+      "context_window": 200000,
+      "max_tokens": 8192,
+      "reasoning": false
+    }
+  ]
 }
