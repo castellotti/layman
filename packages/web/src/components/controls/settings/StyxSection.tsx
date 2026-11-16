@@ -26,7 +26,7 @@ export function StyxSection({
         label="Matrix views"
         desc="Show the Matrix tabs: the destinations a session reached, as falling text. A sandboxed (glove) session shows its real connections; any other session shows the hosts its tool calls named. Also serves the same data at /api/styx/v1/matrix for styx-godot. Layman never looks up the hosts it shows."
         checked={styx.enabled}
-        // The server deep-merges styx, so sending only the changed field is safe.
+        // The type wants the whole block; the server deep-merges, so it cannot blank godotDir.
         onChange={() => updateConfig({ styx: { ...styx, enabled: !styx.enabled } })}
       />
     </>

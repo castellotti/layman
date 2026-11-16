@@ -145,7 +145,7 @@ Setup, design and the rules behind each view: [extensions/glove.md → Network](
 
 ## Styx (Matrix views)
 
-With **Settings → Extensions → Styx → Matrix views** on, Layman adds a **Matrix 2D** tab (`?view=matrix2d`) that draws the destinations a session reached as falling text: each address falls through faint glyph rain, a busier one faster, a refused one in the error colour. A glove-sandboxed session shows its real connections; any other session shows the hosts its tool calls named. A host reached now is falling within about two seconds. The same data is served at `/api/styx/v1/matrix` in the shape [styx-godot](https://github.com/Jigsaw-Studio/styx-godot) reads. Layman never looks a host up.
+Styx is built in rounds: the switch exists now, and the tab and feed follow. With **Settings → Extensions → Styx → Matrix views** on, Layman will add a **Matrix 2D** tab (`?view=matrix2d`) that draws the destinations a session reached as falling text: each address falls through faint glyph rain, a busier one faster, a refused one in the error colour. A glove-sandboxed session shows its real connections; any other session shows the hosts its tool calls named. A host reached now is falling within about two seconds. The same data is served at `/api/styx/v1/matrix` in the shape [styx-godot](https://github.com/Jigsaw-Studio/styx-godot) reads. Layman never looks a host up.
 
 Setup, the feed's contract and the rules behind it: [extensions/styx.md](extensions/styx.md).
 

@@ -19,7 +19,7 @@ optional, off by default, and independent of glove: with it off there are no tab
 | Tab | URL | What it is | Status |
 |---|---|---|---|
 | **Matrix** | `?view=matrix` | The real styx-godot web export, running its own shaders, in an iframe | coming |
-| **Matrix 2D** | `?view=matrix2d` | Layman's own Canvas 2D rendering. No Godot | in this release |
+| **Matrix 2D** | `?view=matrix2d` | Layman's own Canvas 2D rendering. No Godot | coming |
 | **Matrix 3D** | `?view=matrix3d` | Layman's own WebGL2 rendering | coming |
 
 All three are session views (`/s/<id>?view=matrix2d`) and show the session open in the app, or else the
