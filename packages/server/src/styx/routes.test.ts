@@ -23,7 +23,7 @@ let netObs: NetObs;
 let app: FastifyInstance;
 let enabled: boolean;
 let eventsCalls: number;
-let memory: TimelineEvent[] | null;
+let memory: { events: TimelineEvent[]; since: number };
 let recording: TimelineEvent[];
 let sessions: Record<string, string | undefined>; // id → session name
 
@@ -47,7 +47,7 @@ beforeEach(async () => {
 
   enabled = true;
   eventsCalls = 0;
-  memory = null;
+  memory = { events: [], since: NOW + 1 };
   sessions = { 'sess-gloved': TEST_ID, 'sess-plain': undefined };
   recording = [
     toolCall('e1', 'sess-plain', 'WebFetch', { url: 'https://docs.example.com/a' }, NOW - 60_000),
@@ -66,7 +66,7 @@ beforeEach(async () => {
       eventsCalls++;
       return recording;
     },
-    recentEvents: () => memory,
+    memory: () => memory,
     liveStandardSessions: () => ['sess-plain'],
     now: () => NOW,
   };
@@ -160,22 +160,33 @@ describe('GET /api/styx/v1/matrix', () => {
 });
 
 describe('what a poll costs', () => {
-  it('a windowed request that memory covers never reads the recording', async () => {
-    memory = recording.filter((e) => e.timestamp > NOW - 3_600_000);
+  it('a window that memory reaches back to never reads the recording', async () => {
+    memory = { events: recording.filter((e) => e.timestamp > NOW - 3_600_000), since: NOW - 7_200_000 };
     for (let i = 0; i < 3; i++) await rows('?session=sess-plain&relative=1h');
     expect(eventsCalls).toBe(0);
   });
 
-  it('falls back to the recording when memory does not reach back, and reuses it for 5 s', async () => {
-    memory = null;
+  it('a window before memory begins reads the recording once, and reuses it', async () => {
     await rows('?session=sess-plain&relative=1h');
     await rows('?session=sess-plain&relative=1h');
     expect(eventsCalls).toBe(1);
   });
 
-  it('two whole-record requests within 5 s read the recording once', async () => {
+  it('two whole-record requests read the recording once', async () => {
     await rows('?session=sess-plain');
     await rows('?session=sess-plain');
     expect(eventsCalls).toBe(1);
+  });
+
+  it('a host that arrives after the recording was read shows at once, not after the cache', async () => {
+    await rows('?session=sess-plain&relative=1h');
+    memory = { events: [toolCall('n1', 'sess-plain', 'Bash', { command: 'curl -sI https://fresh.example.net' }, NOW - 500)], since: NOW - 60_000 };
+    expect((await rows('?session=sess-plain&relative=1h')).map((r) => r.address)).toContain('fresh.example.net:443');
+  });
+
+  it('an event both in memory and in the recording counts once', async () => {
+    memory = { events: [recording[1]], since: NOW - 40_000 };
+    const r = await rows('?session=sess-plain&relative=1h');
+    expect(r.find((x) => x.address === 'example.org:443')?.count).toBe(1);
   });
 });

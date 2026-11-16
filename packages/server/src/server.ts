@@ -699,18 +699,17 @@ export function createServer(config: LaymanConfig): LaymanServer {
       return name && netObs.store.has(name) ? name : null;
     };
     const liveNames = () => new Map(eventStore.getSessions().map((s) => [s.sessionId, s.sessionName] as const));
+    const startedAt = Date.now();
     registerStyxRoutes(fastify, {
       enabled: () => getConfig().styx?.enabled === true,
       store: netObs.store,
       gloveTokenOf: (id) => gloveTokenFor(id, liveNames()),
       sessionExists: (id) => eventStore.getSessions().some((s) => s.sessionId === id) || recordedStmt.get(id) !== undefined,
       events: (id) => turnStore.eventsFor(id),
-      recentEvents: (id, from) => {
+      memory: (id) => {
         const all = eventStore.getAll();
-        // Memory reaches back far enough, or holds all there is (nothing recorded).
-        if (!(all.length > 0 && all[0].timestamp <= from) && recordedStmt.get(id) !== undefined) return null;
-        // 5 s before: a call is recorded slightly before its start time.
-        return all.filter((e) => e.sessionId === id && e.timestamp >= from - 5000);
+        // Memory holds every event since startup, until the ring starts dropping the oldest.
+        return { events: all.filter((e) => e.sessionId === id), since: eventStore.full && all.length > 0 ? all[0].timestamp : startedAt };
       },
       liveStandardSessions: () => {
         const live = liveNames();

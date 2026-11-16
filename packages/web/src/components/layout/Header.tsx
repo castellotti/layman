@@ -26,7 +26,7 @@ const SIGNAL_DOT: Record<Exclude<NetTabSignal, null>, { color: string; title: st
   live: { color: 'var(--net-tunnel)', title: 'A glove gate is running' },
 };
 
-function NavTabButton({ label, shortcut, isActive, onClick, signal }: { label: string; shortcut: string; isActive: boolean; onClick: () => void; signal?: NetTabSignal }) {
+function NavTabButton({ label, shortcut, isActive, onClick, signal }: { label: string; shortcut?: string; isActive: boolean; onClick: () => void; signal?: NetTabSignal }) {
   return (
     <button
       onClick={onClick}
@@ -86,6 +86,7 @@ export function Header() {
   // The Network group appears only with glove on and at least one glove session
   // with network data; otherwise the header is exactly what it was without it.
   const netSessions = useNetStore((s) => s.sessions);
+  const showMatrix = config?.styx?.enabled === true;
   const showNetwork = !!config?.glove.enabled && config.glove.network?.enabled !== false && netSessions.length > 0;
   const netSignal = networkTabSignal(netSessions);
 
@@ -119,6 +120,7 @@ export function Header() {
         case 's': activateLiveTab('stream'); break;
         case 'f': setViewMode('flowchart'); break;
         case 'a': setViewMode('activity'); break;
+        case 'x': if (showMatrix) setViewMode('matrix2d'); break;
         case 'n': if (showNetwork) setViewMode('network'); break;
         case 'm': if (showNetwork) setViewMode('map'); break;
         case 'o': if (showNetwork) setViewMode('topology'); break;
@@ -135,7 +137,7 @@ export function Header() {
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [setViewMode, bookmarksOpen, promptsOpen, returnToDashboard, returnFromDashboardDrilldown, inLiveMode, toggleDashboardVisible, toggleLogsVisible, activateOnlyLiveTab, showNetwork]);
+  }, [setViewMode, bookmarksOpen, promptsOpen, returnToDashboard, returnFromDashboardDrilldown, inLiveMode, toggleDashboardVisible, toggleLogsVisible, activateOnlyLiveTab, showNetwork, showMatrix]);
 
   // Session picker only makes sense once Logs (a single-session view) is showing.
   // The network tabs have their own glove session picker in the gate strip, and
@@ -223,6 +225,18 @@ export function Header() {
                 signal={key === 'network' ? netSignal : undefined}
               />
             ))}
+          </nav>
+        </>
+      )}
+
+      {/* Styx: the Matrix views, between their own dividers */}
+      {showMatrix && (
+        <>
+          <div style={{ alignSelf: 'center', width: 1, height: 16, background: 'var(--border-strong)', margin: sp('0 12px') }} />
+          <nav aria-label="Matrix" style={{ display: 'flex', alignItems: 'stretch', height: '100%', gap: 0 }}>
+            <NavTabButton label="Matrix" isActive={viewMode === 'matrix'} onClick={() => setViewMode('matrix')} />
+            <NavTabButton label="Matrix 2D" shortcut="X" isActive={viewMode === 'matrix2d'} onClick={() => setViewMode('matrix2d')} />
+            <NavTabButton label="Matrix 3D" isActive={viewMode === 'matrix3d'} onClick={() => setViewMode('matrix3d')} />
           </nav>
         </>
       )}

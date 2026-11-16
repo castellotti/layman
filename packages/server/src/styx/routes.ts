@@ -2,12 +2,14 @@
  * `GET /api/styx/v1/matrix`: the destinations a session reached, in the shape of styx-os's
  * `GET /v1/matrix` (docs/extensions/styx.md). Computed on request from Layman's own records.
  *
- * Asked every two seconds by each open Matrix tab, so it must stay cheap: gloved answers come
- * from `NetStore` (memory), a windowed standard answer from the in-memory event store, and only
- * what memory cannot answer reads a whole recording, at most once per `CACHE_MS` per session.
+ * Asked every two seconds by each open Matrix tab, so it must stay cheap: gloved answers come from
+ * `NetStore` (memory), and a standard session's from the in-memory event store. Only a window that
+ * reaches before memory begins reads the session's older history from its recording, at most once per
+ * `CACHE_MS`, and what is new always comes from memory, so a new host is never held back by the cache.
  */
 import type { FastifyInstance } from 'fastify';
 import { callsFrom } from '../netobs/correlate.js';
+import type { TraceCall } from '../netobs/types.js';
 import type { NetStore } from '../netobs/store.js';
 import type { TimelineEvent } from '../events/types.js';
 import { mergeRows, parseRelative, rowsFromCalls, rowsFromDestinations, rowsFromFlows, type MatrixRow } from './matrix.js';
@@ -21,8 +23,12 @@ export interface StyxDeps {
   sessionExists: (sessionId: string) => boolean;
   /** The session's whole recording. Expensive for a long session: never per poll. */
   events: (sessionId: string) => TimelineEvent[];
-  /** The session's events from `from` on, from memory; null when memory does not reach back that far. */
-  recentEvents: (sessionId: string, from: number) => TimelineEvent[] | null;
+  /**
+   * The session's events held in memory, and `since`: the time from which memory holds every one of
+   * them (when the server started, or the oldest event held once the ring has dropped older ones).
+   * Before `since` only the recording knows.
+   */
+  memory: (sessionId: string) => { events: TimelineEvent[]; since: number };
   /** Layman sessions that are live now and not gloved, for the no-selector answer. */
   liveStandardSessions: () => string[];
   now?: () => number;
@@ -31,22 +37,26 @@ export interface StyxDeps {
 /** Styx's own absolute-time parameters, which Layman does not take. */
 const UNSUPPORTED = ['start_date', 'start_time', 'end_date', 'end_time', 'timezone', 'client'];
 const NO_SELECTOR_WINDOW_MS = 15 * 60_000;
-/** How long a recording-backed answer is reused. */
-const CACHE_MS = 5000;
-const CACHE_DROP_MS = 60_000;
+/**
+ * How long the calls read from a recording are reused. They are the session's history from before
+ * memory begins, which does not change, so a new host never waits for this: it comes from memory.
+ */
+const CACHE_MS = 30_000;
+/** A window must start this long after `since` for memory alone to answer: a call is recorded slightly before its start time. */
+const MEMORY_MARGIN_MS = 5000;
 
 export function registerStyxRoutes(fastify: FastifyInstance, deps: StyxDeps): void {
   const now = deps.now ?? Date.now;
-  const cache = new Map<string, { at: number; rows: MatrixRow[] }>();
+  const cache = new Map<string, { at: number; since: number; calls: TraceCall[] }>();
 
-  /** `compute` at most once per CACHE_MS for `key`. */
-  const cached = (key: string, t: number, compute: () => MatrixRow[]): MatrixRow[] => {
-    const hit = cache.get(key);
-    if (hit && t - hit.at < CACHE_MS) return hit.rows;
-    const rows = compute();
-    for (const [k, v] of cache) if (t - v.at > CACHE_DROP_MS) cache.delete(k);
-    cache.set(key, { at: t, rows });
-    return rows;
+  /** The session's calls from before memory's horizon, read from its recording at most once per CACHE_MS. */
+  const oldCalls = (sessionId: string, since: number, t: number): TraceCall[] => {
+    const hit = cache.get(sessionId);
+    if (hit && hit.since === since && t - hit.at < CACHE_MS) return hit.calls;
+    const calls = callsFrom(deps.events(sessionId).filter((e) => e.timestamp < since));
+    for (const [k, v] of cache) if (t - v.at > CACHE_MS * 2) cache.delete(k);
+    cache.set(sessionId, { at: t, since, calls });
+    return calls;
   };
 
   const gloved = (token: string, from: number | null, t: number): MatrixRow[] =>
@@ -55,12 +65,14 @@ export function registerStyxRoutes(fastify: FastifyInstance, deps: StyxDeps): vo
       : rowsFromFlows(deps.store.flowsBetween(token, from, t) ?? []);
 
   const standard = (sessionId: string, from: number | null, t: number): MatrixRow[] => {
-    if (from !== null) {
-      const recent = deps.recentEvents(sessionId, from);
-      if (recent) return rowsFromCalls(callsFrom(recent), from, t);
-    }
-    return cached(`${sessionId}|${from === null ? 'all' : t - from}`, t, () =>
-      rowsFromCalls(callsFrom(deps.events(sessionId)), from ?? 0, t));
+    const mem = deps.memory(sessionId);
+    const recent = callsFrom(mem.events);
+    // A window memory reaches back to is answered from memory alone: never a recording, per poll.
+    if (from !== null && from >= mem.since + MEMORY_MARGIN_MS) return rowsFromCalls(recent, from, t);
+    // Otherwise the history from before memory begins (cached), and everything since from memory.
+    const seen = new Set(recent.map((c) => c.eventId));
+    const calls = [...oldCalls(sessionId, mem.since, t).filter((c) => !seen.has(c.eventId)), ...recent];
+    return rowsFromCalls(calls, from ?? 0, t);
   };
 
   fastify.get<{ Querystring: Record<string, string | string[] | undefined> }>('/api/styx/v1/matrix', async (req, reply) => {

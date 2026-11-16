@@ -19,7 +19,7 @@ optional, off by default, and independent of glove: with it off there are no tab
 | Tab | URL | What it is | Status |
 |---|---|---|---|
 | **Matrix** | `?view=matrix` | The real styx-godot web export, running its own shaders, in an iframe | coming |
-| **Matrix 2D** | `?view=matrix2d` | Layman's own Canvas 2D rendering. No Godot | coming |
+| **Matrix 2D** | `?view=matrix2d` | Layman's own Canvas 2D rendering. No Godot | available |
 | **Matrix 3D** | `?view=matrix3d` | Layman's own WebGL2 rendering | coming |
 
 All three are session views (`/s/<id>?view=matrix2d`) and show the session open in the app, or else the
@@ -30,7 +30,11 @@ Each destination falls as its own stream: its address in upper case, one charact
 character brightest and the ones above fading out. A busier destination falls faster and comes back
 sooner. A destination glove refused falls in the error colour, one that did not go through the tunnel in
 the warning colour. A host reached for the first time falls at once, with a bright head, for that one
-fall. A window picker (`1m`, `15m`, `1h`, `All`) chooses how far back to look.
+fall. A window picker (`1m`, `15m`, `1h`, `All`, remembered in the browser) chooses how far back to look; with
+no session open, `All` means the last day, the longest the feed answers for every live session together. Hover
+a stream for its address, count and bytes; click it to keep the card, which for a sandboxed session offers
+**Open in Network**. The tab's shortcut is `X`. With Settings → Motion at Reduced or Off, it draws one still
+frame instead of falling.
 
 ## The feed
 

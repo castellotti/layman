@@ -21,6 +21,10 @@ const files = [
   ...readdirSync(join(src, 'components', 'activity')).map((f) => join('components', 'activity', f)),
   ...readdirSync(join(src, 'lib')).filter((f) => f.startsWith('activity-')).map((f) => join('lib', f)),
   ...readdirSync(join(src, 'hooks')).filter((f) => /^use(Activity|Glove|StationSetup|NetSegments)/.test(f)).map((f) => join('hooks', f)),
+  // Styx's Matrix views and feed hook: Layman's own /api/ only.
+  ...readdirSync(join(src, 'components', 'matrix')).map((f) => join('components', 'matrix', f)),
+  ...readdirSync(join(src, 'lib')).filter((f) => f.startsWith('matrix-')).map((f) => join('lib', f)),
+  ...readdirSync(join(src, 'hooks')).filter((f) => f.startsWith('useMatrix')).map((f) => join('hooks', f)),
 ].filter((f) => /\.tsx?$/.test(f) && !f.includes('.test.'));
 
 const BANNED: Array<[string, RegExp]> = [
