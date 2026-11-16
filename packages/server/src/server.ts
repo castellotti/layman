@@ -44,6 +44,7 @@ import { TurnStore } from './turns/store.js';
 import { registerTurnRoutes } from './routes/turns.js';
 import { NetObs } from './netobs/index.js';
 import { registerNetRoutes } from './netobs/routes.js';
+import { registerStyxRoutes } from './styx/routes.js';
 import { SqliteNetHistory } from './netobs/persist.js';
 import { registerTtsRoutes } from './routes/tts.js';
 import { searchEvents, parseSearchQuery, matchesSearchTerms } from './db/search.js';
@@ -686,6 +687,34 @@ export function createServer(config: LaymanConfig): LaymanServer {
         events: (sessionId) => turnStore.eventsFor(sessionId),
       },
       tokens: (token, range) => piUsage.sum(token, range),
+    });
+
+    // Styx: the matrix feed (docs/extensions/styx.md). Reads Layman's own records only.
+    const sessionNameStmt = db.prepare('SELECT session_name FROM recorded_sessions WHERE session_id = ?');
+    const recordedStmt = db.prepare('SELECT 1 FROM recorded_sessions WHERE session_id = ?');
+    const gloveTokenFor = (sessionId: string, live: ReadonlyMap<string, string | undefined>): string | null => {
+      // Live sessions know their name; only one not live is looked up in the recording.
+      const name = live.has(sessionId) ? live.get(sessionId)
+        : (sessionNameStmt.get(sessionId) as { session_name: string | null } | undefined)?.session_name;
+      return name && netObs.store.has(name) ? name : null;
+    };
+    const liveNames = () => new Map(eventStore.getSessions().map((s) => [s.sessionId, s.sessionName] as const));
+    const startedAt = Date.now();
+    registerStyxRoutes(fastify, {
+      enabled: () => getConfig().styx?.enabled === true,
+      store: netObs.store,
+      gloveTokenOf: (id) => gloveTokenFor(id, liveNames()),
+      sessionExists: (id) => eventStore.getSessions().some((s) => s.sessionId === id) || recordedStmt.get(id) !== undefined,
+      events: (id) => turnStore.eventsFor(id),
+      memory: (id) => {
+        const all = eventStore.getAll();
+        // Memory holds every event since startup, until the ring starts dropping the oldest.
+        return { events: all.filter((e) => e.sessionId === id), since: eventStore.full && all.length > 0 ? all[0].timestamp : startedAt };
+      },
+      liveStandardSessions: () => {
+        const live = liveNames();
+        return [...live.keys()].filter((id) => gloveTokenFor(id, live) === null);
+      },
     });
 
     // Text-to-speech pass-through to speaches (speaches has CORS off by default)

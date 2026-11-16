@@ -5,6 +5,7 @@ import type { LaymanConfig } from '../../lib/types.js';
 import { HarnessSection } from './settings/HarnessSection.js';
 import { WebUISection } from './settings/WebUISection.js';
 import { GloveSection } from './settings/GloveSection.js';
+import { StyxSection } from './settings/StyxSection.js';
 import { SyncSection } from './settings/SyncSection.js';
 import { AnalysisModelSection } from './settings/AnalysisModelSection.js';
 import { AutoExplainSection } from './settings/AutoExplainSection.js';
@@ -101,6 +102,11 @@ const SECTIONS: SectionDef[] = [
     key: 'glove', group: 'Extensions', label: 'Glove',
     searchTerms: ['glove', 'sandbox', 'sandboxed', 'container', 'Docker', 'Podman', 'Vibe', 'monitor', 'sessions directory', 'extension', 'plugin'],
     render: (config, onSend) => <GloveSection config={config} onSend={onSend} />,
+  },
+  {
+    key: 'styx', group: 'Extensions', label: 'Styx',
+    searchTerms: ['styx', 'matrix', 'falling text', 'domains', 'destinations', 'hosts', 'styx-godot', 'extension'],
+    render: (config, onSend) => <StyxSection config={config} onSend={onSend} />,
   },
 ];
 

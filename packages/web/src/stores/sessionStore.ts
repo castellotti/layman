@@ -23,7 +23,9 @@ export type ViewMode =
   // The activity map of one session: an exclusive full-content view, like Flow.
   | 'activity'
   // Network views of glove sessions: exclusive full-content views, like Flow.
-  | 'network' | 'map' | 'topology' | 'trace';
+  | 'network' | 'map' | 'topology' | 'trace'
+  // Styx (Matrix views): exclusive session views, shown when `styx.enabled`.
+  | 'matrix' | 'matrix2d' | 'matrix3d';
 
 export const NETWORK_VIEW_MODES: readonly ViewMode[] = ['network', 'map', 'topology', 'trace'];
 
@@ -31,8 +33,14 @@ export function isNetworkView(mode: ViewMode): boolean {
   return (NETWORK_VIEW_MODES as readonly string[]).includes(mode);
 }
 
+export const MATRIX_VIEW_MODES: readonly ViewMode[] = ['matrix', 'matrix2d', 'matrix3d'];
+
+export function isMatrixView(mode: ViewMode): boolean {
+  return (MATRIX_VIEW_MODES as readonly string[]).includes(mode);
+}
+
 /** Views that show one session open in the app (`activeSessionId`), addressed as `/s/<id>?view=…`. */
-const SESSION_VIEW_MODES: readonly ViewMode[] = ['stream', 'flowchart', 'activity'];
+const SESSION_VIEW_MODES: readonly ViewMode[] = ['stream', 'flowchart', 'activity', ...MATRIX_VIEW_MODES];
 
 export function isSessionView(mode: ViewMode): boolean {
   return (SESSION_VIEW_MODES as readonly string[]).includes(mode);
@@ -40,7 +48,7 @@ export function isSessionView(mode: ViewMode): boolean {
 
 /** Views that take over the whole content area, outside the Dashboard/Logs layout. */
 export function isExclusiveView(mode: ViewMode): boolean {
-  return mode === 'flowchart' || mode === 'activity' || mode === 'sessions' || mode === 'prompts' || isNetworkView(mode);
+  return mode === 'flowchart' || mode === 'activity' || mode === 'sessions' || mode === 'prompts' || isNetworkView(mode) || isMatrixView(mode);
 }
 
 // ─── Expanding-interface layout state ──────────────────────────────────────
@@ -105,6 +113,9 @@ const VIEW_NAME_BY_MODE: Record<ViewMode, ViewName> = {
   map: 'map',
   topology: 'topology',
   trace: 'trace',
+  matrix: 'matrix',
+  matrix2d: 'matrix2d',
+  matrix3d: 'matrix3d',
 };
 
 const MODE_BY_VIEW_NAME: Record<ViewName, ViewMode> = {
@@ -118,6 +129,9 @@ const MODE_BY_VIEW_NAME: Record<ViewName, ViewMode> = {
   map: 'map',
   topology: 'topology',
   trace: 'trace',
+  matrix: 'matrix',
+  matrix2d: 'matrix2d',
+  matrix3d: 'matrix3d',
 };
 
 export function viewNameForMode(mode: ViewMode): ViewName {

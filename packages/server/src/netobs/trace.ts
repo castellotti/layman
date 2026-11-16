@@ -198,7 +198,8 @@ export function callsBetween(store: NetStore, token: string, deps: TraceDeps, fr
 /** How far back a flow no call claimed is still drawn on the Activity map. */
 export const LOOSE_FLOW_MS = 60_000;
 
-const REFUSED = new Set(['guard', 'user_rule', 'default_block']);
+/** Flow states glove refused: the one list Styx's `blocked` count shares with Trace. */
+export const REFUSED: ReadonlySet<string> = new Set(['guard', 'user_rule', 'default_block']);
 /** Tool egress: a gate that goes out on the agent's behalf (`harness: false`), or SearXNG's fan-out. */
 const isEgress = (f: FlowView, services: readonly NetService[]) =>
   f.flags.fanout || services.find((s) => s.service === f.service)?.harness === false;

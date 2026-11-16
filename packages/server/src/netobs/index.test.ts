@@ -324,10 +324,12 @@ describe('NetObs sockets and coalescing', () => {
  */
 describe('no-network guard (server netobs/)', () => {
   const root = dirname(fileURLToPath(import.meta.url));
-  // netobs/ and the glove home reader it (and GloveSource) discovers sessions with.
+  // netobs/, the glove home reader it (and GloveSource) discovers sessions with, and styx/.
   const files = [
     ...readdirSync(root).filter((f) => f.endsWith('.ts') && !f.endsWith('.test.ts')),
     ...readdirSync(join(root, '..', 'glove')).filter((f) => f.endsWith('.ts') && !f.endsWith('.test.ts')).map((f) => join('..', 'glove', f)),
+    // The Styx feed reads the same records and must not look anything up either.
+    ...readdirSync(join(root, '..', 'styx')).filter((f) => f.endsWith('.ts') && !f.endsWith('.test.ts')).map((f) => join('..', 'styx', f)),
   ];
   const banned: Array<[string, RegExp]> = [
     ["import from 'dns'", /from ['"](node:)?dns(\/promises)?['"]/],

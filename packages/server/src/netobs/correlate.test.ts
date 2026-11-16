@@ -51,9 +51,9 @@ describe('reading calls', () => {
     expect(r.unattributed).toEqual(['g']);
   });
   it('keeps a port only when the URL spells one out', () => {
-    expect(urlTarget('http://gluetun:8000/v1/publicip/ip')).toEqual({ host: 'gluetun', port: 8000 });
-    expect(urlTarget('https://EN.Wikipedia.org/wiki/X')).toEqual({ host: 'en.wikipedia.org', port: null });
-    expect(urlTarget('http://[::1]:8080/')).toEqual({ host: '::1', port: 8080 });
+    expect(urlTarget('http://gluetun:8000/v1/publicip/ip')).toEqual({ host: 'gluetun', port: 8000, scheme: 'http' });
+    expect(urlTarget('https://EN.Wikipedia.org/wiki/X')).toEqual({ host: 'en.wikipedia.org', port: null, scheme: 'https' });
+    expect(urlTarget('http://[::1]:8080/')).toEqual({ host: '::1', port: 8080, scheme: 'http' });
     expect(urlTarget('ftp://x.example/')).toBeNull();
   });
   it('sorts calls into fetch, search and other', () => {
@@ -83,7 +83,7 @@ describe('relayed commands without a relay', () => {
     flow(id, host, tOpen, { tool: null, dest: { host, port, ip: null, resolution: 'in-tunnel' }, destKey: `${host}:${port}` });
   it('a git clone claims its URL\'s host', () => {
     const cs = callsFrom([call('bash', { command: 'git clone https://github.com/o/r' }, T, T + 3000)]);
-    expect(cs.map((c) => [c.kind, c.targets])).toEqual([['relay', [{ host: 'github.com', port: null }]]]);
+    expect(cs.map((c) => [c.kind, c.targets])).toEqual([['relay', [{ host: 'github.com', port: null, scheme: 'https' }]]]);
     const r = join_(cs, [proxied('g', 'github.com', T + 100)]);
     expect([claimedBy(r)['git clone https://github.com/o/r'], r.unattributed]).toEqual([['g'], []]);
   });

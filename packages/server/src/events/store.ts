@@ -150,6 +150,11 @@ export class EventStore extends EventEmitter {
     return this.eventById.get(id);
   }
 
+  /** The ring has reached its cap: older events may have been dropped, so memory no longer holds everything since startup. */
+  get full(): boolean {
+    return this.events.length >= this.maxEvents;
+  }
+
   getAll(): TimelineEvent[] {
     return [...this.events];
   }

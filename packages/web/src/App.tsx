@@ -6,6 +6,8 @@ const FlowchartView = lazy(() => import('./components/flowchart/FlowchartView.js
 const ActivityMapView = lazy(() => import('./components/activity/ActivityMapView.js'));
 // Network, Map, Topology and Trace (glove): one lazy chunk, fetched only when opened.
 const NetworkView = lazy(() => import('./components/network/NetworkView.js'));
+// Styx's Matrix tabs: one lazy chunk, fetched only when opened.
+const MatrixView = lazy(() => import('./components/matrix/MatrixView.js'));
 import { InvestigationPanel } from './components/layout/InvestigationPanel.js';
 import { SetupBanner } from './components/layout/SetupBanner.js';
 import { SetupWizard } from './components/wizard/SetupWizard.js';
@@ -18,7 +20,7 @@ import { ChangelogModal } from './components/shared/ChangelogModal.js';
 import { RouteErrorPanel } from './components/layout/RouteErrorPanel.js';
 import { TTSBar } from './components/tts/TTSBar.js';
 import { BoltIcon } from './components/primitives/index.js';
-import { useSessionStore, isNetworkView } from './stores/sessionStore.js';
+import { useSessionStore, isNetworkView, isMatrixView } from './stores/sessionStore.js';
 import type { SessionState } from './stores/sessionStore.js';
 import { isSessionLive } from './lib/session-state.js';
 import { useWebSocket } from './hooks/useWebSocket.js';
@@ -292,6 +294,17 @@ export function App() {
       <AppShell onSend={send} onInstall={handleSetupInstall}>
         <Suspense fallback={<div className="flex items-center justify-center h-full text-text-faint text-xs">Loading...</div>}>
           <NetworkView tab={viewMode as 'network' | 'map' | 'topology' | 'trace'} onSend={send} />
+        </Suspense>
+      </AppShell>
+    );
+  }
+
+  // Styx's Matrix views take over the content area too.
+  if (isMatrixView(viewMode)) {
+    return (
+      <AppShell onSend={send} onInstall={handleSetupInstall}>
+        <Suspense fallback={<div className="flex items-center justify-center h-full text-text-faint text-xs">Loading...</div>}>
+          <MatrixView mode={viewMode as 'matrix' | 'matrix2d' | 'matrix3d'} />
         </Suspense>
       </AppShell>
     );

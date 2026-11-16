@@ -39,6 +39,14 @@ function bySession(all: TimelineEvent[]): Map<string, TimelineEvent[]> {
   return split;
 }
 
+/**
+ * How many live events a session has (every session's, with none): a number, so a view that only
+ * wants to know "something arrived" does not re-render for another session's events.
+ */
+export function useLiveEventCount(sessionId: string | null): number {
+  return useSessionStore((s: SessionState) => (sessionId ? bySession(s.events).get(sessionId)?.length ?? 0 : s.events.length));
+}
+
 /** This session's live events; `shallow` keeps the same array while another session's arrive. */
 function useLiveEvents(sessionId: string | null): TimelineEvent[] {
   return useSessionStore((s: SessionState) => (sessionId ? bySession(s.events).get(sessionId) ?? NONE : NONE), shallow);

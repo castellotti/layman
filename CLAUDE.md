@@ -54,7 +54,8 @@ Layman is a pnpm monorepo with two packages:
 Per-harness installation, activation, capabilities, and the architecture/implementation detail are
 in **`docs/harnesses/<harness>.md`** (each has an "Architecture & implementation notes" section that
 holds the deep detail this file used to carry). The passive **glove** sandbox monitor — a read-only
-extension, not a harness — is documented in **`docs/extensions/glove.md`**. Keep harness- and
+extension, not a harness — is documented in **`docs/extensions/glove.md`**, and the **Styx** Matrix
+views (an extension too, drawing the destinations a session reached) in **`docs/extensions/styx.md`**. Keep harness- and
 glove-specific detail in those files; this file keeps only the shared pipeline and cross-cutting
 decisions, with pointers.
 
@@ -227,6 +228,7 @@ store for unrecorded sessions, and memoizes per session until a new event arrive
 ?view=dashboard|logs|prompts|flow|activity|sessions   ?play=1   ?t=<ms>
 ?view=network|map|topology|trace&glove=<token>&dest=<host>   glove network views
   &from=<iso>&to=<iso|now>           …and their time range (pushes: Back returns to the previous one)
+?view=matrix|matrix2d|matrix3d       Styx (Matrix views), session views: /s/<id>?view=matrix2d
 ```
 
 Ids may be given as an unambiguous prefix of ≥8 characters; ambiguous prefixes return 409 with
@@ -420,6 +422,57 @@ must agree), adds no `you` entry on the board, and never reaches the drift monit
 so an old background call finishes at once. `model_change` (`fromModel`, `toModel`) comes from
 `PostModelSwitch` and from the Stop-time transcript reader (`transcriptModels`), once between them; it sets
 the board's `model` and is not work. Steps are not events.
+
+### Styx (Matrix views)
+
+An optional extension (`styx.enabled`, off by default; user doc `docs/extensions/styx.md`). Off: no tabs, and
+the whole `/api/styx/` prefix answers 404, checked per request because the setting changes at runtime. It
+adds no table and syncs nothing: the feed is computed on request from Layman's own records.
+
+```
+packages/server/src/styx/matrix.ts      pure: rows from flows / glove totals / tool calls, merge, sort, cap
+packages/server/src/styx/routes.ts      GET /api/styx/v1/matrix (the styx-os /v1/matrix shape, plus blocked, untunnelled)
+packages/web/src/lib/matrix-feed.ts     the row type (mirror), the windows, the feed URL
+packages/web/src/lib/matrix-rain.ts     pure, shared by every renderer: what falls, where, how fast, what is new
+packages/web/src/hooks/useMatrixFeed.ts  the poll
+packages/web/src/components/matrix/     MatrixView (bar + the tab's renderer), MatrixCanvas2D
+```
+
+Rules of the feed that must not be changed casually:
+
+- **A hop (`flags.hop`) is never a destination**, and a null-host aggregate (a service endpoint) is skipped:
+  hop bytes are counted at the next leg (4d above). `blocked` counts the states in `REFUSED`, exported from
+  `netobs/trace.ts` and shared with Trace, never a second list. `untunnelled` is
+  `scope === 'direct' && !flags.vpn`, the web's `isUntunnelled`; `flags.vpn` is already set on what `NetStore`
+  returns (`withVpn`), so the feed adds no VPN rule of its own.
+- **Sorted by `count` descending, then `address` ascending, and cut at 256 after sorting** (`mergeRows`, the one
+  place that does it).
+- **A standard session's address takes its URL's port, or its scheme's (443, 80)** (`TraceCall.targets[].scheme`,
+  read only by Styx; the Trace join ignores it), so a row says whether HTTP or HTTPS was used. A call counts
+  once per address.
+- **The route is polled every 2 s per open tab, so it must stay cheap.** A gloved answer is `NetStore`
+  (memory). A standard session's is the in-memory `EventStore` (`memory()`, with `since`, the time from which
+  memory holds all of the session's events: server start, or the oldest held once the ring is full); only a
+  window reaching before `since`, or the whole record, reads the session's recording, cached 30 s **by session
+  alone** (`since` moves once the ring is full, so keying on it would read the recording at every poll), and
+  merged with memory, which wins by event id. What is new always comes from memory, so the cache never delays a
+  new host. Never call `turnStore.eventsFor` per poll.
+- **No network call keyed on what it shows, no lookup of a host**: the server's no-network test covers `styx/`
+  (in `netobs/index.test.ts`) and the web one `components/matrix/`, `lib/matrix-*` and `hooks/useMatrix*`.
+- A host reached now must fall within about two seconds: the 2 s poll, plus a refetch 150 ms after an event for
+  the session reaches the page (`useLiveEventCount`). The hook never runs two requests at once.
+
+The renderers. `matrix-rain.ts` is pure and shared (the 3D renderer uses it too): a stream's head is at row
+`(now - startAt) x speed`, so a refresh of the data never restarts a stream and a redraw puts it back. A new
+address (not in `known`) starts at once, `fresh`, drawn in `--accent-hot` for that one fall; `known` is null
+until the first answer for a session and window, or the whole screen would flash. `MatrixCanvas2D` draws on a
+fixed 50 ms step: fade the canvas a little (the trails), draw only each stream's new head cell. Its cost is by
+columns, not cells; if it ever draws every cell, fix that rather than slowing the step. Colours are read with
+`readToken` and redrawn on `useThemeVersion`; with motion not full it draws one still frame.
+
+**Licence: neither renderer may be derived from styx-godot's shaders.** Two of them (the background and 3D
+rain) are Shadertoy ports under CC BY-NC-SA 3.0; Layman is MIT. They are not to be copied, ported or consulted
+for the 2D and 3D renderers.
 
 ### Text to speech
 
