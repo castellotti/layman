@@ -274,14 +274,14 @@ describe('MCP sidecar hops (Vibe, Claude Code)', () => {
 describe('the glove fixture', () => {
   // Every flow in the fixture, as NetStore sees it.
   const store = new NetStore();
+  const at = (s: string) => Date.parse(`2026-10-16T19:07:${s}Z`);
   store.ensure({ token: 'pi-search', netDir: '/n', controlDir: '/c', rulesPath: '/c/rules.json' });
   for (const line of readFileSync(join(FIXTURE, 'flows.ndjson'), 'utf8').split('\n').filter(Boolean)) {
     const p = parseLine(line);
-    if (p.kind === 'flow') store.ingestFlow('pi-search', p.record, Date.parse('2026-10-16T19:07:48Z'));
-    else if (p.kind === 'gate') store.ingestGate('pi-search', p.record, Date.parse('2026-10-16T19:07:48Z'));
+    if (p.kind === 'flow') store.ingestFlow('pi-search', p.record, at('48'));
+    else if (p.kind === 'gate') store.ingestGate('pi-search', p.record, at('48'));
   }
   const flows = store.flows('pi-search', 0, 5000)!;
-  const at = (s: string) => Date.parse(`2026-10-16T19:07:${s}Z`);
   // Call times sit relative to the fixture's flows (first open 40.99, the batch closes at 44.03, the second
   // arxiv flow opens at 44.03): after a regeneration, move them with the flows.
   // The design's turn: one search, then a fetch per host, the arxiv PDF three seconds later.
