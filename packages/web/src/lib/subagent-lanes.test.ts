@@ -26,6 +26,12 @@ describe('subagentLanes', () => {
     expect(subagentLanes(later).get('c')?.label).toBe('Subagent 3 · Plan');
   });
 
+  it('shows a general-purpose subagent as plain "subagent" on its row, naming the type in the tooltip', () => {
+    const lane = subagentLanes([ev('g', 'general-purpose')]).get('g');
+    expect(lane?.chip).toBe('1 subagent');
+    expect(lane?.label).toBe('Subagent 1 · general-purpose');
+  });
+
   it('labels a subagent with no type by its number alone', () => {
     expect(subagentLanes([ev('x')]).get('x')?.label).toBe('Subagent 1');
     expect(subagentLanes([ev('x')]).get('x')?.chip).toBe('sub 1');

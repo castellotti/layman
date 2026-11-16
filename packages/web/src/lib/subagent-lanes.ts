@@ -14,7 +14,7 @@ export interface SubagentLane {
   token: Token;
   /** "Subagent 2 · Explore", for a tooltip. */
   label: string;
-  /** "2 Explore" (or "sub 2" with no type), for the chip on its rows. */
+  /** "2 Explore" (or "sub 2" with no type, or "2 subagent" for general-purpose, whose type the tooltip names), for the chip on its rows. */
   chip: string;
 }
 
@@ -59,7 +59,7 @@ export function subagentLanes(
       n,
       token: SUBAGENT_TOKENS[(n - 1) % SUBAGENT_TOKENS.length],
       label: `Subagent ${n}${type ? ` · ${type}` : ''}`,
-      chip: type ? `${n} ${type}` : `sub ${n}`,
+      chip: !type ? `sub ${n}` : type === 'general-purpose' ? `${n} subagent` : `${n} ${type}`,
     };
     const old = prev?.get(id);
     lanes.set(id, old && old.n === lane.n && old.label === lane.label ? old : lane);
