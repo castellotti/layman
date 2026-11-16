@@ -119,7 +119,6 @@ export function planStreams(input: PlanInput): Stream[] {
   for (const r of order) {
     const fresh = isNew(r);
     let free = freeColumns();
-    let column: number;
     if (free.length === 0) {
       if (!fresh) break; // the least reached wait
       // The least reached stream that is not itself fresh gives up its column.
@@ -134,7 +133,7 @@ export function planStreams(input: PlanInput): Stream[] {
     }
     const last = lastColumn.get(r.address);
     const choices = free.length > 1 ? free.filter((c) => c !== last) : free;
-    column = choices[Math.min(choices.length - 1, Math.floor(rand() * choices.length))];
+    const column = choices[Math.min(choices.length - 1, Math.floor(rand() * choices.length))];
     const speed = speedOf(r.count, maxCount);
     taken.set(column, {
       address: r.address,

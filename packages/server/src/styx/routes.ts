@@ -38,8 +38,7 @@ export interface StyxDeps {
 const UNSUPPORTED = ['start_date', 'start_time', 'end_date', 'end_time', 'timezone', 'client'];
 const NO_SELECTOR_WINDOW_MS = 15 * 60_000;
 /**
- * How long the calls read from a recording are reused. They are the session's history from before
- * memory begins, which does not change, so a new host never waits for this: it comes from memory.
+ * How long the calls read from a recording are reused. A new host never waits for this: it comes from memory.
  */
 const CACHE_MS = 30_000;
 /** A window must start this long after `since` for memory alone to answer: a call is recorded slightly before its start time. */
@@ -47,15 +46,19 @@ const MEMORY_MARGIN_MS = 5000;
 
 export function registerStyxRoutes(fastify: FastifyInstance, deps: StyxDeps): void {
   const now = deps.now ?? Date.now;
-  const cache = new Map<string, { at: number; since: number; calls: TraceCall[] }>();
+  const cache = new Map<string, { at: number; calls: TraceCall[] }>();
 
-  /** The session's calls from before memory's horizon, read from its recording at most once per CACHE_MS. */
-  const oldCalls = (sessionId: string, since: number, t: number): TraceCall[] => {
+  /**
+   * The session's calls as its recording holds them, read at most once per CACHE_MS. Keyed by session
+   * alone: memory's horizon moves once its ring is full, and a key that moved with it would read the
+   * recording at every poll. What the recording gained since is in memory, which is read each time.
+   */
+  const recordedCalls = (sessionId: string, t: number): TraceCall[] => {
     const hit = cache.get(sessionId);
-    if (hit && hit.since === since && t - hit.at < CACHE_MS) return hit.calls;
-    const calls = callsFrom(deps.events(sessionId).filter((e) => e.timestamp < since));
+    if (hit && t - hit.at < CACHE_MS) return hit.calls;
+    const calls = callsFrom(deps.events(sessionId));
     for (const [k, v] of cache) if (t - v.at > CACHE_MS * 2) cache.delete(k);
-    cache.set(sessionId, { at: t, since, calls });
+    cache.set(sessionId, { at: t, calls });
     return calls;
   };
 
@@ -69,9 +72,9 @@ export function registerStyxRoutes(fastify: FastifyInstance, deps: StyxDeps): vo
     const recent = callsFrom(mem.events);
     // A window memory reaches back to is answered from memory alone: never a recording, per poll.
     if (from !== null && from >= mem.since + MEMORY_MARGIN_MS) return rowsFromCalls(recent, from, t);
-    // Otherwise the history from before memory begins (cached), and everything since from memory.
+    // Otherwise the recording (cached), and everything in memory, which is newer than the cache and wins.
     const seen = new Set(recent.map((c) => c.eventId));
-    const calls = [...oldCalls(sessionId, mem.since, t).filter((c) => !seen.has(c.eventId)), ...recent];
+    const calls = [...recordedCalls(sessionId, t).filter((c) => !seen.has(c.eventId)), ...recent];
     return rowsFromCalls(calls, from ?? 0, t);
   };
 

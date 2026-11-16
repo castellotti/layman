@@ -453,9 +453,10 @@ Rules of the feed that must not be changed casually:
 - **The route is polled every 2 s per open tab, so it must stay cheap.** A gloved answer is `NetStore`
   (memory). A standard session's is the in-memory `EventStore` (`memory()`, with `since`, the time from which
   memory holds all of the session's events: server start, or the oldest held once the ring is full); only a
-  window reaching before `since`, or the whole record, reads the session's recording, for the calls from before
-  `since` only, cached 30 s. What is new always comes from memory, so the cache never delays a new host. Never
-  call `turnStore.eventsFor` per poll.
+  window reaching before `since`, or the whole record, reads the session's recording, cached 30 s **by session
+  alone** (`since` moves once the ring is full, so keying on it would read the recording at every poll), and
+  merged with memory, which wins by event id. What is new always comes from memory, so the cache never delays a
+  new host. Never call `turnStore.eventsFor` per poll.
 - **No network call keyed on what it shows, no lookup of a host**: the server's no-network test covers `styx/`
   (in `netobs/index.test.ts`) and the web one `components/matrix/`, `lib/matrix-*` and `hooks/useMatrix*`.
 - A host reached now must fall within about two seconds: the 2 s poll, plus a refetch 150 ms after an event for

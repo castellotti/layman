@@ -22,6 +22,11 @@ export function useMatrixFeed(sessionId: string | null, window: MatrixWindow): {
   const url = matrixUrl({ sessionId, window });
   const [state, setState] = useState<{ url: string; rows: MatrixRow[]; error: string | null } | null>(null);
   const request = useRef<() => void>(() => {});
+  // The count as of this render, for the effect below to start from.
+  const events = useLiveEventCount(sessionId);
+  const seen = useRef(events);
+  const latest = useRef(events);
+  latest.current = events;
 
   useEffect(() => {
     let live = true;
@@ -40,6 +45,8 @@ export function useMatrixFeed(sessionId: string | null, window: MatrixWindow): {
     };
     const ask = (): void => { if (document.visibilityState === 'visible') run(); };
     request.current = ask;
+    // This request covers every event so far: only a later one asks again.
+    seen.current = latest.current;
     run();
     const timer = setInterval(ask, FEED_POLL_MS);
     document.addEventListener('visibilitychange', ask);
@@ -52,8 +59,6 @@ export function useMatrixFeed(sessionId: string | null, window: MatrixWindow): {
   }, [url]);
 
   // A new event for this session: ask again soon, once for a burst. Not on mount (the effect above asked).
-  const events = useLiveEventCount(sessionId);
-  const seen = useRef(events);
   useEffect(() => {
     if (seen.current === events) return;
     seen.current = events;

@@ -182,6 +182,10 @@ export function MatrixCanvas2D({ rows, ready, resetKey, gloveToken, onOpenNetwor
         cell(s.column, row, ch(row), s.fresh ? c.hot : c.text, 1);
         drawnRow.current.set(s, row);
       }
+      if (drawnRow.current.size > streams.current.length) {
+        const live = new Set(streams.current);
+        for (const s of drawnRow.current.keys()) if (!live.has(s)) drawnRow.current.delete(s);
+      }
       ctx.globalAlpha = 1;
     };
 
@@ -207,21 +211,23 @@ export function MatrixCanvas2D({ rows, ready, resetKey, gloveToken, onOpenNetwor
     drawnRow.current = new Map();
   }, [resetKey]);
 
+  /** The stream under the pointer, with the pointer's place in the box. */
+  const streamAt = (e: { clientX: number; clientY: number; currentTarget: HTMLElement }) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const col = Math.floor((e.clientX - rect.left) / CELL_W);
+    return { s: streams.current.find((x) => x.column === col), x: e.clientX - rect.left, y: e.clientY - rect.top };
+  };
   const onMove = (e: React.PointerEvent<HTMLDivElement>) => {
     if (hoverRef.current?.pinned) return;
-    const rect = e.currentTarget.getBoundingClientRect();
-    const col = Math.floor((e.clientX - rect.left) / CELL_W);
-    const s = streams.current.find((x) => x.column === col);
+    const { s, x, y } = streamAt(e);
     if (!s) { if (hoverRef.current) setHover(null); return; }
     if (hoverRef.current?.address === s.address) return;
-    setHover({ address: s.address, x: e.clientX - rect.left, y: e.clientY - rect.top, pinned: false });
+    setHover({ address: s.address, x, y, pinned: false });
   };
   const onClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    const col = Math.floor((e.clientX - rect.left) / CELL_W);
-    const s = streams.current.find((x) => x.column === col);
+    const { s, x, y } = streamAt(e);
     if (!s || hover?.pinned) { setHover(null); return; }
-    setHover({ address: s.address, x: e.clientX - rect.left, y: e.clientY - rect.top, pinned: true });
+    setHover({ address: s.address, x, y, pinned: true });
   };
 
   const card = hover ? byAddress.get(hover.address) : undefined;

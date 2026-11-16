@@ -92,12 +92,19 @@ function Matrix2DPane() {
       </div>
       {loading ? (
         <Centered>Reading the feed…</Centered>
-      ) : error && rows.length === 0 ? (
-        <Centered>The feed could not be read: {error}</Centered>
-      ) : rows.length === 0 ? (
-        <Centered>Nothing reached in {WINDOW_PHRASE[window]}.{window === 'all' ? '' : ' Try a longer window.'}</Centered>
       ) : (
-        <MatrixCanvas2D rows={rows} ready resetKey={`${sessionId ?? ''}|${window}`} gloveToken={gloveToken} onOpenNetwork={openNetwork} />
+        // Mounted even with nothing to show: its streams and what it knows live in it, and an empty answer
+        // or a failed poll must not make every host start again, or the next new one look old.
+        <div style={{ position: 'relative', flex: 1, minHeight: 0, display: 'flex' }}>
+          <MatrixCanvas2D rows={rows} ready resetKey={`${sessionId ?? ''}|${window}`} gloveToken={gloveToken} onOpenNetwork={openNetwork} />
+          {rows.length === 0 && (
+            <div style={{ position: 'absolute', inset: 0, display: 'flex', pointerEvents: 'none' }}>
+              <Centered>
+                {error ? `The feed could not be read: ${error}` : `Nothing reached in ${WINDOW_PHRASE[window]}.${window === 'all' ? '' : ' Try a longer window.'}`}
+              </Centered>
+            </div>
+          )}
+        </div>
       )}
     </div>
   );

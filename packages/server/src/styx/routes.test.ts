@@ -184,6 +184,14 @@ describe('what a poll costs', () => {
     expect((await rows('?session=sess-plain&relative=1h')).map((r) => r.address)).toContain('fresh.example.net:443');
   });
 
+  it('a memory horizon that keeps moving (a full ring) does not make every poll read the recording', async () => {
+    for (let i = 0; i < 4; i++) {
+      memory = { events: [], since: NOW - 3_600_000 * 2 + i * 1000 };
+      await rows('?session=sess-plain&relative=1d');
+    }
+    expect(eventsCalls).toBe(1);
+  });
+
   it('an event both in memory and in the recording counts once', async () => {
     memory = { events: [recording[1]], since: NOW - 40_000 };
     const r = await rows('?session=sess-plain&relative=1h');
