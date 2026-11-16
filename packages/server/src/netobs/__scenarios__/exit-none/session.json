@@ -4,8 +4,8 @@
   "env": "pi-search",
   "session": "pi-search",
   "harness": "pi",
-  "gate": "0.1.0",
-  "image": "glove/netgate:0.1.0-0000000000",
+  "gate": "0.2.0",
+  "image": "glove/netgate:0.2.0-0000000000",
   "record": "metadata",
   "resolve": "in-tunnel",
   "resolver": "dns://gluetun:53",
@@ -17,7 +17,7 @@
     "retain_s": null
   },
   "record_headers": false,
-  "rendered_at": "2026-09-25T11:37:23.136Z",
+  "rendered_at": "2026-10-16T19:08:01.350Z",
   "services": [
     {
       "service": "llm",

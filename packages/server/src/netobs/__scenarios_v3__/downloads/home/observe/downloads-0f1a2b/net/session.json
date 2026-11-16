@@ -112,5 +112,13 @@
     "filter": {
       "granted": false
     }
-  }
+  },
+  "models": [
+    {
+      "id": "test-model",
+      "context_window": 32768,
+      "max_tokens": 8192,
+      "reasoning": false
+    }
+  ]
 }

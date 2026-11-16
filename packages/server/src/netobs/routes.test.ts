@@ -21,7 +21,7 @@ beforeEach(async () => {
   rmSync(control, { recursive: true });
   for (const f of ['flows.ndjson', 'exit.ndjson', 'session.json', 'status.json']) copyFileSync(join(FIXTURE, f), join(net, f));
   const netObs = new NetObs({ getGloveHome: () => home });
-  netObs.poll(Date.parse('2026-09-23T14:14:48.000Z'));
+  netObs.poll(Date.parse('2026-10-16T19:07:48.000Z'));
   app = Fastify();
   registerNetRoutes(app, { netObs });
   await app.ready();
@@ -47,7 +47,7 @@ describe('net REST routes', () => {
     expect(body.destinations.length).toBeGreaterThan(0);
     expect(Object.keys(body.destinations[0]).sort()).toEqual(['blocked', 'bytesDown', 'bytesUp', 'flags', 'flows', 'scope', 'services']);
     // The exit says where traffic leaves, never from which address.
-    expect(res.json().exit).toMatchObject({ kind: 'vpn', country: 'Switzerland' });
+    expect(res.json().exit).toMatchObject({ kind: 'vpn', country: null });
     expect(res.json().exit).not.toHaveProperty('ip');
     expect(res.json().calls).toEqual([]);
     // `since` past every record leaves no destination; an unknown session is a 404.
@@ -124,7 +124,7 @@ describe('GET …/tokens', () => {
     const seen: unknown[] = [];
     const withTokens = Fastify();
     const netObs = new NetObs({ getGloveHome: () => home });
-    netObs.poll(Date.parse('2026-09-23T14:14:48.000Z'));
+    netObs.poll(Date.parse('2026-10-16T19:07:48.000Z'));
     registerNetRoutes(withTokens, {
       netObs,
       tokens: (token, range) => {

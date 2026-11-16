@@ -18,7 +18,7 @@ import type { DestinationAggregate, NetSnapshot, NetTotals } from './types.js';
 const HERE = dirname(fileURLToPath(import.meta.url));
 const FIXTURE = join(HERE, '__fixtures__');
 const TOKEN = TEST_ID;
-const NOW = Date.parse('2026-09-23T14:14:48.000Z');
+const NOW = Date.parse('2026-10-16T19:07:48.000Z');
 const LINES = readFileSync(join(FIXTURE, 'flows.ndjson'), 'utf8').split('\n').filter(Boolean);
 
 /** Rollups in memory, as SQLite would keep them: rows replaced, hours and runs upserted. */

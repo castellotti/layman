@@ -1,7 +1,7 @@
 # netobs scenarios
 
 One directory per state in the handoff's §6.1 that the original fixture
-(`../netobs/`, which stays byte-identical) does not contain. Each is a complete `net/` directory
+(`../netobs/`, pinned by hash) does not contain. Each is a complete `net/` directory
 (`session.json`, `flows.ndjson` and any rotated `flows-<stamp>[-<n>].ndjson`, `exit.ndjson` when
 there is an exit record, `status.json`) plus `rules.json` where the state involves rules — laid out
 exactly as `~/.glove/envs/<env>/sessions/<name>/net/`, except that `rules.json` really lives in
@@ -12,13 +12,13 @@ Written by the real gate code: real `Forwarder`s carry real loopback connections
 The two substitutions, which change no record's shape: the collector is fed directly rather than
 over the unix datagram socket, and upstream dials go to loopback stubs while the forwarder keeps the
 deployment's names. Regenerate with `uv run python tests/fixtures/netobs-scenarios/generate.py
-[name …]`; `tests/test_netobs_scenarios.py` keeps each one valid against the handoff and checks
+[name …]`; `extensions/gate/tests/test_netobs_scenarios.py` keeps each one valid against the handoff and checks
 that it still shows its state. Timestamps are wall-clock times of the generation run, so a reader
 testing gate freshness must fake "now" (every fixture here is "stale" when read later).
 
-These fixtures carry the additive fields and records the original one predates: `run` on every
-flow record, `gate` start/stop records in `flows.ndjson`, and `rules.sha256` /
-`rules.last_rejected` in `status.json`.
+These fixtures carry the additive fields and records: `run` on every flow record, `gate` start/stop
+records in `flows.ndjson`, and `rules.sha256` / `rules.last_rejected` in `status.json`. The original
+one (regenerated in round 14) has `run` and the `rules` fields but no `gate` records.
 
 | Scenario | What it contains | Synthetic? |
 |---|---|---|
@@ -30,7 +30,7 @@ flow record, `gate` start/stop records in `flows.ndjson`, and `rules.sha256` /
 | `telemetry-dropped` | the collector's disk filled for a while: `telemetry.dropped > 0`. Consequences a reader must tolerate, as produced: a flow whose `close` was dropped (looks open forever), and a `close` with no `open` | fault injected (`ENOSPC` from `os.write`) |
 | `record-full` | `record: "full"` + `record_headers`: a cleartext `GET` with `request.url` and `headers` (`Authorization`/`Cookie` as `"[redacted]"`), and a `CONNECT` with `url: null` | no |
 | `exit-none` | `exit_identity: "none"`: there is **no** `exit.ndjson` file at all (it is created on the first exit record), so "absent" and "empty" must mean the same to a reader | no |
-| `exit-unhealthy` | `exit.ndjson`: a healthy exit, then `healthy: false` with null address fields (the tunnel stopped answering the IP echo) | no |
+| `exit-unhealthy` | `exit.ndjson`: a healthy exit, then `healthy: false` with null address fields (`source: "vpn-endpoint"`, no geo: vpn's shared endpoint file emptied, as gluetun's start script does when its kill switch allows no server) | the file is written by the generator, not by gluetun's start script |
 | `pooled` | an `llm` flow that stops changing after ~0.5 s and stays open with **no further records** (the gate emits `update` only when bytes change), while a `web_fetch` runs on for over 3 s | no |
 | `sni-refined` | a `tcp` flow silent past 250 ms: `open` has the configured `dest.host: "host.docker.internal"`, later records the SNI `llm.operator.lan` | no |
 | `rotation` | `rotate.max_bytes: 6000`: `arxiv.org` opens in `flows-<stamp>.ndjson` and closes in the live file; a same-millisecond collision `flows-<stamp>-1.ndjson` (newer than `flows-<stamp>.ndjson`), with a flow straddling it | the writer's clock frozen for one burst, to force the collision |

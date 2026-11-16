@@ -5,9 +5,8 @@ state in glove's state table that the original fixture (`../__fixtures__/`) lack
 forwarder and collector code. glove's own `README.md` here says what each scenario contains and what
 was forced. Read by `../scenarios.test.ts`.
 
-- Copied: 2026-09-25
-- From glove commit `ab0ad9f`, merged to glove's `main` as `405683c` (PR #11). The scenario
-  data is unchanged since `aec500b`; only `generate.py` moved on.
+- Copied: 2026-11-16
+- From glove `main` at `c5bd863` (every scenario regenerated 2026-10-16).
 
 Do not edit these files (this one excepted). To refresh:
 

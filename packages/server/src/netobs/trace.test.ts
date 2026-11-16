@@ -13,7 +13,10 @@ import { buildTrace, callsBetween, sessionJoins, trafficOf, type TraceDeps } fro
 import type { TraceView } from './types.js';
 
 const FIXTURE = join(dirname(fileURLToPath(import.meta.url)), '__fixtures__');
-const at = (s: string) => Date.parse(`2026-09-23T14:${s}Z`);
+// The tests' timeline was written against the first fixture (2026-09-23, first call 14:14:43.300);
+// SHIFT moves it onto the regenerated one (first flow 19:07:40.99) keeping every offset.
+const SHIFT = Date.parse('2026-10-16T19:07:40.950Z') - Date.parse('2026-09-23T14:14:43.300Z');
+const at = (s: string) => Date.parse(`2026-09-23T14:${s}Z`) + SHIFT;
 
 let n = 0;
 const ev = (sessionId: string, type: TimelineEvent['type'], t: number, data: TimelineEvent['data']): TimelineEvent => ({
