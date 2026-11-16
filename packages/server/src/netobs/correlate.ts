@@ -64,7 +64,7 @@ export const isDownloadTool = (toolName: string) => DOWNLOAD_TOOL.test(toolName)
 const DOWNLOAD_LABEL = 'web_download';
 
 /** A URL's host, lower-case and without IPv6 brackets, and its port only when written out. */
-export function urlTarget(raw: string): { host: string; port: number | null } | null {
+export function urlTarget(raw: string): { host: string; port: number | null; scheme: 'http' | 'https' } | null {
   let u: URL;
   try {
     u = new URL(raw);
@@ -75,7 +75,7 @@ export function urlTarget(raw: string): { host: string; port: number | null } | 
   const host = u.hostname.toLowerCase().replace(/^\[|\]$/g, '');
   if (!host) return null;
   // `URL` drops a port equal to the scheme's default, so `:443` on https reads as unspelled; either way any port matches.
-  return { host, port: u.port ? Number(u.port) : null };
+  return { host, port: u.port ? Number(u.port) : null, scheme: u.protocol === 'https:' ? 'https' : 'http' };
 }
 
 /**
@@ -216,7 +216,7 @@ export function callsFrom(events: readonly TimelineEvent[]): TraceCall[] {
     const kind = search ? 'search' : relay ? 'relay' : named.length || download ? 'fetch' : 'other';
     // A relay call keeps its URLs (and an ssh host) too: with no relay sidecar its traffic goes
     // out through the proxy like any fetch, and `git push && curl …` makes both kinds.
-    const hosts = kind === 'fetch' || kind === 'relay' ? urls.filter((u) => !REDACTED.test(u)).map((u) => urlTarget(u)!) : [];
+    const hosts = kind === 'fetch' || kind === 'relay' ? urls.filter((u) => !REDACTED.test(u)).map((u) => urlTarget(u)!) : [] as TraceCall['targets'];
     if (relay?.via === 'ssh' && relay.host) hosts.push({ host: relay.host.toLowerCase(), port: null });
     const label = kind === 'search' ? String(input?.query ?? '')
       : kind === 'fetch' ? named[0] ?? (typeof input?.id === 'string' ? `${toolName} ${input.id}` : toolName)
@@ -235,10 +235,10 @@ export function callsFrom(events: readonly TimelineEvent[]): TraceCall[] {
   return calls.sort((a, b) => a.start - b.start);
 }
 
-function dedupeTargets(ts: Array<{ host: string; port: number | null }>) {
+function dedupeTargets(ts: TraceCall['targets']) {
   const seen = new Set<string>();
   return ts.filter((t) => {
-    const k = `${t.host}:${t.port}`;
+    const k = `${t.host}:${t.port}:${t.scheme ?? ''}`;
     if (seen.has(k)) return false;
     seen.add(k);
     return true;

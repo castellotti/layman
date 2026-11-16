@@ -254,7 +254,7 @@ describe('reading tool names, commands and results', () => {
     const [c] = callsFrom([event('codemode', { code }, 0, 100)]);
     expect([c.kind, c.nested, c.relay, c.targets.map((t) => t.host)]).toEqual(['relay', ['web_fetch', 'web_download', 'bash'], { via: 'github', host: null }, ['arxiv.org']]);
     const [f] = callsFrom([event('codemode', { code: 'return tools.web_fetch({ url: "https://arxiv.org/abs/1" })' }, 0, 100)]);
-    expect([f.kind, f.targets]).toEqual(['fetch', [{ host: 'arxiv.org', port: null }]]);
+    expect([f.kind, f.targets]).toEqual(['fetch', [{ host: 'arxiv.org', port: null, scheme: 'https' }]]);
   });
 
   it('reads MCP content blocks and plain strings alike', () => {

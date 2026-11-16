@@ -44,6 +44,7 @@ import { TurnStore } from './turns/store.js';
 import { registerTurnRoutes } from './routes/turns.js';
 import { NetObs } from './netobs/index.js';
 import { registerNetRoutes } from './netobs/routes.js';
+import { registerStyxRoutes } from './styx/routes.js';
 import { SqliteNetHistory } from './netobs/persist.js';
 import { registerTtsRoutes } from './routes/tts.js';
 import { searchEvents, parseSearchQuery, matchesSearchTerms } from './db/search.js';
@@ -686,6 +687,30 @@ export function createServer(config: LaymanConfig): LaymanServer {
         events: (sessionId) => turnStore.eventsFor(sessionId),
       },
       tokens: (token, range) => piUsage.sum(token, range),
+    });
+
+    // Styx: the matrix feed (docs/extensions/styx.md). Reads Layman's own records only.
+    const sessionNameStmt = db.prepare('SELECT session_name FROM recorded_sessions WHERE session_id = ?');
+    const recordedStmt = db.prepare('SELECT 1 FROM recorded_sessions WHERE session_id = ?');
+    const gloveTokenOf = (sessionId: string): string | null => {
+      const name = eventStore.getSessions().find((s) => s.sessionId === sessionId)?.sessionName
+        ?? (sessionNameStmt.get(sessionId) as { session_name: string | null } | undefined)?.session_name;
+      return name && netObs.store.has(name) ? name : null;
+    };
+    registerStyxRoutes(fastify, {
+      enabled: () => getConfig().styx?.enabled === true,
+      store: netObs.store,
+      gloveTokenOf,
+      sessionExists: (id) => eventStore.getSessions().some((s) => s.sessionId === id) || recordedStmt.get(id) !== undefined,
+      events: (id) => turnStore.eventsFor(id),
+      recentEvents: (id, from) => {
+        const all = eventStore.getAll();
+        // Memory reaches back far enough, or holds all there is (nothing recorded).
+        if (!(all.length > 0 && all[0].timestamp <= from) && recordedStmt.get(id) !== undefined) return null;
+        // 5 s before: a call is recorded slightly before its start time.
+        return all.filter((e) => e.sessionId === id && e.timestamp >= from - 5000);
+      },
+      liveStandardSessions: () => eventStore.getSessions().map((s) => s.sessionId).filter((id) => gloveTokenOf(id) === null),
     });
 
     // Text-to-speech pass-through to speaches (speaches has CORS off by default)

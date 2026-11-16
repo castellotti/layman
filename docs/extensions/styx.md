@@ -60,7 +60,7 @@ The answer is a JSON array, highest `count` first, ties by `address` ascending, 
 
 | Field | Meaning |
 |---|---|
-| `address` | `host:port`, or `host` alone when no port is known (styx-os does the same). Lower-case. |
+| `address` | `host:port`, lower-case. For a standard session a URL with no port gets its scheme's (`:443` for https, `:80` for http), so the port tells which was used; `host` alone only for a target with no URL (an ssh host). |
 | `sent`, `received` | Bytes up and down. 0 for a standard session. |
 | `count` | How many times it was reached: flows for a gloved session, tool calls naming it for a standard one. Always at least 1. |
 | `blocked` | Layman addition: how many of those glove refused. 0 for a standard session. |
@@ -78,6 +78,11 @@ styx-godot reads only `address` and `count`.
 - **A standard session** uses the hosts its tool calls named (a `WebFetch` URL, a `curl` in a shell
   command), counted once per call. Bytes are 0. Traffic that no tool call named does not appear.
 - **With no selector**, every live gloved session and every live standard session, merged.
+- **A hop is not a destination.** A sandbox's local link to a sidecar (the llm-auth hop, say) is left out,
+  as in the network views: its bytes are counted at the next leg.
+- **Freshness.** A windowed answer for a standard session comes from the events Layman holds in memory, so
+  a host a tool call names shows at once. The whole record of a standard session is reused for 5 s, so a
+  new host can take that long to appear under **All**.
 
 ## Privacy
 

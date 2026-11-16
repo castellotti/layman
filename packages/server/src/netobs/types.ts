@@ -798,7 +798,12 @@ export interface TraceCall {
    * Hosts a fetch (or a relay call) names, lower-case, with the port when the URL spelled one
    * out; a relayed ssh command's host too, which an unrelayed ssh reaches through the proxy.
    */
-  targets: Array<{ host: string; port: number | null }>;
+  targets: Array<{
+    host: string;
+    port: number | null;
+    /** The URL's scheme, when the target came from one (an ssh host has none). Only Styx reads it. */
+    scheme?: 'http' | 'https';
+  }>;
   /**
    * The PII filter redacted part of a URL this call names (a literal IP, say),
    * so its flows cannot be joined to it: they stay unattributed.
