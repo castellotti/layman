@@ -11,7 +11,7 @@ import { useStationSetup } from '../../hooks/useStationSetup.js';
 import { StationGlyph } from '../activity/StationGlyph.js';
 import type { ClientMessage } from '../../lib/ws-protocol.js';
 import { sp, rad } from '../../lib/density.js';
-import type { SubagentLane } from '../../lib/subagent-lanes.js';
+import { laneRowStyle, type SubagentLane } from '../../lib/subagent-lanes.js';
 import { SubagentChip } from '../shared/SubagentChip.js';
 
 interface LogRowProps {
@@ -49,11 +49,8 @@ export const LogRow = React.memo(function LogRow({ event, index, hasDetail, isEx
   const color = tokenColor(EVENT_KIND_COLOR[event.type] ?? 'text-muted');
   const expanded = hasDetail && isExpanded;
   // A subagent's row rests on the agent shade with a bar in its own colour, as in a Dashboard pane.
-  const rest = lane ? tokenColor('agent', '8%') : 'transparent';
-  const shadows = [
-    isSelected && 'inset 0 0 0 1px var(--accent)',
-    lane && `inset 3px 0 0 ${tokenColor(lane.token, '80%')}`,
-  ].filter(Boolean).join(', ');
+  const { rest, bar } = laneRowStyle(lane);
+  const shadows = [isSelected && 'inset 0 0 0 1px var(--accent)', bar].filter(Boolean).join(', ');
   const subagentId = event.data.subagentId;
 
   return (

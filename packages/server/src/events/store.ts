@@ -213,7 +213,9 @@ export class EventStore extends EventEmitter {
       const filtered = this.dataFilter ? this.dataFilter(dataUpdates as EventData, event.sessionId) : dataUpdates;
       Object.assign(event.data, filtered);
       // Tagged after the fact (SubagentStop's time window): numbered then.
-      Object.assign(event.data, this.numberSubagent(event.data, event.sessionId));
+      if (event.data.subagentId && event.data.subagentN === undefined) {
+        event.data.subagentN = this.subagentNumber(event.sessionId, event.data.subagentId);
+      }
       this.emit('event:update', event);
     }
   }

@@ -11,7 +11,7 @@ import { deriveSessionState, getSessionDisplayName, contextPctColor, isSessionLi
 import { formatTime, formatDuration as formatElapsed, cwdBasename } from '../../lib/format.js';
 import { EVENT_KIND_COLOR, kindLabel, eventDetail, withThinkingRows, baseEventId } from '../../lib/event-styles.js';
 import { tokenColor } from '../../lib/tokens.js';
-import { subagentLanes, type SubagentLane } from '../../lib/subagent-lanes.js';
+import { subagentLanes, laneRowStyle, type SubagentLane } from '../../lib/subagent-lanes.js';
 import { SubagentChip } from '../shared/SubagentChip.js';
 import { HostChip } from '../shared/HostChip.js';
 import { sp, rad } from '../../lib/density.js';
@@ -221,16 +221,6 @@ function RecentTail({ events, onOpenInLogs, sessionId, autoscroll }: {
   );
 }
 
-/**
- * A subagent's work is shaded in the agent colour, so the orchestrating agent's own rows read apart
- * from what it delegated, with a bar at its left edge in that subagent's own colour, so two running
- * at once read apart from each other (`subagentLanes`). Claude Code subagents report into their
- * parent's session; the server tags their events `subagentId` (`hooks/handler.ts`, `subagentScoped`).
- */
-function restingBackground(event: TimelineEvent): string {
-  return event.data.subagentId ? tokenColor('agent', '8%') : 'transparent';
-}
-
 function TailRows({ rows, eventIndexById, lanes, onOpenInLogs, sessionId }: {
   rows: TimelineEvent[];
   eventIndexById: Map<string, number>;
@@ -245,8 +235,8 @@ function TailRows({ rows, eventIndexById, lanes, onOpenInLogs, sessionId }: {
         const detail = eventDetail(event);
         const realId = baseEventId(event.id);
         const globalIdx = eventIndexById.get(realId) ?? -1;
-        const rest = restingBackground(event);
         const lane = event.data.subagentId ? lanes.get(event.data.subagentId) : undefined;
+        const { rest, bar } = laneRowStyle(lane);
         return (
           <div
             key={event.id}
@@ -261,7 +251,7 @@ function TailRows({ rows, eventIndexById, lanes, onOpenInLogs, sessionId }: {
               cursor: 'pointer',
               transition: 'background 0.1s',
               background: rest,
-              boxShadow: lane ? `inset 3px 0 0 ${tokenColor(lane.token, '80%')}` : undefined,
+              boxShadow: bar,
             }}
             onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.background = 'var(--bg-selected)')}
             onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.background = rest)}

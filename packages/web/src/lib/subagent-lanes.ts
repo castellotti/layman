@@ -1,5 +1,6 @@
 import type { TimelineEvent } from './types.js';
 import type { Token } from './tokens.js';
+import { tokenColor } from './tokens.js';
 
 /**
  * The bar colours subagents take, in turn. Theme tokens with no status meaning (never ok, warn or
@@ -65,4 +66,14 @@ export function subagentLanes(
     lanes.set(id, old && old.n === lane.n && old.label === lane.label ? old : lane);
   }
   return lanes;
+}
+
+/**
+ * How a subagent's row looks, shared by every view that draws one (Logs, Dashboard) so they cannot
+ * drift: it rests on the agent shade, with a bar at its left edge in that subagent's own colour.
+ */
+export function laneRowStyle(lane?: SubagentLane): { rest: string; bar?: string } {
+  return lane
+    ? { rest: tokenColor('agent', '8%'), bar: `inset 3px 0 0 ${tokenColor(lane.token, '80%')}` }
+    : { rest: 'transparent' };
 }
