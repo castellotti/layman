@@ -102,8 +102,13 @@ export function rowsFromCalls(calls: readonly TraceCall[], from: number, to: num
   const rows = new Map<string, MatrixRow>();
   for (const c of calls) {
     if (c.start < from || c.start > to) continue;
+    // `https://x/` and `https://x:443/` are one address: a call counts once for each address.
+    const seen = new Set<string>();
     for (const t of c.targets) {
-      add(rows, withPort(t.host, t.port ?? (t.scheme === 'https' ? 443 : t.scheme === 'http' ? 80 : null)), { sent: 0, received: 0, count: 1, blocked: 0, untunnelled: false });
+      const address = withPort(t.host, t.port ?? (t.scheme === 'https' ? 443 : t.scheme === 'http' ? 80 : null));
+      if (seen.has(address)) continue;
+      seen.add(address);
+      add(rows, address, { sent: 0, received: 0, count: 1, blocked: 0, untunnelled: false });
     }
   }
   return finish(rows.values());

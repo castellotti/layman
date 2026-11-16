@@ -692,15 +692,17 @@ export function createServer(config: LaymanConfig): LaymanServer {
     // Styx: the matrix feed (docs/extensions/styx.md). Reads Layman's own records only.
     const sessionNameStmt = db.prepare('SELECT session_name FROM recorded_sessions WHERE session_id = ?');
     const recordedStmt = db.prepare('SELECT 1 FROM recorded_sessions WHERE session_id = ?');
-    const gloveTokenOf = (sessionId: string): string | null => {
-      const name = eventStore.getSessions().find((s) => s.sessionId === sessionId)?.sessionName
-        ?? (sessionNameStmt.get(sessionId) as { session_name: string | null } | undefined)?.session_name;
+    const gloveTokenFor = (sessionId: string, live: ReadonlyMap<string, string | undefined>): string | null => {
+      // Live sessions know their name; only one not live is looked up in the recording.
+      const name = live.has(sessionId) ? live.get(sessionId)
+        : (sessionNameStmt.get(sessionId) as { session_name: string | null } | undefined)?.session_name;
       return name && netObs.store.has(name) ? name : null;
     };
+    const liveNames = () => new Map(eventStore.getSessions().map((s) => [s.sessionId, s.sessionName] as const));
     registerStyxRoutes(fastify, {
       enabled: () => getConfig().styx?.enabled === true,
       store: netObs.store,
-      gloveTokenOf,
+      gloveTokenOf: (id) => gloveTokenFor(id, liveNames()),
       sessionExists: (id) => eventStore.getSessions().some((s) => s.sessionId === id) || recordedStmt.get(id) !== undefined,
       events: (id) => turnStore.eventsFor(id),
       recentEvents: (id, from) => {
@@ -710,7 +712,10 @@ export function createServer(config: LaymanConfig): LaymanServer {
         // 5 s before: a call is recorded slightly before its start time.
         return all.filter((e) => e.sessionId === id && e.timestamp >= from - 5000);
       },
-      liveStandardSessions: () => eventStore.getSessions().map((s) => s.sessionId).filter((id) => gloveTokenOf(id) === null),
+      liveStandardSessions: () => {
+        const live = liveNames();
+        return [...live.keys()].filter((id) => gloveTokenFor(id, live) === null);
+      },
     });
 
     // Text-to-speech pass-through to speaches (speaches has CORS off by default)

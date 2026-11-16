@@ -89,6 +89,13 @@ describe('rowsFromCalls: the scheme gives the port', () => {
   });
 });
 
+describe('rowsFromCalls: one call, one address', () => {
+  it('counts a call once for an address its targets spell two ways', () => {
+    const rows = rowsFromCalls([call(1, ['x.test', null, 'https'], ['x.test', 443, 'https'])], 0, 10);
+    expect(rows).toEqual([{ address: 'x.test:443', sent: 0, received: 0, count: 1, blocked: 0, untunnelled: false }]);
+  });
+});
+
 describe('mergeRows', () => {
   it('sums the same address across sources and does not change its inputs', () => {
     const a = rowsFromDestinations([dest({ host: 'x.test', flows: 2, up: 1 })]);
