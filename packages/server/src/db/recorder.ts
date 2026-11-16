@@ -47,15 +47,16 @@ export function recordedActivityProbe(db: Database): (sessionId: string) => bool
 
 /**
  * A session's recorded subagents, oldest first (by each one's first event): the order `EventStore`
- * numbers them in, so a restart carries on the numbering and history recorded before numbering
+ * numbers them in (a number already stored wins, so a restart never renumbers; ties break on id), so a restart carries on the numbering and history recorded before numbering
  * existed is numbered the same way.
  */
 export function recordedSubagentsProbe(db: Database): (sessionId: string) => string[] {
   const stmt = db.prepare(
-    `SELECT json_extract(data_json, '$.subagentId') AS sid, MIN(timestamp) AS first
+    `SELECT json_extract(data_json, '$.subagentId') AS sid, MIN(timestamp) AS first,
+            MIN(json_extract(data_json, '$.subagentN')) AS n
        FROM recorded_events
       WHERE session_id = ? AND json_extract(data_json, '$.subagentId') IS NOT NULL
-      GROUP BY sid ORDER BY first`,
+      GROUP BY sid ORDER BY n IS NULL, n, first, sid`,
   );
   return (sessionId) => (stmt.all(sessionId) as { sid: string }[]).map((r) => r.sid);
 }

@@ -69,7 +69,7 @@ export class EventStore extends EventEmitter {
    * than by each view from the events it holds, because a view holds a window of the session and
    * would renumber (and recolour) a subagent as earlier ones left it.
    */
-  private subagentNumber(sessionId: string, subagentId: string): number {
+  private subagentNumber(sessionId: string, subagentId: string, preset?: number): number {
     let numbers = this.subagentNumbers.get(sessionId);
     if (!numbers) {
       numbers = new Map();
@@ -78,7 +78,7 @@ export class EventStore extends EventEmitter {
     }
     let n = numbers.get(subagentId);
     if (n === undefined) {
-      n = numbers.size + 1;
+      n = preset ?? Math.max(numbers.size, ...numbers.values()) + 1;
       numbers.set(subagentId, n);
     }
     return n;
@@ -86,7 +86,12 @@ export class EventStore extends EventEmitter {
 
   /** `data` with its subagent's number, when it names a subagent and has none yet. */
   private numberSubagent(data: EventData, sessionId: string): EventData {
-    if (!data.subagentId || data.subagentN !== undefined) return data;
+    if (!data.subagentId) return data;
+    // A number already on the event is kept, but the session's map must know it or the next subagent takes it.
+    if (data.subagentN !== undefined) {
+      this.subagentNumber(sessionId, data.subagentId, data.subagentN);
+      return data;
+    }
     return { ...data, subagentN: this.subagentNumber(sessionId, data.subagentId) };
   }
 
