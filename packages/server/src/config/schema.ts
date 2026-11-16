@@ -98,6 +98,20 @@ export const ActivityConfigSchema = z.object({
 });
 
 /**
+ * Styx: Matrix-style views of the destinations a session reached, and the same data
+ * in the shape styx-godot reads (docs/extensions/styx.md). Off by default: with it
+ * off there are no tabs and `/api/styx/` answers 404.
+ */
+export const StyxConfigSchema = z.object({
+  enabled: z.boolean().default(false),
+  /**
+   * Where a local styx-godot web export lives, for the Matrix (Godot) tab. Empty:
+   * `<Layman data dir>/styx/godot`, which a containerized Layman can see.
+   */
+  godotDir: z.string().default(''),
+});
+
+/**
  * glove — passive monitoring of sandboxed harnesses (github.com/castellotti/glove).
  *
  * glove v3 only. A glove session is a directory the user chose; the only data
@@ -334,6 +348,7 @@ export const LaymanConfigSchema = z.object({
   liveTokens: LiveTokensConfigSchema.default({}),
   activity: ActivityConfigSchema.default({}),
   glove: GloveConfigSchema.default({}),
+  styx: StyxConfigSchema.default({}),
   sync: SyncConfigSchema.default({}),
   tts: TtsConfigSchema.default({}),
   setupWizardComplete: z.boolean().default(false),
@@ -346,6 +361,7 @@ export type SyncConfig = z.infer<typeof SyncConfigSchema>;
 export type LiveTokensConfig = z.infer<typeof LiveTokensConfigSchema>;
 export type ActivityConfig = z.infer<typeof ActivityConfigSchema>;
 export type GloveConfig = z.infer<typeof GloveConfigSchema>;
+export type StyxConfig = z.infer<typeof StyxConfigSchema>;
 export type AnalysisConfigType = z.infer<typeof AnalysisConfigSchema>;
 export type TtsConfig = z.infer<typeof TtsConfigSchema>;
 export type AutoAllowRules = z.infer<typeof AutoAllowRulesSchema>;

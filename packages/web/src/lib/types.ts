@@ -358,6 +358,8 @@ export interface LaymanConfig {
     /** Network views of gloved sessions. Mirrors the server's `glove.network` block. */
     network: { enabled: boolean; controlEnabled: boolean; geoipDbPath: string; vpnDomains?: string[] };
   };
+  /** Matrix views and the styx-godot feed. Mirrors StyxConfigSchema. */
+  styx: { enabled: boolean; godotDir: string };
   /** Multi-host sync. Mirrors SyncConfigSchema on the server. */
   sync: SyncConfig;
   driftMonitoring: DriftMonitoringConfig;

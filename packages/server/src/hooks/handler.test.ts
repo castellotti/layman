@@ -61,6 +61,7 @@ const MOCK_CONFIG: LaymanConfig = {
   liveTokens: { enabled: true, showThinking: true },
   activity: { memoryPaths: [], memoryServers: [] },
   glove: { enabled: false, home: '~/.glove', showIpAddresses: false, network: { enabled: true, controlEnabled: true, geoipDbPath: '', vpnDomains: [] } },
+  styx: { enabled: false, godotDir: '' },
   sync: {
     role: 'standalone',
     hostId: '',

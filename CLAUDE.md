@@ -54,7 +54,8 @@ Layman is a pnpm monorepo with two packages:
 Per-harness installation, activation, capabilities, and the architecture/implementation detail are
 in **`docs/harnesses/<harness>.md`** (each has an "Architecture & implementation notes" section that
 holds the deep detail this file used to carry). The passive **glove** sandbox monitor — a read-only
-extension, not a harness — is documented in **`docs/extensions/glove.md`**. Keep harness- and
+extension, not a harness — is documented in **`docs/extensions/glove.md`**, and the **Styx** Matrix
+views (an extension too, drawing the destinations a session reached) in **`docs/extensions/styx.md`**. Keep harness- and
 glove-specific detail in those files; this file keeps only the shared pipeline and cross-cutting
 decisions, with pointers.
 
