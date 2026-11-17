@@ -126,6 +126,69 @@ The answer is a JSON array, highest `count` first, ties by `address` ascending, 
 
 styx-godot reads only `address` and `count`.
 
+## The Gibson feed
+
+Three more routes, for the Gibson views, with the shape of styx-os's `GET /v1/hosts`, `/v1/links` and
+`/v1/flows` (through its nginx, `/api/v1/…`). The Pi answers them from its packet database; Layman answers
+them from its own records, so a view reads either source the same way. `/api/styx/v1/matrix` is unchanged.
+
+```
+GET /api/styx/v1/hosts     one row per remote host: a tower
+GET /api/styx/v1/links     one row per (source, via, target): the traffic
+GET /api/styx/v1/flows     the log, newest first: a tower's menu
+```
+
+`session`, `glove` and `relative` mean what they mean for the matrix, and so do the errors: the selection is one
+piece of code for all four routes. `/flows` also takes `host` (one lower-case host, no port) and `limit` (1 to
+500, default 100; anything else is 400). Every answer is a JSON array of flat objects with snake_case names; a
+field Layman cannot know has a neutral value (`0`, `""`, `[]`, `null`), never a missing key.
+
+```json
+[
+  { "host": "api.github.com", "block": "github.com", "ports": [443], "sent": 5120, "received": 88211,
+    "count": 14, "open": 1, "blocked": 0, "untunnelled": false, "scope": "tunnelled",
+    "first_seen_ago": 840, "last_seen_ago": 3,
+    "clients": ["harness"], "tools": ["web_fetch"], "services": ["proxy"] }
+]
+```
+
+**Hosts** (highest `count` first, ties by `host`, at most 256). The ports of one host are one row.
+
+| Field | Gloved session | Standard session |
+|---|---|---|
+| `host` | `dest.host`, else its IP, lower-case | the host a tool call named |
+| `block` | the city block: an IPv4's /16 (`165.1.0.0/16`), an IPv6 literal itself, else the registrable domain (`wikipedia.org`, from the offline Public Suffix List) | the same |
+| `ports` | the distinct ports, at most 16 | its URL's port, else its scheme's; `[]` when unknown |
+| `sent`, `received` | bytes up and down | 0 |
+| `count` | connections | tool calls naming it |
+| `open` | connections open now | calls still running |
+| `blocked` | connections glove refused | 0 |
+| `untunnelled` | glove's `direct` and not a known VPN route | false |
+| `scope` | glove's (`tunnelled`, `local`, `direct`, `lan`, `cloud`) | `""` |
+| `first_seen_ago`, `last_seen_ago` | whole seconds from the first and the latest activity to now | from the calls' start times |
+| `clients`, `tools`, `services` | the distinct values, sorted, at most 8 each | `[]`, the tool names, `[]` |
+
+**Links** (highest `count` first, then `source`, `via`, `target`; at most 512): `source`, `source_kind`,
+`via`, `target`, and the same `sent`, `received`, `count`, `open`, `blocked`, `last_seen_ago` for that triple.
+Gloved: `source` is the glove client (`harness` when it has none), `source_kind` `client`, `via` the gate
+the connection left through. Standard: `source` and `source_kind` are `agent` and `via` is the tool.
+
+**The log**: `host`, `time` (epoch seconds), `ago`, `source`, `via`, `tool`, `port`, `proto`, `sent`,
+`received`, `state`, `blocked`, `rule`, `method`, `url`, `label`. A gloved row is one connection: `state` is
+glove's (`active`, `pooled`, `finished`, `guard`, `user_rule`, `default_block`, `broken`, …) and `blocked` is
+true for the three refusals. A standard row is one tool call: `active` while it runs, `broken` if it failed,
+else `finished`, with the call's own `label`.
+
+Links and the log are always computed from the connections Layman still holds in memory, also for the whole
+record, because glove's running totals do not say which client reached which host. They reach back only as
+far as that memory does; the hosts of a whole-record answer do not (they are the totals). A hop is not a
+destination here either.
+
+The answer is cheap enough to poll every two seconds, as the matrix is: gloved rows come from memory, and a
+standard session's from the in-memory events, reading its recording only for a window that reaches before
+memory begins (cached 30 s). Privacy is unchanged: no lookup of a host, no network call. A request's `url`
+and `method` appear in the log only when glove recorded them in full, exactly as its PII filter left them.
+
 ## What the data is
 
 - **A gloved session** (a Layman session whose name is a glove session id that Layman has network records

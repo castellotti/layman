@@ -9,10 +9,13 @@ import { TEST_ID, addGloveSession } from '../netobs/testing/glove-home.js';
 import type { TimelineEvent } from '../events/types.js';
 import { registerStyxRoutes, type StyxDeps } from './routes.js';
 import { MATRIX_MAX_ROWS, type MatrixRow } from './matrix.js';
+import type { HostRow, LinkRow, LogRow } from './gibson.js';
 
 const FIXTURE = join(dirname(fileURLToPath(import.meta.url)), '..', 'netobs', '__fixtures__');
 /** The fixture's clock: its last record is a little before this. */
 const NOW = Date.parse('2026-09-23T14:14:48.000Z');
+/** Just after the fixture's glove flows (the Gibson tests that read them move the clock here). */
+const LATE = Date.parse('2026-10-16T19:08:00.000Z');
 
 const toolCall = (id: string, sessionId: string, toolName: string, toolInput: Record<string, unknown>, at: number): TimelineEvent => ({
   id, type: 'tool_call_completed', timestamp: at, sessionId, agentType: 'claude-code', data: { toolName, toolInput },
@@ -23,15 +26,16 @@ let godotDir: string;
 let netObs: NetObs;
 let app: FastifyInstance;
 let enabled: boolean;
+let clock: number;
 let eventsCalls: number;
 let memory: { events: TimelineEvent[]; since: number };
 let recording: TimelineEvent[];
 let sessions: Record<string, string | undefined>; // id → session name
 
-function flowLine(id: string, host: string, scope: string, t: string): string {
+function flowLine(id: string, host: string, scope: string, t: string, port = 443): string {
   return JSON.stringify({
     v: 1, type: 'flow', phase: 'open', id, env: 'pi-search', session: 'pi-search', t, t_open: t, t_close: null, service: 'proxy',
-    tool: 'web_fetch', client: 'harness', proto: 'http-connect', dest: { host, port: 443, ip: null, resolution: 'literal' }, scope,
+    tool: 'web_fetch', client: 'harness', proto: 'http-connect', dest: { host, port, ip: null, resolution: 'literal' }, scope,
     route: null, bytes: { up: 1, down: 2 }, verdict: 'allow', rule: null, close_reason: null, request: null,
   }) + '\n';
 }
@@ -49,6 +53,7 @@ beforeEach(async () => {
   godotDir = join(home, 'godot');
   mkdirSync(godotDir);
   enabled = true;
+  clock = NOW;
   eventsCalls = 0;
   memory = { events: [], since: NOW + 1 };
   sessions = { 'sess-gloved': TEST_ID, 'sess-plain': undefined };
@@ -72,7 +77,7 @@ beforeEach(async () => {
     },
     memory: () => memory,
     liveStandardSessions: () => ['sess-plain'],
-    now: () => NOW,
+    now: () => clock,
   };
   app = Fastify();
   registerStyxRoutes(app, deps);
@@ -200,6 +205,121 @@ describe('what a poll costs', () => {
     memory = { events: [recording[1]], since: NOW - 40_000 };
     const r = await rows('?session=sess-plain&relative=1h');
     expect(r.find((x) => x.address === 'example.org:443')?.count).toBe(1);
+  });
+});
+
+describe('the Gibson feed', () => {
+  const feed = async <T>(name: string, qs = ''): Promise<T[]> => (await app.inject(`/api/styx/v1/${name}${qs}`)).json() as T[];
+  const ROUTES = ['hosts', 'links', 'flows'];
+  const netFlows = (): string => join(home, 'observe', TEST_ID, 'net', 'flows.ndjson');
+
+  it('is 404 while Styx is off, on every route', async () => {
+    enabled = false;
+    for (const r of ROUTES) expect((await app.inject(`/api/styx/v1/${r}`)).statusCode, r).toBe(404);
+  });
+
+  it('refuses what the Matrix feed refuses, on every route', async () => {
+    for (const r of ROUTES) {
+      for (const qs of [`?session=sess-plain&glove=${TEST_ID}`, '?relative=60', '?relative=1y', '?start_date=2026-01-01', '?client=10.0.0.2', '?session=a&session=b']) {
+        expect((await app.inject(`/api/styx/v1/${r}${qs}`)).statusCode, `${r}${qs}`).toBe(400);
+      }
+      expect((await app.inject(`/api/styx/v1/${r}?session=nope`)).statusCode, r).toBe(404);
+      expect((await app.inject(`/api/styx/v1/${r}?glove=nope`)).statusCode, r).toBe(404);
+    }
+  });
+
+  it('refuses a bad limit or host on /flows only', async () => {
+    for (const qs of ['?limit=0', '?limit=501', '?limit=x', '?limit=1.5', '?limit=', '?limit=1&limit=2', '?host=', '?host=a&host=b']) {
+      expect((await app.inject(`/api/styx/v1/flows${qs}`)).statusCode, qs).toBe(400);
+    }
+    expect((await app.inject('/api/styx/v1/flows?limit=500')).statusCode).toBe(200);
+    expect((await app.inject('/api/styx/v1/hosts?limit=0')).statusCode).toBe(200);
+  });
+
+  it("a gloved session's hosts hold the fixture's, with the ports of one host merged into one row", async () => {
+    clock = LATE;
+    appendFileSync(netFlows(), flowLine('f_wiki80', 'en.wikipedia.org', 'tunnelled', '2026-10-16T19:07:50.000Z', 80));
+    netObs.poll(LATE);
+    const hosts = await feed<HostRow>('hosts', `?glove=${TEST_ID}`);
+    const wiki = hosts.filter((h) => h.host === 'en.wikipedia.org');
+    expect(wiki).toHaveLength(1);
+    expect(wiki[0]).toMatchObject({ block: 'wikipedia.org', ports: [80, 443] });
+    expect(hosts.map((h) => h.host)).toEqual(expect.arrayContaining(['arxiv.org', 'ads.tracker.example', 'leak.example.net']));
+    expect(hosts.find((h) => h.host === 'leak.example.net')).toMatchObject({ untunnelled: true });
+    expect(hosts.find((h) => h.host === 'wiki.corp.example')).toMatchObject({ untunnelled: false });
+    const sorted = [...hosts].sort((a, b) => b.count - a.count || a.host.localeCompare(b.host));
+    expect(hosts.map((h) => h.host)).toEqual(sorted.map((h) => h.host));
+  });
+
+  it('answers the same by session= and by glove=, and for the whole record too, with no hop in it', async () => {
+    clock = LATE;
+    for (const r of ROUTES) {
+      for (const w of ['', '&relative=1d']) {
+        expect(await feed(r, `?session=sess-gloved${w}`), `${r}${w}`).toEqual(await feed(r, `?glove=${TEST_ID}${w}`));
+      }
+    }
+    const hops = netObs.store.destinations(TEST_ID).filter((d) => d.flags.hop && d.host).map((d) => d.host);
+    for (const qs of [`?glove=${TEST_ID}`, `?glove=${TEST_ID}&relative=1d`]) {
+      const names = [...(await feed<HostRow>('hosts', qs)).map((h) => h.host), ...(await feed<LinkRow>('links', qs)).map((l) => l.target)];
+      for (const h of hops) expect(names, `${qs} ${h}`).not.toContain(h);
+    }
+  });
+
+  it('links name who reached whom, and /flows?host= returns only that host and respects limit', async () => {
+    clock = LATE;
+    const links = await feed<LinkRow>('links', `?glove=${TEST_ID}`);
+    expect(links.find((l) => l.target === 'arxiv.org')).toMatchObject({ source_kind: 'client', count: 2 });
+    const all = await feed<LogRow>('flows', `?glove=${TEST_ID}`);
+    expect(new Set(all.map((r) => r.host)).size).toBeGreaterThan(3);
+    const arxiv = await feed<LogRow>('flows', `?glove=${TEST_ID}&host=ARXIV.org`);
+    expect(arxiv).toHaveLength(2);
+    expect(arxiv.every((r) => r.host === 'arxiv.org')).toBe(true);
+    expect(await feed('flows', `?glove=${TEST_ID}&host=arxiv.org&limit=1`)).toHaveLength(1);
+    expect(all.length).toBeLessThanOrEqual(100);
+    const times = all.map((r) => r.time);
+    expect(times).toEqual([...times].sort((a, b) => b - a));
+  });
+
+  it('a standard session is the agent, through each tool, to the hosts its calls named', async () => {
+    const hosts = await feed<HostRow>('hosts', '?session=sess-plain');
+    expect(hosts.map((h) => h.host).sort()).toEqual(['docs.example.com', 'example.org', 'old.example.com']);
+    expect(hosts.find((h) => h.host === 'docs.example.com')).toMatchObject({ ports: [443], tools: ['WebFetch'], sent: 0, scope: '' });
+    expect(await feed<LinkRow>('links', '?session=sess-plain&relative=1h')).toEqual(expect.arrayContaining([
+      expect.objectContaining({ source: 'agent', source_kind: 'agent', via: 'WebFetch', target: 'docs.example.com' }),
+    ]));
+    const log = await feed<LogRow>('flows', '?session=sess-plain&host=example.org');
+    expect(log).toHaveLength(1);
+    expect(log[0]).toMatchObject({ source: 'agent', state: 'finished', port: 443, proto: 'https' });
+  });
+
+  it('with no selector, merges every live gloved session and every live standard one, in a 15 minute window', async () => {
+    appendFileSync(netFlows(), flowLine('f_ex80', 'example.org', 'tunnelled', '2026-09-23T14:14:47.000Z', 80));
+    netObs.poll(NOW);
+    const hosts = await feed<HostRow>('hosts');
+    const names = hosts.map((h) => h.host);
+    expect(names).toEqual(expect.arrayContaining(['docs.example.com', 'leak.example.net']));
+    expect(names).not.toContain('old.example.com');
+    // example.org is in glove's flows (port 80) and in the standard session's curl (443): one tower.
+    expect(hosts.filter((h) => h.host === 'example.org')).toHaveLength(1);
+    expect(hosts.find((h) => h.host === 'example.org')!.ports).toEqual([80, 443]);
+    const links = await feed<LinkRow>('links');
+    expect(links.some((l) => l.source_kind === 'agent')).toBe(true);
+    expect(links.some((l) => l.source_kind === 'client')).toBe(true);
+  });
+
+  it('caps hosts and links', async () => {
+    recording = Array.from({ length: 600 }, (_, i) => toolCall(`c${i}`, 'sess-plain', 'WebFetch', { url: `https://h${i}.example.com/` }, NOW - 1000));
+    expect(await feed('hosts', '?session=sess-plain')).toHaveLength(256);
+    expect(await feed('links', '?session=sess-plain')).toHaveLength(512);
+  });
+
+  it('polling does not read the recording again: memory answers a recent window, the cache the rest', async () => {
+    memory = { events: recording.filter((e) => e.timestamp > NOW - 3_600_000), since: NOW - 7_200_000 };
+    for (let i = 0; i < 3; i++) for (const r of ROUTES) await feed(r, '?session=sess-plain&relative=1h');
+    expect(eventsCalls).toBe(0);
+    memory = { events: [], since: NOW + 1 };
+    for (let i = 0; i < 3; i++) for (const r of ROUTES) await feed(r, '?session=sess-plain&relative=1h');
+    expect(eventsCalls).toBe(1);
   });
 });
 

@@ -431,7 +431,8 @@ adds no table and syncs nothing: the feed is computed on request from Layman's o
 
 ```
 packages/server/src/styx/matrix.ts      pure: rows from flows / glove totals / tool calls, merge, sort, cap
-packages/server/src/styx/routes.ts      GET /api/styx/v1/matrix (the styx-os /v1/matrix shape, plus blocked, untunnelled)
+packages/server/src/styx/routes.ts      GET /api/styx/v1/matrix (the styx-os /v1/matrix shape, plus blocked, untunnelled) and the Gibson routes below
+packages/server/src/styx/gibson.ts      pure: hosts / links / log rows (the styx-os /v1/hosts, /links, /flows shapes) from flows, glove totals, tool calls
 packages/web/src/lib/matrix-feed.ts     the row type (mirror), the windows, the feed URL
 packages/web/src/lib/matrix-rain.ts     pure, shared by every renderer: what falls, where, how fast, what is new
 packages/web/src/lib/matrix-gpu.ts      pure, 3D only: glyph order, the two data textures' packing, the layers' transform, picking
@@ -464,6 +465,15 @@ Rules of the feed that must not be changed casually:
   (in `netobs/index.test.ts`) and the web one `components/matrix/`, `lib/matrix-*` and `hooks/useMatrix*`.
 - A host reached now must fall within about two seconds: the 2 s poll, plus a refetch 150 ms after an event for
   the session reaches the page (`useLiveEventCount`). The hook never runs two requests at once.
+
+The Gibson feed (`GET /api/styx/v1/hosts`, `/links`, `/flows`, `styx/gibson.ts`, user doc `docs/extensions/styx.md` →
+"The Gibson feed"; the row types are mirrored by hand in `packages/web/src/lib/gibson-feed.ts`) follows the same rules,
+and they are not to be redone per route: **all four routes choose their data in one `select()`** in `routes.ts`
+(validation, 400/404, the 15-minute default, which sources), so a rule changed for one is changed for all; a hop and a
+null-host flow are skipped; `REFUSED` is the matrix's; a poll answers from memory (`NetStore`, `standardCalls`), and
+**links and the log always come from `flowsBetween` (also for the whole record: glove's totals do not say which client
+reached a host)**, so they reach back only as far as memory does. Ages are seconds to the server's now, never
+timestamps, because a viewer's clock and a Pi's rarely agree.
 
 The renderers. `matrix-rain.ts` is pure and shared (the 3D renderer uses it too): a stream's head is at row
 `(now - startAt) x speed`, so a refresh of the data never restarts a stream and a redraw puts it back. A new

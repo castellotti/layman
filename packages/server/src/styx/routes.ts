@@ -8,12 +8,16 @@
  * `CACHE_MS`, and what is new always comes from memory, so a new host is never held back by the cache.
  */
 import { createReadStream, statSync } from 'fs';
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { GODOT_CSP, godotBuildStatus, insideFolder, resolveGodotFile } from './godot.js';
 import { callsFrom } from '../netobs/correlate.js';
-import type { TraceCall } from '../netobs/types.js';
+import type { FlowView, TraceCall } from '../netobs/types.js';
 import type { NetStore } from '../netobs/store.js';
 import type { TimelineEvent } from '../events/types.js';
+import {
+  hostsFromCalls, hostsFromDestinations, hostsFromFlows, linksFromCalls, linksFromFlows, logFromCalls, logFromFlows,
+  mergeHosts, mergeLinks, mergeLog, parseLimit,
+} from './gibson.js';
 import { mergeRows, parseRelative, rowsFromCalls, rowsFromDestinations, rowsFromFlows, type MatrixRow } from './matrix.js';
 
 export interface StyxDeps {
@@ -48,6 +52,20 @@ const CACHE_MS = 30_000;
 /** A window must start this long after `since` for memory alone to answer: a call is recorded slightly before its start time. */
 const MEMORY_MARGIN_MS = 5000;
 
+type FeedQuery = Record<string, string | string[] | undefined>;
+type FeedRequest = FastifyRequest<{ Querystring: FeedQuery }>;
+
+/** Where one request's rows come from. */
+type Source = { kind: 'glove'; token: string } | { kind: 'standard'; sessionId: string };
+interface Selection { sources: Source[]; from: number | null; t: number }
+
+/** One query value: undefined when absent, null when repeated or empty. */
+const one = (q: FeedQuery, name: string): string | undefined | null => {
+  const v = q[name];
+  if (v === undefined) return undefined;
+  return typeof v === 'string' && v !== '' ? v : null;
+};
+
 export function registerStyxRoutes(fastify: FastifyInstance, deps: StyxDeps): void {
   const now = deps.now ?? Date.now;
   const cache = new Map<string, { at: number; calls: TraceCall[] }>();
@@ -71,15 +89,67 @@ export function registerStyxRoutes(fastify: FastifyInstance, deps: StyxDeps): vo
       ? rowsFromDestinations(deps.store.destinations(token))
       : rowsFromFlows(deps.store.flowsBetween(token, from, t) ?? []);
 
-  const standard = (sessionId: string, from: number | null, t: number): MatrixRow[] => {
+  /**
+   * A standard session's tool calls for a window: memory alone when it reaches back far enough, else the
+   * cached recording merged with memory. `from` is where the calls are cut (0 for the whole record).
+   */
+  const standardCalls = (sessionId: string, from: number | null, t: number): { calls: TraceCall[]; from: number } => {
     const mem = deps.memory(sessionId);
     const recent = callsFrom(mem.events);
     // A window memory reaches back to is answered from memory alone: never a recording, per poll.
-    if (from !== null && from >= mem.since + MEMORY_MARGIN_MS) return rowsFromCalls(recent, from, t);
+    if (from !== null && from >= mem.since + MEMORY_MARGIN_MS) return { calls: recent, from };
     // Otherwise the recording (cached), and everything in memory, which is newer than the cache and wins.
     const seen = new Set(recent.map((c) => c.eventId));
-    const calls = [...recordedCalls(sessionId, t).filter((c) => !seen.has(c.eventId)), ...recent];
-    return rowsFromCalls(calls, from ?? 0, t);
+    return { calls: [...recordedCalls(sessionId, t).filter((c) => !seen.has(c.eventId)), ...recent], from: from ?? 0 };
+  };
+
+  const standard = (sessionId: string, from: number | null, t: number): MatrixRow[] => {
+    const c = standardCalls(sessionId, from, t);
+    return rowsFromCalls(c.calls, c.from, t);
+  };
+
+  /**
+   * Validates a feed request's query, as `/v1/matrix` always has, and says where its rows come from.
+   * Sends the error and returns null when the query is bad. Other parameters (`host`, `limit`) are left alone.
+   */
+  const select = (req: FeedRequest, reply: FastifyReply): Selection | null => {
+    const q = req.query;
+    for (const name of UNSUPPORTED) {
+      if (q[name] !== undefined) { reply.code(400).send({ error: `${name} is not supported by Layman's Styx feed` }); return null; }
+    }
+    const session = one(q, 'session');
+    const glove = one(q, 'glove');
+    const relative = one(q, 'relative');
+    if (session === null || glove === null || relative === null) { reply.code(400).send({ error: 'Each parameter takes one non-empty value' }); return null; }
+    if (session !== undefined && glove !== undefined) { reply.code(400).send({ error: 'Give session or glove, not both' }); return null; }
+    const windowMs = relative === undefined ? null : parseRelative(relative);
+    if (relative !== undefined && windowMs === null) {
+      reply.code(400).send({ error: 'relative is an integer and a unit: 60s, 15m, 1h, 2d' });
+      return null;
+    }
+
+    const t = now();
+    const selected = session !== undefined || glove !== undefined;
+    const span = windowMs ?? (selected ? null : NO_SELECTOR_WINDOW_MS);
+    const from = span === null ? null : t - span;
+
+    if (glove !== undefined) {
+      if (!deps.store.has(glove)) { reply.code(404).send({ error: 'Unknown glove session' }); return null; }
+      return { sources: [{ kind: 'glove', token: glove }], from, t };
+    }
+    if (session !== undefined) {
+      if (!deps.sessionExists(session)) { reply.code(404).send({ error: 'Unknown session' }); return null; }
+      const token = deps.gloveTokenOf(session);
+      return { sources: [token ? { kind: 'glove', token } : { kind: 'standard', sessionId: session }], from, t };
+    }
+    return {
+      sources: [
+        ...deps.store.tokens().filter((k) => deps.store.live(k)).map((k): Source => ({ kind: 'glove', token: k })),
+        ...deps.liveStandardSessions().map((id): Source => ({ kind: 'standard', sessionId: id })),
+      ],
+      from,
+      t,
+    };
   };
 
   // The build's files. A real 404 for anything missing: the SPA fallback must never answer for this prefix.
@@ -112,44 +182,59 @@ export function registerStyxRoutes(fastify: FastifyInstance, deps: StyxDeps): vo
     return godotBuildStatus(deps.godotDir());
   });
 
-  fastify.get<{ Querystring: Record<string, string | string[] | undefined> }>('/api/styx/v1/matrix', async (req, reply) => {
+  fastify.get<{ Querystring: FeedQuery }>('/api/styx/v1/matrix', async (req, reply) => {
     if (!deps.enabled()) return reply.code(404).send({ error: 'Styx is not enabled' });
-    const q = req.query;
-    for (const name of UNSUPPORTED) {
-      if (q[name] !== undefined) return reply.code(400).send({ error: `${name} is not supported by Layman's Styx feed` });
-    }
-    const one = (name: string): string | undefined | null => {
-      const v = q[name];
-      if (v === undefined) return undefined;
-      return typeof v === 'string' && v !== '' ? v : null; // null: repeated or empty
-    };
-    const session = one('session');
-    const glove = one('glove');
-    const relative = one('relative');
-    if (session === null || glove === null || relative === null) return reply.code(400).send({ error: 'Each parameter takes one non-empty value' });
-    if (session !== undefined && glove !== undefined) return reply.code(400).send({ error: 'Give session or glove, not both' });
-    const windowMs = relative === undefined ? null : parseRelative(relative);
-    if (relative !== undefined && windowMs === null) {
-      return reply.code(400).send({ error: 'relative is an integer and a unit: 60s, 15m, 1h, 2d' });
-    }
+    const sel = select(req, reply);
+    if (!sel) return reply;
+    return mergeRows(sel.sources.map((s) => (s.kind === 'glove' ? gloved(s.token, sel.from, sel.t) : standard(s.sessionId, sel.from, sel.t))));
+  });
 
-    const t = now();
-    const selected = session !== undefined || glove !== undefined;
-    const span = windowMs ?? (selected ? null : NO_SELECTOR_WINDOW_MS);
-    const from = span === null ? null : t - span;
+  /** Glove's connections for the window (the whole record when `from` is null): the one source of links and the log. */
+  const flowsOf = (token: string, from: number | null, t: number): FlowView[] => deps.store.flowsBetween(token, from ?? 0, t) ?? [];
 
-    if (glove !== undefined) {
-      if (!deps.store.has(glove)) return reply.code(404).send({ error: 'Unknown glove session' });
-      return mergeRows([gloved(glove, from, t)]);
-    }
-    if (session !== undefined) {
-      if (!deps.sessionExists(session)) return reply.code(404).send({ error: 'Unknown session' });
-      const token = deps.gloveTokenOf(session);
-      return mergeRows([token ? gloved(token, from, t) : standard(session, from, t)]);
-    }
-    return mergeRows([
-      ...deps.store.tokens().filter((k) => deps.store.live(k)).map((k) => gloved(k, from, t)),
-      ...deps.liveStandardSessions().map((id) => standard(id, from, t)),
-    ]);
+  fastify.get<{ Querystring: FeedQuery }>('/api/styx/v1/hosts', async (req, reply) => {
+    if (!deps.enabled()) return reply.code(404).send({ error: 'Styx is not enabled' });
+    const sel = select(req, reply);
+    if (!sel) return reply;
+    return mergeHosts(sel.sources.map((s) => {
+      if (s.kind === 'standard') {
+        const c = standardCalls(s.sessionId, sel.from, sel.t);
+        return hostsFromCalls(c.calls, c.from, sel.t, sel.t);
+      }
+      // Whole record: glove's running totals, which outlive the connections memory holds.
+      return sel.from === null ? hostsFromDestinations(deps.store.destinations(s.token), sel.t) : hostsFromFlows(flowsOf(s.token, sel.from, sel.t), sel.t);
+    }));
+  });
+
+  fastify.get<{ Querystring: FeedQuery }>('/api/styx/v1/links', async (req, reply) => {
+    if (!deps.enabled()) return reply.code(404).send({ error: 'Styx is not enabled' });
+    const sel = select(req, reply);
+    if (!sel) return reply;
+    return mergeLinks(sel.sources.map((s) => {
+      if (s.kind === 'standard') {
+        const c = standardCalls(s.sessionId, sel.from, sel.t);
+        return linksFromCalls(c.calls, c.from, sel.t, sel.t);
+      }
+      return linksFromFlows(flowsOf(s.token, sel.from, sel.t), sel.t);
+    }));
+  });
+
+  fastify.get<{ Querystring: FeedQuery }>('/api/styx/v1/flows', async (req, reply) => {
+    if (!deps.enabled()) return reply.code(404).send({ error: 'Styx is not enabled' });
+    const host = one(req.query, 'host');
+    if (host === null) return reply.code(400).send({ error: 'Each parameter takes one non-empty value' });
+    const rawLimit = req.query.limit;
+    const limit = parseLimit(typeof rawLimit === 'string' || rawLimit === undefined ? rawLimit : '');
+    if (limit === null) return reply.code(400).send({ error: 'limit is an integer from 1 to 500' });
+    const sel = select(req, reply);
+    if (!sel) return reply;
+    const want = host?.toLowerCase();
+    return mergeLog(sel.sources.map((s) => {
+      if (s.kind === 'standard') {
+        const c = standardCalls(s.sessionId, sel.from, sel.t);
+        return logFromCalls(c.calls, c.from, sel.t, sel.t, want);
+      }
+      return logFromFlows(flowsOf(s.token, sel.from, sel.t), sel.t, want);
+    }), limit);
   });
 }

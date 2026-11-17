@@ -53,7 +53,11 @@ function finish(rows: Iterable<MatrixRow>): MatrixRow[] {
 }
 
 /** Glove's `direct`, unless a known VPN route: the web's `isUntunnelled` (`lib/net-vpn.ts`). */
-const untunnelled = (scope: string, flags: { vpn?: unknown }): boolean => scope === 'direct' && !flags.vpn;
+export const untunnelled = (scope: string, flags: { vpn?: unknown }): boolean => scope === 'direct' && !flags.vpn;
+
+/** The port a tool call's target used: its URL's, or its scheme's (null for ssh, which has neither). */
+export const targetPort = (t: TraceCall['targets'][number]): number | null =>
+  t.port ?? (t.scheme === 'https' ? 443 : t.scheme === 'http' ? 80 : null);
 
 /**
  * Gloved, with a window: one row per destination among these flows. A hop (the sandbox's
@@ -105,7 +109,7 @@ export function rowsFromCalls(calls: readonly TraceCall[], from: number, to: num
     // `https://x/` and `https://x:443/` are one address: a call counts once for each address.
     const seen = new Set<string>();
     for (const t of c.targets) {
-      const address = withPort(t.host, t.port ?? (t.scheme === 'https' ? 443 : t.scheme === 'http' ? 80 : null));
+      const address = withPort(t.host, targetPort(t));
       if (seen.has(address)) continue;
       seen.add(address);
       add(rows, address, { sent: 0, received: 0, count: 1, blocked: 0, untunnelled: false });
