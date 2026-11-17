@@ -48,6 +48,13 @@ export function toneOf(row: MatrixRow): StreamTone {
   return row.blocked > 0 ? 'blocked' : row.untunnelled ? 'untunnelled' : 'normal';
 }
 
+/** A stable 0..1 from an address: where a still frame puts its stream. */
+export function hash01(s: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 16777619);
+  return ((h >>> 0) % 10000) / 10000;
+}
+
 /** Row of the head at `now` (fractional). */
 export function headRow(s: Stream, now: number): number {
   return ((now - s.startAt) / 1000) * s.speed;

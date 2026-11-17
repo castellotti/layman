@@ -9,12 +9,12 @@ import { useMatrixFeed } from '../../hooks/useMatrixFeed.js';
 import { formatBytes } from '../../lib/net-format.js';
 import { rad, sp } from '../../lib/density.js';
 import { MatrixCanvas2D } from './MatrixCanvas2D.js';
+import { MatrixCanvas3D } from './MatrixCanvas3D.js';
 
 export const MATRIX_WINDOW_KEY = 'layman.matrix.window';
 
 const NOT_BUILT: Partial<Record<ViewMode, string>> = {
   matrix: 'The Matrix tab, the real styx-godot build in a frame, is not built yet.',
-  matrix3d: 'The Matrix 3D tab is not built yet.',
 };
 
 function Centered({ children }: { children: React.ReactNode }) {
@@ -40,11 +40,11 @@ export default function MatrixView({ mode }: { mode: ViewMode }) {
   }
   const notBuilt = NOT_BUILT[mode];
   if (notBuilt) return <Centered>{notBuilt}</Centered>;
-  return <Matrix2DPane />;
+  return <MatrixPane mode={mode} />;
 }
 
-/** The bar and the 2D canvas. Its own component so the feed is read only while this tab is open. */
-function Matrix2DPane() {
+/** The bar and the canvas of 2D or 3D. Its own component so the feed is read only while this tab is open. */
+function MatrixPane({ mode }: { mode: ViewMode }) {
   const activeSessionId = useSessionStore((s) => s.activeSessionId);
   const sessions = useSessionStore((s) => s.sessions);
   const sessionId = pickSession(activeSessionId, sessions);
@@ -96,7 +96,14 @@ function Matrix2DPane() {
         // Mounted even with nothing to show: its streams and what it knows live in it, and an empty answer
         // or a failed poll must not make every host start again, or the next new one look old.
         <div style={{ position: 'relative', flex: 1, minHeight: 0, display: 'flex' }}>
-          <MatrixCanvas2D rows={rows} ready resetKey={`${sessionId ?? ''}|${window}`} gloveToken={gloveToken} onOpenNetwork={openNetwork} />
+          {mode === 'matrix3d' ? (
+            <MatrixCanvas3D
+              rows={rows} ready resetKey={`${sessionId ?? ''}|${window}`} gloveToken={gloveToken} onOpenNetwork={openNetwork}
+              onUse2D={() => useSessionStore.getState().setViewMode('matrix2d')}
+            />
+          ) : (
+            <MatrixCanvas2D rows={rows} ready resetKey={`${sessionId ?? ''}|${window}`} gloveToken={gloveToken} onOpenNetwork={openNetwork} />
+          )}
           {rows.length === 0 && (
             <div style={{ position: 'absolute', inset: 0, display: 'flex', pointerEvents: 'none' }}>
               <Centered>

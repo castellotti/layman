@@ -1,11 +1,10 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type { MatrixRow } from '../../lib/matrix-feed.js';
-import { headRow, planStreams, type Stream } from '../../lib/matrix-rain.js';
+import { hash01, headRow, planStreams, type Stream } from '../../lib/matrix-rain.js';
 import { motionIsFull, readToken } from '../../lib/theme-runtime.js';
 import { useThemeVersion } from '../../hooks/useThemeVersion.js';
 import { useElementSize } from '../../hooks/useElementSize.js';
-import { formatBytes } from '../../lib/net-format.js';
-import { rad, sp } from '../../lib/density.js';
+import { StreamCard, TopList, type Hover } from './StreamCard.js';
 
 /** A cell, in CSS px at the Compact design; the canvas is not scaled by density. */
 const CELL_W = 14;
@@ -15,7 +14,6 @@ const FONT_PX = 15;
 const TICK_MS = 50;
 const FADE_ALPHA = 0.1;
 const FILLER_GLYPHS = '0123456789ABCDEFZ:.=*+-<>|';
-const TOP_LIST = 20;
 /** Blank rows between one fall of an address and its repeat in the same stream. */
 const REPEAT_GAP = 4;
 
@@ -28,16 +26,7 @@ function readColours(): Colours {
   };
 }
 
-/** A stable 0..1 from an address, for the still frame. */
-function hash01(s: string): number {
-  let h = 2166136261;
-  for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 16777619);
-  return ((h >>> 0) % 10000) / 10000;
-}
-
 interface Filler { head: number; speed: number; startAt: number; last: number }
-
-interface Hover { address: string; x: number; y: number; pinned: boolean }
 
 /**
  * The Matrix 2D renderer: monospace columns of falling text on one canvas. A fixed 50 ms step fades the
@@ -231,7 +220,6 @@ export function MatrixCanvas2D({ rows, ready, resetKey, gloveToken, onOpenNetwor
   };
 
   const card = hover ? byAddress.get(hover.address) : undefined;
-  const top = rows.slice(0, TOP_LIST);
 
   return (
     <div
@@ -247,35 +235,8 @@ export function MatrixCanvas2D({ rows, ready, resetKey, gloveToken, onOpenNetwor
         aria-label={`${rows.length} destinations falling as text`}
         style={{ display: 'block', width: cols * CELL_W, height: rowCount * CELL_H }}
       />
-      <ul style={{ position: 'absolute', width: 1, height: 1, overflow: 'hidden', clip: 'rect(0 0 0 0)', whiteSpace: 'nowrap' }}>
-        {top.map((r) => <li key={r.address}>{r.address}, reached {r.count} {r.count === 1 ? 'time' : 'times'}</li>)}
-      </ul>
-      {hover && card && (
-        <div
-          data-print-hide
-          style={{
-            position: 'absolute', left: Math.min(hover.x + 14, Math.max(0, box.width - 260)), top: Math.min(hover.y + 14, Math.max(0, box.height - 130)),
-            maxWidth: 250, padding: sp('6px 10px'), borderRadius: rad(6), background: 'var(--bg-raised)', color: 'var(--text-body)',
-            border: 'var(--stroke) solid var(--border-strong)', fontFamily: 'var(--font-mono)', fontSize: 11, lineHeight: 1.5,
-            pointerEvents: hover.pinned ? 'auto' : 'none',
-          }}
-        >
-          <div style={{ color: 'var(--text)', wordBreak: 'break-all' }}>{card.address}</div>
-          <div>reached {card.count} {card.count === 1 ? 'time' : 'times'}</div>
-          <div>sent {formatBytes(card.sent)} · received {formatBytes(card.received)}</div>
-          {card.blocked > 0 && <div style={{ color: 'var(--error)' }}>refused by glove ({card.blocked})</div>}
-          {card.untunnelled && <div style={{ color: 'var(--warn)' }}>not through the tunnel</div>}
-          {gloveToken && hover.pinned && (
-            <button
-              type="button"
-              onClick={(e) => { e.stopPropagation(); onOpenNetwork(gloveToken, card.address); }}
-              style={{ marginTop: sp(4), padding: sp('2px 8px'), borderRadius: rad(4), background: 'transparent', color: 'var(--accent)', border: 'var(--stroke) solid var(--border-strong)', cursor: 'pointer', fontSize: 11 }}
-            >
-              Open in Network
-            </button>
-          )}
-        </div>
-      )}
+      <TopList rows={rows} />
+      {hover && card && <StreamCard hover={hover} row={card} box={box} gloveToken={gloveToken} onOpenNetwork={onOpenNetwork} />}
     </div>
   );
 }

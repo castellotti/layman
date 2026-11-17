@@ -1,11 +1,17 @@
 import { describe, expect, it } from 'vitest';
-import { contrast, deltaE, longHex, luminance, oklab, parseHex } from './color.js';
+import { contrast, deltaE, longHex, luminance, oklab, parseHex, rgbOf } from './color.js';
 
 describe('color', () => {
   it('parses #rgb and #rrggbb and refuses anything else', () => {
     expect(parseHex('#fff')).toEqual([1, 1, 1]);
     expect(parseHex('#FF0000')).toEqual([1, 0, 0]);
     for (const bad of ['fff', '#ffff', 'red', 'rgb(0,0,0)', '#gggggg']) expect(() => parseHex(bad)).toThrow();
+  });
+
+  it('rgbOf reads a token as floats and falls back on anything else', () => {
+    expect(rgbOf(' #0f0 ')).toEqual([0, 1, 0]);
+    expect(rgbOf('', [1, 0, 0])).toEqual([1, 0, 0]);
+    expect(rgbOf('rgb(1,2,3)')).toEqual([0, 0, 0]);
   });
 
   it('longHex writes #rrggbb in lower case', () => {
