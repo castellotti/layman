@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import Fastify, { type FastifyInstance } from 'fastify';
-import { appendFileSync, copyFileSync, mkdtempSync, rmSync } from 'fs';
+import { appendFileSync, copyFileSync, mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
@@ -19,6 +19,7 @@ const toolCall = (id: string, sessionId: string, toolName: string, toolInput: Re
 });
 
 let home: string;
+let godotDir: string;
 let netObs: NetObs;
 let app: FastifyInstance;
 let enabled: boolean;
@@ -45,6 +46,8 @@ beforeEach(async () => {
   netObs = new NetObs({ getGloveHome: () => home, getVpnDomains: () => ['corp.example'] });
   netObs.poll(NOW);
 
+  godotDir = join(home, 'godot');
+  mkdirSync(godotDir);
   enabled = true;
   eventsCalls = 0;
   memory = { events: [], since: NOW + 1 };
@@ -56,6 +59,7 @@ beforeEach(async () => {
   ];
   const deps: StyxDeps = {
     enabled: () => enabled,
+    godotDir: () => godotDir,
     store: netObs.store,
     gloveTokenOf: (id) => {
       const name = sessions[id];
@@ -196,5 +200,51 @@ describe('what a poll costs', () => {
     memory = { events: [recording[1]], since: NOW - 40_000 };
     const r = await rows('?session=sess-plain&relative=1h');
     expect(r.find((x) => x.address === 'example.org:443')?.count).toBe(1);
+  });
+});
+
+describe('the Godot build', () => {
+  const put = (name: string, body: string) => {
+    writeFileSync(join(godotDir, name), body);
+    utimesSync(join(godotDir, name), new Date('2026-01-01T00:00:00Z'), new Date('2026-01-01T00:00:00Z'));
+  };
+
+  it('is 404 while Styx is off', async () => {
+    put('index.html', '<html></html>');
+    enabled = false;
+    expect((await app.inject('/styx/godot/index.html')).statusCode).toBe(404);
+    expect((await app.inject('/api/styx/godot/status')).statusCode).toBe(404);
+  });
+
+  it('serves a file with its type, the CSP and nosniff', async () => {
+    put('index.html', '<html></html>');
+    put('index.wasm', 'x');
+    const html = await app.inject('/styx/godot/');
+    expect(html.statusCode).toBe(200);
+    expect(html.headers['content-type']).toContain('text/html');
+    expect(String(html.headers['content-security-policy'])).toContain("connect-src 'self'");
+    expect(html.headers['x-content-type-options']).toBe('nosniff');
+    expect(html.headers['cache-control']).toBe('no-cache');
+    expect((await app.inject('/styx/godot/index.wasm?v=1')).headers['content-type']).toBe('application/wasm');
+  });
+
+  it('answers 404 JSON, never the app, for a missing file, and for traversal', async () => {
+    const missing = await app.inject('/styx/godot/index.wasm');
+    expect(missing.statusCode).toBe(404);
+    expect(missing.headers['content-type']).toContain('application/json');
+    expect((await app.inject('/styx/godot/..%2fsecret.json')).statusCode).toBe(404);
+  });
+
+  it('answers 304 to If-Modified-Since for an unchanged file', async () => {
+    put('index.pck', 'x');
+    const first = await app.inject('/styx/godot/index.pck');
+    const again = await app.inject({ url: '/styx/godot/index.pck', headers: { 'if-modified-since': String(first.headers['last-modified']) } });
+    expect(again.statusCode).toBe(304);
+  });
+
+  it('reports the build status', async () => {
+    const empty = (await app.inject('/api/styx/godot/status')).json();
+    expect(empty.present).toBe(false);
+    expect(empty.dir).toBe(godotDir);
   });
 });

@@ -1,4 +1,4 @@
-.PHONY: build dev test typecheck docker-build docker-run docker-stop docker-logs clean start stop update e2e-network
+.PHONY: build dev test typecheck docker-build docker-run docker-stop docker-logs clean start stop update e2e-network styx-godot-build
 
 # ── Container engine ──────────────────────────────────────────────────────────
 # Layman runs from a container image; either Docker or Podman drives it. Both
@@ -43,6 +43,24 @@ typecheck:
 # home (never the live :8880 or ~/.glove). See e2e/network/README.md.
 e2e-network:
 	CONTAINER_ENGINE=$(CONTAINER_ENGINE) scripts/netobs-e2e.sh all
+
+# ── Styx: the Matrix (Godot) tab ──────────────────────────────────────────────
+# The tab runs a web export of styx-godot that you make; Layman never ships it. This exports its
+# "Web (Layman)" preset into Layman's data folder (the default build folder, which a containerized
+# Layman can see). Godot must have imported the project once and have the export templates for its
+# version: styx-godot's README describes both. Layman's data dir resolves as the server does.
+STYX_GODOT ?= ../../jigsaw/styx-godot
+GODOT ?= $(or $(wildcard $(HOME)/Applications/Godot_v4.3.app/Contents/MacOS/Godot),$(shell command -v godot 2>/dev/null))
+LAYMAN_DATA ?= $(or $(LAYMAN_DATA_DIR),$(if $(XDG_DATA_HOME),$(XDG_DATA_HOME)/layman,$(HOME)/.local/share/layman))
+STYX_GODOT_OUT ?= $(LAYMAN_DATA)/styx/godot
+
+styx-godot-build: ## Export styx-godot's "Web (Layman)" preset into Layman's data folder
+	@test -x "$(GODOT)" || { echo "Godot not found at $(GODOT); set GODOT=…"; exit 1; }
+	@test -f "$(STYX_GODOT)/Godot_Project/export_presets.cfg" || { echo "styx-godot not found at $(STYX_GODOT); set STYX_GODOT=…"; exit 1; }
+	@grep -q 'name="Web (Layman)"' "$(STYX_GODOT)/Godot_Project/export_presets.cfg" || { echo "styx-godot has no 'Web (Layman)' preset: update it"; exit 1; }
+	mkdir -p "$(STYX_GODOT_OUT)"
+	"$(GODOT)" --headless --path "$(STYX_GODOT)/Godot_Project" --export-release "Web (Layman)" "$(abspath $(STYX_GODOT_OUT))/index.html"
+	@test -f "$(STYX_GODOT_OUT)/index.wasm" -a -f "$(STYX_GODOT_OUT)/index.pck" || { echo "The export produced no index.wasm/index.pck: check the export templates for this Godot version"; exit 1; }
 
 clean:
 	rm -rf packages/server/dist web-dist node_modules packages/*/node_modules

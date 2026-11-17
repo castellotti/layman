@@ -10,12 +10,9 @@ import { formatBytes } from '../../lib/net-format.js';
 import { rad, sp } from '../../lib/density.js';
 import { MatrixCanvas2D } from './MatrixCanvas2D.js';
 import { MatrixCanvas3D } from './MatrixCanvas3D.js';
+import { MatrixGodot } from './MatrixGodot.js';
 
 export const MATRIX_WINDOW_KEY = 'layman.matrix.window';
-
-const NOT_BUILT: Partial<Record<ViewMode, string>> = {
-  matrix: 'The Matrix tab, the real styx-godot build in a frame, is not built yet.',
-};
 
 function Centered({ children }: { children: React.ReactNode }) {
   return (
@@ -38,8 +35,6 @@ export default function MatrixView({ mode }: { mode: ViewMode }) {
   if (!enabled) {
     return <Centered>Styx is turned off. Turn it on in Settings → Extensions → Styx → Matrix views.</Centered>;
   }
-  const notBuilt = NOT_BUILT[mode];
-  if (notBuilt) return <Centered>{notBuilt}</Centered>;
   return <MatrixPane mode={mode} />;
 }
 
@@ -90,7 +85,10 @@ function MatrixPane({ mode }: { mode: ViewMode }) {
           {rows.length} {rows.length === 1 ? 'destination' : 'destinations'}{down > 0 ? ` · ${formatBytes(down)} down` : ''}
         </span>
       </div>
-      {loading ? (
+      {mode === 'matrix' ? (
+        // The frame reads the feed itself; the bar's count above is this page's own read.
+        <MatrixGodot sessionId={sessionId} window={window} />
+      ) : loading ? (
         <Centered>Reading the feed…</Centered>
       ) : (
         // Mounted even with nothing to show: its streams and what it knows live in it, and an empty answer

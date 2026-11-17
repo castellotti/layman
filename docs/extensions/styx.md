@@ -12,13 +12,13 @@ optional, off by default, and independent of glove: with it off there are no tab
 ## Turning it on
 
 **Settings → Extensions → Styx → Matrix views.** The setting is `styx.enabled` in
-`~/.local/share/layman/layman.json`. `styx.godotDir` is for the Matrix (Godot) tab, which is not built yet.
+`~/.local/share/layman/layman.json`. `styx.godotDir` is the folder holding the Matrix (Godot) tab's build (below); leave it empty for the default.
 
 ## The tabs
 
 | Tab | URL | What it is | Status |
 |---|---|---|---|
-| **Matrix** | `?view=matrix` | The real styx-godot web export, running its own shaders, in an iframe | coming |
+| **Matrix** | `?view=matrix` | The real styx-godot web export, running its own shaders, in an iframe | available (needs a local build) |
 | **Matrix 2D** | `?view=matrix2d` | Layman's own Canvas 2D rendering. No Godot | available |
 | **Matrix 3D** | `?view=matrix3d` | Layman's own WebGL2 rendering. No Godot | available |
 
@@ -47,6 +47,48 @@ through the tunnel amber, a host reached for the first time in the accent colour
 faint filler rain behind them. It follows the window picker, the session, the theme (a light theme draws
 dark glyphs on the light ground) and Settings → Motion exactly as Matrix 2D does, and hover and click give
 the same card. A browser without WebGL2 shows a message and a button to Matrix 2D.
+
+**Matrix (Godot).** The frame shows styx-godot's own scene, shaders included, for the session and window
+chosen in the bar. It reads the same feed, asking every two seconds for hosts it is not showing yet, so a
+new one falls at once without the rest restarting. Changing the session or window reloads the engine (after
+half a second, so stepping through sessions does not restart it for each); leaving the tab removes the
+frame, which stops it. Instead of the frame the tab says why it cannot run: no build found (with the
+folder it looked in and what is missing), Motion at Reduced or Off (**Run anyway** starts it), or a page
+that is not a secure context.
+
+### Building the Godot tab
+
+Layman does not ship styx-godot; you make the web export and Layman serves the folder.
+
+```bash
+make styx-godot-build
+```
+
+This exports styx-godot's **Web (Layman)** preset into Layman's data folder
+(`~/.local/share/layman/styx/godot`, or under `$LAYMAN_DATA_DIR` / `$XDG_DATA_HOME`). Variables:
+`STYX_GODOT` (the styx-godot checkout, default `../../jigsaw/styx-godot`), `GODOT` (the Godot 4.3 binary,
+default `~/Applications/Godot_v4.3.app/Contents/MacOS/Godot`) and `STYX_GODOT_OUT`. Godot must have
+imported the project once and have the export templates for its version installed: styx-godot's README
+describes both. The old **Web** preset loads scripts from a CDN and is refused by the policy below; Settings
+shows "This build loads scripts from another site" for such a build.
+
+**Where it lives.** `styx.godotDir` (Settings → Extensions → Styx → Godot build folder), empty for the
+default above. A configured folder is only read, never created. A Layman running in Docker sees only the
+default location, which is inside the data folder it already mounts.
+
+**The policy.** Layman serves the build under `/styx/godot/` (404 while Styx is off) with a
+Content-Security-Policy whose `connect-src 'self'` and `default-src 'self'` mean the page can talk to Layman
+and nothing else, so "every request goes to Layman" is enforced, not hoped for. That is a limit on where
+the page can send things, not a sandbox: it runs on Layman's origin and can call Layman's own API like any
+Layman page, so build it yourself and point the folder only at a build you trust. Godot's shell needs inline
+scripts and styles and `eval`, so those directives carry `unsafe-*`, for these responses only. A request
+path can only name a file inside the folder (a symlink leading out is refused), of a known type, with no
+dotfile or `..` in it. A build that loads scripts from another site is reported as no build, because the
+policy would block it.
+
+**Secure page.** Godot's web shell refuses to start outside a secure context. `http://localhost:8880` and
+`http://127.0.0.1:8880` are; Layman opened over the LAN by IP address, or over plain http from another
+host, is not, and the tab says so (Matrix 2D and 3D work there).
 
 ## The feed
 
