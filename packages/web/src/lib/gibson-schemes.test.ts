@@ -69,6 +69,13 @@ describe('schemes', () => {
     // text is the glass 45 % toward white
     expect(dark.text.normal[0]).toBeCloseTo(dark.glass.normal[0] + (1 - dark.glass.normal[0]) * 0.45, 5);
   });
+  it('State on a light board draws its text darker than the glass, not paler', () => {
+    const light = paletteOf('state', (n) => (n === 'bg' ? '#ffffff' : TOKENS[n] ?? ''));
+    for (const t of TONES) {
+      expect(light.text[t][0]).toBeCloseTo(light.glass[t][0] * 0.65, 5);
+      expect(light.text[t][1]).toBeCloseTo(light.glass[t][1] * 0.65, 5);
+    }
+  });
   it('survive a token that is not a hex colour', () => {
     complete(paletteOf('state', () => 'rgb(1, 2, 3)'));
     complete(paletteOf('state', () => ''));

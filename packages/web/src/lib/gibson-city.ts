@@ -51,6 +51,9 @@ export function toneOf(row: HostRow): Tone {
   return 'normal';
 }
 
+/** A tone in words, for a screen reader and the panel; empty for a normal tower. */
+export const TONE_WORDS: Record<Tone, string> = { normal: '', blocked: 'refused by glove', untunnelled: 'outside the tunnel', local: 'local' };
+
 /** Who stands where. Never mutated: `place` returns a new one. */
 export interface Placement {
   /** Block id (`github.com`, `github.com#2`) → slot index (≥ 1). */

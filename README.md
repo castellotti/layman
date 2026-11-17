@@ -125,7 +125,7 @@ Or build and run the container locally: `make docker-run` (see [Makefile](Makefi
 | [Features in depth](docs/features.md) | Risk analysis, drift monitoring, PII filter, access tracking, metrics, historical import, multi-host sync |
 | [Claude Code](docs/harnesses/claude-code.md) · [Codex](docs/harnesses/codex.md) · [OpenCode](docs/harnesses/opencode.md) · [Vibe](docs/harnesses/vibe.md) · [Cline](docs/harnesses/cline.md) · [pi](docs/harnesses/pi.md) · [Open WebUI](docs/harnesses/open-webui.md) | Per-harness installation, activation, capability, and architecture notes |
 | [glove](docs/extensions/glove.md) | Passive monitoring of glove v3 sessions (what their `observe` grant exports), and their network traffic with block/allow rules (with the `filter` grant) |
-| [Styx](docs/extensions/styx.md) | Matrix-style views of the destinations a session reached, and the same data as a feed for styx-godot |
+| [Styx](docs/extensions/styx.md) | Matrix-style views and a Gibson city of the destinations a session reached, and the same data as a feed for styx-godot |
 | [Development](docs/development.md) | Building from source, workspace layout, testing, contributing |
 | [CHANGELOG.md](CHANGELOG.md) | Release history |
 

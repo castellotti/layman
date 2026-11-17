@@ -446,7 +446,9 @@ packages/web/src/lib/gibson-feed.ts     the row types (mirror), the feed URLs (`
 packages/web/src/lib/gibson-city.ts     pure, the model every Gibson renderer shares: slots, placement, towers, routes, pages, menu, traffic
 packages/web/src/lib/gibson-schemes.ts  the colour schemes: the only file besides themes.ts that may hold colour literals
 packages/web/src/hooks/useGibsonFeed.ts  the polls: hosts and links together, and one tower's log
-packages/web/src/components/gibson/     GibsonView (bar, scheme picker, the tab's renderer)
+packages/web/src/lib/gibson-2d.ts       pure: the 2D projection (project / unproject), fitCam, zoomAt, draw order, silhouette, pickTower
+packages/web/src/lib/open-network.ts    openNetwork(token, address): the Matrix cards and the Gibson panel both open Network through it
+packages/web/src/components/gibson/    GibsonView (bar, pickers, owns the selection), GibsonCanvas2D (state + pointer), gibson2d-draw.ts (what is painted), GibsonPanel (the menu as HTML)
 ```
 
 Rules of the feed that must not be changed casually:
@@ -491,6 +493,25 @@ still frame repeats. **`gibson-schemes.ts` holds the one set of colour literals 
 schemes are fixed looks that must not follow the theme; `theme-literals.test.ts` lists it in `ALLOWED`); State reads
 theme tokens through a function handed in, so it follows the theme and the file never touches the DOM. The Gibson
 views are a second tab group beside the Matrix's, behind the same `styx.enabled`.
+
+Gibson 2D (`GibsonCanvas2D.tsx`, `gibson2d-draw.ts`, `GibsonPanel.tsx`). **The city canvas is never redrawn per
+frame**: it is redrawn when the city, the camera, the size, the scheme or theme, the selection or the selected
+tower's log changed, and at a 100 ms beat only while a tower is rising, fresh or brightening from a car's arrival
+(the clocks that have no data); the traffic canvas above it is the only thing drawn every frame, and only while
+motion is full. The projection, the camera and the picking are pure (`lib/gibson-2d.ts`, tested); the draw file
+decides only how it looks and holds no colour literal (everything is the `Palette`). The component keeps, in
+refs and reset with the session or window, the `Placement`, the set of hosts known (`null` until the first
+answer, so nothing is fresh on the first draw), when each fresh host appeared, and the `Traffic`; the camera is
+fitted once to the first city and to a resize, and after that only the user's (a city that grew must not move
+the picture), until the session or window changes or **Fit** is pressed. A face's text appears only where a cell
+is at least 3 px high (so at the default fit a face is plain glass; zooming in brings the text),
+except Night, whose lit windows stand in for it at any zoom. State's text on a light board is the glass toward
+black, because white on pale glass vanishes. **The panel is the accessible form of the scene's menu**: it is HTML in
+theme tokens in every scheme (never the picture's colours), a listbox with Up and Down, and the canvas has a
+hidden list of the hosts and their state in words. The selection lives in `GibsonView` and is cleared when the
+session or window changes or the host leaves the answer; the log is polled only for the selected tower. The pointer's
+hover test must not read the `hover` state to decide whether to clear it (two moves can arrive before a render and
+the stale value left the card behind).
 
 The renderers. `matrix-rain.ts` is pure and shared (the 3D renderer uses it too): a stream's head is at row
 `(now - startAt) x speed`, so a refresh of the data never restarts a stream and a redraw puts it back. A new

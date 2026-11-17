@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { HostRow, LinkRow, LogRow } from './gibson-feed.js';
 import {
-  EMPTY_PLACEMENT, boxOf, buildCity, createTraffic, formatAgoShort, formatBytesShort, menuOf, pageOf, place, routeOf, spiral, toneOf,
+  EMPTY_PLACEMENT, TONE_WORDS, boxOf, buildCity, createTraffic, formatAgoShort, formatBytesShort, menuOf, pageOf, place, routeOf, spiral, toneOf,
   type City, type Placement,
 } from './gibson-city.js';
 
@@ -29,6 +29,13 @@ describe('spiral', () => {
     const seen = new Set<string>();
     for (let i = 0; i < 400; i++) seen.add(spiral(i).join(','));
     expect(seen.size).toBe(400);
+  });
+});
+
+describe('TONE_WORDS', () => {
+  it('says each tone but the normal one', () => {
+    expect(TONE_WORDS.normal).toBe('');
+    for (const t of ['blocked', 'untunnelled', 'local'] as const) expect(TONE_WORDS[t].length).toBeGreaterThan(0);
   });
 });
 

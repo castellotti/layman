@@ -22,7 +22,7 @@ optional, off by default, and independent of glove: with it off there are no tab
 | **Matrix 2D** | `?view=matrix2d` | Layman's own Canvas 2D rendering. No Godot | available |
 | **Matrix 3D** | `?view=matrix3d` | Layman's own WebGL2 rendering. No Godot | available |
 | **Gibson** | `?view=gibson` | The styx-godot city in a frame | coming |
-| **Gibson 2D** | `?view=gibson2d` (`G`) | A city of towers, one per host, drawn on a canvas | coming |
+| **Gibson 2D** | `?view=gibson2d` (`G`) | A city of towers, one per host, drawn on a canvas. No Godot | available |
 | **Gibson 3D** | `?view=gibson3d` | The same city in WebGL2 | coming |
 
 All six are session views (`/s/<id>?view=matrix2d`) and show the session open in the app, or else the
@@ -58,6 +58,41 @@ half a second, so stepping through sessions does not restart it for each); leavi
 frame, which stops it. Instead of the frame the tab says why it cannot run: no build found (with the
 folder it looked in and what is missing), Motion at Reduced or Off (**Run anyway** starts it), or a page
 that is not a secure context.
+
+![Gibson 2D](../images/styx-gibson2d.png)
+
+**Gibson 2D.** The destinations as a city, seen from above at an angle, in the style of the film's
+network view. Each host is a **tower** on a board of thin circuit traces. Towers stand in **blocks**: one
+block for each registrable domain (an IPv4 address's /16 for a bare address), so `api.github.com` and
+`github.com` are neighbours; a block holds 16 towers, then a second block opens. The busiest domains stand
+nearest the middle. A tower's **height** is the bytes it moved and its **width** the times it was
+reached, both on a log scale against the busiest on screen. Who stands where is remembered while the tab is
+open, so a refresh adds and removes towers and never reshuffles the city; a new host is drawn bright and
+**rises** into place in about a second, and a host that left the answer frees its plot. The **chips** in the middle block are the
+machine itself: one for each source of a connection (the harness, the agent, a device), or a single one called
+`LOCAL` when a session has no connections to draw, such as one whose tool calls were only recorded. A **streak** crossing the streets is a connection going out
+or coming back along the streets between its chip and its tower; a busier link sends more of them; one
+glove refused flashes where it stops.
+
+The look is chosen with the scheme picker (remembered in the browser). **State** colours by what the
+destination is and follows the theme (light themes included): green is normal, red a tower every connection
+of which glove refused (and a partial red cap for a part), amber one that did not go through the tunnel,
+and the theme's accent colour (blue in Classic) a local or LAN one; a selected tower uses the highlight colour. **Green**, **Cyan**, **Red** and **Night**
+are fixed looks after the film's stills that ignore the theme (they always draw on a dark board); in these
+the state is shown by marks instead of colour: a refused tower is striped, an untunnelled one has dashed
+edges. Night draws lit windows and dotted streets. The window picker works as in the Matrix.
+
+**Drag** pans, the **wheel** zooms about the pointer, the arrow keys and `+` / `-` do both from the keyboard,
+and **Fit** brings the whole city back. The camera is yours once you move it, until you change the session or
+window or press Fit. The busiest 12 hosts are labelled, and every one once you are close enough to read;
+at that zoom the faces of a tower carry its facts as small text. **Hover** a tower for its address,
+count and bytes; **click** it to open its panel on the right: the tower's log, grouped into the menu's
+items (`PORT VIA ▸`, up to 12), and under the picked item up to four boxes for its recent connections or
+calls, a refused one in red, each with its time, state and bytes. The picked tower's faces continue with its
+last log lines. For a sandboxed session the panel offers **Open in Network**. **Escape** closes it. With
+Settings → Motion at Reduced or Off nothing moves: towers do not rise, and each active route is drawn as a
+dashed line instead of streaks. A screen reader gets a list of the hosts, their counts and their state in words.
+The tab's shortcut is `G`.
 
 ### Building the Godot tab
 

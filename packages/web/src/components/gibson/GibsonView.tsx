@@ -1,16 +1,23 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { useSessionStore, type ViewMode } from '../../stores/sessionStore.js';
 import { pickSession } from '../../lib/activity-view.js';
 import { getSessionDisplayName } from '../../lib/session-state.js';
 import { DEFAULT_MATRIX_WINDOW, MATRIX_WINDOWS, parseMatrixWindow, type MatrixWindow } from '../../lib/matrix-feed.js';
 import { DEFAULT_SCHEME, SCHEMES, parseScheme, type SchemeId } from '../../lib/gibson-schemes.js';
 import { useStored } from '../../hooks/useStored.js';
-import { useGibsonFeed } from '../../hooks/useGibsonFeed.js';
+import { useGibsonFeed, useGibsonLog } from '../../hooks/useGibsonFeed.js';
+import { useNetStore } from '../../stores/netStore.js';
+import { openNetwork } from '../../lib/open-network.js';
 import { formatBytes } from '../../lib/net-format.js';
 import { rad, sp } from '../../lib/density.js';
+import { GibsonCanvas2D } from './GibsonCanvas2D.js';
+import { GibsonPanel } from './GibsonPanel.js';
 
 export const GIBSON_WINDOW_KEY = 'layman.gibson.window';
 export const GIBSON_SCHEME_KEY = 'layman.gibson.scheme';
+
+/** "Nothing reached in the last 15 minutes. Try a longer window." */
+const WINDOW_PHRASE: Record<MatrixWindow, string> = { '1m': 'the last minute', '15m': 'the last 15 minutes', '1h': 'the last hour', all: 'this session' };
 
 function Centered({ children }: { children: React.ReactNode }) {
   return (
@@ -67,7 +74,16 @@ function GibsonPane({ mode }: { mode: ViewMode }) {
   const session = sessions.find((x) => x.sessionId === sessionId);
   const [window, setWindow] = useStored<MatrixWindow>(GIBSON_WINDOW_KEY, DEFAULT_MATRIX_WINDOW, parseMatrixWindow);
   const [scheme, setScheme] = useStored<SchemeId>(GIBSON_SCHEME_KEY, DEFAULT_SCHEME, parseScheme);
-  const { hosts, error } = useGibsonFeed(sessionId, window);
+  const { hosts, links, loading, error } = useGibsonFeed(sessionId, window);
+  const gloveToken = useNetStore((s) => (session?.sessionName && s.sessions.some((x) => x.token === session.sessionName) ? session.sessionName : null));
+  const resetKey = `${sessionId ?? ''}|${window}`;
+
+  // The selected tower: cleared when the session or window changes, and when its host leaves the answer.
+  const [selected, setSelected] = useState<string | null>(null);
+  useEffect(() => setSelected(null), [resetKey]);
+  const tower = hosts.find((h) => h.host === selected) ?? null;
+  useEffect(() => { if (selected && !loading && !tower) setSelected(null); }, [selected, loading, tower]);
+  const log = useGibsonLog(sessionId, window, mode === 'gibson2d' ? tower?.host ?? null : null);
 
   const down = hosts.reduce((n, h) => n + h.received, 0);
   const blocks = new Set(hosts.map((h) => h.block)).size;
@@ -89,8 +105,30 @@ function GibsonPane({ mode }: { mode: ViewMode }) {
         <Centered>The Gibson tab, the styx-godot build in a frame, is not built yet.</Centered>
       ) : mode === 'gibson3d' ? (
         <Centered>Gibson 3D is not built yet.</Centered>
+      ) : loading ? (
+        <Centered>Reading the feed…</Centered>
       ) : (
-        <Centered>Gibson 2D is not built yet.</Centered>
+        // Mounted even with nothing to show: who stands where and what is known live in it, and an empty answer
+        // or a failed poll must not make every host start again, or the next new one look old.
+        <div style={{ position: 'relative', flex: 1, minHeight: 0, display: 'flex' }}>
+          <GibsonCanvas2D
+            hosts={hosts} links={links} resetKey={resetKey} scheme={scheme} selected={tower?.host ?? null} onSelect={setSelected}
+            log={log.rows} gloveToken={gloveToken} onOpenNetwork={openNetwork}
+          />
+          {tower && (
+            <GibsonPanel
+              host={tower} log={log.rows} loading={log.loading} error={log.error} gloveToken={gloveToken}
+              onOpenNetwork={openNetwork} onClose={() => setSelected(null)}
+            />
+          )}
+          {hosts.length === 0 && (
+            <div style={{ position: 'absolute', inset: 0, display: 'flex', pointerEvents: 'none' }}>
+              <Centered>
+                {error ? `The feed could not be read: ${error}` : `Nothing reached in ${WINDOW_PHRASE[window]}.${window === 'all' ? '' : ' Try a longer window.'}`}
+              </Centered>
+            </div>
+          )}
+        </div>
       )}
     </div>
   );

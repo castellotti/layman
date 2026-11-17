@@ -100,20 +100,21 @@ function film(id: Exclude<SchemeId, 'state'>): Palette {
  * The palette of a scheme. `token` reads a theme token (`readToken`); only `state` calls it. State's colours
  * are the theme's: board `--bg`, glass `--ok` / `--error` / `--warn` / `--accent` by tone, highlight
  * `--accent-hot`, fresh `--text`, the two traces `--accent` and `--warn` mixed 55 % toward the board so they stay
- * behind the towers, the home rim `--accent-hot`; the text is the glass 45 % toward white.
+ * behind the towers, the home rim `--accent-hot`; the text is the glass 45 % toward white, or on a light board 35 % toward black (white on pale glass would vanish).
  */
 export function paletteOf(id: SchemeId, token: (name: string) => string): Palette {
   if (id !== 'state') return film(id);
   const tok = (name: string): Rgb => rgbOf(token(name), name === 'bg' ? [0, 0, 0] : WHITE);
   const bgCss = token('bg').trim();
+  const light = HEX_COLOR.test(bgCss) && luminance(bgCss) > 0.5;
   const board = tok('bg');
   const glass: Record<Tone, Rgb> = { normal: tok('ok'), blocked: tok('error'), untunnelled: tok('warn'), local: tok('accent') };
   return {
     board, glass,
-    text: eachTone(glass, (c) => mix(c, WHITE, 0.45)),
+    text: eachTone(glass, (c) => (light ? mix(c, [0, 0, 0], 0.35) : mix(c, WHITE, 0.45))),
     fresh: tok('text'), highlight: tok('accent-hot'),
     traceA: mix(tok('accent'), board, 0.55), traceB: mix(tok('warn'), board, 0.55), traffic: null, homeRim: tok('accent-hot'),
-    sky: SKY, marks: false, light: HEX_COLOR.test(bgCss) && luminance(bgCss) > 0.5, windows: false,
+    sky: SKY, marks: false, light, windows: false,
   };
 }
 
