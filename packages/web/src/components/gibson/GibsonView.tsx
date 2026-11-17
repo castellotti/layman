@@ -113,7 +113,7 @@ function GibsonPane({ mode }: { mode: ViewMode }) {
         <div style={{ position: 'relative', flex: 1, minHeight: 0, display: 'flex' }}>
           <GibsonCanvas2D
             hosts={hosts} links={links} resetKey={resetKey} scheme={scheme} selected={tower?.host ?? null} onSelect={setSelected}
-            log={log.rows} gloveToken={gloveToken} onOpenNetwork={openNetwork}
+            log={log.rows} gloveToken={gloveToken} onOpenNetwork={openNetwork} failed={error !== null && hosts.length === 0}
           />
           {tower && (
             <GibsonPanel

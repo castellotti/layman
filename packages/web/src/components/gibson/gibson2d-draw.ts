@@ -398,6 +398,8 @@ export function drawCity(ctx: CanvasRenderingContext2D, a: CityDraw): void {
   ctx.globalCompositeOperation = 'source-over';
   ctx.globalAlpha = 1;
   ctx.setLineDash([]);
+  ctx.lineJoin = 'miter';
+  ctx.lineCap = 'butt';
   ctx.fillStyle = rgbCss(pal.board);
   ctx.fillRect(0, 0, a.width, a.height);
   streets(ctx, a);

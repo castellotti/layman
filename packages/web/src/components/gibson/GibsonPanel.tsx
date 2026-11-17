@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type { HostRow, LogRow } from '../../lib/gibson-feed.js';
 import { MENU_BOXES, TONE_WORDS, boxOf, menuOf, toneOf } from '../../lib/gibson-city.js';
 import { formatBytes } from '../../lib/net-format.js';
@@ -26,10 +26,14 @@ export function GibsonPanel({ host, log, loading, error, gloveToken, onOpenNetwo
   const tone = toneOf(host);
   const words = TONE_WORDS[tone];
 
+  const options = useRef(new Map<string, HTMLButtonElement>());
   const move = (by: number): void => {
     if (items.length === 0) return;
     const at = Math.max(0, items.findIndex((i) => i.key === current?.key));
-    setPicked(items[Math.min(items.length - 1, Math.max(0, at + by))].key);
+    const key = items[Math.min(items.length - 1, Math.max(0, at + by))].key;
+    setPicked(key);
+    // Focus follows the pick, or a screen reader would not announce it.
+    options.current.get(key)?.focus();
   };
   const onListKey = (e: React.KeyboardEvent): void => {
     if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
@@ -83,6 +87,7 @@ export function GibsonPanel({ host, log, loading, error, gloveToken, onOpenNetwo
                 return (
                   <button
                     key={item.key}
+                    ref={(b) => { if (b) options.current.set(item.key, b); else options.current.delete(item.key); }}
                     type="button"
                     role="option"
                     aria-selected={on}

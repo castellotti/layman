@@ -33,7 +33,7 @@ const cardRow = (h: HostRow): MatrixRow => ({
  * `lib/gibson-city.ts`, the looks are `gibson2d-draw.ts`; this holds the state that must outlive a refresh
  * (placement, what is known, the camera, the traffic) and the pointer.
  */
-export function GibsonCanvas2D({ hosts, links, resetKey, scheme, selected, onSelect, log, gloveToken, onOpenNetwork }: {
+export function GibsonCanvas2D({ hosts, links, resetKey, scheme, selected, onSelect, log, gloveToken, onOpenNetwork, failed = false }: {
   hosts: readonly HostRow[];
   links: readonly LinkRow[];
   /** Session and window: a change of either forgets who stands where and what is known. */
@@ -45,6 +45,8 @@ export function GibsonCanvas2D({ hosts, links, resetKey, scheme, selected, onSel
   log: readonly LogRow[];
   gloveToken: string | null;
   onOpenNetwork: (token: string, address: string) => void;
+  /** The feed's first answer failed: there is nothing to know yet, so the next real one must not look all new. */
+  failed?: boolean;
 }) {
   const [sizeRef, box] = useElementSize<HTMLDivElement>();
   const [el, setEl] = useState<HTMLDivElement | null>(null);
@@ -69,10 +71,10 @@ export function GibsonCanvas2D({ hosts, links, resetKey, scheme, selected, onSel
     const st = kept.current;
     st.placement = place(st.placement, hosts, links);
     // `known` is null until the first answer for this key, so nothing is fresh on the first draw.
-    if (st.known === null) st.known = new Set(hosts.map((h) => h.host));
+    if (st.known === null) { if (!failed) st.known = new Set(hosts.map((h) => h.host)); }
     else for (const h of hosts) if (!st.known.has(h.host)) { st.known.add(h.host); st.freshAt.set(h.host, Date.now()); }
     return st.placement;
-  }, [hosts, links, resetKey]);
+  }, [hosts, links, resetKey, failed]);
 
   // `tick` is in the dependencies: it is how a clock (a rise, a fresh colour ending) rebuilds the city.
   const city = useMemo(() => {
@@ -185,9 +187,11 @@ export function GibsonCanvas2D({ hosts, links, resetKey, scheme, selected, onSel
       const c = camRef.current;
       if (!c) return;
       e.preventDefault();
+      // A horizontal scroll (deltaY 0) is not a zoom; a notch (100) is one step, a trackpad's small events a fraction.
+      if (e.deltaY === 0) return;
       const rect = el.getBoundingClientRect();
       userCam.current = true;
-      setCam(zoomAt(c, e.clientX - rect.left, e.clientY - rect.top, e.deltaY < 0 ? ZOOM_STEP : 1 / ZOOM_STEP));
+      setCam(zoomAt(c, e.clientX - rect.left, e.clientY - rect.top, ZOOM_STEP ** (-Math.max(-300, Math.min(300, e.deltaY)) / 100)));
     };
     el.addEventListener('wheel', onWheel, { passive: false });
     return () => el.removeEventListener('wheel', onWheel);
@@ -208,6 +212,8 @@ export function GibsonCanvas2D({ hosts, links, resetKey, scheme, selected, onSel
   };
   const onPointerMove = (e: React.PointerEvent<HTMLDivElement>): void => {
     const { x, y } = local(e);
+    // A release that never arrived (ctrl+click's context menu, a touch cancel) must not leave the camera following the pointer.
+    if (press.current && e.buttons === 0) press.current = null;
     const p = press.current;
     if (p && camRef.current) {
       if (!p.moved && Math.hypot(x - p.x, y - p.y) > DRAG_PX) p.moved = true;
@@ -233,6 +239,8 @@ export function GibsonCanvas2D({ hosts, links, resetKey, scheme, selected, onSel
   };
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLDivElement>): void => {
+    // Browser zoom, Back and the like are not ours.
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
     const c = camRef.current;
     if (e.key === 'Escape') { if (selected) { e.stopPropagation(); onSelect(null); } return; }
     if (!c) return;
@@ -267,6 +275,8 @@ export function GibsonCanvas2D({ hosts, links, resetKey, scheme, selected, onSel
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
+      onPointerCancel={() => { press.current = null; }}
+      onLostPointerCapture={() => { press.current = null; }}
       onPointerLeave={() => setHover(null)}
       onKeyDown={onKeyDown}
       style={{ position: 'relative', flex: 1, minWidth: 0, minHeight: 0, overflow: 'hidden', background: 'var(--bg)', touchAction: 'none', cursor: hover ? 'pointer' : 'grab' }}
