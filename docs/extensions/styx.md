@@ -20,7 +20,7 @@ optional, off by default, and independent of glove: with it off there are no tab
 |---|---|---|---|
 | **Matrix** | `?view=matrix` | The real styx-godot web export, running its own shaders, in an iframe | coming |
 | **Matrix 2D** | `?view=matrix2d` | Layman's own Canvas 2D rendering. No Godot | available |
-| **Matrix 3D** | `?view=matrix3d` | Layman's own WebGL2 rendering | coming |
+| **Matrix 3D** | `?view=matrix3d` | Layman's own WebGL2 rendering. No Godot | available |
 
 All three are session views (`/s/<id>?view=matrix2d`) and show the session open in the app, or else the
 newest live one; with none they show every live session together.
@@ -35,6 +35,18 @@ no session open, `All` means the last day, the longest the feed answers for ever
 a stream for its address, count and bytes; click it to keep the card, which for a sandboxed session offers
 **Open in Network**. The tab's shortcut is `X`. With Settings → Motion at Reduced or Off, it draws one still
 frame instead of falling.
+
+![Matrix 3D](../images/styx-matrix3d.png)
+
+**Matrix 3D.** The same destinations, drawn on the GPU in a browser with WebGL2, as four planes of rain at
+different depths: the far two are filler only, smaller, dimmer and slower, and slide against the near two as
+the view drifts slowly sideways. The destinations fall on the near two planes, the most reached half on the
+nearest, a new host always on the nearest. Heads glow (a light theme has none), with a soft vignette. Larger
+glyphs, one stream per column reading top to bottom, the head near white, a refused destination red, one that did not go
+through the tunnel amber, a host reached for the first time in the accent colour for its first fall, and
+faint filler rain behind them. It follows the window picker, the session, the theme (a light theme draws
+dark glyphs on the light ground) and Settings → Motion exactly as Matrix 2D does, and hover and click give
+the same card. A browser without WebGL2 shows a message and a button to Matrix 2D.
 
 ## The feed
 

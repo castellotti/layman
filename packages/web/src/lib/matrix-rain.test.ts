@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { headRow, planStreams, speedOf, streamDone, streamText, toneOf, weightsOf, type PlanInput, type Stream } from './matrix-rain.js';
+import { hash01, headRow, planStreams, speedOf, streamDone, streamText, toneOf, weightsOf, type PlanInput, type Stream } from './matrix-rain.js';
 import type { MatrixRow } from './matrix-feed.js';
 
 const row = (address: string, count = 1, over: Partial<MatrixRow> = {}): MatrixRow =>
@@ -139,5 +139,13 @@ describe('planStreams', () => {
     const first = plan({ rows: [row('n1.test')], columns: 1, known: new Set() });
     const out = plan({ rows: [row('n1.test'), row('n2.test')], columns: 1, current: first, now: 50, known: new Set(['n1.test']) });
     expect(out.map((s) => s.address)).toEqual(['n1.test']);
+  });
+});
+
+describe('hash01', () => {
+  it('is stable and within 0..1', () => {
+    expect(hash01('a.com:443')).toBe(hash01('a.com:443'));
+    for (const a of ['', 'a', 'api.github.com:443']) expect(hash01(a)).toBeGreaterThanOrEqual(0), expect(hash01(a)).toBeLessThan(1);
+    expect(hash01('a')).not.toBe(hash01('b'));
   });
 });

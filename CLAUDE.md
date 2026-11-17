@@ -434,8 +434,9 @@ packages/server/src/styx/matrix.ts      pure: rows from flows / glove totals / t
 packages/server/src/styx/routes.ts      GET /api/styx/v1/matrix (the styx-os /v1/matrix shape, plus blocked, untunnelled)
 packages/web/src/lib/matrix-feed.ts     the row type (mirror), the windows, the feed URL
 packages/web/src/lib/matrix-rain.ts     pure, shared by every renderer: what falls, where, how fast, what is new
+packages/web/src/lib/matrix-gpu.ts      pure, 3D only: glyph order, the two data textures' packing, the layers' transform, picking
 packages/web/src/hooks/useMatrixFeed.ts  the poll
-packages/web/src/components/matrix/     MatrixView (bar + the tab's renderer), MatrixCanvas2D
+packages/web/src/components/matrix/     MatrixView (bar + the tab's renderer), MatrixCanvas2D, MatrixCanvas3D (+ matrix3d-gl, matrix3d-shaders), StreamCard
 ```
 
 Rules of the feed that must not be changed casually:
@@ -469,6 +470,25 @@ until the first answer for a session and window, or the whole screen would flash
 fixed 50 ms step: fade the canvas a little (the trails), draw only each stream's new head cell. Its cost is by
 columns, not cells; if it ever draws every cell, fix that rather than slowing the step. Colours are read with
 `readToken` and redrawn on `useThemeVersion`; with motion not full it draws one still frame.
+
+`MatrixCanvas3D` is raw WebGL2: one full-screen triangle, the picture computed in the fragment shader from two
+textures, a column texture (`RGBA32F`: start, rows/s, length, tone + 4 x fresh + weight / 2) and a text texture
+(`R8` glyph indices) that are **rewritten only when `planStreams` changes the set of streams** (`streamsKey`),
+never per frame: a stream's head is computed in the shader from time, so a frame is a few uniforms. Times are
+seconds since the renderer was made (a float32 cannot hold `Date.now()`). `layerCell` (`matrix-gpu.ts`) and the
+shader's layer transform (`matrix3d-shaders.ts`) are **one rule in two copies**: change both or neither
+(`matrix-gpu.test.ts` holds the TS one to hand-computed cells, and the per-layer grid, `gridOf`, is computed in
+TS and passed as a uniform so the two cannot disagree on a rounding). The atlas is sampled with `textureGrad`
+from the cell coordinate's derivatives taken before any branch, or a glyph takes its mip level from a
+neighbour. A light background draws by cover (`uLight`) instead of adding. **No colour literal in GLSL**: every
+colour is a theme token read with `readToken`, parsed by `rgbOf` and passed as a uniform; only `vec3(0.0)` and
+`vec3(1.0)` appear. Creation is one function (`createScene`), so a lost context is rebuilt by one call.
+Depth: four layers (`LAYER_SPECS`), data on the near two. `assignLayers` puts a fresh row near, keeps a falling
+stream on its plane (a refresh must not move it), and splits the rest by reach; `planStreams` runs once per data
+plane with `visibleRowsFor(layer)`, because a slow plane's streams last longer than `planStreams` thinks. After the
+scene, `createScene` runs bright pass, two blurs (half size) and a composite with the vignette; a light
+background skips the glow. **A framebuffer's texture is upside down against `vUv`** (clip space's bottom is row 0):
+every post pass reads it through `tuv()`, and forgetting that mirrors the whole picture.
 
 **Licence: neither renderer may be derived from styx-godot's shaders.** Two of them (the background and 3D
 rain) are Shadertoy ports under CC BY-NC-SA 3.0; Layman is MIT. They are not to be copied, ported or consulted

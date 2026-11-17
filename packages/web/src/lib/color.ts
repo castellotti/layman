@@ -52,3 +52,13 @@ export function deltaE(a: string, b: string): number {
   const [l2, a2, b2] = oklab(b);
   return Math.hypot(l1 - l2, a1 - a2, b1 - b2);
 }
+
+/**
+ * [r, g, b] in 0..1 for a CSS colour a theme token holds (`#rgb` or `#rrggbb`), or `fallback` for
+ * anything else (an empty token, a colour function): a renderer that hands colours to a GPU should
+ * draw something rather than throw.
+ */
+export function rgbOf(css: string, fallback: [number, number, number] = [0, 0, 0]): [number, number, number] {
+  const v = css.trim();
+  return HEX_COLOR.test(v) ? parseHex(v) : fallback;
+}
