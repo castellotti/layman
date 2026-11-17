@@ -29,6 +29,7 @@ const LOOK = (0.25 * Math.PI) / 180;
 const SPEED = 12;
 /** One wheel notch moves this fraction of the camera's height, but at least `NOTCH_MIN`. */
 const NOTCH = 0.08;
+const NOTCH_MIN = 1.5;
 /** The camera flies to a selected tower, or back overhead, over this long (ms). */
 const FLY_MS = 1200;
 /** With no input for this long (and motion full, nothing selected) the camera tours; it blends in over `TOUR_BLEND_S`. */
@@ -37,7 +38,6 @@ const TOUR_BLEND_S = 2;
 /** Set once the first input has shown the controls. */
 export const HINT_KEY = 'layman.gibson.hint3d';
 const EMPTY_ROUTES = new Float32Array(0);
-const NOTCH_MIN = 1.5;
 
 type Problem = 'no-webgl2' | 'failed';
 
@@ -271,7 +271,6 @@ export function GibsonCanvas3D({ hosts, links, resetKey, scheme, selected, onSel
       const b = boxRef.current;
       const pal = palRef.current;
       const city = cityRef.current;
-      const tones = new Map(city.towers.map((t) => [t.host, t.tone]));
       const list = labelsOf(city, cam.current, viewProj, b.width, b.height, selectedRef.current);
       const pool = labelEls.current;
       list.forEach((l, i) => {
@@ -284,7 +283,7 @@ export function GibsonCanvas3D({ hosts, links, resetKey, scheme, selected, onSel
         }
         if (el.textContent !== l.host) el.textContent = l.host;
         // Built from numbers at run time: the scheme's colour, never a literal.
-        el.style.color = rgbCss(l.host === selectedRef.current ? pal.highlight : pal.text[tones.get(l.host) ?? 'normal']);
+        el.style.color = rgbCss(l.host === selectedRef.current ? pal.highlight : pal.text[city.towers.find((t) => t.host === l.host)?.tone ?? 'normal']);
         el.style.textShadow = `0 0 4px ${rgbCss(pal.board)}, 0 0 2px ${rgbCss(pal.board)}`;
         el.style.transform = `translate(${l.x.toFixed(1)}px, ${l.y.toFixed(1)}px) translate(-50%, -100%)`;
         el.style.opacity = l.opacity.toFixed(2);
