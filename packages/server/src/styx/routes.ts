@@ -182,42 +182,40 @@ export function registerStyxRoutes(fastify: FastifyInstance, deps: StyxDeps): vo
     return godotBuildStatus(deps.godotDir());
   });
 
-  fastify.get<{ Querystring: FeedQuery }>('/api/styx/v1/matrix', async (req, reply) => {
-    if (!deps.enabled()) return reply.code(404).send({ error: 'Styx is not enabled' });
-    const sel = select(req, reply);
-    if (!sel) return reply;
-    return mergeRows(sel.sources.map((s) => (s.kind === 'glove' ? gloved(s.token, sel.from, sel.t) : standard(s.sessionId, sel.from, sel.t))));
-  });
+  /** A feed route: the enabled check and the query's selection, then `build`. */
+  const feed = (path: string, build: (sel: Selection) => unknown): void => {
+    fastify.get<{ Querystring: FeedQuery }>(path, async (req, reply) => {
+      if (!deps.enabled()) return reply.code(404).send({ error: 'Styx is not enabled' });
+      const sel = select(req, reply);
+      if (!sel) return reply;
+      return build(sel);
+    });
+  };
+
+  /** A standard session's calls for the selection's window, turned into rows by `rows(calls, from)`. */
+  const fromStandard = <T>(sessionId: string, sel: Selection, rows: (calls: TraceCall[], from: number) => T): T => {
+    const c = standardCalls(sessionId, sel.from, sel.t);
+    return rows(c.calls, c.from);
+  };
+
+  feed('/api/styx/v1/matrix', (sel) =>
+    mergeRows(sel.sources.map((s) => (s.kind === 'glove' ? gloved(s.token, sel.from, sel.t) : standard(s.sessionId, sel.from, sel.t)))));
 
   /** Glove's connections for the window (the whole record when `from` is null): the one source of links and the log. */
   const flowsOf = (token: string, from: number | null, t: number): FlowView[] => deps.store.flowsBetween(token, from ?? 0, t) ?? [];
 
-  fastify.get<{ Querystring: FeedQuery }>('/api/styx/v1/hosts', async (req, reply) => {
-    if (!deps.enabled()) return reply.code(404).send({ error: 'Styx is not enabled' });
-    const sel = select(req, reply);
-    if (!sel) return reply;
-    return mergeHosts(sel.sources.map((s) => {
-      if (s.kind === 'standard') {
-        const c = standardCalls(s.sessionId, sel.from, sel.t);
-        return hostsFromCalls(c.calls, c.from, sel.t, sel.t);
-      }
+  feed('/api/styx/v1/hosts', (sel) =>
+    mergeHosts(sel.sources.map((s) => {
+      if (s.kind === 'standard') return fromStandard(s.sessionId, sel, (calls, from) => hostsFromCalls(calls, from, sel.t, sel.t));
       // Whole record: glove's running totals, which outlive the connections memory holds.
       return sel.from === null ? hostsFromDestinations(deps.store.destinations(s.token), sel.t) : hostsFromFlows(flowsOf(s.token, sel.from, sel.t), sel.t);
-    }));
-  });
+    })));
 
-  fastify.get<{ Querystring: FeedQuery }>('/api/styx/v1/links', async (req, reply) => {
-    if (!deps.enabled()) return reply.code(404).send({ error: 'Styx is not enabled' });
-    const sel = select(req, reply);
-    if (!sel) return reply;
-    return mergeLinks(sel.sources.map((s) => {
-      if (s.kind === 'standard') {
-        const c = standardCalls(s.sessionId, sel.from, sel.t);
-        return linksFromCalls(c.calls, c.from, sel.t, sel.t);
-      }
-      return linksFromFlows(flowsOf(s.token, sel.from, sel.t), sel.t);
-    }));
-  });
+  feed('/api/styx/v1/links', (sel) =>
+    mergeLinks(sel.sources.map((s) =>
+      s.kind === 'standard'
+        ? fromStandard(s.sessionId, sel, (calls, from) => linksFromCalls(calls, from, sel.t, sel.t))
+        : linksFromFlows(flowsOf(s.token, sel.from, sel.t), sel.t))));
 
   fastify.get<{ Querystring: FeedQuery }>('/api/styx/v1/flows', async (req, reply) => {
     if (!deps.enabled()) return reply.code(404).send({ error: 'Styx is not enabled' });
@@ -229,12 +227,9 @@ export function registerStyxRoutes(fastify: FastifyInstance, deps: StyxDeps): vo
     const sel = select(req, reply);
     if (!sel) return reply;
     const want = host?.toLowerCase();
-    return mergeLog(sel.sources.map((s) => {
-      if (s.kind === 'standard') {
-        const c = standardCalls(s.sessionId, sel.from, sel.t);
-        return logFromCalls(c.calls, c.from, sel.t, sel.t, want);
-      }
-      return logFromFlows(flowsOf(s.token, sel.from, sel.t), sel.t, want);
-    }), limit);
+    return mergeLog(sel.sources.map((s) =>
+      s.kind === 'standard'
+        ? fromStandard(s.sessionId, sel, (calls, from) => logFromCalls(calls, from, sel.t, sel.t, want))
+        : logFromFlows(flowsOf(s.token, sel.from, sel.t), sel.t, want)), limit);
   });
 }
