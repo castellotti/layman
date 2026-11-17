@@ -171,6 +171,12 @@ export function createScene(gl: WebGL2RenderingContext, firstLayer: number): Sce
   allocate(sceneT, 3, 1, 1);
   allocate(bloomA, 4, 1, 1);
   allocate(bloomB, 5, 1, 1);
+  // A target the driver cannot render to would leave the canvas blank with nothing to fall back on: fail now, so the tab offers Matrix 2D.
+  for (const t of [sceneT, bloomA, bloomB]) {
+    gl.bindFramebuffer(gl.FRAMEBUFFER, t.fb);
+    if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) { release(); throw new Error('Matrix 3D: render target incomplete'); }
+  }
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
 
   return {
     setColours(c) { colours = c; },
@@ -191,8 +197,11 @@ export function createScene(gl: WebGL2RenderingContext, firstLayer: number): Sce
       gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, TEXT_LEN, COLS * LAYERS, gl.RED, gl.UNSIGNED_BYTE, data);
     },
     resize(w, h) {
-      width = Math.max(1, w);
-      height = Math.max(1, h);
+      const nw = Math.max(1, w);
+      const nh = Math.max(1, h);
+      if (nw === width && nh === height) return;
+      width = nw;
+      height = nh;
       allocate(sceneT, 3, width, height);
       allocate(bloomA, 4, Math.max(1, width >> 1), Math.max(1, height >> 1));
       allocate(bloomB, 5, Math.max(1, width >> 1), Math.max(1, height >> 1));

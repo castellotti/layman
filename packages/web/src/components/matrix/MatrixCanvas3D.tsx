@@ -94,7 +94,7 @@ export function MatrixCanvas3D({ rows, ready, resetKey, gloveToken, onOpenNetwor
     let columns: Float32Array | null = null;
     let text: Uint8Array | null = null;
     let known: Set<string> | null = null;
-    const lastColumn = new Map<string, number>();
+    const lastColumn: Map<string, number>[] = Array.from({ length: LAYERS }, () => new Map());
     let seenReset = resetRef.current;
 
     const aspect = () => boxRef2.current.width / Math.max(1, boxRef2.current.height);
@@ -107,7 +107,7 @@ export function MatrixCanvas3D({ rows, ready, resetKey, gloveToken, onOpenNetwor
 
     /** Plan what falls; true when the set of streams changed (and the textures were rewritten). */
     const plan = (now: number): boolean => {
-      if (resetRef.current !== seenReset) { seenReset = resetRef.current; planned = Array.from({ length: LAYERS }, () => []); known = null; lastColumn.clear(); lastKey = ''; }
+      if (resetRef.current !== seenReset) { seenReset = resetRef.current; planned = Array.from({ length: LAYERS }, () => []); known = null; for (const m of lastColumn) m.clear(); lastKey = ''; }
       // A still frame does not age: a new answer must not expire its streams and deal them out again.
       const at = fullRef.current ? now : epoch;
       const falling = new Map<string, number>();
@@ -117,9 +117,9 @@ export function MatrixCanvas3D({ rows, ready, resetKey, gloveToken, onOpenNetwor
       for (const [layer, rows] of [[SECOND, split.second], [NEAR, split.near]] as const) {
         next[layer] = planStreams({
           rows, columns: gridOf(aspect(), layer).data, visibleRows: visibleRowsFor(layer), now: at,
-          current: planned[layer], lastColumn, known, rand: Math.random,
+          current: planned[layer], lastColumn: lastColumn[layer], known, rand: Math.random,
         });
-        for (const s of next[layer]) lastColumn.set(s.address, s.column);
+        for (const s of next[layer]) lastColumn[layer].set(s.address, s.column);
       }
       planned = next;
       // What the screen has been given. Not before the answer is in, or its first rows would all be new.
