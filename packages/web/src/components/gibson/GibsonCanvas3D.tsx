@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { HostRow, LinkRow, LogRow } from '../../lib/gibson-feed.js';
-import { pageOf } from '../../lib/gibson-city.js';
+import { pagesOf } from '../../lib/gibson-city.js';
 import {
   MAX_PAGES, boundOf, cityKey, invert, lookFrom, moved, multiply, overhead, packPages, packTowers, perspective,
   pickTower3d, rayThrough, turned, type FlyCam, type Mat4,
@@ -94,11 +94,7 @@ export function GibsonCanvas3D({ hosts, links, resetKey, scheme, selected, onSel
   const epoch = useRef(performance.now());
 
   // Each tower's page, and the texture they pack into. Rewritten when a line changes (a host's age ticks on).
-  const pageLines = useMemo(() => {
-    const m = new Map<string, string[]>();
-    for (const h of hosts) m.set(h.host, pageOf(h, h.host === selected ? log : undefined));
-    return m;
-  }, [hosts, selected, log]);
+  const pageLines = useMemo(() => pagesOf(hosts, selected, log), [hosts, selected, log]);
   // The age line (`SEEN 3S AGO`) is left out and refreshed every 10 s instead, or every poll would rewrite the texture.
   const pagesSig = useMemo(() => {
     const age = Math.floor(Date.now() / 10_000);
@@ -141,8 +137,6 @@ export function GibsonCanvas3D({ hosts, links, resetKey, scheme, selected, onSel
   fullRef.current = full;
   const boxRef = useRef(box);
   boxRef.current = box;
-  const hostsRef = useRef(hosts);
-  hostsRef.current = hosts;
   const tower0 = useMemo(() => new Map(city.towers.map((t, i) => [t.host, i])), [city]);
   const indexRef = useRef(tower0);
   indexRef.current = tower0;
@@ -228,7 +222,9 @@ export function GibsonCanvas3D({ hosts, links, resetKey, scheme, selected, onSel
       for (let i = 0; i < n; i++) {
         const c = live[i];
         const colour = p.traffic ?? p.glass[c.tone];
-        cars.set([c.x, c.z, c.dx, c.dz, colour[0], colour[1], colour[2], c.flash], i * CAR_STRIDE);
+        const o = i * CAR_STRIDE;
+        cars[o] = c.x; cars[o + 1] = c.z; cars[o + 2] = c.dx; cars[o + 3] = c.dz;
+        cars[o + 4] = colour[0]; cars[o + 5] = colour[1]; cars[o + 6] = colour[2]; cars[o + 7] = c.flash;
       }
       let a = 0;
       const clock = (performance.now() - epoch.current) / 1000;

@@ -299,6 +299,13 @@ export function pageOf(row: HostRow, log?: readonly LogRow[]): string[] {
   return lines;
 }
 
+/** Every host's page, the selected host's with its log. */
+export function pagesOf(hosts: readonly HostRow[], selected: string | null, log: readonly LogRow[]): Map<string, string[]> {
+  const m = new Map<string, string[]>();
+  for (const h of hosts) m.set(h.host, pageOf(h, h.host === selected ? log : undefined));
+  return m;
+}
+
 export interface MenuItem { key: string; label: string; rows: LogRow[] }
 
 /** The menu of a tower: its log grouped by (port, via or source), the most rows first, at most 12. */

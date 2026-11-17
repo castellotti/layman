@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { HostRow, LinkRow, LogRow } from '../../lib/gibson-feed.js';
-import { pageOf } from '../../lib/gibson-city.js';
+import { pagesOf } from '../../lib/gibson-city.js';
 import { fitCity, pickTower, zoomAt, type Cam } from '../../lib/gibson-2d.js';
 import { paletteOf, type SchemeId } from '../../lib/gibson-schemes.js';
 import { motionIsFull, readToken } from '../../lib/theme-runtime.js';
@@ -56,11 +56,7 @@ export function GibsonCanvas2D({ hosts, links, resetKey, scheme, selected, onSel
 
   const pal = useMemo(() => paletteOf(scheme, readToken), [scheme, themeVersion]); // eslint-disable-line react-hooks/exhaustive-deps
   const font = useMemo(() => readToken('font-mono') || 'monospace', [themeVersion]); // eslint-disable-line react-hooks/exhaustive-deps
-  const pages = useMemo(() => {
-    const m = new Map<string, string[]>();
-    for (const h of hosts) m.set(h.host, pageOf(h, h.host === selected ? log : undefined));
-    return m;
-  }, [hosts, selected, log]);
+  const pages = useMemo(() => pagesOf(hosts, selected, log), [hosts, selected, log]);
 
   const camRef = useRef(cam);
   camRef.current = cam;
@@ -70,8 +66,6 @@ export function GibsonCanvas2D({ hosts, links, resetKey, scheme, selected, onSel
   linksRef.current = links;
   const palRef = useRef(pal);
   palRef.current = pal;
-  const hostsRef = useRef(hosts);
-  hostsRef.current = hosts;
 
   // A new session or window: the camera, the traffic and what a car reached belong to the last one.
   useEffect(() => {
