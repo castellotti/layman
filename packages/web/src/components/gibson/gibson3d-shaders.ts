@@ -10,7 +10,7 @@ import { ATLAS_COLS, ATLAS_ROWS } from '../../lib/matrix-gpu.js';
 import { PAGES_ACROSS, PAGE_COLS, PAGE_ROWS } from '../../lib/gibson-gpu.js';
 import { CAR_TAIL } from '../../lib/gibson-city.js';
 
-export { COMPOSITE, VERTEX } from '../matrix/matrix3d-shaders.js';
+export { BLUR, BRIGHT, COMPOSITE, VERTEX } from '../matrix/matrix3d-shaders.js';
 
 const f = (n: number): string => (Number.isInteger(n) ? `${n}.0` : `${n}`);
 
@@ -527,5 +527,39 @@ void main() {
   if (vFlash <= 0.0) discard;
   float k = pow(max(0.0, 1.0 - length(vC)), 2.0) * vFlash;
   outColor = uLight > 0.5 ? vec4(uFlash, k) : vec4(uFlash * k, 1.0);
+}
+`;
+
+/**
+ * A route as a dashed line on the board (what a still scene draws instead of moving cars): one instanced quad per
+ * axis-aligned segment, 0.12 wide at y = 0.05, dashed along its length.
+ */
+export const ROUTE_VS = `${HEAD}${CAMERA}${CORNER}
+layout(location = 0) in vec4 aSeg;   // x0, z0, x1, z1
+layout(location = 1) in vec4 aTone;  // colour, unused
+out float vAlong;
+flat out vec3 vTone;
+void main() {
+  vec2 c = corner();
+  vec2 a = aSeg.xy;
+  vec2 b = aSeg.zw;
+  float len = max(distance(a, b), 0.0001);
+  vec2 dir = (b - a) / len;
+  float t = c.x * 0.5 + 0.5;
+  vec2 xz = mix(a, b, t) + vec2(-dir.y, dir.x) * c.y * 0.08;
+  vAlong = t * len;
+  vTone = aTone.rgb;
+  gl_Position = uVP * vec4(xz.x, 0.05, xz.y, 1.0);
+}
+`;
+export const ROUTE_FS = `${HEAD}
+in float vAlong;
+flat in vec3 vTone;
+out vec4 outColor;
+uniform float uLight;
+void main() {
+  float on = step(fract(vAlong / 1.2), 0.5);
+  float k = on * 0.6;
+  outColor = uLight > 0.5 ? vec4(vTone, k) : vec4(vTone * k, 1.0);
 }
 `;

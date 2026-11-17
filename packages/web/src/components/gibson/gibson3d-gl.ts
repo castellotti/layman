@@ -11,7 +11,7 @@ import { PAGES_H, PAGES_W, TOWER_STRIDE, type Mat4, type Vec3 } from '../../lib/
 import type { Palette } from '../../lib/gibson-schemes.js';
 import { drawAtlas } from '../matrix/matrix3d-gl.js';
 import {
-  BOARD_FS, BOARD_VS, CAR_FS, CAR_VS, CHIP_FS, CHIP_VS, COMPOSITE, FLASH_FS, FLASH_VS, PAD_FS, PAD_VS, SKY, TOWER_FS, TOWER_VS, VERTEX,
+  BLUR, BOARD_FS, BOARD_VS, BRIGHT, CAR_FS, CAR_VS, CHIP_FS, CHIP_VS, COMPOSITE, FLASH_FS, FLASH_VS, PAD_FS, PAD_VS, ROUTE_FS, ROUTE_VS, SKY, TOWER_FS, TOWER_VS, VERTEX,
 } from './gibson3d-shaders.js';
 
 /** Floats per car in the instance buffer: head x, z, direction x, z, colour r g b, flash. */
@@ -20,6 +20,9 @@ export const CAR_STRIDE = 8;
 export const MAX_ARRIVALS = 16;
 /** The board reaches this far past the city. */
 export const BOARD_MARGIN = 96;
+/** The glow: what is brighter than this blooms, at this strength. */
+const BLOOM_THRESHOLD = 0.6;
+const BLOOM_GAIN = 0.9;
 /** What is left of the picture at the corners. */
 const CORNER_DARK = 0.75;
 const CORNER_LIGHT = 0.93;
@@ -103,6 +106,8 @@ export interface Scene {
   /** `TOWER_STRIDE` floats per tower (`packTowers`), and the chips' (x, z) pairs. */
   setCity(towers: Float32Array, chips: Float32Array, half: number): void;
   setPages(data: Uint8Array): void;
+  /** Dashed route segments (x0, z0, x1, z1, r, g, b, unused), 8 floats each; empty for none. */
+  setRoutes(data: Float32Array): void;
   /** Backing size in device pixels. */
   resize(width: number, height: number): void;
   draw(frame: Frame): void;
@@ -145,6 +150,9 @@ export function createScene(gl: WebGL2RenderingContext): Scene {
     ]);
     const car = prog(CAR_VS, CAR_FS, 'traffic', ['uVP', 'uLight']);
     const flash = prog(FLASH_VS, FLASH_FS, 'flashes', ['uVP', 'uFlash', 'uLight']);
+    const route = prog(ROUTE_VS, ROUTE_FS, 'routes', ['uVP', 'uLight']);
+    const bright = prog(VERTEX, BRIGHT, 'bright pass', ['uScene', 'uThreshold']);
+    const blur = prog(VERTEX, BLUR, 'blur', ['uSrc', 'uDir']);
     const composite = prog(VERTEX, COMPOSITE, 'composite', ['uScene', 'uBloom', 'uGain', 'uAspect', 'uCorner']);
 
     const buffer = (): WebGLBuffer => { const b = make(gl.createBuffer(), 'buffer'); buffers.push(b); return b; };
@@ -155,6 +163,7 @@ export function createScene(gl: WebGL2RenderingContext): Scene {
     const towerBuf = buffer();
     const chipBuf = buffer();
     const carBuf = buffer();
+    const routeBuf = buffer();
     gl.bindBuffer(gl.ARRAY_BUFFER, carBuf);
     gl.bufferData(gl.ARRAY_BUFFER, MAX_CARS * CAR_STRIDE * 4, gl.DYNAMIC_DRAW);
 
@@ -185,6 +194,14 @@ export function createScene(gl: WebGL2RenderingContext): Scene {
     const carVao = vao();
     gl.bindVertexArray(carVao);
     gl.bindBuffer(gl.ARRAY_BUFFER, carBuf);
+    for (let i = 0; i < 2; i++) {
+      gl.enableVertexAttribArray(i);
+      gl.vertexAttribPointer(i, 4, gl.FLOAT, false, CAR_STRIDE * 4, i * 16);
+      gl.vertexAttribDivisor(i, 1);
+    }
+    const routeVao = vao();
+    gl.bindVertexArray(routeVao);
+    gl.bindBuffer(gl.ARRAY_BUFFER, routeBuf);
     for (let i = 0; i < 2; i++) {
       gl.enableVertexAttribArray(i);
       gl.vertexAttribPointer(i, 4, gl.FLOAT, false, CAR_STRIDE * 4, i * 16);
@@ -225,7 +242,32 @@ export function createScene(gl: WebGL2RenderingContext): Scene {
       gl.bindRenderbuffer(gl.RENDERBUFFER, depth);
       gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT24, width, height);
     };
+    // The glow: a bright pass and two blurs at half size.
+    const target = (unit: number) => {
+      const t = tex(unit);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      const fb = make(gl.createFramebuffer(), 'framebuffer');
+      frames.push(fb);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
+      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, t, 0);
+      return { tex: t, fb, unit };
+    };
+    const bloomA = target(3);
+    const bloomB = target(4);
+    const allocateBloom = (): void => {
+      for (const t of [bloomA, bloomB]) {
+        gl.activeTexture(gl.TEXTURE0 + t.unit);
+        gl.bindTexture(gl.TEXTURE_2D, t.tex);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, Math.max(1, width >> 1), Math.max(1, height >> 1), 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+      }
+    };
     allocate();
+    allocateBloom();
+    for (const t of [bloomA, bloomB]) {
+      gl.bindFramebuffer(gl.FRAMEBUFFER, t.fb);
+      if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) throw new Error('Gibson 3D: render target incomplete');
+    }
     gl.bindFramebuffer(gl.FRAMEBUFFER, sceneFb);
     gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, sceneT, 0);
     gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, depth);
@@ -234,6 +276,7 @@ export function createScene(gl: WebGL2RenderingContext): Scene {
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
 
     let palette: Palette | null = null;
+    let routeCount = 0;
     let towerCount = 0;
     let chipCount = 0;
     let half = 64;
@@ -262,6 +305,11 @@ export function createScene(gl: WebGL2RenderingContext): Scene {
         gl.bindTexture(gl.TEXTURE_2D, pages);
         gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, PAGES_W, PAGES_H, gl.RED, gl.UNSIGNED_BYTE, data);
       },
+      setRoutes(data) {
+        routeCount = data.length / CAR_STRIDE;
+        gl.bindBuffer(gl.ARRAY_BUFFER, routeBuf);
+        gl.bufferData(gl.ARRAY_BUFFER, data, gl.DYNAMIC_DRAW);
+      },
       resize(w, h) {
         const nw = Math.max(1, w);
         const nh = Math.max(1, h);
@@ -269,6 +317,7 @@ export function createScene(gl: WebGL2RenderingContext): Scene {
         width = nw;
         height = nh;
         allocate();
+        allocateBloom();
       },
       draw(f) {
         const pal = palette;
@@ -364,6 +413,18 @@ export function createScene(gl: WebGL2RenderingContext): Scene {
           gl.depthMask(false);
         }
 
+        // 5b. Routes, dashed, for a still scene.
+        if (routeCount > 0) {
+          gl.enable(gl.BLEND);
+          if (pal.light) gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+          else gl.blendFunc(gl.ONE, gl.ONE);
+          gl.useProgram(route.p);
+          gl.bindVertexArray(routeVao);
+          gl.uniformMatrix4fv(route.at.uVP, false, f.viewProj);
+          gl.uniform1f(route.at.uLight, light);
+          gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, routeCount);
+        }
+
         // 6. The traffic.
         if (f.carCount > 0) {
           gl.enable(gl.BLEND);
@@ -386,15 +447,37 @@ export function createScene(gl: WebGL2RenderingContext): Scene {
         gl.depthMask(true);
         gl.bindVertexArray(null);
 
+        // The glow: only on a dark board, where light adds to the picture.
+        gl.disable(gl.DEPTH_TEST);
+        gl.bindVertexArray(emptyVao);
+        const glow = !pal.light;
+        if (glow) {
+          const hw = Math.max(1, width >> 1);
+          const hh = Math.max(1, height >> 1);
+          gl.viewport(0, 0, hw, hh);
+          gl.bindFramebuffer(gl.FRAMEBUFFER, bloomA.fb);
+          gl.useProgram(bright.p);
+          gl.uniform1i(bright.at.uScene, 2);
+          gl.uniform1f(bright.at.uThreshold, BLOOM_THRESHOLD);
+          gl.drawArrays(gl.TRIANGLES, 0, 3);
+          gl.useProgram(blur.p);
+          gl.uniform1i(blur.at.uSrc, 3);
+          gl.uniform2f(blur.at.uDir, 1 / hw, 0);
+          gl.bindFramebuffer(gl.FRAMEBUFFER, bloomB.fb);
+          gl.drawArrays(gl.TRIANGLES, 0, 3);
+          gl.uniform1i(blur.at.uSrc, 4);
+          gl.uniform2f(blur.at.uDir, 0, 1 / hh);
+          gl.bindFramebuffer(gl.FRAMEBUFFER, bloomA.fb);
+          gl.drawArrays(gl.TRIANGLES, 0, 3);
+        }
+
         // The picture to the screen, under the vignette.
         gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-        gl.disable(gl.DEPTH_TEST);
         gl.viewport(0, 0, width, height);
         gl.useProgram(composite.p);
-        gl.bindVertexArray(emptyVao);
         gl.uniform1i(composite.at.uScene, 2);
-        gl.uniform1i(composite.at.uBloom, 2);
-        gl.uniform1f(composite.at.uGain, 0);
+        gl.uniform1i(composite.at.uBloom, 3);
+        gl.uniform1f(composite.at.uGain, glow ? BLOOM_GAIN : 0);
         gl.uniform1f(composite.at.uAspect, width / height);
         gl.uniform1f(composite.at.uCorner, pal.light ? CORNER_LIGHT : CORNER_DARK);
         gl.drawArrays(gl.TRIANGLES, 0, 3);

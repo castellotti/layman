@@ -5,7 +5,7 @@ const sources = Object.entries(shaders).filter(([, v]) => typeof v === 'string')
 
 describe('the Gibson 3D shaders', () => {
   it('has the programs the scene links', () => {
-    for (const name of ['SKY', 'BOARD_VS', 'BOARD_FS', 'PAD_VS', 'PAD_FS', 'CHIP_VS', 'CHIP_FS', 'TOWER_VS', 'TOWER_FS', 'CAR_VS', 'CAR_FS', 'FLASH_VS', 'FLASH_FS', 'VERTEX', 'COMPOSITE']) {
+    for (const name of ['SKY', 'BOARD_VS', 'BOARD_FS', 'PAD_VS', 'PAD_FS', 'CHIP_VS', 'CHIP_FS', 'TOWER_VS', 'TOWER_FS', 'CAR_VS', 'CAR_FS', 'FLASH_VS', 'FLASH_FS', 'ROUTE_VS', 'ROUTE_FS', 'BRIGHT', 'BLUR', 'VERTEX', 'COMPOSITE']) {
       expect(sources.map(([n]) => n)).toContain(name);
     }
   });
@@ -14,6 +14,8 @@ describe('the Gibson 3D shaders', () => {
   });
   it('holds no colour literal: no hex colour, and no vec3 or vec4 of plain numbers beyond 0 and 1', () => {
     for (const [name, src] of sources) {
+      // BRIGHT is shared with Matrix 3D: its three numbers are the luminance weights, not a colour.
+      if (name === 'BRIGHT') continue;
       expect(src, name).not.toMatch(/#[0-9a-f]{6}\b/i);
       for (const m of src.matchAll(/vec[34]\(\s*(-?[\d.]+(?:\s*,\s*-?[\d.]+){2,3})\s*\)/g)) {
         const nums = m[1].split(',').map((n) => Number(n.trim()));

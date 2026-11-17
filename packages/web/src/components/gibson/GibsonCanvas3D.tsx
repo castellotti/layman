@@ -1,16 +1,17 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { HostRow, LinkRow, LogRow } from '../../lib/gibson-feed.js';
-import { pagesOf } from '../../lib/gibson-city.js';
+import { pagesOf, routeOf, sendsCars } from '../../lib/gibson-city.js';
 import {
-  MAX_PAGES, boundOf, cityKey, invert, lookFrom, moved, multiply, overhead, packPages, packTowers, perspective,
-  pickTower3d, rayThrough, turned, type FlyCam, type Mat4,
+  MAX_PAGES, boundOf, between, cityKey, invert, labelsOf, lookFrom, moved, multiply, overhead, packPages, packTowers, perspective,
+  pickTower3d, rayThrough, tourCam, turned, viewpointFor, type FlyCam, type Mat4,
 } from '../../lib/gibson-gpu.js';
-import { paletteOf, type Palette, type SchemeId } from '../../lib/gibson-schemes.js';
+import { paletteOf, rgbCss, type Palette, type SchemeId } from '../../lib/gibson-schemes.js';
 import { motionIsFull, readToken } from '../../lib/theme-runtime.js';
 import { rad, sp } from '../../lib/density.js';
 import { useThemeVersion } from '../../hooks/useThemeVersion.js';
 import { useElementSize } from '../../hooks/useElementSize.js';
 import { useGibsonCity } from '../../hooks/useGibsonCity.js';
+import { useStored } from '../../hooks/useStored.js';
 import { StreamCard, type Hover } from '../matrix/StreamCard.js';
 import { CAR_STRIDE, MAX_ARRIVALS, BOARD_MARGIN, createScene, type Scene } from './gibson3d-gl.js';
 import { GibsonHostList, cardRow } from './GibsonHostList.js';
@@ -28,6 +29,14 @@ const LOOK = (0.25 * Math.PI) / 180;
 const SPEED = 12;
 /** One wheel notch moves this fraction of the camera's height, but at least `NOTCH_MIN`. */
 const NOTCH = 0.08;
+/** The camera flies to a selected tower, or back overhead, over this long (ms). */
+const FLY_MS = 1200;
+/** With no input for this long (and motion full, nothing selected) the camera tours; it blends in over `TOUR_BLEND_S`. */
+const TOUR_IDLE_MS = 20_000;
+const TOUR_BLEND_S = 2;
+/** Set once the first input has shown the controls. */
+export const HINT_KEY = 'layman.gibson.hint3d';
+const EMPTY_ROUTES = new Float32Array(0);
 const NOTCH_MIN = 1.5;
 
 type Problem = 'no-webgl2' | 'failed';
@@ -40,6 +49,7 @@ interface Latest {
   chips: Float32Array;
   half: number;
   pages: Uint8Array;
+  routes: Float32Array;
   pal: Palette;
   font: string;
 }
@@ -125,8 +135,27 @@ export function GibsonCanvas3D({ hosts, links, resetKey, scheme, selected, onSel
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key, packed]);
 
+  // A still scene (motion reduced or off) has no cars: each active link's route is a faint dashed line instead.
+  const routes = useMemo(() => {
+    if (full) return EMPTY_ROUTES;
+    const towers = new Map(city.towers.map((t) => [t.host, t]));
+    const chips = new Map(city.chips.map((c) => [c.source, c]));
+    const out: number[] = [];
+    for (const l of links) {
+      const t = towers.get(l.target);
+      const c = chips.get(l.source);
+      if (!t || !c || !sendsCars(l)) continue;
+      const colour = pal.traffic ?? pal.glass[t.tone];
+      const pts = routeOf([c.x, c.z], [t.x, t.z]);
+      for (let i = 1; i < pts.length; i++) out.push(pts[i - 1][0], pts[i - 1][1], pts[i][0], pts[i][1], colour[0], colour[1], colour[2], 0);
+    }
+    return out.length === 0 ? EMPTY_ROUTES : new Float32Array(out);
+  }, [full, city, links, pal]);
+
   const latest = useRef<Latest | null>(null);
-  latest.current = { towers: gpu.towers, chips: gpu.chips, half: gpu.half, pages: packed.data, pal, font };
+  latest.current = { towers: gpu.towers, chips: gpu.chips, half: gpu.half, pages: packed.data, routes, pal, font };
+  const selectedRef = useRef(selected);
+  selectedRef.current = selected;
   const cityRef = useRef(city);
   cityRef.current = city;
   const linksRef = useRef(links);
@@ -144,6 +173,13 @@ export function GibsonCanvas3D({ hosts, links, resetKey, scheme, selected, onSel
   // The camera and what steers it.
   const cam = useRef<FlyCam>(overhead(24));
   const placed = useRef(false);
+  /** What moves the camera other than the user's hands: a fly-to, and the tour. Any input ends both. */
+  const motion = useRef<{ fly: { from: FlyCam; to: FlyCam; start: number } | null; tour: { from: FlyCam; start: number } | null; lastInput: number }>({
+    fly: null, tour: null, lastInput: performance.now(),
+  });
+  const [hintSeen, setHintSeen] = useStored<string>(HINT_KEY, '', (raw) => raw);
+  const labelBox = useRef<HTMLDivElement | null>(null);
+  const labelEls = useRef<HTMLSpanElement[]>([]);
   const keys = useRef(new Set<string>());
   const shift = useRef(false);
   const api = useRef<Api | null>(null);
@@ -162,13 +198,39 @@ export function GibsonCanvas3D({ hosts, links, resetKey, scheme, selected, onSel
     return { viewProj: multiply(perspective(FOV, aspect, NEAR, FAR), lookFrom(cam.current.pos, cam.current.yaw, cam.current.pitch)), aspect };
   };
 
+  /** The user did something: the tour and any fly-to stop where they are. */
+  const touch = (): void => {
+    motion.current.fly = null;
+    motion.current.tour = null;
+    motion.current.lastInput = performance.now();
+    if (hintSeen !== 'seen') setHintSeen('seen');
+  };
+  const touchRef = useRef(touch);
+  touchRef.current = touch;
+  /** Fly to `to` over 1.2 s; with motion not full, jump. */
+  const flyTo = (to: FlyCam): void => {
+    motion.current.tour = null;
+    if (fullRef.current) { motion.current.fly = { from: cam.current, to, start: performance.now() }; return; }
+    motion.current.fly = null;
+    cam.current = to;
+    api.current?.sync();
+  };
+
+  // Selecting a tower flies to where its face can be read; deselecting leaves the camera where it is.
+  useEffect(() => {
+    if (!selected) return;
+    const t = cityRef.current.towers.find((x) => x.host === selected);
+    if (t) flyTo(viewpointFor(t, cam.current));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selected]);
+
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     let scene: Scene | null = null;
     let raf = 0;
     let last = 0;
-    let uploaded: { towers?: Float32Array; chips?: Float32Array; pages?: Uint8Array; pal?: Palette; font?: string; w?: number; h?: number } = {};
+    let uploaded: { towers?: Float32Array; chips?: Float32Array; routes?: Float32Array; pages?: Uint8Array; pal?: Palette; font?: string; w?: number; h?: number } = {};
     const cars = new Float32Array(96 * CAR_STRIDE);
     const arrivals = new Float32Array(MAX_ARRIVALS * 2);
 
@@ -185,7 +247,37 @@ export function GibsonCanvas3D({ hosts, links, resetKey, scheme, selected, onSel
         time: time(), viewProj, invSky: sky, eye: cam.current.pos, cars, carCount, arrivals, arrivalCount,
         flash: p.marks ? p.fresh : p.glass.blocked,
       });
+      updateLabels(viewProj);
     };
+
+    /** The host names over the towers: a pool of elements moved here, never React state per frame. */
+    function updateLabels(viewProj: Mat4): void {
+      const host = labelBox.current;
+      if (!host) return;
+      const b = boxRef.current;
+      const pal = palRef.current;
+      const city = cityRef.current;
+      const tones = new Map(city.towers.map((t) => [t.host, t.tone]));
+      const list = labelsOf(city, cam.current, viewProj, b.width, b.height, selectedRef.current);
+      const pool = labelEls.current;
+      list.forEach((l, i) => {
+        let el = pool[i];
+        if (!el) {
+          el = document.createElement('span');
+          el.style.cssText = 'position:absolute;left:0;top:0;white-space:nowrap;pointer-events:none;font-family:var(--font-mono);letter-spacing:0.08em;text-transform:uppercase;font-size:0.6875rem';
+          host.appendChild(el);
+          pool[i] = el;
+        }
+        if (el.textContent !== l.host) el.textContent = l.host;
+        // Built from numbers at run time: the scheme's colour, never a literal.
+        el.style.color = rgbCss(l.host === selectedRef.current ? pal.highlight : pal.text[tones.get(l.host) ?? 'normal']);
+        el.style.textShadow = `0 0 4px ${rgbCss(pal.board)}, 0 0 2px ${rgbCss(pal.board)}`;
+        el.style.transform = `translate(${l.x.toFixed(1)}px, ${l.y.toFixed(1)}px) translate(-50%, -100%)`;
+        el.style.opacity = l.opacity.toFixed(2);
+        el.style.display = '';
+      });
+      for (let i = list.length; i < pool.length; i++) pool[i].style.display = 'none';
+    }
 
     const sync = (): void => {
       const l = latest.current;
@@ -204,6 +296,7 @@ export function GibsonCanvas3D({ hosts, links, resetKey, scheme, selected, onSel
       if (uploaded.font !== l.font) { scene.setFont(l.font); uploaded.font = l.font; }
       if (uploaded.pal !== l.pal) { scene.setPalette(l.pal); uploaded.pal = l.pal; }
       if (uploaded.towers !== l.towers || uploaded.chips !== l.chips) { scene.setCity(l.towers, l.chips, l.half); uploaded.towers = l.towers; uploaded.chips = l.chips; }
+      if (uploaded.routes !== l.routes) { scene.setRoutes(l.routes); uploaded.routes = l.routes; }
       if (uploaded.pages !== l.pages) { scene.setPages(l.pages); uploaded.pages = l.pages; }
       if (!raf) draw();
     };
@@ -214,6 +307,7 @@ export function GibsonCanvas3D({ hosts, links, resetKey, scheme, selected, onSel
       const dt = Math.min(0.1, (now - (last || now)) / 1000);
       last = now;
       if (keys.current.size > 0) nudge(dt);
+      steer(now);
       const live = traffic.current.step(dt, linksRef.current, cityRef.current);
       const stamp = Date.now();
       for (const host of traffic.current.arrivals()) arrivedAt.current.set(host, stamp);
@@ -243,6 +337,20 @@ export function GibsonCanvas3D({ hosts, links, resetKey, scheme, selected, onSel
       if (!scene) return;
       if (fullRef.current && document.visibilityState === 'visible') { last = 0; raf = requestAnimationFrame(frame); } else draw();
     };
+
+    /** The fly-to, and the tour once nobody has touched anything for 20 s. */
+    function steer(now: number): void {
+      const m = motion.current;
+      if (m.fly) {
+        const t = (now - m.fly.start) / FLY_MS;
+        cam.current = between(m.fly.from, m.fly.to, t);
+        if (t >= 1) m.fly = null;
+      } else if (!selectedRef.current && now - m.lastInput > TOUR_IDLE_MS) {
+        if (!m.tour) m.tour = { from: cam.current, start: now };
+        const s = (now - m.tour.start) / 1000;
+        cam.current = between(m.tour.from, tourCam(s, cityRef.current.extent), s / TOUR_BLEND_S);
+      }
+    }
 
     /** Fly for `dt` seconds with the keys held. */
     function nudge(dt: number): void {
@@ -302,6 +410,7 @@ export function GibsonCanvas3D({ hosts, links, resetKey, scheme, selected, onSel
     const onWheel = (e: WheelEvent): void => {
       e.preventDefault();
       if (e.deltaY === 0) return;
+      touchRef.current();
       // A notch is 100 px; Firefox's line mode reports about 3 lines, and a page mode 1.
       const px = e.deltaY * (e.deltaMode === 1 ? 33 : e.deltaMode === 2 ? 800 : 1);
       const notches = -Math.max(-300, Math.min(300, px)) / 100;
@@ -352,6 +461,7 @@ export function GibsonCanvas3D({ hosts, links, resetKey, scheme, selected, onSel
     press.current = { x, y, lx: x, ly: y, moved: false };
     e.currentTarget.setPointerCapture(e.pointerId);
     e.currentTarget.focus({ preventScroll: true });
+    touch();
   };
   const onPointerMove = (e: React.PointerEvent<HTMLDivElement>): void => {
     const { x, y } = local(e);
@@ -390,6 +500,7 @@ export function GibsonCanvas3D({ hosts, links, resetKey, scheme, selected, onSel
     e.preventDefault();
     e.stopPropagation();
     shift.current = e.shiftKey;
+    touch();
     keys.current.add(k);
     // A still scene has no frame loop: each press (and its auto-repeat) is one step.
     if (!fullRef.current) api.current?.nudge(0.08);
@@ -422,6 +533,7 @@ export function GibsonCanvas3D({ hosts, links, resetKey, scheme, selected, onSel
         aria-label={`${hosts.length} destinations drawn as towers on a city of blocks, in 3D`}
         style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', display: problem ? 'none' : 'block' }}
       />
+      <div ref={labelBox} aria-hidden="true" style={{ position: 'absolute', inset: 0, overflow: 'hidden', pointerEvents: 'none' }} />
       <GibsonHostList hosts={hosts} />
       {problem && (
         <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: sp(10), color: 'var(--text-faint)', fontSize: 13, textAlign: 'center', padding: sp(24) }}>
@@ -434,6 +546,24 @@ export function GibsonCanvas3D({ hosts, links, resetKey, scheme, selected, onSel
           >
             Show Gibson 2D
           </button>
+        </div>
+      )}
+      {!problem && (
+        <div data-print-hide style={{ position: 'absolute', left: sp(12), bottom: sp(12), display: 'flex', alignItems: 'center', gap: sp(8) }}>
+          <button
+            type="button"
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={() => { touch(); flyTo(overhead(cityRef.current.extent)); }}
+            style={{
+              padding: sp('2px 8px'), borderRadius: rad(4), cursor: 'pointer', fontSize: 11, fontFamily: 'var(--font-mono)',
+              color: 'var(--text-muted)', background: 'var(--bg-raised)', border: 'var(--stroke) solid var(--border)',
+            }}
+          >
+            Overhead
+          </button>
+          {hintSeen !== 'seen' && (
+            <span style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--text-faint)' }}>Drag to look · W A S D to fly · click a tower</span>
+          )}
         </div>
       )}
       {hover && hovered && !press.current?.moved && (
