@@ -67,7 +67,7 @@ function GibsonPane({ mode }: { mode: ViewMode }) {
   const session = sessions.find((x) => x.sessionId === sessionId);
   const [window, setWindow] = useStored<MatrixWindow>(GIBSON_WINDOW_KEY, DEFAULT_MATRIX_WINDOW, parseMatrixWindow);
   const [scheme, setScheme] = useStored<SchemeId>(GIBSON_SCHEME_KEY, DEFAULT_SCHEME, parseScheme);
-  const { hosts } = useGibsonFeed(sessionId, window);
+  const { hosts, error } = useGibsonFeed(sessionId, window);
 
   const down = hosts.reduce((n, h) => n + h.received, 0);
   const blocks = new Set(hosts.map((h) => h.block)).size;
@@ -82,7 +82,7 @@ function GibsonPane({ mode }: { mode: ViewMode }) {
         <Picker label="Window" options={MATRIX_WINDOWS} value={window} onPick={setWindow} />
         <Picker label="Scheme" options={SCHEMES} value={scheme} onPick={setScheme} />
         <span style={{ marginLeft: 'auto', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
-          {hosts.length} {hosts.length === 1 ? 'tower' : 'towers'} · {blocks} {blocks === 1 ? 'block' : 'blocks'}{down > 0 ? ` · ${formatBytes(down)} down` : ''}
+          {error ? <span style={{ color: 'var(--error)' }}>{error} · </span> : null}{hosts.length} {hosts.length === 1 ? 'tower' : 'towers'} · {blocks} {blocks === 1 ? 'block' : 'blocks'}{down > 0 ? ` · ${formatBytes(down)} down` : ''}
         </span>
       </div>
       {mode === 'gibson' ? (

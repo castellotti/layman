@@ -14,7 +14,6 @@ export const BLOCK_PITCH = 16;
 /** A tower's text page is 24 columns wide. */
 export const PAGE_COLUMNS = 24;
 const LOTS_PER_BLOCK = BLOCK_LOTS * BLOCK_LOTS;
-const MAX_HOME_SOURCES = 16;
 /** The home block's lot for the one chip of a city with no links, and for a 17th source onward. */
 const LOCAL_LOT = 5;
 const OVERFLOW_LOT = 15;
@@ -91,8 +90,7 @@ export function place(prev: Placement, hosts: readonly HostRow[], links: readonl
     for (const s of sources) {
       if (home.has(s)) continue;
       let lot = 0;
-      while (lot < MAX_HOME_SOURCES && used.has(lot)) lot++;
-      if (lot >= MAX_HOME_SOURCES) lot = OVERFLOW_LOT;
+      while (lot < OVERFLOW_LOT && used.has(lot)) lot++;
       used.add(lot);
       home.set(s, lot);
     }

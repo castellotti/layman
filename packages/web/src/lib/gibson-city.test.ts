@@ -351,3 +351,13 @@ describe('traffic', () => {
     expect(max).toBe(96);
   });
 });
+
+describe('home lots past the first fifteen sources', () => {
+  it('gives the overflow lot only to sources past the fifteenth', () => {
+    const links = Array.from({ length: 18 }, (_, i) => ({ source: `s${i}`, target: 'a.example', count: 1 })) as never;
+    const { home } = place(EMPTY_PLACEMENT, [], links);
+    const lots = [...home.values()];
+    expect(lots.filter((l) => l === 15).length).toBe(3);
+    expect(new Set(lots.slice(0, 15)).size).toBe(15);
+  });
+});
