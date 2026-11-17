@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import type { ClientMessage } from '../../../lib/ws-protocol.js';
 import type { LaymanConfig } from '../../../lib/types.js';
 import { SectionTitle, ToggleRow, CustomRow, Code } from './primitives.js';
@@ -19,6 +19,12 @@ export function StyxSection({
   const updateConfig = (updates: Partial<LaymanConfig>) => onSend({ type: 'config:update', config: updates });
   // An older server sends no `styx` block.
   const styx = config.styx ?? { enabled: false, godotDir: '' };
+  const [dirDraft, setDirDraft] = useState(styx.godotDir);
+  useEffect(() => setDirDraft(styx.godotDir), [styx.godotDir]);
+  const commitDir = () => {
+    const v = dirDraft.trim();
+    if (v !== styx.godotDir) updateConfig({ styx: { ...styx, godotDir: v } });
+  };
   const { status } = useMatrixGodotStatus(styx.enabled, styx.godotDir);
 
   return (
@@ -39,9 +45,12 @@ export function StyxSection({
             <span style={{ fontSize: 12, color: 'var(--text)', flex: 1 }}>Godot build folder</span>
             <input
               type="text"
-              value={styx.godotDir}
+              value={dirDraft}
               placeholder="~/.local/share/layman/styx/godot"
-              onChange={(e) => updateConfig({ styx: { ...styx, godotDir: e.target.value } })}
+              // Saved on blur or Enter, never per keystroke: a half-typed path would be stored and served.
+              onChange={(e) => setDirDraft(e.target.value)}
+              onBlur={commitDir}
+              onKeyDown={(e) => { if (e.key === 'Enter') commitDir(); }}
               spellCheck={false}
               style={{ width: 220, padding: sp('4px 6px'), fontSize: 11, fontFamily: 'var(--font-mono)', background: 'var(--bg-card)', border: 'var(--stroke) solid var(--border-strong)', borderRadius: rad(5), color: 'var(--text)', outline: 'none' }}
             />

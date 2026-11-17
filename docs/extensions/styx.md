@@ -78,9 +78,13 @@ default location, which is inside the data folder it already mounts.
 
 **The policy.** Layman serves the build under `/styx/godot/` (404 while Styx is off) with a
 Content-Security-Policy whose `connect-src 'self'` and `default-src 'self'` mean the page can talk to Layman
-and nothing else, so "every request goes to Layman" is enforced, not hoped for. Godot's shell needs inline
+and nothing else, so "every request goes to Layman" is enforced, not hoped for. That is a limit on where
+the page can send things, not a sandbox: it runs on Layman's origin and can call Layman's own API like any
+Layman page, so build it yourself and point the folder only at a build you trust. Godot's shell needs inline
 scripts and styles and `eval`, so those directives carry `unsafe-*`, for these responses only. A request
-path can only name a file inside the folder, of a known type, with no dotfile or `..` in it.
+path can only name a file inside the folder (a symlink leading out is refused), of a known type, with no
+dotfile or `..` in it. A build that loads scripts from another site is reported as no build, because the
+policy would block it.
 
 **Secure page.** Godot's web shell refuses to start outside a secure context. `http://localhost:8880` and
 `http://127.0.0.1:8880` are; Layman opened over the LAN by IP address, or over plain http from another

@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { mkdtempSync, rmSync, writeFileSync } from 'fs';
+import { mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join, resolve } from 'path';
-import { GODOT_CSP, godotBuildStatus, resolveGodotFile } from './godot.js';
+import { GODOT_CSP, godotBuildStatus, insideFolder, resolveGodotFile } from './godot.js';
 
 const DIR = '/srv/godot';
 const at = (p: string) => resolveGodotFile(DIR, `/styx/godot/${p}`);
@@ -50,7 +50,20 @@ describe('godotBuildStatus', () => {
   it('flags a build that loads scripts from another site', () => {
     for (const f of ['index.js', 'index.wasm', 'index.pck']) put(f);
     put('index.html', '<script src="https://cdn.jsdelivr.net/npm/webrtc-adapter"></script>');
-    expect(godotBuildStatus(dir).problems.join()).toContain('another site');
+    const s = godotBuildStatus(dir);
+    expect(s.problems.join()).toContain('another site');
+    // Not "present": the CSP would block its scripts and the tab would sit blank.
+    expect(s.present).toBe(false);
+  });
+
+  it('does not follow a symlink out of the folder', () => {
+    const outside = mkdtempSync(join(tmpdir(), 'godot-out-'));
+    writeFileSync(join(outside, 'secret.json'), '{}');
+    symlinkSync(join(outside, 'secret.json'), join(dir, 'index.json'));
+    put('index.html');
+    expect(insideFolder(dir, join(dir, 'index.json'))).toBe(false);
+    expect(insideFolder(dir, join(dir, 'index.html'))).toBe(true);
+    rmSync(outside, { recursive: true, force: true });
   });
 });
 

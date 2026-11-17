@@ -4,7 +4,7 @@ import cors from '@fastify/cors';
 import staticPlugin from '@fastify/static';
 import websocket from '@fastify/websocket';
 import { existsSync, readFileSync } from 'fs';
-import { join, dirname, resolve } from 'path';
+import { join, dirname, resolve, isAbsolute } from 'path';
 import { homedir } from 'os';
 import { fileURLToPath } from 'url';
 
@@ -705,8 +705,10 @@ export function createServer(config: LaymanConfig): LaymanServer {
     registerStyxRoutes(fastify, {
       enabled: () => getConfig().styx?.enabled === true,
       godotDir: () => {
-        const d = getConfig().styx?.godotDir ?? '';
-        return d ? expandHome(d) : join(laymanDataDir(), 'styx', 'godot');
+        const d = (getConfig().styx?.godotDir ?? '').trim();
+        const dir = d ? expandHome(d) : '';
+        // A relative folder would resolve against whatever directory the server started in.
+        return dir && isAbsolute(dir) ? dir : join(laymanDataDir(), 'styx', 'godot');
       },
       store: netObs.store,
       gloveTokenOf: (id) => gloveTokenFor(id, liveNames()),

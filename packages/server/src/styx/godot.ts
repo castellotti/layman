@@ -4,7 +4,7 @@
  * The build is never part of Layman: the user makes it and Layman serves the folder. `resolveGodotFile`
  * is the only path from a URL to a file here, so everything that can escape the folder is refused in it.
  */
-import { existsSync, readFileSync, readdirSync, statSync } from 'fs';
+import { existsSync, readFileSync, readdirSync, realpathSync, statSync } from 'fs';
 import { resolve, sep, extname } from 'path';
 
 export const GODOT_PREFIX = '/styx/godot/';
@@ -18,6 +18,10 @@ const TYPES: Record<string, string> = {
   '.png': 'image/png',
   '.ico': 'image/x-icon',
   '.json': 'application/json',
+  '.mjs': 'text/javascript; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
+  '.svg': 'image/svg+xml',
+  '.webmanifest': 'application/manifest+json',
 };
 
 /** The file a request path names inside `dir`, or null: traversal, a dotfile, an unknown type. */
@@ -38,6 +42,16 @@ export function resolveGodotFile(dir: string, urlPath: string): { file: string; 
   const file = resolve(root, rel);
   if (!file.startsWith(root + sep)) return null;
   return { file, type };
+}
+
+/** `resolveGodotFile` is lexical; this is the check against symlinks, which may not lead out of the folder. */
+export function insideFolder(dir: string, file: string): boolean {
+  try {
+    const root = realpathSync(dir);
+    return realpathSync(file).startsWith(root + sep);
+  } catch {
+    return false;
+  }
 }
 
 export interface GodotBuildStatus {
@@ -63,6 +77,7 @@ export function godotBuildStatus(dir: string): GodotBuildStatus {
       }
     } catch { /* unreadable: reported by the missing/serving paths */ }
   }
+  const blocked = problems.some((p) => p.startsWith('This build loads scripts'));
   let builtAt: number | null = null;
   try {
     builtAt = statSync(resolve(dir, 'index.wasm')).mtimeMs;
@@ -71,7 +86,7 @@ export function godotBuildStatus(dir: string): GodotBuildStatus {
   try {
     files = readdirSync(dir).length;
   } catch { /* no folder */ }
-  return { present: missing.length === 0, dir, builtAt, files, problems };
+  return { present: missing.length === 0 && !blocked, dir, builtAt, files, problems };
 }
 
 /**
@@ -82,4 +97,4 @@ export function godotBuildStatus(dir: string): GodotBuildStatus {
  * that blocked it: loosen that one, never `connect-src` or `default-src`, and record why here.
  */
 export const GODOT_CSP =
-  "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; worker-src 'self' blob:; frame-ancestors 'self'; base-uri 'none'; form-action 'none'";
+  "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob: data:; font-src 'self' data:; connect-src 'self'; worker-src 'self' blob:; frame-ancestors 'self'; base-uri 'none'; form-action 'none'";

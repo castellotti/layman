@@ -9,7 +9,7 @@
  */
 import { createReadStream, statSync } from 'fs';
 import type { FastifyInstance } from 'fastify';
-import { GODOT_CSP, godotBuildStatus, resolveGodotFile } from './godot.js';
+import { GODOT_CSP, godotBuildStatus, insideFolder, resolveGodotFile } from './godot.js';
 import { callsFrom } from '../netobs/correlate.js';
 import type { TraceCall } from '../netobs/types.js';
 import type { NetStore } from '../netobs/store.js';
@@ -87,10 +87,11 @@ export function registerStyxRoutes(fastify: FastifyInstance, deps: StyxDeps): vo
     if (!deps.enabled()) return reply.code(404).send({ error: 'Styx is not enabled' });
     const hit = resolveGodotFile(deps.godotDir(), req.url);
     let mtime: Date | null = null;
-    if (hit) {
+    let size = 0;
+    if (hit && insideFolder(deps.godotDir(), hit.file)) {
       try {
         const st = statSync(hit.file);
-        if (st.isFile()) mtime = new Date(Math.floor(st.mtimeMs / 1000) * 1000);
+        if (st.isFile()) { mtime = new Date(Math.floor(st.mtimeMs / 1000) * 1000); size = st.size; }
       } catch { /* missing */ }
     }
     if (!hit || !mtime) return reply.code(404).send({ error: 'Not found' });
@@ -98,7 +99,11 @@ export function registerStyxRoutes(fastify: FastifyInstance, deps: StyxDeps): vo
       .header('Cache-Control', 'no-cache').header('Last-Modified', mtime.toUTCString());
     const since = Date.parse(String(req.headers['if-modified-since'] ?? ''));
     if (!Number.isNaN(since) && mtime.getTime() <= since) return reply.code(304).send();
-    return reply.type(hit.type).send(createReadStream(hit.file));
+    // A length lets the loader show progress for the 35 MB wasm; a file replaced mid-request ends the
+    // connection rather than quietly truncating.
+    const stream = createReadStream(hit.file);
+    stream.on('error', () => reply.raw.destroy());
+    return reply.type(hit.type).header('Content-Length', size).send(stream);
   });
 
   fastify.get('/api/styx/godot/status', async (_req, reply) => {
