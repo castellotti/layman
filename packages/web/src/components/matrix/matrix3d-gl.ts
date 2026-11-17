@@ -91,9 +91,18 @@ export function createScene(gl: WebGL2RenderingContext, firstLayer: number): Sce
     time: u('uTime'), aspect: u('uAspect'), light: u('uLight'), atlas: u('uAtlas'), columns: u('uColumns'), text: u('uText'),
     grid: u('uGrid'), bg: u('uBg'), rain: u('uRain'), head: u('uHead'), fresh: u('uFresh'), blocked: u('uBlocked'), untunnelled: u('uUntunnelled'),
   };
+  const textures: WebGLTexture[] = [];
   const vao = gl.createVertexArray();
+  const release = () => {
+    gl.deleteProgram(prog);
+    textures.forEach((t) => gl.deleteTexture(t));
+    if (vao) gl.deleteVertexArray(vao);
+  };
+  if (!vao) { release(); throw new Error('Matrix 3D: no vertex array'); }
   const tex = (unit: number) => {
     const t = gl.createTexture();
+    if (!t) { release(); throw new Error('Matrix 3D: no texture'); }
+    textures.push(t);
     gl.activeTexture(gl.TEXTURE0 + unit);
     gl.bindTexture(gl.TEXTURE_2D, t);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
@@ -158,11 +167,9 @@ export function createScene(gl: WebGL2RenderingContext, firstLayer: number): Sce
       gl.drawArrays(gl.TRIANGLES, 0, 3);
     },
     destroy() {
-      gl.deleteProgram(prog);
-      gl.deleteTexture(atlas);
-      gl.deleteTexture(columns);
-      gl.deleteTexture(text);
-      gl.deleteVertexArray(vao);
+      release();
+      // The browser keeps only about 16 live contexts: give this one up now, not when the page is collected.
+      gl.getExtension('WEBGL_lose_context')?.loseContext();
     },
   };
 }

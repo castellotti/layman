@@ -109,8 +109,9 @@ export function MatrixCanvas3D({ rows, ready, resetKey, gloveToken, onOpenNetwor
     const plan = (now: number): boolean => {
       if (resetRef.current !== seenReset) { seenReset = resetRef.current; planned = []; known = null; lastColumn.clear(); lastKey = ''; }
       const g = gridOf(aspect(), NEAR);
+      // A still frame does not age: a new answer must not expire its streams and deal them out again.
       planned = planStreams({
-        rows: rowsRef.current, columns: g.data, visibleRows: Math.ceil(rowsOf(NEAR)), now,
+        rows: rowsRef.current, columns: g.data, visibleRows: Math.ceil(rowsOf(NEAR)), now: fullRef.current ? now : epoch,
         current: planned, lastColumn, known, rand: Math.random,
       });
       for (const s of planned) lastColumn.set(s.address, s.column);
@@ -181,7 +182,7 @@ export function MatrixCanvas3D({ rows, ready, resetKey, gloveToken, onOpenNetwor
     };
 
     /** Every GL object, from one place: also what a restored context calls. */
-    const create = () => {
+    const create = (restored: boolean) => {
       const gl = canvas.getContext('webgl2', { antialias: false, alpha: false, powerPreference: 'high-performance' });
       if (!gl) { setProblem('no-webgl2'); return; }
       try {
@@ -192,19 +193,18 @@ export function MatrixCanvas3D({ rows, ready, resetKey, gloveToken, onOpenNetwor
         return;
       }
       setProblem(null);
-      theme();
       upload();
-      size();
-      loop();
+      // At mount the effects below do these; after a lost context nothing else would.
+      if (restored) { theme(); size(); loop(); }
     };
 
     const onLost = (e: Event) => { e.preventDefault(); stop(); scene = null; };
-    const onRestored = () => create();
+    const onRestored = () => create(true);
     const onVisible = () => loop();
     canvas.addEventListener('webglcontextlost', onLost);
     canvas.addEventListener('webglcontextrestored', onRestored);
     document.addEventListener('visibilitychange', onVisible);
-    create();
+    create(false);
 
     api.current = {
       rows: () => { if (plan(performance.now()) && !raf) draw(); },

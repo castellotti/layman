@@ -92,6 +92,7 @@ void main() {
     int dc = gc - int(g.z);
 
     int glyph = 0;
+    bool live = false;   // inside a stream: a character the atlas lacks stays blank, never filler
     float bright = 0.0;
     vec3 tint = uRain;
 
@@ -100,6 +101,7 @@ void main() {
       float len = c.b;
       float d = (uTime - c.r) * c.g * SPEED[layer] - row;   // rows behind the head; below 0: not reached yet
       if (len > 0.5 && d >= 0.0 && d < len) {
+        live = true;
         float ai = floor(c.a);
         float tone = mod(ai, 4.0);
         bool fresh = ai >= 4.0;
@@ -113,7 +115,7 @@ void main() {
       }
     }
 
-    if (glyph == 0) {
+    if (glyph == 0 && !live) {
       // Filler: every column carries faint rain, a head that wraps with a short trail.
       float h = hash(gc, layer, 7);
       float fHead = fract(h + uTime * mix(3.0, 8.0, hash(gc, layer, 11)) / (rows + 24.0)) * (rows + 24.0);
