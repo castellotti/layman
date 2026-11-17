@@ -184,7 +184,14 @@ export function GibsonCanvas3D({ hosts, links, resetKey, scheme, selected, onSel
   const shift = useRef(false);
   const api = useRef<Api | null>(null);
   const populated = city.towers.length > 0;
-  useEffect(() => { placed.current = false; setHover(null); }, [resetKey]);
+  useEffect(() => {
+    placed.current = false;
+    setHover(null);
+    // A fly-to or tour of the last session must not drag the new one's camera back.
+    motion.current.fly = null;
+    motion.current.tour = null;
+    motion.current.lastInput = performance.now();
+  }, [resetKey]);
   useEffect(() => {
     if (placed.current || !populated) return;
     placed.current = true;
@@ -217,12 +224,19 @@ export function GibsonCanvas3D({ hosts, links, resetKey, scheme, selected, onSel
   };
 
   // Selecting a tower flies to where its face can be read; deselecting leaves the camera where it is.
+  // Selecting or clearing counts as input (the tour must not start the moment a tower is deselected), and a
+  // selection that arrives before its city (a deep link) flies once the tower exists.
+  const flownTo = useRef<string | null>(null);
   useEffect(() => {
-    if (!selected) return;
-    const t = cityRef.current.towers.find((x) => x.host === selected);
-    if (t) flyTo(viewpointFor(t, cam.current));
+    motion.current.lastInput = performance.now();
+    if (!selected) { flownTo.current = null; return; }
+    if (flownTo.current === selected) return;
+    const t = city.towers.find((x) => x.host === selected);
+    if (!t) return;
+    flownTo.current = selected;
+    flyTo(viewpointFor(t, cam.current));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selected]);
+  }, [selected, populated]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -360,6 +374,7 @@ export function GibsonCanvas3D({ hosts, links, resetKey, scheme, selected, onSel
       const fwd = (k.has('w') || k.has('arrowup') ? 1 : 0) - (k.has('s') || k.has('arrowdown') ? 1 : 0);
       const up = (k.has('e') ? 1 : 0) - (k.has('q') ? 1 : 0);
       if (right === 0 && fwd === 0 && up === 0) return;
+      motion.current.lastInput = performance.now();
       cam.current = moved(cam.current, right * v, up * v, fwd * v, boundOf(cityRef.current.extent));
       if (!raf) draw();
     }
@@ -401,7 +416,7 @@ export function GibsonCanvas3D({ hosts, links, resetKey, scheme, selected, onSel
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  useEffect(() => { api.current?.sync(); }, [gpu, packed, pal, font, box.width, box.height]);
+  useEffect(() => { api.current?.sync(); }, [gpu, packed, routes, pal, font, box.width, box.height]);
   useEffect(() => { api.current?.loop(); }, [full]);
 
   // The wheel flies along the view. A native listener, because React's wheel is passive and could not stop the page scrolling.
@@ -472,6 +487,7 @@ export function GibsonCanvas3D({ hosts, links, resetKey, scheme, selected, onSel
       if (!p.moved && Math.hypot(x - p.x, y - p.y) > DRAG_PX) p.moved = true;
       if (p.moved) {
         setHover(null);
+        motion.current.lastInput = performance.now();
         cam.current = turned(cam.current, (x - p.lx) * LOOK, -(y - p.ly) * LOOK);
         api.current?.sync();
       }
