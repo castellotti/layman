@@ -228,7 +228,7 @@ store for unrecorded sessions, and memoizes per session until a new event arrive
 ?view=dashboard|logs|prompts|flow|activity|sessions   ?play=1   ?t=<ms>
 ?view=network|map|topology|trace&glove=<token>&dest=<host>   glove network views
   &from=<iso>&to=<iso|now>           …and their time range (pushes: Back returns to the previous one)
-?view=matrix|matrix2d|matrix3d       Styx (Matrix views), session views: /s/<id>?view=matrix2d
+?view=matrix|matrix2d|matrix3d       Styx (Matrix views; matrix is the Godot frame), session views: /s/<id>?view=matrix2d
 ```
 
 Ids may be given as an unambiguous prefix of ≥8 characters; ambiguous prefixes return 409 with
@@ -436,7 +436,9 @@ packages/web/src/lib/matrix-feed.ts     the row type (mirror), the windows, the 
 packages/web/src/lib/matrix-rain.ts     pure, shared by every renderer: what falls, where, how fast, what is new
 packages/web/src/lib/matrix-gpu.ts      pure, 3D only: glyph order, the two data textures' packing, the layers' transform, picking
 packages/web/src/hooks/useMatrixFeed.ts  the poll
-packages/web/src/components/matrix/     MatrixView (bar + the tab's renderer), MatrixCanvas2D, MatrixCanvas3D (+ matrix3d-gl, matrix3d-shaders), StreamCard
+packages/web/src/components/matrix/     MatrixView (bar + the tab's renderer), MatrixCanvas2D, MatrixCanvas3D (+ matrix3d-gl, matrix3d-shaders), MatrixGodot, StreamCard
+packages/server/src/styx/godot.ts       the Godot tab's build: resolveGodotFile, godotBuildStatus, GODOT_CSP
+packages/web/src/lib/matrix-godot.ts    pure: the frame's src, godotTabState (insecure / no build / motion off / run)
 ```
 
 Rules of the feed that must not be changed casually:
@@ -489,6 +491,19 @@ plane with `visibleRowsFor(layer)`, because a slow plane's streams last longer t
 scene, `createScene` runs bright pass, two blurs (half size) and a composite with the vignette; a light
 background skips the glow. **A framebuffer's texture is upside down against `vUv`** (clip space's bottom is row 0):
 every post pass reads it through `tuv()`, and forgetting that mirrors the whole picture.
+
+**The Matrix (Godot) tab** runs a web export of styx-godot that the user makes (`make styx-godot-build`) in an
+iframe; **the build is never committed or shipped** (styx-godot's shaders are partly CC BY-NC-SA; Layman is MIT),
+and Layman serves a folder (`styx.godotDir`, default `<data dir>/styx/godot`, the only place a Docker Layman
+sees; a configured one is read, never created) under `/styx/godot/`. Rules: **the CSP is the enforcement of "every
+request goes to Layman"**: `connect-src 'self'` and `default-src 'self'` must not be loosened (loosen only the
+one directive a start-up failure names, and say why in `godot.ts`); **`resolveGodotFile` is the only path from a
+URL to a file**; the SPA fallback in `server.ts` excludes `/styx/`, or a missing `index.wasm` would be answered
+with Layman's HTML and a 200; files carry `Last-Modified` (304) because the `.wasm` is 35 MB. The web decides
+what the tab shows in `godotTabState` (a non-secure page cannot start Godot's shell, so it says so and offers
+2D/3D; Reduced/Off motion does not start the engine without **Run anyway**) and the frame is removed on leaving
+the tab (never kept alive hidden). The engine takes focus when it *starts*, seconds after the frame's `load`,
+which silences Layman's shortcuts: `MatrixGodot` hands focus back until the pointer enters the frame.
 
 **Licence: neither renderer may be derived from styx-godot's shaders.** Two of them (the background and 3D
 rain) are Shadertoy ports under CC BY-NC-SA 3.0; Layman is MIT. They are not to be copied, ported or consulted

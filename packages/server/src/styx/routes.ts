@@ -7,7 +7,9 @@
  * reaches before memory begins reads the session's older history from its recording, at most once per
  * `CACHE_MS`, and what is new always comes from memory, so a new host is never held back by the cache.
  */
+import { createReadStream, statSync } from 'fs';
 import type { FastifyInstance } from 'fastify';
+import { GODOT_CSP, godotBuildStatus, resolveGodotFile } from './godot.js';
 import { callsFrom } from '../netobs/correlate.js';
 import type { TraceCall } from '../netobs/types.js';
 import type { NetStore } from '../netobs/store.js';
@@ -31,6 +33,8 @@ export interface StyxDeps {
   memory: (sessionId: string) => { events: TimelineEvent[]; since: number };
   /** Layman sessions that are live now and not gloved, for the no-selector answer. */
   liveStandardSessions: () => string[];
+  /** Where the styx-godot web export is, expanded (`styx.godotDir`, or the default inside Layman's data folder). */
+  godotDir: () => string;
   now?: () => number;
 }
 
@@ -77,6 +81,30 @@ export function registerStyxRoutes(fastify: FastifyInstance, deps: StyxDeps): vo
     const calls = [...recordedCalls(sessionId, t).filter((c) => !seen.has(c.eventId)), ...recent];
     return rowsFromCalls(calls, from ?? 0, t);
   };
+
+  // The build's files. A real 404 for anything missing: the SPA fallback must never answer for this prefix.
+  fastify.get('/styx/godot/*', async (req, reply) => {
+    if (!deps.enabled()) return reply.code(404).send({ error: 'Styx is not enabled' });
+    const hit = resolveGodotFile(deps.godotDir(), req.url);
+    let mtime: Date | null = null;
+    if (hit) {
+      try {
+        const st = statSync(hit.file);
+        if (st.isFile()) mtime = new Date(Math.floor(st.mtimeMs / 1000) * 1000);
+      } catch { /* missing */ }
+    }
+    if (!hit || !mtime) return reply.code(404).send({ error: 'Not found' });
+    reply.header('Content-Security-Policy', GODOT_CSP).header('X-Content-Type-Options', 'nosniff')
+      .header('Cache-Control', 'no-cache').header('Last-Modified', mtime.toUTCString());
+    const since = Date.parse(String(req.headers['if-modified-since'] ?? ''));
+    if (!Number.isNaN(since) && mtime.getTime() <= since) return reply.code(304).send();
+    return reply.type(hit.type).send(createReadStream(hit.file));
+  });
+
+  fastify.get('/api/styx/godot/status', async (_req, reply) => {
+    if (!deps.enabled()) return reply.code(404).send({ error: 'Styx is not enabled' });
+    return godotBuildStatus(deps.godotDir());
+  });
 
   fastify.get<{ Querystring: Record<string, string | string[] | undefined> }>('/api/styx/v1/matrix', async (req, reply) => {
     if (!deps.enabled()) return reply.code(404).send({ error: 'Styx is not enabled' });

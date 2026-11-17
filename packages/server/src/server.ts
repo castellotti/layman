@@ -45,6 +45,7 @@ import { registerTurnRoutes } from './routes/turns.js';
 import { NetObs } from './netobs/index.js';
 import { registerNetRoutes } from './netobs/routes.js';
 import { registerStyxRoutes } from './styx/routes.js';
+import { laymanDataDir } from './config/paths.js';
 import { SqliteNetHistory } from './netobs/persist.js';
 import { registerTtsRoutes } from './routes/tts.js';
 import { searchEvents, parseSearchQuery, matchesSearchTerms } from './db/search.js';
@@ -659,6 +660,7 @@ export function createServer(config: LaymanConfig): LaymanServer {
           request.method === 'GET' &&
           !path.startsWith('/api/') &&
           !path.startsWith('/hooks/') &&
+          !path.startsWith('/styx/') &&
           path !== '/ws';
 
         if (isAppRoute) return reply.sendFile('index.html');
@@ -702,6 +704,10 @@ export function createServer(config: LaymanConfig): LaymanServer {
     const startedAt = Date.now();
     registerStyxRoutes(fastify, {
       enabled: () => getConfig().styx?.enabled === true,
+      godotDir: () => {
+        const d = getConfig().styx?.godotDir ?? '';
+        return d ? expandHome(d) : join(laymanDataDir(), 'styx', 'godot');
+      },
       store: netObs.store,
       gloveTokenOf: (id) => gloveTokenFor(id, liveNames()),
       sessionExists: (id) => eventStore.getSessions().some((s) => s.sessionId === id) || recordedStmt.get(id) !== undefined,
