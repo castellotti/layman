@@ -31,7 +31,7 @@ function compile(gl: WebGL2RenderingContext, type: number, src: string, label: s
   return sh;
 }
 
-export function program(gl: WebGL2RenderingContext, vs: string, fs: string, label: string): WebGLProgram {
+function program(gl: WebGL2RenderingContext, vs: string, fs: string, label: string): WebGLProgram {
   const v = compile(gl, gl.VERTEX_SHADER, vs, `${label} vertex shader`);
   const f = compile(gl, gl.FRAGMENT_SHADER, fs, `${label} fragment shader`);
   const p = gl.createProgram();

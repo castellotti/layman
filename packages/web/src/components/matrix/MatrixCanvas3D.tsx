@@ -35,7 +35,6 @@ interface Api {
   size(): void;
   theme(): void;
   loop(): void;
-  reset(): void;
 }
 
 /**
@@ -209,7 +208,6 @@ export function MatrixCanvas3D({ rows, ready, resetKey, gloveToken, onOpenNetwor
     api.current = {
       rows: () => { if (plan(performance.now()) && !raf) draw(); },
       size, theme, loop,
-      reset: () => { lastKey = ''; },
     };
     return () => {
       api.current = null;
