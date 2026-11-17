@@ -25,11 +25,13 @@ const fresh = (key: string): Kept => ({ key, placement: EMPTY_PLACEMENT, known: 
  * there is nothing known yet and the next real one must not look all new. `tick` rebuilds the city on the
  * beat while something is fresh or brightening, and once more when it ends.
  */
-export function useGibsonCity({ hosts, links, resetKey, failed }: {
+export function useGibsonCity({ hosts, links, resetKey, failed, beatArrivals = true }: {
   hosts: readonly HostRow[];
   links: readonly LinkRow[];
   resetKey: string;
   failed: boolean;
+  /** Rebuild on the beat while a car's arrival glows. 2D draws the glow from the city; 3D's shader does, so it need not. */
+  beatArrivals?: boolean;
 }): { city: City; placement: Placement; freshAt: ReadonlyMap<string, number>; arrivedAt: React.MutableRefObject<Map<string, number>>; traffic: React.MutableRefObject<Traffic> } {
   const [tick, setTick] = useState(0);
   const kept = useRef<Kept>(fresh(resetKey));
@@ -68,12 +70,12 @@ export function useGibsonCity({ hosts, links, resetKey, failed }: {
       const now = Date.now();
       for (const [h, at] of kept.current.freshAt) if (now - at >= FRESH_MS) kept.current.freshAt.delete(h);
       for (const [h, at] of arrivedAt.current) if (now - at >= ARRIVAL_MS) arrivedAt.current.delete(h);
-      const on = kept.current.freshAt.size > 0 || arrivedAt.current.size > 0;
+      const on = kept.current.freshAt.size > 0 || (beatArrivals && arrivedAt.current.size > 0);
       if (on || was) setTick((n) => n + 1);
       was = on;
     }, BEAT_MS);
     return () => clearInterval(timer);
-  }, []);
+  }, [beatArrivals]);
 
   return { city, placement, freshAt: kept.current.freshAt, arrivedAt, traffic };
 }

@@ -87,7 +87,7 @@ export function GibsonCanvas3D({ hosts, links, resetKey, scheme, selected, onSel
   const [hover, setHover] = useState<Hover | null>(null);
   const [problem, setProblem] = useState<Problem | null>(null);
 
-  const { city, freshAt, arrivedAt, traffic } = useGibsonCity({ hosts, links, resetKey, failed });
+  const { city, freshAt, arrivedAt, traffic } = useGibsonCity({ hosts, links, resetKey, failed, beatArrivals: false });
   const pal = useMemo(() => paletteOf(scheme, readToken), [scheme, themeVersion]); // eslint-disable-line react-hooks/exhaustive-deps
   const font = useMemo(() => readToken('font-mono') || 'monospace', [themeVersion]); // eslint-disable-line react-hooks/exhaustive-deps
   /** The renderer's clock starts here: shaders get seconds since, never `Date.now()`. */
@@ -99,7 +99,12 @@ export function GibsonCanvas3D({ hosts, links, resetKey, scheme, selected, onSel
     for (const h of hosts) m.set(h.host, pageOf(h, h.host === selected ? log : undefined));
     return m;
   }, [hosts, selected, log]);
-  const pagesSig = useMemo(() => city.towers.map((t) => pageLines.get(t.host)?.join('\n') ?? '').join('\u0001'), [city, pageLines]);
+  // The age line (`SEEN 3S AGO`) is left out and refreshed every 10 s instead, or every poll would rewrite the texture.
+  const pagesSig = useMemo(() => {
+    const age = Math.floor(Date.now() / 10_000);
+    const body = city.towers.map((t) => (pageLines.get(t.host) ?? []).filter((l) => !l.startsWith('SEEN ')).join('\n')).join('\u0001');
+    return `${age}|${body}`;
+  }, [city, pageLines]);
   const packed = useMemo(() => {
     const towers = city.towers.slice(0, MAX_PAGES);
     const { data, rows } = packPages(towers.map((t) => pageLines.get(t.host) ?? []));
@@ -301,7 +306,9 @@ export function GibsonCanvas3D({ hosts, links, resetKey, scheme, selected, onSel
     const onWheel = (e: WheelEvent): void => {
       e.preventDefault();
       if (e.deltaY === 0) return;
-      const notches = -Math.max(-300, Math.min(300, e.deltaY)) / 100;
+      // A notch is 100 px; Firefox's line mode reports about 3 lines, and a page mode 1.
+      const px = e.deltaY * (e.deltaMode === 1 ? 33 : e.deltaMode === 2 ? 800 : 1);
+      const notches = -Math.max(-300, Math.min(300, px)) / 100;
       const step = Math.max(NOTCH_MIN, NOTCH * cam.current.pos[1]) * notches;
       cam.current = moved(cam.current, 0, 0, step, boundOf(cityRef.current.extent));
       api.current?.sync();
