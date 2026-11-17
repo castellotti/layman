@@ -40,6 +40,11 @@ export function fitCam(extent: number, tallest: number, width: number, height: n
   return { cx: width / 2, cy: height / 2 + (tallest * scale) / 2, scale };
 }
 
+/** `fitCam` for a built city: its extent and its tallest tower. */
+export function fitCity(city: { extent: number; towers: readonly Tower[] }, width: number, height: number): Cam {
+  return fitCam(city.extent, city.towers.reduce((m, t) => Math.max(m, t.height), 0), width, height);
+}
+
 /** Zoom by `factor` keeping the board point under (sx, sy) where it is. */
 export function zoomAt(cam: Cam, sx: number, sy: number, factor: number): Cam {
   const scale = clampScale(cam.scale * factor);

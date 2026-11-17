@@ -3,7 +3,7 @@ import type { HostRow, LinkRow, LogRow } from '../../lib/gibson-feed.js';
 import {
   EMPTY_PLACEMENT, TONE_WORDS, buildCity, createTraffic, pageOf, place, toneOf, type Placement,
 } from '../../lib/gibson-city.js';
-import { fitCam, pickTower, zoomAt, type Cam } from '../../lib/gibson-2d.js';
+import { fitCity, pickTower, zoomAt, type Cam } from '../../lib/gibson-2d.js';
 import { paletteOf, type SchemeId } from '../../lib/gibson-schemes.js';
 import type { MatrixRow } from '../../lib/matrix-feed.js';
 import { motionIsFull, readToken } from '../../lib/theme-runtime.js';
@@ -118,7 +118,7 @@ export function GibsonCanvas2D({ hosts, links, resetKey, scheme, selected, onSel
   useEffect(() => {
     if (box.width === 0 || box.height === 0 || userCam.current) return;
     const c = cityRef.current;
-    setCam(fitCam(c.extent, c.towers.reduce((m, t) => Math.max(m, t.height), 0), box.width, box.height));
+    setCam(fitCity(c, box.width, box.height));
   }, [box.width, box.height, populated, resetKey]);
 
   // The clocks: while something is fresh or brightening, redraw the city every beat, and once more when it ends.
@@ -262,7 +262,7 @@ export function GibsonCanvas2D({ hosts, links, resetKey, scheme, selected, onSel
   const fit = (): void => {
     userCam.current = false;
     const c = cityRef.current;
-    if (box.width > 0 && box.height > 0) setCam(fitCam(c.extent, c.towers.reduce((m, t) => Math.max(m, t.height), 0), box.width, box.height));
+    if (box.width > 0 && box.height > 0) setCam(fitCity(c, box.width, box.height));
   };
 
   const hovered = hover ? hosts.find((h) => h.host === hover.address) : undefined;
