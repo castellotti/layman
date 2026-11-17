@@ -69,15 +69,16 @@ export function godotBuildStatus(dir: string): GodotBuildStatus {
   const missing = REQUIRED.filter((f) => !existsSync(resolve(dir, f)));
   if (!existsSync(dir)) problems.push('The build folder does not exist.');
   else if (missing.length > 0) problems.push(`Missing from the build folder: ${missing.join(', ')}.`);
+  let blocked = false;
   if (!missing.includes('index.html')) {
     try {
       const html = readFileSync(resolve(dir, 'index.html'), 'utf8');
       if (html.includes('jsdelivr') || /<script[^>]*\ssrc=["']?http/i.test(html)) {
+        blocked = true;
         problems.push("This build loads scripts from another site; rebuild with the 'Web (Layman)' preset.");
       }
     } catch { /* unreadable: reported by the missing/serving paths */ }
   }
-  const blocked = problems.some((p) => p.startsWith('This build loads scripts'));
   let builtAt: number | null = null;
   try {
     builtAt = statSync(resolve(dir, 'index.wasm')).mtimeMs;

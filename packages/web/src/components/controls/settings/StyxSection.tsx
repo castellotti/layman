@@ -60,7 +60,7 @@ export function StyxSection({
             Layman&rsquo;s own data folder, which is the only place a Layman running in Docker can see.
           </span>
           {status && (
-            <span style={{ fontSize: 10.5, color: status.present && status.problems.length === 0 ? 'var(--ok)' : 'var(--warn)', lineHeight: 1.5 }}>
+            <span style={{ fontSize: 10.5, color: status.present ? 'var(--ok)' : 'var(--warn)', lineHeight: 1.5 }}>
               {status.present ? `Build found, made ${status.builtAt ? new Date(status.builtAt).toLocaleString() : 'at an unknown time'}.` : 'No build found.'}
               {status.problems.map((p) => ` ${p}`).join('')}
             </span>

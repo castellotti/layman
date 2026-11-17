@@ -85,10 +85,11 @@ export function registerStyxRoutes(fastify: FastifyInstance, deps: StyxDeps): vo
   // The build's files. A real 404 for anything missing: the SPA fallback must never answer for this prefix.
   fastify.get('/styx/godot/*', async (req, reply) => {
     if (!deps.enabled()) return reply.code(404).send({ error: 'Styx is not enabled' });
-    const hit = resolveGodotFile(deps.godotDir(), req.url);
+    const dir = deps.godotDir();
+    const hit = resolveGodotFile(dir, req.url);
     let mtime: Date | null = null;
     let size = 0;
-    if (hit && insideFolder(deps.godotDir(), hit.file)) {
+    if (hit && insideFolder(dir, hit.file)) {
       try {
         const st = statSync(hit.file);
         if (st.isFile()) { mtime = new Date(Math.floor(st.mtimeMs / 1000) * 1000); size = st.size; }
