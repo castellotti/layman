@@ -23,6 +23,12 @@ export const LOG_LINES = 40;
 export const MAX_CARS = 96;
 export const CAR_SPEED = 40;
 export const CAR_TAIL = 3;
+/** A fresh tower rises over this long (seconds). */
+export const RISE_S = 1.2;
+/** A host stays `fresh` this long (ms). */
+export const FRESH_MS = 6000;
+/** A tower a car reached brightens for this long (ms). */
+export const ARRIVAL_MS = 600;
 const FLASH_S = 0.3;
 
 /** Slot index → block coordinates, a square spiral out from the centre. */

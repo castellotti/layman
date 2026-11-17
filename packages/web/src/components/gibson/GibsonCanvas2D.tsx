@@ -1,30 +1,22 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { HostRow, LinkRow, LogRow } from '../../lib/gibson-feed.js';
-import {
-  EMPTY_PLACEMENT, TONE_WORDS, buildCity, createTraffic, pageOf, place, toneOf, type Placement,
-} from '../../lib/gibson-city.js';
+import { pageOf } from '../../lib/gibson-city.js';
 import { fitCity, pickTower, zoomAt, type Cam } from '../../lib/gibson-2d.js';
 import { paletteOf, type SchemeId } from '../../lib/gibson-schemes.js';
-import type { MatrixRow } from '../../lib/matrix-feed.js';
 import { motionIsFull, readToken } from '../../lib/theme-runtime.js';
 import { sp, rad } from '../../lib/density.js';
 import { useThemeVersion } from '../../hooks/useThemeVersion.js';
 import { useElementSize } from '../../hooks/useElementSize.js';
+import { useGibsonCity } from '../../hooks/useGibsonCity.js';
 import { StreamCard, type Hover } from '../matrix/StreamCard.js';
-import { ARRIVAL_MS, FRESH_MS, drawCars, drawCity } from './gibson2d-draw.js';
+import { drawCars, drawCity } from './gibson2d-draw.js';
+import { GibsonHostList, cardRow } from './GibsonHostList.js';
 
 /** A press that moves farther than this is a drag, not a click. */
 const DRAG_PX = 4;
 /** Arrow keys pan by this much; `+` and `-` zoom by the wheel's step. */
 const KEY_PAN_PX = 40;
 const ZOOM_STEP = 1.1;
-/** The beat of what has a clock but no data: a fresh tower's rise and fade, an arrival's glow. */
-const BEAT_MS = 100;
-
-/** A tower as the Matrix card wants it: the card was written for a `MatrixRow`, and says what these say. */
-const cardRow = (h: HostRow): MatrixRow => ({
-  address: h.host, sent: h.sent, received: h.received, count: Math.max(1, h.count), blocked: h.blocked, untunnelled: h.untunnelled,
-});
 
 /**
  * The Gibson 2D renderer: the city drawn plan-oblique on two stacked canvases. The city canvas (board, streets,
@@ -56,34 +48,11 @@ export function GibsonCanvas2D({ hosts, links, resetKey, scheme, selected, onSel
   const trafficCanvas = useRef<HTMLCanvasElement | null>(null);
   const themeVersion = useThemeVersion();
   const full = motionIsFull();
-  const [tick, setTick] = useState(0);
   const [cam, setCam] = useState<Cam | null>(null);
   const [hover, setHover] = useState<Hover | null>(null);
 
-  // What outlives a refresh. Reset at render, so the answer for a new key is never placed on the old one's streets.
-  const kept = useRef({ key: resetKey, placement: EMPTY_PLACEMENT as Placement, known: null as Set<string> | null, freshAt: new Map<string, number>() });
-  if (kept.current.key !== resetKey) kept.current = { key: resetKey, placement: EMPTY_PLACEMENT, known: null, freshAt: new Map() };
-  const arrivedAt = useRef(new Map<string, number>());
-  const traffic = useRef(createTraffic());
+  const { city, placement, freshAt, arrivedAt, traffic } = useGibsonCity({ hosts, links, resetKey, failed });
   const userCam = useRef(false);
-
-  const placement = useMemo(() => {
-    const st = kept.current;
-    st.placement = place(st.placement, hosts, links);
-    // `known` is null until the first answer for this key, so nothing is fresh on the first draw.
-    if (st.known === null) { if (!failed) st.known = new Set(hosts.map((h) => h.host)); }
-    else for (const h of hosts) if (!st.known.has(h.host)) { st.known.add(h.host); st.freshAt.set(h.host, Date.now()); }
-    return st.placement;
-  }, [hosts, links, resetKey, failed]);
-
-  // `tick` is in the dependencies: it is how a clock (a rise, a fresh colour ending) rebuilds the city.
-  const city = useMemo(() => {
-    const now = Date.now();
-    const fresh = new Set<string>();
-    for (const [h, at] of kept.current.freshAt) if (now - at < FRESH_MS) fresh.add(h);
-    return buildCity(placement, hosts, links, fresh);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [placement, hosts, links, tick]);
 
   const pal = useMemo(() => paletteOf(scheme, readToken), [scheme, themeVersion]); // eslint-disable-line react-hooks/exhaustive-deps
   const font = useMemo(() => readToken('font-mono') || 'monospace', [themeVersion]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -109,8 +78,6 @@ export function GibsonCanvas2D({ hosts, links, resetKey, scheme, selected, onSel
     userCam.current = false;
     setCam(null);
     setHover(null);
-    arrivedAt.current = new Map();
-    traffic.current = createTraffic();
   }, [resetKey]);
 
   // Fit the first city and a resized box, until the user takes the camera: the city growing must not move the picture.
@@ -120,21 +87,6 @@ export function GibsonCanvas2D({ hosts, links, resetKey, scheme, selected, onSel
     const c = cityRef.current;
     setCam(fitCity(c, box.width, box.height));
   }, [box.width, box.height, populated, resetKey]);
-
-  // The clocks: while something is fresh or brightening, redraw the city every beat, and once more when it ends.
-  useEffect(() => {
-    let was = false;
-    const timer = setInterval(() => {
-      if (document.visibilityState !== 'visible') return;
-      const now = Date.now();
-      for (const [h, at] of kept.current.freshAt) if (now - at >= FRESH_MS) kept.current.freshAt.delete(h);
-      for (const [h, at] of arrivedAt.current) if (now - at >= ARRIVAL_MS) arrivedAt.current.delete(h);
-      const on = kept.current.freshAt.size > 0 || arrivedAt.current.size > 0;
-      if (on || was) setTick((n) => n + 1);
-      was = on;
-    }, BEAT_MS);
-    return () => clearInterval(timer);
-  }, []);
 
   // The city canvas.
   useEffect(() => {
@@ -148,9 +100,9 @@ export function GibsonCanvas2D({ hosts, links, resetKey, scheme, selected, onSel
     if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
     drawCity(ctx, {
       width: box.width, height: box.height, dpr, cam, city, placement, links, pal, font, selected, pages,
-      now: Date.now(), freshAt: kept.current.freshAt, arrivedAt: arrivedAt.current, full,
+      now: Date.now(), freshAt, arrivedAt: arrivedAt.current, full,
     });
-  }, [city, cam, box.width, box.height, placement, links, pal, font, selected, pages, full, themeVersion]);
+  }, [city, cam, box.width, box.height, placement, links, pal, font, selected, pages, full, themeVersion, freshAt, arrivedAt]);
 
   // The traffic canvas: a frame per animation frame while motion is full and the tab is shown; nothing otherwise.
   const ready = cam !== null;
@@ -266,7 +218,6 @@ export function GibsonCanvas2D({ hosts, links, resetKey, scheme, selected, onSel
   };
 
   const hovered = hover ? hosts.find((h) => h.host === hover.address) : undefined;
-  const tonesOf = useMemo(() => new Map(hosts.map((h) => [h.host, TONE_WORDS[toneOf(h)]])), [hosts]);
 
   return (
     <div
@@ -288,12 +239,7 @@ export function GibsonCanvas2D({ hosts, links, resetKey, scheme, selected, onSel
         style={{ position: 'absolute', left: 0, top: 0, width: box.width, height: box.height }}
       />
       <canvas ref={trafficCanvas} aria-hidden="true" style={{ position: 'absolute', left: 0, top: 0, width: box.width, height: box.height, pointerEvents: 'none' }} />
-      <ul style={{ position: 'absolute', width: 1, height: 1, overflow: 'hidden', clip: 'rect(0 0 0 0)', whiteSpace: 'nowrap' }}>
-        {hosts.map((h) => {
-          const words = tonesOf.get(h.host);
-          return <li key={h.host}>{h.host}, reached {h.count} {h.count === 1 ? 'time' : 'times'}{words ? `, ${words}` : ''}</li>;
-        })}
-      </ul>
+      <GibsonHostList hosts={hosts} />
       <button
         type="button"
         data-print-hide
