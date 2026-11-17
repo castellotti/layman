@@ -82,6 +82,10 @@ const FILM: Record<Exclude<SchemeId, 'state'>, Film> = {
 };
 
 const every = (c: Rgb): Record<Tone, Rgb> => ({ normal: c, blocked: c, untunnelled: c, local: c });
+/** `f` applied to each tone's entry. */
+const eachTone = (r: Record<Tone, Rgb>, f: (c: Rgb) => Rgb): Record<Tone, Rgb> => ({
+  normal: f(r.normal), blocked: f(r.blocked), untunnelled: f(r.untunnelled), local: f(r.local),
+});
 
 function film(id: Exclude<SchemeId, 'state'>): Palette {
   const f = FILM[id];
@@ -101,15 +105,15 @@ function film(id: Exclude<SchemeId, 'state'>): Palette {
 export function paletteOf(id: SchemeId, token: (name: string) => string): Palette {
   if (id !== 'state') return film(id);
   const tok = (name: string): Rgb => rgbOf(token(name), name === 'bg' ? [0, 0, 0] : WHITE);
-  const bgCss = token('bg');
+  const bgCss = token('bg').trim();
   const board = tok('bg');
   const glass: Record<Tone, Rgb> = { normal: tok('ok'), blocked: tok('error'), untunnelled: tok('warn'), local: tok('accent') };
   return {
     board, glass,
-    text: { normal: mix(glass.normal, WHITE, 0.45), blocked: mix(glass.blocked, WHITE, 0.45), untunnelled: mix(glass.untunnelled, WHITE, 0.45), local: mix(glass.local, WHITE, 0.45) },
+    text: eachTone(glass, (c) => mix(c, WHITE, 0.45)),
     fresh: tok('text'), highlight: tok('accent-hot'),
     traceA: mix(tok('accent'), board, 0.55), traceB: mix(tok('warn'), board, 0.55), traffic: null, homeRim: tok('accent-hot'),
-    sky: SKY, marks: false, light: HEX_COLOR.test(bgCss.trim()) && luminance(bgCss.trim()) > 0.5, windows: false,
+    sky: SKY, marks: false, light: HEX_COLOR.test(bgCss) && luminance(bgCss) > 0.5, windows: false,
   };
 }
 
