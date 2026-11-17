@@ -23,7 +23,7 @@ optional, off by default, and independent of glove: with it off there are no tab
 | **Matrix 3D** | `?view=matrix3d` | Layman's own WebGL2 rendering. No Godot | available |
 | **Gibson** | `?view=gibson` | The styx-godot city in a frame | coming |
 | **Gibson 2D** | `?view=gibson2d` (`G`) | A city of towers, one per host, drawn on a canvas. No Godot | available |
-| **Gibson 3D** | `?view=gibson3d` | The same city in WebGL2 | coming |
+| **Gibson 3D** | `?view=gibson3d` | The same city in WebGL2, which you fly through | available |
 
 All six are session views (`/s/<id>?view=matrix2d`) and show the session open in the app, or else the
 newest live one; with none they show every live session together.
@@ -93,6 +93,29 @@ last log lines. For a sandboxed session the panel offers **Open in Network**. **
 Settings → Motion at Reduced or Off nothing moves: towers do not rise, and each active route is drawn as a
 dashed line instead of streaks. A screen reader gets a list of the hosts, their counts and their state in words.
 The tab's shortcut is `G`.
+
+![Gibson 3D](../images/styx-gibson3d.png)
+
+**Gibson 3D.** The same city (the same towers, blocks, chips, streaks, schemes, window picker, hover card and
+panel) in perspective, drawn with raw WebGL2, and a camera you fly. It starts high over the home block looking
+down at 45°. Beyond what the 2D tab shows: a **sky** (indigo, drifting violet filaments, gold arcs, soft clusters
+of symbols, pale streaks) that turns with you and hazes into the board at the horizon; **glass** towers that you
+see through each other, with a soft glow on the board under each; the **faces** of every tower carry its page
+as real text, readable up close and fading into rows of bars at a distance (Night's become lit windows); the
+host's name over each of the busiest 12 towers and every one near you; and a **glow** on everything bright.
+
+**Drag** looks around, the **wheel** moves along the view, and with the canvas focused `W` `A` `S` `D` (or the
+arrows) fly, `Q` and `E` go down and up, and Shift is three times faster. While the canvas has focus these
+keys fly instead of using the header's shortcuts (`A`, `S`, `D`); click outside it and they work again.
+**Hover** a tower for its card; **click** one to fly to where its face can be read (a camera 9 units off, at
+eye height) and open its panel, whose log lines also continue on the tower's own faces. **Overhead** flies
+back. After 20 seconds without input, with nothing selected and Motion at Full, the camera tours: down
+onto a street between the towers, along it, up and round again; any input ends the tour where it is. With Motion
+at Reduced or Off there is no tour, nothing moves, routes are dashed lines, and a selection jumps instead of
+flying. A browser without WebGL2, or a GPU that cannot start it, shows a message and a button to Gibson 2D. A
+light theme in State draws the glass by cover instead of light, with no glow; the film schemes always draw on
+their dark board. Nothing leaves Layman: the sky, the text and the board are all drawn from what the page already
+holds.
 
 ### Building the Godot tab
 

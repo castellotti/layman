@@ -11,6 +11,7 @@ import { openNetwork } from '../../lib/open-network.js';
 import { formatBytes } from '../../lib/net-format.js';
 import { rad, sp } from '../../lib/density.js';
 import { GibsonCanvas2D } from './GibsonCanvas2D.js';
+import { GibsonCanvas3D } from './GibsonCanvas3D.js';
 import { GibsonPanel } from './GibsonPanel.js';
 
 export const GIBSON_WINDOW_KEY = 'layman.gibson.window';
@@ -76,6 +77,7 @@ function GibsonPane({ mode }: { mode: ViewMode }) {
   const [scheme, setScheme] = useStored<SchemeId>(GIBSON_SCHEME_KEY, DEFAULT_SCHEME, parseScheme);
   const { hosts, links, loading, error } = useGibsonFeed(sessionId, window);
   const gloveToken = useNetStore((s) => (session?.sessionName && s.sessions.some((x) => x.token === session.sessionName) ? session.sessionName : null));
+  const setViewMode = useSessionStore((s) => s.setViewMode);
   const resetKey = `${sessionId ?? ''}|${window}`;
 
   // The selected tower: cleared when the session or window changes, and when its host leaves the answer.
@@ -83,7 +85,7 @@ function GibsonPane({ mode }: { mode: ViewMode }) {
   useEffect(() => setSelected(null), [resetKey]);
   const tower = hosts.find((h) => h.host === selected) ?? null;
   useEffect(() => { if (selected && !loading && !tower) setSelected(null); }, [selected, loading, tower]);
-  const log = useGibsonLog(sessionId, window, mode === 'gibson2d' ? tower?.host ?? null : null);
+  const log = useGibsonLog(sessionId, window, mode === 'gibson2d' || mode === 'gibson3d' ? tower?.host ?? null : null);
 
   const down = hosts.reduce((n, h) => n + h.received, 0);
   const blocks = new Set(hosts.map((h) => h.block)).size;
@@ -103,18 +105,24 @@ function GibsonPane({ mode }: { mode: ViewMode }) {
       </div>
       {mode === 'gibson' ? (
         <Centered>The Gibson tab, the styx-godot build in a frame, is not built yet.</Centered>
-      ) : mode === 'gibson3d' ? (
-        <Centered>Gibson 3D is not built yet.</Centered>
       ) : loading ? (
         <Centered>Reading the feed…</Centered>
       ) : (
         // Mounted even with nothing to show: who stands where and what is known live in it, and an empty answer
         // or a failed poll must not make every host start again, or the next new one look old.
         <div style={{ position: 'relative', flex: 1, minHeight: 0, display: 'flex' }}>
-          <GibsonCanvas2D
-            hosts={hosts} links={links} resetKey={resetKey} scheme={scheme} selected={tower?.host ?? null} onSelect={setSelected}
-            log={log.rows} gloveToken={gloveToken} onOpenNetwork={openNetwork} failed={error !== null && hosts.length === 0}
-          />
+          {mode === 'gibson3d' ? (
+            <GibsonCanvas3D
+              hosts={hosts} links={links} resetKey={resetKey} scheme={scheme} selected={tower?.host ?? null} onSelect={setSelected}
+              log={log.rows} gloveToken={gloveToken} onOpenNetwork={openNetwork} failed={error !== null && hosts.length === 0}
+              onUse2D={() => setViewMode('gibson2d')}
+            />
+          ) : (
+            <GibsonCanvas2D
+              hosts={hosts} links={links} resetKey={resetKey} scheme={scheme} selected={tower?.host ?? null} onSelect={setSelected}
+              log={log.rows} gloveToken={gloveToken} onOpenNetwork={openNetwork} failed={error !== null && hosts.length === 0}
+            />
+          )}
           {tower && (
             <GibsonPanel
               host={tower} log={log.rows} loading={log.loading} error={log.error} gloveToken={gloveToken}

@@ -23,6 +23,12 @@ export const LOG_LINES = 40;
 export const MAX_CARS = 96;
 export const CAR_SPEED = 40;
 export const CAR_TAIL = 3;
+/** A fresh tower rises over this long (seconds). */
+export const RISE_S = 1.2;
+/** A host stays `fresh` this long (ms). */
+export const FRESH_MS = 6000;
+/** A tower a car reached brightens for this long (ms). */
+export const ARRIVAL_MS = 600;
 const FLASH_S = 0.3;
 
 /** Slot index → block coordinates, a square spiral out from the centre. */
@@ -291,6 +297,13 @@ export function pageOf(row: HostRow, log?: readonly LogRow[]): string[] {
   for (const l of (log ?? []).slice(0, LOG_LINES)) lines.push(cut(`${clockOf(l.time)} ${l.port ?? '-'} ${stateWord(l)}`));
   lines.push('', '');
   return lines;
+}
+
+/** Every host's page, the selected host's with its log. */
+export function pagesOf(hosts: readonly HostRow[], selected: string | null, log: readonly LogRow[]): Map<string, string[]> {
+  const m = new Map<string, string[]>();
+  for (const h of hosts) m.set(h.host, pageOf(h, h.host === selected ? log : undefined));
+  return m;
 }
 
 export interface MenuItem { key: string; label: string; rows: LogRow[] }

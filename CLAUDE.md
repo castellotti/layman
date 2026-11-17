@@ -448,7 +448,10 @@ packages/web/src/lib/gibson-schemes.ts  the colour schemes: the only file beside
 packages/web/src/hooks/useGibsonFeed.ts  the polls: hosts and links together, and one tower's log
 packages/web/src/lib/gibson-2d.ts       pure: the 2D projection (project / unproject), fitCam, zoomAt, draw order, silhouette, pickTower
 packages/web/src/lib/open-network.ts    openNetwork(token, address): the Matrix cards and the Gibson panel both open Network through it
-packages/web/src/components/gibson/    GibsonView (bar, pickers, owns the selection), GibsonCanvas2D (state + pointer), gibson2d-draw.ts (what is painted), GibsonPanel (the menu as HTML)
+packages/web/src/components/gibson/    GibsonView (bar, pickers, owns the selection), GibsonCanvas2D (state + pointer), gibson2d-draw.ts (what is painted), GibsonPanel (the menu as HTML), GibsonHostList (the screen-reader list)
+packages/web/src/hooks/useGibsonCity.ts  the city both renderers draw: placement, the fresh set, traffic, arrivals (reset with the session or window)
+packages/web/src/lib/gibson-gpu.ts      pure, 3D only: matrices, the fly camera, ray picking, the tour, packTowers / packPages, cityKey, labelsOf
+packages/web/src/components/gibson/    GibsonCanvas3D (state, camera, input, labels), gibson3d-gl.ts (createScene, the passes), gibson3d-shaders.ts (GLSL)
 ```
 
 Rules of the feed that must not be changed casually:
@@ -512,6 +515,26 @@ hidden list of the hosts and their state in words. The selection lives in `Gibso
 session or window changes or the host leaves the answer; the log is polled only for the selected tower. The pointer's
 hover test must not read the `hover` state to decide whether to clear it (two moves can arrive before a render and
 the stale value left the card behind).
+
+Gibson 3D (`GibsonCanvas3D.tsx`, `gibson3d-gl.ts`, `gibson3d-shaders.ts`, `lib/gibson-gpu.ts`). **`gibson-city.ts` is shared by both renderers and
+the drawing must never fork its rules** (the city, traffic and pages come from `useGibsonCity` in both). Raw WebGL2, the house
+style of `MatrixCanvas3D`: **no colour literal in GLSL** (every colour is a uniform or instance attribute from the `Palette`;
+`gibson3d-shaders.test.ts` fails on a `vec3` of numbers beyond 0 and 1), **`createScene` creates every GL object** so a lost context
+is rebuilt by one call, a framebuffer's texture is upside down against `vUv` (post passes read it through `tuv()`), shader times
+are seconds since the renderer was made. **The instance buffer and the page texture are rewritten only when `cityKey` or
+the page text changes**, never per frame or per beat; a frame uploads the camera, the clock, the arrivals (up to 16 pairs of tower
+index and start time) and the cars. A tower is 16 floats (`packTowers`: x, z, side, height | glass, brightness | text, page |
+cap, flags, page rows, riseAt); a tower's rise and an open link's pulse and an arrival's glow come from the clock in the shader.
+The page texture is one R8 texture of 16 x 16 pages of 24 x 64 glyph indices (384 x 1024), a tower's page repeated down its faces
+(`row % rows`). **The tower pass is additive** (`ONE, ONE`, depth tested, not written, no culling) **except on a light board**
+(`palette.light`), where it covers with alpha, writes depth and culls back faces and the glow is skipped. Face glyphs are sampled
+with `textureGrad` from the continuous cell coordinate's derivatives taken before any floor or branch; beyond 40-70 units they fade
+into bars, and into the row's average under a few pixels a row, so nothing shimmers. Traces and decoration are dimmed by how much
+narrower than a pixel they are, or they pile into a white band at the horizon. The fly keys (`W A S D Q E`, arrows) stop propagation
+only while the canvas has focus, because the header's shortcuts listen on the window. Labels are a pool of DOM elements moved
+imperatively each frame, never React state. The camera's motions other than the user's (a fly-to, the idle tour) are in a
+ref and end on any input; with motion not full there is no loop, a selection jumps, and the board shows dashed routes. A wheel is
+normalised by `deltaMode` (Firefox reports lines).
 
 The renderers. `matrix-rain.ts` is pure and shared (the 3D renderer uses it too): a stream's head is at row
 `(now - startAt) x speed`, so a refresh of the data never restarts a stream and a redraw puts it back. A new

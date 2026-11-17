@@ -4,18 +4,12 @@
  * when something changed; `drawCars` paints the traffic canvas and is called every frame while motion is full.
  * The geometry is `lib/gibson-2d.ts` and the content `lib/gibson-city.ts`; this decides only how it looks.
  */
-import { BLOCK_PITCH, CAR_TAIL, routeOf, sendsCars, spiral, type Car, type City, type Placement, type Tower } from '../../lib/gibson-city.js';
+import { ARRIVAL_MS, BLOCK_PITCH, CAR_TAIL, RISE_S, routeOf, sendsCars, spiral, type Car, type City, type Placement, type Tower } from '../../lib/gibson-city.js';
 import { drawOrder, project, type Cam } from '../../lib/gibson-2d.js';
 import { mix, rgbCss, type Palette, type Rgb } from '../../lib/gibson-schemes.js';
 import type { LinkRow } from '../../lib/gibson-feed.js';
 import { hash01 } from '../../lib/matrix-rain.js';
 
-/** A fresh tower rises over this long (seconds). */
-export const RISE_S = 1.2;
-/** A host stays `fresh` this long (ms). */
-export const FRESH_MS = 6000;
-/** A tower a car reached brightens for this long (ms). */
-export const ARRIVAL_MS = 600;
 /** The text space of a face: 24 cells of 8 × 12. */
 const TEXT_W = 192;
 const CELL_W = 8;

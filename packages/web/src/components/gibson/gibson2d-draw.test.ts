@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { ARRIVAL_MS, RISE_S, arrivalOf, cellPx, riseOf } from './gibson2d-draw.js';
+import { ARRIVAL_MS, RISE_S } from '../../lib/gibson-city.js';
+import { arrivalOf, cellPx, riseOf } from './gibson2d-draw.js';
 
 describe('riseOf', () => {
   const freshAt = new Map([['new.org', 10_000]]);
