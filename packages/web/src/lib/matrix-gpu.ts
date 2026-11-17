@@ -5,6 +5,7 @@
  * `layerCell` below and the shader's transform are one rule in two copies: change both or neither.
  * Written from scratch: it derives from no styx-godot shader (docs/extensions/styx.md → Licences).
  */
+import type { MatrixRow } from './matrix-feed.js';
 import type { Stream } from './matrix-rain.js';
 
 export const LAYERS = 4;
@@ -64,6 +65,8 @@ export const LAYER_SPECS: readonly Layer[] = [
   { scale: 1.0, speed: 1.0, dim: 1.0, drift: 0.06 },
 ];
 export const NEAR = LAYERS - 1;
+/** The second plane that carries data; the two before it are filler only. */
+export const SECOND = NEAR - 1;
 
 export interface Grid {
   /** Columns that span the screen on this layer. */
@@ -161,4 +164,36 @@ export function pick(
     if (d >= 0 && d < Math.min(TEXT_LEN, s.text.length)) return s;
   }
   return null;
+}
+
+/**
+ * Which of the two data planes each row falls on. A fresh row is always on the near plane (it must be
+ * seen); a row already falling stays where it is, so a refresh never moves a stream; the rest split by
+ * reach: the most reached half near, the others behind. `rows` is in the feed's order (most reached first).
+ * `known` is as for `planStreams`: null means nothing is new.
+ */
+export function assignLayers(
+  rows: readonly MatrixRow[], known: ReadonlySet<string> | null, falling: ReadonlyMap<string, number>,
+): { near: MatrixRow[]; second: MatrixRow[] } {
+  const near: MatrixRow[] = [];
+  const second: MatrixRow[] = [];
+  const half = Math.ceil(rows.length / 2);
+  rows.forEach((r, i) => {
+    const on = falling.get(r.address);
+    const fresh = known !== null && !known.has(r.address);
+    const toNear = fresh || (on !== undefined ? on === NEAR : i < half);
+    (toNear ? near : second).push(r);
+  });
+  return { near, second };
+}
+
+/**
+ * `visibleRows` for `planStreams` on a layer. A stream's head moves at `speed × layer.speed` rows a
+ * second, but `planStreams` ends a stream by its own `speed`, so a slow layer must be given more rows or
+ * its streams would be dropped while still on screen. Exact for the longest text; a shorter one leaves a
+ * little late, which only holds its column a moment longer.
+ */
+export function visibleRowsFor(layer: number): number {
+  const k = 1 / LAYER_SPECS[layer].speed;
+  return Math.ceil(rowsOf(layer) * k + TEXT_LEN * (k - 1));
 }

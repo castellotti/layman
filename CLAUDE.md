@@ -483,6 +483,12 @@ from the cell coordinate's derivatives taken before any branch, or a glyph takes
 neighbour. A light background draws by cover (`uLight`) instead of adding. **No colour literal in GLSL**: every
 colour is a theme token read with `readToken`, parsed by `rgbOf` and passed as a uniform; only `vec3(0.0)` and
 `vec3(1.0)` appear. Creation is one function (`createScene`), so a lost context is rebuilt by one call.
+Depth: four layers (`LAYER_SPECS`), data on the near two. `assignLayers` puts a fresh row near, keeps a falling
+stream on its plane (a refresh must not move it), and splits the rest by reach; `planStreams` runs once per data
+plane with `visibleRowsFor(layer)`, because a slow plane's streams last longer than `planStreams` thinks. After the
+scene, `createScene` runs bright pass, two blurs (half size) and a composite with the vignette; a light
+background skips the glow. **A framebuffer's texture is upside down against `vUv`** (clip space's bottom is row 0):
+every post pass reads it through `tuv()`, and forgetting that mirrors the whole picture.
 
 **Licence: neither renderer may be derived from styx-godot's shaders.** Two of them (the background and 3D
 rain) are Shadertoy ports under CC BY-NC-SA 3.0; Layman is MIT. They are not to be copied, ported or consulted

@@ -141,3 +141,53 @@ void main() {
 }
 `;
 }
+
+// vUv runs 0 at the top, but a framebuffer's texture holds clip space's bottom first: `tuv` reads a texture
+// the right way up. Every pass that samples what an earlier pass drew takes its place from `tuv`.
+const POST_HEAD = `#version 300 es
+precision highp float;
+in vec2 vUv;
+out vec4 outColor;
+vec2 tuv() { return vec2(vUv.x, 1.0 - vUv.y); }
+`;
+
+/** Pass 2a: keep only what is bright (a head, a fresh host), at half resolution. */
+export const BRIGHT = `${POST_HEAD}
+uniform sampler2D uScene;
+uniform float uThreshold;
+void main() {
+  vec3 c = texture(uScene, tuv()).rgb;
+  float lum = dot(c, vec3(0.2126, 0.7152, 0.0722));
+  outColor = vec4(c * clamp((lum - uThreshold) / (1.0 - uThreshold), 0.0, 1.0), 1.0);
+}
+`;
+
+/** Pass 2b: a separable 9-tap Gaussian (the centre and four each side); `uDir` is one texel along the axis. */
+export const BLUR = `${POST_HEAD}
+uniform sampler2D uSrc;
+uniform vec2 uDir;
+const float W[5] = float[5](0.227027, 0.1945946, 0.1216216, 0.054054, 0.016216);
+void main() {
+  vec3 c = texture(uSrc, tuv()).rgb * W[0];
+  for (int i = 1; i < 5; i++) {
+    c += texture(uSrc, tuv() + uDir * float(i)).rgb * W[i];
+    c += texture(uSrc, tuv() - uDir * float(i)).rgb * W[i];
+  }
+  outColor = vec4(c, 1.0);
+}
+`;
+
+/** Pass 3: the scene plus its glow, under a soft vignette. On a light background there is no glow, and less vignette. */
+export const COMPOSITE = `${POST_HEAD}
+uniform sampler2D uScene;
+uniform sampler2D uBloom;
+uniform float uGain;
+uniform float uAspect;
+uniform float uCorner;       // how much of the picture is left at the corners
+void main() {
+  vec3 c = texture(uScene, tuv()).rgb + texture(uBloom, tuv()).rgb * uGain;
+  vec2 d = (vUv - 0.5) * vec2(uAspect, 1.0);
+  float edge = smoothstep(0.35, length(vec2(uAspect, 1.0)) * 0.5, length(d));
+  outColor = vec4(c * mix(1.0, uCorner, edge), 1.0);
+}
+`;

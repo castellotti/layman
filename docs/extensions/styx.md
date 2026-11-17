@@ -36,8 +36,13 @@ a stream for its address, count and bytes; click it to keep the card, which for 
 **Open in Network**. The tab's shortcut is `X`. With Settings → Motion at Reduced or Off, it draws one still
 frame instead of falling.
 
-**Matrix 3D.** The same destinations, drawn on the GPU in a browser with WebGL2: larger glyphs, one stream
-per column reading top to bottom, the head near white, a refused destination red, one that did not go
+![Matrix 3D](../images/styx-matrix3d.png)
+
+**Matrix 3D.** The same destinations, drawn on the GPU in a browser with WebGL2, as four planes of rain at
+different depths: the far two are filler only, smaller, dimmer and slower, and slide against the near two as
+the view drifts slowly sideways. The destinations fall on the near two planes, the most reached half on the
+nearest, a new host always on the nearest. Heads glow (a light theme has none), with a soft vignette. Larger
+glyphs, one stream per column reading top to bottom, the head near white, a refused destination red, one that did not go
 through the tunnel amber, a host reached for the first time in the accent colour for its first fall, and
 faint filler rain behind them. It follows the window picker, the session, the theme (a light theme draws
 dark glyphs on the light ground) and Settings → Motion exactly as Matrix 2D does, and hover and click give

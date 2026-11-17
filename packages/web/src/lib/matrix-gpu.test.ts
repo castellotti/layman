@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   ATLAS_COLS, ATLAS_ROWS, CELL_W, COLS, GLYPHS, LAYERS, LAYER_SPECS, NEAR, TEXT_LEN,
-  glyphIndex, gridOf, gridUniform, layerCell, packColumns, packText, pick, streamsKey,
+  SECOND, assignLayers, glyphIndex, gridOf, gridUniform, layerCell, packColumns, packText, pick, rowsOf, streamsKey, visibleRowsFor,
 } from './matrix-gpu.js';
 import { streamText, type Stream } from './matrix-rain.js';
 
@@ -162,5 +162,56 @@ describe('pick', () => {
     onlyFar[2] = [far];
     expect(pick([0.5, 0.5], t, aspect, onlyFar, 0)?.address).toBe('far');
     expect(pick([0.5, 0.5], t, aspect, both, 0)?.address).toBe('near');
+  });
+});
+
+describe('assignLayers', () => {
+  const row = (address: string, count: number) => ({ address, sent: 0, received: 0, count, blocked: 0, untunnelled: false });
+  const rows = [row('a:1', 9), row('b:1', 8), row('c:1', 7), row('d:1', 6), row('e:1', 5)];
+  const known = new Set(rows.map((r) => r.address));
+
+  it('puts the most reached half near and the rest behind', () => {
+    const { near, second } = assignLayers(rows, known, new Map());
+    expect(near.map((r) => r.address)).toEqual(['a:1', 'b:1', 'c:1']);
+    expect(second.map((r) => r.address)).toEqual(['d:1', 'e:1']);
+  });
+
+  it('a fresh address is always near, whatever its reach', () => {
+    const { near } = assignLayers(rows, new Set(['a:1', 'b:1', 'c:1', 'd:1']), new Map());
+    expect(near.map((r) => r.address)).toContain('e:1');
+  });
+
+  it('nothing is fresh while known is null', () => {
+    const { second } = assignLayers(rows, null, new Map());
+    expect(second.map((r) => r.address)).toEqual(['d:1', 'e:1']);
+  });
+
+  it('a stream already falling stays on its plane', () => {
+    const { near, second } = assignLayers(rows, known, new Map([['a:1', SECOND], ['e:1', NEAR]]));
+    expect(second.map((r) => r.address)).toContain('a:1');
+    expect(near.map((r) => r.address)).toContain('e:1');
+  });
+
+  it('every row lands on exactly one plane', () => {
+    const { near, second } = assignLayers(rows, known, new Map([['c:1', SECOND]]));
+    expect(near.length + second.length).toBe(rows.length);
+  });
+});
+
+describe('visibleRowsFor', () => {
+  it('is the layer\'s rows on the near plane, and grows as a layer slows', () => {
+    expect(visibleRowsFor(NEAR)).toBe(Math.ceil(rowsOf(NEAR)));
+    expect(visibleRowsFor(SECOND)).toBeGreaterThan(rowsOf(SECOND));
+  });
+
+  it('never ends a stream whose last character is still on screen', () => {
+    for (const layer of [SECOND, NEAR]) {
+      const ls = LAYER_SPECS[layer].speed;
+      for (const len of [1, 20, TEXT_LEN]) {
+        // planStreams ends a stream when head - len > V; the screen shows it until head × ls - len > rows.
+        const headWhenGone = (rowsOf(layer) + len) / ls;
+        expect(headWhenGone - len).toBeLessThanOrEqual(visibleRowsFor(layer) + 1e-9);
+      }
+    }
   });
 });

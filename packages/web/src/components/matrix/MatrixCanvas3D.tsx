@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type { MatrixRow } from '../../lib/matrix-feed.js';
 import { hash01, planStreams, type Stream } from '../../lib/matrix-rain.js';
 import {
-  LAYERS, NEAR, gridOf, packColumns, packText, pick, rowsOf, streamsKey,
+  LAYERS, LAYER_SPECS, NEAR, SECOND, assignLayers, gridOf, packColumns, packText, pick, rowsOf, streamsKey, visibleRowsFor,
 } from '../../lib/matrix-gpu.js';
 import { HEX_COLOR, luminance, rgbOf } from '../../lib/color.js';
 import { motionIsFull, readToken } from '../../lib/theme-runtime.js';
@@ -12,8 +12,8 @@ import { rad, sp } from '../../lib/density.js';
 import { createScene, type Scene, type SceneColours } from './matrix3d-gl.js';
 import { StreamCard, TopList, type Hover } from './StreamCard.js';
 
-/** The nearest layers drawn: 3 is the data plane alone (phase A); 0 is all four. */
-const FIRST_LAYER = NEAR;
+/** The nearest layers drawn: all of them. */
+const FIRST_LAYER = 0;
 /** The simulation's step: new streams start and finished ones end at most this late. */
 const PLAN_MS = 50;
 /** The most the backing store may exceed CSS pixels by: crisp enough, far cheaper than a retina's 2-3×. */
@@ -87,7 +87,8 @@ export function MatrixCanvas3D({ rows, ready, resetKey, gloveToken, onOpenNetwor
     let scene: Scene | null = null;
     let raf = 0;
     let lastPlan = -Infinity;
-    let planned: Stream[] = [];
+    /** The streams on each data plane; the planes behind carry filler only. */
+    let planned: Stream[][] = Array.from({ length: LAYERS }, () => []);
     let lastKey = '';
     let colours: SceneColours | null = null;
     let columns: Float32Array | null = null;
@@ -106,24 +107,30 @@ export function MatrixCanvas3D({ rows, ready, resetKey, gloveToken, onOpenNetwor
 
     /** Plan what falls; true when the set of streams changed (and the textures were rewritten). */
     const plan = (now: number): boolean => {
-      if (resetRef.current !== seenReset) { seenReset = resetRef.current; planned = []; known = null; lastColumn.clear(); lastKey = ''; }
-      const g = gridOf(aspect(), NEAR);
+      if (resetRef.current !== seenReset) { seenReset = resetRef.current; planned = Array.from({ length: LAYERS }, () => []); known = null; lastColumn.clear(); lastKey = ''; }
       // A still frame does not age: a new answer must not expire its streams and deal them out again.
-      planned = planStreams({
-        rows: rowsRef.current, columns: g.data, visibleRows: Math.ceil(rowsOf(NEAR)), now: fullRef.current ? now : epoch,
-        current: planned, lastColumn, known, rand: Math.random,
-      });
-      for (const s of planned) lastColumn.set(s.address, s.column);
+      const at = fullRef.current ? now : epoch;
+      const falling = new Map<string, number>();
+      for (const layer of [SECOND, NEAR]) for (const s of planned[layer]) falling.set(s.address, layer);
+      const split = assignLayers(rowsRef.current, known, falling);
+      const next: Stream[][] = Array.from({ length: LAYERS }, () => []);
+      for (const [layer, rows] of [[SECOND, split.second], [NEAR, split.near]] as const) {
+        next[layer] = planStreams({
+          rows, columns: gridOf(aspect(), layer).data, visibleRows: visibleRowsFor(layer), now: at,
+          current: planned[layer], lastColumn, known, rand: Math.random,
+        });
+        for (const s of next[layer]) lastColumn.set(s.address, s.column);
+      }
+      planned = next;
       // What the screen has been given. Not before the answer is in, or its first rows would all be new.
       if (readyRef.current) known = new Set([...(known ?? []), ...rowsRef.current.map((r) => r.address)]);
-      let layers: Stream[][] = Array.from({ length: LAYERS }, () => []);
-      layers[NEAR] = planned;
+      let layers = planned;
       if (!fullRef.current) {
         // A still frame: each stream's text at a place from a hash of its address, the clock at 0.
         layers = layers.map((l, layer) => l.map((s) => {
           const rowsShown = Math.ceil(rowsOf(layer));
           const top = Math.floor(hash01(s.address) * Math.max(1, rowsShown - s.text.length));
-          return { ...s, startAt: epoch - (1000 * (top + s.text.length - 0.5)) / s.speed };
+          return { ...s, startAt: epoch - (1000 * (top + s.text.length - 0.5)) / (s.speed * LAYER_SPECS[layer].speed) };
         }));
       }
       const key = streamsKey(layers);
