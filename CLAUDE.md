@@ -467,7 +467,7 @@ Rules of the feed that must not be changed casually:
   the session reaches the page (`useLiveEventCount`). The hook never runs two requests at once.
 
 The Gibson feed (`GET /api/styx/v1/hosts`, `/links`, `/flows`, `styx/gibson.ts`, user doc `docs/extensions/styx.md` →
-"The Gibson feed"; the row types are mirrored by hand in `packages/web/src/lib/gibson-feed.ts`) follows the same rules,
+"The Gibson feed"; the row types are to be mirrored by hand in `packages/web/src/lib/gibson-feed.ts`, added with the Gibson views) follows the same rules,
 and they are not to be redone per route: **all four routes choose their data in one `select()`** in `routes.ts`
 (validation, 400/404, the 15-minute default, which sources), so a rule changed for one is changed for all; a hop and a
 null-host flow are skipped; `REFUSED` is the matrix's; a poll answers from memory (`NetStore`, `standardCalls`), and

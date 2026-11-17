@@ -199,7 +199,7 @@ describe('the log', () => {
       call(at(1), 'WebFetch', [['b.test', 443, 'https']]),
     ], 0, NOW, NOW, 'a.test');
     expect(rows.map((r) => r.state)).toEqual(['broken', 'active', 'finished']);
-    expect(rows[2]).toMatchObject({ source: 'agent', via: 'WebFetch', tool: 'WebFetch', port: 443, proto: 'https', label: 'https://a.test/', url: null, method: null, sent: 0 });
+    expect(rows[2]).toMatchObject({ source: 'agent', via: 'WebFetch', tool: 'WebFetch', port: 443, proto: 'https', label: null, url: null, method: null, sent: 0 });
   });
   it('is cut to the limit after sorting, and ties go by host', () => {
     const a = logFromFlows(Array.from({ length: 5 }, (_, i) => flow({ host: `h${i}.test`, open: 3 })), NOW);

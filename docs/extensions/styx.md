@@ -177,7 +177,7 @@ the connection left through. Standard: `source` and `source_kind` are `agent` an
 `received`, `state`, `blocked`, `rule`, `method`, `url`, `label`. A gloved row is one connection: `state` is
 glove's (`active`, `pooled`, `finished`, `guard`, `user_rule`, `default_block`, `broken`, …) and `blocked` is
 true for the three refusals. A standard row is one tool call: `active` while it runs, `broken` if it failed,
-else `finished`, with the call's own `label`.
+else `finished`, with `label` always null (a call's label is content: a query, a command, a URL).
 
 Links and the log are always computed from the connections Layman still holds in memory, also for the whole
 record, because glove's running totals do not say which client reached which host. They reach back only as

@@ -4,11 +4,11 @@
  * fastify, so every rule is tested alone. Written like `matrix.ts`: small accumulators, one
  * `finish` per row type that sorts and cuts.
  *
- * The three row types are mirrored by hand in `packages/web/src/lib/gibson-feed.ts`: change both
- * or neither.
+ * The three row types are to be mirrored by hand in the web package (`lib/gibson-feed.ts`, added with
+ * the Gibson views): change both or neither.
  */
 import { REFUSED } from '../netobs/trace.js';
-import { registrableDomain } from '../netobs/domain.js';
+import { isIpLiteral, registrableDomain } from '../netobs/domain.js';
 import type { DestinationAggregate, FlowView, TraceCall } from '../netobs/types.js';
 import { targetPort, untunnelled } from './matrix.js';
 
@@ -72,12 +72,10 @@ export const GIBSON_DEFAULT_LOG = 100;
 const MAX_PORTS = 16;
 const MAX_NAMES = 8;
 
-const IPV4 = /^\d{1,3}(\.\d{1,3}){3}$/;
-
 /** The city block a host stands in: an IPv4's /16, an IPv6 literal itself, a name's registrable domain. */
 export function blockOf(host: string): string {
   const h = host.toLowerCase();
-  if (IPV4.test(h)) {
+  if (/^\d+\.\d+\.\d+\.\d+$/.test(h) && isIpLiteral(h)) {
     const [a, b] = h.split('.');
     return `${a}.${b}.0.0/16`;
   }
@@ -121,9 +119,9 @@ function addHost(rows: Map<string, HostRow>, part: HostRow): void {
     return;
   }
   if (part.count > row.count) {
-    row.scope = part.scope;
     row.block = part.block;
-  }
+    if (part.scope !== '') row.scope = part.scope;
+  } else if (row.scope === '') row.scope = part.scope;
   row.sent += part.sent;
   row.received += part.received;
   row.count += part.count;
@@ -378,7 +376,8 @@ export function logFromCalls(calls: readonly TraceCall[], from: number, to: numb
         rule: null,
         method: null,
         url: null,
-        label: c.label,
+        // Never the call's own label: it is content (a query, a command line, a full URL).
+        label: null,
       });
     }
   }
