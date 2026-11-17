@@ -8,10 +8,12 @@ const WEB = join(SRC, '..');
 const rel = (file: string) => file.slice(WEB.length + 1);
 
 /**
- * The only source file allowed a colour literal: the theme table, which is where colours come
- * from. `index.css` may hold them only in its `:root` block (Classic).
+ * The source files allowed a colour literal: the theme table, which is where colours come from, and
+ * the table of Gibson's four film schemes, which are fixed looks by design (they must not follow the
+ * user's theme; the State scheme, which does, reads tokens). `index.css` may hold them only in its
+ * `:root` block (Classic).
  */
-const ALLOWED = new Set(['src/lib/themes.ts']);
+const ALLOWED = new Set(['src/lib/themes.ts', 'src/lib/gibson-schemes.ts']);
 const PALETTE_BLOCKS = new Set(['src/index.css']);
 
 function sources(dir: string, ext = /\.tsx?$/): string[] {

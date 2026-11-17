@@ -8,6 +8,7 @@ const ActivityMapView = lazy(() => import('./components/activity/ActivityMapView
 const NetworkView = lazy(() => import('./components/network/NetworkView.js'));
 // Styx's Matrix tabs: one lazy chunk, fetched only when opened.
 const MatrixView = lazy(() => import('./components/matrix/MatrixView.js'));
+const GibsonView = lazy(() => import('./components/gibson/GibsonView.js'));
 import { InvestigationPanel } from './components/layout/InvestigationPanel.js';
 import { SetupBanner } from './components/layout/SetupBanner.js';
 import { SetupWizard } from './components/wizard/SetupWizard.js';
@@ -20,7 +21,7 @@ import { ChangelogModal } from './components/shared/ChangelogModal.js';
 import { RouteErrorPanel } from './components/layout/RouteErrorPanel.js';
 import { TTSBar } from './components/tts/TTSBar.js';
 import { BoltIcon } from './components/primitives/index.js';
-import { useSessionStore, isNetworkView, isMatrixView } from './stores/sessionStore.js';
+import { useSessionStore, isNetworkView, isMatrixView, isGibsonView } from './stores/sessionStore.js';
 import type { SessionState } from './stores/sessionStore.js';
 import { isSessionLive } from './lib/session-state.js';
 import { useWebSocket } from './hooks/useWebSocket.js';
@@ -305,6 +306,17 @@ export function App() {
       <AppShell onSend={send} onInstall={handleSetupInstall}>
         <Suspense fallback={<div className="flex items-center justify-center h-full text-text-faint text-xs">Loading...</div>}>
           <MatrixView mode={viewMode as 'matrix' | 'matrix2d' | 'matrix3d'} />
+        </Suspense>
+      </AppShell>
+    );
+  }
+
+  // ... and so do the Gibson views, a second group of the same extension.
+  if (isGibsonView(viewMode)) {
+    return (
+      <AppShell onSend={send} onInstall={handleSetupInstall}>
+        <Suspense fallback={<div className="flex items-center justify-center h-full text-text-faint text-xs">Loading...</div>}>
+          <GibsonView mode={viewMode as 'gibson' | 'gibson2d' | 'gibson3d'} />
         </Suspense>
       </AppShell>
     );

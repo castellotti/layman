@@ -6,6 +6,7 @@ import { getSessionDisplayName } from '../../lib/session-state.js';
 import { DEFAULT_MATRIX_WINDOW, MATRIX_WINDOWS, parseMatrixWindow, type MatrixWindow } from '../../lib/matrix-feed.js';
 import { useStored } from '../../hooks/useStored.js';
 import { useMatrixFeed } from '../../hooks/useMatrixFeed.js';
+import { openNetwork } from '../../lib/open-network.js';
 import { formatBytes } from '../../lib/net-format.js';
 import { rad, sp } from '../../lib/density.js';
 import { MatrixCanvas2D } from './MatrixCanvas2D.js';
@@ -50,13 +51,6 @@ function MatrixPane({ mode }: { mode: ViewMode }) {
 
   const down = rows.reduce((n, r) => n + r.received, 0);
   const title = session ? getSessionDisplayName(session) : 'All live sessions';
-  const openNetwork = (token: string, address: string) => {
-    const st = useSessionStore.getState();
-    st.setNetToken(token);
-    st.setNetDest(address.replace(/:\d+$/, ''));
-    st.setViewMode('network');
-  };
-
   return (
     <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', background: 'var(--bg)' }}>
       <div

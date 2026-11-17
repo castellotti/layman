@@ -21,8 +21,11 @@ optional, off by default, and independent of glove: with it off there are no tab
 | **Matrix** | `?view=matrix` | The real styx-godot web export, running its own shaders, in an iframe | available (needs a local build) |
 | **Matrix 2D** | `?view=matrix2d` | Layman's own Canvas 2D rendering. No Godot | available |
 | **Matrix 3D** | `?view=matrix3d` | Layman's own WebGL2 rendering. No Godot | available |
+| **Gibson** | `?view=gibson` | The styx-godot city in a frame | coming |
+| **Gibson 2D** | `?view=gibson2d` (`G`) | A city of towers, one per host, drawn on a canvas. No Godot | available |
+| **Gibson 3D** | `?view=gibson3d` | The same city in WebGL2 | coming |
 
-All three are session views (`/s/<id>?view=matrix2d`) and show the session open in the app, or else the
+All six are session views (`/s/<id>?view=matrix2d`) and show the session open in the app, or else the
 newest live one; with none they show every live session together.
 
 **Matrix 2D.** A full-area canvas of monospace columns. Every column carries faint, slow filler rain.
@@ -55,6 +58,41 @@ half a second, so stepping through sessions does not restart it for each); leavi
 frame, which stops it. Instead of the frame the tab says why it cannot run: no build found (with the
 folder it looked in and what is missing), Motion at Reduced or Off (**Run anyway** starts it), or a page
 that is not a secure context.
+
+![Gibson 2D](../images/styx-gibson2d.png)
+
+**Gibson 2D.** The destinations as a city, seen from above at an angle, in the style of the film's
+network view. Each host is a **tower** on a board of thin circuit traces. Towers stand in **blocks**: one
+block for each registrable domain (an IPv4 address's /16 for a bare address), so `api.github.com` and
+`github.com` are neighbours; a block holds 16 towers, then a second block opens. The busiest domains stand
+nearest the middle. A tower's **height** is the bytes it moved and its **width** the times it was
+reached, both on a log scale against the busiest on screen. Who stands where is remembered while the tab is
+open, so a refresh adds and removes towers and never reshuffles the city; a new host is drawn bright and
+**rises** into place in about a second, and a host that left the answer frees its plot. The **chips** in the middle block are the
+machine itself: one for each source of a connection (the harness, the agent, a device), or a single one called
+`LOCAL` when a session has no connections to draw, such as one whose tool calls were only recorded. A **streak** crossing the streets is a connection going out
+or coming back along the streets between its chip and its tower; a busier link sends more of them; one
+glove refused flashes where it stops.
+
+The look is chosen with the scheme picker (remembered in the browser). **State** colours by what the
+destination is and follows the theme (light themes included): green is normal, red a tower every connection
+of which glove refused (and a partial red cap for a part), amber one that did not go through the tunnel,
+and the theme's accent colour (blue in Classic) a local or LAN one; a selected tower uses the highlight colour. **Green**, **Cyan**, **Red** and **Night**
+are fixed looks after the film's stills that ignore the theme (they always draw on a dark board); in these
+the state is shown by marks instead of colour: a refused tower is striped, an untunnelled one has dashed
+edges. Night draws lit windows and dotted streets. The window picker works as in the Matrix.
+
+**Drag** pans, the **wheel** zooms about the pointer, the arrow keys and `+` / `-` do both from the keyboard,
+and **Fit** brings the whole city back. The camera is yours once you move it, until you change the session or
+window or press Fit. The busiest 12 hosts are labelled, and every one once you are close enough to read;
+at that zoom the faces of a tower carry its facts as small text. **Hover** a tower for its address,
+count and bytes; **click** it to open its panel on the right: the tower's log, grouped into the menu's
+items (`PORT VIA ▸`, up to 12), and under the picked item up to four boxes for its recent connections or
+calls, a refused one in red, each with its time, state and bytes. The picked tower's faces continue with its
+last log lines. For a sandboxed session the panel offers **Open in Network**. **Escape** closes it. With
+Settings → Motion at Reduced or Off nothing moves: towers do not rise, and each active route is drawn as a
+dashed line instead of streaks. A screen reader gets a list of the hosts, their counts and their state in words.
+The tab's shortcut is `G`.
 
 ### Building the Godot tab
 
@@ -125,6 +163,69 @@ The answer is a JSON array, highest `count` first, ties by `address` ascending, 
 | `untunnelled` | Layman addition: true when glove classed the traffic `direct` and it is not a known VPN route. false for a standard session. |
 
 styx-godot reads only `address` and `count`.
+
+## The Gibson feed
+
+Three more routes, for the Gibson views, with the shape of styx-os's `GET /v1/hosts`, `/v1/links` and
+`/v1/flows` (through its nginx, `/api/v1/…`). The Pi answers them from its packet database; Layman answers
+them from its own records, so a view reads either source the same way. `/api/styx/v1/matrix` is unchanged.
+
+```
+GET /api/styx/v1/hosts     one row per remote host: a tower
+GET /api/styx/v1/links     one row per (source, via, target): the traffic
+GET /api/styx/v1/flows     the log, newest first: a tower's menu
+```
+
+`session`, `glove` and `relative` mean what they mean for the matrix, and so do the errors: the selection is one
+piece of code for all four routes. `/flows` also takes `host` (one lower-case host, no port) and `limit` (1 to
+500, default 100; anything else is 400). Every answer is a JSON array of flat objects with snake_case names; a
+field Layman cannot know has a neutral value (`0`, `""`, `[]`, `null`), never a missing key.
+
+```json
+[
+  { "host": "api.github.com", "block": "github.com", "ports": [443], "sent": 5120, "received": 88211,
+    "count": 14, "open": 1, "blocked": 0, "untunnelled": false, "scope": "tunnelled",
+    "first_seen_ago": 840, "last_seen_ago": 3,
+    "clients": ["harness"], "tools": ["web_fetch"], "services": ["proxy"] }
+]
+```
+
+**Hosts** (highest `count` first, ties by `host`, at most 256). The ports of one host are one row.
+
+| Field | Gloved session | Standard session |
+|---|---|---|
+| `host` | `dest.host`, else its IP, lower-case | the host a tool call named |
+| `block` | the city block: an IPv4's /16 (`165.1.0.0/16`), an IPv6 literal itself, else the registrable domain (`wikipedia.org`, from the offline Public Suffix List) | the same |
+| `ports` | the distinct ports, at most 16 | its URL's port, else its scheme's; `[]` when unknown |
+| `sent`, `received` | bytes up and down | 0 |
+| `count` | connections | tool calls naming it |
+| `open` | connections open now | calls still running |
+| `blocked` | connections glove refused | 0 |
+| `untunnelled` | glove's `direct` and not a known VPN route | false |
+| `scope` | glove's (`tunnelled`, `local`, `direct`, `lan`, `cloud`) | `""` |
+| `first_seen_ago`, `last_seen_ago` | whole seconds from the first and the latest activity to now | from the calls' start times |
+| `clients`, `tools`, `services` | the distinct values, sorted, at most 8 each | `[]`, the tool names, `[]` |
+
+**Links** (highest `count` first, then `source`, `via`, `target`; at most 512): `source`, `source_kind`,
+`via`, `target`, and the same `sent`, `received`, `count`, `open`, `blocked`, `last_seen_ago` for that triple.
+Gloved: `source` is the glove client (`harness` when it has none), `source_kind` `client`, `via` the gate
+the connection left through. Standard: `source` and `source_kind` are `agent` and `via` is the tool.
+
+**The log**: `host`, `time` (epoch seconds), `ago`, `source`, `via`, `tool`, `port`, `proto`, `sent`,
+`received`, `state`, `blocked`, `rule`, `method`, `url`, `label`. A gloved row is one connection: `state` is
+glove's (`active`, `pooled`, `finished`, `guard`, `user_rule`, `default_block`, `broken`, …) and `blocked` is
+true for the three refusals. A standard row is one tool call: `active` while it runs, `broken` if it failed,
+else `finished`, with `label` always null (a call's label is content: a query, a command, a URL).
+
+Links and the log are always computed from the connections Layman still holds in memory, also for the whole
+record, because glove's running totals do not say which client reached which host. They reach back only as
+far as that memory does; the hosts of a whole-record answer do not (they are the totals). A hop is not a
+destination here either.
+
+The answer is cheap enough to poll every two seconds, as the matrix is: gloved rows come from memory, and a
+standard session's from the in-memory events, reading its recording only for a window that reaches before
+memory begins (cached 30 s). Privacy is unchanged: no lookup of a host, no network call. A request's `url`
+and `method` appear in the log only when glove recorded them in full, exactly as its PII filter left them.
 
 ## What the data is
 
