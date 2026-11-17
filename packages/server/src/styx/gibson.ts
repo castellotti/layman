@@ -4,8 +4,7 @@
  * fastify, so every rule is tested alone. Written like `matrix.ts`: small accumulators, one
  * `finish` per row type that sorts and cuts.
  *
- * The three row types are to be mirrored by hand in the web package (`lib/gibson-feed.ts`, added with
- * the Gibson views): change both or neither.
+ * The three row types are mirrored by hand in the web package (`lib/gibson-feed.ts`): change both or neither.
  */
 import { REFUSED } from '../netobs/trace.js';
 import { isIpLiteral, registrableDomain } from '../netobs/domain.js';

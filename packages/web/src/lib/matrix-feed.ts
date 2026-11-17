@@ -33,15 +33,20 @@ export function parseMatrixWindow(raw: string): MatrixWindow | null {
 }
 
 /**
- * The feed's URL. No session: every live session, which the server limits to 15 minutes, so
- * "All" there asks for the longest window it can answer instead of the whole record it cannot.
+ * The `?…` of a Styx feed's URL (or ''): one session and a window. No session: every live session,
+ * which the server limits to 15 minutes, so "All" there asks for the longest window it can answer
+ * instead of the whole record it cannot. The Gibson feeds ask the same way (`gibson-feed.ts`).
  */
-export function matrixUrl(opts: { sessionId: string | null; window: MatrixWindow }): string {
+export function feedQuery(opts: { sessionId: string | null; window: MatrixWindow }): string {
   const params = new URLSearchParams();
   if (opts.sessionId) params.set('session', opts.sessionId);
   const relative = MATRIX_WINDOWS.find((w) => w.id === opts.window)?.relative ?? null;
   if (relative) params.set('relative', relative);
   else if (!opts.sessionId) params.set('relative', '1d');
   const q = params.toString();
-  return `/api/styx/v1/matrix${q ? `?${q}` : ''}`;
+  return q ? `?${q}` : '';
+}
+
+export function matrixUrl(opts: { sessionId: string | null; window: MatrixWindow }): string {
+  return `/api/styx/v1/matrix${feedQuery(opts)}`;
 }

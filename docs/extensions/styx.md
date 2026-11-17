@@ -21,8 +21,11 @@ optional, off by default, and independent of glove: with it off there are no tab
 | **Matrix** | `?view=matrix` | The real styx-godot web export, running its own shaders, in an iframe | available (needs a local build) |
 | **Matrix 2D** | `?view=matrix2d` | Layman's own Canvas 2D rendering. No Godot | available |
 | **Matrix 3D** | `?view=matrix3d` | Layman's own WebGL2 rendering. No Godot | available |
+| **Gibson** | `?view=gibson` | The styx-godot city in a frame | coming |
+| **Gibson 2D** | `?view=gibson2d` (`G`) | A city of towers, one per host, drawn on a canvas | coming |
+| **Gibson 3D** | `?view=gibson3d` | The same city in WebGL2 | coming |
 
-All three are session views (`/s/<id>?view=matrix2d`) and show the session open in the app, or else the
+All six are session views (`/s/<id>?view=matrix2d`) and show the session open in the app, or else the
 newest live one; with none they show every live session together.
 
 **Matrix 2D.** A full-area canvas of monospace columns. Every column carries faint, slow filler rain.

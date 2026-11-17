@@ -229,6 +229,7 @@ store for unrecorded sessions, and memoizes per session until a new event arrive
 ?view=network|map|topology|trace&glove=<token>&dest=<host>   glove network views
   &from=<iso>&to=<iso|now>           …and their time range (pushes: Back returns to the previous one)
 ?view=matrix|matrix2d|matrix3d       Styx (Matrix views; matrix is the Godot frame), session views: /s/<id>?view=matrix2d
+?view=gibson|gibson2d|gibson3d       Styx (Gibson views), session views too: /s/<id>?view=gibson2d
 ```
 
 Ids may be given as an unambiguous prefix of ≥8 characters; ambiguous prefixes return 409 with
@@ -440,6 +441,12 @@ packages/web/src/hooks/useMatrixFeed.ts  the poll
 packages/web/src/components/matrix/     MatrixView (bar + the tab's renderer), MatrixCanvas2D, MatrixCanvas3D (+ matrix3d-gl, matrix3d-shaders), MatrixGodot, StreamCard
 packages/server/src/styx/godot.ts       the Godot tab's build: resolveGodotFile, godotBuildStatus, GODOT_CSP
 packages/web/src/lib/matrix-godot.ts    pure: the frame's src, godotTabState (insecure / no build / motion off / run)
+packages/server/src/styx/gibson.ts      pure: host / link / log rows from flows, glove totals and tool calls (the Gibson feed)
+packages/web/src/lib/gibson-feed.ts     the row types (mirror), the feed URLs (`feedQuery` in matrix-feed.ts is the shared query rule)
+packages/web/src/lib/gibson-city.ts     pure, the model every Gibson renderer shares: slots, placement, towers, routes, pages, menu, traffic
+packages/web/src/lib/gibson-schemes.ts  the colour schemes: the only file besides themes.ts that may hold colour literals
+packages/web/src/hooks/useGibsonFeed.ts  the polls: hosts and links together, and one tower's log
+packages/web/src/components/gibson/     GibsonView (bar, scheme picker, the tab's renderer)
 ```
 
 Rules of the feed that must not be changed casually:
@@ -462,18 +469,28 @@ Rules of the feed that must not be changed casually:
   merged with memory, which wins by event id. What is new always comes from memory, so the cache never delays a
   new host. Never call `turnStore.eventsFor` per poll.
 - **No network call keyed on what it shows, no lookup of a host**: the server's no-network test covers `styx/`
-  (in `netobs/index.test.ts`) and the web one `components/matrix/`, `lib/matrix-*` and `hooks/useMatrix*`.
+  (in `netobs/index.test.ts`) and the web one `components/matrix/`, `lib/matrix-*` and `hooks/useMatrix*` (and, for Gibson, `components/gibson/`, `lib/gibson-*` and `hooks/useGibson*`).
 - A host reached now must fall within about two seconds: the 2 s poll, plus a refetch 150 ms after an event for
   the session reaches the page (`useLiveEventCount`). The hook never runs two requests at once.
 
 The Gibson feed (`GET /api/styx/v1/hosts`, `/links`, `/flows`, `styx/gibson.ts`, user doc `docs/extensions/styx.md` →
-"The Gibson feed"; the row types are to be mirrored by hand in `packages/web/src/lib/gibson-feed.ts`, added with the Gibson views) follows the same rules,
+"The Gibson feed"; the row types are mirrored by hand in `packages/web/src/lib/gibson-feed.ts`) follows the same rules,
 and they are not to be redone per route: **all four routes choose their data in one `select()`** in `routes.ts`
 (validation, 400/404, the 15-minute default, which sources), so a rule changed for one is changed for all; a hop and a
 null-host flow are skipped; `REFUSED` is the matrix's; a poll answers from memory (`NetStore`, `standardCalls`), and
 **links and the log always come from `flowsBetween` (also for the whole record: glove's totals do not say which client
 reached a host)**, so they reach back only as far as memory does. Ages are seconds to the server's now, never
 timestamps, because a viewer's clock and a Pi's rarely agree.
+
+The Gibson web side. **Placement is remembered, and `place` is the only thing that changes it** (`gibson-city.ts`):
+a tower that stays in the answer never moves, so a refresh adds and removes and never reshuffles; the component holds
+the last `Placement` in a ref and resets it with the session or window. Everything else in the city model is a pure
+function of the answer, shared by Gibson 2D now and 3D later, so a rule (size, tone, route, a page's lines) is changed
+there and nowhere else. A car's direction comes from `hash01` of the link and its number, never a random call, so a
+still frame repeats. **`gibson-schemes.ts` holds the one set of colour literals outside `themes.ts`** (the four film
+schemes are fixed looks that must not follow the theme; `theme-literals.test.ts` lists it in `ALLOWED`); State reads
+theme tokens through a function handed in, so it follows the theme and the file never touches the DOM. The Gibson
+views are a second tab group beside the Matrix's, behind the same `styx.enabled`.
 
 The renderers. `matrix-rain.ts` is pure and shared (the 3D renderer uses it too): a stream's head is at row
 `(now - startAt) x speed`, so a refresh of the data never restarts a stream and a redraw puts it back. A new

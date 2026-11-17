@@ -121,6 +121,7 @@ export function Header() {
         case 'f': setViewMode('flowchart'); break;
         case 'a': setViewMode('activity'); break;
         case 'x': if (showMatrix) setViewMode('matrix2d'); break;
+        case 'g': if (showMatrix) setViewMode('gibson2d'); break;
         case 'n': if (showNetwork) setViewMode('network'); break;
         case 'm': if (showNetwork) setViewMode('map'); break;
         case 'o': if (showNetwork) setViewMode('topology'); break;
@@ -237,6 +238,12 @@ export function Header() {
             <NavTabButton label="Matrix" isActive={viewMode === 'matrix'} onClick={() => setViewMode('matrix')} />
             <NavTabButton label="Matrix 2D" shortcut="X" isActive={viewMode === 'matrix2d'} onClick={() => setViewMode('matrix2d')} />
             <NavTabButton label="Matrix 3D" isActive={viewMode === 'matrix3d'} onClick={() => setViewMode('matrix3d')} />
+          </nav>
+          <div style={{ alignSelf: 'center', width: 1, height: 16, background: 'var(--border-strong)', margin: sp('0 12px') }} />
+          <nav aria-label="Gibson" style={{ display: 'flex', alignItems: 'stretch', height: '100%', gap: 0 }}>
+            <NavTabButton label="Gibson" isActive={viewMode === 'gibson'} onClick={() => setViewMode('gibson')} />
+            <NavTabButton label="Gibson 2D" shortcut="G" isActive={viewMode === 'gibson2d'} onClick={() => setViewMode('gibson2d')} />
+            <NavTabButton label="Gibson 3D" isActive={viewMode === 'gibson3d'} onClick={() => setViewMode('gibson3d')} />
           </nav>
         </>
       )}

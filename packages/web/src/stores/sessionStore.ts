@@ -25,7 +25,9 @@ export type ViewMode =
   // Network views of glove sessions: exclusive full-content views, like Flow.
   | 'network' | 'map' | 'topology' | 'trace'
   // Styx (Matrix views): exclusive session views, shown when `styx.enabled`.
-  | 'matrix' | 'matrix2d' | 'matrix3d';
+  | 'matrix' | 'matrix2d' | 'matrix3d'
+  // Styx (Gibson views): the same, a second group.
+  | 'gibson' | 'gibson2d' | 'gibson3d';
 
 export const NETWORK_VIEW_MODES: readonly ViewMode[] = ['network', 'map', 'topology', 'trace'];
 
@@ -39,8 +41,14 @@ export function isMatrixView(mode: ViewMode): boolean {
   return (MATRIX_VIEW_MODES as readonly string[]).includes(mode);
 }
 
+export const GIBSON_VIEW_MODES: readonly ViewMode[] = ['gibson', 'gibson2d', 'gibson3d'];
+
+export function isGibsonView(mode: ViewMode): boolean {
+  return (GIBSON_VIEW_MODES as readonly string[]).includes(mode);
+}
+
 /** Views that show one session open in the app (`activeSessionId`), addressed as `/s/<id>?view=…`. */
-const SESSION_VIEW_MODES: readonly ViewMode[] = ['stream', 'flowchart', 'activity', ...MATRIX_VIEW_MODES];
+const SESSION_VIEW_MODES: readonly ViewMode[] = ['stream', 'flowchart', 'activity', ...MATRIX_VIEW_MODES, ...GIBSON_VIEW_MODES];
 
 export function isSessionView(mode: ViewMode): boolean {
   return (SESSION_VIEW_MODES as readonly string[]).includes(mode);
@@ -48,7 +56,7 @@ export function isSessionView(mode: ViewMode): boolean {
 
 /** Views that take over the whole content area, outside the Dashboard/Logs layout. */
 export function isExclusiveView(mode: ViewMode): boolean {
-  return mode === 'flowchart' || mode === 'activity' || mode === 'sessions' || mode === 'prompts' || isNetworkView(mode) || isMatrixView(mode);
+  return mode === 'flowchart' || mode === 'activity' || mode === 'sessions' || mode === 'prompts' || isNetworkView(mode) || isMatrixView(mode) || isGibsonView(mode);
 }
 
 // ─── Expanding-interface layout state ──────────────────────────────────────
@@ -116,6 +124,9 @@ const VIEW_NAME_BY_MODE: Record<ViewMode, ViewName> = {
   matrix: 'matrix',
   matrix2d: 'matrix2d',
   matrix3d: 'matrix3d',
+  gibson: 'gibson',
+  gibson2d: 'gibson2d',
+  gibson3d: 'gibson3d',
 };
 
 const MODE_BY_VIEW_NAME: Record<ViewName, ViewMode> = {
@@ -132,6 +143,9 @@ const MODE_BY_VIEW_NAME: Record<ViewName, ViewMode> = {
   matrix: 'matrix',
   matrix2d: 'matrix2d',
   matrix3d: 'matrix3d',
+  gibson: 'gibson',
+  gibson2d: 'gibson2d',
+  gibson3d: 'gibson3d',
 };
 
 export function viewNameForMode(mode: ViewMode): ViewName {

@@ -23,12 +23,14 @@
 export type ViewName =
   | 'dashboard' | 'logs' | 'prompts' | 'flow' | 'activity' | 'sessions'
   | 'network' | 'map' | 'topology' | 'trace'
-  | 'matrix' | 'matrix2d' | 'matrix3d';
+  | 'matrix' | 'matrix2d' | 'matrix3d'
+  | 'gibson' | 'gibson2d' | 'gibson3d';
 
 export const VIEW_NAMES: readonly ViewName[] = [
   'dashboard', 'logs', 'prompts', 'flow', 'activity', 'sessions',
   'network', 'map', 'topology', 'trace',
   'matrix', 'matrix2d', 'matrix3d',
+  'gibson', 'gibson2d', 'gibson3d',
 ];
 
 export type LaymanRoute =

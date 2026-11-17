@@ -25,6 +25,10 @@ const files = [
   ...readdirSync(join(src, 'components', 'matrix')).map((f) => join('components', 'matrix', f)),
   ...readdirSync(join(src, 'lib')).filter((f) => f.startsWith('matrix-')).map((f) => join('lib', f)),
   ...readdirSync(join(src, 'hooks')).filter((f) => f.startsWith('useMatrix')).map((f) => join('hooks', f)),
+  // The same for Gibson's.
+  ...readdirSync(join(src, 'components', 'gibson')).map((f) => join('components', 'gibson', f)),
+  ...readdirSync(join(src, 'lib')).filter((f) => f.startsWith('gibson-')).map((f) => join('lib', f)),
+  ...readdirSync(join(src, 'hooks')).filter((f) => f.startsWith('useGibson')).map((f) => join('hooks', f)),
 ].filter((f) => /\.tsx?$/.test(f) && !f.includes('.test.'));
 
 const BANNED: Array<[string, RegExp]> = [
