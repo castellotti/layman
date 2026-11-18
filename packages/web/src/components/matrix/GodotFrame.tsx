@@ -14,6 +14,7 @@ const FOCUS_GUARD_MS = 30_000;
 /** How often a Gibson frame is asked which views its page has, until it has said. */
 const VIEWS_POLL_MS = 1000;
 
+const NAMES: Record<GodotViz, string> = { matrix: 'Matrix', gibson: 'Gibson' };
 const TITLES: Record<GodotViz, string> = { matrix: 'Styx Matrix (Godot)', gibson: 'Styx Gibson (Godot)' };
 
 const MAKE = 'make styx-godot-build';
@@ -71,6 +72,8 @@ export function GodotFrame({ viz = 'matrix', sessionId, window: range, scheme }:
     return () => clearTimeout(t);
   }, [wanted, src]);
 
+  const stopGuard = useRef<(() => void) | null>(null);
+  const stopViews = useRef<(() => void) | null>(null);
   const [loading, setLoading] = useState(true);
   const [views, setViews] = useState<'ok' | 'waiting' | 'missing'>('ok');
   // Bumped by "Check again": a new frame, which asks its page again.
@@ -108,20 +111,18 @@ export function GodotFrame({ viz = 'matrix', sessionId, window: range, scheme }:
     const poll = setInterval(() => {
       let reported: unknown;
       try { reported = (frame.current?.contentWindow as (Window & { styxViews?: unknown }) | null)?.styxViews; } catch { reported = undefined; }
-      const state = godotViewState(reported, viz, Date.now() - since);
-      setViews(state);
+      const seen = godotViewState(reported, viz, Date.now() - since);
+      setViews(seen);
       // A page that has not reported by the deadline may only be slow (35 MB to fetch): keep asking, and
       // stop for an answer, or at once for one that lists views without this one.
-      if (state === 'ok' || (state === 'missing' && Array.isArray(reported))) clearInterval(poll);
+      if (seen === 'ok' || (seen === 'missing' && Array.isArray(reported))) clearInterval(poll);
     }, VIEWS_POLL_MS);
     stopViews.current = () => clearInterval(poll);
   };
-  const stopGuard = useRef<(() => void) | null>(null);
-  const stopViews = useRef<(() => void) | null>(null);
   useEffect(() => () => { stopGuard.current?.(); stopViews.current?.(); }, []);
 
   const go = (mode: ViewMode) => useSessionStore.getState().setViewMode(mode);
-  const names = viz === 'gibson' ? (['Gibson 2D', 'Gibson 3D'] as const) : (['Matrix 2D', 'Matrix 3D'] as const);
+  const names = [`${NAMES[viz]} 2D`, `${NAMES[viz]} 3D`] as const;
   const modes: readonly ViewMode[] = viz === 'gibson' ? ['gibson2d', 'gibson3d'] : ['matrix2d', 'matrix3d'];
 
   if (state === 'insecure') {
