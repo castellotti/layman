@@ -75,7 +75,13 @@ export function GodotFrame({ viz = 'matrix', sessionId, window: range, scheme }:
   const [views, setViews] = useState<'ok' | 'waiting' | 'missing'>('ok');
   // Bumped by "Check again": a new frame, which asks its page again.
   const [attempt, setAttempt] = useState(0);
-  useEffect(() => { setLoading(true); setViews(viz === 'matrix' ? 'ok' : 'waiting'); }, [src, attempt, viz]);
+  // A new frame (or none: the tab shows a note instead) leaves the last one's pollers behind and its answer stale.
+  useEffect(() => {
+    stopGuard.current?.();
+    stopViews.current?.();
+    setLoading(true);
+    setViews(viz === 'matrix' ? 'ok' : 'waiting');
+  }, [src, attempt, viz, state]);
   const frame = useRef<HTMLIFrameElement>(null);
   const pointerIn = useRef(false);
   const onLoad = () => {
@@ -104,7 +110,9 @@ export function GodotFrame({ viz = 'matrix', sessionId, window: range, scheme }:
       try { reported = (frame.current?.contentWindow as (Window & { styxViews?: unknown }) | null)?.styxViews; } catch { reported = undefined; }
       const state = godotViewState(reported, viz, Date.now() - since);
       setViews(state);
-      if (state !== 'waiting') clearInterval(poll);
+      // A page that has not reported by the deadline may only be slow (35 MB to fetch): keep asking, and
+      // stop for an answer, or at once for one that lists views without this one.
+      if (state === 'ok' || (state === 'missing' && Array.isArray(reported))) clearInterval(poll);
     }, VIEWS_POLL_MS);
     stopViews.current = () => clearInterval(poll);
   };
