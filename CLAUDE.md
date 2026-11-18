@@ -438,7 +438,7 @@ packages/web/src/lib/matrix-feed.ts     the row type (mirror), the windows, the 
 packages/web/src/lib/matrix-rain.ts     pure, shared by every renderer: what falls, where, how fast, what is new
 packages/web/src/lib/matrix-gpu.ts      pure, 3D only: glyph order, the two data textures' packing, the layers' transform, picking
 packages/web/src/hooks/useMatrixFeed.ts  the poll
-packages/web/src/components/matrix/     MatrixView (bar + the tab's renderer), MatrixCanvas2D, MatrixCanvas3D (+ matrix3d-gl, matrix3d-shaders), MatrixGodot, StreamCard
+packages/web/src/components/matrix/     MatrixView (bar + the tab's renderer), MatrixCanvas2D, MatrixCanvas3D (+ matrix3d-gl, matrix3d-shaders), GodotFrame (both Godot tabs), StreamCard
 packages/server/src/styx/godot.ts       the Godot tab's build: resolveGodotFile, godotBuildStatus, GODOT_CSP
 packages/web/src/lib/matrix-godot.ts    pure: the frame's src, godotTabState (insecure / no build / motion off / run)
 packages/server/src/styx/gibson.ts      pure: host / link / log rows from flows, glove totals and tool calls (the Gibson feed)
@@ -563,8 +563,8 @@ scene, `createScene` runs bright pass, two blurs (half size) and a composite wit
 background skips the glow. **A framebuffer's texture is upside down against `vUv`** (clip space's bottom is row 0):
 every post pass reads it through `tuv()`, and forgetting that mirrors the whole picture.
 
-**The Matrix (Godot) tab** runs a web export of styx-godot that the user makes (`make styx-godot-build`) in an
-iframe; **the build is never committed or shipped** (styx-godot's shaders are partly CC BY-NC-SA; Layman is MIT),
+**The Matrix (Godot) and Gibson (Godot) tabs** run a web export of styx-godot that the user makes (`make styx-godot-build`) in an
+iframe (one build, one component, `GodotFrame`; the view is chosen by `viz`, and the Matrix's address is unchanged); **the build is never committed or shipped** (styx-godot's shaders are partly CC BY-NC-SA; Layman is MIT),
 and Layman serves a folder (`styx.godotDir`, default `<data dir>/styx/godot`, the only place a Docker Layman
 sees; a configured one is read, never created) under `/styx/godot/`. Rules: **the CSP is the enforcement of "every
 request goes to Layman"**: `connect-src 'self'` and `default-src 'self'` must not be loosened (loosen only the
@@ -575,6 +575,10 @@ what the tab shows in `godotTabState` (a non-secure page cannot start Godot's sh
 2D/3D; Reduced/Off motion does not start the engine without **Run anyway**) and the frame is removed on leaving
 the tab (never kept alive hidden). The engine takes focus when it *starts*, seconds after the frame's `load`,
 which silences Layman's shortcuts: `MatrixGodot` hands focus back until the pointer enters the frame.
+
+A build from before styx-godot knew Gibson ignores `viz` and shows the Matrix without saying so, which is why the Gibson tab
+asks the page `window.styxViews` (same origin, polled after `load`, `godotViewState`, 15 s) and notes a build without the view.
+Changing the Gibson scheme restarts the engine: the build reads it at start-up only.
 
 **Licence: neither renderer may be derived from styx-godot's shaders.** Two of them (the background and 3D
 rain) are Shadertoy ports under CC BY-NC-SA 3.0; Layman is MIT. They are not to be copied, ported or consulted

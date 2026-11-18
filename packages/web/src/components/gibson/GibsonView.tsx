@@ -13,6 +13,7 @@ import { rad, sp } from '../../lib/density.js';
 import { GibsonCanvas2D } from './GibsonCanvas2D.js';
 import { GibsonCanvas3D } from './GibsonCanvas3D.js';
 import { GibsonPanel } from './GibsonPanel.js';
+import { GodotFrame } from '../matrix/GodotFrame.js';
 
 export const GIBSON_WINDOW_KEY = 'layman.gibson.window';
 export const GIBSON_SCHEME_KEY = 'layman.gibson.scheme';
@@ -104,7 +105,9 @@ function GibsonPane({ mode }: { mode: ViewMode }) {
         </span>
       </div>
       {mode === 'gibson' ? (
-        <Centered>The Gibson tab, the styx-godot build in a frame, is not built yet.</Centered>
+        // The build is the user's own and is read from Layman only: a change of session, window or scheme
+        // restarts its engine (the scheme is a start-up parameter of the build), so the frame debounces them.
+        <GodotFrame viz="gibson" sessionId={sessionId} window={window} scheme={scheme} />
       ) : loading ? (
         <Centered>Reading the feed…</Centered>
       ) : (

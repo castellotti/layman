@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { useSessionStore } from '../../stores/sessionStore.js';
-import { godotFrameSrc, godotTabState } from '../../lib/matrix-godot.js';
+import { useSessionStore, type ViewMode } from '../../stores/sessionStore.js';
+import { godotFrameSrc, godotTabState, godotViewState, type GodotViz } from '../../lib/matrix-godot.js';
+import type { SchemeId } from '../../lib/gibson-schemes.js';
 import type { MatrixWindow } from '../../lib/matrix-feed.js';
 import { motionIsFull } from '../../lib/theme-runtime.js';
 import { useThemeVersion } from '../../hooks/useThemeVersion.js';
@@ -10,6 +11,11 @@ import { rad, sp } from '../../lib/density.js';
 const SRC_DEBOUNCE_MS = 500;
 /** How long after the page loads the engine may still take focus on its own. */
 const FOCUS_GUARD_MS = 30_000;
+/** How often a Gibson frame is asked which views its page has, until it has said. */
+const VIEWS_POLL_MS = 1000;
+
+const NAMES: Record<GodotViz, string> = { matrix: 'Matrix', gibson: 'Gibson' };
+const TITLES: Record<GodotViz, string> = { matrix: 'Styx Matrix (Godot)', gibson: 'Styx Gibson (Godot)' };
 
 const MAKE = 'make styx-godot-build';
 
@@ -34,14 +40,19 @@ function Button({ onClick, children }: { onClick: () => void; children: React.Re
 }
 
 /**
- * The Matrix (Godot) tab: styx-godot's own web export, running its shaders, in a frame. The build is
+ * The Godot tabs (Matrix and Gibson): styx-godot's own web export, running its shaders, in a frame. The build is
  * the user's, made locally and served by Layman under a policy that lets it talk to Layman only. What is
  * shown instead of the frame is decided by `godotTabState`; this only renders it.
+ *
+ * One build serves both tabs, chosen by `viz`. A build from before Gibson ignores `viz` and shows the Matrix,
+ * so for Gibson the page is asked (`window.styxViews`, same origin) and a build without the view is said so.
  *
  * Unmounting removes the frame, which stops the engine: it is never kept alive hidden, where it would
  * render at full rate behind another view.
  */
-export function MatrixGodot({ sessionId, window: range }: { sessionId: string | null; window: MatrixWindow }) {
+export function GodotFrame({ viz = 'matrix', sessionId, window: range, scheme }: {
+  viz?: GodotViz; sessionId: string | null; window: MatrixWindow; scheme?: SchemeId;
+}) {
   const { status, error, refresh } = useMatrixGodotStatus(true);
   const [runAnyway, setRunAnyway] = useState(false);
   useThemeVersion(); // Motion is applied with the theme: re-ask when it changes.
@@ -53,7 +64,7 @@ export function MatrixGodot({ sessionId, window: range }: { sessionId: string | 
   });
 
   // A change of session or window reloads the engine, so a step through several sessions waits.
-  const wanted = godotFrameSrc({ sessionId, window: range });
+  const wanted = godotFrameSrc({ sessionId, window: range, viz, scheme });
   const [src, setSrc] = useState(wanted);
   useEffect(() => {
     if (wanted === src) return;
@@ -61,8 +72,19 @@ export function MatrixGodot({ sessionId, window: range }: { sessionId: string | 
     return () => clearTimeout(t);
   }, [wanted, src]);
 
+  const stopGuard = useRef<(() => void) | null>(null);
+  const stopViews = useRef<(() => void) | null>(null);
   const [loading, setLoading] = useState(true);
-  useEffect(() => setLoading(true), [src]);
+  const [views, setViews] = useState<'ok' | 'waiting' | 'missing'>('ok');
+  // Bumped by "Check again": a new frame, which asks its page again.
+  const [attempt, setAttempt] = useState(0);
+  // A new frame (or none: the tab shows a note instead) leaves the last one's pollers behind and its answer stale.
+  useEffect(() => {
+    stopGuard.current?.();
+    stopViews.current?.();
+    setLoading(true);
+    setViews(viz === 'matrix' ? 'ok' : 'waiting');
+  }, [src, attempt, viz, state]);
   const frame = useRef<HTMLIFrameElement>(null);
   const pointerIn = useRef(false);
   const onLoad = () => {
@@ -81,21 +103,38 @@ export function MatrixGodot({ sessionId, window: range }: { sessionId: string | 
     }, 200);
     stopGuard.current?.();
     stopGuard.current = () => clearInterval(t);
+
+    stopViews.current?.();
+    if (viz === 'matrix') return;
+    // The page says which views it has once the engine is up, seconds after `load`.
+    const since = Date.now();
+    const poll = setInterval(() => {
+      let reported: unknown;
+      try { reported = (frame.current?.contentWindow as (Window & { styxViews?: unknown }) | null)?.styxViews; } catch { reported = undefined; }
+      const seen = godotViewState(reported, viz, Date.now() - since);
+      setViews(seen);
+      // A page that has not reported by the deadline may only be slow (35 MB to fetch): keep asking, and
+      // stop for an answer, or at once for one that lists views without this one.
+      if (seen === 'ok' || (seen === 'missing' && Array.isArray(reported))) clearInterval(poll);
+    }, VIEWS_POLL_MS);
+    stopViews.current = () => clearInterval(poll);
   };
-  const stopGuard = useRef<(() => void) | null>(null);
-  useEffect(() => () => stopGuard.current?.(), []);
+  useEffect(() => () => { stopGuard.current?.(); stopViews.current?.(); }, []);
+
+  const go = (mode: ViewMode) => useSessionStore.getState().setViewMode(mode);
+  const names = [`${NAMES[viz]} 2D`, `${NAMES[viz]} 3D`] as const;
+  const modes: readonly ViewMode[] = viz === 'gibson' ? ['gibson2d', 'gibson3d'] : ['matrix2d', 'matrix3d'];
 
   if (state === 'insecure') {
-    const go = (mode: 'matrix2d' | 'matrix3d') => useSessionStore.getState().setViewMode(mode);
     return (
       <Note>
         <span>
           The Godot view needs a secure page: open Layman as <code style={{ fontFamily: 'var(--font-mono)' }}>http://localhost:8880</code> on
-          this machine, or serve it over HTTPS. Matrix 2D and Matrix 3D work here.
+          this machine, or serve it over HTTPS. {names[0]} and {names[1]} work here.
         </span>
         <div style={{ display: 'flex', gap: sp(8) }}>
-          <Button onClick={() => go('matrix2d')}>Matrix 2D</Button>
-          <Button onClick={() => go('matrix3d')}>Matrix 3D</Button>
+          <Button onClick={() => go(modes[0])}>{names[0]}</Button>
+          <Button onClick={() => go(modes[1])}>{names[1]}</Button>
         </div>
       </Note>
     );
@@ -122,25 +161,42 @@ export function MatrixGodot({ sessionId, window: range }: { sessionId: string | 
     return (
       <Note>
         <span>Motion is off (Settings → Motion), so the Godot scene is not started: it draws at full rate.</span>
-        <div><Button onClick={() => setRunAnyway(true)}>Run anyway</Button></div>
+        <div style={{ display: 'flex', gap: sp(8) }}>
+          <Button onClick={() => setRunAnyway(true)}>Run anyway</Button>
+          <Button onClick={() => go(modes[0])}>{names[0]}</Button>
+          <Button onClick={() => go(modes[1])}>{names[1]}</Button>
+        </div>
       </Note>
     );
   }
   return (
-    <div onPointerEnter={() => { pointerIn.current = true; }} style={{ position: 'relative', flex: 1, minHeight: 0, display: 'flex' }}>
-      <iframe
-        ref={frame}
-        key={src}
-        src={src}
-        title="Styx Matrix (Godot)"
-        sandbox="allow-scripts allow-same-origin"
-        allow=""
-        onLoad={onLoad}
-        style={{ border: 0, width: '100%', height: '100%', background: 'var(--bg)' }}
-      />
-      {loading && (
-        <div style={{ position: 'absolute', top: sp(8), left: sp(12), fontSize: 12, color: 'var(--text-muted)', pointerEvents: 'none' }}>Starting Godot…</div>
+    <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+      {views === 'missing' && (
+        <div
+          role="status"
+          style={{ display: 'flex', alignItems: 'center', gap: sp(12), padding: sp('6px 16px'), flexShrink: 0, fontSize: 12, color: 'var(--warn)', borderBottom: 'var(--stroke) solid var(--border)' }}
+        >
+          <span>
+            This build of styx-godot has no Gibson view. Update styx-godot and run <code style={{ fontFamily: 'var(--font-mono)' }}>{MAKE}</code>.
+          </span>
+          <Button onClick={() => { refresh(); setAttempt((n) => n + 1); }}>Check again</Button>
+        </div>
       )}
+      <div onPointerEnter={() => { pointerIn.current = true; }} style={{ position: 'relative', flex: 1, minHeight: 0, display: 'flex' }}>
+        <iframe
+          ref={frame}
+          key={`${src}|${attempt}`}
+          src={src}
+          title={TITLES[viz]}
+          sandbox="allow-scripts allow-same-origin"
+          allow=""
+          onLoad={onLoad}
+          style={{ border: 0, width: '100%', height: '100%', background: 'var(--bg)' }}
+        />
+        {loading && (
+          <div style={{ position: 'absolute', top: sp(8), left: sp(12), fontSize: 12, color: 'var(--text-muted)', pointerEvents: 'none' }}>Starting Godot…</div>
+        )}
+      </div>
     </div>
   );
 }

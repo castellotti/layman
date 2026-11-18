@@ -21,7 +21,7 @@ optional, off by default, and independent of glove: with it off there are no tab
 | **Matrix** | `?view=matrix` | The real styx-godot web export, running its own shaders, in an iframe | available (needs a local build) |
 | **Matrix 2D** | `?view=matrix2d` | Layman's own Canvas 2D rendering. No Godot | available |
 | **Matrix 3D** | `?view=matrix3d` | Layman's own WebGL2 rendering. No Godot | available |
-| **Gibson** | `?view=gibson` | The styx-godot city in a frame | coming |
+| **Gibson** | `?view=gibson` | The styx-godot city in a frame | available (needs a local build with the Gibson view) |
 | **Gibson 2D** | `?view=gibson2d` (`G`) | A city of towers, one per host, drawn on a canvas. No Godot | available |
 | **Gibson 3D** | `?view=gibson3d` | The same city in WebGL2, which you fly through | available |
 
@@ -58,6 +58,15 @@ half a second, so stepping through sessions does not restart it for each); leavi
 frame, which stops it. Instead of the frame the tab says why it cannot run: no build found (with the
 folder it looked in and what is missing), Motion at Reduced or Off (**Run anyway** starts it), or a page
 that is not a secure context.
+
+**Gibson (Godot).** The same frame and the same build, asked for its other view (`viz=gibson`): styx-godot's own
+city, with its tour, drag to look and the wheel to move, for the session, window and **scheme** chosen in the bar.
+It needs a build that has the view. A build from before styx-godot had Gibson ignores `viz` and shows the Matrix,
+so the tab asks the page which views it has (`window.styxViews`); a build that lists no Gibson, or says nothing
+within 15 seconds, gets a note above the frame (update styx-godot and run `make styx-godot-build`, then **Check
+again**). Changing the scheme, like the session or window, restarts the engine, because the build reads the
+scheme only when it starts. When the tab cannot run (a page that is not a secure context, or Motion off) its
+buttons lead to Gibson 2D and Gibson 3D.
 
 ![Gibson 2D](../images/styx-gibson2d.png)
 
