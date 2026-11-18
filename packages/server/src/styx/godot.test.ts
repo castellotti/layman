@@ -11,6 +11,8 @@ describe('resolveGodotFile', () => {
   it('maps the empty path to index.html and nested paths into the folder', () => {
     expect(at('')).toEqual({ file: resolve(DIR, 'index.html'), type: 'text/html; charset=utf-8' });
     expect(at('index.html?x=1')?.file).toBe(resolve(DIR, 'index.html'));
+    // The Gibson tab's address: the query is the page's, never a file's.
+    expect(at('index.html?embed=1&api=/api/styx&poll=2&viz=gibson&scheme=night&relative=15m&session=a%2Fb')?.file).toBe(resolve(DIR, 'index.html'));
     expect(at('sub/a.png')).toEqual({ file: resolve(DIR, 'sub/a.png'), type: 'image/png' });
     expect(at('index.wasm')?.type).toBe('application/wasm');
   });

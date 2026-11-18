@@ -11,7 +11,7 @@ import { formatBytes } from '../../lib/net-format.js';
 import { rad, sp } from '../../lib/density.js';
 import { MatrixCanvas2D } from './MatrixCanvas2D.js';
 import { MatrixCanvas3D } from './MatrixCanvas3D.js';
-import { MatrixGodot } from './MatrixGodot.js';
+import { GodotFrame } from './GodotFrame.js';
 
 export const MATRIX_WINDOW_KEY = 'layman.matrix.window';
 
@@ -81,7 +81,7 @@ function MatrixPane({ mode }: { mode: ViewMode }) {
       </div>
       {mode === 'matrix' ? (
         // The frame reads the feed itself; the bar's count above is this page's own read.
-        <MatrixGodot sessionId={sessionId} window={window} />
+        <GodotFrame sessionId={sessionId} window={window} />
       ) : loading ? (
         <Centered>Reading the feed…</Centered>
       ) : (
