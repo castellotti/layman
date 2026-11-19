@@ -25,6 +25,7 @@ export function TabScroller({ activeKey, tabCount, children }: { activeKey: stri
     el.addEventListener('scroll', measure, { passive: true });
     const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(measure) : null;
     ro?.observe(el);
+    for (const c of Array.from(el.children)) ro?.observe(c);
     measure();
     return () => { el.removeEventListener('scroll', measure); ro?.disconnect(); };
   }, [measure]);
@@ -48,7 +49,14 @@ export function TabScroller({ activeKey, tabCount, children }: { activeKey: stri
 
   useEffect(() => {
     const active = ref.current?.querySelector<HTMLElement>('[data-tab-active="true"]');
-    active?.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: scrollBehavior() });
+    const el = ref.current;
+    if (!active || !el) return;
+    // Keep the active tab clear of the fade and chevron drawn over each edge.
+    const pad = 28;
+    const a = active.getBoundingClientRect();
+    const c = el.getBoundingClientRect();
+    if (a.left < c.left + pad) el.scrollBy({ left: a.left - c.left - pad, behavior: scrollBehavior() });
+    else if (a.right > c.right - pad) el.scrollBy({ left: a.right - c.right + pad, behavior: scrollBehavior() });
   }, [activeKey]);
 
   const by = (dir: -1 | 1) => {

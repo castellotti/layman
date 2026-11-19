@@ -22,7 +22,7 @@ export function RecoveryDialog({
   onDismiss: () => void;
 }) {
   return (
-    <div style={overlayStyle}>
+    <div role="dialog" aria-modal="true" style={overlayStyle}>
       <div style={scrimStyle} onClick={scanState !== 'scanning' ? onDismiss : undefined} />
       <div style={{ ...cardStyle, width: 320 }}>
         {scanState === 'idle' && (
@@ -103,7 +103,7 @@ export function ImportDialog({
   onClose: () => void;
 }) {
   return (
-    <div style={overlayStyle}>
+    <div role="dialog" aria-modal="true" style={overlayStyle}>
       <div style={scrimStyle} onClick={state !== 'scanning' ? onClose : undefined} />
       <div style={{ ...cardStyle, width: 420, maxHeight: '80vh', overflowY: 'auto' }}>
         {state === 'idle' && (
@@ -211,7 +211,7 @@ export function PurgeDialog({
   onClose: () => void;
 }) {
   return (
-    <div style={overlayStyle}>
+    <div role="dialog" aria-modal="true" style={overlayStyle}>
       <div style={scrimStyle} onClick={state === 'purging' ? undefined : onClose} />
       <div style={{ ...cardStyle, maxWidth: 400, width: '100%' }}>
         {state === 'confirming' && scanResult && (

@@ -128,12 +128,8 @@ export function Header() {
 
   // ←/→ always show only the tab arrived at, never toggle a panel.
   const goToTab = (key: HeaderTab['key']) => {
-    if (key === 'dashboard' || key === 'stream') {
-      setViewMode(key);
-      activateOnlyLiveTab(key);
-    } else {
-      setViewMode(key);
-    }
+    setViewMode(key);
+    if (key === 'dashboard' || key === 'stream') activateOnlyLiveTab(key);
   };
   const activateTab = (key: HeaderTab['key']) => {
     if (key === 'dashboard' || key === 'stream') activateLiveTab(key);
@@ -147,8 +143,10 @@ export function Header() {
     const handleKey = (e: KeyboardEvent) => {
       if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && arrowKeysFree(e)) {
         const next = neighbourTab(tabs, currentTabIndex(tabs, viewMode, panelLayout, inLiveMode), e.key === 'ArrowLeft' ? -1 : 1);
-        e.preventDefault();
-        if (next) goToTab(next.key);
+        if (next) {
+          e.preventDefault();
+          goToTab(next.key);
+        }
         return;
       }
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLSelectElement) return;

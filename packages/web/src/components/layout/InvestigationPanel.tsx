@@ -676,7 +676,7 @@ export function InvestigationPanel({ onSend, eventId: embeddedEventId, onClose, 
 
   if (presentation === 'drawer') {
     return (
-      <div style={{ position: 'fixed', inset: 0, zIndex: 45, display: 'flex', justifyContent: 'flex-end' }}>
+      <div role="dialog" aria-modal="true" style={{ position: 'fixed', inset: 0, zIndex: 45, display: 'flex', justifyContent: 'flex-end' }}>
         <div
           onClick={closeDrawer}
           style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.55)', animation: 'fadeIn 0.2s ease' }}
