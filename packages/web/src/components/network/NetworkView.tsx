@@ -6,10 +6,10 @@
  * Lazy-loaded from App.tsx (as FlowchartView is), so a user who never opens the
  * tabs never downloads them.
  */
-import { netTabVisible } from '../../lib/tab-visibility.js';
 import React, { useEffect, useMemo } from 'react';
 import { useSessionStore } from '../../stores/sessionStore.js';
 import { useNetStore } from '../../stores/netStore.js';
+import { netTabVisible } from '../../lib/tab-visibility.js';
 import { useNetPanels } from '../../hooks/useNetPanels.js';
 import { defaultNetToken, netPickerOrder, rangeKey, type NetSessionData } from '../../lib/net-state.js';
 import { orderDashboardSessions } from '../../lib/session-state.js';

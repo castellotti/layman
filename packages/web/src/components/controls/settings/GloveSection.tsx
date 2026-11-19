@@ -26,12 +26,12 @@ export function GloveSection({
   const network = glove.network ?? DEFAULT_NETWORK;
   // The server deep-merges glove and glove.network, so sending only the changed field is safe.
   const netTabs = network.tabs ?? {};
-  const setNetTab = (key: 'network' | 'map' | 'topology' | 'trace') => setNetwork({ tabs: { [key]: netTabs[key] === false } });
   const setNetwork = (updates: Partial<typeof network>) => {
     // `tabs` is left out of the snapshot unless changed: the server merges it per key, and a stale copy would undo another tab's switch.
     const { tabs: _tabs, ...rest } = network;
     updateConfig({ glove: { ...glove, network: { ...rest, ...updates } } });
   };
+  const setNetTab = (key: 'network' | 'map' | 'topology' | 'trace') => setNetwork({ tabs: { [key]: netTabs[key] === false } });
 
   return (
     <>
