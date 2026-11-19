@@ -1,9 +1,9 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import type { ClientMessage } from '../../../lib/ws-protocol.js';
 import type { LaymanConfig } from '../../../lib/types.js';
-import { SectionTitle, ToggleRow, CustomRow, Code, SubRows } from './primitives.js';
+import { SectionTitle, ToggleRow, Code, SubRows } from './primitives.js';
+import { PathRow } from './PathRow.js';
 import { useMatrixGodotStatus } from '../../../hooks/useMatrixGodotStatus.js';
-import { sp, rad } from '../../../lib/density.js';
 
 /**
  * Styx: Matrix-style views of the destinations a session reached, and the same
@@ -27,12 +27,6 @@ export function StyxSection({
   // The server deep-merges styx and styx.tabs, so only the changed field need be sent.
   const setTab = (key: keyof NonNullable<typeof styx.tabs>) =>
     updateConfig({ styx: { tabs: { [key]: tabs[key] === false } } } as Partial<LaymanConfig>);
-  const [dirDraft, setDirDraft] = useState(styx.godotDir);
-  useEffect(() => setDirDraft(styx.godotDir), [styx.godotDir]);
-  const commitDir = () => {
-    const v = dirDraft.trim();
-    if (v !== styx.godotDir) updateConfig({ styx: { ...flat, godotDir: v } });
-  };
   const { status } = useMatrixGodotStatus(styx.enabled, styx.godotDir);
 
   return (
@@ -81,21 +75,14 @@ export function StyxSection({
       )}
 
       {styx.enabled && (
-        <CustomRow>
-          <div style={{ display: 'flex', alignItems: 'center', gap: sp(12) }}>
-            <span style={{ fontSize: 12, color: 'var(--text)', flex: 1 }}>Godot build folder</span>
-            <input
-              type="text"
-              value={dirDraft}
-              placeholder="~/.local/share/layman/styx/godot"
-              // Saved on blur or Enter, never per keystroke: a half-typed path would be stored and served.
-              onChange={(e) => setDirDraft(e.target.value)}
-              onBlur={commitDir}
-              onKeyDown={(e) => { if (e.key === 'Enter') commitDir(); }}
-              spellCheck={false}
-              style={{ width: 220, padding: sp('4px 6px'), fontSize: 11, fontFamily: 'var(--font-mono)', background: 'var(--bg-card)', border: 'var(--stroke) solid var(--border-strong)', borderRadius: rad(5), color: 'var(--text)', outline: 'none' }}
-            />
-          </div>
+        // Saved on blur or Enter, never per keystroke (PathRow): a half-typed path would be stored and served.
+        <PathRow
+          label="Godot build folder"
+          value={styx.godotDir}
+          placeholder={status?.displayDir || '~/.local/share/layman/styx/godot'}
+          mode="dir"
+          onCommit={(v) => updateConfig({ styx: { ...flat, godotDir: v } })}
+        >
           <span style={{ fontSize: 10.5, color: 'var(--text-faint)', lineHeight: 1.5 }}>
             A web export of styx-godot made with its &ldquo;Web (Layman)&rdquo; preset (<Code>make styx-godot-build</Code>). Leave empty to use
             Layman&rsquo;s own data folder, which is the only place a Layman running in Docker can see.
@@ -106,7 +93,7 @@ export function StyxSection({
               {status.problems.map((p) => ` ${p}`).join('')}
             </span>
           )}
-        </CustomRow>
+        </PathRow>
       )}
     </>
   );

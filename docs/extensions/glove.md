@@ -992,7 +992,8 @@ The world map full-bleed, with a Connection section in the detail card.
   a MaxMind-format city database themselves; DB-IP's "IP to City Lite" (CC BY 4.0, no account) is the
   suggestion. They point Settings → Glove → Geolocation database at it. In Docker it must be in a
   mounted folder, so the suggested place is Layman's own data folder, `~/.local/share/layman/`, which
-  is already mounted. Layman ships no database.
+  is already mounted. Layman ships no database. **Browse…** beside the field lists the folders Layman can see
+  (the home folder and its data folder, names only) and picks a `.mmdb`; in Docker only the mounted folders appear.
   - Only a destination IP glove resolved **inside the tunnel** (or that was a literal) is looked up,
     never a local link, and never the exit, which is placed from exit.ndjson's own `lat`/`lon`.
   - Results are cached per IP. The database is re-opened when the setting or the file changes, and every

@@ -94,8 +94,8 @@ const SECTIONS: SectionDef[] = [
     render: (config, onSend) => <StreamSection config={config} onSend={onSend} />,
   },
   {
-    key: 'stations', group: 'Stream', label: 'Stations',
-    searchTerms: ['stations', 'activity', 'memory', 'memory paths', 'memory servers', 'MCP', 'kind of work'],
+    key: 'stations', group: 'Stream', label: 'Activity map',
+    searchTerms: ['stations', 'activity map', 'station filter', 'activity', 'memory', 'memory paths', 'memory servers', 'MCP', 'kind of work'],
     render: (config, onSend) => <ActivitySection config={config} onSend={onSend} />,
   },
   {

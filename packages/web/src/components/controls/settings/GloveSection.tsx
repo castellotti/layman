@@ -2,8 +2,9 @@ import React, { useEffect, useState } from 'react';
 import type { ClientMessage } from '../../../lib/ws-protocol.js';
 import type { LaymanConfig } from '../../../lib/types.js';
 import { SectionTitle, ToggleRow, CustomRow, StringListRow, Code, SubRows } from './primitives.js';
+import { PathRow } from './PathRow.js';
 import { normaliseVpnDomain, withVpnEntry } from '../../../lib/net-vpn.js';
-import { sp, rad } from '../../../lib/density.js';
+import { sp } from '../../../lib/density.js';
 
 const DEFAULT_HOME = '~/.glove';
 const DEFAULT_NETWORK = { enabled: true, controlEnabled: true, geoipDbPath: '', vpnDomains: [] as string[] };
@@ -44,24 +45,20 @@ export function GloveSection({
         onChange={() => updateConfig({ glove: { ...glove, enabled: !glove.enabled } })}
       />
 
-      <CustomRow>
-        <div style={{ display: 'flex', alignItems: 'center', gap: sp(12) }}>
-          <span style={{ fontSize: 12, color: 'var(--text)', flex: 1 }}>glove home</span>
-          <input
-            type="text"
-            value={glove.home ?? DEFAULT_HOME}
-            onChange={(e) => updateConfig({ glove: { ...glove, home: e.target.value } })}
-            spellCheck={false}
-            style={{ width: 220, padding: sp('4px 6px'), fontSize: 11, fontFamily: 'var(--font-mono)', background: 'var(--bg-card)', border: 'var(--stroke) solid var(--border-strong)', borderRadius: rad(5), color: 'var(--text)', outline: 'none' }}
-          />
-        </div>
+      <PathRow
+        label="glove home"
+        value={glove.home ?? DEFAULT_HOME}
+        placeholder={DEFAULT_HOME}
+        mode="dir"
+        onCommit={(v) => updateConfig({ glove: { ...glove, home: v || DEFAULT_HOME } })}
+      >
         <span style={{ fontSize: 10.5, color: 'var(--text-faint)', lineHeight: 1.5 }}>
           glove's home: its <code style={{ fontFamily: 'var(--font-mono)' }}>registry.json</code>, and what each session's grants export under
           <code style={{ margin: sp('0 3px'), fontFamily: 'var(--font-mono)' }}>observe/&lt;id&gt;/</code> and
           <code style={{ margin: sp('0 3px'), fontFamily: 'var(--font-mono)' }}>control/&lt;id&gt;/</code>.
           Layman follows this setting, not <code style={{ fontFamily: 'var(--font-mono)' }}>$GLOVE_HOME</code>; in Docker only <code style={{ fontFamily: 'var(--font-mono)' }}>~/.glove</code> is mounted.
         </span>
-      </CustomRow>
+      </PathRow>
 
       {glove.enabled && (
       <ToggleRow
@@ -137,9 +134,7 @@ interface GeoStatus { configured: boolean; loaded: boolean; databaseType: string
  * file must be inside a mounted folder; Layman's own data folder is one.
  */
 function GeoDatabaseRow({ path, onChange }: { path: string; onChange: (p: string) => void }) {
-  const [draft, setDraft] = useState(path);
   const [status, setStatus] = useState<GeoStatus | null>(null);
-  useEffect(() => setDraft(path), [path]);
   useEffect(() => {
     let live = true;
     // The server re-reads the setting on its next poll; ask shortly after a change.
@@ -156,27 +151,21 @@ function GeoDatabaseRow({ path, onChange }: { path: string; onChange: (p: string
         ? `Loaded ${status.databaseType ?? 'database'}${status.buildDate ? ` (${status.buildDate})` : ''}. ${status.attribution ?? ''}`
         : `Not loaded: ${status.error ?? 'unknown error'}.`;
   return (
-    <CustomRow>
-      <div style={{ display: 'flex', alignItems: 'center', gap: sp(12) }}>
-        <span style={{ fontSize: 12, color: 'var(--text)', flex: 1 }}>Geolocation database</span>
-        <input
-          type="text"
-          value={draft}
-          placeholder="~/.local/share/layman/dbip-city-lite.mmdb"
-          aria-label="Geolocation database path"
-          onChange={(e) => setDraft(e.target.value)}
-          onBlur={() => { if (draft !== path) onChange(draft.trim()); }}
-          onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
-          spellCheck={false}
-          style={{ width: 260, padding: sp('4px 6px'), fontSize: 11, fontFamily: 'var(--font-mono)', background: 'var(--bg-card)', border: 'var(--stroke) solid var(--border-strong)', borderRadius: rad(5), color: 'var(--text)', outline: 'none' }}
-        />
-      </div>
+    <PathRow
+      label="Geolocation database"
+      ariaLabel="Geolocation database path"
+      value={path}
+      placeholder="~/.local/share/layman/dbip-city-lite.mmdb"
+      mode="file"
+      ext=".mmdb"
+      onCommit={onChange}
+    >
       <span style={{ fontSize: 10.5, color: status?.loaded ? 'var(--ok)' : status?.configured ? 'var(--warn)' : 'var(--text-faint)', lineHeight: 1.5 }}>{line}</span>
       <span style={{ fontSize: 10.5, color: 'var(--text-faint)', lineHeight: 1.5 }}>
         Places destinations on the Map from a file on this machine; no IP is ever sent anywhere. Download the free
         {' '}<a href="https://db-ip.com/db/download/ip-to-city-lite" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--info)' }}>DB-IP “IP to City Lite”</a>{' '}
         (.mmdb) yourself and put it in Layman’s data folder (<code style={{ fontFamily: 'var(--font-mono)' }}>~/.local/share/layman/</code>), which the container can read.
       </span>
-    </CustomRow>
+    </PathRow>
   );
 }

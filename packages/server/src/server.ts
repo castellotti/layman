@@ -48,6 +48,7 @@ import { registerStyxRoutes } from './styx/routes.js';
 import { laymanDataDir } from './config/paths.js';
 import { SqliteNetHistory } from './netobs/persist.js';
 import { registerTtsRoutes } from './routes/tts.js';
+import { registerFsBrowseRoutes } from './routes/fs-browse.js';
 import { searchEvents, parseSearchQuery, matchesSearchTerms } from './db/search.js';
 import { computeTimeMetrics } from './db/time-metrics.js';
 import type { SearchRequest } from './db/search.js';
@@ -727,6 +728,7 @@ export function createServer(config: LaymanConfig): LaymanServer {
 
     // Text-to-speech pass-through to speaches (speaches has CORS off by default)
     registerTtsRoutes(fastify, { getConfig });
+    registerFsBrowseRoutes(fastify);
 
     // Health check
     fastify.get('/api/health', async () => ({ status: 'ok', version: SERVER_VERSION }));
