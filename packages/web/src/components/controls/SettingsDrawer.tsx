@@ -100,12 +100,12 @@ const SECTIONS: SectionDef[] = [
   },
   {
     key: 'glove', group: 'Extensions', label: 'Glove',
-    searchTerms: ['glove', 'sandbox', 'sandboxed', 'container', 'Docker', 'Podman', 'Vibe', 'monitor', 'sessions directory', 'extension', 'plugin'],
+    searchTerms: ['glove', 'sandbox', 'sandboxed', 'container', 'Docker', 'Podman', 'Vibe', 'monitor', 'sessions directory', 'extension', 'plugin', 'Network views', 'Network', 'Map', 'Topology', 'Trace', 'tabs', 'hide tabs', 'show tabs'],
     render: (config, onSend) => <GloveSection config={config} onSend={onSend} />,
   },
   {
     key: 'styx', group: 'Extensions', label: 'Styx',
-    searchTerms: ['styx', 'matrix', 'falling text', 'domains', 'destinations', 'hosts', 'styx-godot', 'extension'],
+    searchTerms: ['styx', 'matrix', 'falling text', 'domains', 'destinations', 'hosts', 'styx-godot', 'extension', 'Gibson', 'city', 'towers', 'tabs', 'hide tabs', 'show tabs', 'Matrix 2D', 'Matrix 3D', 'Godot'],
     render: (config, onSend) => <StyxSection config={config} onSend={onSend} />,
   },
 ];

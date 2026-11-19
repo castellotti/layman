@@ -109,6 +109,20 @@ export const StyxConfigSchema = z.object({
    * `<Layman data dir>/styx/godot`, which a containerized Layman can see.
    */
   godotDir: z.string().default(''),
+  /** Show the Matrix tabs and the Gibson tabs (each group needs `enabled`). */
+  matrix: z.boolean().default(true),
+  gibson: z.boolean().default(true),
+  /** One switch per Styx tab, under its group's. A hidden tab is only not listed: its view still opens by link. */
+  tabs: z
+    .object({
+      matrix: z.boolean().default(true),
+      matrix2d: z.boolean().default(true),
+      matrix3d: z.boolean().default(true),
+      gibson: z.boolean().default(true),
+      gibson2d: z.boolean().default(true),
+      gibson3d: z.boolean().default(true),
+    })
+    .default({}),
 });
 
 /**
@@ -144,6 +158,15 @@ export const GloveConfigSchema = z.object({
     .object({
       /** Read `<session>/net/` and show the Network, Map, Topology and Trace tabs. */
       enabled: z.boolean().default(true),
+      /** One switch per network tab, under `enabled`. A hidden tab's view still opens by link. */
+      tabs: z
+        .object({
+          network: z.boolean().default(true),
+          map: z.boolean().default(true),
+          topology: z.boolean().default(true),
+          trace: z.boolean().default(true),
+        })
+        .default({}),
       /** False = read-only views: no block/allow toggles, nothing written. */
       controlEnabled: z.boolean().default(true),
       /** A local .mmdb (e.g. DB-IP IP to City Lite). Empty = no geolocation. Never fetched. */

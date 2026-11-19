@@ -5,6 +5,7 @@
 import type { ViewMode } from '../stores/sessionStore.js';
 import type { LaymanConfig } from './types.js';
 import { NET_TABS } from '../components/network/tabs.js';
+import { netTabVisible, styxTabVisible, type StyxTabKey } from './tab-visibility.js';
 
 export interface HeaderTab {
   key: ViewMode | 'dashboard' | 'stream';
@@ -21,18 +22,17 @@ export function headerTabs(opts: { showNetwork: boolean; config: LaymanConfig | 
     { key: 'activity', label: 'Activity', shortcut: 'A', group: 'live' },
   ];
   if (opts.showNetwork) {
-    for (const t of NET_TABS) tabs.push({ key: t.key, label: t.label, shortcut: t.shortcut, group: 'network' });
+    for (const t of NET_TABS) if (netTabVisible(opts.config, t.key)) tabs.push({ key: t.key, label: t.label, shortcut: t.shortcut, group: 'network' });
   }
-  if (opts.config?.styx?.enabled === true) {
-    tabs.push(
-      { key: 'matrix', label: 'Matrix', group: 'matrix' },
-      { key: 'matrix2d', label: 'Matrix 2D', shortcut: 'X', group: 'matrix' },
-      { key: 'matrix3d', label: 'Matrix 3D', group: 'matrix' },
-      { key: 'gibson', label: 'Gibson', group: 'gibson' },
-      { key: 'gibson2d', label: 'Gibson 2D', shortcut: 'G', group: 'gibson' },
-      { key: 'gibson3d', label: 'Gibson 3D', group: 'gibson' },
-    );
-  }
+  const styx: HeaderTab[] = [
+    { key: 'matrix', label: 'Matrix', group: 'matrix' },
+    { key: 'matrix2d', label: 'Matrix 2D', shortcut: 'X', group: 'matrix' },
+    { key: 'matrix3d', label: 'Matrix 3D', group: 'matrix' },
+    { key: 'gibson', label: 'Gibson', group: 'gibson' },
+    { key: 'gibson2d', label: 'Gibson 2D', shortcut: 'G', group: 'gibson' },
+    { key: 'gibson3d', label: 'Gibson 3D', group: 'gibson' },
+  ];
+  for (const t of styx) if (styxTabVisible(opts.config, t.key as StyxTabKey)) tabs.push(t);
   tabs.push(
     { key: 'sessions', label: 'Sessions', group: 'archive' },
     { key: 'prompts', label: 'Prompts', group: 'archive' },

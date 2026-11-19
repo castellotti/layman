@@ -52,3 +52,31 @@ describe('neighbourTab', () => {
     expect(neighbourTab(tabs, { left: -1, right: -1 }, 1)?.key).toBe('dashboard');
   });
 });
+
+describe('per-tab visibility', () => {
+  const withCfg = (styx: object, net?: object) =>
+    ({ styx: { enabled: true, godotDir: '', ...styx }, glove: { network: { enabled: true, ...net } } }) as unknown as LaymanConfig;
+  const k = (c: LaymanConfig, n = false) => headerTabs({ showNetwork: n, config: c }).map((t) => t.key);
+
+  it('lists every tab when the fields are absent (an older server)', () => {
+    expect(k(withCfg({}))).toContain('gibson3d');
+  });
+  it('drops a hidden Styx tab', () => {
+    expect(k(withCfg({ tabs: { matrix2d: false } }))).not.toContain('matrix2d');
+    expect(k(withCfg({ tabs: { matrix2d: false } }))).toContain('matrix3d');
+  });
+  it('drops a whole group', () => {
+    const keys = k(withCfg({ gibson: false }));
+    expect(keys.filter((x) => x.startsWith('gibson'))).toEqual([]);
+    expect(keys).toContain('matrix');
+  });
+  it('drops a hidden network tab', () => {
+    const c = withCfg({}, { tabs: { map: false } });
+    expect(k(c, true)).not.toContain('map');
+    expect(k(c, true)).toContain('topology');
+  });
+  it('a hidden current tab is unlisted: ← last, → first', () => {
+    const tabs = headerTabs({ showNetwork: false, config: withCfg({ tabs: { matrix2d: false } }) });
+    expect(currentTabIndex(tabs, 'matrix2d', { showDashboard: true, showLogs: false }, false)).toEqual({ left: -1, right: -1 });
+  });
+});

@@ -11,8 +11,17 @@ optional, off by default, and independent of glove: with it off there are no tab
 
 ## Turning it on
 
-**Settings → Extensions → Styx → Matrix views.** The setting is `styx.enabled` in
+**Settings → Extensions → Styx.** The setting is `styx.enabled` in
 `~/.local/share/layman/layman.json`. `styx.godotDir` is the folder holding the Matrix (Godot) tab's build (below); leave it empty for the default.
+
+### Choosing which tabs show
+
+With Styx on, **Matrix tabs** and **Gibson tabs** switch each group, and a checkbox under each switches one
+tab (`styx.matrix`, `styx.gibson`, and `styx.tabs.{matrix,matrix2d,matrix3d,gibson,gibson2d,gibson3d}`; all
+default on). A hidden tab is only left out of the header and the `←`/`→` walk, and its letter shortcut stops
+working. Its address still opens, and says "This tab is hidden" with where to show it, rather than redirecting:
+a link someone sent you must not silently land elsewhere. The feed (`/api/styx/v1/…`) is unaffected, so styx-godot
+keeps working with every tab hidden.
 
 ## The tabs
 

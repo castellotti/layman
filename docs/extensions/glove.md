@@ -179,6 +179,11 @@ snapshot), the **client shell** shared by the four tabs, the **Network tab**, **
 **Map tab** with offline geolocation, the **Topology tab**, the **Trace tab** (correlation with the
 transcript), and **persistence** of totals across restarts.
 
+Each of the four tabs can be hidden on its own (Settings → Glove → Network views, `glove.network.tabs.{network,map,topology,trace}`,
+all default on). A hidden tab is left out of the header, the `←`/`→` walk and the letter shortcuts, and its address still
+opens with "This tab is hidden" (no redirect, and no subscription is made for it). Hiding is only about the header: glove
+data is still tailed and the other tabs are unchanged.
+
 glove answered Layman's follow-up questions in its PR #11: fail-closed on an unreadable `rules.json`, the permission contract for the
 rules writer, hash-based write confirmation, gate lifecycle records, and a scenario fixture for every
 state its first fixture lacked. What that changed on the read side is below, and the writer follows its

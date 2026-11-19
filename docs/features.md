@@ -8,6 +8,9 @@ Deep-dives on Layman's analysis, safety, and recording features. For the view-by
 - In **Logs**, **↑/↓** move between entries (they used to be ←/→) and **Home/End** jump to the first/last.
 - With every extension on, the tab strip is wider than a small window, so it scrolls sideways: swipe, mouse wheel, or the ‹ › buttons shown (with a fade) on the side that has more tabs. There is no scrollbar, the active tab is always scrolled into view, and the session picker and Settings stay put on the right.
 
+Hidden Styx and glove network tabs (Settings → Extensions) drop out of this strip and of `←`/`→`, and their letter
+shortcuts stop; the address of a hidden tab still opens and says so.
+
 ## Automated risk analysis
 
 Layman can use an AI model to classify the risk level of each action, explain what it means in plain language, and flag anything that looks risky. Requires an API key - see [AI analysis setup](installation.md#ai-analysis-optional).
