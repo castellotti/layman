@@ -45,23 +45,27 @@ function matchesSearch(event: TimelineEvent, query: string): boolean {
   return true;
 }
 
+const NO_EVENTS: TimelineEvent[] = [];
+
 export function useEventStore(filters?: EventFilters, sourceOverride?: TimelineEvent[]) {
-  const { events, activeSessionId, historicalEvents } = useSessionStore((state) => ({
+  const { events, activeSessionId, awaitingGlove, historicalEvents } = useSessionStore((state) => ({
     events: state.events,
     activeSessionId: state.activeSessionId,
+    awaitingGlove: state.awaitingGlove,
     historicalEvents: state.historicalEvents,
   }));
 
   const sessionEvents = useMemo(() => {
     if (sourceOverride !== undefined) return sourceOverride;
-    if (!activeSessionId) return events;
+    // A glove with no prompt yet has no events: not every other session's.
+    if (!activeSessionId) return awaitingGlove ? NO_EVENTS : events;
     const live = events.filter((e) => e.sessionId === activeSessionId);
     if (live.length > 0) return live;
     // Not in the live WebSocket-fed store (server restarted, or a long-ended
     // session addressed by a deep link) — fall back to whatever hydrateFromRoute
     // fetched into historicalEvents instead of rendering blank.
     return historicalEvents.filter((e) => e.sessionId === activeSessionId);
-  }, [events, activeSessionId, historicalEvents, sourceOverride]);
+  }, [events, activeSessionId, awaitingGlove, historicalEvents, sourceOverride]);
 
   const filteredEvents = useMemo(() => {
     let result = sessionEvents;

@@ -44,8 +44,9 @@ function RateLimitMini({ label, pct, resetsAt }: { label: string; pct: number; r
 }
 
 export function SessionMetricsBar() {
-  const { activeSessionId, sessionMetrics, sessions } = useSessionStore((s) => ({
+  const { activeSessionId, awaitingGlove, sessionMetrics, sessions } = useSessionStore((s) => ({
     activeSessionId: s.activeSessionId,
+    awaitingGlove: s.awaitingGlove,
     sessionMetrics: s.sessionMetrics,
     sessions: s.sessions,
   }));
@@ -64,7 +65,8 @@ export function SessionMetricsBar() {
   let thinkingOf: number | undefined;
   if (activeSessionId) {
     metrics = sessionMetrics.get(activeSessionId);
-  } else if (sessionMetrics.size > 0) {
+  } else if (!awaitingGlove && sessionMetrics.size > 0) {
+    // (A glove awaiting its first prompt has no metrics yet: not the other sessions' totals.)
     let totalCost = 0;
     let totalIn = 0;
     let totalOut = 0;

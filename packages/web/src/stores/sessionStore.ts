@@ -5,6 +5,7 @@ import type { NetRange } from '../lib/netobs-types.js';
 import { arrivalNetToken, rangeKey, sameRange } from '../lib/net-state.js';
 import { useNetStore } from './netStore.js';
 import { newestSession, type DashboardSortMode } from '../lib/session-state.js';
+import { gloveLaymanSession, gloveLive, selectGlove, selectedGloveName, sessionNameOf } from '../lib/session-selection.js';
 import type { LaymanRoute, RouteOptions, ViewName } from '../lib/layman-url.js';
 import { extractTurn } from '../lib/turns.js';
 import { pairFor } from '../lib/event-pairing.js';
@@ -284,6 +285,11 @@ export interface SessionState {
   // Multi-session tracking
   sessions: SessionInfo[];
   activeSessionId: string | null;
+  /**
+   * A glove session chosen before it has a Layman session (no prompt yet), or null. Set only with
+   * `activeSessionId` null; becomes that session when it appears (`lib/session-selection.ts`).
+   */
+  awaitingGlove: string | null;
 
   // Multi-host sync
   syncStatus: SyncStatus | null;
@@ -424,6 +430,8 @@ export interface SessionState {
   setSessionStatus: (status: SessionStatus) => void;
   setSessions: (sessions: SessionInfo[]) => void;
   setActiveSession: (id: string | null) => void;
+  /** Choosing a glove session (the Network picker, the header's): every session tab follows it. */
+  pickGlove: (token: string) => void;
   setSetupStatus: (status: SetupStatus) => void;
   dismissSetupBanner: () => void;
   dismissSetupModal: () => void;
@@ -506,11 +514,28 @@ export interface SessionState {
  * then prefers the active session anyway.
  */
 function arrival(s: SessionState): Partial<SessionState> {
-  const id = s.viewMode === 'dashboard' ? s.dashboardFocusedSession : s.viewMode === 'sessions' ? s.viewingSessionId : s.activeSessionId;
-  const name = id ? s.sessions.find((x) => x.sessionId === id)?.sessionName ?? null : null;
+  const name = s.viewMode === 'dashboard' ? sessionNameOf(s.dashboardFocusedSession, s.sessions)
+    : s.viewMode === 'sessions' ? sessionNameOf(s.viewingSessionId, s.sessions)
+    : selectedGloveName(s);
+  return netTokenFor(s, name);
+}
+
+/** The Network tabs' glove for a session's glove name: that glove when glove lists it, else unchanged. */
+function netTokenFor(s: SessionState, name: string | null): Partial<SessionState> {
   const net = useNetStore.getState();
   const token = arrivalNetToken(name, [...net.sessions, ...net.notObservable]);
   return token === null ? {} : netTokenChange(s, token);
+}
+
+/**
+ * Choosing a glove session for every tab (the Network picker, a network `?glove=` link): the glove's newest
+ * Layman session, or the glove waiting for its first prompt. Nothing changes when the session open
+ * already runs in it, or when the glove is over and has no listed session (`selectGlove`). A default glove
+ * the Network tabs fill in (`setNetToken`) never comes here, so it never moves the other tabs.
+ */
+function gloveChoice(s: SessionState, token: string): Partial<SessionState> {
+  if (s.activeSessionId && selectedGloveName(s) === token) return {};
+  return selectGlove(token, s.sessions, gloveLive(token, useNetStore.getState())) ?? {};
 }
 
 /** Choosing a glove session: another one clears the destination and range chosen in the old one. */
@@ -540,6 +565,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
 
   sessions: [],
   activeSessionId: null,
+  awaitingGlove: null,
 
   syncStatus: null,
   syncHosts: [],
@@ -801,12 +827,18 @@ export const useSessionStore = create<SessionState>((set, get) => ({
         active: s.active !== undefined ? s.active : existingActive.get(s.sessionId),
       }));
 
+      // A glove chosen before its first prompt becomes its Layman session as soon as there is one.
+      if (state.awaitingGlove) {
+        const id = gloveLaymanSession(state.awaitingGlove, merged);
+        if (id) return { sessions: merged, activeSessionId: id, awaitingGlove: null };
+      }
       // Auto-select when transitioning to exactly 1 session and none is currently selected
-      if (merged.length === 1 && state.activeSessionId === null) {
+      if (merged.length === 1 && state.activeSessionId === null && state.awaitingGlove === null) {
         return { sessions: merged, activeSessionId: merged[0].sessionId };
       }
-      // Switch to the newest session when the setting is enabled and a new session appears
-      if (state.config?.switchToNewestSession && merged.length > state.sessions.length) {
+      // Switch to the newest session when the setting is enabled and a new session appears; a glove the user
+      // chose to wait for keeps the selection (it becomes its own session above).
+      if (state.config?.switchToNewestSession && state.awaitingGlove === null && merged.length > state.sessions.length) {
         const existingIds = new Set(state.sessions.map((s) => s.sessionId));
         const newSessions = merged.filter((s) => !existingIds.has(s.sessionId));
         if (newSessions.length > 0) {
@@ -816,7 +848,12 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       return { sessions: merged, activeSessionId: state.activeSessionId };
     }),
 
-  setActiveSession: (activeSessionId) => set({ activeSessionId }),
+  // One selection for every tab: a gloved session also becomes the Network tabs' glove.
+  setActiveSession: (activeSessionId) => set((s) => ({
+    activeSessionId, awaitingGlove: null,
+    ...netTokenFor(s, sessionNameOf(activeSessionId, s.sessions)),
+  })),
+  pickGlove: (token) => set((s) => ({ ...gloveChoice(s, token), ...netTokenChange(s, token) })),
 
   setSetupStatus: (setupStatus) => set({ setupStatus }),
 
@@ -857,6 +894,11 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     ...viewModeFlags(mode),
     ...(mode !== 'dashboard' ? { returnToDashboard: false } : {}),
     ...(isNetworkView(mode) && !isNetworkView(s.viewMode) ? arrival(s) : {}),
+    // Leaving the network tabs with nothing chosen for the session tabs (they would show the newest live
+    // session, often another one): the glove the network tabs showed, however it got there. A session
+    // chosen on purpose is never replaced by a default.
+    ...(isSessionView(mode) && isNetworkView(s.viewMode) && s.netToken && !s.activeSessionId && !s.awaitingGlove
+      ? gloveChoice(s, s.netToken) : {}),
   })),
 
   setBookmarks: (bookmarkFolders, bookmarks) => set({ bookmarkFolders, bookmarks }),
@@ -1043,6 +1085,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
         historicalEvents: events,
         sessionTimeMetrics: metrics,
         activeSessionId: sessionId,
+        awaitingGlove: null,
       };
 
       // Logs and Flow render the live store keyed by activeSessionId; historicalEvents
@@ -1096,6 +1139,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     switch (route.kind) {
       case 'dashboard': {
         const mode = opts.view ? viewModeForName(opts.view) : 'dashboard';
+        const cur = get();
         done({
           viewMode: mode,
           ...viewModeFlags(mode),
@@ -1106,7 +1150,13 @@ export const useSessionStore = create<SessionState>((set, get) => ({
           ...(mode === 'stream' ? { logsOverride: true, dashboardOverride: false, splitOverrides: {} } : {}),
           // A network deep link names its glove session and selection; any
           // other view leaves the last choice alone for the next visit.
+          // A link naming a glove chooses it for every tab, as the picker does.
           ...(isNetworkView(mode) ? { netToken: opts.glove ?? null, netDest: opts.dest ?? null, netRange: opts.range ?? null } : {}),
+          ...(isNetworkView(mode) && opts.glove ? gloveChoice(cur, opts.glove) : {}),
+          // A session view naming a glove: that glove's Layman session, or the glove waiting for its first prompt.
+          // One that does not name it (Back from such a link) no longer waits for it.
+          ...(isSessionView(mode) && opts.glove ? { ...gloveChoice(cur, opts.glove), ...netTokenChange(cur, opts.glove) } : {}),
+          ...(isSessionView(mode) && !opts.glove && cur.awaitingGlove ? { awaitingGlove: null } : {}),
         });
         return;
       }
@@ -1222,6 +1272,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     ...viewModeFlags('flowchart'),
     returnToDashboard: true,
     activeSessionId: sessionId,
+    awaitingGlove: null,
     selectedEventId: eventId,
     investigationOpen: true,
   }),
@@ -1237,6 +1288,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
         ...viewModeFlags('stream'),
         returnToDashboard: !bothFit,
         activeSessionId: sessionId,
+        awaitingGlove: null,
         scrollToEventId: eventId,
         dashboardOverride: bothFit,
         logsOverride: true,
@@ -1251,6 +1303,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
         ...viewModeFlags('stream'),
         returnToDashboard: !bothFit,
         activeSessionId: sessionId,
+        awaitingGlove: null,
         selectedEventId: null,
         investigationOpen: false,
         scrollToEventId: null,
@@ -1397,3 +1450,10 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       return { expandedLogEventIds: allExpanded ? new Set<string>() : 'all' };
     }),
 }));
+
+// A glove awaited for its first prompt that glove does not list as live (it ended without one, or a link named
+// one that never existed) is waited for no longer, or every tab would wait forever.
+useNetStore.subscribe((net) => {
+  const { awaitingGlove } = useSessionStore.getState();
+  if (awaitingGlove && gloveLive(awaitingGlove, net) === false) useSessionStore.setState({ awaitingGlove: null });
+});

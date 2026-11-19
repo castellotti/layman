@@ -6,7 +6,8 @@ import { useSessionTimeline } from '../../hooks/useActivityBoard.js';
 import { reduceBoard } from '../../lib/activity-board.js';
 import { useStationSetup } from '../../hooks/useStationSetup.js';
 import { foldRows } from '../../lib/activity-board.js';
-import { ENTRY_STATUS, entryLabel, mapTitle, mapTurn, pickSession, stationSpecs } from '../../lib/activity-view.js';
+import { viewTarget } from '../../lib/session-selection.js';
+import { ENTRY_STATUS, entryLabel, mapTitle, mapTurn, stationSpecs } from '../../lib/activity-view.js';
 import { useGloveMap } from '../../hooks/useGloveMap.js';
 import { exitRing, placeCalls, type ExitTone } from '../../lib/activity-glove.js';
 import { ALARM } from '../network/netui.js';
@@ -44,10 +45,11 @@ const EXIT_COLOR: Record<ExitTone, string> = {
  */
 export default function ActivityMapView() {
   const activeSessionId = useSessionStore((s) => s.activeSessionId);
+  const awaitingGlove = useSessionStore((s) => s.awaitingGlove);
   const sessions = useSessionStore((s) => s.sessions);
   const setSelectedEvent = useSessionStore((s) => s.setSelectedEvent);
   const selectedEventId = useSessionStore((s) => s.selectedEventId);
-  const sessionId = pickSession(activeSessionId, sessions);
+  const { sessionId } = viewTarget(activeSessionId, awaitingGlove, sessions);
   const session = sessions.find((s) => s.sessionId === sessionId);
   // A session the server no longer lists is over.
   const live = !!session && isSessionLive(session);
@@ -107,6 +109,9 @@ export default function ActivityMapView() {
   }, [selectedEventId, sessionId, setSelectedEvent]);
 
   if (!sessionId) {
+    if (awaitingGlove) {
+      return <div className="flex items-center justify-center h-full text-text-faint text-xs">{awaitingGlove} has had no prompt yet. Its map starts with the first one.</div>;
+    }
     return <div className="flex items-center justify-center h-full text-text-faint text-xs">No session yet.</div>;
   }
 
