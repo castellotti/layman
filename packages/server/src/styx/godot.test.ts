@@ -1,3 +1,4 @@
+import { homedir } from 'os';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
@@ -40,6 +41,11 @@ describe('godotBuildStatus', () => {
     expect(s.builtAt).toBeNull();
     expect(s.problems[0]).toContain('index.html');
     expect(godotBuildStatus(join(dir, 'nope')).problems[0]).toContain('does not exist');
+  });
+
+  it('names the folder as the user writes it, under the home as ~', () => {
+    expect(godotBuildStatus(join(homedir(), 'x', 'godot')).displayDir).toBe('~/x/godot');
+    expect(godotBuildStatus(dir).displayDir).toBe(dir);
   });
 
   it('reports a complete build', () => {

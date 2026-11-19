@@ -6,6 +6,7 @@
  */
 import { existsSync, readFileSync, readdirSync, realpathSync, statSync } from 'fs';
 import { resolve, sep, extname } from 'path';
+import { tildeHostPath } from '../netobs/discovery.js';
 
 export const GODOT_PREFIX = '/styx/godot/';
 
@@ -57,6 +58,8 @@ export function insideFolder(dir: string, file: string): boolean {
 export interface GodotBuildStatus {
   present: boolean;
   dir: string;
+  /** `dir` as the user writes it on the host (`~/…`); what a path field shows as its default. */
+  displayDir: string;
   builtAt: number | null;
   files: number;
   problems: string[];
@@ -87,7 +90,7 @@ export function godotBuildStatus(dir: string): GodotBuildStatus {
   try {
     files = readdirSync(dir).length;
   } catch { /* no folder */ }
-  return { present: missing.length === 0 && !blocked, dir, builtAt, files, problems };
+  return { present: missing.length === 0 && !blocked, dir, displayDir: tildeHostPath(dir), builtAt, files, problems };
 }
 
 /**

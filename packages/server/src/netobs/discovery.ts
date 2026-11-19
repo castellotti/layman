@@ -72,6 +72,17 @@ export function toHostPath(p: string, hostHome = process.env.HOST_HOME, containe
   return p.startsWith(containerHome + sep) ? join(hostHome, p.slice(containerHome.length + 1)) : p;
 }
 
+/**
+ * `toHostPath`, with the host home written `~`: the form a path field shows and stores. `expandHome`
+ * (server.ts) reads it back, so a pick works natively and in Docker, where the home differs.
+ */
+export function tildeHostPath(p: string, hostHome = process.env.HOST_HOME, containerHome = homedir()): string {
+  const host = toHostPath(p, hostHome, containerHome);
+  const home = hostHome || containerHome;
+  if (host === home) return '~';
+  return host.startsWith(home + sep) ? '~/' + host.slice(home.length + 1) : host;
+}
+
 const EMPTY: NetDiscovery = { registry: { state: 'absent', detail: '' }, sessions: [], notObservable: [] };
 
 export class NetSessionSource {

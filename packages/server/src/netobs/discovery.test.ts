@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { NetSessionSource, controlPaths, toHostPath } from './discovery.js';
+import { NetSessionSource, controlPaths, toHostPath, tildeHostPath } from './discovery.js';
 import { addGloveSession, registerRow } from './testing/glove-home.js';
 import { groupKeyFor, isIpLiteral, registrableDomain } from './domain.js';
 
@@ -131,5 +131,17 @@ describe('registrable-domain grouping', () => {
     expect(isIpLiteral('::1')).toBe(true);
     expect(isIpLiteral('256.1.1.1')).toBe(false);
     expect(isIpLiteral('example.com')).toBe(false);
+  });
+});
+
+describe('tildeHostPath', () => {
+  it('writes the host home as ~, from a container path', () => {
+    expect(tildeHostPath('/root/.glove/x', '/Users/me', '/root')).toBe('~/.glove/x');
+    expect(tildeHostPath('/root', '/Users/me', '/root')).toBe('~');
+  });
+  it('is the same natively, and leaves other paths alone', () => {
+    expect(tildeHostPath('/home/me/a', undefined, '/home/me')).toBe('~/a');
+    expect(tildeHostPath('/tmp/a', '/Users/me', '/root')).toBe('/tmp/a');
+    expect(tildeHostPath('/home/me-other/a', undefined, '/home/me')).toBe('/home/me-other/a');
   });
 });

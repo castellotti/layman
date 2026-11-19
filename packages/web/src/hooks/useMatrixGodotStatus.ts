@@ -5,6 +5,7 @@ import { getJson } from './useNetTrace.js';
 export interface GodotBuildStatus {
   present: boolean;
   dir: string;
+  displayDir: string;
   builtAt: number | null;
   files: number;
   problems: string[];

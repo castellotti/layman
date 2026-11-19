@@ -152,7 +152,8 @@ describes both. The old **Web** preset loads scripts from a CDN and is refused b
 shows "This build loads scripts from another site" for such a build.
 
 **Where it lives.** `styx.godotDir` (Settings → Extensions → Styx → Godot build folder), empty for the
-default above. A configured folder is only read, never created. A Layman running in Docker sees only the
+default above (the field shows its real path). A configured folder is only read, never created. **Browse…** lists
+the folders Layman can see; in Docker that is only the mounted ones, so a Layman running in Docker sees only the
 default location, which is inside the data folder it already mounts.
 
 **The policy.** Layman serves the build under `/styx/godot/` (404 while Styx is off) with a
