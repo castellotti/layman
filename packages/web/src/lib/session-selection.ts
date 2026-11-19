@@ -38,11 +38,14 @@ export function gloveLive(
   return net.sessionsKnown ? net.sessions.some((g) => g.token === token && g.live) : null;
 }
 
+/** A listed session's name (a gloved session's is its glove id), or null. */
+export function sessionNameOf(id: string | null, sessions: readonly SessionInfo[]): string | null {
+  return id ? sessions.find((x) => x.sessionId === id)?.sessionName ?? null : null;
+}
+
 /** The glove id of what the session tabs show: the open session's name, else the glove awaiting its first prompt. */
 export function selectedGloveName(s: Selection & { sessions: readonly SessionInfo[] }): string | null {
-  return s.activeSessionId
-    ? s.sessions.find((x) => x.sessionId === s.activeSessionId)?.sessionName ?? null
-    : s.awaitingGlove;
+  return s.activeSessionId ? sessionNameOf(s.activeSessionId, s.sessions) : s.awaitingGlove;
 }
 
 /**

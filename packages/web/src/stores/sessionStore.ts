@@ -5,7 +5,7 @@ import type { NetRange } from '../lib/netobs-types.js';
 import { arrivalNetToken, rangeKey, sameRange } from '../lib/net-state.js';
 import { useNetStore } from './netStore.js';
 import { newestSession, type DashboardSortMode } from '../lib/session-state.js';
-import { gloveLaymanSession, gloveLive, selectGlove, selectedGloveName } from '../lib/session-selection.js';
+import { gloveLaymanSession, gloveLive, selectGlove, selectedGloveName, sessionNameOf } from '../lib/session-selection.js';
 import type { LaymanRoute, RouteOptions, ViewName } from '../lib/layman-url.js';
 import { extractTurn } from '../lib/turns.js';
 import { pairFor } from '../lib/event-pairing.js';
@@ -514,11 +514,9 @@ export interface SessionState {
  * then prefers the active session anyway.
  */
 function arrival(s: SessionState): Partial<SessionState> {
-  const name = s.viewMode === 'dashboard'
-    ? (s.dashboardFocusedSession ? s.sessions.find((x) => x.sessionId === s.dashboardFocusedSession)?.sessionName ?? null : null)
-    : s.viewMode === 'sessions'
-      ? (s.viewingSessionId ? s.sessions.find((x) => x.sessionId === s.viewingSessionId)?.sessionName ?? null : null)
-      : selectedGloveName(s);
+  const name = s.viewMode === 'dashboard' ? sessionNameOf(s.dashboardFocusedSession, s.sessions)
+    : s.viewMode === 'sessions' ? sessionNameOf(s.viewingSessionId, s.sessions)
+    : selectedGloveName(s);
   return netTokenFor(s, name);
 }
 
@@ -853,7 +851,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   // One selection for every tab: a gloved session also becomes the Network tabs' glove.
   setActiveSession: (activeSessionId) => set((s) => ({
     activeSessionId, awaitingGlove: null,
-    ...netTokenFor(s, selectedGloveName({ activeSessionId, awaitingGlove: null, sessions: s.sessions })),
+    ...netTokenFor(s, sessionNameOf(activeSessionId, s.sessions)),
   })),
   pickGlove: (token) => set((s) => ({ ...gloveChoice(s, token), ...netTokenChange(s, token) })),
 
@@ -1141,6 +1139,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     switch (route.kind) {
       case 'dashboard': {
         const mode = opts.view ? viewModeForName(opts.view) : 'dashboard';
+        const cur = get();
         done({
           viewMode: mode,
           ...viewModeFlags(mode),
@@ -1153,11 +1152,11 @@ export const useSessionStore = create<SessionState>((set, get) => ({
           // other view leaves the last choice alone for the next visit.
           // A link naming a glove chooses it for every tab, as the picker does.
           ...(isNetworkView(mode) ? { netToken: opts.glove ?? null, netDest: opts.dest ?? null, netRange: opts.range ?? null } : {}),
-          ...(isNetworkView(mode) && opts.glove ? gloveChoice(get(), opts.glove) : {}),
+          ...(isNetworkView(mode) && opts.glove ? gloveChoice(cur, opts.glove) : {}),
           // A session view naming a glove: that glove's Layman session, or the glove waiting for its first prompt.
           // One that does not name it (Back from such a link) no longer waits for it.
-          ...(isSessionView(mode) && opts.glove ? { ...gloveChoice(get(), opts.glove), ...netTokenChange(get(), opts.glove) } : {}),
-          ...(isSessionView(mode) && !opts.glove && get().awaitingGlove ? { awaitingGlove: null } : {}),
+          ...(isSessionView(mode) && opts.glove ? { ...gloveChoice(cur, opts.glove), ...netTokenChange(cur, opts.glove) } : {}),
+          ...(isSessionView(mode) && !opts.glove && cur.awaitingGlove ? { awaitingGlove: null } : {}),
         });
         return;
       }
