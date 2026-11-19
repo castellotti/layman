@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { CustomRow } from './primitives.js';
-import { PathPicker } from './PathPicker.js';
+import { PathPicker, BTN } from './PathPicker.js';
 import { sp, rad } from '../../../lib/density.js';
 
 /**
@@ -48,7 +48,7 @@ export function PathRow({ label, value, placeholder, onCommit, mode, ext, ariaLa
           ref={browseRef}
           type="button"
           onClick={() => setBrowsing(true)}
-          style={{ padding: sp('4px 10px'), fontSize: 11.5, borderRadius: rad(5), cursor: 'pointer', background: 'var(--bg-card)', color: 'var(--text)', border: 'var(--stroke) solid var(--border-strong)' }}
+          style={BTN}
         >
           Browse…
         </button>

@@ -17,7 +17,7 @@ export interface BrowseResult {
 export const childPath = (dir: string, name: string): string =>
   dir === '~' ? `~/${name}` : `${dir.replace(/\/$/, '')}/${name}`;
 
-const BTN: React.CSSProperties = {
+export const BTN: React.CSSProperties = {
   padding: sp('4px 10px'), fontSize: 11.5, borderRadius: rad(5), cursor: 'pointer',
   background: 'var(--bg-card)', color: 'var(--text)', border: 'var(--stroke) solid var(--border-strong)',
 };
@@ -43,13 +43,26 @@ export function PathPicker({ title, mode, ext, start, onChoose, onClose }: {
   const [picked, setPicked] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
 
+  const seq = useRef(0);
   const load = useCallback((path: string) => {
+    const mine = ++seq.current;
     const q = new URLSearchParams({ path });
     if (mode === 'file' && ext) q.set('ext', ext);
     getJson<BrowseResult>(`/api/fs/browse?${q}`)
-      .then((r) => { setListing(r); setTyped(r.requestedExists || r.requested === r.path ? r.path : path); setActive(0); setPicked(null); setError(null); })
-      .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)));
+      .then((r) => {
+        // A slower, older answer must not replace the folder the user has since moved to.
+        if (mine !== seq.current) return;
+        // An existing file the field already names (the current database) stays named and chosen.
+        const isFile = r.requestedExists && r.requested !== r.path;
+        setListing(r);
+        setTyped(isFile ? r.requested : r.requestedExists || r.requested === r.path ? r.path : path);
+        setActive(0);
+        setPicked(isFile ? r.requested : null);
+        setError(null);
+      })
+      .catch((e: unknown) => { if (mine === seq.current) setError(e instanceof Error ? e.message : String(e)); });
   }, [mode, ext]);
 
   useEffect(() => { load(start); inputRef.current?.focus(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -72,9 +85,20 @@ export function PathPicker({ title, mode, ext, start, onChoose, onClose }: {
     <div
       data-print-hide
       style={{ position: 'fixed', inset: 0, zIndex: 60, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-      onKeyDown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); onClose(); } }}
+      onKeyDown={(e) => {
+        if (e.key === 'Escape') { e.stopPropagation(); onClose(); return; }
+        if (e.key !== 'Tab') return;
+        // aria-modal: keep Tab inside the dialog.
+        const f = [...(dialogRef.current?.querySelectorAll<HTMLElement>('button:not(:disabled), input, [tabindex="0"]') ?? [])];
+        if (f.length === 0) return;
+        const at = f.indexOf(document.activeElement as HTMLElement);
+        const next = e.shiftKey ? (at <= 0 ? f.length - 1 : at - 1) : at === f.length - 1 ? 0 : at + 1;
+        e.preventDefault();
+        f[next].focus();
+      }}
     >
       <div
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-label={title}
@@ -99,6 +123,7 @@ export function PathPicker({ title, mode, ext, start, onChoose, onClose }: {
           role="listbox"
           aria-label="Folders"
           tabIndex={0}
+          aria-activedescendant={entries.length > 0 ? `pp-opt-${active}` : undefined}
           data-own-arrows
           onKeyDown={(e) => {
             if (e.key === 'ArrowDown') { e.preventDefault(); setActive((a) => Math.min(entries.length - 1, a + 1)); }
@@ -107,12 +132,13 @@ export function PathPicker({ title, mode, ext, start, onChoose, onClose }: {
           }}
           style={{ flex: 1, minHeight: 160, overflowY: 'auto', border: 'var(--stroke) solid var(--border)', borderRadius: rad(5), background: 'var(--bg-card)', fontFamily: 'var(--font-mono)', fontSize: 11.5 }}
         >
-          {entries.length === 0 && <div style={{ padding: sp(8), color: 'var(--text-faint)' }}>{listing ? (mode === 'file' ? 'No folders or matching files here.' : 'No folders here.') : 'Loading…'}</div>}
+          {entries.length === 0 && <div style={{ padding: sp(8), color: 'var(--text-faint)' }}>{listing ? (mode === 'file' ? 'No folders or matching files here.' : 'No folders here.') : error ? 'Could not list folders.' : 'Loading…'}</div>}
           {entries.map((e, i) => {
             const isPicked = picked !== null && listing !== null && picked === childPath(listing.path, e.name);
             return (
               <div
                 key={e.name}
+                id={`pp-opt-${i}`}
                 role="option"
                 aria-selected={i === active}
                 data-i={i}

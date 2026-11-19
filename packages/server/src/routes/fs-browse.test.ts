@@ -102,4 +102,14 @@ describe('browse', () => {
     expect(r.truncated).toBe(true);
     expect(r.entries).toHaveLength(MAX_ENTRIES);
   });
+
+  it('answers in host form when the home is mounted elsewhere (Docker)', () => {
+    mkdirSync(join(home, 'a', 'b'), { recursive: true });
+    const e = { ...env(), hostHome: '/Users/fake' };
+    const r = browse('/Users/fake/a/b', '', e);
+    expect(r.path).toBe('~/a/b');
+    expect(r.parent).toBe('~/a');
+    expect(r.requested).toBe('~/a/b');
+    expect(browse('~', '', e).entries.map((x) => x.name)).toContain('a');
+  });
 });
