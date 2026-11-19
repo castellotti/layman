@@ -1,9 +1,7 @@
 import React from 'react';
 import { styxTabVisible, type StyxTabKey } from '../../lib/tab-visibility.js';
 import { useSessionStore, type ViewMode } from '../../stores/sessionStore.js';
-import { useNetStore } from '../../stores/netStore.js';
-import { pickSession } from '../../lib/activity-view.js';
-import { getSessionDisplayName } from '../../lib/session-state.js';
+import { useStyxSession } from '../../hooks/useStyxSession.js';
 import { DEFAULT_MATRIX_WINDOW, MATRIX_WINDOWS, parseMatrixWindow, type MatrixWindow } from '../../lib/matrix-feed.js';
 import { useStored } from '../../hooks/useStored.js';
 import { useMatrixFeed } from '../../hooks/useMatrixFeed.js';
@@ -46,16 +44,12 @@ export default function MatrixView({ mode }: { mode: ViewMode }) {
 
 /** The bar and the canvas of 2D or 3D. Its own component so the feed is read only while this tab is open. */
 function MatrixPane({ mode }: { mode: ViewMode }) {
-  const activeSessionId = useSessionStore((s) => s.activeSessionId);
-  const sessions = useSessionStore((s) => s.sessions);
-  const sessionId = pickSession(activeSessionId, sessions);
-  const session = sessions.find((x) => x.sessionId === sessionId);
+  // A Layman session id, or a glove id before the glove's first prompt: the feed takes either.
+  const { feedId: sessionId, title, gloveToken } = useStyxSession();
   const [window, setWindow] = useStored<MatrixWindow>(MATRIX_WINDOW_KEY, DEFAULT_MATRIX_WINDOW, parseMatrixWindow);
   const { rows, loading, error } = useMatrixFeed(sessionId, window);
-  const gloveToken = useNetStore((s) => (session?.sessionName && s.sessions.some((x) => x.token === session.sessionName) ? session.sessionName : null));
 
   const down = rows.reduce((n, r) => n + r.received, 0);
-  const title = session ? getSessionDisplayName(session) : 'All live sessions';
   return (
     <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', background: 'var(--bg)' }}>
       <div

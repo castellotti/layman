@@ -70,6 +70,7 @@ beforeEach(() => {
     promptsOpen: false,
     viewingSessionId: null,
     activeSessionId: null,
+    awaitingGlove: null,
     historicalEvents: [],
     events: [],
     selectedTurnPromptEventId: null,
@@ -546,6 +547,89 @@ describe('network views (glove)', () => {
     expect(readBack()).toBe('/');
     useSessionStore.getState().setViewMode('map');
     expect(readBack()).toBe('/?view=map&glove=pi-search&dest=arxiv.org');
+  });
+});
+
+describe('one session across the tabs', () => {
+  const readBack = () => {
+    const { route, opts } = routeForState(useSessionStore.getState());
+    return buildPath(route, opts);
+  };
+  const gloved = (sessionId: string, sessionName: string, lastSeen = 0) => ({ sessionId, cwd: '/w', lastSeen, agentType: 'pi', sessionName });
+  const plain = { sessionId: 'cc1', cwd: '/w', lastSeen: 9, agentType: 'claude-code' };
+  beforeEach(() => {
+    useNetStore.setState({ sessions: [summary('pi-search-0bb065'), summary('other-c0ffee')], notObservable: [], sessionsKnown: true });
+  });
+  afterEach(() => useNetStore.setState({ sessions: [], notObservable: [], sessionsKnown: false }));
+
+  it('choosing a glove in Network opens its newest Layman session in the other tabs', () => {
+    useSessionStore.setState({ viewMode: 'topology', netToken: 'other-c0ffee', activeSessionId: 'cc1',
+      sessions: [plain, gloved('old', 'pi-search-0bb065', 1), gloved('new', 'pi-search-0bb065', 2)] });
+    useSessionStore.getState().pickGlove('pi-search-0bb065');
+    useSessionStore.getState().setViewMode('matrix2d');
+    expect(useSessionStore.getState().activeSessionId).toBe('new');
+    expect(readBack()).toBe('/s/new?view=matrix2d');
+  });
+
+  it('a glove with no prompt yet is chosen as itself, addressed by ?glove=, and becomes its session when it appears', () => {
+    useSessionStore.setState({ viewMode: 'topology', activeSessionId: 'cc1', sessions: [plain] });
+    useSessionStore.getState().pickGlove('pi-search-0bb065');
+    expect(useSessionStore.getState()).toMatchObject({ activeSessionId: null, awaitingGlove: 'pi-search-0bb065', netToken: 'pi-search-0bb065' });
+    useSessionStore.getState().setViewMode('stream');
+    expect(readBack()).toBe('/?view=logs&glove=pi-search-0bb065');
+    // Its first prompt: pi writes the transcript and the watcher reports the session.
+    useSessionStore.getState().setSessions([plain, gloved('pi1', 'pi-search-0bb065')]);
+    expect(useSessionStore.getState()).toMatchObject({ activeSessionId: 'pi1', awaitingGlove: null });
+    expect(readBack()).toBe('/s/pi1?view=logs');
+  });
+
+  it('an awaited glove is not replaced by the single-session auto-select', () => {
+    useSessionStore.setState({ viewMode: 'stream', sessions: [] });
+    useSessionStore.getState().pickGlove('pi-search-0bb065');
+    useSessionStore.getState().setSessions([plain]);
+    expect(useSessionStore.getState()).toMatchObject({ activeSessionId: null, awaitingGlove: 'pi-search-0bb065' });
+  });
+
+  it('a ?glove= link on a session view hydrates to the glove, or its session', async () => {
+    await useSessionStore.getState().hydrateFromRoute({ kind: 'dashboard' }, { view: 'gibson2d', glove: 'pi-search-0bb065' });
+    expect(useSessionStore.getState()).toMatchObject({ viewMode: 'gibson2d', awaitingGlove: 'pi-search-0bb065', activeSessionId: null });
+    expect(readBack()).toBe('/?view=gibson2d&glove=pi-search-0bb065');
+    useSessionStore.setState({ sessions: [gloved('pi1', 'pi-search-0bb065')] });
+    await useSessionStore.getState().hydrateFromRoute({ kind: 'dashboard' }, { view: 'matrix2d', glove: 'pi-search-0bb065' });
+    expect(useSessionStore.getState()).toMatchObject({ activeSessionId: 'pi1', awaitingGlove: null });
+  });
+
+  it('choosing a gloved session in the header makes it the Network tabs’ glove; a plain one leaves the glove alone', () => {
+    useSessionStore.setState({ viewMode: 'stream', netToken: 'other-c0ffee', netDest: 'x.org', awaitingGlove: 'x',
+      sessions: [plain, gloved('pi1', 'pi-search-0bb065')] });
+    useSessionStore.getState().setActiveSession('pi1');
+    expect(useSessionStore.getState()).toMatchObject({ netToken: 'pi-search-0bb065', netDest: null, awaitingGlove: null });
+    useSessionStore.getState().setActiveSession('cc1');
+    expect(useSessionStore.getState().netToken).toBe('pi-search-0bb065');
+  });
+
+  it('leaving Network for a session view shows the glove it showed, however it was chosen', async () => {
+    useSessionStore.setState({ activeSessionId: 'cc1', sessions: [plain, gloved('pi1', 'pi-search-0bb065')] });
+    await useSessionStore.getState().hydrateFromRoute({ kind: 'dashboard' }, { view: 'topology', glove: 'pi-search-0bb065' });
+    useSessionStore.getState().setViewMode('matrix2d');
+    expect(readBack()).toBe('/s/pi1?view=matrix2d');
+    // A glove with no prompt yet, then a session that already runs in the glove shown: left alone.
+    useSessionStore.setState({ viewMode: 'map', netToken: 'other-c0ffee' });
+    useSessionStore.getState().setViewMode('stream');
+    expect(useSessionStore.getState()).toMatchObject({ activeSessionId: null, awaitingGlove: 'other-c0ffee' });
+    useSessionStore.setState({ viewMode: 'map', netToken: 'pi-search-0bb065', activeSessionId: 'pi1', awaitingGlove: null });
+    useSessionStore.getState().setViewMode('gibson2d');
+    expect(useSessionStore.getState().activeSessionId).toBe('pi1');
+    // The Dashboard is not a session view: it keeps its own.
+    useSessionStore.setState({ viewMode: 'map', netToken: 'other-c0ffee', activeSessionId: 'cc1' });
+    useSessionStore.getState().setViewMode('dashboard');
+    expect(useSessionStore.getState().activeSessionId).toBe('cc1');
+  });
+
+  it('entering Network while a glove awaits its first prompt shows that glove', () => {
+    useSessionStore.setState({ viewMode: 'matrix2d', netToken: 'other-c0ffee', activeSessionId: null, awaitingGlove: 'pi-search-0bb065' });
+    useSessionStore.getState().setViewMode('network');
+    expect(useSessionStore.getState().netToken).toBe('pi-search-0bb065');
   });
 });
 

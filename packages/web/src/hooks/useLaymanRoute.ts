@@ -91,6 +91,11 @@ export function routeForState(state: SessionState): { route: LaymanRoute; opts: 
     };
   }
 
+  // A glove chosen before its first prompt: no Layman session to name yet, so the glove does.
+  if (isSessionView(state.viewMode) && state.awaitingGlove) {
+    return { route: { kind: 'dashboard' }, opts: { view: viewNameForMode(state.viewMode), glove: state.awaitingGlove } };
+  }
+
   if (state.viewMode === 'prompts' && state.selectedHighlightId) {
     return { route: { kind: 'highlight', highlightId: state.selectedHighlightId }, opts: {} };
   }

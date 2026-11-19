@@ -138,7 +138,14 @@ export function registerStyxRoutes(fastify: FastifyInstance, deps: StyxDeps): vo
       return { sources: [{ kind: 'glove', token: glove }], from, t };
     }
     if (session !== undefined) {
-      if (!deps.sessionExists(session)) { reply.code(404).send({ error: 'Unknown session' }); return null; }
+      // A glove session before its first prompt has no Layman session yet (pi writes its transcript then),
+      // so a glove id is taken here too: styx-godot forwards only `session`, and the views show such a glove
+      // from the start. A Layman session id wins: the two never look alike (a uuid, `<dirname>-<6 hex>`).
+      if (!deps.sessionExists(session)) {
+        if (deps.store.has(session)) return { sources: [{ kind: 'glove', token: session }], from, t };
+        reply.code(404).send({ error: 'Unknown session' });
+        return null;
+      }
       const token = deps.gloveTokenOf(session);
       return { sources: [token ? { kind: 'glove', token } : { kind: 'standard', sessionId: session }], from, t };
     }

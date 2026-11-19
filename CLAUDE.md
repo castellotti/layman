@@ -230,6 +230,7 @@ store for unrecorded sessions, and memoizes per session until a new event arrive
   &from=<iso>&to=<iso|now>           …and their time range (pushes: Back returns to the previous one)
 ?view=matrix|matrix2d|matrix3d       Styx (Matrix views; matrix is the Godot frame), session views: /s/<id>?view=matrix2d
 ?view=gibson|gibson2d|gibson3d       Styx (Gibson views), session views too: /s/<id>?view=gibson2d
+/?view=<session view>&glove=<token>  a session view on a glove session with no prompt yet (no Layman session to name)
 ```
 
 Ids may be given as an unambiguous prefix of ≥8 characters; ambiguous prefixes return 409 with
@@ -808,6 +809,8 @@ Four rules that must not be relaxed casually:
   (`density-literals.test.ts` fails on one). The numbers in the code are the Compact design (the
   default, `--density: 1`; Comfortable is 1.3) and Classic's 6px corners (`--radius-scale` is the
   theme's radius over 6). Not yet covered: px values in component `.css` files, SVG geometry.
+
+- **One session across the tabs** (`lib/session-selection.ts`, pure). The session views (Logs, Activity, Matrix, Gibson) show `activeSessionId`; the network tabs show `netToken`. They are kept as one choice: the header's `setActiveSession` also sets `netToken` for a gloved session, and the Network picker goes through `pickGlove`, which sets `activeSessionId` to that glove's newest Layman session (never `setNetToken`, which is only for filling in the default and must not move the other tabs), and leaving the network tabs for a session view carries their glove over however it was chosen (`departure`, the mirror of `arrival`). A glove session with no prompt yet has no Layman session (pi writes its transcript at the first prompt), so it is chosen as `awaitingGlove` (only with `activeSessionId` null), listed in the header's picker, addressed `?glove=` on a session view, and turned into its session by `setSessions` when one appears. A view picks its session with `viewTarget`, never `pickSession` alone, or the newest-live fallback overrules an awaited glove. The Styx feed takes the glove id as `session=` for it.
 
 - **One tab order, one arrow-key rule.** `headerTabs()` (`lib/header-tabs.ts`, pure) is the only list of header tabs: the Header renders it and ←/→ walk it (`currentTabIndex`, `neighbourTab`), so they cannot disagree. `arrowKeysFree()` (`lib/arrow-keys.ts`) is the only rule for when a global arrow handler may act (not while typing, not with a modifier, not in a dialog, not inside `[data-own-arrows]` or an ARIA widget role); a component that uses arrows while it has focus marks itself `data-own-arrows`. Logs moved from ←/→ to ↑/↓ for this reason. Per-tab visibility (`styx.matrix`, `styx.gibson`, `styx.tabs.*`, `glove.network.tabs.*`, deep-merged in `loadConfig` **and** `updateConfig`) is decided only in `lib/tab-visibility.ts` and applied in `headerTabs()`, so the strip, ←/→ and the letter shortcuts agree; a hidden tab is unlisted, never unreachable: its deep link renders a "hidden" message, never a redirect.
 

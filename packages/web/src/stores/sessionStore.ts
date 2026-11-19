@@ -5,6 +5,7 @@ import type { NetRange } from '../lib/netobs-types.js';
 import { arrivalNetToken, rangeKey, sameRange } from '../lib/net-state.js';
 import { useNetStore } from './netStore.js';
 import { newestSession, type DashboardSortMode } from '../lib/session-state.js';
+import { gloveLaymanSession, selectGlove } from '../lib/session-selection.js';
 import type { LaymanRoute, RouteOptions, ViewName } from '../lib/layman-url.js';
 import { extractTurn } from '../lib/turns.js';
 import { pairFor } from '../lib/event-pairing.js';
@@ -284,6 +285,11 @@ export interface SessionState {
   // Multi-session tracking
   sessions: SessionInfo[];
   activeSessionId: string | null;
+  /**
+   * A glove session chosen before it has a Layman session (no prompt yet), or null. Set only with
+   * `activeSessionId` null; becomes that session when it appears (`lib/session-selection.ts`).
+   */
+  awaitingGlove: string | null;
 
   // Multi-host sync
   syncStatus: SyncStatus | null;
@@ -424,6 +430,8 @@ export interface SessionState {
   setSessionStatus: (status: SessionStatus) => void;
   setSessions: (sessions: SessionInfo[]) => void;
   setActiveSession: (id: string | null) => void;
+  /** Choosing a glove session (the Network picker, the header's): every session tab follows it. */
+  pickGlove: (token: string) => void;
   setSetupStatus: (status: SetupStatus) => void;
   dismissSetupBanner: () => void;
   dismissSetupModal: () => void;
@@ -507,10 +515,22 @@ export interface SessionState {
  */
 function arrival(s: SessionState): Partial<SessionState> {
   const id = s.viewMode === 'dashboard' ? s.dashboardFocusedSession : s.viewMode === 'sessions' ? s.viewingSessionId : s.activeSessionId;
-  const name = id ? s.sessions.find((x) => x.sessionId === id)?.sessionName ?? null : null;
+  const name = id ? s.sessions.find((x) => x.sessionId === id)?.sessionName ?? null
+    : s.viewMode === 'dashboard' || s.viewMode === 'sessions' ? null : s.awaitingGlove;
   const net = useNetStore.getState();
   const token = arrivalNetToken(name, [...net.sessions, ...net.notObservable]);
   return token === null ? {} : netTokenChange(s, token);
+}
+
+/**
+ * Leaving the network tabs for a session view shows the glove session they showed, however it was chosen
+ * (the picker, a `?glove=` link, the default): its newest Layman session, or the glove waiting for its
+ * first prompt. Nothing changes when the session open already runs in it.
+ */
+function departure(s: SessionState): Partial<SessionState> {
+  if (!s.netToken) return {};
+  const shown = s.activeSessionId ? s.sessions.find((x) => x.sessionId === s.activeSessionId)?.sessionName ?? null : s.awaitingGlove;
+  return shown === s.netToken ? {} : selectGlove(s.netToken, s.sessions);
 }
 
 /** Choosing a glove session: another one clears the destination and range chosen in the old one. */
@@ -540,6 +560,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
 
   sessions: [],
   activeSessionId: null,
+  awaitingGlove: null,
 
   syncStatus: null,
   syncHosts: [],
@@ -801,8 +822,13 @@ export const useSessionStore = create<SessionState>((set, get) => ({
         active: s.active !== undefined ? s.active : existingActive.get(s.sessionId),
       }));
 
+      // A glove chosen before its first prompt becomes its Layman session as soon as there is one.
+      if (state.awaitingGlove) {
+        const id = gloveLaymanSession(state.awaitingGlove, merged);
+        if (id) return { sessions: merged, activeSessionId: id, awaitingGlove: null };
+      }
       // Auto-select when transitioning to exactly 1 session and none is currently selected
-      if (merged.length === 1 && state.activeSessionId === null) {
+      if (merged.length === 1 && state.activeSessionId === null && state.awaitingGlove === null) {
         return { sessions: merged, activeSessionId: merged[0].sessionId };
       }
       // Switch to the newest session when the setting is enabled and a new session appears
@@ -810,13 +836,20 @@ export const useSessionStore = create<SessionState>((set, get) => ({
         const existingIds = new Set(state.sessions.map((s) => s.sessionId));
         const newSessions = merged.filter((s) => !existingIds.has(s.sessionId));
         if (newSessions.length > 0) {
-          return { sessions: merged, activeSessionId: newestSession(newSessions)!.sessionId };
+          return { sessions: merged, activeSessionId: newestSession(newSessions)!.sessionId, awaitingGlove: null };
         }
       }
       return { sessions: merged, activeSessionId: state.activeSessionId };
     }),
 
-  setActiveSession: (activeSessionId) => set({ activeSessionId }),
+  // One selection for every tab: a gloved session also becomes the Network tabs' glove.
+  setActiveSession: (activeSessionId) => set((s) => {
+    const name = activeSessionId ? s.sessions.find((x) => x.sessionId === activeSessionId)?.sessionName ?? null : null;
+    const net = useNetStore.getState();
+    const token = arrivalNetToken(name, [...net.sessions, ...net.notObservable]);
+    return { activeSessionId, awaitingGlove: null, ...(token === null ? {} : netTokenChange(s, token)) };
+  }),
+  pickGlove: (token) => set((s) => ({ ...selectGlove(token, s.sessions), ...netTokenChange(s, token) })),
 
   setSetupStatus: (setupStatus) => set({ setupStatus }),
 
@@ -857,6 +890,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     ...viewModeFlags(mode),
     ...(mode !== 'dashboard' ? { returnToDashboard: false } : {}),
     ...(isNetworkView(mode) && !isNetworkView(s.viewMode) ? arrival(s) : {}),
+    ...(isSessionView(mode) && isNetworkView(s.viewMode) ? departure(s) : {}),
   })),
 
   setBookmarks: (bookmarkFolders, bookmarks) => set({ bookmarkFolders, bookmarks }),
@@ -1043,6 +1077,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
         historicalEvents: events,
         sessionTimeMetrics: metrics,
         activeSessionId: sessionId,
+        awaitingGlove: null,
       };
 
       // Logs and Flow render the live store keyed by activeSessionId; historicalEvents
@@ -1107,6 +1142,8 @@ export const useSessionStore = create<SessionState>((set, get) => ({
           // A network deep link names its glove session and selection; any
           // other view leaves the last choice alone for the next visit.
           ...(isNetworkView(mode) ? { netToken: opts.glove ?? null, netDest: opts.dest ?? null, netRange: opts.range ?? null } : {}),
+          // A session view naming a glove: that glove's Layman session, or the glove waiting for its first prompt.
+          ...(isSessionView(mode) && opts.glove ? { ...selectGlove(opts.glove, get().sessions), netToken: opts.glove } : {}),
         });
         return;
       }
@@ -1222,6 +1259,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     ...viewModeFlags('flowchart'),
     returnToDashboard: true,
     activeSessionId: sessionId,
+    awaitingGlove: null,
     selectedEventId: eventId,
     investigationOpen: true,
   }),
@@ -1237,6 +1275,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
         ...viewModeFlags('stream'),
         returnToDashboard: !bothFit,
         activeSessionId: sessionId,
+        awaitingGlove: null,
         scrollToEventId: eventId,
         dashboardOverride: bothFit,
         logsOverride: true,
@@ -1251,6 +1290,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
         ...viewModeFlags('stream'),
         returnToDashboard: !bothFit,
         activeSessionId: sessionId,
+        awaitingGlove: null,
         selectedEventId: null,
         investigationOpen: false,
         scrollToEventId: null,

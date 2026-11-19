@@ -179,7 +179,7 @@ the Pi's packet database, and this is a second, independent source of the same s
 | Query | Meaning |
 |---|---|
 | `relative` | Styx's own: a window ending now, `<integer><unit>`, unit `s`, `m`, `h` or `d` (`60s`, `15m`, `1h`). Absent: the whole record of the selected session. With no selector and no `relative`, the window is `15m`. |
-| `session` | A Layman session id. If that session is gloved, the answer is its glove session's flows. |
+| `session` | A Layman session id. If that session is gloved, the answer is its glove session's flows. A glove session id is taken here too when no Layman session has that id, and answers as `glove` does: a glove session before its first prompt has no Layman session yet (pi writes its transcript then), and styx-godot forwards only `session`. |
 | `glove` | A glove session id (the token the network views use). |
 
 `session` and `glove` together: 400. Any of Styx's absolute-time parameters (`start_date`, `start_time`,

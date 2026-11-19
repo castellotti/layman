@@ -55,7 +55,7 @@ export function EventStream({ onSend, archived = false, archivedDate, turnRuler 
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const {
-    sessions, activeSessionId, config, fetchAccessLog, scrollToEventId, clearScrollToEvent, bookmarks,
+    sessions, activeSessionId, awaitingGlove, config, fetchAccessLog, scrollToEventId, clearScrollToEvent, bookmarks,
     highlightedEventIds, expandedLogEventIds, setExpandedLogEventIds, toggleExpandAllLogs,
     bookmarksScrollToEventId, setBookmarksScrollToEventId,
   } = useSessionStore();
@@ -553,6 +553,16 @@ export function EventStream({ onSend, archived = false, archivedDate, turnRuler 
                     No events recorded for this session.
                   </p>
                 )
+              ) : awaitingGlove ? (
+                // A glove session chosen before its first prompt: its events start with that prompt.
+                <>
+                  <p style={{ fontFamily: 'var(--font-ui)', fontSize: 13, fontWeight: 500, color: 'var(--text)', margin: 0 }}>
+                    Waiting for the first prompt…
+                  </p>
+                  <p style={{ fontFamily: 'var(--font-ui)', fontSize: 11, color: 'var(--text-muted)', margin: 0 }}>
+                    {awaitingGlove} has had no prompt yet. Its events appear here from the first one.
+                  </p>
+                </>
               ) : (
                 // Live Logs view with nothing yet — the guidance is appropriate here.
                 <>

@@ -123,6 +123,14 @@ describe('GET /api/styx/v1/matrix', () => {
     expect(await rows(`?glove=${TEST_ID}&relative=1h`)).toEqual(await rows('?session=sess-gloved&relative=1h'));
   });
 
+  it('takes a glove id as session= (a glove before its first prompt; styx-godot forwards only session)', async () => {
+    const byGlove = await rows(`?glove=${TEST_ID}`);
+    expect(await rows(`?session=${TEST_ID}`)).toEqual(byGlove);
+    for (const route of ['hosts', 'links']) {
+      expect((await app.inject({ method: 'GET', url: `/api/styx/v1/${route}?session=${TEST_ID}` })).statusCode, route).toBe(200);
+    }
+  });
+
   it('a listed VPN host is not untunnelled; an unlisted direct host is', async () => {
     const all = await rows(`?glove=${TEST_ID}&relative=1h`);
     expect(all.find((r) => r.address === 'wiki.corp.example:443')).toMatchObject({ untunnelled: false });

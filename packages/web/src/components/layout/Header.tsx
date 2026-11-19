@@ -6,6 +6,7 @@ import { headerTabs, currentTabIndex, neighbourTab, type HeaderTab } from '../..
 import { arrowKeysFree } from '../../lib/arrow-keys.js';
 import { TabScroller } from './TabScroller.js';
 import { sessionDisplayName } from '../../lib/session-state.js';
+import { awaitingGloves, GLOVE_OPTION_PREFIX } from '../../lib/session-selection.js';
 import { tokenColor } from '../../lib/tokens.js';
 import { sp, rad } from '../../lib/density.js';
 
@@ -72,7 +73,7 @@ function NavTabButton({ label, shortcut, isActive, onClick, signal }: { label: s
 export function Header() {
   const {
     wsStatus, setSettingsOpen, bookmarksOpen,
-    sessions, activeSessionId, setActiveSession,
+    sessions, activeSessionId, setActiveSession, awaitingGlove, pickGlove,
     viewMode, setViewMode,
     dashboardFocusedSession, setDashboardFocusedSession,
     returnToDashboard, returnFromDashboardDrilldown,
@@ -98,6 +99,11 @@ export function Header() {
     return acc;
   }, []);
   const netSignal = networkTabSignal(netSessions);
+  // Glove sessions with no prompt yet: glove knows them before Layman has a session to list.
+  const gloveOptions = useMemo(
+    () => (config?.glove.enabled ? awaitingGloves(netSessions, sessions, awaitingGlove) : []),
+    [config?.glove.enabled, netSessions, sessions, awaitingGlove],
+  );
 
   // Dashboard/Logs are only meaningfully "active" while the live (non-exclusive)
   // view is showing — Flow/Sessions/Prompts take over the whole content area, and
@@ -259,16 +265,20 @@ export function Header() {
       )}
 
       {/* Session picker — hidden on Dashboard (all-sessions view) and the network tabs */}
-      {!hideSessionPicker && sessions.length > 0 && (
+      {!hideSessionPicker && sessions.length + gloveOptions.length > 0 && (
         <div style={{ marginRight: sp(12) }}>
           {(() => {
             const agentTypes = new Set(sessions.map((s) => s.agentType));
             const showAgentPrefix = agentTypes.size > 1;
-            const value = activeSessionId ?? '';
+            const value = activeSessionId ?? (awaitingGlove ? GLOVE_OPTION_PREFIX + awaitingGlove : '');
             return (
               <select
                 value={value}
-                onChange={(e) => setActiveSession(e.target.value || null)}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  if (v.startsWith(GLOVE_OPTION_PREFIX)) pickGlove(v.slice(GLOVE_OPTION_PREFIX.length));
+                  else setActiveSession(v || null);
+                }}
                 style={{
                   fontSize: 11,
                   fontFamily: 'var(--font-ui)',
@@ -283,7 +293,7 @@ export function Header() {
                 }}
                 title="Filter by session"
               >
-                {sessions.length > 1 && (
+                {sessions.length + gloveOptions.length > 1 && (
                   <option value="">All sessions</option>
                 )}
                 {sessions.map((s) => {
@@ -295,6 +305,9 @@ export function Header() {
                     </option>
                   );
                 })}
+                {gloveOptions.map((token) => (
+                  <option key={token} value={GLOVE_OPTION_PREFIX + token}>{token} · waiting for first prompt</option>
+                ))}
               </select>
             );
           })()}
