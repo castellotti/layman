@@ -2,6 +2,15 @@
 
 Deep-dives on Layman's analysis, safety, and recording features. For the view-by-view tour, see the [README](../README.md).
 
+## Keyboard and the tab strip
+
+- **←/→** switch to the previous/next tab in the header (no wrap-around; Dashboard and Logs then show alone). They do nothing while you are typing in a field, inside a view that uses arrows itself (Gibson 2D/3D pan and fly, lists, sliders, dividers) or while a dialog is open.
+- In **Logs**, **↑/↓** move between entries (they used to be ←/→) and **Home/End** jump to the first/last.
+- With every extension on, the tab strip is wider than a small window, so it scrolls sideways: swipe, mouse wheel, or the ‹ › buttons shown (with a fade) on the side that has more tabs. There is no scrollbar, the active tab is always scrolled into view, and the session picker and Settings stay put on the right.
+
+Hidden Styx and glove network tabs (Settings → Extensions) drop out of this strip and of `←`/`→`, and their letter
+shortcuts stop; the address of a hidden tab still opens and says so.
+
 ## Automated risk analysis
 
 Layman can use an AI model to classify the risk level of each action, explain what it means in plain language, and flag anything that looks risky. Requires an API key - see [AI analysis setup](installation.md#ai-analysis-optional).
@@ -145,7 +154,7 @@ Setup, design and the rules behind each view: [extensions/glove.md → Network](
 
 ## Styx (Matrix views)
 
-With **Settings → Extensions → Styx → Matrix views** on, Layman adds a **Matrix 2D** tab (`?view=matrix2d`) that draws the destinations a session reached as falling text: each address falls through faint glyph rain, a busier one faster, a refused one in the error colour. A glove-sandboxed session shows its real connections; any other session shows the hosts its tool calls named. A host reached now is falling within about two seconds. The same data is served at `/api/styx/v1/matrix` in the shape [styx-godot](https://github.com/Jigsaw-Studio/styx-godot) reads. Layman never looks a host up. **Gibson 2D** (`?view=gibson2d`, `G`) draws the same destinations as a city of towers, one per host, standing in blocks by domain, with the machine's own chip at the middle and connections as streaks along the streets; click a tower for its log. **Gibson 3D** (`?view=gibson3d`) is the same city in WebGL2 that you fly through, with a sky, glass towers whose faces carry text, and a tour when idle.
+With **Settings → Extensions → Styx** on, Layman adds a **Matrix 2D** tab (`?view=matrix2d`) that draws the destinations a session reached as falling text: each address falls through faint glyph rain, a busier one faster, a refused one in the error colour. A glove-sandboxed session shows its real connections; any other session shows the hosts its tool calls named. A host reached now is falling within about two seconds. The same data is served at `/api/styx/v1/matrix` in the shape [styx-godot](https://github.com/Jigsaw-Studio/styx-godot) reads. Layman never looks a host up. **Gibson 2D** (`?view=gibson2d`, `G`) draws the same destinations as a city of towers, one per host, standing in blocks by domain, with the machine's own chip at the middle and connections as streaks along the streets; click a tower for its log. **Gibson 3D** (`?view=gibson3d`) is the same city in WebGL2 that you fly through, with a sky, glass towers whose faces carry text, and a tour when idle.
 
 Setup, the feed's contract and the rules behind it: [extensions/styx.md](extensions/styx.md).
 

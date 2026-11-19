@@ -139,6 +139,12 @@ export async function loadConfig(
       ...fileConfig.styx,
       ...runtimeFile.styx,
       ...cliFlags.styx,
+      tabs: {
+        ...envConfig.styx?.tabs,
+        ...fileConfig.styx?.tabs,
+        ...runtimeFile.styx?.tabs,
+        ...cliFlags.styx?.tabs,
+      },
     },
     appearance: mergeAppearance(envConfig.appearance, fileConfig.appearance, runtimeFile.appearance, cliFlags.appearance),
     // Deep-merge glove and glove.network so a partial config (e.g. only
@@ -153,6 +159,12 @@ export async function loadConfig(
         ...fileConfig.glove?.network,
         ...runtimeFile.glove?.network,
         ...cliFlags.glove?.network,
+        tabs: {
+          ...envConfig.glove?.network?.tabs,
+          ...fileConfig.glove?.network?.tabs,
+          ...runtimeFile.glove?.network?.tabs,
+          ...cliFlags.glove?.network?.tabs,
+        },
       },
     },
   };
@@ -248,7 +260,7 @@ export function updateConfig(updates: ConfigUpdate): LaymanConfig {
     sync: { ...runtimeConfig.sync, ...updates.sync },
     activity: { ...runtimeConfig.activity, ...updates.activity },
     // Deep-merge so an update carrying only `styx.enabled` keeps `godotDir`.
-    styx: { ...runtimeConfig.styx, ...updates.styx },
+    styx: { ...runtimeConfig.styx, ...updates.styx, tabs: { ...runtimeConfig.styx.tabs, ...updates.styx?.tabs } },
     // Deep-merge so an update carrying one appearance choice keeps the others, and one
     // carrying a value this version does not know keeps the current choice. `overrides` merge
     // per theme: a theme sent replaces that theme's map (so one colour can be removed, and an
@@ -260,7 +272,11 @@ export function updateConfig(updates: ConfigUpdate): LaymanConfig {
     glove: {
       ...runtimeConfig.glove,
       ...updates.glove,
-      network: { ...runtimeConfig.glove.network, ...updates.glove?.network },
+      network: {
+        ...runtimeConfig.glove.network,
+        ...updates.glove?.network,
+        tabs: { ...runtimeConfig.glove.network.tabs, ...updates.glove?.network?.tabs },
+      },
     },
   });
   return runtimeConfig;

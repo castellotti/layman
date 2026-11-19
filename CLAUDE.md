@@ -809,6 +809,8 @@ Four rules that must not be relaxed casually:
   default, `--density: 1`; Comfortable is 1.3) and Classic's 6px corners (`--radius-scale` is the
   theme's radius over 6). Not yet covered: px values in component `.css` files, SVG geometry.
 
+- **One tab order, one arrow-key rule.** `headerTabs()` (`lib/header-tabs.ts`, pure) is the only list of header tabs: the Header renders it and ←/→ walk it (`currentTabIndex`, `neighbourTab`), so they cannot disagree. `arrowKeysFree()` (`lib/arrow-keys.ts`) is the only rule for when a global arrow handler may act (not while typing, not with a modifier, not in a dialog, not inside `[data-own-arrows]` or an ARIA widget role); a component that uses arrows while it has focus marks itself `data-own-arrows`. Logs moved from ←/→ to ↑/↓ for this reason. Per-tab visibility (`styx.matrix`, `styx.gibson`, `styx.tabs.*`, `glove.network.tabs.*`, deep-merged in `loadConfig` **and** `updateConfig`) is decided only in `lib/tab-visibility.ts` and applied in `headerTabs()`, so the strip, ←/→ and the letter shortcuts agree; a hidden tab is unlisted, never unreachable: its deep link renders a "hidden" message, never a redirect.
+
 - **Auto-activate**: The `autoActivateClients` config array (in `~/.local/share/layman/layman.json`) lists client agent types (e.g. `'claude-code'`) whose sessions should auto-activate without requiring `/layman`. When a hook event arrives from a matching agent, `handler.ts` calls `gate.activate()` before the gate check, so events flow immediately. The toggle is in Settings → Client Setup on each client's row. Off by default.
 
 - **Duplicate prompts are collapsed at extraction time, not deleted from the DB**: the hook

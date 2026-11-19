@@ -123,11 +123,6 @@ function FlowchartInner({ externalEvents, onSelectEvent, externalSelectedEventId
           setFollowLatest(false);
           fitView({ padding: 0.5, maxZoom: 0.5, duration: 150 });
           break;
-        case 'ArrowLeft':
-          // Pan is handled by React Flow internally but we can use viewport manipulation
-          break;
-        case 'ArrowRight':
-          break;
       }
     };
     window.addEventListener('keydown', handleKey);

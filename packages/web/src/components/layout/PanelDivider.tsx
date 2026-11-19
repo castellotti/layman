@@ -78,6 +78,7 @@ export function PanelDivider({ value, min, max, direction, onChange, title }: Pa
       aria-valuemax={max}
       aria-valuenow={Math.round(value)}
       tabIndex={0}
+      data-own-arrows=""
       title={title}
       onMouseDown={handleMouseDown}
       onKeyDown={handleKeyDown}

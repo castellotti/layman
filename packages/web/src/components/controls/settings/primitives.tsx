@@ -343,3 +343,23 @@ export function StringListRow({
     </CustomRow>
   );
 }
+
+/**
+ * Per-item switches under a parent setting (the tabs of a group): a labelled checkbox each, indented
+ * beneath the parent's row. `disabled` greys them out while the parent is off.
+ */
+export function SubRows({ items, disabled }: {
+  items: ReadonlyArray<{ id: string; label: string; checked: boolean; onChange: () => void }>;
+  disabled?: boolean;
+}) {
+  return (
+    <div role="group" style={{ ...ROW_STYLE, flexDirection: 'row', flexWrap: 'wrap', gap: sp('6px 16px'), paddingLeft: sp(16), opacity: disabled ? 0.5 : 1 }}>
+      {items.map((it) => (
+        <label key={it.id} style={{ display: 'flex', alignItems: 'center', gap: sp(6), fontSize: 11.5, color: 'var(--text-body)', cursor: disabled ? 'default' : 'pointer' }}>
+          <input type="checkbox" checked={it.checked} disabled={disabled} onChange={it.onChange} style={{ accentColor: 'var(--accent)', margin: 0 }} />
+          {it.label}
+        </label>
+      ))}
+    </div>
+  );
+}

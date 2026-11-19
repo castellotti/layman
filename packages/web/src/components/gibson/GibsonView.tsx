@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { styxTabVisible, type StyxTabKey } from '../../lib/tab-visibility.js';
 import { useSessionStore, type ViewMode } from '../../stores/sessionStore.js';
 import { pickSession } from '../../lib/activity-view.js';
 import { getSessionDisplayName } from '../../lib/session-state.js';
@@ -62,8 +63,12 @@ function Picker<T extends string>({ label, options, value, onPick }: {
  */
 export default function GibsonView({ mode }: { mode: ViewMode }) {
   const enabled = useSessionStore((s) => s.config?.styx?.enabled === true);
+  const visible = useSessionStore((s) => styxTabVisible(s.config, mode as StyxTabKey));
   if (!enabled) {
-    return <Centered>Styx is turned off. Turn it on in Settings → Extensions → Styx → Matrix views.</Centered>;
+    return <Centered>Styx is turned off. Turn it on in Settings → Extensions → Styx.</Centered>;
+  }
+  if (!visible) {
+    return <Centered>This tab is hidden. Show it in Settings → Extensions → Styx.</Centered>;
   }
   return <GibsonPane mode={mode} />;
 }

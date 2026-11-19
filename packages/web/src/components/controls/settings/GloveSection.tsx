@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import type { ClientMessage } from '../../../lib/ws-protocol.js';
 import type { LaymanConfig } from '../../../lib/types.js';
-import { SectionTitle, ToggleRow, CustomRow, StringListRow, Code } from './primitives.js';
+import { SectionTitle, ToggleRow, CustomRow, StringListRow, Code, SubRows } from './primitives.js';
 import { normaliseVpnDomain, withVpnEntry } from '../../../lib/net-vpn.js';
 import { sp, rad } from '../../../lib/density.js';
 
@@ -25,7 +25,13 @@ export function GloveSection({
   const glove = config.glove ?? { enabled: false, home: DEFAULT_HOME, showIpAddresses: false, network: DEFAULT_NETWORK };
   const network = glove.network ?? DEFAULT_NETWORK;
   // The server deep-merges glove and glove.network, so sending only the changed field is safe.
-  const setNetwork = (updates: Partial<typeof network>) => updateConfig({ glove: { ...glove, network: { ...network, ...updates } } });
+  const netTabs = network.tabs ?? {};
+  const setNetwork = (updates: Partial<typeof network>) => {
+    // `tabs` is left out of the snapshot unless changed: the server merges it per key, and a stale copy would undo another tab's switch.
+    const { tabs: _tabs, ...rest } = network;
+    updateConfig({ glove: { ...glove, network: { ...rest, ...updates } } });
+  };
+  const setNetTab = (key: 'network' | 'map' | 'topology' | 'trace') => setNetwork({ tabs: { [key]: netTabs[key] === false } });
 
   return (
     <>
@@ -60,9 +66,19 @@ export function GloveSection({
       {glove.enabled && (
       <ToggleRow
         label="Network views"
-        desc="Show the Network, Map, Topology and Trace tabs for glove sessions that record their traffic. Layman never looks up the hosts it shows: no DNS, no geo-IP service."
+        desc="Show the network tabs for glove sessions that record their traffic; switch each one below. Layman never looks up the hosts it shows: no DNS, no geo-IP service."
         checked={network.enabled}
         onChange={() => setNetwork({ enabled: !network.enabled })}
+      />
+      )}
+      {glove.enabled && network.enabled && (
+      <SubRows
+        items={[
+          { id: 'network', label: 'Network', checked: netTabs.network !== false, onChange: () => setNetTab('network') },
+          { id: 'map', label: 'Map', checked: netTabs.map !== false, onChange: () => setNetTab('map') },
+          { id: 'topology', label: 'Topology', checked: netTabs.topology !== false, onChange: () => setNetTab('topology') },
+          { id: 'trace', label: 'Trace', checked: netTabs.trace !== false, onChange: () => setNetTab('trace') },
+        ]}
       />
       )}
       {glove.enabled && network.enabled && (

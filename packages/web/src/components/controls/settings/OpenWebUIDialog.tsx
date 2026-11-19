@@ -109,7 +109,7 @@ export function OpenWebUIConfigDialog({
   const primaryLabel = getPrimaryLabel();
 
   return (
-    <div style={{ position: 'fixed', inset: 0, zIndex: 60, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+    <div role="dialog" aria-modal="true" style={{ position: 'fixed', inset: 0, zIndex: 60, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)' }} onClick={onClose} />
       <div style={{ position: 'relative', background: 'var(--bg-raised)', border: 'var(--stroke) solid var(--border-strong)', borderRadius: rad(8), boxShadow: '0 24px 60px rgba(0,0,0,0.5)', padding: sp(20), width: 360, margin: sp('0 16px') }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: sp(16) }}>

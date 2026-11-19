@@ -1,4 +1,5 @@
 import React from 'react';
+import { styxTabVisible, type StyxTabKey } from '../../lib/tab-visibility.js';
 import { useSessionStore, type ViewMode } from '../../stores/sessionStore.js';
 import { useNetStore } from '../../stores/netStore.js';
 import { pickSession } from '../../lib/activity-view.js';
@@ -33,8 +34,12 @@ const WINDOW_PHRASE: Record<MatrixWindow, string> = { '1m': 'the last minute', '
  */
 export default function MatrixView({ mode }: { mode: ViewMode }) {
   const enabled = useSessionStore((s) => s.config?.styx?.enabled === true);
+  const visible = useSessionStore((s) => styxTabVisible(s.config, mode as StyxTabKey));
   if (!enabled) {
-    return <Centered>Styx is turned off. Turn it on in Settings → Extensions → Styx → Matrix views.</Centered>;
+    return <Centered>Styx is turned off. Turn it on in Settings → Extensions → Styx.</Centered>;
+  }
+  if (!visible) {
+    return <Centered>This tab is hidden. Show it in Settings → Extensions → Styx.</Centered>;
   }
   return <MatrixPane mode={mode} />;
 }

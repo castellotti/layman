@@ -60,8 +60,8 @@ const MOCK_CONFIG: LaymanConfig = {
   },
   liveTokens: { enabled: true, showThinking: true },
   activity: { memoryPaths: [], memoryServers: [] },
-  glove: { enabled: false, home: '~/.glove', showIpAddresses: false, network: { enabled: true, controlEnabled: true, geoipDbPath: '', vpnDomains: [] } },
-  styx: { enabled: false, godotDir: '' },
+  glove: { enabled: false, home: '~/.glove', showIpAddresses: false, network: { enabled: true, tabs: { network: true, map: true, topology: true, trace: true }, controlEnabled: true, geoipDbPath: '', vpnDomains: [] } },
+  styx: { enabled: false, godotDir: '', matrix: true, gibson: true, tabs: { matrix: true, matrix2d: true, matrix3d: true, gibson: true, gibson2d: true, gibson3d: true } },
   sync: {
     role: 'standalone',
     hostId: '',

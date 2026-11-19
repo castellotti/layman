@@ -9,6 +9,7 @@
 import React, { useEffect, useMemo } from 'react';
 import { useSessionStore } from '../../stores/sessionStore.js';
 import { useNetStore } from '../../stores/netStore.js';
+import { netTabVisible } from '../../lib/tab-visibility.js';
 import { useNetPanels } from '../../hooks/useNetPanels.js';
 import { defaultNetToken, netPickerOrder, rangeKey, type NetSessionData } from '../../lib/net-state.js';
 import { orderDashboardSessions } from '../../lib/session-state.js';
@@ -178,6 +179,7 @@ export default function NetworkView({ tab, onSend }: { tab: NetTab; onSend: (msg
   const panels = useNetPanels(tab, TAB_PANELS[tab]);
 
   const enabled = !!config?.glove.enabled && config.glove.network?.enabled !== false;
+  const hidden = enabled && !netTabVisible(config, tab);
   const token = netToken ?? defaultNetToken(sessions, activeSessionName);
   const picked = token === null ? undefined : sessions.find((s) => s.token === token);
   const listed = picked !== undefined;
@@ -194,7 +196,7 @@ export default function NetworkView({ tab, onSend }: { tab: NetTab; onSend: (msg
   // dashboard that is not looking stops receiving deltas.
   // A time range is part of the subscription: the server builds it from glove's files
   // (never a filter of All records), so changing it subscribes again.
-  const subscribeTo = listed ? token : null;
+  const subscribeTo = listed && !hidden ? token : null;
   const rangeKeyed = subscribeTo !== null && netRange ? rangeKey(netRange) : null;
   useEffect(() => {
     if (wsStatus !== 'connected') return;
@@ -218,6 +220,13 @@ export default function NetworkView({ tab, onSend }: { tab: NetTab; onSend: (msg
           action={<button type="button" onClick={() => setSettingsOpen(true)} style={actionButton}>Open Settings</button>}
         >
           These tabs show the network traffic of glove-sandboxed sessions. Enable glove (and its network views) in Settings.
+        </EmptyState>
+      );
+    }
+    if (hidden) {
+      return (
+        <EmptyState title="This tab is hidden">
+          Show it in Settings → Extensions → glove → Network views.
         </EmptyState>
       );
     }
@@ -279,14 +288,14 @@ export default function NetworkView({ tab, onSend }: { tab: NetTab; onSend: (msg
           : tab === 'map' ? <MapView data={data} panels={panels} /> : <Board tab={tab} panels={panels} data={data} />}
       </>
     );
-  }, [enabled, sessionsKnown, registry, sessions.length, listed, dark, token, data, tab, panels, config?.glove.home, setSettingsOpen,
+  }, [enabled, hidden, sessionsKnown, registry, sessions.length, listed, dark, token, data, tab, panels, config?.glove.home, setSettingsOpen,
     rangeKeyed, rangeError, rangeProgress, netRange, setNetRange]);
 
   const shown = data && data.token === token && (data.range?.key ?? null) === rangeKeyed ? data : null;
   return (
     <div className="net-view" style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, overflow: 'hidden', background: 'var(--bg)' }}>
       <NetTipHost />
-      <GateStrip
+      {!hidden && <GateStrip
         sessions={sessions}
         notObservable={notObservable}
         token={token}
@@ -297,8 +306,8 @@ export default function NetworkView({ tab, onSend }: { tab: NetTab; onSend: (msg
         panels={TAB_PANELS[tab]}
         isVisible={panels.isVisible}
         onToggle={panels.toggle}
-      />
-      {shown && <RulesRejectedBanner data={shown} />}
+      />}
+      {shown && !hidden && <RulesRejectedBanner data={shown} />}
       {shown?.range && <RangeBanner range={shown.range} />}
       <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>{body}</div>
       <NetNotices data={shown} />

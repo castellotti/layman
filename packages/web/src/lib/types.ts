@@ -356,10 +356,22 @@ export interface LaymanConfig {
     /** Keep IP addresses unredacted in gloved sessions' events. */
     showIpAddresses: boolean;
     /** Network views of gloved sessions. Mirrors the server's `glove.network` block. */
-    network: { enabled: boolean; controlEnabled: boolean; geoipDbPath: string; vpnDomains?: string[] };
+    network: {
+      enabled: boolean;
+      /** Which network tabs the header lists (absent = all). */
+      tabs?: { network?: boolean; map?: boolean; topology?: boolean; trace?: boolean };
+      controlEnabled: boolean; geoipDbPath: string; vpnDomains?: string[];
+    };
   };
   /** Matrix views and the styx-godot feed. Mirrors StyxConfigSchema. */
-  styx: { enabled: boolean; godotDir: string };
+  styx: {
+    enabled: boolean;
+    godotDir: string;
+    /** The Matrix and Gibson groups, and each tab (absent = on). */
+    matrix?: boolean;
+    gibson?: boolean;
+    tabs?: { matrix?: boolean; matrix2d?: boolean; matrix3d?: boolean; gibson?: boolean; gibson2d?: boolean; gibson3d?: boolean };
+  };
   /** Multi-host sync. Mirrors SyncConfigSchema on the server. */
   sync: SyncConfig;
   driftMonitoring: DriftMonitoringConfig;

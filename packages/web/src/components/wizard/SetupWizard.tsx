@@ -114,7 +114,7 @@ function WizardModal({ onSend, onClose, isFirstRun }: {
   const isLastStep = currentStep === TOTAL_STEPS - 1;
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60">
+    <div role="dialog" aria-modal="true" className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60">
       <div className="w-full max-w-2xl mx-4 bg-bg-card border border-border-strong rounded-lg shadow-2xl flex flex-col" style={{ maxHeight: '85vh' }}>
         {/* Header with progress indicator */}
         <div className="px-6 pt-5 pb-4 border-b border-border-strong shrink-0">
