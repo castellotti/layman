@@ -295,7 +295,7 @@ export default function NetworkView({ tab, onSend }: { tab: NetTab; onSend: (msg
   return (
     <div className="net-view" style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, overflow: 'hidden', background: 'var(--bg)' }}>
       <NetTipHost />
-      <GateStrip
+      {!hidden && <GateStrip
         sessions={sessions}
         notObservable={notObservable}
         token={token}
@@ -306,8 +306,8 @@ export default function NetworkView({ tab, onSend }: { tab: NetTab; onSend: (msg
         panels={TAB_PANELS[tab]}
         isVisible={panels.isVisible}
         onToggle={panels.toggle}
-      />
-      {shown && <RulesRejectedBanner data={shown} />}
+      />}
+      {shown && !hidden && <RulesRejectedBanner data={shown} />}
       {shown?.range && <RangeBanner range={shown.range} />}
       <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>{body}</div>
       <NetNotices data={shown} />

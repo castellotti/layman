@@ -20,16 +20,18 @@ export function StyxSection({
   // An older server sends no `styx` block.
   const styx = config.styx ?? { enabled: false, godotDir: '' };
   const tabs = styx.tabs ?? {};
+  // The snapshot sent with a non-tab change leaves `tabs` out: the server merges it per key, and a stale copy would undo another switch.
+  const { tabs: _tabs, ...flat } = styx;
   const matrixOn = styx.matrix !== false;
   const gibsonOn = styx.gibson !== false;
   // The server deep-merges styx and styx.tabs, so only the changed field need be sent.
   const setTab = (key: keyof NonNullable<typeof styx.tabs>) =>
-    updateConfig({ styx: { ...styx, tabs: { [key]: tabs[key] === false } } });
+    updateConfig({ styx: { tabs: { [key]: tabs[key] === false } } } as Partial<LaymanConfig>);
   const [dirDraft, setDirDraft] = useState(styx.godotDir);
   useEffect(() => setDirDraft(styx.godotDir), [styx.godotDir]);
   const commitDir = () => {
     const v = dirDraft.trim();
-    if (v !== styx.godotDir) updateConfig({ styx: { ...styx, godotDir: v } });
+    if (v !== styx.godotDir) updateConfig({ styx: { ...flat, godotDir: v } });
   };
   const { status } = useMatrixGodotStatus(styx.enabled, styx.godotDir);
 
@@ -42,7 +44,7 @@ export function StyxSection({
         desc="The destinations a session reached, drawn as the Matrix and the Gibson. A sandboxed (glove) session shows its real connections; any other session shows the hosts its tool calls named. Also serves the same data at /api/styx/v1 for styx-godot. Layman never looks up the hosts it shows."
         checked={styx.enabled}
         // The type wants the whole block; the server deep-merges, so it cannot blank godotDir.
-        onChange={() => updateConfig({ styx: { ...styx, enabled: !styx.enabled } })}
+        onChange={() => updateConfig({ styx: { ...flat, enabled: !styx.enabled } })}
       />
 
       {styx.enabled && (
@@ -51,7 +53,7 @@ export function StyxSection({
             label="Matrix tabs"
             desc="Falling text: one stream per destination."
             checked={matrixOn}
-            onChange={() => updateConfig({ styx: { ...styx, matrix: !matrixOn } })}
+            onChange={() => updateConfig({ styx: { ...flat, matrix: !matrixOn } })}
           />
           <SubRows
             disabled={!matrixOn}
@@ -65,7 +67,7 @@ export function StyxSection({
             label="Gibson tabs"
             desc="A city of towers: one per destination, with traffic between them."
             checked={gibsonOn}
-            onChange={() => updateConfig({ styx: { ...styx, gibson: !gibsonOn } })}
+            onChange={() => updateConfig({ styx: { ...flat, gibson: !gibsonOn } })}
           />
           <SubRows
             disabled={!gibsonOn}

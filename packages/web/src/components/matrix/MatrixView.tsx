@@ -1,5 +1,5 @@
-import { styxTabVisible, type StyxTabKey } from '../../lib/tab-visibility.js';
 import React from 'react';
+import { styxTabVisible, type StyxTabKey } from '../../lib/tab-visibility.js';
 import { useSessionStore, type ViewMode } from '../../stores/sessionStore.js';
 import { useNetStore } from '../../stores/netStore.js';
 import { pickSession } from '../../lib/activity-view.js';
