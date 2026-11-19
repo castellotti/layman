@@ -27,10 +27,9 @@ const SIGNAL_DOT: Record<Exclude<NetTabSignal, null>, { color: string; title: st
   live: { color: 'var(--net-tunnel)', title: 'A glove gate is running' },
 };
 
-function NavTabButton({ tabKey, label, shortcut, isActive, onClick, signal }: { tabKey: string; label: string; shortcut?: string; isActive: boolean; onClick: () => void; signal?: NetTabSignal }) {
+function NavTabButton({ label, shortcut, isActive, onClick, signal }: { label: string; shortcut?: string; isActive: boolean; onClick: () => void; signal?: NetTabSignal }) {
   return (
     <button
-      data-tab-key={tabKey}
       data-tab-active={isActive}
       onClick={onClick}
       title={shortcut ? `${label} (${shortcut})` : label}
@@ -228,7 +227,6 @@ export function Header() {
               {g.tabs.map((t) => (
                 <NavTabButton
                   key={t.key}
-                  tabKey={t.key}
                   label={t.label}
                   shortcut={t.shortcut}
                   isActive={isTabActive(t.key)}
