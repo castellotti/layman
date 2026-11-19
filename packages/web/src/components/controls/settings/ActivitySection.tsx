@@ -15,11 +15,13 @@ export function ActivitySection({ config, onSend }: { config: LaymanConfig; onSe
   const set = (updates: Partial<typeof activity>) => onSend({ type: 'config:update', config: { activity: { ...activity, ...updates } } });
   return (
     <>
-      <SectionTitle>Stations</SectionTitle>
+      <SectionTitle>Activity map</SectionTitle>
       <SectionIntro>
-        Each event in Logs is filed under the kind of work it is: You, Model, Memory, Files, Shell, Network, Browser, Agents,
-        Skills or Guard. Claude Code&rsquo;s memory folder (<Code>~/.claude/projects/&hellip;/memory/</Code>)
-        is always Memory; name more here. Changes apply to every session, past ones included.
+        Layman files every tool call under a station, the kind of work it is: You, Model, Memory, Files, Shell, Network,
+        Browser, Agents, Skills or Guard. Stations are what the Activity tab&rsquo;s map shows and what the Stations
+        filter in Logs filters by. Claude Code&rsquo;s memory folder (<Code>~/.claude/projects/&hellip;/memory/</Code>)
+        always counts as Memory; the two lists below add more paths and MCP servers to it. Changes apply to every
+        session, past ones included: stations are worked out when shown, never stored.
       </SectionIntro>
       <StringListRow
         label="Memory paths"
