@@ -22,6 +22,11 @@ export const BTN: React.CSSProperties = {
   background: 'var(--bg-card)', color: 'var(--text)', border: 'var(--stroke) solid var(--border-strong)',
 };
 
+export const PATH_INPUT: React.CSSProperties = {
+  flex: 1, minWidth: 0, boxSizing: 'border-box', padding: sp('4px 6px'), fontSize: 11, fontFamily: 'var(--font-mono)',
+  background: 'var(--bg-card)', border: 'var(--stroke) solid var(--border-strong)', borderRadius: rad(5), color: 'var(--text)', outline: 'none',
+};
+
 /**
  * Browse… for a path setting. The browser cannot reveal a real path, so this lists what Layman's
  * server can see (`/api/fs/browse`: names only, inside the home and Layman's data folders). In
@@ -115,7 +120,7 @@ export function PathPicker({ title, mode, ext, start, onChoose, onClose }: {
             spellCheck={false}
             onChange={(e) => { setTyped(e.target.value); setPicked(null); }}
             onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); load(typed); } }}
-            style={{ flex: 1, minWidth: 0, boxSizing: 'border-box', padding: sp('4px 6px'), fontSize: 11, fontFamily: 'var(--font-mono)', background: 'var(--bg-card)', border: 'var(--stroke) solid var(--border-strong)', borderRadius: rad(5), color: 'var(--text)', outline: 'none' }}
+            style={PATH_INPUT}
           />
         </div>
         <div

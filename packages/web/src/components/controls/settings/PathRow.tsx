@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { CustomRow } from './primitives.js';
-import { PathPicker, BTN } from './PathPicker.js';
-import { sp, rad } from '../../../lib/density.js';
+import { PathPicker, BTN, PATH_INPUT } from './PathPicker.js';
+import { sp } from '../../../lib/density.js';
 
 /**
  * A path setting: the label on its own line, then a full-width field (the whole path, not a 220 px
@@ -42,7 +42,7 @@ export function PathRow({ label, value, placeholder, onCommit, mode, ext, ariaLa
           onBlur={() => commit(draft)}
           onKeyDown={(e) => { if (e.key === 'Enter') commit(draft); }}
           spellCheck={false}
-          style={{ flex: 1, minWidth: 0, boxSizing: 'border-box', padding: sp('4px 6px'), fontSize: 11, fontFamily: 'var(--font-mono)', background: 'var(--bg-card)', border: 'var(--stroke) solid var(--border-strong)', borderRadius: rad(5), color: 'var(--text)', outline: 'none' }}
+          style={PATH_INPUT}
         />
         <button
           ref={browseRef}
