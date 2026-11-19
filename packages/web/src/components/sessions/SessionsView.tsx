@@ -408,6 +408,7 @@ export function SessionsView({ onSend }: SessionsViewProps) {
       {/* Left sidebar */}
       <div
         ref={sidebarRef}
+        data-own-arrows=""
         data-print-hide
         tabIndex={0}
         style={{

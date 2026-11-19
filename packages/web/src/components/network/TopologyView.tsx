@@ -306,7 +306,7 @@ function ScrollWindow({ t, col, scroll, clipId, noun, children, attrs }: {
     <>
       {/* Rows whose text runs past the box (a broken path's host) are clipped where the scrollbar begins. */}
       <clipPath id={clipId}><rect x={c.x - 4} y={c.top} width={c.w + c.overhang + 8} height={c.bottom - c.top} /></clipPath>
-      <g ref={column} {...attrs.column} tabIndex={c.maxScroll > 0 ? 0 : undefined} style={{ outline: 'none' }}
+      <g ref={column} {...attrs.column} tabIndex={c.maxScroll > 0 ? 0 : undefined} data-own-arrows="" style={{ outline: 'none' }}
         aria-label={c.maxScroll > 0 ? `${c.rows.length} ${noun}s: scroll with the wheel, the arrow keys, Page Up and Page Down, Home and End` : undefined}
         onKeyDown={(e) => {
           if (e.target !== e.currentTarget) return;

@@ -1,8 +1,10 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import { useSessionStore, isExclusiveView, isNetworkView, type ViewMode } from '../../stores/sessionStore.js';
 import { useNetStore } from '../../stores/netStore.js';
 import { networkTabSignal, type NetTabSignal } from '../../lib/net-state.js';
-import { NET_TABS } from '../network/tabs.js';
+import { headerTabs, currentTabIndex, neighbourTab, type HeaderTab } from '../../lib/header-tabs.js';
+import { arrowKeysFree } from '../../lib/arrow-keys.js';
+import { TabScroller } from './TabScroller.js';
 import { sessionDisplayName } from '../../lib/session-state.js';
 import { tokenColor } from '../../lib/tokens.js';
 import { sp, rad } from '../../lib/density.js';
@@ -16,19 +18,20 @@ function getSessionName(cwd: string, sessionId: string, agentType?: string, show
   return name;
 }
 
-const NAV_TABS_ARCHIVE: { key: ViewMode; label: string; shortcut: string }[] = [
-  { key: 'sessions', label: 'Sessions', shortcut: '' },
-  { key: 'prompts',  label: 'Prompts',  shortcut: '' },
-];
+const GROUP_LABEL: Record<HeaderTab['group'], string | undefined> = {
+  live: undefined, network: 'Network', matrix: 'Matrix', gibson: 'Gibson', archive: undefined,
+};
 
 const SIGNAL_DOT: Record<Exclude<NetTabSignal, null>, { color: string; title: string }> = {
   alert: { color: 'var(--error)', title: 'A running glove session has rejected rules or untunnelled traffic' },
   live: { color: 'var(--net-tunnel)', title: 'A glove gate is running' },
 };
 
-function NavTabButton({ label, shortcut, isActive, onClick, signal }: { label: string; shortcut?: string; isActive: boolean; onClick: () => void; signal?: NetTabSignal }) {
+function NavTabButton({ tabKey, label, shortcut, isActive, onClick, signal }: { tabKey: string; label: string; shortcut?: string; isActive: boolean; onClick: () => void; signal?: NetTabSignal }) {
   return (
     <button
+      data-tab-key={tabKey}
+      data-tab-active={isActive}
       onClick={onClick}
       title={shortcut ? `${label} (${shortcut})` : label}
       style={{
@@ -46,6 +49,7 @@ function NavTabButton({ label, shortcut, isActive, onClick, signal }: { label: s
         transition: 'color 0.15s, background 0.15s',
         userSelect: 'none',
         whiteSpace: 'nowrap',
+        flexShrink: 0,
       }}
       onMouseEnter={(e) => {
         if (!isActive) (e.currentTarget as HTMLButtonElement).style.color = 'var(--text)';
@@ -86,8 +90,14 @@ export function Header() {
   // The Network group appears only with glove on and at least one glove session
   // with network data; otherwise the header is exactly what it was without it.
   const netSessions = useNetStore((s) => s.sessions);
-  const showMatrix = config?.styx?.enabled === true;
   const showNetwork = !!config?.glove.enabled && config.glove.network?.enabled !== false && netSessions.length > 0;
+  const tabs = useMemo(() => headerTabs({ showNetwork, config }), [showNetwork, config]);
+  const groups = tabs.reduce<{ group: HeaderTab['group']; tabs: HeaderTab[] }[]>((acc, t) => {
+    const last = acc[acc.length - 1];
+    if (last?.group === t.group) last.tabs.push(t);
+    else acc.push({ group: t.group, tabs: [t] });
+    return acc;
+  }, []);
   const netSignal = networkTabSignal(netSessions);
 
   // Dashboard/Logs are only meaningfully "active" while the live (non-exclusive)
@@ -110,9 +120,37 @@ export function Header() {
     }
   };
 
+  const isTabActive = (key: HeaderTab['key']) =>
+    key === 'dashboard' ? inLiveMode && panelLayout.showDashboard
+      : key === 'stream' ? inLiveMode && panelLayout.showLogs
+        : viewMode === key;
+  const activeKey = tabs.filter((t) => isTabActive(t.key)).map((t) => t.key).join(',');
+
+  // ←/→ always show only the tab arrived at, never toggle a panel.
+  const goToTab = (key: HeaderTab['key']) => {
+    if (key === 'dashboard' || key === 'stream') {
+      setViewMode(key);
+      activateOnlyLiveTab(key);
+    } else {
+      setViewMode(key);
+    }
+  };
+  const activateTab = (key: HeaderTab['key']) => {
+    if (key === 'dashboard' || key === 'stream') activateLiveTab(key);
+    else setViewMode(key);
+  };
+
+  const hasTab = (key: HeaderTab['key']) => tabs.some((t) => t.key === key);
+
   // Global keyboard shortcuts
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
+      if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && arrowKeysFree(e)) {
+        const next = neighbourTab(tabs, currentTabIndex(tabs, viewMode, panelLayout, inLiveMode), e.key === 'ArrowLeft' ? -1 : 1);
+        e.preventDefault();
+        if (next) goToTab(next.key);
+        return;
+      }
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLSelectElement) return;
       if (e.ctrlKey || e.metaKey || e.altKey) return;
       switch (e.key.toLowerCase()) {
@@ -120,12 +158,12 @@ export function Header() {
         case 's': activateLiveTab('stream'); break;
         case 'f': setViewMode('flowchart'); break;
         case 'a': setViewMode('activity'); break;
-        case 'x': if (showMatrix) setViewMode('matrix2d'); break;
-        case 'g': if (showMatrix) setViewMode('gibson2d'); break;
-        case 'n': if (showNetwork) setViewMode('network'); break;
-        case 'm': if (showNetwork) setViewMode('map'); break;
-        case 'o': if (showNetwork) setViewMode('topology'); break;
-        case 't': if (showNetwork) setViewMode('trace'); break;
+        case 'x': if (hasTab('matrix2d')) setViewMode('matrix2d'); break;
+        case 'g': if (hasTab('gibson2d')) setViewMode('gibson2d'); break;
+        case 'n': if (hasTab('network')) setViewMode('network'); break;
+        case 'm': if (hasTab('map')) setViewMode('map'); break;
+        case 'o': if (hasTab('topology')) setViewMode('topology'); break;
+        case 't': if (hasTab('trace')) setViewMode('trace'); break;
         case 'escape':
           if (returnToDashboard) {
             returnFromDashboardDrilldown();
@@ -138,7 +176,7 @@ export function Header() {
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [setViewMode, bookmarksOpen, promptsOpen, returnToDashboard, returnFromDashboardDrilldown, inLiveMode, toggleDashboardVisible, toggleLogsVisible, activateOnlyLiveTab, showNetwork, showMatrix]);
+  }, [setViewMode, bookmarksOpen, promptsOpen, returnToDashboard, returnFromDashboardDrilldown, inLiveMode, toggleDashboardVisible, toggleLogsVisible, activateOnlyLiveTab, tabs, viewMode, panelLayout]);
 
   // Session picker only makes sense once Logs (a single-session view) is showing.
   // The network tabs have their own glove session picker in the gate strip, and
@@ -180,83 +218,30 @@ export function Header() {
         LAYMAN
       </a>
 
-      {/* Nav tabs — live monitoring. When Dashboard and Logs are both visible, both
-          read as active — one continuous highlighted region (§1.1). Clicking either
-          toggles its visibility independently; clicking from Flow/Sessions/Prompts
-          closes that exclusive view and shows only the clicked tab. */}
-      <nav style={{ display: 'flex', alignItems: 'stretch', height: '100%', gap: 0 }}>
-        <NavTabButton
-          label="Dashboard"
-          shortcut="D"
-          isActive={inLiveMode && panelLayout.showDashboard}
-          onClick={() => activateLiveTab('dashboard')}
-        />
-        <NavTabButton
-          label="Logs"
-          shortcut="S"
-          isActive={inLiveMode && panelLayout.showLogs}
-          onClick={() => activateLiveTab('stream')}
-        />
-        <NavTabButton
-          label="Flow"
-          shortcut="F"
-          isActive={viewMode === 'flowchart'}
-          onClick={() => setViewMode('flowchart')}
-        />
-        <NavTabButton
-          label="Activity"
-          shortcut="A"
-          isActive={viewMode === 'activity'}
-          onClick={() => setViewMode('activity')}
-        />
-      </nav>
-
-      {/* Network views of glove sessions, between their own dividers */}
-      {showNetwork && (
-        <>
-          <div style={{ alignSelf: 'center', width: 1, height: 16, background: 'var(--border-strong)', margin: sp('0 12px') }} />
-          <nav aria-label="Network" style={{ display: 'flex', alignItems: 'stretch', height: '100%', gap: 0 }}>
-            {NET_TABS.map(({ key, label, shortcut }) => (
-              <NavTabButton
-                key={key}
-                label={label}
-                shortcut={shortcut}
-                isActive={viewMode === key}
-                onClick={() => setViewMode(key)}
-                signal={key === 'network' ? netSignal : undefined}
-              />
-            ))}
-          </nav>
-        </>
-      )}
-
-      {/* Styx: the Matrix views, between their own dividers */}
-      {showMatrix && (
-        <>
-          <div style={{ alignSelf: 'center', width: 1, height: 16, background: 'var(--border-strong)', margin: sp('0 12px') }} />
-          <nav aria-label="Matrix" style={{ display: 'flex', alignItems: 'stretch', height: '100%', gap: 0 }}>
-            <NavTabButton label="Matrix" isActive={viewMode === 'matrix'} onClick={() => setViewMode('matrix')} />
-            <NavTabButton label="Matrix 2D" shortcut="X" isActive={viewMode === 'matrix2d'} onClick={() => setViewMode('matrix2d')} />
-            <NavTabButton label="Matrix 3D" isActive={viewMode === 'matrix3d'} onClick={() => setViewMode('matrix3d')} />
-          </nav>
-          <div style={{ alignSelf: 'center', width: 1, height: 16, background: 'var(--border-strong)', margin: sp('0 12px') }} />
-          <nav aria-label="Gibson" style={{ display: 'flex', alignItems: 'stretch', height: '100%', gap: 0 }}>
-            <NavTabButton label="Gibson" isActive={viewMode === 'gibson'} onClick={() => setViewMode('gibson')} />
-            <NavTabButton label="Gibson 2D" shortcut="G" isActive={viewMode === 'gibson2d'} onClick={() => setViewMode('gibson2d')} />
-            <NavTabButton label="Gibson 3D" isActive={viewMode === 'gibson3d'} onClick={() => setViewMode('gibson3d')} />
-          </nav>
-        </>
-      )}
-
-      {/* Live / archive divider */}
-      <div style={{ alignSelf: 'center', width: 1, height: 16, background: 'var(--border-strong)', margin: sp('0 12px') }} />
-
-      {/* Nav tabs — archived lookup */}
-      <nav style={{ display: 'flex', alignItems: 'stretch', height: '100%', gap: 0 }}>
-        {NAV_TABS_ARCHIVE.map(({ key, label, shortcut }) => (
-          <NavTabButton key={key} label={label} shortcut={shortcut} isActive={viewMode === key} onClick={() => setViewMode(key)} />
+      {/* The tab strip scrolls sideways on its own; the session picker and Settings stay put on the
+          right. Groups come from headerTabs(), the same list the arrow keys walk. Dashboard and Logs
+          both read as active when both are visible; clicking either toggles it, and clicking from
+          Flow/Sessions/Prompts closes that exclusive view and shows only the clicked tab. */}
+      <TabScroller activeKey={activeKey} tabCount={tabs.length}>
+        {groups.map((g, i) => (
+          <React.Fragment key={g.group}>
+            {i > 0 && <div style={{ alignSelf: 'center', flexShrink: 0, width: 1, height: 16, background: 'var(--border-strong)', margin: sp('0 12px') }} />}
+            <nav aria-label={GROUP_LABEL[g.group]} style={{ display: 'flex', alignItems: 'stretch', height: '100%', gap: 0 }}>
+              {g.tabs.map((t) => (
+                <NavTabButton
+                  key={t.key}
+                  tabKey={t.key}
+                  label={t.label}
+                  shortcut={t.shortcut}
+                  isActive={isTabActive(t.key)}
+                  onClick={() => activateTab(t.key)}
+                  signal={t.key === 'network' ? netSignal : undefined}
+                />
+              ))}
+            </nav>
+          </React.Fragment>
         ))}
-      </nav>
+      </TabScroller>
 
       {/* Spacer */}
       <div style={{ flex: 1 }} />

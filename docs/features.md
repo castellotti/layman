@@ -2,6 +2,12 @@
 
 Deep-dives on Layman's analysis, safety, and recording features. For the view-by-view tour, see the [README](../README.md).
 
+## Keyboard and the tab strip
+
+- **←/→** switch to the previous/next tab in the header (no wrap-around; Dashboard and Logs then show alone). They do nothing while you are typing in a field, inside a view that uses arrows itself (Gibson 2D/3D pan and fly, lists, sliders, dividers) or while a dialog is open.
+- In **Logs**, **↑/↓** move between entries (they used to be ←/→) and **Home/End** jump to the first/last.
+- With every extension on, the tab strip is wider than a small window, so it scrolls sideways: swipe, mouse wheel, or the ‹ › buttons shown (with a fade) on the side that has more tabs. There is no scrollbar, the active tab is always scrolled into view, and the session picker and Settings stay put on the right.
+
 ## Automated risk analysis
 
 Layman can use an AI model to classify the risk level of each action, explain what it means in plain language, and flag anything that looks risky. Requires an API key - see [AI analysis setup](installation.md#ai-analysis-optional).

@@ -217,6 +217,7 @@ export function GibsonCanvas2D({ hosts, links, resetKey, scheme, selected, onSel
     <div
       ref={mount}
       tabIndex={0}
+      data-own-arrows=""
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}

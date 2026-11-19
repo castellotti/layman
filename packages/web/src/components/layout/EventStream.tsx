@@ -25,6 +25,7 @@ import { sp, rad } from '../../lib/density.js';
 import { tokenColor } from '../../lib/tokens.js';
 import { subagentLanes, type SubagentLane } from '../../lib/subagent-lanes.js';
 import { SubagentChip } from '../shared/SubagentChip.js';
+import { arrowKeysFree } from '../../lib/arrow-keys.js';
 
 interface EventStreamProps {
   onSend: (msg: ClientMessage) => void;
@@ -340,11 +341,13 @@ export function EventStream({ onSend, archived = false, archivedDate, turnRuler 
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
 
       switch (e.key) {
-        case 'ArrowLeft':
+        case 'ArrowUp':
+          if (!arrowKeysFree(e)) break;
           e.preventDefault();
           goToIndex(selectedIndex - 1);
           break;
-        case 'ArrowRight':
+        case 'ArrowDown':
+          if (!arrowKeysFree(e)) break;
           e.preventDefault();
           goToIndex(selectedIndex + 1);
           break;
