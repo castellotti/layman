@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { awaitingGloves, gloveLaymanSession, selectGlove, viewTarget } from './session-selection.js';
+import { awaitingGloves, gloveLaymanSession, gloveLive, selectGlove, selectedGloveName, viewTarget } from './session-selection.js';
 import type { SessionInfo } from './ws-protocol.js';
 
 const s = (sessionId: string, lastSeen: number, sessionName?: string) =>
@@ -14,8 +14,27 @@ describe('session selection', () => {
   });
 
   it('choosing a glove gives its session, else waits for it', () => {
-    expect(selectGlove('g-1', sessions)).toEqual({ activeSessionId: 'b', awaitingGlove: null });
-    expect(selectGlove('g-2', sessions)).toEqual({ activeSessionId: null, awaitingGlove: 'g-2' });
+    expect(selectGlove('g-1', sessions, false)).toEqual({ activeSessionId: 'b', awaitingGlove: null });
+    expect(selectGlove('g-2', sessions, true)).toEqual({ activeSessionId: null, awaitingGlove: 'g-2' });
+    expect(selectGlove('g-2', sessions, null)).toEqual({ activeSessionId: null, awaitingGlove: 'g-2' });
+  });
+
+  it('an ended glove with no listed session is not waiting for a prompt: no choice', () => {
+    expect(selectGlove('g-2', sessions, false)).toBeNull();
+  });
+
+  it('a glove is live only by glove’s list, and unknown before it', () => {
+    const gloves = [{ token: 'g-1', live: true }, { token: 'g-2', live: false }];
+    expect(gloveLive('g-1', { sessionsKnown: true, sessions: gloves })).toBe(true);
+    expect(gloveLive('g-2', { sessionsKnown: true, sessions: gloves })).toBe(false);
+    expect(gloveLive('g-9', { sessionsKnown: true, sessions: gloves })).toBe(false);
+    expect(gloveLive('g-1', { sessionsKnown: false, sessions: [] })).toBeNull();
+  });
+
+  it('the selection’s glove is the open session’s name, else the awaited glove', () => {
+    expect(selectedGloveName({ activeSessionId: 'b', awaitingGlove: null, sessions })).toBe('g-1');
+    expect(selectedGloveName({ activeSessionId: 'c', awaitingGlove: null, sessions })).toBeNull();
+    expect(selectedGloveName({ activeSessionId: null, awaitingGlove: 'g-2', sessions })).toBe('g-2');
   });
 
   it('lists live gloves with no Layman session, and the awaited one even when it is not live', () => {

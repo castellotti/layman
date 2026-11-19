@@ -19,10 +19,30 @@ export function gloveLaymanSession(token: string, sessions: readonly SessionInfo
   return newestSession(sessions.filter((s) => s.sessionName === token))?.sessionId ?? null;
 }
 
-/** Choosing a glove session: its newest Layman session, else the glove itself, waiting for its first prompt. */
-export function selectGlove(token: string, sessions: readonly SessionInfo[]): Selection {
+/**
+ * Choosing a glove session: its newest Layman session, else the glove itself, waiting for its first prompt.
+ * Only a live glove can be waiting (`live`: false once glove's sessions are known and it is not live, null
+ * before then): an ended or history-only glove with no listed session had its prompts long ago, and saying it
+ * awaits one would be false, so that choice is null and the selection is left as it was.
+ */
+export function selectGlove(token: string, sessions: readonly SessionInfo[], live: boolean | null): Selection | null {
   const id = gloveLaymanSession(token, sessions);
-  return id ? { activeSessionId: id, awaitingGlove: null } : { activeSessionId: null, awaitingGlove: token };
+  if (id) return { activeSessionId: id, awaitingGlove: null };
+  return live === false ? null : { activeSessionId: null, awaitingGlove: token };
+}
+
+/** Whether a glove session is live, from the net store's list: null until that list is known. */
+export function gloveLive(
+  token: string, net: { sessionsKnown: boolean; sessions: readonly { token: string; live: boolean }[] },
+): boolean | null {
+  return net.sessionsKnown ? net.sessions.some((g) => g.token === token && g.live) : null;
+}
+
+/** The glove id of what the session tabs show: the open session's name, else the glove awaiting its first prompt. */
+export function selectedGloveName(s: Selection & { sessions: readonly SessionInfo[] }): string | null {
+  return s.activeSessionId
+    ? s.sessions.find((x) => x.sessionId === s.activeSessionId)?.sessionName ?? null
+    : s.awaitingGlove;
 }
 
 /**

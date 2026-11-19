@@ -8,6 +8,7 @@
  */
 import React, { useEffect, useMemo } from 'react';
 import { useSessionStore } from '../../stores/sessionStore.js';
+import { selectedGloveName } from '../../lib/session-selection.js';
 import { useNetStore } from '../../stores/netStore.js';
 import { netTabVisible } from '../../lib/tab-visibility.js';
 import { useNetPanels } from '../../hooks/useNetPanels.js';
@@ -165,8 +166,7 @@ export default function NetworkView({ tab, onSend }: { tab: NetTab; onSend: (msg
   const setSettingsOpen = useSessionStore((s) => s.setSettingsOpen);
   const pickGlove = useSessionStore((s) => s.pickGlove);
   // The session the other tabs show, as a glove id: a gloved session's name, or a glove with no prompt yet.
-  const activeSessionName = useSessionStore((s) =>
-    (s.activeSessionId ? s.sessions.find((x) => x.sessionId === s.activeSessionId)?.sessionName : s.awaitingGlove) ?? null);
+  const activeSessionName = useSessionStore(selectedGloveName);
   const { sessions: listedSessions, notObservable, sessionsKnown, registry, data, setSubscribed } = useNetStore();
   // The Dashboard's sessions' names, in its order, as one string: a sessions frame that changes
   // nothing the picker uses does not re-render these tabs.

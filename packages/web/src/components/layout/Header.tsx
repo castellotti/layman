@@ -293,7 +293,8 @@ export function Header() {
                 }}
                 title="Filter by session"
               >
-                {sessions.length + gloveOptions.length > 1 && (
+                {/* Also when nothing is chosen, or a lone waiting glove would look chosen and could not be picked. */}
+                {(sessions.length + gloveOptions.length > 1 || value === '') && (
                   <option value="">All sessions</option>
                 )}
                 {sessions.map((s) => {

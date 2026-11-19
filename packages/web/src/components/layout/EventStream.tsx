@@ -408,7 +408,8 @@ export function EventStream({ onSend, archived = false, archivedDate, turnRuler 
   // Mirrors the allow-list on POST /api/sessions/:id/prompt — offering the input
   // for a harness the server will reject just produces a silent dead end.
   const PROMPTABLE_AGENTS = ['opencode', 'pi'];
-  const promptableSession =
+  // A glove awaiting its first prompt has no session to send it to: never offer another session's input.
+  const promptableSession = awaitingGlove !== null ? null :
     (activeSessionId !== null
       ? sessions.find((s) => s.sessionId === activeSessionId && PROMPTABLE_AGENTS.includes(s.agentType))
       : null) ?? sessions.find((s) => PROMPTABLE_AGENTS.includes(s.agentType)) ?? null;

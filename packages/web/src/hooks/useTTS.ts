@@ -94,6 +94,8 @@ export function useTTS(): void {
 
         if (event.timestamp < mountedAt) continue;
         if (listening && event.sessionId !== listening) continue;
+        // A glove awaiting its first prompt is a selection too: not every other session's speech.
+        if (!listening && state.awaitingGlove) continue;
 
         // A message with nothing to say is not a candidate. pi records one
         // assistant message per tool-calling step for its reasoning alone, and
